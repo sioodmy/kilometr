@@ -50,6 +50,7 @@ function network(lines: Line[], paths: Array<[string, string, number]> = []) {
     store.routes.set(line.id, {
       route_id: line.id,
       route_short_name: line.id,
+      route_long_name: '',
       route_type: line.kind ?? 3,
     });
     const trips: GtfsTrip[] = line.times.map((times, i) => {
@@ -65,6 +66,7 @@ function network(lines: Line[], paths: Array<[string, string, number]> = []) {
       store.stopTimes.set(
         trip.trip_id,
         times.map((sec, j) => ({
+          trip_id: trip.trip_id,
           stop_id: line.stops[j],
           stop_sequence: j,
           arrival_sec: sec,
@@ -73,11 +75,11 @@ function network(lines: Line[], paths: Array<[string, string, number]> = []) {
       );
       return trip;
     });
-    index.patterns.set(line.id, { routeId: line.id, stopSequence: line.stops, trips });
+    index.patterns.set(line.id, { patternId: line.id, routeId: line.id, stopSequence: line.stops, trips, departures: [], tripIndices: [] });
   }
   for (const [from, to, duration] of paths) {
     const list = store.footpaths.get(from) ?? [];
-    list.push({ to_stop_id: to, duration_sec: duration, distance_m: 100, fixed: true });
+    list.push({ from_stop_id: from, to_stop_id: to, duration_sec: duration, distance_m: 100, fixed: true });
     store.footpaths.set(from, list);
   }
   return { store, index };
@@ -361,12 +363,14 @@ async function checkArrivalRouting() {
   });
   nightStore.stopTimes.set('NIGHT_0', [
     {
+      trip_id: 'NIGHT_0',
       stop_id: 'A',
       stop_sequence: 0,
       arrival_sec: at(23, 0),
       departure_sec: at(23, 0),
     },
     {
+      trip_id: 'NIGHT_0',
       stop_id: 'D',
       stop_sequence: 1,
       arrival_sec: 86400 + at(8, 20),
@@ -381,9 +385,21 @@ async function checkArrivalRouting() {
       [
         'night-p',
         {
+          patternId: 'night-p',
           routeId: 'NIGHT_R',
           stopSequence: ['A', 'D'],
-          trips: [{ trip_id: 'NIGHT_0', trip_headsign: '' }],
+          trips: [
+            {
+              trip_id: 'NIGHT_0',
+              route_id: 'NIGHT_R',
+              service_id: 'night',
+              trip_headsign: '',
+              direction_id: 0,
+              shape_id: '',
+            },
+          ],
+          departures: [],
+          tripIndices: [],
         },
       ],
     ]),

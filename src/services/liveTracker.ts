@@ -185,6 +185,8 @@ class LiveTracker {
   private health = new Map<string, SourceHealth>();
   /** Czy ticker ma aktywnie chodzić (false po stop(), true po start()). */
   private wantPoll = false;
+  /** Widoczne ekrany, które potrzebują świeżych danych live. */
+  private consumers = 0;
   /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
@@ -248,12 +250,27 @@ class LiveTracker {
     this.notify();
   }
 
-  /** Idempotentny start tickera (pierwsze ensureFresh też go stawia). */
+  /** Idempotentny start tickera; ekrany wołają acquire(), nie start(). */
   start(): void {
     this.wantPoll = true;
     this.ensureAppStateListener();
     if (this.pinned === 0 && AppState.currentState !== 'active') return;
     this.armTimer();
+  }
+
+  /**
+   * Ekran zgłasza zapotrzebowanie na świeże dane, dopóki jest widoczny.
+   * Licznik, bo podczas przejścia przez chwilę działa stary i nowy ekran.
+   */
+  acquire(): void {
+    this.consumers += 1;
+    this.start();
+  }
+
+  /** Zwolnienie ekranu; ostatni gasi poll, chyba że śledzenie podróży pinuje. */
+  release(): void {
+    this.consumers = Math.max(0, this.consumers - 1);
+    if (this.consumers === 0) this.stop();
   }
 
   /**
@@ -270,7 +287,8 @@ class LiveTracker {
   /** Zatrzymuje ticker: apka ma iść bez polla, dopóki czegoś nie potrzebuje. */
   stop(): void {
     this.wantPoll = false;
-    this.disarmTimer();
+    // Pin ma własne tempo (także w tle), więc nie gasimy mu timera.
+    if (this.pinned === 0) this.disarmTimer();
   }
 
   /** Śledzenie podróży potrzebuje polla nawet w tle: pin zamiast twardego start(). */
@@ -335,11 +353,11 @@ class LiveTracker {
 
   /**
    * Szybka ścieżka przed planowaniem: gdy snapshot świeży - nic nie robi,
-   * w przeciwnym razie odpala poll W TLE i wraca od razu (planowanie nigdy
-   * nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
+   * w przeciwnym razie odpala jednorazowy poll W TLE i wraca od razu
+   * (planowanie nigdy nie czeka na sieć; najwyżej użyje opóźnień sprzed ≤5 s).
+   * Ciągły poll zostaje po stronie widocznych ekranów (acquire/release).
    */
   async ensureFresh(): Promise<void> {
-    this.start();
     void this.restoreSnapshot();
     if (this.lastOk > 0 || this.inFlight) return;
     void this.poll();
@@ -920,7 +938,7 @@ class LiveTracker {
 
     for (const [patternId, pattern] of dayIndex.patterns.entries()) {
       if (!routeIds.includes(pattern.routeId)) continue;
-      const trips = pattern.trips as any[];
+      const trips = pattern.trips;
       if (!trips || trips.length === 0) continue;
       // Wzorce wczorajsze mają zegar przesunięty o dobę względem „teraz”.
       const offset = offsets?.get(patternId) ?? 0;
@@ -928,7 +946,7 @@ class LiveTracker {
       let polyline = patternPolylines.get(patternId);
       if (!polyline) {
         polyline = [];
-        for (const [schedulePos, stopId] of (pattern.stopSequence as string[]).entries()) {
+        for (const [schedulePos, stopId] of pattern.stopSequence.entries()) {
           const s = gtfsStore.stops.get(stopId);
           if (s && s.stop_lat != null && s.stop_lon != null) {
             polyline.push({
@@ -990,7 +1008,7 @@ class LiveTracker {
     if (!bestTripId) {
       for (const [patternId, pattern] of dayIndex.patterns.entries()) {
         if (!routeIds.includes(pattern.routeId)) continue;
-        const trips = pattern.trips as any[];
+        const trips = pattern.trips;
         if (!trips) continue;
         const offset = offsets?.get(patternId) ?? 0;
 
@@ -1047,7 +1065,7 @@ class LiveTracker {
     // route_type 0 to tramwaj, 1 to metro, 2 to pociąg (SKA), 11 to trolejbus.
     // Bez meczu zostaje typ z wiersza. Ta sama kolejność co w ścieżce Rusta.
     if (bestTripId) {
-      const trip = gtfsStore.trips.get(bestTripId) as { route_id?: string } | undefined;
+      const trip = gtfsStore.trips.get(bestTripId);
       const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
       if (routeType === 0) type = 'tram';
       else if (routeType === 1) type = 'subway';
@@ -1181,8 +1199,7 @@ class LiveTracker {
         const trips = pattern.trips;
         w.u32(trips.length);
         for (const trip of trips) {
-          const times = gtfsStore.stopTimes.get(trip.trip_id) as
-            { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
+          const times = gtfsStore.stopTimes.get(trip.trip_id);
           const tripIdx = tripIds.length;
           tripIds.push(trip.trip_id);
           w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
@@ -1276,7 +1293,7 @@ class LiveTracker {
       // dostaje route_type 1 i kropkę metra).
       let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
       if (tripId) {
-        const trip = gtfsStore.trips.get(tripId) as { route_id?: string } | undefined;
+        const trip = gtfsStore.trips.get(tripId);
         const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
         if (routeType === 0) vtype = 'tram';
         else if (routeType === 1) vtype = 'subway';

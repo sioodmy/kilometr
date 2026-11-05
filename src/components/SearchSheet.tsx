@@ -316,158 +316,161 @@ export function SearchSheet({
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >
-      <View style={styles.head}>
-        {originTitle && onChangeOrigin && (
-          <TouchableOpacity
-            onPress={onChangeOrigin}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.originHintRow}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={s.search.originA11y(originTitle)}
-          >
-            <LocateFixed size={16} color={scheme.onSurfaceVariant} />
-            <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
-            <Text style={styles.originHintTitle} numberOfLines={1}>
-              {originTitle}
-            </Text>
-            <Text style={styles.originHintChange}>{s.search.change}</Text>
-          </TouchableOpacity>
-        )}
-
-        <View style={[styles.inputBox, focused && styles.inputFocused]}>
-          <TouchableOpacity
-            onPress={handleClose}
-            style={styles.leadingBtn}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={s.search.closeA11y}
-          >
-            <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
-          </TouchableOpacity>
-          <BottomSheetTextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={onQuery}
-            placeholder={placeholder}
-            accessibilityLabel={placeholder}
-            placeholderTextColor={scheme.onSurfaceVariant}
-            style={styles.input}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            selectionColor={scheme.primary}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            blurOnSubmit={false}
-            onSubmitEditing={() =>
-              lines[0] ? handleLineSelect(lines[0]) : first && handleSelect(first)
-            }
-          />
-          {query ? (
+      <View style={styles.container} accessibilityViewIsModal>
+        <View style={styles.head}>
+          {originTitle && onChangeOrigin && (
             <TouchableOpacity
-              onPress={() => {
-                onQuery('');
-                inputRef.current?.focus();
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={styles.trailingBtn}
+              onPress={onChangeOrigin}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.originHintRow}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={s.search.clearA11y}
+              accessibilityLabel={s.search.originA11y(originTitle)}
             >
-              <X size={19} color={scheme.onSurfaceVariant} />
+              <LocateFixed size={16} color={scheme.onSurfaceVariant} />
+              <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
+              <Text style={styles.originHintTitle} numberOfLines={1}>
+                {originTitle}
+              </Text>
+              <Text style={styles.originHintChange}>{s.search.change}</Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
+          )}
 
-      <BottomSheetFlatList
-        data={rows}
-        keyExtractor={keyExtractor}
-        overScrollMode="never"
-        contentContainerStyle={styles.list}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        initialNumToRender={10}
-        maxToRenderPerBatch={8}
-        ListHeaderComponent={
-          <View style={{ gap: 6 }}>
-            {notice ? (
-              <View style={styles.notice}>
-                <MapPinOff size={15} color={scheme.onWarningContainer} />
-                <Text style={styles.noticeText}>{notice}</Text>
-              </View>
+          <View style={[styles.inputBox, focused && styles.inputFocused]}>
+            <TouchableOpacity
+              onPress={handleClose}
+              style={styles.leadingBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={s.search.closeA11y}
+            >
+              <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
+            </TouchableOpacity>
+            <BottomSheetTextInput
+              ref={inputRef}
+              value={query}
+              onChangeText={onQuery}
+              placeholder={placeholder}
+              accessibilityLabel={placeholder}
+              placeholderTextColor={scheme.onSurfaceVariant}
+              style={styles.input}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              selectionColor={scheme.primary}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              blurOnSubmit={false}
+              onSubmitEditing={() =>
+                lines[0] ? handleLineSelect(lines[0]) : first && handleSelect(first)
+              }
+            />
+            {query ? (
+              <TouchableOpacity
+                onPress={() => {
+                  onQuery('');
+                  inputRef.current?.focus();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.trailingBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={s.search.clearA11y}
+              >
+                <X size={19} color={scheme.onSurfaceVariant} />
+              </TouchableOpacity>
             ) : null}
-            {!trimmed && savedQuick.length > 0 && (
-              <View style={styles.quickRow}>
-                {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
-                  <TouchableOpacity
-                    key={q.id}
-                    onPress={() => handleSelect(q)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    activeOpacity={0.7}
-                    style={styles.quick}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.search.savedA11y(q.title)}
-                  >
-                    <Text style={styles.quickText} numberOfLines={1}>
-                      {q.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
           </View>
-        }
-        renderItem={renderRow}
-        ListFooterComponent={
-          showLoading && rows.length > 0 ? (
-            <View style={styles.status} accessibilityLiveRegion="polite">
-              <ActivityIndicator size="small" color={scheme.primary} />
-              <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
-            </View>
-          ) : error && rows.length > 0 ? (
-            <Text style={styles.error} accessibilityRole="alert">
-              {s.search.errorHint}
-            </Text>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.empty} accessibilityLiveRegion="polite">
-            <View style={styles.emptyIcon}>
-              {showLoading ? (
-                <ActivityIndicator color={scheme.primary} />
-              ) : (
-                <Search size={28} color={scheme.primary} />
+        </View>
+
+        <BottomSheetFlatList
+          data={rows}
+          keyExtractor={keyExtractor}
+          overScrollMode="never"
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          initialNumToRender={10}
+          maxToRenderPerBatch={8}
+          ListHeaderComponent={
+            <View style={{ gap: 6 }}>
+              {notice ? (
+                <View style={styles.notice}>
+                  <MapPinOff size={15} color={scheme.onWarningContainer} />
+                  <Text style={styles.noticeText}>{notice}</Text>
+                </View>
+              ) : null}
+              {!trimmed && savedQuick.length > 0 && (
+                <View style={styles.quickRow}>
+                  {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
+                    <TouchableOpacity
+                      key={q.id}
+                      onPress={() => handleSelect(q)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      activeOpacity={0.7}
+                      style={styles.quick}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.search.savedA11y(q.title)}
+                    >
+                      <Text style={styles.quickText} numberOfLines={1}>
+                        {q.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               )}
             </View>
-            <Text style={styles.emptyTitle}>
-              {showLoading
-                ? s.search.searching(cityLoc)
-                : error
-                  ? s.search.errorTitle
-                  : trimmed
-                    ? s.search.noResultsFor(trimmed)
-                    : s.search.emptyTitle}
-            </Text>
-            {!showLoading && (
-              <Text style={styles.emptySub}>
-                {error
-                  ? s.search.errorHint
-                  : trimmed
-                    ? s.search.noResultsHint(cityId)
-                    : s.search.emptyHint}
+          }
+          renderItem={renderRow}
+          ListFooterComponent={
+            showLoading && rows.length > 0 ? (
+              <View style={styles.status} accessibilityLiveRegion="polite">
+                <ActivityIndicator size="small" color={scheme.primary} />
+                <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
+              </View>
+            ) : error && rows.length > 0 ? (
+              <Text style={styles.error} accessibilityRole="alert">
+                {s.search.errorHint}
               </Text>
-            )}
-          </View>
-        }
-      />
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.empty} accessibilityLiveRegion="polite">
+              <View style={styles.emptyIcon}>
+                {showLoading ? (
+                  <ActivityIndicator color={scheme.primary} />
+                ) : (
+                  <Search size={28} color={scheme.primary} />
+                )}
+              </View>
+              <Text style={styles.emptyTitle}>
+                {showLoading
+                  ? s.search.searching(cityLoc)
+                  : error
+                    ? s.search.errorTitle
+                    : trimmed
+                      ? s.search.noResultsFor(trimmed)
+                      : s.search.emptyTitle}
+              </Text>
+              {!showLoading && (
+                <Text style={styles.emptySub}>
+                  {error
+                    ? s.search.errorHint
+                    : trimmed
+                      ? s.search.noResultsHint(cityId)
+                      : s.search.emptyHint}
+                </Text>
+              )}
+            </View>
+          }
+        />
+      </View>
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   lineResult: {
     flexDirection: 'row',
     alignItems: 'center',

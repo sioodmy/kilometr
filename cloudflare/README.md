@@ -140,11 +140,13 @@ certyfikat. Nic ręcznie w dashboardzie nie trzeba klikać.
 ### 3. Sekret PDP w Workerze (NIE do repo, NIE do kodu aplikacji!)
 
 ```bash
-npx wrangler secret put PDP_API_KEY   # wklej klucz, Enter
+npx wrangler secret put PDP_API_KEY       # wklej klucz, Enter
+npx wrangler secret put PDP_PROXY_TOKEN   # losowy token, np. openssl rand -hex 32
 ```
 
-Aplikacja mobilna **nigdy** nie widzi tego klucza - woła `/api/kd/*`
-Workera, a Worker dokleja klucz po stronie serwera.
+Aplikacja mobilna **nigdy** nie widzi klucza PDP. Proxy `/api/kd/*`
+wymaga nagłówka `X-Proxy-Token`, a bez `PDP_PROXY_TOKEN` zwraca 503
+(proxy wyłączone). Worker dokleja klucz PDP po stronie serwera.
 
 ### 4. Sekrety GitHub Actions (repo → Settings → Secrets → Actions)
 
@@ -267,9 +269,9 @@ uploaduje i nie jest błędem.
 
 Worker ma gotowe, cache'owane passthrough:
 `GET /api/kd/departures?stations=<ids>&withPlanned=true`
-(PDP `/operations/shortened`, cache 120 s - wielu użytkowników dzieli
-jeden request do PDP). Aplikacja tego **nie woła** - dopóki nie będzie
-ekranu/tablicy odjazdów KD, koszt PDP = 0.
+z nagłówkiem `X-Proxy-Token` (PDP `/operations/shortened`, cache 120 s -
+wielu użytkowników dzieli jeden request do PDP). Aplikacja tego **nie woła** -
+dopóki nie będzie ekranu/tablicy odjazdów KD, koszt PDP = 0.
 
 ## Pliki
 

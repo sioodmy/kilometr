@@ -12,14 +12,13 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import type * as DocumentPicker from 'expo-document-picker';
-import { kvGetStrict, kvSet } from './storage';
+import { kvGetStrict, kvSetStrict } from './storage';
 import { getLocaleSettingSync, setLocaleSetting, type LocaleSetting } from '../i18n';
 import { loadSettings, saveSettings, type RoutingSettings } from './settings';
 import {
   loadNotificationPreferences,
   saveNotificationPreferences,
 } from './notifications/preferences';
-import type { NotificationPreferences } from './notifications/types';
 import type { SavedPlace, SavedRoute } from '../types/models';
 import type { TripHistoryItem } from './smartRanking';
 import { CITIES, cityKey, type CityId } from '../cities';
@@ -288,7 +287,9 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
       let next = mergeById(current, section.items);
       if (sort) next = next.sort(sort);
       if (cap !== undefined) next = next.slice(0, cap);
-      if (next !== current) await kvSet(key, JSON.stringify(next));
+      // Błąd zapisu przerywa import: UI nie może pokazać „scalono", gdy
+      // sekcja została tylko w pamięci.
+      await kvSetStrict(key, JSON.stringify(next));
       out.push({ city: section.city, items: next });
     }
     return out;
@@ -305,7 +306,7 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
   // restartu aplikacji.
   if (data.routingSettings) await saveSettings(data.routingSettings as Partial<RoutingSettings>);
   if (data.notificationPrefs) {
-    await saveNotificationPreferences(data.notificationPrefs as Partial<NotificationPreferences>);
+    await saveNotificationPreferences(data.notificationPrefs);
   }
   if (data.locale) await setLocaleSetting(data.locale);
 

@@ -511,7 +511,7 @@ function findRouteShortNameForTrip(tripId: string, dayIndex: DayIndex): string |
     if (route?.route_short_name) return route.route_short_name;
   }
   for (const pattern of dayIndex.patterns.values()) {
-    const trips = pattern.trips as { trip_id: string }[] | undefined;
+    const trips = pattern.trips;
     if (trips && trips.some((t) => t.trip_id === tripId)) {
       const route = gtfsStore.routes.get(pattern.routeId);
       if (route?.route_short_name) return route.route_short_name;
@@ -539,11 +539,10 @@ function matchZbKdRust(
   for (const [patternId, pattern] of dayIndex.patterns.entries()) {
     if (!routeIds.includes(pattern.routeId)) continue;
     const offset = offsets?.get(patternId) ?? 0;
-    const trips = pattern.trips as { trip_id: string }[] | undefined;
+    const trips = pattern.trips;
     if (!trips) continue;
     for (const trip of trips) {
-      const times = gtfsStore.stopTimes.get(trip.trip_id) as
-        { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
+      const times = gtfsStore.stopTimes.get(trip.trip_id);
       if (!times || times.length === 0) continue;
       const packed: { name: string; sec: number }[] = [];
       for (const t of times) {
@@ -614,11 +613,10 @@ export function matchZbKd(
   for (const [patternId, pattern] of dayIndex.patterns.entries()) {
     if (!routeIds.includes(pattern.routeId)) continue;
     const offset = offsets?.get(patternId) ?? 0;
-    const trips = pattern.trips as { trip_id: string }[];
+    const trips = pattern.trips;
     if (!trips || trips.length === 0) continue;
     for (const trip of trips) {
-      const times = gtfsStore.stopTimes.get(trip.trip_id) as
-        { stop_id: string; departure_sec: number; arrival_sec: number }[] | undefined;
+      const times = gtfsStore.stopTimes.get(trip.trip_id);
       if (!times || times.length === 0) continue;
       let matched = 0;
       let totalDiff = 0;

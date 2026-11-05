@@ -32,7 +32,7 @@ Kilometr planuje trasy po Wrocławiu na telefonie, z pełnego rozkładu MPK i Ko
 
 - Planer RAPTOR na urządzeniu: odjazdy, przyjazdy, przesiadki, filtry tramwaj/autobus/bezpośrednie
 - Dane live i śledzenie kursu z powiadomieniem (odliczanie, pasek postępu, alert „wyjdź”)
-- Mapa trasy, kompas do przystanku, kotwiczenie startu do zapisanych miejsc
+- Mapa trasy, kotwiczenie startu do zapisanych miejsc
 - Aktualności MPK, zapisane miejsca, historia, backup do pliku
 - Języki: polski, angielski, niemiecki, ukraiński
 

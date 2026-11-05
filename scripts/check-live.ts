@@ -742,19 +742,19 @@ async function main(): Promise<void> {
   // ─── zbiorkom.live: spinanie KD z lokalnym rozkładem ────────────────────────
 
   describe('zbiorkom.live: matchowanie KD');
-  gtfsStore.routes.set('KD:R:1:2', { route_short_name: '67604' });
-  gtfsStore.stops.set('KD:S:1', { stop_name: 'Wrocław Główny' });
-  gtfsStore.stops.set('KD:S:2', { stop_name: 'Wrocław Mikołajów' });
+  gtfsStore.routes.set('KD:R:1:2', { route_id: 'KD:R:1:2', route_short_name: '67604', route_long_name: '', route_type: 2 });
+  gtfsStore.stops.set('KD:S:1', { stop_id: 'KD:S:1', stop_code: '', stop_name: 'Wrocław Główny', normalized_name: 'wroclaw glowny', stop_lat: 51.098, stop_lon: 17.036 });
+  gtfsStore.stops.set('KD:S:2', { stop_id: 'KD:S:2', stop_code: '', stop_name: 'Wrocław Mikołajów', normalized_name: 'wroclaw mikolajow', stop_lat: 51.11, stop_lon: 17.02 });
   gtfsStore.stopTimes.set('KD:T:1:2:20261010', [
-    { stop_id: 'KD:S:1', departure_sec: 36000, arrival_sec: 36000 },
-    { stop_id: 'KD:S:2', departure_sec: 36300, arrival_sec: 36300 },
+    { trip_id: 'KD:T:1:2:20261010', stop_id: 'KD:S:1', stop_sequence: 0, departure_sec: 36000, arrival_sec: 36000 },
+    { trip_id: 'KD:T:1:2:20261010', stop_id: 'KD:S:2', stop_sequence: 1, departure_sec: 36300, arrival_sec: 36300 },
   ]);
   const kdIndex = {
     stopRoutes: new Map(),
     routeStops: new Map(),
     routeTrips: new Map(),
     patterns: new Map([
-      ['KD:P:1', { routeId: 'KD:R:1:2', trips: [{ trip_id: 'KD:T:1:2:20261010' }] }],
+      ['KD:P:1', { patternId: 'KD:P:1', routeId: 'KD:R:1:2', stopSequence: ['KD:S:1', 'KD:S:2'], trips: [{ trip_id: 'KD:T:1:2:20261010', route_id: 'KD:R:1:2', service_id: 'test', trip_headsign: '', direction_id: 0, shape_id: '' }], departures: [], tripIndices: [] }],
     ]),
   };
   const mkVeh = (over: Partial<ZbKdVehicle>): ZbKdVehicle => ({
@@ -826,8 +826,8 @@ async function main(): Promise<void> {
     gtfsStore.stops.set(stop.stopId, {
       stop_id: stop.stopId,
       stop_name: stop.name,
-      stop_lat: stop.lat,
-      stop_lon: stop.lon,
+      stop_lat: stop.lat ?? 0,
+      stop_lon: stop.lon ?? 0,
       stop_code: '',
       normalized_name: stop.name,
     });
@@ -847,8 +847,8 @@ async function main(): Promise<void> {
     shape_id: '',
   });
   gtfsStore.stopTimes.set('NIGHT_24', [
-    { stop_id: 'NIGHT_A', stop_sequence: 0, arrival_sec: H(24, 5), departure_sec: H(24, 5) },
-    { stop_id: 'NIGHT_B', stop_sequence: 1, arrival_sec: H(24, 15), departure_sec: H(24, 15) },
+    { trip_id: 'NIGHT_24', stop_id: 'NIGHT_A', stop_sequence: 0, arrival_sec: H(24, 5), departure_sec: H(24, 5) },
+    { trip_id: 'NIGHT_24', stop_id: 'NIGHT_B', stop_sequence: 1, arrival_sec: H(24, 15), departure_sec: H(24, 15) },
   ]);
   const emptyNightIndex: DayIndex = {
     stopRoutes: new Map(),
@@ -862,14 +862,40 @@ async function main(): Promise<void> {
       ['NIGHT_B', new Set(['night-p'])],
     ]),
     routeStops: new Map([['night-p', ['NIGHT_A', 'NIGHT_B']]]),
-    routeTrips: new Map([['night-p', [{ trip_id: 'NIGHT_24' }]]]),
+    routeTrips: new Map([
+      [
+        'night-p',
+        [
+          {
+            trip_id: 'NIGHT_24',
+            route_id: 'NIGHT_R',
+            service_id: 'night',
+            trip_headsign: 'Nocny',
+            direction_id: 0,
+            shape_id: '',
+          },
+        ],
+      ],
+    ]),
     patterns: new Map([
       [
         'night-p',
         {
+          patternId: 'night-p',
           routeId: 'NIGHT_R',
           stopSequence: ['NIGHT_A', 'NIGHT_B'],
-          trips: [{ trip_id: 'NIGHT_24', trip_headsign: 'Nocny' }],
+          trips: [
+            {
+              trip_id: 'NIGHT_24',
+              route_id: 'NIGHT_R',
+              service_id: 'night',
+              trip_headsign: 'Nocny',
+              direction_id: 0,
+              shape_id: '',
+            },
+          ],
+          departures: [],
+          tripIndices: [],
         },
       ],
     ]),

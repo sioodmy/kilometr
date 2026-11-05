@@ -22,6 +22,16 @@ export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
   return EARTH_RADIUS_METERS * c;
 }
 
+/**
+ * Tanie przybliżenie equirect dla krótkich odcinków (geometria trasy, manewry).
+ * Dla dystansów rzędu kilometrów użyj `distanceMeters`.
+ */
+export function shortDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLat = (lat2 - lat1) * 111320;
+  const dLon = (lon2 - lon1) * 111320 * Math.cos(toRadians((lat1 + lat2) / 2));
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
 /** Początkowy azymut w stopniach (0..360) z punktu 1 do 2. */
 export function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const phi1 = toRadians(lat1);
