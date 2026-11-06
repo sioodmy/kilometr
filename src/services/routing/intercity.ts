@@ -670,8 +670,6 @@ export async function nextNationalTrains(
        LIMIT 60`,
       toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services],
     );
-    const afterSec =
-      after.getHours() * 3600 + after.getMinutes() * 60 + after.getSeconds();
     const dayStartMs = new Date(after).setHours(0, 0, 0, 0);
     const out: NextTrain[] = [];
     for (const row of rows) {
