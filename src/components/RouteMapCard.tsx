@@ -12,7 +12,7 @@ import { MapPin, Maximize2 } from './icons';
 import { useStrings } from '../i18n';
 import type { Connection } from '../types/models';
 import type { MapRoute } from '../map/types';
-import { acquireMapServer } from '../services/mapServerLease';
+import { acquireMapServerForRoute } from '../services/mapServerLease';
 import { buildMapRoute, resolveGeometry, type Coord } from '../services/routeGeometry';
 import { scheme, shape, type } from '../theme/tokens';
 import { RouteMap, type RouteMapHandle } from './RouteMap';
@@ -88,7 +88,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
     let release: (() => void) | undefined;
     setOfflineBase(undefined);
     setStatus('loading');
-    void acquireMapServer().then((lease) => {
+    void acquireMapServerForRoute(route).then((lease) => {
       if (cancelled) { lease.release(); return; }
       release = lease.release;
       setOfflineBase(lease.base);
@@ -96,7 +96,7 @@ export function RouteMapCard({ connection, onOpenMap }: {
       if (!cancelled) setOfflineBase(null);
     });
     return () => { cancelled = true; release?.(); };
-  }, [attempt, readyToMountMap]);
+  }, [attempt, readyToMountMap, route]);
 
   useEffect(() => {
     if (!readyToMountMap || status !== 'loading') return;

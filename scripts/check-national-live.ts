@@ -76,36 +76,64 @@ async function main() {
     );
   }
 
-  // 2. Pozycje dopasowane do kursów z bazy PLK.
-  const live = await fetchNationalRailLive([
-    {
-      tripId: undefined,
+  // 2. Pozycje dopasowane do kursów z bazy PLK. Bierzemy pociąg, który
+  // Faktycznie TERAZ jedzie (pozycja z feedu), i sprawdzamy, że dopasowanie
+  // trafia w jego kurs z bazy - to samo robi aplikacja dla nóg na ekranie.
+  const { getNationalDb } = await import('../src/services/gtfsDatabase');
+  const db = await getNationalDb();
+  const svc = (await db.getAllAsync<{ service_id: string }>(
+    "SELECT service_id FROM calendar_dates WHERE date = '20261106' AND exc = 1",
+  )).map((r) => r.service_id);
+  const svcPh = svc.map(() => '?').join(',');
+  const nowSec = new Date().getHours() * 3600 + new Date().getMinutes() * 60;
+  // Kursy IC z Wrocławia Głównego w ruchu teraz (start <= now <= koniec).
+  const running = await db.getAllAsync<{ trip_id: string; train_number: string; headsign: string }>(
+    `SELECT t.trip_id, t.train_number, t.headsign
+     FROM trips t JOIN stop_times st ON st.trip_id = t.trip_id
+     WHERE st.stop_id = 'pl:60103' AND t.service_id IN (${svcPh})
+       AND t.start_sec <= ? AND t.end_sec >= ?
+     LIMIT 6`,
+    ...svc,
+    nowSec,
+    nowSec,
+  );
+  check('są kursy IC w ruchu', running.length > 0, running.map((r) => r.train_number).join(', '));
+  const live = await fetchNationalRailLive(
+    running.slice(0, 4).map((r) => ({
+      tripId: r.trip_id,
       fromStop: 'Wrocław Główny',
-      toStop: 'Warszawa Centralna',
+      toStop: r.headsign,
       fromLat: 51.0979,
       fromLon: 17.0374,
       toLat: 52.2286,
       toLon: 21.0031,
       line: 'IC',
-      trainNumber: '3830',
+      trainNumber: r.train_number,
       railAgency: 'IC',
-    },
-  ]);
+    })),
+  );
   check('pozycje dopasowane do kursów PLK', live.delays.size > 0, `${live.delays.size} pociągów`);
   for (const [tripId, delay] of [...live.delays.entries()].slice(0, 3)) {
     const pos = live.positions.get(tripId);
     console.log(`  ${tripId} delay=${delay}s pozycja=${pos ? `${pos.lat.toFixed(3)},${pos.lon.toFixed(3)}` : 'brak'}`);
   }
 
-  // 3. Alerty per pociąg (SSE): vehicle id z dopasowania pozycji.
-  const [firstTrip, vehicle] = [...live.zbTripIds.entries()][0] ?? [];
-  if (firstTrip && vehicle) {
-    const alerts = await fetchZbVehicleAlerts(vehicle);
-    check('strumień alertów odpowiada', Array.isArray(alerts), `${alerts.length} alertów dla ${firstTrip}`);
-    if (alerts[0]) console.log(`  ${alerts[0].title}`);
-  } else {
-    check('pozycja ma id kursu zbiorkomu', false, 'brak zbTripIds');
+  // 3. Alerty per pociąg (SSE): kandydaci pojazdu z wariantów numeru.
+  const { vehicleCandidatesForLeg } = await import('../src/services/nationalRailLive');
+  const alertLeg = running[0];
+  const candidates = vehicleCandidatesForLeg({
+    railAgency: 'IC',
+    trainNumber: alertLeg?.train_number,
+    line: `IC ${alertLeg?.train_number ?? ''}`,
+  });
+  check('kandydaci pojazdu z wariantów numeru', candidates.length > 0, candidates.join(' | '));
+  let alerts: Awaited<ReturnType<typeof fetchZbVehicleAlerts>> = [];
+  for (const vehicle of candidates) {
+    alerts = await fetchZbVehicleAlerts(vehicle);
+    if (alerts.length > 0) break;
   }
+  check('strumień alertów odpowiada', Array.isArray(alerts), `${alerts.length} alertów`);
+  if (alerts[0]) console.log(`  ${alerts[0].title}`);
 
   console.log(failures === 0 ? '\nPASS: live pociągów ogólnopolskich' : `\nFAIL: ${failures} asercji`);
   process.exit(failures === 0 ? 0 : 1);

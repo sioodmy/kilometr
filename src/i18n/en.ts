@@ -1231,6 +1231,8 @@ export const en: Strings = {
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the station list.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
@@ -1248,6 +1250,8 @@ export const en: Strings = {
     nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'station' : 'stations'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stations`,
     platformPeron: (code: string) => `Platform ${code}`,
     platformPole: (code: string) => `Pole ${code}`,
     platformBay: (code: string) => `Bay ${code}`,

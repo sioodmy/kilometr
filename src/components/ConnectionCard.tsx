@@ -7,6 +7,7 @@ import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { DirectionsWalk } from './DirectionsWalk';
 import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionPeek';
+import { RailAlertsChip } from './RailAlertsChip';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
@@ -345,6 +346,9 @@ export const ConnectionCard = memo(function ConnectionCard({
           </Text>
         )}
         {notice && <Text style={[styles.delay, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
+
+        {/* Alerty per pociąg (kompaktowo, pod wierszem opóźnienia). */}
+        <RailAlertsChip connection={item} />
       </Pressable>
     </ConnectionPeekTarget>
   );

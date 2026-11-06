@@ -29,7 +29,7 @@ import {
   LineBadge,
   mapLineColor,
 } from '../src/components/LineBadge';
-import { acquireMapServer } from '../src/services/mapServerLease';
+import { acquireMapServerForRoute } from '../src/services/mapServerLease';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
@@ -213,7 +213,8 @@ export default function RouteMapScreen() {
     let cancelled = false;
     let release: (() => void) | null = null;
     (async () => {
-      const lease = await acquireMapServer();
+      // Trasy międzyregionalne wychodzą poza pakiet miasta: kafelki online.
+      const lease = await acquireMapServerForRoute(route);
       if (cancelled) {
         lease.release();
         return;
@@ -226,7 +227,7 @@ export default function RouteMapScreen() {
       cancelled = true;
       release?.();
     };
-  }, [markTilesOk]);
+  }, [markTilesOk, route]);
 
   useEffect(() => {
     if (!route) return;

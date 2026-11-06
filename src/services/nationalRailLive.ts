@@ -72,6 +72,22 @@ function baseTrainNumber(value: string | undefined): string {
   return m?.[1] ?? '';
 }
 
+/**
+ * Wszystkie numery rozkładowe pociągu: „61170/1” kursuje jako 61170 i 61171
+ * (zbiorkom podaje numer brygady, który bywa drugim wariantem). „3830/1”
+ * -> [3830, 3831], bez ukośnika -> jeden numer.
+ */
+function trainNumberVariants(value: string | undefined): string[] {
+  const m = /^(\d{1,7})(?:\/(\d{1,7}))?$/.exec((value ?? '').trim());
+  if (!m) return [];
+  const base = m[1];
+  if (!m[2]) return [base];
+  const suffix = m[2];
+  // „61170/1”: sufiks zastępuje ostatnią cyfrę; „65000/1” -> 65001.
+  const alt = suffix.length >= base.length ? suffix : base.slice(0, base.length - suffix.length) + suffix;
+  return base === alt ? [base] : [base, alt];
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   const timeout = withTimeout(ZBIORKOM.timeoutMs);
   try {
@@ -152,17 +168,16 @@ interface CandidateTrip {
 }
 
 /**
- * Kursy z bazy PLK przez podane stacje w oknie ±3 h. Pełną sekwencję
- * dociągamy tylko dla kandydatów (kilkanaście kursów), nie dla całej bazy.
+ * Kursy z bazy PLK o podanych numerach pociągów, aktywne dziś i nakładające
+ * się na teraz. Okno czasowe liczymy po start_sec/end_sec KURSU, nie po
+ * odjeździe ze stacji: pociąg Wrocław -> Warszawa jest w drodze 5 h i w
+ * połowie podróży odjazd ze stacji startowej leży już poza oknem, przez co
+ * live znikał po ~3 h jazdy.
  */
-async function findCandidateTrips(stationNames: string[], fromSec: number, toSec: number): Promise<CandidateTrip[]> {
+async function findCandidateTrips(trainNumbers: string[], nowSec: number): Promise<CandidateTrip[]> {
   const db = await getNationalDb();
-  const wanted = new Set(stationNames.map(normalized).filter(Boolean));
-  if (wanted.size === 0) return [];
-
-  const allStops = await db.getAllAsync<{ stop_id: string; name: string }>('SELECT stop_id, name FROM stops');
-  const stopIds = allStops.filter((s) => wanted.has(normalized(s.name))).map((s) => s.stop_id);
-  if (stopIds.length === 0) return [];
+  const numbers = [...new Set(trainNumbers.flatMap((n) => trainNumberVariants(n)))].filter(Boolean);
+  if (numbers.length === 0) return [];
 
   const now = new Date();
   const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
@@ -170,17 +185,20 @@ async function findCandidateTrips(stationNames: string[], fromSec: number, toSec
   if (services.size === 0) return [];
 
   const svcPlaceholders = [...services].map(() => '?').join(',');
-  const stopPlaceholders = stopIds.map(() => '?').join(',');
+  // Numer w bazie bywa „3830/1” (para kursów), a noga podaje sam numer
+  // („3830”) albo pełną parę - dopasowujemy dokładnie albo po prefiksie.
+  const numClauses = numbers.map(() => '(t.train_number = ? OR t.train_number LIKE ?)').join(' OR ');
+  const numParams = numbers.flatMap((n) => [n, `${n}/%`]);
   const rows = await db.getAllAsync<{ trip_id: string; train_number: string; headsign: string }>(
-    `SELECT DISTINCT st.trip_id, t.train_number, t.headsign
-     FROM stop_times st JOIN trips t ON t.trip_id = st.trip_id
-     WHERE st.stop_id IN (${stopPlaceholders})
-       AND t.service_id IN (${svcPlaceholders})
-       AND st.dep_sec BETWEEN ? AND ?`,
-    ...stopIds,
+    `SELECT t.trip_id, t.train_number, t.headsign
+     FROM trips t
+     WHERE t.service_id IN (${svcPlaceholders})
+       AND (${numClauses})
+       AND t.start_sec <= ? AND t.end_sec >= ?`,
     ...services,
-    Math.max(0, fromSec - 10800),
-    toSec + 10800,
+    ...numParams,
+    nowSec + 4 * 3600,
+    nowSec - 4 * 3600,
   );
   if (rows.length === 0) return [];
 
@@ -190,7 +208,8 @@ async function findCandidateTrips(stationNames: string[], fromSec: number, toSec
     `SELECT trip_id, stop_id, seq FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
     ...ids,
   );
-  const nameById = new Map(allStops.map((s) => [s.stop_id, s.name]));
+  const nameRows = await db.getAllAsync<{ stop_id: string; name: string }>('SELECT stop_id, name FROM stops');
+  const nameById = new Map(nameRows.map((s) => [s.stop_id, s.name]));
   const seqByTrip = new Map<string, { name: string; seq: number }[]>();
   for (const r of seqRows) {
     let list = seqByTrip.get(r.trip_id);
@@ -214,12 +233,14 @@ function matchPositions(positions: ZbPosition[], candidates: CandidateTrip[]): N
   const out = new Map<string, { lat: number; lon: number; bearing?: number; updatedAt: number }>();
   const zbTripIds = new Map<string, string>();
   const byNumber = new Map<string, CandidateTrip[]>();
+  // Kurs indeksowany pod WSZYSTKIMI wariantami numeru („61170/1” = 61170
+  // i 61171): zbiorkom podaje numer brygady, który bywa drugim wariantem.
   for (const c of candidates) {
-    const key = baseTrainNumber(c.trainNumber);
-    if (!key) continue;
-    const list = byNumber.get(key) ?? [];
-    list.push(c);
-    byNumber.set(key, list);
+    for (const num of trainNumberVariants(c.trainNumber)) {
+      const list = byNumber.get(num) ?? [];
+      list.push(c);
+      byNumber.set(num, list);
+    }
   }
 
   for (const pos of positions) {
@@ -309,8 +330,14 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
     if (positions.length === 0) return empty;
     const now = new Date();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60;
-    const stationNames = [...new Set(trains.flatMap((l) => [l.fromStop, l.toStop]))];
-    const candidates = await findCandidateTrips(stationNames, nowSec, nowSec);
+    // Kandydaci po numerach pociągów z nóg (nie po stacjach): okno czasowe
+    // liczone na cały kurs, więc live nie znika w połowie długiej trasy.
+    const numbers = [
+      ...new Set(
+        trains.flatMap((l) => trainNumberVariants(l.trainNumber ?? '')).filter(Boolean),
+      ),
+    ];
+    const candidates = await findCandidateTrips(numbers, nowSec);
     return matchPositions(positions, candidates);
   })().catch(() => empty);
 
@@ -395,6 +422,27 @@ export async function fetchZbStopDepartures(stationName: string): Promise<ZbStop
 
 /* ─── Alerty per pociąg (strumień SSE pozycji) ────────────────────────── */
 
+/**
+ * Id pojazdu zbiorkomu dla nogi kolejowej: `2:AGENCJA__numer`. Zbiorkom
+ * numeruje pojazdy brygadą, która dla pociągów „61170/1” bywa drugim
+ * wariantem (61171), więc zwracamy oba kandydaty - strumień dla złego
+ * numeru odpowiada POSITION_NOT_FOUND i po prostu próbujemy następnego.
+ * To działa nawet gdy pozycje chwilowo nie dopasowały kursu.
+ */
+export function vehicleCandidatesForLeg(leg: {
+  railAgency?: string;
+  trainNumber?: string;
+  line?: string;
+}): string[] {
+  const agency = (leg.railAgency ?? 'IC').trim() || 'IC';
+  const explicit = trainNumberVariants(leg.trainNumber);
+  const numbers =
+    explicit.length > 0
+      ? explicit
+      : trainNumberVariants(/(\d{1,7}(?:\/\d+)?)/.exec(leg.line ?? '')?.[1]);
+  return numbers.map((n) => `2:${agency}__${n}`);
+}
+
 function parseAlerts(raw: unknown): ZbVehicleAlert[] {
   if (!Array.isArray(raw)) return [];
   const out: ZbVehicleAlert[] = [];
@@ -458,9 +506,11 @@ export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAl
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let alerts: ZbVehicleAlert[] = [];
-      let seen = 0;
-      while (buffer.length < 200_000 && seen < 6) {
+      let alerts: ZbVehicleAlert[] | null = null;
+      // Czytamy do pierwszego eventu `message` (pozycja + stops + alerts):
+      // to jest pełny stan kursu, także gdy alertów nie ma (pusta lista).
+      // Kolejne message'e to tylko odświeżenia pozycji.
+      while (alerts === null && buffer.length < 200_000) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
@@ -468,7 +518,6 @@ export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAl
         while (eventEnd >= 0) {
           const block = buffer.slice(0, eventEnd);
           buffer = buffer.slice(eventEnd + 2);
-          seen++;
           const isMessage = block.includes('event: message');
           const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
           if (isMessage && dataLine) {
@@ -476,18 +525,16 @@ export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAl
               const payload = JSON.parse(dataLine.slice(5).trim()) as { alerts?: unknown };
               alerts = parseAlerts(payload.alerts);
             } catch {
-              // niepełny JSON: zostaje pusta lista
+              alerts = [];
             }
-            eventEnd = -1;
             break;
           }
           eventEnd = buffer.indexOf('\n\n');
         }
-        if (alerts.length > 0) break;
       }
       clearTimeout(timer);
       await reader.cancel().catch(() => {});
-      return alerts;
+      return alerts ?? [];
     } catch {
       return [];
     }
