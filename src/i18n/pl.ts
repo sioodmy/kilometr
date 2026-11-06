@@ -901,7 +901,6 @@ export const pl = {
     title: 'Mapa trasy',
     stagesTitle: 'Etapy podróży',
     showWholeRoute: 'Cała trasa',
-    myLocationA11y: 'Moja lokalizacja',
     loadFail: 'Nie udało się wczytać połączenia',
     loadFailBody:
       'Mapa pokazuje konkretne połączenie, więc musi być dostępne w pamięci lub w cache.',
@@ -913,10 +912,9 @@ export const pl = {
     transfersSuffix: (n: number) =>
       n === 1 ? ' • 1 przesiadka.' : isFew(n) ? ` • ${n} przesiadki.` : ` • ${n} przesiadek.`,
     delaySuffix: (d: number) => ` • ${d > 0 ? '+' : ''}${d} min`,
-    walkStageA11y: (stop: string, dist: string) => `Etap pieszy: ${stop} (${dist})`,
-    walkStageStopsA11y: (from: string, to: string, dist: string) =>
-      `Etap pieszy: ${from} do ${to} (${dist})`,
+    walkStageA11y: (dist: string) => `Etap pieszy ${dist}`,
     lineStageA11y: (line: string, dir: string) => `Linia ${line} kierunek ${dir}`,
+    legStops: (n: number) => (n === 1 ? '1 przyst.' : isFew(n) ? `${n} przyst.` : `${n} przyst.`),
     board: 'Wsiadaj',
     alight: 'Wysiadaj',
     mapLoadFail: 'Nie udało się załadować mapy',

@@ -255,6 +255,9 @@ jobs:
       - name: Run logic tests (Navigation target)
         run: nix develop .#ci -c npm run check:navigation-target
 
+      - name: Check navigation map loading and GPS camera
+        run: nix develop .#ci -c npm run check:nav-map
+
       - name: Run logic tests (Navigation)
         run: nix develop .#ci -c npm run check:nav
 

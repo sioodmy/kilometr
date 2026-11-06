@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { BusFront, CableCar, TrainFront, TramFront } from './icons';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
@@ -20,7 +20,7 @@ import { RailIcon, isRailAgency } from './RailIcon';
 
 // Kolor i typ linii żyją w serwisie: korzysta z nich również silnik
 // powiadomień, a serwis nie może importować komponentu.
-export { getLineColors } from '../services/lineIdentity';
+export { getLineColors, inferTransitMode, mapLineColor } from '../services/lineIdentity';
 
 export function LineBadge({
   mode,
@@ -30,7 +30,6 @@ export function LineBadge({
   active,
   maxWidth,
   size = 'medium',
-  style,
 }: {
   mode?: LegMode;
   line?: string;
@@ -39,8 +38,6 @@ export function LineBadge({
   active?: boolean;
   maxWidth?: number;
   size?: 'medium' | 'large';
-  /** Nadpisuje styl badge'u, np. rozciągnięcie do wysokości rodzica (chipy etapów). */
-  style?: StyleProp<ViewStyle>;
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
   const cityId = getActiveCityIdSync();
@@ -56,7 +53,6 @@ export function LineBadge({
           styles.walk,
           compact && styles.compactWalk,
           active && styles.walkActive,
-          style,
         ]}
       >
         <DirectionsWalk
@@ -110,7 +106,6 @@ export function LineBadge({
         compact && styles.compact,
         maxWidth != null && { maxWidth },
         { backgroundColor: bg },
-        style,
       ]}
     >
       {railAgency && isRailAgency(railAgency) ? (
