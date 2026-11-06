@@ -300,6 +300,21 @@ export function rememberPlannedConnection(connection: Connection): void {
   rememberRecent(connection);
 }
 
+/**
+ * Czy zapytanie trasy wymaga planera między miastami (noga kolejowa z bazy
+ * `polska`). Używane przez UI do karty pobrania rozkładu kolejowego.
+ */
+export function isIntercityRouteQuery(query: {
+  fromLat: number;
+  fromLon: number;
+  toLat: number;
+  toLon: number;
+  toId?: string;
+  trainsEnabled?: boolean;
+}): boolean {
+  return needsIntercity(query as RouteQuery);
+}
+
 // Serializuje read-modify-write zapisanych tras: dwa równoległe zapisy nie mogą
 // zgubić jednego wpisu (każdy czyta-i-zapisuje całą listę).
 let routesLock: Promise<unknown> = Promise.resolve();
