@@ -24,7 +24,7 @@ import type { Connection, Leg, LegMode } from './types';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
 /** Stacja kolejowa w magazynie ogólnopolskim. */
-export interface RailStation {
+interface RailStation {
   stopId: string;
   name: string;
   lat: number;
