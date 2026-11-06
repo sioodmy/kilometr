@@ -52,7 +52,7 @@ export const en: Strings = {
     conductorBody:
       "Tell the conductor you are missing your connection. Long-distance tickets stay valid according to the operator's terms.",
     nextTrainLabel: 'Next train',
-    nextTrainAt: (time: string) => `'departs at ' + time`,
+    nextTrainAt: (time: string) => `departs at ${time}`,
 
     unavailable: 'Cannot assess your transfer',
     unavailableBody:
@@ -578,7 +578,7 @@ export const en: Strings = {
     downloadFailFallback: 'Try again in a moment.',
     railTitle: 'National rail timetable',
     railHint: 'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
-    railReady: (date: string) => `'Downloaded (valid until ' + date + ')'`,
+    railReady: (date: string) => `Downloaded (valid until ${date})`,
     railEmpty: 'Not downloaded',
     railDownload: 'Download',
     railCheck: 'Check for updates',
@@ -1301,18 +1301,18 @@ export const en: Strings = {
     downloadBody:
       'Download the nationwide train timetable to plan journeys between cities: IC, EIC, PolRegio, KM and other operators.',
     downloadCta: 'Download timetable',
-    downloadSize: (mb: string) => `'about ' + mb + ' MB'`,
+    downloadSize: (mb: string) => `about ${mb} MB`,
     downloading: 'Downloading rail timetable…',
     downloadFailed: 'Could not download the rail timetable. Try again later.',
-    ready: (date: string) => `'Rail timetable ready (valid until ' + date + ')'`,
+    ready: (date: string) => `Rail timetable ready (valid until ${date})`,
     noTrainsTitle: 'No trains',
     noTrainsHint: 'Check the date and time, or pick another destination station.',
-    nearestStation: (name: string, dist: string) => `'Nearest railway station: ' + name + ' (' + dist + ')'`,
+    nearestStation: (name: string, dist: string) => `Nearest railway station: ${name} (${dist})`,
     startAtStation: 'Show trains from this station',
   },
 
   railAlerts: {
-    cardA11y: (line: string) => `'Alert for train ' + line`,
+    cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',
   },
 

@@ -54,7 +54,7 @@ export const de: Strings = {
     conductorBody:
       'Informiere den Schaffner, dass du den Anschluss verpasst. Fernverkehrstickets bleiben gemäß Beförderungsbedingungen gültig.',
     nextTrainLabel: 'Nächster Zug',
-    nextTrainAt: (time: string) => `'fährt ab um ' + time`,
+    nextTrainAt: (time: string) => `fährt ab um ${time}`,
 
     unavailable: 'Umstieg kann nicht bewertet werden',
     unavailableBody:
@@ -583,7 +583,7 @@ export const de: Strings = {
     downloadFailFallback: 'Versuch es gleich erneut.',
     railTitle: 'Nationales Bahnfahrplan',
     railHint: 'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
-    railReady: (date: string) => `'Heruntergeladen (gültig bis ' + date + ')'`,
+    railReady: (date: string) => `Heruntergeladen (gültig bis ${date})`,
     railEmpty: 'Nicht heruntergeladen',
     railDownload: 'Herunterladen',
     railCheck: 'Nach Updates suchen',
@@ -1317,18 +1317,18 @@ export const de: Strings = {
     downloadBody:
       'Lade den bundesweiten Zugfahrplan herunter, um Reisen zwischen Städten zu planen: IC, EIC, PolRegio, KM und weitere Betreiber.',
     downloadCta: 'Fahrplan herunterladen',
-    downloadSize: (mb: string) => `'ca. ' + mb + ' MB'`,
+    downloadSize: (mb: string) => `ca. ${mb} MB`,
     downloading: 'Bahnfahrplan wird heruntergeladen…',
     downloadFailed: 'Bahnfahrplan konnte nicht heruntergeladen werden. Versuche es später erneut.',
-    ready: (date: string) => `'Bahnfahrplan bereit (gültig bis ' + date + ')'`,
+    ready: (date: string) => `Bahnfahrplan bereit (gültig bis ${date})`,
     noTrainsTitle: 'Keine Züge',
     noTrainsHint: 'Prüfe Datum und Uhrzeit oder wähle einen anderen Zielbahnhof.',
-    nearestStation: (name: string, dist: string) => `'Nächster Bahnhof: ' + name + ' (' + dist + ')'`,
+    nearestStation: (name: string, dist: string) => `Nächster Bahnhof: ${name} (${dist})`,
     startAtStation: 'Züge von diesem Bahnhof zeigen',
   },
 
   railAlerts: {
-    cardA11y: (line: string) => `'Warnung für Zug ' + line`,
+    cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',
   },
 
