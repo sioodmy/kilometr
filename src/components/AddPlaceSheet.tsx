@@ -80,6 +80,7 @@ import {
 import { scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
 import { SearchService, fetchNearestStops, type NearestStop } from '../services';
+import { getCurrentLocationSnapshot } from '../services/currentLocation';
 import { SuggestionRow } from './SuggestionRow';
 import { useStrings, type Strings } from '../i18n';
 
@@ -351,7 +352,15 @@ export function AddPlaceSheet({
       return;
     }
     setSearching(true);
-    SearchService.search(text, undefined, 'add-place-address', (partial) => {
+    // Pozycja ze snapshotu (bez własnego watcha): sortowanie po dystansie
+    // działa, gdy aplikacja ma świeży fix; bez fixa rankingu trzyma kara
+    // za dystans do przystanku.
+    const snap = getCurrentLocationSnapshot();
+    const coords =
+      snap.state === 'ok' && snap.location
+        ? { lat: snap.location.lat, lon: snap.location.lon }
+        : undefined;
+    SearchService.search(text, coords, 'add-place-address', (partial) => {
       if (seq === locSearchSeq.current) setSuggestions(partial);
     })
       .then((res) => {
