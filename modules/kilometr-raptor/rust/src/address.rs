@@ -29,6 +29,8 @@ struct Address {
     lon: f64,
     /** Dystans do najbliższego przystanku GTFS w metrach; u32::MAX = brak danych. */
     stop_m: u32,
+    /** Suma odjazdów przystanków w promieniu spacerowym; tie-break rankingu. */
+    stop_w: u32,
 }
 
 struct Word {
@@ -51,6 +53,9 @@ impl Hit<'_> {
             .score
             .cmp(&self.score)
             .then_with(|| self.distance.cmp(&other.distance))
+            // Remis (zwłaszcza bez GPS): częściej obsługiwana okolica wygrywa
+            // z alfabetem po nazwie miejscowości.
+            .then_with(|| other.address.stop_w.cmp(&self.address.stop_w))
             .then_with(|| self.street.name.cmp(&other.street.name))
             .then_with(|| self.street.locality.cmp(&other.street.locality))
             .then_with(|| self.address.id.cmp(&other.address.id))
@@ -90,6 +95,7 @@ impl AddressCatalog {
         lat: f64,
         lon: f64,
         stop_m: u32,
+        stop_w: u32,
     ) {
         if name.trim().is_empty()
             || house.trim().is_empty()
@@ -118,6 +124,7 @@ impl AddressCatalog {
             lat,
             lon,
             stop_m,
+            stop_w,
         });
     }
 
@@ -385,6 +392,7 @@ pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
                             reader.f64()?,
                             reader.f64()?,
                             reader.u32()?,
+                            reader.u32()?,
                         );
                     }
                     Some(())
@@ -469,6 +477,7 @@ mod tests {
                     51.1 + street as f64 * 0.000001,
                     17.0,
                     300,
+                    1000,
                 );
             }
         }
@@ -507,7 +516,7 @@ mod tests {
             ("node/6", "Długa", "5", "Gdynia"),
             ("node/7", "Grunwaldzka", "14/2", "Wrocław"),
         ] {
-            catalog.append(id, street, house, city, 51.1, 17.0, 300);
+            catalog.append(id, street, house, city, 51.1, 17.0, 300, 1000);
         }
         catalog.finish();
         catalog
@@ -590,8 +599,8 @@ mod tests {
     #[test]
     fn address_far_from_transit_ranks_below_served() {
         let mut catalog = AddressCatalog::default();
-        catalog.append("node/10", "Różana", "1", "Wrocław", 51.1, 17.0, 300);
-        catalog.append("node/11", "Różana", "1", "Radomierzyce", 51.05, 17.05, 9000);
+        catalog.append("node/10", "Różana", "1", "Wrocław", 51.1, 17.0, 300, 1000);
+        catalog.append("node/11", "Różana", "1", "Radomierzyce", 51.05, 17.05, 9000, 0);
         catalog.finish();
         let hits = catalog.search("różana 1", None, 10, false);
         assert_eq!(hits.len(), 2);
@@ -604,10 +613,23 @@ mod tests {
         // Brak danych o przystankach (u32::MAX) = stare bazy: kara wyłączona,
         // kolejność wraca do dystansu od usera.
         let mut legacy = AddressCatalog::default();
-        legacy.append("node/10", "Różana", "1", "Wrocław", 51.1, 17.0, u32::MAX);
-        legacy.append("node/11", "Różana", "1", "Radomierzyce", 51.05, 17.05, u32::MAX);
+        legacy.append("node/10", "Różana", "1", "Wrocław", 51.1, 17.0, u32::MAX, 0);
+        legacy.append("node/11", "Różana", "1", "Radomierzyce", 51.05, 17.05, u32::MAX, 0);
         legacy.finish();
         let hits = legacy.search("różana 1", Some((51.05, 17.05)), 10, false);
         assert_eq!(hits[0].street.locality, "Radomierzyce");
+    }
+
+    #[test]
+    fn equal_hits_tiebreak_by_stop_connections() {
+        let mut catalog = AddressCatalog::default();
+        catalog.append("node/20", "Różana", "1", "Krzyki", 51.15, 17.0, 300, 200);
+        catalog.append("node/21", "Różana", "1", "Wrocław", 51.1, 17.0, 300, 5000);
+        catalog.finish();
+        // Remis score i dystansu (bez GPS): więcej połączeń w okolicy wygrywa
+        // z alfabetyczną kolejnością miejscowości (Krzyki < Wrocław).
+        let hits = catalog.search("różana 1", None, 10, false);
+        assert_eq!(hits[0].street.locality, "Wrocław");
+        assert_eq!(hits[1].street.locality, "Krzyki");
     }
 }
