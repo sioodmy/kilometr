@@ -62,6 +62,11 @@ export const pl = {
     stayOn: (line: string) => `Zostań w ${line}`,
     changedBody: (line: string, stop: string) => `Przesiądź się na ${line} na przystanku ${stop}.`,
     noAlternative: 'Nie ma teraz innej trasy. Sprawdzimy ponownie za chwilę.',
+    conductorTitle: 'Spóźnienie na pociąg',
+    conductorBody:
+      'Poinformuj konduktora o spóźnieniu na przesiadkę. Bilet na pociąg dalekobieżny zachowuje ważność zgodnie z warunkami przewoźnika.',
+    nextTrainLabel: 'Następny pociąg',
+    nextTrainAt: (time: string) => `odjeżdża o ${time}`,
     unavailable: 'Nie możemy ocenić przesiadki',
     unavailableBody: 'Czekamy na dokładną pozycję na trasie. Obecny plan pozostaje widoczny.',
     routingError: 'Nie udało się przygotować ochrony. Spróbuj ponownie.',
@@ -169,6 +174,8 @@ export const pl = {
     unsupportedActionShort: 'Wybierz start',
     unsupportedSwitchCity: (city: string) => `Zmień na ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Zmień miasto na ${city}`,
+    unsupportedNearestStation: 'Z najbliższej stacji kolejowej',
+    unsupportedNearestStationA11y: 'Pokaż pociągi z najbliższej stacji kolejowej',
     pickStart: 'Wybierz punkt startowy',
     gpsBlockedTitle: 'Start z GPS niedostępny',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -585,6 +592,17 @@ export const pl = {
     downloadFailBody: (reason: string) =>
       `${reason}. Aplikacja pobiera gotową bazę z serwera Kilometr albo klasycznie z otwartych danych miasta.`,
     downloadFailFallback: 'Spróbuj ponownie za chwilę.',
+    railTitle: 'Rozkład kolejowy (Polska)',
+    railHint: 'Pociągi wszystkich przewoźników do planowania podróży między miastami: IC, EIC, PolRegio, KM i inni.',
+    railReady: (date: string) => `Pobrany (ważny do ${date})`,
+    railEmpty: 'Niepobrany',
+    railDownload: 'Pobierz',
+    railCheck: 'Sprawdź aktualizacje',
+    railDelete: 'Usuń z telefonu',
+    railDeleteTitle: 'Usunąć rozkład kolejowy?',
+    railDeleteBody: 'Planowanie podróży między miastami przestanie działać offline.',
+    railDeleteConfirm: 'Usuń',
+    railCancel: 'Anuluj',
     downloadDone: 'Rozkład odświeżony.',
     downloadUpToDate: 'Rozkład jest już aktualny.',
     downloadKeptLocal:
@@ -1318,6 +1336,25 @@ export const pl = {
   },
   suggestion: {
     stopFallback: 'Przystanek',
+  },
+  intercity: {
+    stationAddress: 'Stacja kolejowa',
+    downloadTitle: 'Rozkład kolejowy (Polska)',
+    downloadBody:
+      'Pobierz ogólnopolski rozkład pociągów, żeby planować podróże między miastami: IC, EIC, PolRegio, KM i pozostali przewoźnicy.',
+    downloadCta: 'Pobierz rozkład',
+    downloadSize: (mb: string) => `ok. ${mb} MB`,
+    downloading: 'Pobieranie rozkładu kolejowego…',
+    downloadFailed: 'Nie udało się pobrać rozkładu kolejowego. Spróbuj ponownie później.',
+    ready: (date: string) => `Rozkład kolejowy gotowy (ważny do ${date})`,
+    noTrainsTitle: 'Brak pociągów',
+    noTrainsHint: 'Sprawdź datę i godzinę albo wybierz inną stację docelową.',
+    nearestStation: (name: string, dist: string) => `Najbliższa stacja kolejowa: ${name} (${dist})`,
+    startAtStation: 'Pokaż pociągi z tej stacji',
+  },
+  railAlerts: {
+    cardA11y: (line: string) => `Alert dla pociągu ${line}`,
+    fallbackLine: 'Pociąg',
   },
   data: {
     stepUnpack: 'Rozpakowywanie…',

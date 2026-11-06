@@ -48,6 +48,12 @@ export const en: Strings = {
     stayOn: (line: string) => `Stay on ${line}`,
     changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
     noAlternative: 'No other route is available right now. We will check again shortly.',
+    conductorTitle: 'Missed your train',
+    conductorBody:
+      "Tell the conductor you are missing your connection. Long-distance tickets stay valid according to the operator's terms.",
+    nextTrainLabel: 'Next train',
+    nextTrainAt: (time: string) => `departs at ${time}`,
+
     unavailable: 'Cannot assess your transfer',
     unavailableBody:
       'Waiting for an accurate position on your route. Your current plan is still shown.',
@@ -156,6 +162,8 @@ export const en: Strings = {
     unsupportedActionShort: 'Pick start',
     unsupportedSwitchCity: (city: string) => `Switch to ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Switch city to ${city}`,
+    unsupportedNearestStation: 'From the nearest railway station',
+    unsupportedNearestStationA11y: 'Show trains from the nearest railway station',
     pickStart: 'Pick a start point',
     gpsBlockedTitle: 'GPS start unavailable',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -568,6 +576,18 @@ export const en: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from the city’s open data.`,
     downloadFailFallback: 'Try again in a moment.',
+    railTitle: 'National rail timetable',
+    railHint: 'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
+    railReady: (date: string) => `Downloaded (valid until ${date})`,
+    railEmpty: 'Not downloaded',
+    railDownload: 'Download',
+    railCheck: 'Check for updates',
+    railDelete: 'Remove from phone',
+    railDeleteTitle: 'Remove the rail timetable?',
+    railDeleteBody: 'Planning journeys between cities will stop working offline.',
+    railDeleteConfirm: 'Remove',
+    railCancel: 'Cancel',
+
     downloadDone: 'Timetable refreshed.',
     downloadUpToDate: 'The timetable is already up to date.',
     downloadKeptLocal: 'Could not download the new version. Keeping the one already on the phone.',
@@ -1275,6 +1295,27 @@ export const en: Strings = {
   suggestion: {
     stopFallback: 'Stop',
   },
+  intercity: {
+    stationAddress: 'Railway station',
+    downloadTitle: 'National rail timetable',
+    downloadBody:
+      'Download the nationwide train timetable to plan journeys between cities: IC, EIC, PolRegio, KM and other operators.',
+    downloadCta: 'Download timetable',
+    downloadSize: (mb: string) => `about ${mb} MB`,
+    downloading: 'Downloading rail timetable…',
+    downloadFailed: 'Could not download the rail timetable. Try again later.',
+    ready: (date: string) => `Rail timetable ready (valid until ${date})`,
+    noTrainsTitle: 'No trains',
+    noTrainsHint: 'Check the date and time, or pick another destination station.',
+    nearestStation: (name: string, dist: string) => `Nearest railway station: ${name} (${dist})`,
+    startAtStation: 'Show trains from this station',
+  },
+
+  railAlerts: {
+    cardA11y: (line: string) => `Alert for train ${line}`,
+    fallbackLine: 'Train',
+  },
+
   data: {
     stepUnpack: 'Unpacking…',
     stepStops: 'Stops…',
