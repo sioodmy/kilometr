@@ -920,6 +920,7 @@ export const uk: Strings = {
     title: 'Мапа маршруту',
     stagesTitle: 'Етапи подорожі',
     showWholeRoute: 'Увесь маршрут',
+    myLocationA11y: 'Моє розташування',
     loadFail: 'Не вдалося завантажити сполучення',
     loadFailBody: "Мапа показує конкретне сполучення, тож воно має бути в пам'яті або в кеші.",
     backToDetails: 'Назад до деталей',
@@ -930,9 +931,10 @@ export const uk: Strings = {
     transfersSuffix: (n: number) =>
       isOne(n) ? ' • 1 пересадка.' : isFew(n) ? ` • ${n} пересадки.` : ` • ${n} пересадок.`,
     delaySuffix: (d: number) => ` • ${d > 0 ? '+' : ''}${d} хв`,
-    walkStageA11y: (dist: string) => `Піший етап ${dist}`,
+    walkStageA11y: (stop: string, dist: string) => `Пішохідний етап: ${stop} (${dist})`,
+    walkStageStopsA11y: (from: string, to: string, dist: string) =>
+      `Пішохідний етап: ${from} до ${to} (${dist})`,
     lineStageA11y: (line: string, dir: string) => `Лінія ${line} напрямок ${dir}`,
-    legStops: (n: number) => (isOne(n) ? '1 зуп.' : isFew(n) ? `${n} зуп.` : `${n} зуп.`),
     board: 'Сідай',
     alight: 'Виходь',
     mapLoadFail: 'Не вдалося завантажити мапу',

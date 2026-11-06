@@ -22,7 +22,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
 import { mapDocumentSource } from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
-import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
+import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapUserDot } from '../map/types';
 import { scheme } from '../theme/tokens';
 
 interface MapStopTap {
@@ -38,13 +38,16 @@ export interface RouteMapHandle {
   setGeometry: (legId: string, coords: [number, number][], fit?: boolean) => void;
   /** Dopasuj widok do trasy (całej albo wybranej nogi, patrz selectedLegId). */
   fit: () => void;
+  /** Przesuń kamerę na lokalizację użytkownika. */
+  centerOnMe: (lat: number, lon: number) => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
   reload: () => void;
 }
 
 interface RouteMapProps {
   route: MapRoute | null;
-  vehicle?: MapVehicle | null;
+  /** Kropeczka GPS użytkownika; null = ukryta. */
+  userDot?: MapUserDot | null;
   selectedLegId?: string | null;
   /**
    * Bazowy URL lokalnego serwera mapy. Gdy podany, kafle, glify i silnik
@@ -68,6 +71,8 @@ interface RouteMapProps {
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
+  /** Użytkownik przewinął albo przybliżył mapę palcem. */
+  onCamMove?: () => void;
   /** false = kafelki się nie ładują, true = mapa wróciła do normy. */
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
@@ -140,7 +145,7 @@ const toGeoJson = (coords: [number, number][]): [number, number][] =>
 export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function RouteMap(
   {
     route,
-    vehicle = null,
+    userDot = null,
     selectedLegId = null,
     offlineBase = null,
     padding,
@@ -154,6 +159,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     onReady,
     onStopTap,
     onLegTap,
+    onCamMove,
     onTilesStatus,
     onError,
   },
@@ -188,7 +194,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     }
     return buildRouteMapDocument({
       route,
-      vehicle,
+      userDot,
       selectedLegId,
       offlineBase,
       center,
@@ -220,6 +226,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       setGeometry: (legId, coords, fit = false) =>
         send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false, fit, pad: padRef.current }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
+      centerOnMe: (lat, lon) => send({ t: 'center', lat, lon }),
       reload: restart,
     }),
     [restart, send],
@@ -237,8 +244,8 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   }, [route, routeKey, send]);
 
   useEffect(() => {
-    send({ t: 'vehicle', vehicle });
-  }, [send, vehicle]);
+    send({ t: 'userDot', dot: userDot });
+  }, [send, userDot]);
 
   useEffect(() => {
     send({ t: 'select', legId: selectedLegId, pad: padRef.current });
@@ -268,6 +275,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         onLegTap?.(msg.legId);
         return;
       }
+      if (msg.t === 'camMove') {
+        onCamMove?.();
+        return;
+      }
       if (msg.t === 'tiles') {
         onTilesStatus?.(msg.ok);
         return;
@@ -276,7 +287,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         void Linking.openURL(msg.url).catch(() => {});
       }
     },
-    [onError, onLegTap, onReady, onStopTap, onTilesStatus],
+    [onCamMove, onError, onLegTap, onReady, onStopTap, onTilesStatus],
   );
 
   return (

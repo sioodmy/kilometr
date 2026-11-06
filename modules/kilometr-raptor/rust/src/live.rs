@@ -1,6 +1,5 @@
 //! Silnik śledzenia pojazdów na żywo (`liveTracker`), dopasowania pociągów KD
-//! (`zbiorkom.ts`), dopasowania pojazdu do geometrii odcinka na mapie (`liveVehicle.ts`)
-//! oraz operacji geometrycznych na poliliniach (`routeGeometry.ts`).
+//! (`zbiorkom.ts`) oraz operacji geometrycznych na poliliniach (`routeGeometry.ts`).
 
 use std::cell::RefCell;
 use std::collections::HashMap;

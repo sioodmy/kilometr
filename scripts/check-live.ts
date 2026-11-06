@@ -33,9 +33,7 @@ import {
   findNearestStopOnRoute,
   positionToRank,
 } from '../src/services/vehiclePosition';
-import { isLegRunning, matchVehicleToLeg } from '../src/services/liveVehicle';
 import type { Leg, LegStop } from '../src/types/models';
-import type { MapLeg } from '../src/map/types';
 
 // ─── Framework asercji ─────────────────────────────────────────────────────
 
@@ -982,42 +980,6 @@ async function main(): Promise<void> {
     tripId: 'NIGHT_24',
     intermediateStops: nightStops,
   };
-  const nightMapLeg: MapLeg = {
-    id: 'night-map',
-    mode: 'bus',
-    line: 'N',
-    color: '#000',
-    fromStop: 'Noc A',
-    toStop: 'Noc B',
-    departAt: '23:50',
-    arriveAt: '00:20',
-    stopsCount: 1,
-    live: false,
-    tripId: 'NIGHT_24',
-    approx: true,
-    stops: [
-      {
-        id: 'night-a',
-        legId: 'night-map',
-        name: 'Noc A',
-        lat: 51.1,
-        lon: 17,
-        seq: 0,
-        role: 'board',
-        arriveSec: H(23, 50),
-      },
-      {
-        id: 'night-b',
-        legId: 'night-map',
-        name: 'Noc B',
-        lat: 51.104,
-        lon: 17,
-        seq: 1,
-        role: 'alight',
-        arriveSec: H(0, 20),
-      },
-    ],
-  };
   const midnightNow = new Date(2026, 9, 10, 0, 10).getTime();
   const nightVehicle: TrackedVehicle = {
     vehicleId: 'N-1',
@@ -1031,19 +993,6 @@ async function main(): Promise<void> {
     nextStopName: 'Noc B',
     updatedAt: midnightNow,
   };
-  expect('noga działa po północy', isLegRunning(nightMapLeg, 600), true);
-  const matchedLeg = matchVehicleToLeg(
-    [nightVehicle],
-    nightMapLeg,
-    [
-      [51.1, 17],
-      [51.104, 17],
-    ],
-    { nowSec: 600 },
-  );
-  expect('pojazd przypięty do nogi przez północ', matchedLeg?.vehicle.vehicleId, 'N-1');
-  expect('opóźnienie nogi przez północ', Math.abs(matchedLeg?.delaySec ?? 9999) <= 60, true);
-
   const estimate = locateLiveStopPosition(nightStops, nightLeg, null, null, midnightNow);
   expect('szacunek po północy nie gubi nogi', estimate?.gap, 0);
   expect('szacunek po północy to estimate', estimate?.source, 'estimate');
@@ -1070,31 +1019,6 @@ async function main(): Promise<void> {
     { stopId: 'NIGHT_A', name: 'Noc A', lat: 51.1, lon: 17, seq: 1, departSec: H(24, 5) },
     { stopId: 'NIGHT_B', name: 'Noc B', lat: 51.104, lon: 17, seq: 2, arriveSec: H(24, 25) },
   ];
-  const afterMidnightLeg: MapLeg = {
-    ...nightMapLeg,
-    id: 'night-after-midnight',
-    departAt: '00:05',
-    arriveAt: '00:25',
-    stops: [
-      { ...nightMapLeg.stops[0], id: 'night-a2', legId: 'night-after-midnight', arriveSec: H(24, 5) },
-      { ...nightMapLeg.stops[1], id: 'night-b2', legId: 'night-after-midnight', arriveSec: H(24, 25) },
-    ],
-  };
-  expect('noga 24:xx po północy działa', isLegRunning(afterMidnightLeg, H(0, 15)), true);
-  const afterMidnightMatch = matchVehicleToLeg(
-    [{ ...nightVehicle, lat: 51.102 }],
-    afterMidnightLeg,
-    [
-      [51.1, 17],
-      [51.104, 17],
-    ],
-    { nowSec: H(0, 15) },
-  );
-  expect(
-    'pojazd przypięty do nogi 24:xx po północy',
-    afterMidnightMatch?.vehicle.vehicleId,
-    'N-1',
-  );
   const afterMidnightPosition = locateLiveStopPosition(
     afterMidnightStops,
     {
