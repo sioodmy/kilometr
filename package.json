@@ -135,7 +135,8 @@
     "stop-hints:generate": "node cloudflare/scripts/generate-grounded-stop-hints.mjs",
     "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs",
     "check:intercity": "tsx --require ./scripts/stub-expo.cjs scripts/check-intercity.ts",
-    "check:national-live": "tsx --require ./scripts/stub-expo.cjs scripts/check-national-live.ts"
+    "check:national-live": "tsx --require ./scripts/stub-expo.cjs scripts/check-national-live.ts",
+    "check:rail-shape": "tsx --require ./scripts/stub-expo.cjs scripts/check-rail-shape.ts"
   },
   "private": true,
   "expo": {

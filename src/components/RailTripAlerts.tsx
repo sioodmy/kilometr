@@ -4,19 +4,17 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { AlertCircle } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
-import type { Connection, Leg } from '../types/models';
-import { fetchNationalRailLive, fetchZbVehicleAlerts, type ZbVehicleAlert } from '../services/nationalRailLive';
-
-interface TrainAlerts {
-  leg: Leg;
-  alerts: ZbVehicleAlert[];
-}
+import type { Connection } from '../types/models';
+import { alertsForConnection, type TrainAlerts } from '../services/railTripAlerts';
 
 /**
  * Alerty przypisane do konkretnego pociągu (strumień SSE zbiorkomu):
  * objazdy, odwołane odcinki, ograniczenia prędkości. Komunikaty handlowe
- * operatora (przedsprzedaż, cenniki) są odfiltrowane w serwisie.
- * Odświeżanie co 5 min, tylko na ekranie szczegółów podróży.
+ * operatora (przedsprzedaż, cenniki, prace w kanałach sprzedaży) są
+ * odfiltrowane w serwisie. Odświeżanie co 5 min (cache w serwisie).
+ *
+ * Tonalny amber (warningContainer), nie czerwień: to informacja o
+ * utrudnieniach w ruchu, nie błąd.
  */
 export function RailTripAlerts({ connection }: { connection: Connection }) {
   const s = useStrings();
@@ -24,30 +22,11 @@ export function RailTripAlerts({ connection }: { connection: Connection }) {
 
   useEffect(() => {
     let alive = true;
-    const load = async () => {
-      const legs = connection.legs.filter((l) => l.mode === 'train' && l.tripId?.startsWith('pl:'));
-      if (legs.length === 0) return;
-      try {
-        // Jedno zapytanie o pozycje daje nam id kursu zbiorkomu (zbTripIds).
-        const live = await fetchNationalRailLive(legs);
-        if (!alive) return;
-        const jobs = legs.map(async (leg) => {
-          const vehicle = leg.tripId ? live.zbTripIds.get(leg.tripId) : undefined;
-          if (!vehicle) return null;
-          const alerts = await fetchZbVehicleAlerts(vehicle);
-          return alerts.length > 0 ? { leg, alerts } : null;
-        });
-        const results = (await Promise.all(jobs)).filter((r): r is TrainAlerts => r !== null);
-        if (alive) setTrainAlerts(results);
-      } catch {
-        // brak sieci = brak alertów, rozkład działa offline
-      }
-    };
-    void load();
-    const timer = setInterval(load, 5 * 60_000);
+    void alertsForConnection(connection).then((alerts) => {
+      if (alive) setTrainAlerts(alerts);
+    });
     return () => {
       alive = false;
-      clearInterval(timer);
     };
   }, [connection]);
 
@@ -64,13 +43,17 @@ export function RailTripAlerts({ connection }: { connection: Connection }) {
             accessibilityLabel={`${s.railAlerts.cardA11y(leg.line ?? '')}. ${alert.title}. ${alert.description}`}
           >
             <View style={styles.topRow}>
-              <AlertCircle size={18} color={scheme.onErrorContainer} />
+              <AlertCircle size={18} color={scheme.onWarningContainer} />
               <Text style={styles.line} numberOfLines={1} ellipsizeMode="tail">
                 {leg.line ?? s.railAlerts.fallbackLine}
               </Text>
             </View>
             <Text style={styles.title}>{alert.title}</Text>
-            {alert.description ? <Text style={styles.body}>{alert.description}</Text> : null}
+            {alert.description ? (
+              <Text style={styles.body} numberOfLines={4}>
+                {alert.description}
+              </Text>
+            ) : null}
           </View>
         )),
       )}
@@ -85,7 +68,7 @@ const styles = StyleSheet.create({
   card: {
     padding: 16,
     gap: 8,
-    backgroundColor: scheme.errorContainer,
+    backgroundColor: scheme.warningContainer,
     borderRadius: shape.large,
   },
   topRow: {
@@ -96,17 +79,18 @@ const styles = StyleSheet.create({
   line: {
     ...type.labelLarge,
     fontWeight: '600',
-    color: scheme.onErrorContainer,
+    color: scheme.onWarningContainer,
     flex: 1,
   },
   title: {
     ...type.titleSmall,
     fontWeight: '500',
-    color: scheme.onErrorContainer,
+    color: scheme.onWarningContainer,
   },
   body: {
     ...type.bodyMedium,
-    color: scheme.onErrorContainer,
+    color: scheme.onWarningContainer,
     lineHeight: 19,
+    opacity: 0.9,
   },
 });

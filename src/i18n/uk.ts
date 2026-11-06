@@ -1285,6 +1285,8 @@ export const uk: Strings = {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список станцій.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
@@ -1303,6 +1305,10 @@ export const uk: Strings = {
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
+    },
+    stationsSummary: (n: number, mins: number, open: boolean) => {
+      const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
+      return `${stations} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     platformPeron: (code: string) => `Платформа ${code}`,
     platformPole: (code: string) => `Стовп ${code}`,

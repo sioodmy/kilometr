@@ -632,7 +632,9 @@ const TransitLegCard = memo(function TransitLegCard({
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={[
-          t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
+          leg.mode === 'train'
+            ? t.leg.expandStationsA11y(leg.line ?? '', leg.direction ?? '', expanded)
+            : t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
           notice,
         ]
           .filter(Boolean)
@@ -762,10 +764,13 @@ const TransitLegCard = memo(function TransitLegCard({
             </Animated.View>
           )}
 
-          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas */}
+          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas.
+              Kolej zatrzymuje się na stacjach, nie na przystankach. */}
           <View style={s.stopsSummaryWrap}>
             <Text style={s.stopsSummaryLabel}>
-              {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
+              {leg.mode === 'train'
+                ? t.leg.stationsSummary(stopsCount, stopsCount * 2, expanded)
+                : t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
             </Text>
           </View>
         </View>

@@ -1244,6 +1244,8 @@ export const de: Strings = {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} Richtung ${dir}. Bahnhofsliste ${expanded ? 'ein' : 'aus'}klappen.`,
     vehicleBetween: (mode: string, from: string, to: string) =>
       `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
@@ -1262,6 +1264,8 @@ export const de: Strings = {
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'Bahnhof' : 'Bahnhöfe'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
     platformPeron: (code: string) => `Bahnsteig ${code}`,
     platformPole: (code: string) => `Mast ${code}`,
     platformBay: (code: string) => `Stand ${code}`,
