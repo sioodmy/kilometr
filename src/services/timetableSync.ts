@@ -109,14 +109,9 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
   }
 }
 
-/** Manifest ogólnopolskiego rozkładu kolejowego (dataset `polska` w R2). */
-export function nationalManifestUrl(): string {
-  return `${TIMETABLE.baseUrl}/polska/manifest.json`;
-}
-
 export async function fetchNationalManifest(): Promise<TimetableManifest> {
   try {
-    return await fetchManifestAt(nationalManifestUrl());
+    return await fetchManifestAt(`${TIMETABLE.baseUrl}/polska/manifest.json`);
   } catch (err) {
     throw describeDownloadError(err);
   }

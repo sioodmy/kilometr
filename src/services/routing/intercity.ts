@@ -24,7 +24,7 @@ import type { Connection, Leg, LegMode } from './types';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
 /** Stacja kolejowa w magazynie ogólnopolskim. */
-export interface RailStation {
+interface RailStation {
   stopId: string;
   name: string;
   lat: number;
@@ -177,8 +177,14 @@ async function enrichRailLegs(legs: Leg[]): Promise<void> {
         leg.trainNumber = meta.trainNumber || undefined;
         leg.trainName = meta.trainName || undefined;
         leg.railAgency = meta.agency || undefined;
-        if (meta.category) {
-          leg.line = meta.trainNumber ? `${meta.category} ${meta.trainNumber}` : meta.category;
+        // Kategoria z feedu bywa złożona („EC/EIC”, „K22/K22 BUS”): do
+        // badge'a bierzemy pierwszy człon, który nie jest autobusem zastępczym.
+        const category = (meta.category || '')
+          .split('/')
+          .map((part) => part.trim())
+          .find((part) => part && !/BUS/i.test(part));
+        if (category) {
+          leg.line = meta.trainNumber ? `${category} ${meta.trainNumber}` : category;
         }
         const platform = await railPlatform(leg.tripId!, leg.fromStopId ?? '');
         if (platform) leg.platformCode = platform;
@@ -664,8 +670,6 @@ export async function nextNationalTrains(
        LIMIT 60`,
       toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services],
     );
-    const afterSec =
-      after.getHours() * 3600 + after.getMinutes() * 60 + after.getSeconds();
     const dayStartMs = new Date(after).setHours(0, 0, 0, 0);
     const out: NextTrain[] = [];
     for (const row of rows) {
