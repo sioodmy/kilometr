@@ -133,7 +133,8 @@
     "check:stop-hints": "node cloudflare/scripts/check-stop-hints.mjs",
     "stop-hints:build": "node cloudflare/scripts/build-stop-hints.mjs",
     "stop-hints:generate": "node cloudflare/scripts/generate-grounded-stop-hints.mjs",
-    "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs"
+    "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs",
+    "check:intercity": "tsx --require ./scripts/stub-expo.cjs scripts/check-intercity.ts"
   },
   "private": true,
   "expo": {

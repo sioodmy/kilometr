@@ -154,6 +154,203 @@ function getGtfsDbByName(name: string): Promise<SQLite.SQLiteDatabase> {
   return p;
 }
 
+/* ─── Baza ogólnopolska (kolej) ──────────────────────────────────────────
+ * Osobny plik SQLite obok baz miast: kilometr-gtfs-polska.db z buildu
+ * build-polska.mjs (dataset `polska` w R2). Wspólny schemat + kolumny
+ * kolejowe (train_number/train_name/category/agency w trips, platform
+ * w stop_times), więc magazyn routingu czyta ją tak samo jak miasto. */
+
+export const NATIONAL_DB_FILE = 'kilometr-gtfs-polska.db';
+
+let nationalSwapGate: Promise<void> | null = null;
+let releaseNationalSwapGate: (() => void) | null = null;
+
+/** Bramka podmiany pliku bazy krajowej (odpowiednik beginGtfsSwap). */
+export function beginNationalDbSwap(): void {
+  if (nationalSwapGate) return;
+  nationalSwapGate = new Promise<void>((resolve) => {
+    releaseNationalSwapGate = resolve;
+  });
+}
+
+export function endNationalDbSwap(): void {
+  const release = releaseNationalSwapGate;
+  nationalSwapGate = null;
+  releaseNationalSwapGate = null;
+  release?.();
+}
+
+/** Uchwyt bazy ogólnopolskiej; czeka na ewentualną podmianę pliku. */
+export function getNationalDb(): Promise<SQLite.SQLiteDatabase> {
+  if (nationalSwapGate) {
+    return nationalSwapGate.then(() => getNationalDb());
+  }
+  return getGtfsDbByName(NATIONAL_DB_FILE);
+}
+
+/** Zamyka TYLKO uchwyt bazy krajowej (przed podmianą pliku). */
+export async function closeNationalDb(): Promise<void> {
+  const p = dbPromises.get(NATIONAL_DB_FILE);
+  if (!p) return;
+  dbPromises.delete(NATIONAL_DB_FILE);
+  try {
+    const db = await p;
+    await db.closeAsync();
+  } catch {
+    // best-effort: plik i tak podmieniamy
+  }
+}
+
+/** Czy trwa podmiana pliku bazy krajowej (patrz beginNationalDbSwap). */
+export function isNationalDbSwapPending(): boolean {
+  return nationalSwapGate !== null;
+}
+
+/** Serwisy kursujące w danym dniu w konkretnej bazie (wspólne dla miasta i Polski). */
+async function activeServicesForDb(
+  db: SQLite.SQLiteDatabase,
+  weekday: number,
+  dateStr?: string,
+): Promise<Set<string>> {
+  const day = ((weekday % 7) + 7) % 7;
+  const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
+  // Zakres dat jak w lineTimetable: bez niego stary i nowy rozkład z jednego
+  // feedu jeżdżą naraz, a wygasły serwis nadal wygląda na aktywny.
+  const rows = dateStr
+    ? await db.getAllAsync<{ service_id: string }>(
+        `SELECT service_id FROM calendar WHERE ${col} > 0 AND (start_date = '' OR start_date <= ?) AND (end_date = '' OR end_date >= ?)`,
+        dateStr,
+        dateStr,
+      )
+    : await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
+  const weekdayServices = rows.map((r) => r.service_id);
+  const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
+  const calendarRowCount = total?.n ?? 0;
+  const needsEverything = weekdayServices.length === 0 && (calendarRowCount === 0 || !dateStr);
+  const allTripServices = needsEverything
+    ? (await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips')).map(
+        (r) => r.service_id,
+      )
+    : [];
+  const dateExceptions = dateStr
+    ? await db.getAllAsync<{ service_id: string; exc: number }>(
+        'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
+        dateStr,
+      )
+    : [];
+  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
+}
+
+/** Serwisy bazy ogólnopolskiej w danym dniu (feed PLK: tylko calendar_dates). */
+export async function getNationalActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
+  const db = await getNationalDb();
+  return activeServicesForDb(db, weekday, dateStr);
+}
+
+export async function getNationalMeta(key: string): Promise<string | null> {
+  const db = await getNationalDb();
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
+  return row?.value ?? null;
+}
+
+export async function setNationalMeta(key: string, value: string): Promise<void> {
+  const db = await getNationalDb();
+  await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', key, value);
+}
+
+/** Ostatni dzień rozkładu kolejowego (YYYYMMDD) albo null. */
+export async function getNationalTimetableEndDate(): Promise<string | null> {
+  const db = await getNationalDb();
+  const cd = await db.getFirstAsync<{ d: string | null }>(
+    'SELECT MAX(date) AS d FROM calendar_dates WHERE exc = 1',
+  );
+  return cd?.d ?? null;
+}
+
+export interface NationalStation {
+  stop_id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  weight: number;
+}
+
+/** Czy plik bazy krajowej istnieje i ma stacje (tani EXISTS, bez ładowania). */
+export async function hasNationalDb(): Promise<boolean> {
+  try {
+    const db = await getNationalDb();
+    const row = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stops) AS n');
+    return (row?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wyszukiwarka stacji kolejowych: SQL LIKE zawęża kandydatów (~3k stacji),
+ * ranking robi fuzzyMatch jak w searchStops. Waga = liczba odjazdów,
+ * więc "Główny" wygrywa z "Główny Towarowy".
+ */
+export async function searchNationalStations(query: string, limit = 8): Promise<NationalStation[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const tokens = normalizePolish(q).split(/[\s,./()\\-]+/).filter(Boolean);
+  if (!tokens.length) return [];
+
+  const clauses: string[] = [];
+  const params: string[] = [];
+  for (const token of tokens) {
+    const variants = expandTokenSynonyms(token).filter((v) => v.length >= 2);
+    const list = variants.length ? variants : [token];
+    clauses.push(`(${list.map(() => 'norm LIKE ?').join(' OR ')})`);
+    for (const v of list) params.push(`%${v.replace(/[%_]/g, '')}%`);
+  }
+
+  const db = await getNationalDb();
+  const rows = await db.getAllAsync<{ stop_id: string; name: string; lat: number; lon: number; weight: number }>(
+    `SELECT stop_id, name, lat, lon, weight FROM stops WHERE ${clauses.join(' AND ')} LIMIT 120`,
+    ...params,
+  );
+  const matches = fuzzyMatchBatch(q, rows.map((r) => r.name));
+  const scored: Array<NationalStation & { score: number }> = [];
+  for (let i = 0; i < rows.length; i++) {
+    const m = matches[i];
+    if (!m?.matches) continue;
+    const r = rows[i];
+    scored.push({ stop_id: r.stop_id, name: r.name, lat: r.lat, lon: r.lon, weight: r.weight ?? 0, score: m.score });
+  }
+  scored.sort((a, b) => {
+    if (Math.abs(a.score - b.score) > 12) return b.score - a.score;
+    return b.weight - a.weight;
+  });
+  return scored.slice(0, limit).map(({ stop_id, name, lat, lon, weight }) => ({ stop_id, name, lat, lon, weight }));
+}
+
+/** Najbliższe stacje kolejowe (do startu "z najbliższej stacji" poza miastem). */
+export async function findNearestNationalStations(
+  lat: number,
+  lon: number,
+  maxDistanceM = 30000,
+  limit = 5,
+): Promise<NationalStation[]> {
+  const db = await getNationalDb();
+  const latRange = maxDistanceM / 111000;
+  const lonRange = maxDistanceM / (111000 * Math.cos((lat * Math.PI) / 180));
+  const rows = await db.getAllAsync<{ stop_id: string; name: string; lat: number; lon: number; weight: number }>(
+    'SELECT stop_id, name, lat, lon, weight FROM stops WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?',
+    lat - latRange,
+    lat + latRange,
+    lon - lonRange,
+    lon + lonRange,
+  );
+  return rows
+    .map((r) => ({ ...r, distanceM: distanceMeters(lat, lon, r.lat, r.lon) }))
+    .filter((r) => r.distanceM <= maxDistanceM)
+    .sort((a, b) => a.distanceM - b.distanceM)
+    .slice(0, limit);
+}
+
+
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
   // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
@@ -613,33 +810,7 @@ export function resolveActiveServices(
 /** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */
 export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
   const db = await getGtfsDb();
-  const day = ((weekday % 7) + 7) % 7;
-  const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
-  // Zakres dat jak w lineTimetable: bez niego stary i nowy rozkład z jednego
-  // feedu jeżdżą naraz, a wygasły serwis nadal wygląda na aktywny.
-  const rows = dateStr
-    ? await db.getAllAsync<{ service_id: string }>(
-        `SELECT service_id FROM calendar WHERE ${col} > 0 AND (start_date = '' OR start_date <= ?) AND (end_date = '' OR end_date >= ?)`,
-        dateStr,
-        dateStr,
-      )
-    : await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
-  const weekdayServices = rows.map((r) => r.service_id);
-  const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
-  const calendarRowCount = total?.n ?? 0;
-  const needsEverything = weekdayServices.length === 0 && (calendarRowCount === 0 || !dateStr);
-  const allTripServices = needsEverything
-    ? (await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips')).map(
-        (r) => r.service_id,
-      )
-    : [];
-  const dateExceptions = dateStr
-    ? await db.getAllAsync<{ service_id: string; exc: number }>(
-        'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
-        dateStr,
-      )
-    : [];
-  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
+  return activeServicesForDb(db, weekday, dateStr);
 }
 
 /**

@@ -260,8 +260,11 @@ export async function fetchZbRailDepartures(legs: Leg[]): Promise<Map<string, Zb
   await Promise.all(
     trains.map(async (leg) => {
       try {
+        // Stacje z bazy ogólnopolskiej mają prefiks `pl:` (PLK id), którego
+        // katalog zbiorkomu nie zna - szukamy gołą i po gołym id.
+        const stopId = leg.fromStopId?.replace(/^pl:/, '');
         const station =
-          (leg.fromStopId ? stations.byStopId.get(leg.fromStopId) : undefined) ??
+          (stopId ? stations.byStopId.get(stopId) : undefined) ??
           nearestStation(stations.byName.get(normalized(leg.fromStop)) ?? [], leg);
         if (!station) return;
         const departures = await fetchStationDepartures(station.stopId);
@@ -273,4 +276,78 @@ export async function fetchZbRailDepartures(legs: Leg[]): Promise<Map<string, Zb
     }),
   );
   return result;
+}
+
+/* ─── Alerty per pociąg (api6/pkp/trips/{tripId}) ─────────────────────── */
+
+export interface ZbRailAlert {
+  title: string;
+  description: string;
+  url?: string;
+  publishedAt?: number;
+}
+
+/**
+ * Słowa odcinające alerty ogólnooperatorskie (przedsprzedaż, cenniki,
+ * regulaminy), które zbiorkom przypina do KAŻDEGO kursu. Zostają realne
+ * utrudnienia: objawy, odwołania, zmiany peronów, opóźnienia.
+ */
+const ALERT_NOISE = [
+  'przedsprzedaż',
+  'bilet',
+  'biletów',
+  'cennik',
+  'regulamin',
+  'promocj',
+  'taryf',
+  'wagon',
+  'restauracj',
+  'klimatyzacj',
+  'usług',
+  'ofert',
+  'lojaln',
+  'rabat',
+  'ulgow',
+  'karnet',
+];
+
+const tripAlertsCache = new Map<string, { at: number; alerts: ZbRailAlert[] }>();
+const TRIP_ALERTS_TTL_MS = 5 * 60 * 1000;
+
+function parseTripAlerts(raw: unknown): ZbRailAlert[] {
+  if (!isRecord(raw) || !Array.isArray(raw.alerts)) return [];
+  const out: ZbRailAlert[] = [];
+  for (const entry of raw.alerts) {
+    // Krotka zbiorkomu: [title, description, url, publishedAt, activeFrom, activeUntil, language, detected]
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || typeof entry[1] !== 'string') continue;
+    const title = entry[0].trim();
+    const description = entry[1].trim();
+    if (!title) continue;
+    const haystack = `${title} ${description}`.toLowerCase();
+    if (ALERT_NOISE.some((needle) => haystack.includes(needle))) continue;
+    out.push({
+      title,
+      description,
+      url: typeof entry[2] === 'string' && entry[2] ? entry[2] : undefined,
+      publishedAt: typeof entry[3] === 'number' ? entry[3] : undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * Alerty konkretnego pociągu (np. objazdy, odwołanie odcinka) z trip JSON
+ * zbiorkomu. `tripId` to identyfikator z tablicy odjazdów (ZbRailDeparture),
+ * nie GTFS-owy trip_id. Cache 5 min - alerty zmieniają się rzadko.
+ */
+export async function fetchZbRailTripAlerts(tripId: string): Promise<ZbRailAlert[]> {
+  const cached = tripAlertsCache.get(tripId);
+  if (cached && Date.now() - cached.at < TRIP_ALERTS_TTL_MS) return cached.alerts;
+  const alerts = await fetchJson(
+    `${ZBIORKOM.baseUrl}/api6/pkp/trips/${encodeURIComponent(tripId)}`,
+  )
+    .then(parseTripAlerts)
+    .catch(() => [] as ZbRailAlert[]);
+  tripAlertsCache.set(tripId, { at: Date.now(), alerts });
+  return alerts;
 }

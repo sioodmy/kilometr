@@ -45,6 +45,9 @@ import {
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import { stopTracking } from '../../src/services/notifications';
+import { isIntercityRouteQuery } from '../../src/services/api';
+import { nationalTimetableReady } from '../../src/services/nationalTimetable';
+import { IntercityDownloadCard } from '../../src/components/IntercityDownloadCard';
 import {
   loadCachedConnections,
   hasLocalTimetable,
@@ -440,6 +443,34 @@ export default function RoutesScreen() {
   const [savedQuick, setSavedQuick] = useState<Suggestion[]>([]);
   // GPS spoza strefy aktywnego miasta nie może być startem trasy.
   const [gpsOutside, setGpsOutside] = useState(false);
+  // Podróż między miastami bez pobranego rozkładu kolejowego: zamiast pustki
+  // "brak połączeń" pokazujemy kartę pobrania bazy `polska`.
+  const intercityQuery = useMemo(
+    () =>
+      isIntercityRouteQuery({
+        fromLat,
+        fromLon,
+        toLat,
+        toLon,
+        toId: toId || undefined,
+        trainsEnabled: getSettingsSync().trainsEnabled,
+      }),
+    [fromLat, fromLon, toLat, toLon, toId],
+  );
+  const [railDbReady, setRailDbReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!intercityQuery) {
+      setRailDbReady(null);
+      return;
+    }
+    void nationalTimetableReady().then((ready) => {
+      if (alive) setRailDbReady(ready);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [intercityQuery, items.length]);
 
   useEffect(() => {
     SearchService.recent()
@@ -888,6 +919,7 @@ export default function RoutesScreen() {
     timetableReady,
     targetTimeSec,
     timeMode,
+    railDbReady,
   ]);
 
   // Gest i przycisk dokładają wcześniejsze odjazdy do tej samej listy.
@@ -939,7 +971,20 @@ export default function RoutesScreen() {
     if (targetTimeSec === undefined) {
       return s.routes.now;
     }
-    const day = targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today;
+    const dayOffset = Math.floor(targetTimeSec / 86400);
+    const day =
+      dayOffset === 0
+        ? s.common.today
+        : dayOffset === 1
+          ? s.common.tomorrow
+          : (() => {
+              // Dalej niż jutro: konkretna data (np. „pt 13.11”).
+              const d = new Date();
+              d.setDate(d.getDate() + dayOffset);
+              const dd = String(d.getDate()).padStart(2, '0');
+              const mm = String(d.getMonth() + 1).padStart(2, '0');
+              return `${dd}.${mm}`;
+            })();
     const hh = String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0');
     const mm = String(Math.floor((targetTimeSec % 3600) / 60)).padStart(2, '0');
     if (arrivalMode) {
@@ -1397,16 +1442,23 @@ export default function RoutesScreen() {
               ) : null
             }
             ListEmptyComponent={
+              intercityQuery && railDbReady === false ? (
+                <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
+              ) : (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyTitle}>
                   {liveOnly
                     ? s.routes.emptyLive
                     : hasActiveFilters
                       ? s.routes.emptyFiltered
-                      : s.routes.emptyNone}
+                      : intercityQuery
+                        ? s.intercity.noTrainsTitle
+                        : s.routes.emptyNone}
                 </Text>
                 <Text style={styles.emptySub}>
-                  {transfersFilter !== 'all' && modeFilter !== 'all'
+                  {intercityQuery && !hasActiveFilters
+                    ? s.intercity.noTrainsHint
+                    : transfersFilter !== 'all' && modeFilter !== 'all'
                     ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
                     : transfersFilter !== 'all'
                       ? s.routes.emptyDirect
@@ -1447,6 +1499,7 @@ export default function RoutesScreen() {
                   </Pressable>
                 )}
               </View>
+              )
             }
           />
       )}

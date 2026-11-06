@@ -65,7 +65,14 @@ export const uk: Strings = {
     stayOn: (line: string) => `Залишайтеся в ${line}`,
     changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
     noAlternative:
+
       'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
+    conductorTitle: 'Запізнення на потяг',
+    conductorBody:
+      'Повідомте кондуктора, що ви не встигаєте на пересадку. Квиток на потяг далекого сполучення діє за умовами перевізника.',
+    nextTrainLabel: 'Наступний потяг',
+    nextTrainAt: (time: string) => `'відправляється о ' + time`,
+
     unavailable: 'Не можемо оцінити пересадку',
     unavailableBody:
       'Очікуємо точне місцеположення на маршруті. Поточний план залишається видимим.',
@@ -175,6 +182,8 @@ export const uk: Strings = {
     unsupportedActionShort: 'Вибрати старт',
     unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
+    unsupportedNearestStation: 'З найближчої залізничної станції',
+    unsupportedNearestStationA11y: 'Показати потяги з найближчої залізничної станції',
     pickStart: 'Вибери початок',
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -591,6 +600,18 @@ export const uk: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
     downloadFailFallback: 'Спробуй за мить.',
+    railTitle: 'Залізничний розклад (Польща)',
+    railHint: 'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
+    railReady: (date: string) => `'Завантажено (дійсний до ' + date + ')'`,
+    railEmpty: 'Не завантажено',
+    railDownload: 'Завантажити',
+    railCheck: 'Перевірити оновлення',
+    railDelete: 'Видалити з телефона',
+    railDeleteTitle: 'Видалити залізничний розклад?',
+    railDeleteBody: 'Планування подорожей між містами перестане працювати офлайн.',
+    railDeleteConfirm: 'Видалити',
+    railCancel: 'Скасувати',
+
     downloadDone: 'Розклад оновлено.',
     downloadUpToDate: 'Розклад уже актуальний.',
     downloadKeptLocal: 'Не вдалося завантажити нову версію. Залишаємо ту, що вже є на телефоні.',
@@ -1332,6 +1353,27 @@ export const uk: Strings = {
   suggestion: {
     stopFallback: 'Зупинка',
   },
+  intercity: {
+    stationAddress: 'Залізнична станція',
+    downloadTitle: 'Залізничний розклад (Польща)',
+    downloadBody:
+      'Завантажте загальнопольський розклад потягів, щоб планувати подорожі між містами: IC, EIC, PolRegio, KM та інші перевізники.',
+    downloadCta: 'Завантажити розклад',
+    downloadSize: (mb: string) => `'бл. ' + mb + ' МБ'`,
+    downloading: 'Завантаження залізничного розкладу…',
+    downloadFailed: 'Не вдалося завантажити залізничний розклад. Спробуйте пізніше.',
+    ready: (date: string) => `'Залізничний розклад готовий (дійсний до ' + date + ')'`,
+    noTrainsTitle: 'Немає потягів',
+    noTrainsHint: 'Перевірте дату й час або виберіть іншу станцію призначення.',
+    nearestStation: (name: string, dist: string) => `'Найближча залізнична станція: ' + name + ' (' + dist + ')'`,
+    startAtStation: 'Показати потяги з цієї станції',
+  },
+
+  railAlerts: {
+    cardA11y: (line: string) => `'Оповіщення для потяга ' + line`,
+    fallbackLine: 'Потяг',
+  },
+
   data: {
     stepUnpack: 'Розпакування…',
     stepStops: 'Зупинки…',

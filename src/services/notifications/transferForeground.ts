@@ -8,7 +8,7 @@ import { liveTracker } from '../liveTracker';
 import { computeLegTimeline } from './tripProgress';
 import { formatClock, parseClock } from './format';
 import { TransferRideEstimator, TransferRiskDecision } from './transferAssessment';
-import type { TransferAlternative, TransferProtectionState } from './transferTypes';
+import type { NextTrainInfo, TransferAlternative, TransferProtectionState } from './transferTypes';
 import type { TrackedTrip } from './types';
 
 interface Ride {
@@ -27,6 +27,7 @@ export class ForegroundTransferProtection {
   private decision = new TransferRiskDecision();
   private lastSearch = 0;
   private alternative: TransferAlternative | undefined;
+  private nextTrain: NextTrainInfo | undefined;
   private loading: Promise<void> | null = null;
 
   constructor(private readonly trip: TrackedTrip) {}
@@ -100,6 +101,7 @@ export class ForegroundTransferProtection {
       this.rideIndex++;
       this.decision = new TransferRiskDecision();
       this.alternative = undefined;
+      this.nextTrain = undefined;
       return this.refresh(now);
     }
     const estimate = ride.estimator.observe(ride.stops, ride.board, ride.baseMs, fix, now);
@@ -161,6 +163,29 @@ export class ForegroundTransferProtection {
     });
     if (this.alternative && now >= this.alternative.validUntil) this.alternative = undefined;
     if (assessment === 'safe') this.alternative = undefined;
+    // Spóźnienie na pociąg międzyregionalny (baza `polska`): nie szukamy
+    // zamiennika po cichu. Bilet na IC/EIC jest imienny, konduktor decyduje
+    // o przewozie, więc pokazujemy „poinformuj konduktora” + najbliższy
+    // następny pociąg z tej stacji.
+    if (assessment === 'missed' && next.leg.tripId?.startsWith('pl:')) {
+      if (!this.nextTrain || now - this.lastSearch >= 60_000) {
+        this.lastSearch = now;
+        const { nextNationalTrains } = await import('../routing/intercity');
+        const trains = await nextNationalTrains(
+          next.leg.fromStopId ?? '',
+          next.leg.toStopId,
+          departureAtMs + 60_000,
+          1,
+        );
+        this.nextTrain = trains[0];
+      }
+      return {
+        ...state,
+        status: 'conductor',
+        alternative: undefined,
+        nextTrain: this.nextTrain,
+      };
+    }
     if (assessment === 'missed' && now - this.lastSearch >= 60_000) {
       this.lastSearch = now;
       this.alternative = await this.findAlternative(ride, estimate, now);

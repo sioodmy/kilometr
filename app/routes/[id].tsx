@@ -35,6 +35,7 @@ import { useRailLiveConnections } from '../../src/services/useRailLiveConnection
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
+import { RailTripAlerts } from '../../src/components/RailTripAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
@@ -439,6 +440,7 @@ export default function RouteDetailsScreen() {
                 onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
               />
               <ConnectionLineAlerts connection={item} />
+              <RailTripAlerts connection={item} />
             </View>
           )}
 

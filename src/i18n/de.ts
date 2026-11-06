@@ -48,7 +48,14 @@ export const de: Strings = {
     stayOn: (line: string) => `Bleib in ${line}`,
     changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
     noAlternative:
+
       'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
+    conductorTitle: 'Zug verpasst',
+    conductorBody:
+      'Informiere den Schaffner, dass du den Anschluss verpasst. Fernverkehrstickets bleiben gemäß Beförderungsbedingungen gültig.',
+    nextTrainLabel: 'Nächster Zug',
+    nextTrainAt: (time: string) => `'fährt ab um ' + time`,
+
     unavailable: 'Umstieg kann nicht bewertet werden',
     unavailableBody:
       'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
@@ -158,6 +165,8 @@ export const de: Strings = {
     unsupportedActionShort: 'Start wählen',
     unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
     unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
+    unsupportedNearestStation: 'Vom nächsten Bahnhof',
+    unsupportedNearestStationA11y: 'Züge vom nächsten Bahnhof zeigen',
     pickStart: 'Startpunkt wählen',
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -572,6 +581,18 @@ export const de: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch aus den offenen Daten der Stadt.`,
     downloadFailFallback: 'Versuch es gleich erneut.',
+    railTitle: 'Nationales Bahnfahrplan',
+    railHint: 'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
+    railReady: (date: string) => `'Heruntergeladen (gültig bis ' + date + ')'`,
+    railEmpty: 'Nicht heruntergeladen',
+    railDownload: 'Herunterladen',
+    railCheck: 'Nach Updates suchen',
+    railDelete: 'Vom Handy entfernen',
+    railDeleteTitle: 'Bahnfahrplan entfernen?',
+    railDeleteBody: 'Die Planung von Reisen zwischen Städten funktioniert dann offline nicht mehr.',
+    railDeleteConfirm: 'Entfernen',
+    railCancel: 'Abbrechen',
+
     downloadDone: 'Fahrplan aktualisiert.',
     downloadUpToDate: 'Der Fahrplan ist schon aktuell.',
     downloadKeptLocal:
@@ -1290,6 +1311,27 @@ export const de: Strings = {
   suggestion: {
     stopFallback: 'Haltestelle',
   },
+  intercity: {
+    stationAddress: 'Bahnhof',
+    downloadTitle: 'Nationales Bahnfahrplan',
+    downloadBody:
+      'Lade den bundesweiten Zugfahrplan herunter, um Reisen zwischen Städten zu planen: IC, EIC, PolRegio, KM und weitere Betreiber.',
+    downloadCta: 'Fahrplan herunterladen',
+    downloadSize: (mb: string) => `'ca. ' + mb + ' MB'`,
+    downloading: 'Bahnfahrplan wird heruntergeladen…',
+    downloadFailed: 'Bahnfahrplan konnte nicht heruntergeladen werden. Versuche es später erneut.',
+    ready: (date: string) => `'Bahnfahrplan bereit (gültig bis ' + date + ')'`,
+    noTrainsTitle: 'Keine Züge',
+    noTrainsHint: 'Prüfe Datum und Uhrzeit oder wähle einen anderen Zielbahnhof.',
+    nearestStation: (name: string, dist: string) => `'Nächster Bahnhof: ' + name + ' (' + dist + ')'`,
+    startAtStation: 'Züge von diesem Bahnhof zeigen',
+  },
+
+  railAlerts: {
+    cardA11y: (line: string) => `'Warnung für Zug ' + line`,
+    fallbackLine: 'Zug',
+  },
+
   data: {
     stepUnpack: 'Entpacken…',
     stepStops: 'Haltestellen…',
