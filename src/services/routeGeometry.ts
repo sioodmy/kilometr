@@ -24,7 +24,7 @@ import { OSRM_BASE_URL } from '../config';
 import { routeFootLocal, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from './lineIdentity';
-import { shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
+import { projectPointToPolyline, shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
 import { putCacheRecord, selectEvictions, type GeometryCacheRecord } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
@@ -168,6 +168,58 @@ export function buildMapRoute(connection: Connection): MapRoute {
     legs,
     geometry,
   };
+}
+
+// ─── Kropeczka GPS: czy user już jedzie ──────────────────────────────────────
+
+/** Tyle metrów od osi trasy zakładamy, że user siedzi w pojazdzie. */
+const RIDING_RADIUS_M = 40;
+/**
+ * Wokół przystanku wejściowego i wyjściowego kropka zostaje: user czeka na
+ * pojazd albo właśnie wysiadł, a "jedzie" tylko na paperze.
+ */
+const ENDPOINT_MARGIN_M = 140;
+/** Fix z większą niepewnością nie ukrywa kropki, bo poloży się losowo. */
+const MAX_TRUSTED_ACCURACY_M = 75;
+
+/**
+ * Czy kropeczkę GPS ukryć: lokalizacja leży blisko geometrii nogi kursowej
+ * (zakładamy jazdę pojazdem) i poza strefami przystanku początkowego i
+ * końcowego. Nogi piesze nie liczą się: w drodze na przystanek i po wysiadce
+ * kropka ma zostać.
+ */
+export function userRidingTransit(
+  route: MapRoute,
+  loc: { lat: number; lon: number; accuracy?: number | null },
+  geometry: ReadonlyMap<string, Coord[]>,
+): boolean {
+  if (loc.accuracy != null && loc.accuracy > MAX_TRUSTED_ACCURACY_M) return false;
+  const transitLegs = route.legs.filter((l) => l.mode !== 'walk');
+  if (transitLegs.length === 0) return false;
+
+  const firstStop = transitLegs[0].stops[0];
+  const lastLegStops = transitLegs[transitLegs.length - 1].stops;
+  const lastStop = lastLegStops[lastLegStops.length - 1];
+  if (!firstStop || !lastStop) return false;
+
+  if (shortDistanceMeters(loc.lat, loc.lon, firstStop.lat, firstStop.lon) <= ENDPOINT_MARGIN_M) {
+    return false;
+  }
+  if (shortDistanceMeters(loc.lat, loc.lon, lastStop.lat, lastStop.lon) <= ENDPOINT_MARGIN_M) {
+    return false;
+  }
+
+  for (const leg of transitLegs) {
+    const coords = geometry.get(leg.id);
+    const polyline = coords?.length
+      ? coords.map(([lat, lon]) => ({ lat, lon }))
+      : leg.stops.map((s) => ({ lat: s.lat, lon: s.lon }));
+    if (polyline.length === 0) continue;
+    if (projectPointToPolyline(loc.lat, loc.lon, polyline).distanceMeters <= RIDING_RADIUS_M) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ─── Geometria z OSRM ────────────────────────────────────────────────────────
