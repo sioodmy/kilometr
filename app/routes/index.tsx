@@ -971,7 +971,20 @@ export default function RoutesScreen() {
     if (targetTimeSec === undefined) {
       return s.routes.now;
     }
-    const day = targetTimeSec >= 86400 ? s.common.tomorrow : s.common.today;
+    const dayOffset = Math.floor(targetTimeSec / 86400);
+    const day =
+      dayOffset === 0
+        ? s.common.today
+        : dayOffset === 1
+          ? s.common.tomorrow
+          : (() => {
+              // Dalej niż jutro: konkretna data (np. „pt 13.11”).
+              const d = new Date();
+              d.setDate(d.getDate() + dayOffset);
+              const dd = String(d.getDate()).padStart(2, '0');
+              const mm = String(d.getMonth() + 1).padStart(2, '0');
+              return `${dd}.${mm}`;
+            })();
     const hh = String(Math.floor(targetTimeSec / 3600) % 24).padStart(2, '0');
     const mm = String(Math.floor((targetTimeSec % 3600) / 60)).padStart(2, '0');
     if (arrivalMode) {
