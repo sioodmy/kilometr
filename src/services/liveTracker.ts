@@ -49,6 +49,7 @@ import {
   type ZbKdVehicle,
 } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
+import { fetchNationalRailLive, type NationalLiveLeg } from './nationalRailLive';
 import {
   MAX_DELAY_SEC,
   MAX_SAMPLE_AGE_MS,
@@ -281,6 +282,57 @@ class LiveTracker {
     this.start();
     if (this.pinned > 0 || AppState.currentState === 'active') {
       this.armTimer(true);
+    }
+  }
+
+  /**
+   * Pociągi ogólnopolskie (`pl:...`): pozycje z zbiorkomu dopasowane po
+   * numerze i nazwach stacji. Wołane przy każdym pollu z nogami kolejowymi,
+   * które ekran właśnie pokazuje (`setNationalWatch`). Bez tego ogólnopolska
+   * baza nie miała żadnego live: KD ma własny feed per miasto, a PLK nie.
+   */
+  private nationalWatch: NationalLiveLeg[] = [];
+  private nationalInFlight = false;
+
+  /** Ekran zgłasza nogi kolejowe, dla których chce live (bbox + numery). */
+  setNationalWatch(legs: NationalLiveLeg[]): void {
+    this.nationalWatch = legs.slice(0, 12);
+    if (legs.length > 0) void this.pollNational();
+  }
+
+  private async pollNational(): Promise<void> {
+    if (this.nationalInFlight || this.nationalWatch.length === 0) return;
+    this.nationalInFlight = true;
+    try {
+      const live = await fetchNationalRailLive(this.nationalWatch);
+      if (live.delays.size === 0) return;
+      for (const [tripId, delaySec] of live.delays) {
+        this.tripDelays.set(tripId, Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec)));
+      }
+      // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
+      // tak samo jak KD (matchedTripId === leg.tripId).
+      for (const [tripId, pos] of live.positions) {
+        const vehicleId = `PL:${tripId}`;
+        const leg = this.nationalWatch.find((l) => l.tripId === tripId);
+        this.byId.set(vehicleId, {
+          vehicleId,
+          line: leg?.line ?? 'PKP',
+          lat: pos.lat,
+          lon: pos.lon,
+          type: 'train',
+          delaySec: live.delays.get(tripId) ?? null,
+          matchedTripId: tripId,
+          currentStopName: leg?.fromStop,
+          nextStopName: leg?.toStop,
+          updatedAt: pos.updatedAt,
+        });
+      }
+      this.lastOk = Date.now();
+      this.notify();
+    } catch {
+      // live kolei nie może wywrócić polla miasta
+    } finally {
+      this.nationalInFlight = false;
     }
   }
 
@@ -539,6 +591,8 @@ class LiveTracker {
         ok = true;
         if (!rows || rows.length === 0) void this.persistSnapshot([], rails, cityAtStart);
       }
+      // Pociągi ogólnopolskie: osobno od feedu miasta, tylko gdy ekran je pokazuje.
+      await this.pollNational();
       if (ok && safeCityId() === cityAtStart) {
         this.lastOk = Date.now();
         this.notify();
