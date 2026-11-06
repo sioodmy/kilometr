@@ -7,11 +7,12 @@ import { getCity } from '../../src/cities.ts';
 export const ADDRESS_SCHEMA_VERSION = 1;
 
 /**
- * Schemat tabeli addresses w prebuilt bazie: 1 = bez stop_m, 2 = ze stop_m.
- * Manifest buduje się z tym markerem, a skip buildu go porównuje: stare
- * bazy bez stop_m dostają wymuszoną przebudowę zamiast wiecznego skipu.
+ * Schemat tabeli addresses w prebuilt bazie: 1 = bez stop_m, 2 = ze stop_m,
+ * 3 = ze stop_m i stop_w (waga połączeń). Manifest buduje się z tym
+ * markerem, a skip buildu go porównuje: stare bazy dostają wymuszoną
+ * przebudowę zamiast wiecznego skipu.
  */
-export const ADDRESSES_DB_SCHEMA = 2;
+export const ADDRESSES_DB_SCHEMA = 3;
 const MAX_AGE_MS = 7 * 86400000;
 /**
  * Kolejno próbowane instancje Overpassa; pierwszy wpis można nadpisać
@@ -278,13 +279,16 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch, sna
 }
 
 /**
- * Dystans adres → najbliższy przystanek GTFS, liczony raz przy imporcie
- * (kolumna stop_m, kara rankingu w Rust). NULL gdy baza nie ma przystanków
- * (czysty rozkład w testach) → telefon traktuje NULL jak brak danych.
+ * Dystans adres → najbliższy przystanek GTFS plus waga połączeń w promieniu
+ * spacerowym (stop_m, stop_w), liczone raz przy imporcie (kara i tie-break
+ * rankingu w Rust). NULL gdy baza nie ma przystanków (czysty rozkład w
+ * testach) → telefon traktuje NULL jak brak danych.
  */
 const STOP_CELL_DEG = 0.02;
 const STOP_MAX_RING = 5;
 const STOP_FAR_M = 65_535;
+/** Promień zbierania wag; zsynchronizowany z STOP_FREE_M w Rust. */
+const STOP_WALK_M = 1200;
 /** Najmniejsza liczba metrów na stopień długości w obsługiwanych bboxach (Trójmiasto ~54,7°). */
 const M_PER_DEG_LON_MIN = 64_000;
 
@@ -299,19 +303,27 @@ function distanceMetersHav(lat1, lon1, lat2, lon2) {
 /**
  * Siatka przystanków z ringami: po kaflu z trafieniem kończymy, gdy żaden
  * nieprzeskanowany przystanek nie może już być bliżej (ring ≥ ~1,3 km).
- * Poza zasięgiem ringów zwracamy STOP_FAR_M (pełna kara).
+ * Stopień w promieniu STOP_WALK_M zawsze mieści się w kaflach ringów 0-1,
+ * więc wagi zbieramy tylko tam. Poza zasięgiem ringów dystans to STOP_FAR_M
+ * (pełna kara), a waga 0.
  */
 export function nearestStopMeters(db) {
   let stops;
   try {
-    stops = db.prepare('SELECT lat, lon FROM stops').all();
+    // weight (liczba odjazdów) liczona jest w buildzie przed importem adresów.
+    stops = db.prepare('SELECT lat, lon, weight FROM stops').all();
   } catch {
-    return null;
+    try {
+      stops = db.prepare('SELECT lat, lon FROM stops').all().map((s) => ({ ...s, weight: 0 }));
+    } catch {
+      return null;
+    }
   }
   if (!Array.isArray(stops) || !stops.length) return null;
   const grid = new Map();
   for (const stop of stops) {
     if (!Number.isFinite(stop?.lat) || !Number.isFinite(stop?.lon)) continue;
+    stop.weight = Number.isFinite(stop?.weight) ? Math.max(0, stop.weight) : 0;
     const key = `${Math.floor(stop.lat / STOP_CELL_DEG)},${Math.floor(stop.lon / STOP_CELL_DEG)}`;
     const cell = grid.get(key);
     if (cell) cell.push(stop);
@@ -322,6 +334,7 @@ export function nearestStopMeters(db) {
     const gx = Math.floor(lat / STOP_CELL_DEG);
     const gy = Math.floor(lon / STOP_CELL_DEG);
     let best = Infinity;
+    let weightSum = 0;
     for (let ring = 0; ring <= STOP_MAX_RING; ring++) {
       for (let dx = -ring; dx <= ring; dx++) {
         for (let dy = -ring; dy <= ring; dy++) {
@@ -331,12 +344,16 @@ export function nearestStopMeters(db) {
           for (const stop of cell) {
             const dist = distanceMetersHav(lat, lon, stop.lat, stop.lon);
             if (dist < best) best = dist;
+            if (ring <= 1 && dist <= STOP_WALK_M) weightSum += stop.weight;
           }
         }
       }
       if (best <= ring * ringGuaranteeM) break;
     }
-    return Number.isFinite(best) ? Math.min(STOP_FAR_M, Math.round(best)) : STOP_FAR_M;
+    return {
+      stopM: Number.isFinite(best) ? Math.min(STOP_FAR_M, Math.round(best)) : STOP_FAR_M,
+      stopW: Math.min(4294967295, Math.round(weightSum)),
+    };
   };
 }
 
@@ -348,16 +365,20 @@ export function importAddresses(db, snapshot) {
     locality TEXT NOT NULL DEFAULT '',
     lat REAL NOT NULL,
     lon REAL NOT NULL,
-    stop_m INTEGER
+    stop_m INTEGER,
+    stop_w INTEGER
   )`);
   if (!snapshot) return null;
   const nearest = nearestStopMeters(db);
   const insert = db.prepare(
-    'INSERT INTO addresses (osm_id, street, house, locality, lat, lon, stop_m) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO addresses (osm_id, street, house, locality, lat, lon, stop_m, stop_w) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   );
   db.exec('BEGIN');
   try {
-    for (const row of snapshot.rows) insert.run(...row, nearest ? nearest(row[4], row[5]) : null);
+    for (const row of snapshot.rows) {
+      const stats = nearest ? nearest(row[4], row[5]) : null;
+      insert.run(...row, stats ? stats.stopM : null, stats ? stats.stopW : null);
+    }
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');

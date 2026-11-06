@@ -106,7 +106,8 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           locality TEXT NOT NULL DEFAULT '',
           lat REAL NOT NULL,
           lon REAL NOT NULL,
-          stop_m INTEGER
+          stop_m INTEGER,
+          stop_w INTEGER
         );
       `);
       // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).

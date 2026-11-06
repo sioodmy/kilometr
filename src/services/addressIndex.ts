@@ -17,18 +17,20 @@ interface AddressRow {
   lat: number;
   lon: number;
   stop_m?: number | null;
+  stop_w?: number | null;
 }
 
 /** u32::MAX w Rust: brak kolumny stop_m (stara baza) → kara wyłączona. */
 const STOP_M_UNKNOWN = 4294967295;
 
-/** Kolumny adresów do streamowania; stop_m tylko w bazach z nowego buildu. */
-async function addressColumns(db: Database): Promise<string> {
+/** Opcjonalne kolumny adresów; stop_m/stop_w tylko w bazach z nowego buildu. */
+async function addressColumns(db: Database): Promise<{ stopCol: string; weightCol: string }> {
   try {
     const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(addresses)');
-    return cols.some((col) => col.name === 'stop_m') ? ', stop_m' : '';
+    const has = (name: string) => cols.some((col) => col.name === name);
+    return { stopCol: has('stop_m') ? ', stop_m' : '', weightCol: has('stop_w') ? ', stop_w' : '' };
   } catch {
-    return '';
+    return { stopCol: '', weightCol: '' };
   }
 }
 
@@ -61,13 +63,13 @@ export async function warmupAddressIndex(): Promise<boolean> {
   const current = () => token === generation && cityId === getActiveCityIdSync();
   const promise = (async () => {
     if (!accepted(new BinaryWriter().u8Val(0))) return false;
-    const stopCol = await addressColumns(db);
+    const { stopCol, weightCol } = await addressColumns(db);
     if (!current()) return false;
     let after = 0;
     let count = 0;
     while (current()) {
       const rows = await db.getAllAsync<AddressRow>(
-        `SELECT rowid, osm_id, street, house, locality, lat, lon${stopCol} FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000`,
+        `SELECT rowid, osm_id, street, house, locality, lat, lon${stopCol}${weightCol} FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000`,
         after,
       );
       if (!current() || db !== (await getGtfsDb()) || !current()) return false;
@@ -78,6 +80,10 @@ export async function warmupAddressIndex(): Promise<boolean> {
           stopCol && row.stop_m != null && Number.isFinite(row.stop_m)
             ? Math.max(0, Math.min(65_535, Math.round(row.stop_m)))
             : STOP_M_UNKNOWN;
+        const stopW =
+          weightCol && row.stop_w != null && Number.isFinite(row.stop_w)
+            ? Math.max(0, Math.min(4294967295, Math.round(row.stop_w)))
+            : 0;
         writer
           .str(row.osm_id)
           .str(row.street)
@@ -85,7 +91,8 @@ export async function warmupAddressIndex(): Promise<boolean> {
           .str(row.locality)
           .f64(row.lat)
           .f64(row.lon)
-          .u32(stopM);
+          .u32(stopM)
+          .u32(stopW);
       }
       if (!accepted(writer)) return false;
       after = rows[rows.length - 1].rowid;
