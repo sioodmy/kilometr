@@ -325,6 +325,11 @@ export default function HomeScreen() {
         void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
       } else if (st.state === 'ready') {
         void checkTimetableForUpdates().catch((e) => console.warn('Timetable refresh failed:', e));
+        // Rozkład kolejowy odświeżamy lazy i cicho: tylko gdy już jest
+        // pobrany (nowa wersja) - pierwsze pobranie robi użytkownik.
+        import('../src/services/nationalTimetable')
+          .then((m) => m.ensureNationalTimetable())
+          .catch(() => {});
       }
     };
     void check();

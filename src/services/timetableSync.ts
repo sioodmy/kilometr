@@ -109,6 +109,29 @@ export async function getLocalTimetableVersion(): Promise<string | null> {
   }
 }
 
+/** Manifest ogólnopolskiego rozkładu kolejowego (dataset `polska` w R2). */
+export function nationalManifestUrl(): string {
+  return `${TIMETABLE.baseUrl}/polska/manifest.json`;
+}
+
+export async function fetchNationalManifest(): Promise<TimetableManifest> {
+  try {
+    return await fetchManifestAt(nationalManifestUrl());
+  } catch (err) {
+    throw describeDownloadError(err);
+  }
+}
+
+/** Wersja pobranego rozkładu kolejowego (meta w samej bazie polska). */
+export async function getNationalTimetableVersion(): Promise<string | null> {
+  try {
+    const { getNationalMeta } = await import('./gtfsDatabase');
+    return await getNationalMeta('timetable_version');
+  } catch {
+    return null;
+  }
+}
+
 const TEMP_DB_SUFFIX = '.new.db';
 const BAK_DB_SUFFIX = '.bak';
 
@@ -159,20 +182,16 @@ async function deleteSidecars(uri: string): Promise<void> {
 }
 
 /**
- * Pobiera, weryfikuje i podmienia bazę. Nie rusza działającej bazy,
- * dopóki plik tymczasowy nie przejdzie integrity_check.
+ * Pobiera bazę z manifestu do pliku tymczasowego i weryfikuje ją: rozmiar
+ * co do bajta, dekompresja gzip, integrity_check i niezerowe liczniki.
+ * Zwraca nazwę pliku tymczasowego gotowego do podmiany (caller robi swap).
  */
-export async function downloadPrebuiltDb(
+async function downloadToTemp(
+  mainName: string,
   manifest: TimetableManifest,
   onProgress?: (bytesWritten: number, totalBytes: number) => void,
-  cityId?: CityId | string,
-): Promise<void> {
+): Promise<string> {
   const T = syncDlTr();
-  // Miasto pinujemy raz, na starcie: pobieranie trwa kilka minut, a użytkownik
-  // może w międzyczasie zmienić miasto. Bez pinu plik tymczasowy i cel podmiany
-  // rozjeżdżałyby się (Wrocławskie dane w pliku Krakowa).
-  const city = getCity(cityId ?? getActiveCityIdSync());
-  const mainName = city.dbFile;
   const tempName = tempDbName(mainName);
   const destDb = await sqliteUri(tempName);
   const isCompressed = manifest.db.path.endsWith('.gz') || typeof manifest.db.uncompressedSizeBytes === 'number';
@@ -268,39 +287,63 @@ export async function downloadPrebuiltDb(
   } catch {
     // best-effort
   }
+  return tempName;
+}
+
+/** Podmienia plik bazy: stara do .bak, nowa (temp) na miejsce, rollback przy błędzie. */
+async function swapDbFile(mainName: string, tempName: string): Promise<void> {
+  const mainUri = await sqliteUri(mainName);
+  const bakUri = `${mainUri}${BAK_DB_SUFFIX}`;
+  const destDb = await sqliteUri(tempName);
+  await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
+  const old = await FileSystem.getInfoAsync(mainUri);
+  if (old.exists) await FileSystem.moveAsync({ from: mainUri, to: bakUri });
+  await deleteSidecars(mainUri);
+  try {
+    await FileSystem.moveAsync({ from: destDb, to: mainUri });
+  } catch (err) {
+    // Nowa baza nie weszła: przywróć poprzednią, żeby planer działał offline.
+    await FileSystem.deleteAsync(mainUri, { idempotent: true }).catch(() => {});
+    if (old.exists) {
+      await FileSystem.moveAsync({ from: bakUri, to: mainUri }).catch((restoreErr) => {
+        console.warn('[Timetable] przywrócenie bazy z .bak nie udało się:', restoreErr);
+      });
+    }
+    throw err;
+  }
+  await deleteSidecars(mainUri);
+  await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
+}
+
+/**
+ * Pobiera, weryfikuje i podmienia bazę. Nie rusza działającej bazy,
+ * dopóki plik tymczasowy nie przejdzie integrity_check.
+ */
+export async function downloadPrebuiltDb(
+  manifest: TimetableManifest,
+  onProgress?: (bytesWritten: number, totalBytes: number) => void,
+  cityId?: CityId | string,
+): Promise<void> {
+  // Miasto pinujemy raz, na starcie: pobieranie trwa kilka minut, a użytkownik
+  // może w międzyczasie zmienić miasto. Bez pinu plik tymczasowy i cel podmiany
+  // rozjeżdżałyby się (Wrocławskie dane w pliku Krakowa).
+  const city = getCity(cityId ?? getActiveCityIdSync());
+  const tempName = await downloadToTemp(city.dbFile, manifest, onProgress);
 
   // Podmiana: zamknij działającą bazę, odsuń starą do .bak i wstaw nową.
   // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
   // Miasto mogło się zmienić w trakcie pobierania: wtedy baza właśnie ściągnięta
   // należy do innego miasta niż aktywne i nie wolno jej podmienić.
   if (getActiveCityIdSync() !== city.id) {
+    const destDb = await sqliteUri(tempName);
     await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
-    throw new GtfsDownloadError(T.unavailable, 'city changed during download', T.hintLater, 'unreachable');
+    throw new GtfsDownloadError(syncDlTr().unavailable, 'city changed during download', syncDlTr().hintLater, 'unreachable');
   }
   beginGtfsSwap();
-  const mainUri = await sqliteUri(mainName);
-  const bakUri = `${mainUri}${BAK_DB_SUFFIX}`;
   let swapFailed = false;
   try {
     await closeGtfsDb();
-    await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
-    const old = await FileSystem.getInfoAsync(mainUri);
-    if (old.exists) await FileSystem.moveAsync({ from: mainUri, to: bakUri });
-    await deleteSidecars(mainUri);
-    try {
-      await FileSystem.moveAsync({ from: destDb, to: mainUri });
-    } catch (err) {
-      // Nowa baza nie weszła: przywróć poprzednią, żeby planer działał offline.
-      await FileSystem.deleteAsync(mainUri, { idempotent: true }).catch(() => {});
-      if (old.exists) {
-        await FileSystem.moveAsync({ from: bakUri, to: mainUri }).catch((restoreErr) => {
-          console.warn('[Timetable] przywrócenie bazy z .bak nie udało się:', restoreErr);
-        });
-      }
-      throw err;
-    }
-    await deleteSidecars(mainUri);
-    await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
+    await swapDbFile(city.dbFile, tempName);
   } catch (err) {
     swapFailed = true;
     throw err;
@@ -328,4 +371,40 @@ export async function downloadPrebuiltDb(
   } catch {
     // meta opisowa - nie blokuje gotowości
   }
+}
+
+/**
+ * Pobiera i podmienia ogólnopolską bazę kolejową (kilometr-gtfs-polska.db).
+ * Osobna bramka podmiany (beginNationalDbSwap): bazy miast zostają nietknięte,
+ * a polskaStore resetuje magazyn kolejowy po podmianie pliku.
+ */
+export async function downloadNationalDb(
+  manifest: TimetableManifest,
+  onProgress?: (bytesWritten: number, totalBytes: number) => void,
+): Promise<void> {
+  const gtfs = await import('./gtfsDatabase');
+  const tempName = await downloadToTemp(gtfs.NATIONAL_DB_FILE, manifest, onProgress);
+
+  gtfs.beginNationalDbSwap();
+  let swapFailed = false;
+  try {
+    await gtfs.closeNationalDb();
+    await swapDbFile(gtfs.NATIONAL_DB_FILE, tempName);
+  } catch (err) {
+    swapFailed = true;
+    throw err;
+  } finally {
+    gtfs.endNationalDbSwap();
+    if (swapFailed) await gtfs.getNationalDb().catch(() => {});
+  }
+
+  // Mety w samej bazie krajowej (plik niezależny od miast).
+  await gtfs.setNationalMeta('timetable_version', manifest.version);
+  await gtfs.setNationalMeta('gtfs_imported_at', new Date().toISOString());
+  await gtfs.setNationalMeta('gtfs_source', 'network');
+
+  // Świeży plik = świeży magazyn: wycinki i sieci RAPTOR trzymają się
+  // starej wersji. clearRaptorNetCache jest globalny (rzadka operacja).
+  const { polskaStore } = await import('./routing/store');
+  polskaStore.reset();
 }
