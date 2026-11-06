@@ -513,7 +513,7 @@ export default function RouteMapScreen() {
                 onPress={() => handleSelectLeg(leg.id)}
                 style={({ pressed }) => [
                   styles.legChip,
-                  !walk && styles.legChipTransit,
+                  walk ? styles.legChipWalk : styles.legChipTransit,
                   dimmed && styles.legChipDimmed,
                   pressed && { opacity: 0.8 },
                 ]}
@@ -677,14 +677,20 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   legChip: {
-    minHeight: 96,
+    minHeight: 72,
     borderRadius: shape.large,
     justifyContent: 'center',
   },
   // chip z pojazdem: wiersz, żeby badge rozciągał się na wysokość (cross axis).
   legChipTransit: { flexDirection: 'row', alignItems: 'stretch' },
+  // chip pieszy: tło i zaokrąglenie jak karty etapów, wysokość dyktuje spacer OD->DO.
+  legChipWalk: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   legChipDimmed: { opacity: 0.5 },
-  legChipBadge: { alignSelf: 'stretch', borderRadius: shape.large, paddingHorizontal: 16 },
+  legChipBadge: { alignSelf: 'stretch', borderRadius: shape.large, paddingHorizontal: 24 },
   walkRows: { gap: 10 },
   walkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   walkText: {

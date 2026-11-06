@@ -378,10 +378,14 @@ const bySel = (selected: unknown, dimmed: unknown, normal: unknown) => [
 
 /**
  * Kropeczka GPS: krąg niepewności fixu pod spodem trasy (sama kropka to
- * marker DOM w routeMapDocument). Promień w px liczy się z metrów fixu
- * i zoomu: metry na piksel = 156543 * cos(lat) / 2^zoom (Web Mercator).
+ * marker DOM w routeMapDocument). Promień w px = accuracy / metryNaPiksel,
+ * a metryNaPiksel = 156543 * cos(lat) / 2^zoom (Web Mercator). MapLibre
+ * pozwala użyć `zoom` tylko jako wejścia interpolate, więc skalujemy
+ * wykładniczo o podstawie 2: dokładnie 2^zoom między stopami 0 i 22.
  */
 function buildUserLayers() {
+  const accuracy = ['get', 'accuracy'];
+  const metersPerPixelScale = ['*', 156543.03392, ['cos', ['*', ['get', 'lat'], 0.0174533]]];
   return [
     {
       id: 'user-gps',
@@ -389,9 +393,13 @@ function buildUserLayers() {
       source: USER_SOURCE_ID,
       paint: {
         'circle-radius': [
-          '/',
-          ['*', ['coalesce', ['get', 'accuracy'], 0], ['^', 2, ['zoom']]],
-          ['*', 156543.03392, ['cos', ['*', ['get', 'lat'], 0.0174533]]],
+          'interpolate',
+          ['exponential', 2],
+          ['zoom'],
+          0,
+          ['/', accuracy, metersPerPixelScale],
+          22,
+          ['/', ['*', accuracy, 4194304], metersPerPixelScale],
         ] as never,
         'circle-color': '#1A73E8',
         'circle-opacity': 0.16,

@@ -1,8 +1,12 @@
 // Test kolorów trasy na ciemnej mapie: żadna linia z palety nie może ginąć
 // na tle #101413 (bug: tramwaj 19 rysował się brązem o kontraście 2:1).
+// Na końcu walidacja całego stylu wg MapLibre: zepsute wyrażenie w paint
+// wywala cały styl, czyli mapę bez kafelków.
 //
 //   npm run check:map-colors
 
+import { latest, validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
+import { buildMapStyle } from '../src/map/mapStyle';
 import {
   getLineColors,
   mapLineColor,
@@ -82,6 +86,18 @@ console.log('=== Kolory trasy na ciemnej mapie ===');
 // 5. Wejście niebędące HEX-em wraca nietknięte.
 {
   check('nieprawidłowy kolor bez zmian', mapLineColor('red') === 'red');
+}
+
+// 6. Cały styl mapy przechodzi walidację MapLibre. Niepoprawne wyrażenie
+// (np. `zoom` użyty poza interpolate) wywala cały styl, czyli mapę bez kafelków.
+{
+  const style = buildMapStyle(null, { poi: true });
+  const errors = validateStyleMin(style as never, latest);
+  check(
+    'styl mapy poprawny wg MapLibre',
+    errors.length === 0,
+    errors.map((e) => e.message).join('; ') || '0 błędów',
+  );
 }
 
 console.log(`\n${failures === 0 ? 'OK: kolory mapy czytelne' : `BLEDY: ${failures}`}`);
