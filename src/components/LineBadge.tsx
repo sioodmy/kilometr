@@ -20,7 +20,7 @@ import { RailIcon, isRailAgency } from './RailIcon';
 
 // Kolor i typ linii żyją w serwisie: korzysta z nich również silnik
 // powiadomień, a serwis nie może importować komponentu.
-export { getLineColors, inferTransitMode, mapLineColor } from '../services/lineIdentity';
+export { getLineColors } from '../services/lineIdentity';
 
 export function LineBadge({
   mode,
