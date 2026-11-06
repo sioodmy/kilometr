@@ -528,7 +528,7 @@ export default function RouteMapScreen() {
                 onPress={() => handleSelectLeg(leg.id)}
                 style={({ pressed }) => [
                   styles.legCard,
-                  { width: Math.min(width - 40, 260 * Math.max(1, fontScale)) },
+                  { width: Math.min(width - 40, 290 * Math.max(1, fontScale)) },
                   active && styles.legCardActive,
                   pressed && { opacity: 0.8 },
                 ]}
@@ -692,8 +692,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    padding: 16,
-    minHeight: 96,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 72,
     borderRadius: shape.large,
     borderWidth: 1,
     borderColor: 'transparent',
