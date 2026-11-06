@@ -68,10 +68,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Publikacja tylko z main
+        # Ręczny build z innego brancha (workflow_dispatch) wolno uruchomić:
+        # leci wyłącznie do artefaktu Actions, a kroki R2 mają `if` na main.
         run: |
-          if [ "$GITHUB_REF_NAME" != "main" ]; then
+          if [ "$GITHUB_REF_NAME" != "main" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             echo "::error::Publikacja do R2 tylko z main (jest: $GITHUB_REF_NAME)."
             exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::notice::Build z $GITHUB_REF_NAME: tylko artefakt, bez uploadu do R2."
           fi
 
       - name: Setup Node.js 22 (node:sqlite)
@@ -174,7 +179,7 @@ jobs:
       # całkiem. Brak pliku = w tym runie nic nie wylądowało na dysku, więc
       # nie nadpisujemy tego, co leży w R2.
       - name: Snapshot adresów → R2
-        if: steps.build.outputs.exit == '0' || steps.build.outputs.exit == '2'
+        if: github.ref_name == 'main' && (steps.build.outputs.exit == '0' || steps.build.outputs.exit == '2')
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload snapshotu adresów do R2."
@@ -195,7 +200,7 @@ jobs:
       # Overpassa, stary jest odgrzewem awaryjnym. Pusty plik nigdy nie leci
       # do R2, żeby nie nadpisać dobrego indeksu pustką.
       - name: Snapshot POI → R2
-        if: steps.build.outputs.exit == '0' || steps.build.outputs.exit == '2'
+        if: github.ref_name == 'main' && (steps.build.outputs.exit == '0' || steps.build.outputs.exit == '2')
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload snapshotu POI do R2."
@@ -222,7 +227,7 @@ jobs:
       # manifest przy starej bazie, porównanie rozmiarów by nie przeszło i
       # odświeżanie kończyłoby się błędem zamiast nowym rozkładem.
       - name: Upload bazy → R2
-        if: steps.build.outputs.exit == '0'
+        if: github.ref_name == 'main' && steps.build.outputs.exit == '0'
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload bazy do R2."
@@ -235,7 +240,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Upload manifestu → R2 (sygnał dla telefonów)
-        if: steps.build.outputs.exit == '0'
+        if: github.ref_name == 'main' && steps.build.outputs.exit == '0'
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload manifestu do R2."
