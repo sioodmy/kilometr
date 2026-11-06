@@ -182,6 +182,8 @@ export const uk: Strings = {
     unsupportedActionShort: 'Вибрати старт',
     unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
+    unsupportedNearestStation: 'З найближчої залізничної станції',
+    unsupportedNearestStationA11y: 'Показати потяги з найближчої залізничної станції',
     pickStart: 'Вибери початок',
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>

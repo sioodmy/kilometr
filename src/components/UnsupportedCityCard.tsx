@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { MapPin, MapPinOff, Navigation } from './icons';
+import { MapPin, MapPinOff, Navigation, Train } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { resolveSupportedCityId, suggestCityForCoords, type CityId } from '../cities';
@@ -10,6 +10,8 @@ export function UnsupportedCityCard({
   activeCityId,
   onPickStart,
   onSwitchCity,
+  onNearestStation,
+  nearestStationBusy,
   switchingCityId,
   coords,
 }: {
@@ -22,6 +24,10 @@ export function UnsupportedCityCard({
   onPickStart: () => void;
   /** Szybka zmiana miasta na proponowane przez GPS. */
   onSwitchCity?: (cityId: CityId) => void;
+  /** Pociągi z najbliższej stacji kolejowej (planer między miastami). */
+  onNearestStation?: () => void;
+  /** Trwa szukanie najbliższej stacji (spinner na przycisku). */
+  nearestStationBusy?: boolean;
   /** Id miasta, na które aktualnie trwa przełączanie (do pokazania spinnera). */
   switchingCityId?: CityId | null;
   /** Współrzędne GPS (opcjonalne, do precyzyjnego dopasowania strefy). */
@@ -115,6 +121,27 @@ export function UnsupportedCityCard({
           <Text style={styles.ctaText}>{s.home.unsupportedAction}</Text>
         </Pressable>
       )}
+
+      {/* Poza obsługiwanymi miastami planer między miastami i tak działa:
+       * pociągi z najbliższej stacji kolejowej (baza ogólnopolska). */}
+      {onNearestStation && (
+        <Pressable
+          onPress={onNearestStation}
+          disabled={nearestStationBusy}
+          style={({ pressed }) => [styles.cta, styles.stationCta, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+          accessibilityLabel={s.home.unsupportedNearestStationA11y}
+        >
+          {nearestStationBusy ? (
+            <ActivityIndicator size="small" color={scheme.onTertiaryContainer} />
+          ) : (
+            <Train size={16} color={scheme.onTertiaryContainer} />
+          )}
+          <Text style={styles.stationCtaText} numberOfLines={1} ellipsizeMode="tail">
+            {s.home.unsupportedNearestStation}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -185,6 +212,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: shape.full,
+  },
+  stationCta: {
+    backgroundColor: scheme.tertiaryContainer,
+  },
+  stationCtaText: {
+    ...type.labelLarge,
+    color: scheme.onTertiaryContainer,
+    fontWeight: '600',
   },
   ctaText: {
     ...type.labelLarge,

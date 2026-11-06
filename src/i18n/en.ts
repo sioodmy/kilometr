@@ -162,6 +162,8 @@ export const en: Strings = {
     unsupportedActionShort: 'Pick start',
     unsupportedSwitchCity: (city: string) => `Switch to ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Switch city to ${city}`,
+    unsupportedNearestStation: 'From the nearest railway station',
+    unsupportedNearestStationA11y: 'Show trains from the nearest railway station',
     pickStart: 'Pick a start point',
     gpsBlockedTitle: 'GPS start unavailable',
     gpsBlockedBody: (city: string, supported: string) =>
