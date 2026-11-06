@@ -5,6 +5,13 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { getCity } from '../../src/cities.ts';
 
 export const ADDRESS_SCHEMA_VERSION = 1;
+
+/**
+ * Schemat tabeli addresses w prebuilt bazie: 1 = bez stop_m, 2 = ze stop_m.
+ * Manifest buduje się z tym markerem, a skip buildu go porównuje: stare
+ * bazy bez stop_m dostają wymuszoną przebudowę zamiast wiecznego skipu.
+ */
+export const ADDRESSES_DB_SCHEMA = 2;
 const MAX_AGE_MS = 7 * 86400000;
 /**
  * Kolejno próbowane instancje Overpassa; pierwszy wpis można nadpisać
@@ -270,6 +277,69 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch, sna
   }
 }
 
+/**
+ * Dystans adres → najbliższy przystanek GTFS, liczony raz przy imporcie
+ * (kolumna stop_m, kara rankingu w Rust). NULL gdy baza nie ma przystanków
+ * (czysty rozkład w testach) → telefon traktuje NULL jak brak danych.
+ */
+const STOP_CELL_DEG = 0.02;
+const STOP_MAX_RING = 5;
+const STOP_FAR_M = 65_535;
+/** Najmniejsza liczba metrów na stopień długości w obsługiwanych bboxach (Trójmiasto ~54,7°). */
+const M_PER_DEG_LON_MIN = 64_000;
+
+function distanceMetersHav(lat1, lon1, lat2, lon2) {
+  const rad = (deg) => (deg * Math.PI) / 180;
+  const s =
+    Math.sin(rad(lat2 - lat1) / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 6_371_000 * 2 * Math.asin(Math.sqrt(s));
+}
+
+/**
+ * Siatka przystanków z ringami: po kaflu z trafieniem kończymy, gdy żaden
+ * nieprzeskanowany przystanek nie może już być bliżej (ring ≥ ~1,3 km).
+ * Poza zasięgiem ringów zwracamy STOP_FAR_M (pełna kara).
+ */
+export function nearestStopMeters(db) {
+  let stops;
+  try {
+    stops = db.prepare('SELECT lat, lon FROM stops').all();
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(stops) || !stops.length) return null;
+  const grid = new Map();
+  for (const stop of stops) {
+    if (!Number.isFinite(stop?.lat) || !Number.isFinite(stop?.lon)) continue;
+    const key = `${Math.floor(stop.lat / STOP_CELL_DEG)},${Math.floor(stop.lon / STOP_CELL_DEG)}`;
+    const cell = grid.get(key);
+    if (cell) cell.push(stop);
+    else grid.set(key, [stop]);
+  }
+  const ringGuaranteeM = STOP_CELL_DEG * M_PER_DEG_LON_MIN;
+  return (lat, lon) => {
+    const gx = Math.floor(lat / STOP_CELL_DEG);
+    const gy = Math.floor(lon / STOP_CELL_DEG);
+    let best = Infinity;
+    for (let ring = 0; ring <= STOP_MAX_RING; ring++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        for (let dy = -ring; dy <= ring; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+          const cell = grid.get(`${gx + dx},${gy + dy}`);
+          if (!cell) continue;
+          for (const stop of cell) {
+            const dist = distanceMetersHav(lat, lon, stop.lat, stop.lon);
+            if (dist < best) best = dist;
+          }
+        }
+      }
+      if (best <= ring * ringGuaranteeM) break;
+    }
+    return Number.isFinite(best) ? Math.min(STOP_FAR_M, Math.round(best)) : STOP_FAR_M;
+  };
+}
+
 export function importAddresses(db, snapshot) {
   db.exec(`CREATE TABLE addresses (
     osm_id TEXT PRIMARY KEY NOT NULL,
@@ -277,15 +347,17 @@ export function importAddresses(db, snapshot) {
     house TEXT NOT NULL,
     locality TEXT NOT NULL DEFAULT '',
     lat REAL NOT NULL,
-    lon REAL NOT NULL
+    lon REAL NOT NULL,
+    stop_m INTEGER
   )`);
   if (!snapshot) return null;
+  const nearest = nearestStopMeters(db);
   const insert = db.prepare(
-    'INSERT INTO addresses (osm_id, street, house, locality, lat, lon) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO addresses (osm_id, street, house, locality, lat, lon, stop_m) VALUES (?, ?, ?, ?, ?, ?, ?)',
   );
   db.exec('BEGIN');
   try {
-    for (const row of snapshot.rows) insert.run(...row);
+    for (const row of snapshot.rows) insert.run(...row, nearest ? nearest(row[4], row[5]) : null);
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');

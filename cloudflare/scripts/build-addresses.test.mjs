@@ -75,6 +75,8 @@ test('Snapshot jest per miasto, trafia do SQLite i działa z cache bez sieci', a
     const metadata = importAddresses(db, snapshot);
     assert.equal(metadata.license, 'ODbL-1.0');
     assert.equal(db.prepare('SELECT street, house, locality FROM addresses').get().house, '12A');
+    // Baza bez przystanków (czysty test) → NULL, czyli brak danych o kacie.
+    assert.equal(db.prepare('SELECT stop_m FROM addresses').get().stop_m, null);
     const offline = async () => {
       throw new Error('offline');
     };
@@ -233,6 +235,51 @@ test('Brak pierwszego snapshotu pozwala zachować sam rozkład', () => {
   try {
     assert.equal(importAddresses(db, null), null);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM addresses').get().n, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('Import zapisuje dystans do najbliższego przystanku (stop_m)', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE stops (stop_id TEXT PRIMARY KEY, lat REAL, lon REAL)');
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?)').run('s1', 51.1, 17.001);
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?)').run('s2', 40.0, 10.0);
+    const rows = dedupeAddresses(addressesFromElements([element], bounds));
+    importAddresses(db, {
+      schemaVersion: ADDRESS_SCHEMA_VERSION,
+      city: 'wroclaw',
+      bounds,
+      builtAt: new Date().toISOString(),
+      count: rows.length,
+      fingerprint: 'x',
+      rows,
+    });
+    const { stop_m } = db.prepare('SELECT stop_m FROM addresses').get();
+    // 0.001° długości na szerokości 51.1° to ~70 m; odległy stop nie ma znaczenia.
+    assert.ok(stop_m > 50 && stop_m < 100, `oczekiwane ~70 m, jest ${stop_m}`);
+  } finally {
+    db.close();
+  }
+});
+
+test('Adres bez przystanków w zasięgu dostaje pełną karę (65535)', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE stops (stop_id TEXT PRIMARY KEY, lat REAL, lon REAL)');
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?)').run('s1', 40.0, 10.0);
+    const rows = dedupeAddresses(addressesFromElements([element], bounds));
+    importAddresses(db, {
+      schemaVersion: ADDRESS_SCHEMA_VERSION,
+      city: 'wroclaw',
+      bounds,
+      builtAt: new Date().toISOString(),
+      count: rows.length,
+      fingerprint: 'x',
+      rows,
+    });
+    assert.equal(db.prepare('SELECT stop_m FROM addresses').get().stop_m, 65_535);
   } finally {
     db.close();
   }
