@@ -42,7 +42,7 @@ interface NominatimRow {
   address?: Record<string, string>;
 }
 
-/** Numer domu stoi w display_name na pierwszym miejscu ("1, Różana, ..."). */
+/** Numer domu stoi w display_name na pierwszym miejscu ("1, Przykładowa, ..."). */
 function isHouseNumber(part: string): boolean {
   return /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)?$/.test(part.trim());
 }
