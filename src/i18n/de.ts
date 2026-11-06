@@ -48,7 +48,14 @@ export const de: Strings = {
     stayOn: (line: string) => `Bleib in ${line}`,
     changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
     noAlternative:
+
       'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
+    conductorTitle: 'Zug verpasst',
+    conductorBody:
+      'Informiere den Schaffner, dass du den Anschluss verpasst. Fernverkehrstickets bleiben gemäß Beförderungsbedingungen gültig.',
+    nextTrainLabel: 'Nächster Zug',
+    nextTrainAt: (time: string) => `'fährt ab um ' + time`,
+
     unavailable: 'Umstieg kann nicht bewertet werden',
     unavailableBody:
       'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',

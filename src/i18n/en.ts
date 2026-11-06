@@ -48,6 +48,12 @@ export const en: Strings = {
     stayOn: (line: string) => `Stay on ${line}`,
     changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
     noAlternative: 'No other route is available right now. We will check again shortly.',
+    conductorTitle: 'Missed your train',
+    conductorBody:
+      "Tell the conductor you are missing your connection. Long-distance tickets stay valid according to the operator's terms.",
+    nextTrainLabel: 'Next train',
+    nextTrainAt: (time: string) => `'departs at ' + time`,
+
     unavailable: 'Cannot assess your transfer',
     unavailableBody:
       'Waiting for an accurate position on your route. Your current plan is still shown.',

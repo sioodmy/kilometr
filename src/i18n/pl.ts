@@ -62,6 +62,11 @@ export const pl = {
     stayOn: (line: string) => `Zostań w ${line}`,
     changedBody: (line: string, stop: string) => `Przesiądź się na ${line} na przystanku ${stop}.`,
     noAlternative: 'Nie ma teraz innej trasy. Sprawdzimy ponownie za chwilę.',
+    conductorTitle: 'Spóźnienie na pociąg',
+    conductorBody:
+      'Poinformuj konduktora o spóźnieniu na przesiadkę. Bilet na pociąg dalekobieżny zachowuje ważność zgodnie z warunkami przewoźnika.',
+    nextTrainLabel: 'Następny pociąg',
+    nextTrainAt: (time: string) => `odjeżdża o ${time}`,
     unavailable: 'Nie możemy ocenić przesiadki',
     unavailableBody: 'Czekamy na dokładną pozycję na trasie. Obecny plan pozostaje widoczny.',
     routingError: 'Nie udało się przygotować ochrony. Spróbuj ponownie.',

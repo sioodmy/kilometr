@@ -621,6 +621,71 @@ async function planRailOnly(
   return { connections: pickBest(combined), destinationStation: destination, originStation };
 }
 
+/* ─── Następny pociąg (tryb konduktora) ────────────────────────────────── */
+
+export interface NextTrain {
+  label: string;
+  departAtMs: number;
+  trainName?: string;
+}
+
+/**
+ * Kolejne pociągi z tej samej stacji (najlepiej do tej samej stacji
+ * docelowej), po spóźnieniu na połączenie międzyregionalne. Zwraca
+ * podpowiedź dla arkusza ochrony przesiadki: „poinformuj konduktora,
+ * następny pociąg odjeżdża o …”.
+ */
+export async function nextNationalTrains(
+  fromStopId: string,
+  toStopId: string | undefined,
+  afterMs: number,
+  limit = 3,
+): Promise<NextTrain[]> {
+  try {
+    const gtfs = await import('../gtfsDatabase');
+    const db = await gtfs.getNationalDb();
+    const after = new Date(afterMs);
+    const dateStr = `${after.getFullYear()}${String(after.getMonth() + 1).padStart(2, '0')}${String(after.getDate()).padStart(2, '0')}`;
+    const services = await gtfs.getNationalActiveServices(after.getDay(), dateStr);
+    if (services.size === 0) return [];
+    const placeholders = [...services].map(() => '?').join(',');
+    const rows = await db.getAllAsync<{
+      dep_sec: number;
+      train_number: string;
+      train_name: string;
+      category: string;
+    }>(
+      `SELECT st.dep_sec, t.train_number, t.train_name, t.category
+       FROM stop_times st JOIN trips t ON t.trip_id = st.trip_id
+       WHERE st.stop_id = ?
+         AND t.service_id IN (${placeholders})
+         ${toStopId ? 'AND EXISTS (SELECT 1 FROM stop_times d WHERE d.trip_id = st.trip_id AND d.stop_id = ? AND d.seq > st.seq)' : ''}
+       ORDER BY st.dep_sec
+       LIMIT 60`,
+      toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services],
+    );
+    const afterSec =
+      after.getHours() * 3600 + after.getMinutes() * 60 + after.getSeconds();
+    const dayStartMs = new Date(after).setHours(0, 0, 0, 0);
+    const out: NextTrain[] = [];
+    for (const row of rows) {
+      // Czas GTFS liczy się od doby serwisowej; odjazdy po północy
+      // (24:xx+) mają dep_sec > 86400 i należą do „jutra” zegara.
+      const departAtMs = dayStartMs + row.dep_sec * 1000;
+      if (departAtMs <= afterMs) continue;
+      out.push({
+        label: row.train_number ? `${row.category || 'IC'} ${row.train_number}` : row.category || '',
+        departAtMs,
+        trainName: row.train_name || undefined,
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /* ─── Wybór najlepszych wariantów ──────────────────────────────────────── */
 
 function pickBest(combined: Connection[]): Connection[] {

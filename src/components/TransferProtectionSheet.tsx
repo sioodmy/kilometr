@@ -59,17 +59,19 @@ export function TransferProtectionSheet({
         ? t.unavailableBody
         : state.status === 'noAlternative'
           ? t.noAlternative
-          : state.status === 'risk' || state.status === 'rerouting'
-            ? t.riskBody
-            : state.status === 'safe'
-              ? t.buffer(state.nextLine ?? '', Math.max(0, Math.floor((state.slackSec ?? 0) / 60)))
-              : state.status === 'complete'
-                ? t.complete
-                : state.status === 'changed'
-                  ? t.changedBody(state.nextLine ?? '', state.transferStop ?? '')
-                  : alternative
-                    ? t.unchanged
-                    : t.waiting;
+          : state.status === 'conductor'
+            ? t.conductorBody
+            : state.status === 'risk' || state.status === 'rerouting'
+              ? t.riskBody
+              : state.status === 'safe'
+                ? t.buffer(state.nextLine ?? '', Math.max(0, Math.floor((state.slackSec ?? 0) / 60)))
+                : state.status === 'complete'
+                  ? t.complete
+                  : state.status === 'changed'
+                    ? t.changedBody(state.nextLine ?? '', state.transferStop ?? '')
+                    : alternative
+                      ? t.unchanged
+                      : t.waiting;
   const remaining = alternative?.connection.legs
     .slice(alternative.activeLegIndex)
     .filter((_, index) => alternative.kind === 'fromHere' || index > 0);
@@ -183,6 +185,24 @@ export function TransferProtectionSheet({
                     </Text>
                   </View>
                 )}
+              </View>
+            )}
+            {state.status === 'conductor' && state.nextTrain && (
+              <View style={styles.original}>
+                <View style={styles.flex}>
+                  <Text style={styles.label}>{t.nextTrainLabel}</Text>
+                  <View style={styles.originalLine}>
+                    <LineBadge line={state.nextTrain.label} />
+                    {state.nextTrain.trainName ? (
+                      <Text style={styles.stopName} numberOfLines={1} ellipsizeMode="tail">
+                        {state.nextTrain.trainName}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.originalTime}>
+                  <Text style={styles.label}>{t.nextTrainAt(clockFromMs(state.nextTrain.departAtMs))}</Text>
+                </View>
               </View>
             )}
             {alternative && (
