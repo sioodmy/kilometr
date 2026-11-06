@@ -1272,6 +1272,8 @@ export const pl = {
     noData: 'Brak danych o trasie',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę stacji.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} między ${from} a ${to}`,
     fromPrefix: 'z ',
     toPrefix: 'do ',
@@ -1289,6 +1291,8 @@ export const pl = {
     nearStop: (mode: string, stop: string) => `${mode} w pobliżu przystanku: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} stacje`,
     platformPeron: (code: string) => `Peron ${code}`,
     platformPole: (code: string) => `Słupek ${code}`,
     platformBay: (code: string) => `Stanowisko ${code}`,

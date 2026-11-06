@@ -29,7 +29,6 @@ import { putCacheRecord, selectEvictions, type GeometryCacheRecord } from './geo
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 import { isFareBoundary } from '../gtfs/fareBoundary';
-
 const CACHE_KEY = 'kilometr.map_geometry.v3';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
@@ -289,6 +288,13 @@ export async function warmRouteGeometry(
   for (const leg of route.legs) {
     if (signal?.aborted) break;
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
+    // Shape'y PLK nie przechodzą przez cache kv (są w bazie), więc nie ma
+    // czego przypinać - pinowałby się klucz, którego cache nigdy nie zobaczy.
+    if (leg.mode === 'train' && leg.tripId?.startsWith('pl:')) {
+      const result = await fetchLegGeometry(leg, signal).catch(() => null);
+      if (result && result.coords.length > 1) warmed++;
+      continue;
+    }
     const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (!result || result.coords.length < 2) continue;
     const profile = legProfile(leg);
@@ -546,6 +552,14 @@ async function fetchLegGeometry(
   signal?: AbortSignal,
 ): Promise<{ coords: Coord[]; fromCache: boolean } | null> {
   if (isApproxOnlyLeg(leg)) return null;
+  // Pociągi ogólnopolskie mają geometrię torów w bazie `polska` (shapes PLK):
+  // router po kafelkach obejmuje tylko pakiet miasta, a OSRM nie jeździ po
+  // torach. Zwracamy wycinek shape'u między stacjami krańcowymi nogi.
+  if (leg.mode === 'train' && leg.tripId?.startsWith('pl:')) {
+    const coords = await nationalRailShape(leg, signal);
+    if (coords && coords.length > 1) return { coords, fromCache: true };
+    return null;
+  }
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
   );
@@ -581,6 +595,137 @@ export function straightGeometry(leg: MapLeg): Coord[] {
   return legWaypoints(leg);
 }
 
+// ─── Geometria torów z bazy ogólnopolskiej (shapes PLK) ─────────────────────
+
+/** Cache shape'ów w pamięci: unpack raz, tnie każde otwarcie mapy od nowa. */
+const shapeCache = new Map<string, Coord[] | null>();
+const SHAPE_CACHE_MAX = 24;
+
+async function loadShape(shapeId: string): Promise<Coord[] | null> {
+  if (shapeCache.has(shapeId)) return shapeCache.get(shapeId) ?? null;
+  try {
+    const { getNationalDb } = await import('./gtfsDatabase');
+    const db = await getNationalDb();
+    const row = await db.getFirstAsync<{ pts: Uint8Array | ArrayBuffer }>(
+      'SELECT pts FROM shapes WHERE shape_id = ?',
+      shapeId,
+    );
+    const raw = row?.pts;
+    if (!raw || (raw instanceof Uint8Array ? raw.byteLength : raw.byteLength) < 16) {
+      shapeCache.set(shapeId, null);
+      return null;
+    }
+    const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const n = Math.floor(bytes.byteLength / 8);
+    const coords: Coord[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      coords[i] = [view.getFloat32(i * 8, true), view.getFloat32(i * 8 + 4, true)];
+    }
+    shapeCache.set(shapeId, coords);
+    if (shapeCache.size > SHAPE_CACHE_MAX) {
+      const oldest = shapeCache.keys().next().value;
+      if (oldest !== undefined && oldest !== shapeId) shapeCache.delete(oldest);
+    }
+    return coords;
+  } catch {
+    shapeCache.set(shapeId, null);
+    return null;
+  }
+}
+
+/** Uproszczenie Douglas-Peuckerem (iteracyjnie, tolerancja w metrach). */
+function simplifyPolyline(pts: Coord[], toleranceM: number): Coord[] {
+  if (pts.length < 3) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1;
+  keep[pts.length - 1] = 1;
+  const stack: Array<[number, number]> = [[0, pts.length - 1]];
+  const tolSq = toleranceM * toleranceM;
+  while (stack.length > 0) {
+    const [start, end] = stack.pop()!;
+    if (end - start < 2) continue;
+    const a = pts[start];
+    const b = pts[end];
+    let maxD = -1;
+    let maxI = -1;
+    for (let i = start + 1; i < end; i++) {
+      const d = distanceToSegment(pts[i], a, b);
+      if (d > maxD) {
+        maxD = d;
+        maxI = i;
+      }
+    }
+    if (maxD * maxD > tolSq && maxI > 0) {
+      keep[maxI] = 1;
+      stack.push([start, maxI], [maxI, end]);
+    }
+  }
+  const out: Coord[] = [];
+  for (let i = 0; i < pts.length; i++) if (keep[i]) out.push(pts[i]);
+  return out;
+}
+
+/**
+ * Wycinek torów dla nogi kolejowej z bazy `polska`: shape kursu cięty
+ * między stacją wsiadania a wysiadania (najbliższe punkty shape'u),
+ * z domknięciem do dokładnych współrzędnych stacji i uproszczeniem
+ * do ~15 m, żeby most WebView nie nosił tysięcy punktów.
+ */
+async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
+  if (!leg.tripId) return null;
+  const board = leg.stops[0];
+  const alight = leg.stops[leg.stops.length - 1];
+  if (!board || !alight) return null;
+  try {
+    const { getNationalDb } = await import('./gtfsDatabase');
+    const db = await getNationalDb();
+    const trip = await db.getFirstAsync<{ shape: string }>(
+      'SELECT shape FROM trips WHERE trip_id = ?',
+      leg.tripId,
+    );
+    const shapeId = trip?.shape?.replace(/^pl:/, '');
+    if (!shapeId) return null;
+    if (signal?.aborted) return null;
+    const shape = await loadShape(shapeId);
+    if (!shape || shape.length < 2) return null;
+
+    // Najbliższy punkt shape'u do stacji wsiadania, potem do wysiadania
+    // (szukamy tylko dalej niż wsiadanie: pociąg jedzie w jedną stronę).
+    let boardIdx = -1;
+    let boardDist = Infinity;
+    for (let i = 0; i < shape.length; i++) {
+      const d = distanceM(shape[i], [board.lat, board.lon]);
+      if (d < boardDist) {
+        boardDist = d;
+        boardIdx = i;
+      }
+    }
+    if (boardIdx < 0) return null;
+    let alightIdx = -1;
+    let alightDist = Infinity;
+    for (let i = boardIdx + 1; i < shape.length; i++) {
+      const d = distanceM(shape[i], [alight.lat, alight.lon]);
+      if (d < alightDist) {
+        alightDist = d;
+        alightIdx = i;
+      }
+    }
+    if (alightIdx < 0 || alightIdx === boardIdx) return null;
+
+    const slice = shape.slice(boardIdx, alightIdx + 1);
+    const snapped: Coord[] = [[board.lat, board.lon]];
+    for (const p of slice) {
+      const last = snapped[snapped.length - 1];
+      if (last[0] !== p[0] || last[1] !== p[1]) snapped.push(p);
+    }
+    snapped.push([alight.lat, alight.lon]);
+    return simplifyPolyline(snapped, 15);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Uzupełnia geometrię nóg po kolei. Nogi piesze liczy lokalnie w Rust,
  * kolejowe liczy po torach, a autobusowe dociąga z OSRM.
@@ -597,7 +742,8 @@ export async function resolveGeometry(
     const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (result && result.coords.length > 1) onLeg(leg.id, result.coords);
-    if (leg.mode !== 'walk') {
+    // Pauza chroni publiczny OSRM; lokalne shape'y PLK jej nie potrzebują.
+    if (leg.mode !== 'walk' && !(leg.mode === 'train' && leg.tripId?.startsWith('pl:'))) {
       await new Promise((r) => setTimeout(r, 350));
     }
   }

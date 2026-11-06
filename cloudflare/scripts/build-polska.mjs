@@ -42,6 +42,9 @@ const DB_R2_PATH = 'polska/db/kilometr-gtfs-polska.db.gz';
 const FEED_URL = 'https://mkuran.pl/gtfs/polish_trains.zip';
 const UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 const PUBLIC_URL = process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app';
+/** Rewizja schematu bazy: podbicie wymusza re-download na telefonach
+ *  (wersja z fingerprintu feedu nie zmienia się, dopóki PLK nie ruszy rozkładu). */
+const SCHEMA_REV = 2;
 
 const FORCE = new Set(process.argv.slice(2)).has('--force');
 
@@ -193,7 +196,7 @@ async function main() {
   // Skip buildu, gdy feed bez zmian i manifest już leży na R2 (jak per-miasto).
   const fingerprint = await headVersion(FEED_URL);
   const todayCompact = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const version = `${todayCompact}-plk${createHash('sha256').update(fingerprint || String(Date.now())).digest('hex').slice(0, 8)}`;
+  const version = `${todayCompact}-plk${createHash('sha256').update(fingerprint || String(Date.now())).digest('hex').slice(0, 8)}r${SCHEMA_REV}`;
   if (!FORCE) {
     try {
       const remote = await (await fetch(`${PUBLIC_URL}/polska/manifest.json`, { headers: { Accept: 'application/json' } })).json();
@@ -272,7 +275,7 @@ async function main() {
   log(`trasy kolejowe: ${railRoutes.size}`);
 
   // 3. Kursy: liczba/kategoria/nazwa pociągu.
-  const trips = new Map(); // trip_id -> { routeId, serviceId, headsign, dir, num, name, cat }
+  const trips = new Map(); // trip_id -> { routeId, serviceId, headsign, dir, num, name, cat, shapeId }
   eachRow(read('trips.txt'), (r, idx) => {
     const routeId = r[idx.route_id];
     const route = railRoutes.get(routeId);
@@ -286,6 +289,7 @@ async function main() {
       num,
       name: r[idx.plk_train_name] || '',
       cat: r[idx.plk_category_code] || route.short,
+      shapeId: r[idx.shape_id] || '',
     });
   });
   log(`kursy: ${trips.size}`);
@@ -374,7 +378,7 @@ async function main() {
     if (!list || list.length < 2) continue;
     list.sort((a, b) => a.seq - b.seq);
     const route = railRoutes.get(trip.routeId);
-    insTrip.run(`pl:${tid}`, `pl:${trip.routeId}`, `pl:${trip.serviceId}`, trip.headsign, trip.dir, '', trip.num, trip.name, trip.cat, route?.agency ?? '');
+    insTrip.run(`pl:${tid}`, `pl:${trip.routeId}`, `pl:${trip.serviceId}`, trip.headsign, trip.dir, `pl:${trip.shapeId}`, trip.num, trip.name, trip.cat, route?.agency ?? '');
     for (const row of list) {
       insTime.run(`pl:${tid}`, `pl:${row.stopId}`, row.arr, row.dep, row.seq, row.platform);
       stopTimesCount++;
@@ -386,6 +390,56 @@ async function main() {
   // 6. Wagi stacji (ranking wyszukiwarki: liczba odjazdów).
   db.exec('PRAGMA synchronous = NORMAL;');
   db.exec('UPDATE stops SET weight = agg.c FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg WHERE agg.stop_id = stops.stop_id');
+
+  // 6b. Geometria torów: shapes.txt feedu PLK (~1.5 m punktów). Jedna krotka
+  // na shape_id, punkty spakowane jako pary f32 LE (lat, lon) w kolejności
+  // sekwencji. Aplikacja tnie shape między stacjami wsiadania i wysiadania
+  // (patrz routeGeometry.ts), więc mapa rysuje pociąg po torach, a nie
+  // prostą przez pola.
+  {
+    log('geometria torów (shapes)…');
+    db.exec('CREATE TABLE shapes (shape_id TEXT PRIMARY KEY NOT NULL, pts BLOB NOT NULL)');
+    const wanted = new Set([...trips.values()].map((t) => t.shapeId).filter(Boolean));
+    const insShape = db.prepare('INSERT OR REPLACE INTO shapes (shape_id, pts) VALUES (?, ?)');
+    let curId = null;
+    let lats = [];
+    let lons = [];
+    let shapeCount = 0;
+    let pointCount = 0;
+    const flush = () => {
+      if (curId === null) return;
+      const n = lats.length;
+      const buf = Buffer.allocUnsafe(n * 8);
+      for (let i = 0; i < n; i++) {
+        buf.writeFloatLE(lats[i], i * 8);
+        buf.writeFloatLE(lons[i], i * 8 + 4);
+      }
+      insShape.run(curId, buf);
+      shapeCount++;
+      curId = null;
+      lats = [];
+      lons = [];
+    };
+    db.exec('BEGIN');
+    eachRow(read('shapes.txt'), (r, idx) => {
+      const id = r[idx.shape_id];
+      if (id !== curId) {
+        flush();
+        if (!wanted.has(id)) {
+          curId = null;
+          return;
+        }
+        curId = id;
+      }
+      if (curId === null) return;
+      lats.push(Number(r[idx.shape_pt_lat]));
+      lons.push(Number(r[idx.shape_pt_lon]));
+      pointCount++;
+    });
+    flush();
+    db.exec('COMMIT');
+    log(`  shapes: ${shapeCount} (${(pointCount / 1048576).toFixed(1)} mln punktów)`);
+  }
 
   // 7. Bloby wzorców kursów: ref = pozycja stop_id po ORDER BY stop_id
   //    (store aplikacji liczy tę samą kolejność z tabeli stops).
