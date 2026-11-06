@@ -212,7 +212,23 @@ async function main() {
   mkdirSync(work, { recursive: true });
   const zipPath = join(work, 'pl.zip');
   writeFileSync(zipPath, zip);
-  execFileSync('unzip', ['-o', '-q', zipPath, '-d', work], { stdio: 'ignore' });
+  // Rozpakowanie: systemowy unzip, a gdy go nie ma (Ubuntu runner ma,
+  // ale lokalnie bywa różnie) fflate z node_modules.
+  let unpacked = false;
+  try {
+    execFileSync('unzip', ['-o', '-q', zipPath, '-d', work], { stdio: 'ignore' });
+    unpacked = true;
+  } catch {
+    const { unzipSync } = await import('fflate');
+    const files = unzipSync(new Uint8Array(zip));
+    for (const [name, bytes] of Object.entries(files)) {
+      const target = join(work, name);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, bytes);
+    }
+    unpacked = true;
+  }
+  if (!unpacked) throw new Error('nie udało się rozpakować feedu PLK');
   const read = (name) => {
     try {
       return readFileSync(join(work, name), 'utf8');
