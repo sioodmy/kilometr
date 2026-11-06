@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::search::{
     damerau_levenshtein_chars, distance_meters, expand_token_synonyms, normalize_polish,
+    stop_penalty,
 };
 
 #[derive(Default)]
@@ -26,6 +27,8 @@ struct Address {
     norm_house: String,
     lat: f64,
     lon: f64,
+    /** Dystans do najbliższego przystanku GTFS w metrach; u32::MAX = brak danych. */
+    stop_m: u32,
 }
 
 struct Word {
@@ -78,7 +81,16 @@ fn normalize_house(text: &str) -> String {
 }
 
 impl AddressCatalog {
-    fn append(&mut self, id: &str, name: &str, house: &str, locality: &str, lat: f64, lon: f64) {
+    fn append(
+        &mut self,
+        id: &str,
+        name: &str,
+        house: &str,
+        locality: &str,
+        lat: f64,
+        lon: f64,
+        stop_m: u32,
+    ) {
         if name.trim().is_empty()
             || house.trim().is_empty()
             || !lat.is_finite()
@@ -105,6 +117,7 @@ impl AddressCatalog {
             norm_house: normalize_house(house),
             lat,
             lon,
+            stop_m,
         });
     }
 
@@ -260,6 +273,9 @@ impl AddressCatalog {
                         score -= 5;
                     }
                 }
+                // Adres bez przystanku w zasięgu pieszym to ślepy zaułek
+                // planera: wsie poza strefą spadają pod miasto.
+                let score = score - stop_penalty(address.stop_m);
                 let distance = position.map(|(lat, lon)| {
                     distance_meters(lat, lon, address.lat, address.lon).round() as i32
                 });
@@ -347,7 +363,8 @@ fn write_string(out: &mut Vec<u8>, text: &str) {
     out.extend_from_slice(&text.as_bytes()[..len]);
 }
 
-/// Cmd 17: 0 czyści, 1 dokłada paczkę, 2 buduje indeks słów, 3 szuka adresów.
+/// Cmd 17: 0 czyści, 1 dokłada paczkę (id, ulica, numer, miejscowość, lat, lon,
+/// stop_m), 2 buduje indeks słów, 3 szuka adresów (wynik niesie stop_m do rankingu).
 pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
     fn handle(payload: &[u8]) -> Option<Vec<u8>> {
         let (&command, bytes) = payload.split_first()?;
@@ -367,6 +384,7 @@ pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
                             reader.string()?,
                             reader.f64()?,
                             reader.f64()?,
+                            reader.u32()?,
                         );
                     }
                     Some(())
@@ -414,6 +432,7 @@ pub fn handle_address_cmd(payload: &[u8]) -> Vec<u8> {
                         write_string(&mut out, &hit.street.locality);
                         out.extend_from_slice(&hit.address.lat.to_le_bytes());
                         out.extend_from_slice(&hit.address.lon.to_le_bytes());
+                        out.extend_from_slice(&hit.address.stop_m.to_le_bytes());
                     }
                 });
                 return Some(out);
@@ -449,6 +468,7 @@ mod tests {
                     "Wrocław",
                     51.1 + street as f64 * 0.000001,
                     17.0,
+                    300,
                 );
             }
         }
@@ -487,7 +507,7 @@ mod tests {
             ("node/6", "Długa", "5", "Gdynia"),
             ("node/7", "Grunwaldzka", "14/2", "Wrocław"),
         ] {
-            catalog.append(id, street, house, city, 51.1, 17.0);
+            catalog.append(id, street, house, city, 51.1, 17.0, 300);
         }
         catalog.finish();
         catalog
@@ -565,5 +585,29 @@ mod tests {
         for payload in [&[][..], &[1], &[1, 255, 255, 255, 255], &[3, 4, 0, b'x']] {
             assert!(handle_address_cmd(payload).is_empty());
         }
+    }
+
+    #[test]
+    fn address_far_from_transit_ranks_below_served() {
+        let mut catalog = AddressCatalog::default();
+        catalog.append("node/10", "Różana", "1", "Wrocław", 51.1, 17.0, 300);
+        catalog.append("node/11", "Różana", "1", "Radomierzyce", 51.05, 17.05, 9000);
+        catalog.finish();
+        let hits = catalog.search("różana 1", None, 10, false);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].street.locality, "Wrocław");
+        assert_eq!(hits[1].street.locality, "Radomierzyce");
+        // Pozycja usera nie przeważa kary: wieś to ślepy zaułek planera.
+        let near_village = catalog.search("różana 1", Some((51.05, 17.05)), 10, false);
+        assert_eq!(near_village[0].street.locality, "Wrocław");
+
+        // Brak danych o przystankach (u32::MAX) = stare bazy: kara wyłączona,
+        // kolejność wraca do dystansu od usera.
+        let mut legacy = AddressCatalog::default();
+        legacy.append("node/10", "Różana", "1", "Wrocław", 51.1, 17.0, u32::MAX);
+        legacy.append("node/11", "Różana", "1", "Radomierzyce", 51.05, 17.05, u32::MAX);
+        legacy.finish();
+        let hits = legacy.search("różana 1", Some((51.05, 17.05)), 10, false);
+        assert_eq!(hits[0].street.locality, "Radomierzyce");
     }
 }
