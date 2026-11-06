@@ -125,7 +125,7 @@ import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
+import { ADDRESSES_DB_SCHEMA, addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
 import { importPois, loadPoiSnapshot } from './build-pois.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -2296,7 +2296,7 @@ async function main() {
   const radomVersionReliable = CITY !== 'radom' || !!radomFingerprint;
 
 
-  if (!FORCE && remote?.sources && addressSnapshotIsFresh(remote.addresses)) {
+  if (!FORCE && remote?.sources && remote.dbSchema === ADDRESSES_DB_SCHEMA && addressSnapshotIsFresh(remote.addresses)) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
       // Ten sam ZTP wystarczy do skipu tylko wtedy, gdy zdalna baza faktycznie
       // ma Koleje Małopolskie. Manifest sprzed ich wdrożenia ma zgodny odcisk
@@ -4162,6 +4162,7 @@ async function main() {
 
   const manifest = {
     version,
+    dbSchema: ADDRESSES_DB_SCHEMA,
     addresses: addressMetadata,
     pois: poiMetadata,
     builtAt: new Date().toISOString(),
