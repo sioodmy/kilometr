@@ -699,6 +699,19 @@ pub fn with_stop_catalog_mut<R>(f: impl FnOnce(&mut StopCatalog) -> R) -> R {
 // Ujednolicony ranking podpowiedzi (`searchRank.ts`: `dedupeAndSort`)
 // ============================================================================
 
+/// Kara za adres poza zasięgiem transportu: dystans do najbliższego
+/// przystanku GTFS (kolumna stop_m w buildzie). Do 1,2 km pieszo bez kary,
+/// dalej liniowo, pełna od ~4,2 km. u32::MAX = brak danych (baza bez stop_m).
+pub const STOP_FREE_M: u32 = 1200;
+pub const STOP_PENALTY_MAX: u32 = 50;
+
+pub fn stop_penalty(stop_m: u32) -> i32 {
+    if stop_m == u32::MAX {
+        return 0;
+    }
+    ((stop_m.saturating_sub(STOP_FREE_M) / 60).min(STOP_PENALTY_MAX)) as i32
+}
+
 #[derive(Clone)]
 pub struct RankCandidate {
     pub orig_index: u32,

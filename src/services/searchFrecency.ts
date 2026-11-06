@@ -1,6 +1,7 @@
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { normalizePolish } from '../gtfs/geo';
 import type { Suggestion } from '../types/models';
+import { stopPenalty } from './searchRank';
 
 const HALF_LIFE_MS = 14 * 86400000;
 
@@ -63,7 +64,8 @@ export function rankWithFrecency(
         match +
         bonus -
         Math.min(40, (item.distanceM ?? 0) / 250) +
-        Math.min(12, (item.weight ?? 0) / 100);
+        Math.min(12, (item.weight ?? 0) / 100) -
+        stopPenalty(item.stopM);
       return {
         item: remembered.searchUsage ? { ...item, searchUsage: remembered.searchUsage } : item,
         tier, score, index,

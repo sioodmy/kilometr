@@ -22,6 +22,8 @@ export interface Suggestion extends LatLon {
   aliases?: string[];
   /** metres from current location, if known */
   distanceM?: number;
+  /** dystans do najbliższego przystanku GTFS w metrach; undefined = brak danych */
+  stopM?: number;
   /** stop popularity: departures served (drives stop ranking) */
   weight?: number;
   /** Wygaszana częstotliwość wyborów, zapisywana tylko w historii wyszukiwania. */
