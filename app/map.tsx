@@ -9,41 +9,45 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  ArrowRight,
-  ChevronLeft,
-  LocateFixed,
-  SubdirectoryArrowRight,
-  WifiOff,
-  ZoomOutMap,
-} from '../src/components/icons';
-import { DirectionsWalk } from '../src/components/DirectionsWalk';
+import { ArrowRight, ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
+import { liveTracker } from '../src/services/liveTracker';
+import { isLegRunning, matchVehicleToLeg, type LegVehicleMatch } from '../src/services/liveVehicle';
 import {
   buildMapRoute,
   resolveGeometry,
   straightGeometry,
   pinRouteGeometry,
-  userRidingTransit,
-  type Coord,
 } from '../src/services/routeGeometry';
 import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
-import { LineBadge } from '../src/components/LineBadge';
+import {
+  getLineColors,
+  inferTransitMode,
+  LineBadge,
+  mapLineColor,
+} from '../src/components/LineBadge';
 import { acquireMapServer } from '../src/services/mapServerLease';
 import { formatWalkDistance } from '../src/services/settings';
-import { useCurrentLocation } from '../src/services/currentLocation';
 import type { Connection } from '../src/types/models';
-import type { MapRoute, MapUserDot } from '../src/map/types';
+import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
 import { useTrackedTrip } from '../src/services/notifications';
 import { normalizeConnectionId } from '../src/services/routing/connectionIdentity';
 import { isFallbackOrigin } from '../src/config';
 
+type Coord = [number, number];
+
+const VEHICLE_POLL_MS = 6000;
 /** Nie pokazuj błędu podczas pierwszych prób wczytania lokalnych kafelków. */
 const OFFLINE_PILL_MS = 2500;
+
+function nowSec(): number {
+  const d = new Date();
+  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+}
 
 export default function RouteMapScreen() {
   const s = useStrings();
@@ -51,7 +55,6 @@ export default function RouteMapScreen() {
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
-  const { location: myLocation } = useCurrentLocation();
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const id = normalizeConnectionId(routeId ?? '');
 
@@ -64,10 +67,7 @@ export default function RouteMapScreen() {
   const [panelHeight, setPanelHeight] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(96);
   const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
-  /** true = user przewinął/przybliżył mapę ręcznie; zeruje „niebieski” stan przycisku trasy. */
-  const [userPanned, setUserPanned] = useState(false);
-  /** true = kropeczka GPS ukryta, bo lokalizacja leży na trasie (user jedzie pojazdem). */
-  const [dotHidden, setDotHidden] = useState(false);
+  const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
   const [tilesDown, setTilesDown] = useState(false);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -75,6 +75,15 @@ export default function RouteMapScreen() {
 
   const mapRef = useRef<RouteMapHandle>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
+
+  // Mapa pokazuje pojazd na żywo, więc poll chodzi tylko, gdy ekran widać.
+  useFocusEffect(
+    useCallback(() => {
+      liveTracker.acquire();
+      return () => liveTracker.release();
+    }, []),
+  );
+  const shownVehicleRef = useRef<string | null>(null);
 
   const clearOfflinePillTimer = useCallback(() => {
     if (offlinePillTimer.current) {
@@ -254,25 +263,75 @@ export default function RouteMapScreen() {
     mapRef.current?.fit();
   }, []);
 
-  // ─── Kropeczka GPS ──────────────────────────────────────────
-  // Ukrywamy ją, gdy user najwyraźniej jedzie: lokalizacja leży blisko
-  // geometrii nogi kursowej, ale daleko od przystanku wejściowego i
-  // wyjściowego (tam czeka albo już wysiadł, więc kropka zostaje).
+  // ─── Pojazd na żywo ─────────────────────────────────────────
   useEffect(() => {
-    if (!myLocation || !route) {
-      setDotHidden(false);
-      return;
-    }
-    setDotHidden(userRidingTransit(route, myLocation, geometryRef.current));
-  }, [myLocation, route]);
+    if (!item) return;
+    let cancelled = false;
 
-  const userDot = useMemo<MapUserDot | null>(
-    () =>
-      myLocation && !dotHidden
-        ? { lat: myLocation.lat, lon: myLocation.lon, accuracy: myLocation.accuracy }
-        : null,
-    [myLocation, dotHidden],
-  );
+    const update = () => {
+      if (cancelled) return;
+      const legs = (route?.legs ?? []).filter((l) => l.mode !== 'walk' && l.line);
+      const sec = nowSec();
+      if (legs.length === 0) {
+        setVehicle(null);
+        shownVehicleRef.current = null;
+        return;
+      }
+      const ordered = [...legs].sort((a, b) => {
+        const run = (l: MapLeg) => (isLegRunning(l, sec) ? 0 : 1);
+        return run(a) - run(b);
+      });
+      const snapshot = liveTracker.snapshot();
+      let match: LegVehicleMatch | null = null;
+      let matchLeg: MapLeg | null = null;
+      for (const leg of ordered) {
+        const coords = geometryRef.current.get(leg.id) ?? straightGeometry(leg);
+        const found = matchVehicleToLeg(snapshot, leg, coords, {
+          preferVehicleId: shownVehicleRef.current,
+          nowSec: sec,
+        });
+        if (found) {
+          match = found;
+          matchLeg = leg;
+          break;
+        }
+      }
+      if (!match || !matchLeg) {
+        setVehicle(null);
+        shownVehicleRef.current = null;
+        return;
+      }
+      const leg = matchLeg;
+      shownVehicleRef.current = match.vehicle.vehicleId;
+      const displayLine = leg.line || match.vehicle.line;
+      const { bg } = getLineColors(displayLine, leg.mode);
+      // Tryb bierze się z leg.mode (planner ustawia go z route_type feedu),
+      // więc metro i SKA niosą własne tryby. 'walk' tu nie trafia, ale
+      // unia MapVehicle go nie zna, stąd mapowanie na autobus.
+      const vehMode = inferTransitMode(leg.mode, displayLine);
+      setVehicle({
+        vehicleId: match.vehicle.vehicleId,
+        legId: leg.id,
+        line: displayLine,
+        mode: vehMode === 'walk' ? 'bus' : vehMode,
+        color: mapLineColor(bg),
+        lat: match.vehicle.lat,
+        lon: match.vehicle.lon,
+        heading: match.heading,
+        delaySec: match.delaySec,
+        currentStopName: match.vehicle.currentStopName,
+        nextStopName: match.vehicle.nextStopName,
+        updatedAt: match.vehicle.updatedAt,
+      });
+    };
+
+    update();
+    const interval = setInterval(update, VEHICLE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [item, route]);
 
   // ─── Akcje ──────────────────────────────────────────────────
   const handleSelectLeg = useCallback(
@@ -284,18 +343,9 @@ export default function RouteMapScreen() {
   );
 
   const handleShowRoute = useCallback(() => {
-    setUserPanned(false);
     if (selectedLegId === null) mapRef.current?.fit();
     else setSelectedLegId(null);
   }, [selectedLegId]);
-
-  const handleCenterOnMe = useCallback(() => {
-    if (!myLocation) return;
-    setUserPanned(true);
-    mapRef.current?.centerOnMe(myLocation.lat, myLocation.lon);
-  }, [myLocation]);
-
-  const handleCamMove = useCallback(() => setUserPanned(true), []);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -380,8 +430,6 @@ export default function RouteMapScreen() {
   }
 
   const delayMin = item.live ? item.delayMin : 0;
-  // „Cała trasa” jest w kolorze dopiero, gdy kamera faktycznie pokazuje całą trasę.
-  const routeAtView = selectedLegId === null && !userPanned;
 
   return (
     <View style={styles.root}>
@@ -389,7 +437,7 @@ export default function RouteMapScreen() {
         <RouteMap
           ref={mapRef}
           route={route}
-          userDot={userDot}
+          vehicle={vehicle}
           selectedLegId={selectedLegId}
           offlineBase={offlineBase}
           showPoi
@@ -397,7 +445,6 @@ export default function RouteMapScreen() {
           paddingBottom={panelHeight + insets.bottom + 16}
           onReady={handleMapReady}
           onLegTap={handleSelectLeg}
-          onCamMove={handleCamMove}
           onTilesStatus={handleTilesStatus}
           onError={handleMapError}
         />
@@ -456,41 +503,15 @@ export default function RouteMapScreen() {
       >
         <View style={[styles.panelHead, compact && styles.panelHeadCompact]}>
           <Text style={styles.panelTitle}>{s.map.stagesTitle}</Text>
-          <View style={[styles.panelActions, compact && styles.panelActionsCompact]}>
-            <Pressable
-              onPress={handleCenterOnMe}
-              disabled={!myLocation}
-              accessibilityRole="button"
-              accessibilityLabel={s.map.myLocationA11y}
-              accessibilityState={{ disabled: !myLocation }}
-              style={({ pressed }) => [
-                styles.locBtn,
-                !myLocation && styles.locBtnOff,
-                pressed && { opacity: 0.75 },
-              ]}
-            >
-              <LocateFixed size={20} color={scheme.onSurfaceVariant} />
-            </Pressable>
-            <Pressable
-              onPress={handleShowRoute}
-              accessibilityRole="button"
-              accessibilityLabel={s.map.showWholeRoute}
-              style={({ pressed }) => [
-                styles.fitBtn,
-                routeAtView && styles.fitBtnActive,
-                compact && styles.fitBtnCompact,
-                pressed && { opacity: 0.75 },
-              ]}
-            >
-              <ZoomOutMap
-                size={20}
-                color={routeAtView ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-              />
-              <Text style={[styles.fitLabel, routeAtView && styles.fitLabelActive]}>
-                {s.map.showWholeRoute}
-              </Text>
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={handleShowRoute}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.showWholeRoute}
+            style={({ pressed }) => [styles.fitBtn, pressed && { opacity: 0.75 }]}
+          >
+            <ScanLine size={20} color={scheme.onPrimaryContainer} />
+            <Text style={styles.fitLabel}>{s.map.showWholeRoute}</Text>
+          </Pressable>
         </View>
         <ScrollView
           style={styles.legScroller}
@@ -501,59 +522,69 @@ export default function RouteMapScreen() {
         >
           {route.legs.map((leg) => {
             const active = leg.id === selectedLegId;
-            const dimmed = selectedLegId !== null && !active;
-            const walk = leg.mode === 'walk';
-            // Spacer „OD do DO” dostaje dwa wiersze; spacer do przystanku jeden.
-            const twoRowWalk =
-              walk && leg.fromStop !== leg.toStop && !isFallbackOrigin(leg.fromStop);
-            const dist = formatWalkDistance(leg.walkM ?? 0);
             return (
               <Pressable
                 key={leg.id}
                 onPress={() => handleSelectLeg(leg.id)}
                 style={({ pressed }) => [
-                  styles.legChip,
-                  walk ? styles.legChipWalk : styles.legChipTransit,
-                  dimmed && styles.legChipDimmed,
+                  styles.legCard,
+                  { width: Math.min(width - 40, 260 * Math.max(1, fontScale)) },
+                  active && styles.legCardActive,
                   pressed && { opacity: 0.8 },
                 ]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={
-                  walk
-                    ? twoRowWalk
-                      ? s.map.walkStageStopsA11y(leg.fromStop, leg.toStop, dist)
-                      : s.map.walkStageA11y(leg.toStop, dist)
+                  leg.mode === 'walk'
+                    ? s.map.walkStageA11y(formatWalkDistance(leg.walkM ?? 0))
                     : s.map.lineStageA11y(leg.line ?? '', leg.direction ?? '')
                 }
               >
-                {walk ? (
-                  twoRowWalk ? (
-                    <View style={styles.walkRows}>
-                      <View style={styles.walkRow}>
-                        <DirectionsWalk size={20} color={scheme.onSurfaceVariant} />
-                        <Text style={styles.walkText} numberOfLines={1}>
-                          {leg.fromStop}
-                        </Text>
-                      </View>
-                      <View style={styles.walkRow}>
-                        <SubdirectoryArrowRight size={20} color={scheme.onSurfaceVariant} />
-                        <Text style={styles.walkText} numberOfLines={1}>
-                          {leg.toStop}
-                        </Text>
-                      </View>
-                    </View>
+                <LineBadge leg={leg} compact active={active} />
+                <View style={styles.legInfo}>
+                  {leg.fromStop === leg.toStop ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {leg.toStop}
+                    </Text>
+                  ) : leg.mode === 'walk' && isFallbackOrigin(leg.fromStop) ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {s.connection.walkTo(leg.toStop)}
+                    </Text>
                   ) : (
-                    <View style={styles.walkRow}>
-                      <DirectionsWalk size={20} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.walkText} numberOfLines={1}>
+                    <View style={styles.legTitleRow}>
+                      <Text
+                        style={[styles.legTitle, active && styles.legTitleActive]}
+                        numberOfLines={1}
+                      >
+                        {leg.fromStop}
+                      </Text>
+                      <ArrowRight
+                        size={14}
+                        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                      />
+                      <Text
+                        style={[styles.legTitle, active && styles.legTitleActive]}
+                        numberOfLines={1}
+                      >
                         {leg.toStop}
                       </Text>
                     </View>
-                  )
-                ) : (
-                  <LineBadge leg={leg} size="large" style={styles.legChipBadge} />
-                )}
+                  )}
+                  <Text style={[styles.legSub, active && styles.legTitleActive]}>
+                    {leg.departAt}–{leg.arriveAt}
+                    {leg.mode === 'walk'
+                      ? ` • ${formatWalkDistance(leg.walkM ?? 0)}`
+                      : leg.stopsCount > 0
+                        ? ` • ${s.map.legStops(leg.stopsCount)}`
+                        : ''}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
@@ -640,21 +671,6 @@ const styles = StyleSheet.create({
   },
   panelHeadCompact: { flexDirection: 'column', alignItems: 'stretch' },
   panelTitle: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface, flexShrink: 1 },
-  panelActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  panelActionsCompact: { alignSelf: 'stretch' },
-  locBtn: {
-    width: 48,
-    minHeight: 48,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  locBtnOff: { opacity: 0.4 },
   fitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -664,41 +680,43 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
     borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.primaryContainer,
   },
-  fitBtnActive: { backgroundColor: scheme.primaryContainer },
-  fitBtnCompact: { flex: 1 },
-  fitLabel: { ...type.labelLarge, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  fitLabelActive: { color: scheme.onPrimaryContainer },
+  fitLabel: { ...type.labelLarge, color: scheme.onPrimaryContainer, flexShrink: 1 },
   legScroller: { flexGrow: 0, flexShrink: 0 },
   legScroll: {
     paddingHorizontal: 20,
     gap: 12,
-    alignItems: 'stretch',
   },
-  legChip: {
-    minHeight: 72,
+  legCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 16,
+    minHeight: 96,
     borderRadius: shape.large,
-    justifyContent: 'center',
-  },
-  // chip z pojazdem: wiersz, żeby badge rozciągał się na wysokość (cross axis).
-  legChipTransit: { flexDirection: 'row', alignItems: 'stretch' },
-  // chip pieszy: tło i zaokrąglenie jak karty etapów, wysokość dyktuje spacer OD->DO.
-  legChipWalk: {
+    borderWidth: 1,
+    borderColor: 'transparent',
     backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
   },
-  legChipDimmed: { opacity: 0.5 },
-  legChipBadge: { alignSelf: 'stretch', borderRadius: shape.large, paddingHorizontal: 24 },
-  walkRows: { gap: 10 },
-  walkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  walkText: {
+  legCardActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
+  legInfo: { flex: 1, minWidth: 0, gap: 6 },
+  legTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legTitle: {
     ...type.bodyMedium,
     fontWeight: '500',
     color: scheme.onSurface,
-    maxWidth: 190,
+    flexShrink: 1,
   },
+  legTitleActive: { color: scheme.onPrimaryContainer },
+  legSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
   centeredTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },

@@ -1,0 +1,240 @@
+// Dopasowanie pozycji pojazdu MPK do konkretnej nogi podróży.
+//
+// Globalny tracker (liveTracker) dopasowuje każdy pojazd do *jakiegoś*
+// kursu w rozkładzie. To za mało, żeby pokazać użytkownikowi „tu jest Twój
+// tramwaj”: kilka pojazdów tej samej linii pasuje do tego samego kursu, a
+// kurs bywa dopisany do innego pojazdu niż ten, który naprawdę po nim jedzie.
+// Efekt był losowy - strzałka skakała po mapie.
+//
+// Tutaj zawężamy wybór do jednej nogi: pojazd musi
+//  1. jechać tą samą linią,
+//  2. być blisko geometrii NOGI (korytarz, nie całej linii),
+//  3. być zgodny z rozkładem nogi w danym miejscu (opóźnienie w sensownym
+//     oknie, inaczej to nie ten pojazd).
+// Wygrany jest oceniany scoringiem, a przy remisie zostaje ten sam, którego
+// pokazywaliśmy już wcześniej - dzięki temu strzałka nie migocze między
+// dwoma autobusami stojącymi na tym samym przystanku.
+
+import { distanceM, projectRoutePoint, type Coord, type Projection } from './routeGeometry';
+import { timeStringToSeconds } from '../gtfs/geo';
+import type { TrackedVehicle } from './liveTracker';
+import type { MapLeg } from '../map/types';
+
+/** Pojazd dalej niż tyle od linii naszej nogi to nie ten kurs. */
+const MAX_CORRIDOR_M = 220;
+/** Za dużo opóźnienia też wyklucza - to ktoś z innego kursu. */
+const MAX_DELAY_SEC = 1500;
+const MIN_DELAY_SEC = -240;
+/** Bonus za trafienie w dokładny tripId z rozkładu. */
+const TRIP_MATCH_BONUS = 0.45;
+/**
+ * O ile nowy kandydat musi być lepszy, żeby przejąć śledzenie. Jednostka
+ * scoringu to ~1 minuta błędu rozkładu (plus 5 m odchylenia od linii), więc
+ * 2 oznacza: „daj nowego tylko wtedy, gdy ten stary jest wyraźnie gorszy”.
+ * Przy 45 przełączanie praktycznie nie następowało wcale.
+ */
+const SWITCH_TOLERANCE = 2;
+
+export interface LegVehicleMatch {
+  vehicle: TrackedVehicle;
+  /** Gdzie pojazd jest wzdłuż nogi (0..1). */
+  progress: number;
+  /** Opóźnienie policzone z rozkładu NOGI (nie z globalnego dopasowania). */
+  delaySec: number;
+  /** Dystans pojazdu od linii nogi [m]. */
+  offsetM: number;
+  heading: number;
+  score: number;
+}
+
+interface SchedulePoint {
+  alongM: number;
+  timeSec: number;
+}
+
+interface LegWindow {
+  from: number;
+  to: number;
+  crossesMidnight: boolean;
+}
+
+/** Okno nogi w sekundach; koniec po północy dostaje +86400. */
+function legWindow(leg: MapLeg): LegWindow | null {
+  const from = timeStringToSeconds(leg.departAt);
+  const rawTo = timeStringToSeconds(leg.arriveAt);
+  if (!isFinite(from) || !isFinite(rawTo)) return null;
+  const crossesMidnight = rawTo <= from;
+  return { from, to: crossesMidnight ? rawTo + 86400 : rawTo, crossesMidnight };
+}
+
+/** „Teraz” w tej samej dobie co okno nogi: po północy przesuwa zegar o dobę. */
+function windowNow(window: LegWindow, nowSec: number): number {
+  return window.crossesMidnight && nowSec < window.from - 300 ? nowSec + 86400 : nowSec;
+}
+
+/**
+ * Czas przystanku w zegarze okna nogi. GTFS trzyma kursy nocne jako 24:xx,
+ * a noga po północy ma już 00:xx, więc bierzemy wystąpienie najbliższe okna.
+ */
+function windowTime(window: LegWindow, timeSec: number): number {
+  let best = timeSec;
+  let bestDist = Infinity;
+  for (const candidate of [timeSec - 86400, timeSec, timeSec + 86400]) {
+    const dist =
+      candidate < window.from
+        ? window.from - candidate
+        : candidate > window.to
+          ? candidate - window.to
+          : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/**
+ * Oś czasu wzdłuż nogi: czas rozkładowy dla każdego przystanku + końców.
+ * Dzięki temu wiemy, czego oczekiwać w dowolnym miejscu trasy.
+ */
+function legSchedule(leg: MapLeg, coords: Coord[]): SchedulePoint[] {
+  const window = legWindow(leg);
+  if (!window) return [];
+  const pts: SchedulePoint[] = [];
+
+  for (const stop of leg.stops) {
+    const p = projectRoutePoint(coords, stop.lat, stop.lon);
+    if (!p) continue;
+    const t = stop.departSec ?? stop.arriveSec;
+    if (t == null || !isFinite(t)) continue;
+    pts.push({ alongM: p.alongM, timeSec: windowTime(window, t) });
+  }
+  // Końce nogi są rozstrzygające: plan mówi, o której godzinie wsiadamy
+  // i wysiadamy, a czasy przystanków pośrednich bywają tylko wejściowe.
+  pts.unshift({ alongM: 0, timeSec: window.from });
+  pts.push({
+    alongM: Math.max(0, distanceM(coords[0], coords[coords.length - 1])),
+    timeSec: window.to,
+  });
+  pts.sort((a, b) => a.alongM - b.alongM);
+  return pts;
+}
+
+/** Czas rozkładowy w danym miejscu nogi (interpolacja po przystankach). */
+function expectedTimeAt(schedule: SchedulePoint[], alongM: number, projection: Projection): number {
+  if (schedule.length === 0) return 0;
+  if (schedule.length === 1) return schedule[0].timeSec;
+  if (alongM <= schedule[0].alongM) return schedule[0].timeSec;
+  const last = schedule[schedule.length - 1];
+  if (alongM >= last.alongM) return last.timeSec;
+  for (let i = 0; i < schedule.length - 1; i++) {
+    const a = schedule[i];
+    const b = schedule[i + 1];
+    if (alongM >= a.alongM && alongM <= b.alongM) {
+      const span = b.alongM - a.alongM;
+      const t = span > 0 ? (alongM - a.alongM) / span : 0;
+      return a.timeSec + t * (b.timeSec - a.timeSec);
+    }
+  }
+  return projection.alongM;
+}
+
+/** Czy noga w ogóle jest teraz obsługiwana (połowa kursu bez sensu pokazywać). */
+export function isLegRunning(leg: MapLeg, nowSec: number): boolean {
+  const window = legWindow(leg);
+  if (!window) return false;
+  const now = windowNow(window, nowSec);
+  return now >= window.from - 300 && now <= window.to + 600;
+}
+
+function isSameRailLine(a: string, b: string): boolean {
+  if (a === b) return true;
+  const numA = parseInt(a, 10);
+  const numB = parseInt(b, 10);
+  if (!isNaN(numA) && !isNaN(numB) && Math.abs(numA - numB) <= 1) {
+    return true;
+  }
+  return false;
+}
+
+export interface MatchOptions {
+  /** vehicleId, którego pokazywaliśmy ostatnio - wolimy je, jeśli wciąż pasuje. */
+  preferVehicleId?: string | null;
+  /** Czy dopuszczamy pojazd spoza rozkładu (gdy nie ma tripId w nodze). */
+  nowSec: number;
+}
+
+export function matchVehicleToLeg(
+  candidates: TrackedVehicle[],
+  leg: MapLeg,
+  coords: Coord[],
+  options: MatchOptions,
+): LegVehicleMatch | null {
+  if (!coords || coords.length < 2) return null;
+  if (!leg.line || !isLegRunning(leg, options.nowSec)) return null;
+
+  const window = legWindow(leg);
+  if (!window) return null;
+  const nowSec = windowNow(window, options.nowSec);
+  const schedule = legSchedule(leg, coords);
+  const line = leg.line.trim().toUpperCase();
+
+  /**
+   * Ocena jednego pojazdu: jak bardzo odbiega od rozkładu NOGI w tym miejscu.
+   * `null` = ten pojazd w ogóle nie obsługuje tej nogi.
+   */
+  const scoreVehicle = (v: TrackedVehicle): LegVehicleMatch | null => {
+    const vLine = v.line.trim().toUpperCase();
+    const isExactTrip = Boolean(leg.tripId && v.matchedTripId === leg.tripId);
+    const isLineMatch =
+      vLine === line ||
+      Boolean(v.aliases && v.aliases.some((al) => al.trim().toUpperCase() === line)) ||
+      (v.type === 'train' && (isExactTrip || isSameRailLine(vLine, line)));
+
+    if (!isLineMatch && !isExactTrip) return null;
+
+    const p = projectRoutePoint(coords, v.lat, v.lon);
+    if (!p || p.offsetM > MAX_CORRIDOR_M) return null;
+
+    // Punkt tuż przed startem albo tuż po końcu nóg: to raczej sąsiedni
+    // kurs, a nie ten, na który czekamy - odcinamy skrajności.
+    if (p.progress < -0.02 || p.progress > 1.02) return null;
+
+    const expected = expectedTimeAt(schedule, p.alongM, p);
+    if (!expected) return null;
+    const delay = nowSec - expected;
+    if (delay < MIN_DELAY_SEC || delay > MAX_DELAY_SEC) return null;
+
+    let score = Math.abs(delay) / 60 + p.offsetM / 200;
+    if (leg.tripId && v.matchedTripId === leg.tripId) score *= TRIP_MATCH_BONUS;
+    return {
+      vehicle: v,
+      progress: p.progress,
+      delaySec: delay,
+      offsetM: p.offsetM,
+      heading: p.heading,
+      score,
+    };
+  };
+
+  const scored: LegVehicleMatch[] = [];
+  for (const v of candidates) {
+    const m = scoreVehicle(v);
+    if (m) scored.push(m);
+  }
+  if (scored.length === 0) return null;
+  scored.sort((a, b) => a.score - b.score);
+
+  // Ten sam pojazd co ostatnio zostaje, dopóki nowy kandydat nie jest
+  // wyraźnie lepszy - inaczej strzałka skacze między dwoma pojazdami
+  // stojącymi na tym samym przystanku.
+  const previous = options.preferVehicleId
+    ? scored.find((m) => m.vehicle.vehicleId === options.preferVehicleId)
+    : undefined;
+  const best = scored[0];
+  if (previous && previous !== best && best.score >= previous.score - SWITCH_TOLERANCE) {
+    return previous;
+  }
+  return best;
+}

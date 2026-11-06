@@ -24,7 +24,7 @@ import { OSRM_BASE_URL } from '../config';
 import { routeFootLocal, routeRailLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from './lineIdentity';
-import { projectPointToPolyline, shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
+import { shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
 import { putCacheRecord, selectEvictions, type GeometryCacheRecord } from './geometryEviction';
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
@@ -168,58 +168,6 @@ export function buildMapRoute(connection: Connection): MapRoute {
     legs,
     geometry,
   };
-}
-
-// ─── Kropeczka GPS: czy user już jedzie ──────────────────────────────────────
-
-/** Tyle metrów od osi trasy zakładamy, że user siedzi w pojazdzie. */
-const RIDING_RADIUS_M = 40;
-/**
- * Wokół przystanku wejściowego i wyjściowego kropka zostaje: user czeka na
- * pojazd albo właśnie wysiadł, a "jedzie" tylko na paperze.
- */
-const ENDPOINT_MARGIN_M = 140;
-/** Fix z większą niepewnością nie ukrywa kropki, bo poloży się losowo. */
-const MAX_TRUSTED_ACCURACY_M = 75;
-
-/**
- * Czy kropeczkę GPS ukryć: lokalizacja leży blisko geometrii nogi kursowej
- * (zakładamy jazdę pojazdem) i poza strefami przystanku początkowego i
- * końcowego. Nogi piesze nie liczą się: w drodze na przystanek i po wysiadce
- * kropka ma zostać.
- */
-export function userRidingTransit(
-  route: MapRoute,
-  loc: { lat: number; lon: number; accuracy?: number | null },
-  geometry: ReadonlyMap<string, Coord[]>,
-): boolean {
-  if (loc.accuracy != null && loc.accuracy > MAX_TRUSTED_ACCURACY_M) return false;
-  const transitLegs = route.legs.filter((l) => l.mode !== 'walk');
-  if (transitLegs.length === 0) return false;
-
-  const firstStop = transitLegs[0].stops[0];
-  const lastLegStops = transitLegs[transitLegs.length - 1].stops;
-  const lastStop = lastLegStops[lastLegStops.length - 1];
-  if (!firstStop || !lastStop) return false;
-
-  if (shortDistanceMeters(loc.lat, loc.lon, firstStop.lat, firstStop.lon) <= ENDPOINT_MARGIN_M) {
-    return false;
-  }
-  if (shortDistanceMeters(loc.lat, loc.lon, lastStop.lat, lastStop.lon) <= ENDPOINT_MARGIN_M) {
-    return false;
-  }
-
-  for (const leg of transitLegs) {
-    const coords = geometry.get(leg.id);
-    const polyline = coords?.length
-      ? coords.map(([lat, lon]) => ({ lat, lon }))
-      : leg.stops.map((s) => ({ lat: s.lat, lon: s.lon }));
-    if (polyline.length === 0) continue;
-    if (projectPointToPolyline(loc.lat, loc.lon, polyline).distanceMeters <= RIDING_RADIUS_M) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // ─── Geometria z OSRM ────────────────────────────────────────────────────────
@@ -653,4 +601,102 @@ export async function resolveGeometry(
       await new Promise((r) => setTimeout(r, 350));
     }
   }
+}
+
+/** Skumulowane odległości wzdłuż linii; długość = coords.length + 1. */
+function cumulativeDistances(coords: Coord[]): number[] {
+  const out = [0];
+  for (let i = 0; i < coords.length - 1; i++) {
+    out.push(out[i] + distanceM(coords[i], coords[i + 1]));
+  }
+  return out;
+}
+
+export interface Projection {
+  /** Najbliższy punkt na linii. */
+  lat: number;
+  lon: number;
+  /** Kurs (azymut) odcinka, na którym leży ten punkt. */
+  heading: number;
+  /** Odległość od początku linii wzdłuż niej [m]. */
+  alongM: number;
+  /** 0..1 wzdłuż linii. */
+  progress: number;
+  /** Dystans od linii [m]. */
+  offsetM: number;
+  /** Długość całej linii [m]. */
+  totalM: number;
+}
+
+/**
+ * Rzut punktu na linię trasy wraz z postępem (0..1) i dystansem od niej.
+ * To jedyne miejsce, w którym liczymy „gdzie wzdłuż trasy coś jest”-
+ * strzałka pojazdu, kursor joysticka i dopasowanie live korzystają z tego
+ * samego rachunku, więc nic się nie rozjeżdża.
+ */
+export function projectRoutePoint(
+  coords: Coord[],
+  lat: number,
+  lon: number,
+): Projection | null {
+  if (!coords || coords.length === 0) return null;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  if (coords.length === 1) {
+    return {
+      lat: coords[0][0],
+      lon: coords[0][1],
+      heading: 0,
+      alongM: 0,
+      progress: 0,
+      offsetM: distanceM(coords[0], [lat, lon]),
+      totalM: 0,
+    };
+  }
+
+  const cum = cumulativeDistances(coords);
+  let best = Infinity;
+  let bestLat = coords[0][0];
+  let bestLon = coords[0][1];
+  let bestHeading = 0;
+  let bestAlong = 0;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lat1, lon1] = coords[i];
+    const [lat2, lon2] = coords[i + 1];
+    const midLat = toRad((lat1 + lat2) / 2);
+    const kx = Math.cos(midLat);
+    const x = toRad(lon - lon1) * kx;
+    const y = toRad(lat - lat1);
+    const dx = toRad(lon2 - lon1) * kx;
+    const dy = toRad(lat2 - lat1);
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, (x * dx + y * dy) / lenSq)) : 0;
+    const pLat = lat1 + t * (lat2 - lat1);
+    const pLon = lon1 + t * (lon2 - lon1);
+    const dLat = toRad(pLat - lat);
+    const dLon = toRad(pLon - lon) * kx;
+    const d = dLat * dLat + dLon * dLon;
+    if (d < best) {
+      best = d;
+      bestLat = pLat;
+      bestLon = pLon;
+      bestAlong = cum[i] + t * (cum[i + 1] - cum[i]);
+      const phi1 = toRad(lat1);
+      const phi2 = toRad(lat2);
+      const dLambda = toRad(lon2 - lon1);
+      const y2 = Math.sin(dLambda) * Math.cos(phi2);
+      const x2 = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+      bestHeading = (Math.atan2(y2, x2) * 180) / Math.PI;
+    }
+  }
+  const total = cum[cum.length - 1];
+  return {
+    lat: bestLat,
+    lon: bestLon,
+    heading: (bestHeading + 360) % 360,
+    alongM: bestAlong,
+    progress: total > 0 ? Math.max(0, Math.min(1, bestAlong / total)) : 0,
+    offsetM: distanceM([bestLat, bestLon], [lat, lon]),
+    totalM: total,
+  };
 }

@@ -28,6 +28,8 @@ import { ConnectionSummary } from '../src/components/ConnectionSummary';
 import { LegTimeline } from '../src/components/LegTimeline';
 import { buildMapRoute, resolveGeometry } from '../src/services/routeGeometry';
 import { acquireMapServer } from '../src/services/mapServerLease';
+import { mapLineColor, getLineColors } from '../src/components/LineBadge';
+import type { MapVehicle } from '../src/map/types';
 import { computeTripProgress } from '../src/services/notifications/tripProgress';
 import {
   areNotificationsSupported,
@@ -164,7 +166,17 @@ export default function SharedJourneyScreen() {
     map.current?.fit();
   }, [mapRoute]);
 
-  const liveVehicle = match != null && match.leg.mode !== 'walk';
+  const vehicle: MapVehicle | null =
+    match && match.leg.mode !== 'walk'
+      ? {
+          ...match.vehicle,
+          legId: match.leg.id,
+          mode: match.leg.mode,
+          heading: 0,
+          delaySec: match.vehicle.delaySec ?? 0,
+          color: mapLineColor(getLineColors(match.leg.line, match.leg.mode).bg),
+        }
+      : null;
   const progress = connection
     ? computeTripProgress(connection, { now, vehicle: match?.vehicle })
     : null;
@@ -301,6 +313,7 @@ export default function SharedJourneyScreen() {
                     <RouteMap
                       ref={map}
                       route={mapRoute}
+                      vehicle={vehicle}
                       offlineBase={offlineBase}
                       paddingTop={28}
                       paddingBottom={28}
@@ -332,10 +345,10 @@ export default function SharedJourneyScreen() {
                     />
                   </View>
                 )}
-                <Text style={[styles.status, liveVehicle && { color: scheme.primary }]}>
-                  {ended ? s.share.finished : liveVehicle ? s.share.vehicleLive : s.share.planned}
+                <Text style={[styles.status, vehicle && { color: scheme.primary }]}>
+                  {ended ? s.share.finished : vehicle ? s.share.vehicleLive : s.share.planned}
                 </Text>
-                {!liveVehicle && !ended && <Text style={styles.note}>{s.share.noVehicle}</Text>}
+                {!vehicle && !ended && <Text style={styles.note}>{s.share.noVehicle}</Text>}
                 {mapRoute?.legs.some((leg) => leg.approx) && (
                   <Text style={styles.caption}>{s.share.approximateGeometry}</Text>
                 )}

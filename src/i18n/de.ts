@@ -876,7 +876,6 @@ export const de: Strings = {
     title: 'Routenkarte',
     stagesTitle: 'Reiseabschnitte',
     showWholeRoute: 'Ganze Route',
-    myLocationA11y: 'Mein Standort',
     loadFail: 'Verbindung konnte nicht geladen werden',
     loadFailBody:
       'Die Karte zeigt eine konkrete Verbindung, sie muss daher im Speicher oder Cache verfügbar sein.',
@@ -887,10 +886,9 @@ export const de: Strings = {
     backA11y: 'Zurück',
     transfersSuffix: (n: number) => (n === 1 ? ' • 1 Umstieg.' : ` • ${n} Umstiege.`),
     delaySuffix: (d: number) => ` • ${d > 0 ? '+' : ''}${d} Min.`,
-    walkStageA11y: (stop: string, dist: string) => `Fußweg: ${stop} (${dist})`,
-    walkStageStopsA11y: (from: string, to: string, dist: string) =>
-      `Fußweg: ${from} bis ${to} (${dist})`,
+    walkStageA11y: (dist: string) => `Fußetappe ${dist}`,
     lineStageA11y: (line: string, dir: string) => `Linie ${line} Richtung ${dir}`,
+    legStops: (n: number) => (n === 1 ? '1 Halt' : `${n} Halte`),
     board: 'Einsteigen',
     alight: 'Aussteigen',
     mapLoadFail: 'Karte konnte nicht geladen werden',

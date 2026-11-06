@@ -867,7 +867,6 @@ export const en: Strings = {
     title: 'Route map',
     stagesTitle: 'Journey stages',
     showWholeRoute: 'Whole route',
-    myLocationA11y: 'My location',
     loadFail: 'Could not load the connection',
     loadFailBody:
       'The map shows a specific connection, so it must be available in memory or cache.',
@@ -878,10 +877,9 @@ export const en: Strings = {
     backA11y: 'Back',
     transfersSuffix: (n: number) => (n === 1 ? ' • 1 transfer.' : ` • ${n} transfers.`),
     delaySuffix: (d: number) => ` • ${d > 0 ? '+' : ''}${d} min`,
-    walkStageA11y: (stop: string, dist: string) => `Walking stage: ${stop} (${dist})`,
-    walkStageStopsA11y: (from: string, to: string, dist: string) =>
-      `Walking stage: ${from} to ${to} (${dist})`,
+    walkStageA11y: (dist: string) => `Walking stage ${dist}`,
     lineStageA11y: (line: string, dir: string) => `Line ${line} towards ${dir}`,
+    legStops: (n: number) => (n === 1 ? '1 stop' : `${n} stops`),
     board: 'Board',
     alight: 'Alight',
     mapLoadFail: 'Could not load the map',

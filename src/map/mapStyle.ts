@@ -361,7 +361,6 @@ function buildPoiLayers() {
 }
 
 export const ROUTE_SOURCE_ID = 'kilometr-trasa';
-export const USER_SOURCE_ID = 'kilometr-user';
 
 // `sel` na obiekcie linii: 2 = wybrana noga, 1 = przygaszona reszta,
 // 0 = nic nie wybrane (wtedy wszystkie nogi rysujemy na pełnej szerokości).
@@ -375,39 +374,6 @@ const bySel = (selected: unknown, dimmed: unknown, normal: unknown) => [
   dimmed,
   normal,
 ];
-
-/**
- * Kropeczka GPS: krąg niepewności fixu pod spodem trasy (sama kropka to
- * marker DOM w routeMapDocument). Promień w px = accuracy / metryNaPiksel,
- * a metryNaPiksel = 156543 * cos(lat) / 2^zoom (Web Mercator). MapLibre
- * pozwala użyć `zoom` tylko jako wejścia interpolate, więc skalujemy
- * wykładniczo o podstawie 2: dokładnie 2^zoom między stopami 0 i 22.
- */
-function buildUserLayers() {
-  const accuracy = ['get', 'accuracy'];
-  const metersPerPixelScale = ['*', 156543.03392, ['cos', ['*', ['get', 'lat'], 0.0174533]]];
-  return [
-    {
-      id: 'user-gps',
-      type: 'circle' as const,
-      source: USER_SOURCE_ID,
-      paint: {
-        'circle-radius': [
-          'interpolate',
-          ['exponential', 2],
-          ['zoom'],
-          0,
-          ['/', accuracy, metersPerPixelScale],
-          22,
-          ['/', ['*', accuracy, 4194304], metersPerPixelScale],
-        ] as never,
-        'circle-color': '#1A73E8',
-        'circle-opacity': 0.16,
-        'circle-pitch-alignment': 'map',
-      },
-    },
-  ];
-}
 
 /**
  * Warstwy trasy: obwódka, linia kursu, przerywany spacer, przystanki
@@ -467,10 +433,10 @@ function buildRouteLayers() {
       source: ROUTE_SOURCE_ID,
       filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'role'], 'intermediate']] as never,
       paint: {
-        // Kropka zlewa się z linią: kolor nogi, brak obwódki, średnica odrobinę
-        // większa od grubości linii (M3 expressive).
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3.5, 16, 4, 19, 5],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 4.5, 19, 6.5],
         'circle-color': ['coalesce', ['get', 'color'], motif().stopMid] as never,
+        'circle-stroke-color': C.land,
+        'circle-stroke-width': 1.5,
         'circle-opacity': bySel(0.9, 0.35, 0.95),
       },
     },
@@ -500,13 +466,11 @@ export function buildMapStyle(base?: string | null, opts: { poi?: boolean } = {}
     sources: {
       openmaptiles: { ...tiles, attribution: '' },
       [ROUTE_SOURCE_ID]: { type: 'geojson', data: EMPTY },
-      [USER_SOURCE_ID]: { type: 'geojson', data: EMPTY },
     },
     glyphs: base ? `${base}/assets/fonts/{fontstack}/{range}.pbf` : MAP_GLYPHS_URL,
     layers: [
       ...baseLayers(),
       ...(opts.poi ? buildPoiLayers() : []),
-      ...buildUserLayers(),
       ...buildRouteLayers(),
     ],
   };

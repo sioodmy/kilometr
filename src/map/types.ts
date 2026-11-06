@@ -55,12 +55,18 @@ export interface MapRoute {
   geometry: 'osrm' | 'approx' | 'mixed';
 }
 
-/** Kropeczka GPS użytkownika na mapie. */
-export interface MapUserDot {
-  lat: number;
-  lon: number;
-  /** promień niepewności fixu w metrach */
-  accuracy: number | null;
+export interface MapVehicle extends LatLon {
+  vehicleId: string;
+  legId: string;
+  line: string;
+  mode: 'bus' | 'tram' | 'train' | 'cable' | 'trolleybus' | 'subway';
+  color: string;
+  /** kurs pojazdu w stopniach (0 = północ) */
+  heading: number;
+  delaySec: number;
+  currentStopName?: string;
+  nextStopName?: string;
+  updatedAt: number;
 }
 
 /** Komunikat mapa -> aplikacja (RouteMap -> rodzic). */
@@ -70,8 +76,6 @@ export type MapOutMessage =
   | { t: 'stopTap'; stopId: string; legId: string; name: string; role: MapStopRole; arriveSec?: number }
   | { t: 'legTap'; legId: string }
   | { t: 'tiles'; ok: boolean }
-  /** Użytkownik ruszył mapę palcem (pan albo pinch). */
-  | { t: 'camMove' }
   | { t: 'open'; url: string };
 
 /** Komunikat aplikacja -> mapa (RouteMap -> WebView). */
@@ -81,7 +85,4 @@ export type MapInMessage =
   /** `pad` to marginesy dopasowania widoku (w px), liczone po stronie aplikacji. */
   | { t: 'select'; legId: string | null; pad?: [number, number, number, number] }
   | { t: 'fit'; pad?: [number, number, number, number] }
-  /** Przesuwa kamerę na lokalizację użytkownika. */
-  | { t: 'center'; lat: number; lon: number }
-  /** Aktualizuje kropeczkę GPS; null ją chowa. */
-  | { t: 'userDot'; dot: MapUserDot | null };
+  | { t: 'vehicle'; vehicle: MapVehicle | null };
