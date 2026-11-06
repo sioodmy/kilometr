@@ -11,7 +11,9 @@ import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const WROCLAW_DB = process.env.WROCLAW_DB ?? '/tmp/opencode/bench/wroclaw.db';
+const POLSKA_URL = process.env.POLSKA_URL;
 const POLSKA_DB = process.env.POLSKA_DB ?? '/tmp/opencode/bench/national-real.db';
+const POLSKA_DB_NAME = 'kilometr-gtfs-polska.db';
 
 // Shim expo-sqlite → node:sqlite. stub-expo podmienia moduł przez Module._load,
 // więc rejestrujemy go TUTAJ (przed importem gtfsDatabase) i nadpisujemy atrapę.
@@ -19,8 +21,44 @@ const requireCjs = createRequire(__filename);
 const Module = requireCjs('node:module') as typeof import('node:module');
 const files: Record<string, string> = {
   'kilometr-gtfs-wroclaw.db': WROCLAW_DB,
-  'kilometr-gtfs-polska.db': POLSKA_DB,
+  [POLSKA_DB_NAME]: POLSKA_DB,
 };
+
+/**
+ * Prawdziwy tor pobierania z R2 (gdy POLSKA_URL podane): manifest → .gz →
+ * gunzip → plik w katalogu SQLite. Sprawdza rozmiar i integrity_check,
+ * tak jak timetableSync na telefonie.
+ */
+async function fetchNationalFromUrl(baseUrl: string): Promise<string> {
+  const { gunzipSync } = requireCjs('node:zlib') as typeof import('node:zlib');
+  const base = baseUrl.replace(/\/$/, '');
+  const manifest = (await (await fetch(`${base}/manifest.json`)).json()) as {
+    version: string;
+    db: { sizeBytes: number; uncompressedSizeBytes?: number };
+  };
+  const gz = Buffer.from(await (await fetch(`${base}/kilometr-gtfs-polska.db.gz`)).arrayBuffer());
+  if (gz.length !== manifest.db.sizeBytes) {
+    throw new Error(`rozmiar gz ${gz.length} != manifest ${manifest.db.sizeBytes}`);
+  }
+  const raw = gunzipSync(gz);
+  if (manifest.db.uncompressedSizeBytes && raw.length !== manifest.db.uncompressedSizeBytes) {
+    throw new Error(`rozmiar po gunzip ${raw.length} != manifest ${manifest.db.uncompressedSizeBytes}`);
+  }
+  const out = '/tmp/kilometr-check/kilometr-gtfs-polska.db';
+  writeFileSync(out, raw);
+  const { DatabaseSync } = requireCjs('node:sqlite') as typeof import('node:sqlite');
+  const db = new DatabaseSync(out);
+  const check = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
+  const counts = db.prepare(
+    'SELECT (SELECT COUNT(*) FROM stops) s, (SELECT COUNT(*) FROM trips) t, (SELECT COUNT(*) FROM stop_times) st',
+  ).get() as { s: number; t: number; st: number };
+  db.close();
+  if (check.integrity_check !== 'ok' || counts.s <= 0 || counts.t <= 0 || counts.st <= 0) {
+    throw new Error(`weryfikacja bazy: ${JSON.stringify({ check, counts })}`);
+  }
+  console.log(`PASS pobranie z R2: ${manifest.version}, ${(gz.length / 1048576).toFixed(1)} MB gz, ${counts.s} stacji, ${counts.t} kursów`);
+  return out;
+}
 
 mkdirSync('/tmp/kilometr-check', { recursive: true });
 const shimPath = '/tmp/kilometr-check/node-sqlite-shim.cjs';
@@ -72,6 +110,9 @@ function check(label: string, ok: boolean, detail = '') {
 }
 
 async function main() {
+  if (POLSKA_URL) {
+    files[POLSKA_DB_NAME] = await fetchNationalFromUrl(POLSKA_URL);
+  }
   const { planConnections } = await import('../src/services/routing/engine');
   const { planIntercity } = await import('../src/services/routing/intercity');
   const { polskaStore } = await import('../src/services/routing/store');
