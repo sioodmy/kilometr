@@ -1291,6 +1291,11 @@ export const en: Strings = {
     startAtStation: 'Show trains from this station',
   },
 
+  railAlerts: {
+    cardA11y: (line: string) => `'Alert for train ' + line`,
+    fallbackLine: 'Train',
+  },
+
   data: {
     stepUnpack: 'Unpacking…',
     stepStops: 'Stops…',

@@ -1348,6 +1348,11 @@ export const uk: Strings = {
     startAtStation: 'Показати потяги з цієї станції',
   },
 
+  railAlerts: {
+    cardA11y: (line: string) => `'Оповіщення для потяга ' + line`,
+    fallbackLine: 'Потяг',
+  },
+
   data: {
     stepUnpack: 'Розпакування…',
     stepStops: 'Зупинки…',

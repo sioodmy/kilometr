@@ -1334,6 +1334,10 @@ export const pl = {
     nearestStation: (name: string, dist: string) => `Najbliższa stacja kolejowa: ${name} (${dist})`,
     startAtStation: 'Pokaż pociągi z tej stacji',
   },
+  railAlerts: {
+    cardA11y: (line: string) => `Alert dla pociągu ${line}`,
+    fallbackLine: 'Pociąg',
+  },
   data: {
     stepUnpack: 'Rozpakowywanie…',
     stepStops: 'Przystanki…',

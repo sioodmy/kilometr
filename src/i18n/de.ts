@@ -1306,6 +1306,11 @@ export const de: Strings = {
     startAtStation: 'Züge von diesem Bahnhof zeigen',
   },
 
+  railAlerts: {
+    cardA11y: (line: string) => `'Warnung für Zug ' + line`,
+    fallbackLine: 'Zug',
+  },
+
   data: {
     stepUnpack: 'Entpacken…',
     stepStops: 'Haltestellen…',
