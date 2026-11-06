@@ -672,7 +672,9 @@ const styles = StyleSheet.create({
   },
   presetTextActive: { color: scheme.onPrimaryContainer },
   daySelector: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  daySelectorCompact: { flexDirection: 'column' },
+  // Poziomy pasek chipów dni: w wąskim oknie też zostaje w rzędzie
+  // (scroll w bok), a nie kolumną 14 kart.
+  daySelectorCompact: { flexDirection: 'row' },
   dayTab: {
     minWidth: 86,
     minHeight: 76,
