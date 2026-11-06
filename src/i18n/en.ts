@@ -1275,6 +1275,22 @@ export const en: Strings = {
   suggestion: {
     stopFallback: 'Stop',
   },
+  intercity: {
+    stationAddress: 'Railway station',
+    downloadTitle: 'National rail timetable',
+    downloadBody:
+      'Download the nationwide train timetable to plan journeys between cities: IC, EIC, PolRegio, KM and other operators.',
+    downloadCta: 'Download timetable',
+    downloadSize: (mb: string) => `'about ' + mb + ' MB'`,
+    downloading: 'Downloading rail timetable…',
+    downloadFailed: 'Could not download the rail timetable. Try again later.',
+    ready: (date: string) => `'Rail timetable ready (valid until ' + date + ')'`,
+    noTrainsTitle: 'No trains',
+    noTrainsHint: 'Check the date and time, or pick another destination station.',
+    nearestStation: (name: string, dist: string) => `'Nearest railway station: ' + name + ' (' + dist + ')'`,
+    startAtStation: 'Show trains from this station',
+  },
+
   data: {
     stepUnpack: 'Unpacking…',
     stepStops: 'Stops…',

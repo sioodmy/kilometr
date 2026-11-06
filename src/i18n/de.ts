@@ -1290,6 +1290,22 @@ export const de: Strings = {
   suggestion: {
     stopFallback: 'Haltestelle',
   },
+  intercity: {
+    stationAddress: 'Bahnhof',
+    downloadTitle: 'Nationales Bahnfahrplan',
+    downloadBody:
+      'Lade den bundesweiten Zugfahrplan herunter, um Reisen zwischen Städten zu planen: IC, EIC, PolRegio, KM und weitere Betreiber.',
+    downloadCta: 'Fahrplan herunterladen',
+    downloadSize: (mb: string) => `'ca. ' + mb + ' MB'`,
+    downloading: 'Bahnfahrplan wird heruntergeladen…',
+    downloadFailed: 'Bahnfahrplan konnte nicht heruntergeladen werden. Versuche es später erneut.',
+    ready: (date: string) => `'Bahnfahrplan bereit (gültig bis ' + date + ')'`,
+    noTrainsTitle: 'Keine Züge',
+    noTrainsHint: 'Prüfe Datum und Uhrzeit oder wähle einen anderen Zielbahnhof.',
+    nearestStation: (name: string, dist: string) => `'Nächster Bahnhof: ' + name + ' (' + dist + ')'`,
+    startAtStation: 'Züge von diesem Bahnhof zeigen',
+  },
+
   data: {
     stepUnpack: 'Entpacken…',
     stepStops: 'Haltestellen…',

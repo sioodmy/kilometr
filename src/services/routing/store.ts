@@ -1,5 +1,5 @@
 import { awaitImportSettled, importInProgress } from '../dataManager';
-import { getGtfsDb, getActiveServices } from '../gtfsDatabase';
+import { getGtfsDb, getActiveServices, getNationalDb, getNationalActiveServices, isNationalDbSwapPending } from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 import {
   BinaryReader,
@@ -56,6 +56,53 @@ interface Pattern {
   tripIndices: number[][];
 }
 
+/**
+ * Źródło danych magazynu: miasto (domyślnie) albo ogólnopolska baza kolejowa.
+ * Pozwala trzymać dwa niezależne magazyny (i dwie sieci RAPTOR) bez scalania
+ * baz: planer kolejowy liczy nogę kolejową wyłącznie na magazynie `polska`.
+ */
+export interface GtfsStoreBackend {
+  /** Uchwyt bazy (aktywne miasto albo plik kilometr-gtfs-polska.db). */
+  getDb(): Promise<import('expo-sqlite').SQLiteDatabase>;
+  /** Serwisy aktywne w danym dniu (kalendarz + wyjątki). */
+  getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>>;
+  /** Czeka, aż bezpiecznie otwierać bazę (import / podmiana pliku). */
+  awaitReady(): Promise<void>;
+  /** Czy import danych tego magazynu trwa (pusty wycinek zamiast błędów). */
+  isImporting(): boolean;
+  /** Kolej linowa (Polinka) istnieje tylko w magazynie miasta. */
+  cable: boolean;
+  /**
+   * Natywny indeks przystanków Rusta jest JEDEN globalny: synchronizuje go
+   * wyłącznie magazyn miasta. Magazyn kolejowy (3k stacji) liczy najbliższe
+   * przystanki pętlą w JS.
+   */
+  rustStopIndex: boolean;
+}
+
+const cityBackend = (): GtfsStoreBackend => ({
+  getDb: getGtfsDb,
+  getActiveServices,
+  awaitReady: () => (importInProgress ? awaitImportSettled() : Promise.resolve()),
+  isImporting: () => importInProgress,
+  cable: cableInCity(),
+  rustStopIndex: true,
+});
+
+/**
+ * Backend ogólnopolski: brak Polinki, brak rustowego indeksu przystanków.
+ * Podmianę pliku pilnuje bramka beginNationalDbSwap w gtfsDatabase
+ * (getNationalDb sam czeka, aż bramka puszczona).
+ */
+const polskaBackend = (): GtfsStoreBackend => ({
+  getDb: getNationalDb,
+  getActiveServices: getNationalActiveServices,
+  awaitReady: () => (isNationalDbSwapPending() ? getNationalDb().then(() => undefined) : Promise.resolve()),
+  isImporting: () => false,
+  cable: false,
+  rustStopIndex: false,
+});
+
 export interface DayIndex {
   stopRoutes: Map<string, Set<string>>;
   routeStops: Map<string, string[]>;
@@ -95,6 +142,29 @@ export class LocalGtfsStore {
   trips = new Map<string, GtfsTrip>();
   stopTimes = new Map<string, GtfsStopTime[]>();
   footpaths = new Map<string, Footpath[]>();
+
+  /** Źródło danych: miasto (default) albo ogólnopolska baza kolejowa. */
+  private backend: GtfsStoreBackend;
+
+  constructor(backend: GtfsStoreBackend = cityBackend()) {
+    this.backend = backend;
+  }
+
+  private getDb(): Promise<import('expo-sqlite').SQLiteDatabase> {
+    return this.backend.getDb();
+  }
+
+  private getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
+    return this.backend.getActiveServices(weekday, dateStr);
+  }
+
+  private get cableEnabled(): boolean {
+    return this.backend.cable;
+  }
+
+  private get rustStopIndex(): boolean {
+    return this.backend.rustStopIndex;
+  }
 
   private dayIndexes = new Map<string, DayIndex>();
   /** Wycinki horyzontu (szybkie): klucz dzien+kubelki godzin, max 4 w pamięci. */
@@ -151,17 +221,18 @@ export class LocalGtfsStore {
 
   async load() {
     if (this.isLoaded) return;
-    // Import w toku = sklep musi zostać pusty do jego końca (reset() czyści
-    // je na końcu importu). Bez czekania load() wracał „wstecz" z pustymi
+    // Import/podmiana w toku = sklep musi zostać pusty do jego końca (reset()
+    // czyści go na końcu). Bez czekania load() wracał „wstecz" z pustymi
     // przystankami, a planer oddawał zero połączeń zamiast „rozkład się
     // importuje" - ekran pokazywał wtedy „nie znaleziono połączeń".
-    if (importInProgress) {
-      await awaitImportSettled();
+    if (this.backend.isImporting()) {
+      await this.backend.awaitReady();
       if (this.isLoaded) return;
     }
-    console.log('[LocalGtfsStore] Initializing...');
-    if (importInProgress) return;
-    const db = await getGtfsDb();
+    console.log(`[LocalGtfsStore] Initializing (${this.backend.cable ? 'miasto' : 'polska'})...`);
+    if (this.backend.isImporting()) return;
+    await this.backend.awaitReady();
+    const db = await this.getDb();
 
     // 1. Load stops
     const stopsRows = await db.getAllAsync<{stop_id: string, code: string, name: string, lat: number, lon: number, norm: string}>('SELECT * FROM stops');
@@ -189,13 +260,13 @@ export class LocalGtfsStore {
 
     // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
     // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
-    if (cableInCity()) this.injectPolinkaStopsAndRoute();
+    if (this.cableEnabled) this.injectPolinkaStopsAndRoute();
 
     // 4. Przesiadki piesze: blob z buildera (liczony natywnie w buildzie), a gdy
     // go nie ma, dawny grid w JS. Miasta z koleją linową zostają na JS, bo
     // stacje Polinki dokładamy dopiero tutaj i nie ma ich w blobie.
     let footpathsFromBlob = false;
-    if (!cableInCity()) {
+    if (!this.cableEnabled) {
       footpathsFromBlob = await this.loadFootpathsBlob(db).catch((err) => {
         console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
         return false;
@@ -244,7 +315,7 @@ export class LocalGtfsStore {
     toSec: number,
   ): { tripIds: string[]; byRouteId: Map<string, GtfsTrip[]> } {
     const empty = { tripIds: [] as string[], byRouteId: new Map<string, GtfsTrip[]>() };
-    if (!cableInCity()) return empty;
+    if (!this.cableEnabled) return empty;
     if (day < 1 || day > 5) return empty;
 
     const bundles = polinkaTripsOverlapping(fromSec, toSec);
@@ -324,7 +395,7 @@ export class LocalGtfsStore {
   private async loadInterchanges(): Promise<void> {
     let rows: { from_stop_id: string; to_stop_id: string; walk_sec: number }[] = [];
     try {
-      const db = await getGtfsDb();
+      const db = await this.getDb();
       rows = await db.getAllAsync('SELECT from_stop_id, to_stop_id, walk_sec FROM interchanges');
     } catch {
       return;
@@ -424,10 +495,10 @@ export class LocalGtfsStore {
     const emptyIdx: DayIndex = {
       stopRoutes: new Map(), routeStops: new Map(), routeTrips: new Map(), patterns: new Map(),
     };
-    if (importInProgress) return emptyIdx;
-    const activeServices = await getActiveServices(day, dateStr);
+    if (this.backend.isImporting()) return emptyIdx;
+    const activeServices = await this.getActiveServices(day, dateStr);
     if (this.generation !== genAtStart) return emptyIdx;
-    const db = await getGtfsDb();
+    const db = await this.getDb();
     if (this.generation !== genAtStart) return emptyIdx;
     const serviceIds = Array.from(activeServices);
     if (serviceIds.length === 0) {
@@ -824,6 +895,7 @@ export class LocalGtfsStore {
   }
 
   private syncRustStops(): boolean {
+    if (!this.rustStopIndex) return false;
     if (this.rustStopCount === this.stops.size) {
       return this.rustStopIds.length > 0 || this.stops.size === 0;
     }
@@ -886,4 +958,12 @@ export class LocalGtfsStore {
   }
 }
 
+/** Magazyn aktywnego miasta (MPK + KD + Polinka). */
 export const gtfsStore = new LocalGtfsStore();
+
+/**
+ * Magazyn ogólnopolskiej kolei (dataset `polska`). Nigdy nie scalany z
+ * gtfsStore: planer intercity liczy nogę kolejową wyłącznie na nim,
+ * a nogę miejską wyłącznie na gtfsStore (patrz routing/intercity.ts).
+ */
+export const polskaStore = new LocalGtfsStore(polskaBackend());

@@ -1332,6 +1332,22 @@ export const uk: Strings = {
   suggestion: {
     stopFallback: 'Зупинка',
   },
+  intercity: {
+    stationAddress: 'Залізнична станція',
+    downloadTitle: 'Залізничний розклад (Польща)',
+    downloadBody:
+      'Завантажте загальнопольський розклад потягів, щоб планувати подорожі між містами: IC, EIC, PolRegio, KM та інші перевізники.',
+    downloadCta: 'Завантажити розклад',
+    downloadSize: (mb: string) => `'бл. ' + mb + ' МБ'`,
+    downloading: 'Завантаження залізничного розкладу…',
+    downloadFailed: 'Не вдалося завантажити залізничний розклад. Спробуйте пізніше.',
+    ready: (date: string) => `'Залізничний розклад готовий (дійсний до ' + date + ')'`,
+    noTrainsTitle: 'Немає потягів',
+    noTrainsHint: 'Перевірте дату й час або виберіть іншу станцію призначення.',
+    nearestStation: (name: string, dist: string) => `'Найближча залізнична станція: ' + name + ' (' + dist + ')'`,
+    startAtStation: 'Показати потяги з цієї станції',
+  },
+
   data: {
     stepUnpack: 'Розпакування…',
     stepStops: 'Зупинки…',

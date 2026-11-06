@@ -19,7 +19,9 @@ import {
   findCachedConnection,
 } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
-import { planConnections, buildTripStops } from './routing/engine';
+import { planConnections, buildTripStops, type PlanOptions } from './routing/engine';
+import { planIntercity } from './routing/intercity';
+import { isOutsideServiceArea } from './serviceArea';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
 import { distanceMeters } from '../gtfs/geo';
@@ -307,42 +309,72 @@ function withRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * Czy podróż wymaga planera między miastami (noga kolejowa z bazy `polska`):
+ * cel to ogólnopolska stacja kolejowa albo punkt/stacja poza strefą miasta,
+ * albo zaczynamy poza strefą (dojazd "z najbliższej stacji"). Stacja w
+ * granicach aktywnego miasta zostaje na zwykłym wyszukiwaniu (KD siedzi
+ * w bazie miasta i dojazd tramwajem liczy ten sam silnik).
+ */
+function needsIntercity(query: RouteQuery): boolean {
+  // Wyłączone pociągi w ustawieniach = nie planujemy kolei między miastami.
+  if (query.trainsEnabled === false) return false;
+  const destOutside = isOutsideServiceArea(query.toLat, query.toLon);
+  if (query.toId?.startsWith('stop-pl:')) return destOutside;
+  const originOutside = isOutsideServiceArea(query.fromLat, query.fromLon);
+  return destOutside || originOutside;
+}
+
+function toPlanOptions(query: RouteQuery, onProgress?: (partial: Connection[]) => void): PlanOptions {
+  return {
+    fromTitle: query.fromTitle,
+    fromLat: query.fromLat,
+    fromLon: query.fromLon,
+    toTitle: query.toTitle,
+    toLat: query.toLat,
+    toLon: query.toLon,
+    toId: query.toId,
+    departureTimeSec: query.departureTimeSec,
+    arriveBySec: query.arriveBySec,
+    maxTransfers: query.maxTransfers,
+    modes: query.modes,
+    minTransferSec: query.minTransferSec,
+    trainsEnabled: query.trainsEnabled,
+    cableEnabled: query.cableEnabled,
+    allowedTransferModes: query.allowedTransferModes,
+    trainMinTransferSec: query.trainMinTransferSec,
+    maxWalkM: query.maxWalkM,
+    walkSpeedMps: query.walkSpeedMps,
+    anchorStopId: query.anchorStopId,
+    anchorStopLat: query.anchorStopLat,
+    anchorStopLon: query.anchorStopLon,
+    onProgress,
+  };
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {
-      const connections = await planConnections({
-        fromTitle: query.fromTitle,
-        fromLat: query.fromLat,
-        fromLon: query.fromLon,
-        toTitle: query.toTitle,
-        toLat: query.toLat,
-        toLon: query.toLon,
-        toId: query.toId,
-        departureTimeSec: query.departureTimeSec,
-        arriveBySec: query.arriveBySec,
-        maxTransfers: query.maxTransfers,
-        modes: query.modes,
-        minTransferSec: query.minTransferSec,
-        trainsEnabled: query.trainsEnabled,
-        cableEnabled: query.cableEnabled,
-        allowedTransferModes: query.allowedTransferModes,
-        trainMinTransferSec: query.trainMinTransferSec,
-        maxWalkM: query.maxWalkM,
-        walkSpeedMps: query.walkSpeedMps,
-        anchorStopId: query.anchorStopId,
-        anchorStopLat: query.anchorStopLat,
-        anchorStopLon: query.anchorStopLon,
-        // Progres dokładamy też do podręcznego cache, żeby ekran detalu
-        // działał nawet jeśli użytkownik tapnie wiersz w trakcie liczenia.
-        onProgress: onProgress
-          ? (partial) => {
-              for (const c of partial) rememberRecent(c);
-              onProgress(partial);
-            }
-          : undefined,
-      });
+      const remember = (list: Connection[]) => {
+        for (const c of list) rememberRecent(c);
+      };
+      const progress = onProgress
+        ? (partial: Connection[]) => {
+            remember(partial);
+            onProgress(partial);
+          }
+        : undefined;
 
-      for (const c of connections) rememberRecent(c);
+      // Podróże między miastami: noga miejska + pociąg z bazy `polska`.
+      if (needsIntercity(query)) {
+        const { connections } = await planIntercity(toPlanOptions(query));
+        remember(connections);
+        return connections;
+      }
+
+      const connections = await planConnections(toPlanOptions(query, progress));
+
+      remember(connections);
 
       if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
         void saveConnections(query, connections);

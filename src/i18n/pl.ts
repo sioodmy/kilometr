@@ -1319,6 +1319,21 @@ export const pl = {
   suggestion: {
     stopFallback: 'Przystanek',
   },
+  intercity: {
+    stationAddress: 'Stacja kolejowa',
+    downloadTitle: 'Rozkład kolejowy (Polska)',
+    downloadBody:
+      'Pobierz ogólnopolski rozkład pociągów, żeby planować podróże między miastami: IC, EIC, PolRegio, KM i pozostali przewoźnicy.',
+    downloadCta: 'Pobierz rozkład',
+    downloadSize: (mb: string) => `ok. ${mb} MB`,
+    downloading: 'Pobieranie rozkładu kolejowego…',
+    downloadFailed: 'Nie udało się pobrać rozkładu kolejowego. Spróbuj ponownie później.',
+    ready: (date: string) => `Rozkład kolejowy gotowy (ważny do ${date})`,
+    noTrainsTitle: 'Brak pociągów',
+    noTrainsHint: 'Sprawdź datę i godzinę albo wybierz inną stację docelową.',
+    nearestStation: (name: string, dist: string) => `Najbliższa stacja kolejowa: ${name} (${dist})`,
+    startAtStation: 'Pokaż pociągi z tej stacji',
+  },
   data: {
     stepUnpack: 'Rozpakowywanie…',
     stepStops: 'Przystanki…',
