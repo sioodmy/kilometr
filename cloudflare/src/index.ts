@@ -10,6 +10,9 @@
  * - GET /maps/{miasto}-tiles.ktp          → pakiet kafli offline z R2
  * Miasta: wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz,
  * szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom (allowlista CITIES niżej).
+ * Poza miastami: dataset `polska` (ogólnopolska baza kolejowa):
+ * - GET /polska/manifest.json
+ * - GET /polska/db/kilometr-gtfs-polska.db.gz
  *
  * - GET /api/kd/departures     → PDP /operations (sekret po stronie serwera,
  *                                 wymaga nagłówka X-Proxy-Token, cache 120 s -
@@ -32,12 +35,18 @@ export interface Env {
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
 const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa', 'poznan', 'trojmiasto', 'lodz', 'szczecin', 'kielce', 'olsztyn', 'bialystok', 'opole', 'rzeszow', 'lublin', 'radom'] as const;
 
-/** Regex ścieżek per-miasto budowany z CITIES, żeby nowe miasto nie wymagało edycji routingu. */
-const CITY_PATH_RE = new RegExp(`^/(${CITIES.join('|')})(/.*)$`);
+/** Dataset ogólnopolski (baza kolejowa), nie miasto: brak map i disruptów. */
+const POLSKA = 'polska' as const;
+
+/** Regex ścieżek per-zbiór (miasta + polska), żeby nowy slug nie wymagał edycji routingu. */
+const CITY_PATH_RE = new RegExp(`^/(${[...CITIES, POLSKA].join('|')})(/.*)$`);
 
 const PDP_BASE = 'https://pdp-api.plk-sa.pl';
 
-const dbKeyFor = (city: string): string => `${city}/db/kilometr-gtfs.db.gz`;
+const dbKeyFor = (city: string): string =>
+  city === POLSKA ? 'polska/db/kilometr-gtfs-polska.db.gz' : `${city}/db/kilometr-gtfs.db.gz`;
+const dbPathFor = (city: string): string =>
+  city === POLSKA ? '/db/kilometr-gtfs-polska.db.gz' : '/db/kilometr-gtfs.db.gz';
 const manifestKeyFor = (city: string): string => `${city}/manifest.json`;
 const disruptionsKeyFor = (city: string): string => `${city}/disruptions.json`;
 const stopHintsKeyFor = (city: string): string => `${city}/stop-hints.json`;
@@ -118,7 +127,7 @@ export default {
       if (rest === '/stop-hints.json') {
         return serveObject(env, stopHintsKeyFor(city), 'application/json; charset=utf-8', 'stop-hints');
       }
-      if (rest === '/db/kilometr-gtfs.db.gz') {
+      if (rest === dbPathFor(city)) {
         return serveDb(req, env, dbKeyFor(city));
       }
       if (rest === '/addresses.json.gz') {

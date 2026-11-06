@@ -80,6 +80,7 @@ import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { BackupCard } from '../src/components/BackupCard';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
+import { NationalRailCard } from '../src/components/NationalRailCard';
 import { PersonalizationCard } from '../src/components/PersonalizationCard';
 import { useThemeSetting } from '../src/theme/personalization';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
@@ -602,6 +603,7 @@ export default function SettingsScreen() {
                 </Text>
               ) : null}
             </View>
+            <NationalRailCard />
             <OfflineMapCard />
             <DiagnosticsCard />
           </>

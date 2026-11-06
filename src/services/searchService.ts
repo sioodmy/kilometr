@@ -3,7 +3,7 @@ import { normalizePolish } from '../gtfs/geo';
 import type { Suggestion } from '../types/models';
 import { getActiveCityIdSync } from './cityStore';
 import { hasOfflineAddressIndex, searchAddresses } from './addressIndex';
-import { searchStops } from './gtfsDatabase';
+import { hasNationalDb, searchNationalStations, searchStops } from './gtfsDatabase';
 import { searchNominatimDirect } from './nominatimDirect';
 import { addRecentSuggestion, loadRecent, loadSuggestions, saveSuggestions } from './offlineCache';
 import { ensurePoiIndex, searchPois } from './poiIndex';
@@ -11,6 +11,7 @@ import { searchPolinkaStops } from './polinkaSearch';
 import { searchPwrBuildings } from './pwrBuildings';
 import { matchSuggestions, rankWithFrecency } from './searchFrecency';
 import { dedupeAndSort, withDistances } from './searchRank';
+import { tr } from '../i18n/locale';
 import type { ISearchService } from './types';
 
 const requests = new Map<string, AbortController>();
@@ -81,6 +82,12 @@ export const SearchService: ISearchService = {
       const stopsPromise = searchStops(q, 24).catch(() => []);
       const poisPromise = searchPois(q, coords?.lat, coords?.lon, 16).catch(() => []);
       const addressesPromise = searchAddresses(q, coords?.lat, coords?.lon, 16).catch(() => []);
+      // Stacje kolejowe ogólnopolskie (dataset polska): tylko przy pobranej
+      // bazie; pomijamy stacje, które ma też baza miasta (np. Wrocław Główny
+      // we Wrocławiu), żeby dojazd liczył miejski silnik z KD.
+      const stationsPromise = hasNationalDb()
+        .then((present) => (present ? searchNationalStations(persistedQuery, 8) : []))
+        .catch(() => [] as Awaited<ReturnType<typeof searchNationalStations>>);
       const [history, offline] = await Promise.all([
         loadRecent(cityId),
         loadSuggestions(persistedQuery, cityId),
@@ -98,6 +105,7 @@ export const SearchService: ISearchService = {
         ...personal,
       ];
       let stops: Suggestion[] = [];
+      let stations: Suggestion[] = [];
       let pois: Suggestion[] = [];
       let addresses: Suggestion[] = [];
       let fuzzyPromise: Promise<void> | null = null;
@@ -111,7 +119,11 @@ export const SearchService: ISearchService = {
         );
       const publish = () => {
         assertCurrent();
-        local = [...stops, ...pois, ...extras, ...addresses];
+        // Stacja o nazwie przystanku miasta (np. Wrocław Główny w bazie
+        // Wrocławia) wypada: dojazd liczy miejski silnik z KD.
+        const cityStopNames = new Set(stops.map((s) => normalizePolish(s.title)));
+        const visibleStations = stations.filter((s) => !cityStopNames.has(normalizePolish(s.title)));
+        local = [...stops, ...visibleStations, ...pois, ...extras, ...addresses];
         onPartial?.(rank(merge([]), history));
       };
       const searchFuzzyAddresses = async () => {
@@ -137,6 +149,19 @@ export const SearchService: ISearchService = {
             title: hit.name.toUpperCase(),
             address: '',
             kind: 'stop',
+            lat: hit.lat,
+            lon: hit.lon,
+            weight: hit.weight,
+          }));
+          schedulePublish();
+        }),
+        stationsPromise.then((hits) => {
+          stations = hits.map((hit) => ({
+            id: `stop-${hit.stop_id}`,
+            title: hit.name,
+            address: tr().intercity.stationAddress,
+            kind: 'stop' as const,
+            category: 'train',
             lat: hit.lat,
             lon: hit.lon,
             weight: hit.weight,

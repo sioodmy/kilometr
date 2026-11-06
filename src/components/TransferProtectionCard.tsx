@@ -76,7 +76,8 @@ export function TransferAction({
 
 export function transferNeedsAttention(state?: TransferProtectionState) {
   return (
-    state != null && ['risk', 'rerouting', 'alternative', 'noAlternative'].includes(state.status)
+    state != null &&
+    ['risk', 'rerouting', 'alternative', 'noAlternative', 'conductor'].includes(state.status)
   );
 }
 
@@ -91,6 +92,8 @@ export function transferTitle(state: TransferProtectionState | undefined, s: Str
     case 'rerouting':
     case 'noAlternative':
       return state.nextLine ? t.riskTitle(state.nextLine) : t.attention;
+    case 'conductor':
+      return t.conductorTitle;
     case 'alternative':
       return t.alternativeTitle;
     case 'unavailable':

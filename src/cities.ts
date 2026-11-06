@@ -40,6 +40,13 @@ export interface CityDef {
   tileMaxZoom: number;
   /** Orientacyjny rozmiar pakietu kafli (MB) do tekstów UI; "ok." w i18n. */
   tilePackMB: number;
+  /**
+   * Stacje kolejowe bramowe miasta: tu planer intercity kończy nogę
+   * miejską i zaczyna pociąg (dataset `polska`). Nazwy dokładnie jak w
+   * feedzie PLK (patrz build-polska.mjs); Łódź i Warszawa mają po kilka
+   * stacji głównych, reszta miast jedną.
+   */
+  railGateways: string[];
   features: {
     /** Kolej linowa (Polinka) istnieje tylko we Wrocławiu. */
     cable: boolean;
@@ -67,6 +74,7 @@ const WROCLAW: CityDef = {
   tileBbox: { minLat: 51.0, maxLat: 51.22, minLon: 16.8, maxLon: 17.28 },
   tileMaxZoom: 14,
   tilePackMB: 19,
+  railGateways: ['Wrocław Główny'],
   features: { cable: true, campusPois: true, regionalRail: true, directBusPosition: true },
 };
 
@@ -85,6 +93,7 @@ const KRAKOW: CityDef = {
   tileBbox: { minLat: 49.96, maxLat: 50.16, minLon: 19.7, maxLon: 20.3 },
   tileMaxZoom: 14,
   tilePackMB: 21,
+  railGateways: ['Kraków Główny'],
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -109,6 +118,7 @@ const GZM: CityDef = {
   // (limit R2 to 300 MB) i odblokowuje pieszy routing offline w Raptorze.
   tileMaxZoom: 14,
   tilePackMB: 104,
+  railGateways: ['Katowice'],
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -130,6 +140,7 @@ const WARSZAWA: CityDef = {
   tileMaxZoom: 14,
   tilePackMB: 39,
   // SKM siedzi w GTFS WTP, KM i WKD dociąga build z PDP (jak KD we Wrocławiu).
+  railGateways: ['Warszawa Centralna', 'Warszawa Zachodnia', 'Warszawa Wschodnia', 'Warszawa Gdańska', 'Warszawa Śródmieście'],
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -157,6 +168,7 @@ const POZNAN: CityDef = {
   tilePackMB: 23,
   // Kolej aglomeracyjna (KW/PKM) siedzi we własnym publicznym GTFS
   // Kolei Wielkopolskich, nie w PDP. ZTM nie ma publicznego bus_position.
+  railGateways: ['Poznań Główny'],
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -182,6 +194,7 @@ const TROJMIASTO: CityDef = {
   tilePackMB: 30,
   // SKM siedzi we własnym publicznym GTFS (jak KW w Poznaniu). Ani ZTM
   // Gdańsk, ani ZKM Gdynia nie mają publicznego bus_position.
+  railGateways: ['Gdynia Główna', 'Gdańsk Główny'],
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -209,6 +222,7 @@ const LODZ: CityDef = {
   tilePackMB: 20,
   // ŁKA siedzi we własnym publicznym GTFS (pkp-lka.zip), nie w PDP.
   // ZDiT nie ma publicznego bus_position.
+  railGateways: ['Łódź Fabryczna', 'Łódź Kaliska', 'Łódź Widzew'],
   features: { cable: false, campusPois: false, regionalRail: true, directBusPosition: false },
 };
 
@@ -238,6 +252,7 @@ const SZCZECIN: CityDef = {
   // Kolej (SKM Szczecin) nie ma publicznego GTFS ani feedu live w bboxie
   // (sprawdzone: zbiorkom `pkp` zwraca tu tylko dalekobieżne IC).
   // ZDiTM nie ma publicznego bus_position.
+  railGateways: ['Szczecin Główny'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -267,6 +282,7 @@ const KIELCE: CityDef = {
   // Kielce mają wyłącznie autobusy (GTFS ZTM to sam route_type 3, linie
   // 0W/0Z, 1-54, 102-114, E/F, N1/N2, T/Z). Kolej nie ma publicznego GTFS,
   // ZTM nie ma publicznego bus_position.
+  railGateways: ['Kielce Główne'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -297,6 +313,7 @@ const OLSZTYN: CityDef = {
   // Kolej nie ma publicznego GTFS ani feedu live w bboxie (sprawdzone:
   // zbiorkom `pkp` zwraca tu tylko dalekobieżne IC). ZDZiT nie ma
   // publicznego bus_position.
+  railGateways: ['Olsztyn Główny'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -324,6 +341,7 @@ const BIALYSTOK: CityDef = {
   tilePackMB: 12,
   // Kolej regionalna (POLREGIO) nie ma publicznego GTFS, więc miasto jedzie
   // bez sekcji kolejowej. BKM nie ma publicznego bus_position.
+  railGateways: ['Białystok'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -352,6 +370,7 @@ const OPOLE: CityDef = {
   tilePackMB: 8,
   // Opole nie ma tramwajów ani kolei z publicznym GTFS (wszystkie 27 linii
   // MZK to autobusy, route_type 3). MZK nie ma publicznego bus_position.
+  railGateways: ['Opole Główne'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -380,6 +399,7 @@ const RZESZOW: CityDef = {
   // Kolej nie ma publicznego GTFS ani feedu live w bboxie (sprawdzone:
   // zbiorkom `pkp` zwraca tu zero pojazdów). ZTM nie ma publicznego
   // bus_position.
+  railGateways: ['Rzeszów Główny'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -409,6 +429,7 @@ const LUBLIN: CityDef = {
   // Kolej (POLREGIO/IC przez Lublin) nie ma publicznego GTFS w zakresie
   // budowy, więc matcher nie miałby do czego spinać pojazdów z `pkp`.
   // ZDiTM nie ma publicznego bus_position.
+  railGateways: ['Lublin Główny'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 
@@ -440,6 +461,7 @@ const RADOM: CityDef = {
   // Kolei regionalnej nie ma w buildzie (KM dojeżdża do Radomia, ale
   // statyczny feed mamy tylko dla obwiedni Warszawy), więc miasto jedzie
   // bez sekcji kolejowej jak Szczecin. MZDiK nie ma publicznego bus_position.
+  railGateways: ['Radom Główny'],
   features: { cable: false, campusPois: false, regionalRail: false, directBusPosition: false },
 };
 

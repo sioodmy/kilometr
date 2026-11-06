@@ -38,7 +38,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom]
+        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom, polska]
 
 permissions:
   contents: read
@@ -55,11 +55,14 @@ jobs:
     # wybrane = tylko to jedno. `matrix` nie istnieje w warunku na poziomie
     # joba (job `if` jest liczone przed rozwinięciem strategii), więc
     # filtrujemy samą listę miast, a nie warunek.
+    # `polska` to dataset ogólnokrajowy (baza kolejowa), nie miasto.
+    env:
+      DB_NAME: ${{ matrix.city == 'polska' && 'kilometr-gtfs-polska.db' || 'kilometr-gtfs.db' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom", "polska"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -94,7 +97,11 @@ jobs:
         id: build
         run: |
           set +e
-          node cloudflare/scripts/build-timetable.mjs --city=${{ matrix.city }} --write-coords
+          if [ "${{ matrix.city }}" = "polska" ]; then
+            node cloudflare/scripts/build-polska.mjs
+          else
+            node cloudflare/scripts/build-timetable.mjs --city=${{ matrix.city }} --write-coords
+          fi
           code=$?
           echo "exit=$code" >> "$GITHUB_OUTPUT"
           if [ "$code" -eq 2 ]; then
@@ -121,8 +128,8 @@ jobs:
         if: steps.build.outputs.exit == '0'
         run: |
           set -euo pipefail
-          NEW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz")
-          RAW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db")
+          NEW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/${DB_NAME}.gz")
+          RAW=$(stat -c%s "cloudflare/dist/${{ matrix.city }}/${DB_NAME}")
           echo "Nowa baza gzip (${{ matrix.city }}): $((NEW / 1048576)) MB (nieskompresowana: $((RAW / 1048576)) MB)" >> "$GITHUB_STEP_SUMMARY"
           URL="${TIMETABLE_PUBLIC_URL:-}"
           if [ -z "$URL" ]; then
@@ -155,8 +162,8 @@ jobs:
         with:
           name: kilometr-timetable-${{ matrix.city }}
           path: |
-            cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz
-            cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db
+            cloudflare/dist/${{ matrix.city }}/${{ env.DB_NAME }}.gz
+            cloudflare/dist/${{ matrix.city }}/${{ env.DB_NAME }}
             cloudflare/dist/${{ matrix.city }}/manifest.json
             cloudflare/data/kd-station-coords.json
             cloudflare/data/gzm-station-coords.json
@@ -221,8 +228,8 @@ jobs:
             echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload bazy do R2."
             exit 0
           fi
-          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-gtfs.db.gz" \
-            --file="cloudflare/dist/${{ matrix.city }}/kilometr-gtfs.db.gz" --content-type application/gzip
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/${{ env.DB_NAME }}.gz" \
+            --file="cloudflare/dist/${{ matrix.city }}/${{ env.DB_NAME }}.gz" --content-type application/gzip
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
