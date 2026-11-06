@@ -600,6 +600,18 @@ export const uk: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
     downloadFailFallback: 'Спробуй за мить.',
+    railTitle: 'Залізничний розклад (Польща)',
+    railHint: 'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
+    railReady: (date: string) => `'Завантажено (дійсний до ' + date + ')'`,
+    railEmpty: 'Не завантажено',
+    railDownload: 'Завантажити',
+    railCheck: 'Перевірити оновлення',
+    railDelete: 'Видалити з телефона',
+    railDeleteTitle: 'Видалити залізничний розклад?',
+    railDeleteBody: 'Планування подорожей між містами перестане працювати офлайн.',
+    railDeleteConfirm: 'Видалити',
+    railCancel: 'Скасувати',
+
     downloadDone: 'Розклад оновлено.',
     downloadUpToDate: 'Розклад уже актуальний.',
     downloadKeptLocal: 'Не вдалося завантажити нову версію. Залишаємо ту, що вже є на телефоні.',

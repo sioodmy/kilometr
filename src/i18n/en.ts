@@ -576,6 +576,18 @@ export const en: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from the city’s open data.`,
     downloadFailFallback: 'Try again in a moment.',
+    railTitle: 'National rail timetable',
+    railHint: 'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
+    railReady: (date: string) => `'Downloaded (valid until ' + date + ')'`,
+    railEmpty: 'Not downloaded',
+    railDownload: 'Download',
+    railCheck: 'Check for updates',
+    railDelete: 'Remove from phone',
+    railDeleteTitle: 'Remove the rail timetable?',
+    railDeleteBody: 'Planning journeys between cities will stop working offline.',
+    railDeleteConfirm: 'Remove',
+    railCancel: 'Cancel',
+
     downloadDone: 'Timetable refreshed.',
     downloadUpToDate: 'The timetable is already up to date.',
     downloadKeptLocal: 'Could not download the new version. Keeping the one already on the phone.',

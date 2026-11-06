@@ -592,6 +592,17 @@ export const pl = {
     downloadFailBody: (reason: string) =>
       `${reason}. Aplikacja pobiera gotową bazę z serwera Kilometr albo klasycznie z otwartych danych miasta.`,
     downloadFailFallback: 'Spróbuj ponownie za chwilę.',
+    railTitle: 'Rozkład kolejowy (Polska)',
+    railHint: 'Pociągi wszystkich przewoźników do planowania podróży między miastami: IC, EIC, PolRegio, KM i inni.',
+    railReady: (date: string) => `Pobrany (ważny do ${date})`,
+    railEmpty: 'Niepobrany',
+    railDownload: 'Pobierz',
+    railCheck: 'Sprawdź aktualizacje',
+    railDelete: 'Usuń z telefonu',
+    railDeleteTitle: 'Usunąć rozkład kolejowy?',
+    railDeleteBody: 'Planowanie podróży między miastami przestanie działać offline.',
+    railDeleteConfirm: 'Usuń',
+    railCancel: 'Anuluj',
     downloadDone: 'Rozkład odświeżony.',
     downloadUpToDate: 'Rozkład jest już aktualny.',
     downloadKeptLocal:

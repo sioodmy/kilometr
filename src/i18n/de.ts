@@ -581,6 +581,18 @@ export const de: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch aus den offenen Daten der Stadt.`,
     downloadFailFallback: 'Versuch es gleich erneut.',
+    railTitle: 'Nationales Bahnfahrplan',
+    railHint: 'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
+    railReady: (date: string) => `'Heruntergeladen (gültig bis ' + date + ')'`,
+    railEmpty: 'Nicht heruntergeladen',
+    railDownload: 'Herunterladen',
+    railCheck: 'Nach Updates suchen',
+    railDelete: 'Vom Handy entfernen',
+    railDeleteTitle: 'Bahnfahrplan entfernen?',
+    railDeleteBody: 'Die Planung von Reisen zwischen Städten funktioniert dann offline nicht mehr.',
+    railDeleteConfirm: 'Entfernen',
+    railCancel: 'Abbrechen',
+
     downloadDone: 'Fahrplan aktualisiert.',
     downloadUpToDate: 'Der Fahrplan ist schon aktuell.',
     downloadKeptLocal:
