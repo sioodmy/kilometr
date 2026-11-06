@@ -1,0 +1,497 @@
+// Live dla pociągów ogólnopolskich (dataset `polska`) ze zbiorkomu.
+//
+// Źródło: strumień SSE `api6/pkp/positions/{vehicle}/stream`, gdzie
+// `{vehicle}` to `2:AGENCJA__numer` z pozycji (np. `2:IC__8316`).
+// Event `message` niesie wszystko naraz:
+// - `position`: [id, city, route, numer, [lon,lat], bearing, timestamp, tripId],
+// - `stops`: [arr, dep] z opóźnieniem per postój (ms),
+// - `alerts`: krotki [title, description, url, publishedAt, from, until, lang, detected].
+// Event `initial` to rozkład kursu (itinerary) bez pozycji.
+//
+// Zbiorkom ma własne trip_id (np. `ICic_ustka-..._06.11.2026_13.38`), więc
+// łącznikiem z bazą PLK jest NUMER POCIĄGU (drugi człon `shortName`) plus
+// zgodność nazw stacji z trasy kursu.
+
+import { getNationalActiveServices, getNationalDb } from './gtfsDatabase';
+import { ZBIORKOM } from './gtfsConfig';
+import { withTimeout } from './net';
+
+export interface NationalRailLive {
+  /** trip_id (pl:...) -> opóźnienie w sekundach. */
+  delays: Map<string, number>;
+  /** trip_id -> bieżąca pozycja (mapa, etykieta „gdzie jest pociąg”). */
+  positions: Map<string, { lat: number; lon: number; bearing?: number; updatedAt: number }>;
+  /** trip_id -> id kursu zbiorkomu (do strumienia alertów). */
+  zbTripIds: Map<string, string>;
+  fetchedAt: number;
+}
+
+export interface ZbStopDeparture {
+  tripId?: string;
+  agency: string;
+  line: string;
+  color?: string;
+  direction: string;
+  trainNumber: string;
+  trainName?: string;
+  scheduledAt: number;
+  delaySec: number;
+  platform?: string;
+  cancelled: boolean;
+  live: boolean;
+}
+
+export interface ZbVehicleAlert {
+  title: string;
+  description: string;
+}
+
+/** Krotka stacji z /api6-open/pkp/stops: [id, city, name, code, [lon,lat], ...]. */
+type StopTuple = [string, string, string, string, [number, number]];
+
+const POSITIONS_TTL_MS = 25_000;
+
+let stopsPromise: Promise<StopTuple[]> | null = null;
+const positionsCache = new Map<string, { at: number; promise: Promise<NationalRailLive> }>();
+const departuresCache = new Map<string, { at: number; promise: Promise<ZbStopDeparture[]> }>();
+const alertsCache = new Map<string, { at: number; promise: Promise<ZbVehicleAlert[]> }>();
+
+function normalized(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll('ł', 'l')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Numer pociągu bez wariantów: „3830/1” -> „3830”, „65000/1” -> „65000”. */
+function baseTrainNumber(value: string | undefined): string {
+  const m = /(\d{1,7})/.exec(value ?? '');
+  return m?.[1] ?? '';
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const timeout = withTimeout(ZBIORKOM.timeoutMs);
+  try {
+    const res = await fetch(url, { signal: timeout.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    timeout.dispose();
+  }
+}
+
+/** Katalog stacji zbiorkomu (cache na sesję, ~3.5k krotek). */
+function loadStops(): Promise<StopTuple[]> {
+  if (stopsPromise) return stopsPromise;
+  stopsPromise = fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`)
+    .then((raw) => {
+      const list = (raw as { stops?: unknown }).stops;
+      if (!Array.isArray(list)) return [];
+      return list.filter((s): s is StopTuple => Array.isArray(s) && s.length >= 5 && typeof s[0] === 'string');
+    })
+    .catch(() => {
+      stopsPromise = null;
+      return [];
+    });
+  return stopsPromise;
+}
+
+/** Bbox z listy punktów (lon,lat) z zapasem ~0.25° (~25 km). */
+function bboxOf(points: Array<{ lat: number; lon: number }>, padDeg = 0.25): string {
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  for (const p of points) {
+    minLat = Math.min(minLat, p.lat);
+    maxLat = Math.max(maxLat, p.lat);
+    minLon = Math.min(minLon, p.lon);
+    maxLon = Math.max(maxLon, p.lon);
+  }
+  return `${(minLon - padDeg).toFixed(3)},${(minLat - padDeg).toFixed(3)},${(maxLon + padDeg).toFixed(3)},${(maxLat + padDeg).toFixed(3)}`;
+}
+
+interface ZbPosition {
+  vehicle: { id: string; agency: string };
+  routeName: string;
+  brigade: string;
+  location: [number, number];
+  timestamp: number;
+  bearing?: number;
+  delay: number;
+  headsign: string | null;
+  upcomingStops: { sequence: number; name: string; scheduledArrival: number; scheduledDeparture: number }[];
+}
+
+async function fetchPositions(bbox: string, agencies: string[]): Promise<ZbPosition[]> {
+  const url = `${ZBIORKOM.baseUrl}/api6-open/pkp/positions/${bbox}?agencies=${encodeURIComponent(agencies.join(','))}`;
+  const raw = (await fetchJson(url)) as { positions?: unknown };
+  if (!Array.isArray(raw.positions)) return [];
+  return raw.positions.filter((p): p is ZbPosition => {
+    if (!p || typeof p !== 'object') return false;
+    const v = p as ZbPosition;
+    return (
+      Array.isArray(v.location) &&
+      typeof v.location[0] === 'number' &&
+      typeof v.location[1] === 'number' &&
+      typeof v.timestamp === 'number' &&
+      typeof v.delay === 'number' &&
+      Array.isArray(v.upcomingStops)
+    );
+  });
+}
+
+interface CandidateTrip {
+  tripId: string;
+  trainNumber: string;
+  headsign: string;
+  stops: { name: string; seq: number }[];
+}
+
+/**
+ * Kursy z bazy PLK przez podane stacje w oknie ±3 h. Pełną sekwencję
+ * dociągamy tylko dla kandydatów (kilkanaście kursów), nie dla całej bazy.
+ */
+async function findCandidateTrips(stationNames: string[], fromSec: number, toSec: number): Promise<CandidateTrip[]> {
+  const db = await getNationalDb();
+  const wanted = new Set(stationNames.map(normalized).filter(Boolean));
+  if (wanted.size === 0) return [];
+
+  const allStops = await db.getAllAsync<{ stop_id: string; name: string }>('SELECT stop_id, name FROM stops');
+  const stopIds = allStops.filter((s) => wanted.has(normalized(s.name))).map((s) => s.stop_id);
+  if (stopIds.length === 0) return [];
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const services = await getNationalActiveServices(now.getDay(), dateStr);
+  if (services.size === 0) return [];
+
+  const svcPlaceholders = [...services].map(() => '?').join(',');
+  const stopPlaceholders = stopIds.map(() => '?').join(',');
+  const rows = await db.getAllAsync<{ trip_id: string; train_number: string; headsign: string }>(
+    `SELECT DISTINCT st.trip_id, t.train_number, t.headsign
+     FROM stop_times st JOIN trips t ON t.trip_id = st.trip_id
+     WHERE st.stop_id IN (${stopPlaceholders})
+       AND t.service_id IN (${svcPlaceholders})
+       AND st.dep_sec BETWEEN ? AND ?`,
+    ...stopIds,
+    ...services,
+    Math.max(0, fromSec - 10800),
+    toSec + 10800,
+  );
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.trip_id);
+  const placeholders = ids.map(() => '?').join(',');
+  const seqRows = await db.getAllAsync<{ trip_id: string; stop_id: string; seq: number }>(
+    `SELECT trip_id, stop_id, seq FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
+    ...ids,
+  );
+  const nameById = new Map(allStops.map((s) => [s.stop_id, s.name]));
+  const seqByTrip = new Map<string, { name: string; seq: number }[]>();
+  for (const r of seqRows) {
+    let list = seqByTrip.get(r.trip_id);
+    if (!list) {
+      list = [];
+      seqByTrip.set(r.trip_id, list);
+    }
+    list.push({ name: nameById.get(r.stop_id) ?? r.stop_id, seq: r.seq });
+  }
+  return rows.map((r) => ({
+    tripId: r.trip_id,
+    trainNumber: r.train_number,
+    headsign: r.headsign,
+    stops: seqByTrip.get(r.trip_id) ?? [],
+  }));
+}
+
+/** Dopasowanie pozycji do kursów: numer pociągu + najbliższa stacja w czasie. */
+function matchPositions(positions: ZbPosition[], candidates: CandidateTrip[]): NationalRailLive {
+  const delays = new Map<string, number>();
+  const out = new Map<string, { lat: number; lon: number; bearing?: number; updatedAt: number }>();
+  const zbTripIds = new Map<string, string>();
+  const byNumber = new Map<string, CandidateTrip[]>();
+  for (const c of candidates) {
+    const key = baseTrainNumber(c.trainNumber);
+    if (!key) continue;
+    const list = byNumber.get(key) ?? [];
+    list.push(c);
+    byNumber.set(key, list);
+  }
+
+  for (const pos of positions) {
+    const key = baseTrainNumber(pos.brigade);
+    const list = key ? byNumber.get(key) : undefined;
+    if (!list?.length) continue;
+    // Pozycja podaje tylko najbliższe 3 stacje. Bierzemy TĘ, na której pociąg
+    // aktualnie stoi/jedzie (najbliższa w czasie), a nie zbiór wszystkich:
+    // inaczej każdy kurs zatrzymujący się na dworcu „pasuje” do każdego
+    // pociągu stojącego tam w tej chwili.
+    const nextStop = pos.upcomingStops[0];
+    if (!nextStop) continue;
+    const nextKey = normalized(nextStop.name);
+    const nextSec = Math.round(nextStop.scheduledArrival / 1000) % 86400;
+    let best: { trip: CandidateTrip; diff: number } | null = null;
+    for (const trip of list) {
+      for (const stop of trip.stops) {
+        if (normalized(stop.name) !== nextKey) continue;
+        const diff = Math.abs(stop.seq - nextSec);
+        if (!best || diff < best.diff) best = { trip, diff };
+        break;
+      }
+    }
+    if (!best) continue;
+    delays.set(best.trip.tripId, Math.round(pos.delay / 1000));
+    out.set(best.trip.tripId, {
+      lat: pos.location[1],
+      lon: pos.location[0],
+      bearing: typeof pos.bearing === 'number' ? pos.bearing : undefined,
+      updatedAt: pos.timestamp,
+    });
+    // Id kursu zbiorkomu do strumienia alertów (z pozycji, nie z GTFS).
+    zbTripIds.set(best.trip.tripId, `2:${pos.vehicle.agency}__${pos.vehicle.id.replace(/^_/, '')}`);
+  }
+  return { delays, positions: out, zbTripIds, fetchedAt: Date.now() };
+}
+
+export interface NationalLiveLeg {
+  /** trip_id z bazy PLK (pl:...), żeby dopiąć pozycję do nóg w UI. */
+  tripId?: string;
+  fromStop: string;
+  toStop: string;
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
+  line?: string;
+  trainNumber?: string;
+  railAgency?: string;
+}
+
+/**
+ * Live dla nóg kolejowych: bbox z ich stacji, pozycje tylko dla przewoźników
+ * z tych nóg, dopasowanie po numerze i nazwach stacji. Cache 25 s na bbox,
+ * więc tick trackera i ekran nie sieją zapytań.
+ */
+export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<NationalRailLive> {
+  const empty: NationalRailLive = {
+    delays: new Map(),
+    positions: new Map(),
+    zbTripIds: new Map(),
+    fetchedAt: Date.now(),
+  };
+  const trains = legs.filter((l) => l.trainNumber || l.line);
+  if (trains.length === 0) return empty;
+
+  const points = trains.flatMap((l) =>
+    l.fromLat != null && l.fromLon != null && l.toLat != null && l.toLon != null
+      ? [
+          { lat: l.fromLat, lon: l.fromLon },
+          { lat: l.toLat, lon: l.toLon },
+        ]
+      : [],
+  );
+  if (points.length === 0) return empty;
+  const bbox = bboxOf(points);
+  const agencies = [...new Set(trains.map((l) => l.railAgency).filter((a): a is string => !!a))];
+  const cacheKey = `${bbox}|${agencies.join(',')}`;
+  const hit = positionsCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < POSITIONS_TTL_MS) return hit.promise;
+
+  const promise = (async () => {
+    const positions = await fetchPositions(
+      bbox,
+      agencies.length ? agencies : ['IC', 'PR', 'KD', 'KM', 'KW', 'KS', 'KML', 'LKA', 'SKM', 'SKMT', 'AR'],
+    );
+    if (positions.length === 0) return empty;
+    const now = new Date();
+    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60;
+    const stationNames = [...new Set(trains.flatMap((l) => [l.fromStop, l.toStop]))];
+    const candidates = await findCandidateTrips(stationNames, nowSec, nowSec);
+    return matchPositions(positions, candidates);
+  })().catch(() => empty);
+
+  positionsCache.set(cacheKey, { at: Date.now(), promise });
+  if (positionsCache.size > 8) {
+    const oldest = positionsCache.keys().next().value;
+    if (oldest !== undefined) positionsCache.delete(oldest);
+  }
+  return promise;
+}
+
+/* ─── Tablica odjazdów stacji (peron, opóźnienie, nazwa handlowa) ─────── */
+
+/** Stacja zbiorkomu dla nazwy stacji z bazy PLK (katalog po nazwie). */
+async function zbStopIdForStation(name: string): Promise<string | null> {
+  const stops = await loadStops();
+  if (stops.length === 0) return null;
+  const key = normalized(name);
+  const exact = stops.find((s) => normalized(s[2]) === key);
+  return exact?.[0] ?? null;
+}
+
+interface RawDeparture {
+  trip?: {
+    id?: string;
+    route?: { name?: string; agency?: string; color?: string };
+    headsign?: string;
+    shortName?: string;
+  };
+  scheduledDeparture?: number;
+  delay?: number;
+  isRealtime?: boolean;
+  isCancelled?: boolean;
+  platform?: string;
+}
+
+function parseDeparture(raw: RawDeparture): ZbStopDeparture | null {
+  const trip = raw.trip ?? {};
+  const route = trip.route ?? {};
+  if (typeof raw.scheduledDeparture !== 'number') return null;
+  const shortName = (trip.shortName ?? '').trim();
+  const m = /^(\S+)(?:\s+(.+))?$/.exec(shortName);
+  if (!m) return null;
+  return {
+    tripId: trip.id,
+    agency: route.agency ?? '',
+    line: route.name ?? '',
+    color: route.color,
+    direction: trip.headsign ?? '',
+    trainNumber: m[1],
+    trainName: m[2] || undefined,
+    scheduledAt: raw.scheduledDeparture,
+    delaySec: Math.round((raw.delay ?? 0) / 1000),
+    platform: raw.platform || undefined,
+    cancelled: raw.isCancelled === true,
+    live: raw.isRealtime === true,
+  };
+}
+
+/** Odjazdy ze stacji zbiorkomu (cache 20 s, jak tablica w KD). */
+export async function fetchZbStopDepartures(stationName: string): Promise<ZbStopDeparture[]> {
+  const stopId = await zbStopIdForStation(stationName);
+  if (!stopId) return [];
+  const hit = departuresCache.get(stopId);
+  if (hit && Date.now() - hit.at < 20_000) return hit.promise;
+  const promise = fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops/${encodeURIComponent(stopId)}?limit=100`)
+    .then((raw) => {
+      const list = (raw as { departures?: unknown }).departures;
+      if (!Array.isArray(list)) return [];
+      return list.flatMap((d) => {
+        const parsed = parseDeparture(d as RawDeparture);
+        return parsed ? [parsed] : [];
+      });
+    })
+    .catch(() => {
+      departuresCache.delete(stopId);
+      return [];
+    });
+  departuresCache.set(stopId, { at: Date.now(), promise });
+  return promise;
+}
+
+/* ─── Alerty per pociąg (strumień SSE pozycji) ────────────────────────── */
+
+function parseAlerts(raw: unknown): ZbVehicleAlert[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ZbVehicleAlert[] = [];
+  for (const entry of raw) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
+    const title = entry[0].trim();
+    const description = typeof entry[1] === 'string' ? entry[1].trim() : '';
+    if (!title) continue;
+    // Zbiorkom dokleja komunikaty operatora do KAŻDEGO kursu (przedsprzedaż,
+    // cenniki, prace serwisowe w kanałach sprzedaży). Zostają realne
+    // utrudnienia w ruchu: objazdy, odwołania, ograniczenia prędkości.
+    const haystack = `${title} ${description}`.toLowerCase();
+    if (ALERT_NOISE.some((needle) => haystack.includes(needle))) continue;
+    out.push({ title, description });
+  }
+  return out;
+}
+
+/** Słowa odcinające alerty handlowe/operatora, nie ruchowe. */
+const ALERT_NOISE = [
+  'sprzedaży',
+  'sprzedaz',
+  'bilet',
+  'cennik',
+  'regulamin',
+  'promocj',
+  'taryf',
+  'prac sieciowych',
+  'prac serwisowych',
+  'kanałach sprzedaży',
+  'kanalach sprzedazy',
+  'rezerwacji miejsc',
+  'aplikacj',
+  'serwis',
+  'ofert',
+  'rabat',
+  'ulgow',
+  'lojaln',
+];
+
+/**
+ * Alerty konkretnego pociągu. Strumień `api6/pkp/positions/{vehicle}/stream`
+ * wysyła `initial` (rozkład kursu) i `message` (pozycja + stops + alerts).
+ * Czytamy do pierwszego `message` i zamykamy strumień; cache 5 min.
+ *
+ * `vehicle` to `2:AGENCJA__numer` (np. `2:IC__8316`) - dostajemy je z
+ * dopasowania pozycji (`NationalRailLive.zbTripIds`).
+ */
+export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAlert[]> {
+  const hit = alertsCache.get(vehicle);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.promise;
+  const promise = (async () => {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ZBIORKOM.timeoutMs);
+      const res = await fetch(
+        `${ZBIORKOM.baseUrl}/api6/pkp/positions/${encodeURIComponent(vehicle)}/stream`,
+        { headers: { Accept: 'text/event-stream' }, signal: ctrl.signal },
+      );
+      if (!res.ok || !res.body) return [];
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let alerts: ZbVehicleAlert[] = [];
+      let seen = 0;
+      while (buffer.length < 200_000 && seen < 6) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let eventEnd = buffer.indexOf('\n\n');
+        while (eventEnd >= 0) {
+          const block = buffer.slice(0, eventEnd);
+          buffer = buffer.slice(eventEnd + 2);
+          seen++;
+          const isMessage = block.includes('event: message');
+          const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
+          if (isMessage && dataLine) {
+            try {
+              const payload = JSON.parse(dataLine.slice(5).trim()) as { alerts?: unknown };
+              alerts = parseAlerts(payload.alerts);
+            } catch {
+              // niepełny JSON: zostaje pusta lista
+            }
+            eventEnd = -1;
+            break;
+          }
+          eventEnd = buffer.indexOf('\n\n');
+        }
+        if (alerts.length > 0) break;
+      }
+      clearTimeout(timer);
+      await reader.cancel().catch(() => {});
+      return alerts;
+    } catch {
+      return [];
+    }
+  })();
+  alertsCache.set(vehicle, { at: Date.now(), promise });
+  return promise;
+}

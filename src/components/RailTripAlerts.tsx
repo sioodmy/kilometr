@@ -5,18 +5,18 @@ import { AlertCircle } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { Connection, Leg } from '../types/models';
-import { fetchZbRailDepartures, fetchZbRailTripAlerts, railLegKey, type ZbRailAlert } from '../services/zbiorkomRail';
+import { fetchNationalRailLive, fetchZbVehicleAlerts, type ZbVehicleAlert } from '../services/nationalRailLive';
 
 interface TrainAlerts {
   leg: Leg;
-  alerts: ZbRailAlert[];
+  alerts: ZbVehicleAlert[];
 }
 
 /**
- * Alerty przypisane do konkretnego pociągu (zbiorkom trip JSON): objazdy,
- * odwołane odcinki, zmiany peronów. Zbiorkom dokleja też komunikaty
- * ogólnooperatorskie (przedsprzedaż, cenniki) - odfiltrowane w serwisie.
- * Odświeżanie co 60 s, tylko na ekranie szczegółów podróży.
+ * Alerty przypisane do konkretnego pociągu (strumień SSE zbiorkomu):
+ * objazdy, odwołane odcinki, ograniczenia prędkości. Komunikaty handlowe
+ * operatora (przedsprzedaż, cenniki) są odfiltrowane w serwisie.
+ * Odświeżanie co 5 min, tylko na ekranie szczegółów podróży.
  */
 export function RailTripAlerts({ connection }: { connection: Connection }) {
   const s = useStrings();
@@ -25,15 +25,16 @@ export function RailTripAlerts({ connection }: { connection: Connection }) {
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const legs = connection.legs.filter((l) => l.mode === 'train');
+      const legs = connection.legs.filter((l) => l.mode === 'train' && l.tripId?.startsWith('pl:'));
       if (legs.length === 0) return;
       try {
-        const rail = await fetchZbRailDepartures(legs);
+        // Jedno zapytanie o pozycje daje nam id kursu zbiorkomu (zbTripIds).
+        const live = await fetchNationalRailLive(legs);
         if (!alive) return;
         const jobs = legs.map(async (leg) => {
-          const match = rail.get(railLegKey(leg));
-          if (!match) return null;
-          const alerts = await fetchZbRailTripAlerts(match.tripId);
+          const vehicle = leg.tripId ? live.zbTripIds.get(leg.tripId) : undefined;
+          if (!vehicle) return null;
+          const alerts = await fetchZbVehicleAlerts(vehicle);
           return alerts.length > 0 ? { leg, alerts } : null;
         });
         const results = (await Promise.all(jobs)).filter((r): r is TrainAlerts => r !== null);
@@ -43,7 +44,7 @@ export function RailTripAlerts({ connection }: { connection: Connection }) {
       }
     };
     void load();
-    const timer = setInterval(load, 60_000);
+    const timer = setInterval(load, 5 * 60_000);
     return () => {
       alive = false;
       clearInterval(timer);
