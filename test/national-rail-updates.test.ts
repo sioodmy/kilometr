@@ -324,3 +324,75 @@ test('fetchNationalRailUpdates marks hasRealtimeDelay=false when schedule times 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('fetchNationalRailUpdates preserves passenger info (platform, track, delay) when offline', async () => {
+  resetNationalRailUpdatesCache();
+  const originalFetch = globalThis.fetch;
+  const tripId = 'pl:PLK_IC_1620_1';
+  const leg = {
+    tripId,
+    line: 'IC',
+    trainNumber: '1620',
+    departAt: '14:00',
+    fromStop: 'Wrocław Główny',
+    intermediateStops: [
+      { stopId: 'stop-1', seq: 1, name: 'Wrocław Główny', departureTime: '14:00' } as any,
+      { stopId: 'stop-2', seq: 2, name: 'Opole Główne', departureTime: '14:45' } as any,
+    ],
+  };
+
+  try {
+    // 1. Sukces sieciowy online
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          trips: {
+            [tripId]: {
+              tripId,
+              agency: 'IC',
+              numbers: ['1620'],
+              cancelled: false,
+              stops: [
+                {
+                  seq: 1,
+                  schedDep: '14:00:00',
+                  dep: '14:15:00',
+                  platform: '3',
+                  track: '2',
+                  confirmed: true,
+                  cancelled: false,
+                },
+              ],
+            },
+          },
+          updatedAt: '2026-04-20T14:00:00Z',
+          fetchedAt: 1776684000000,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const onlineUpdates = await fetchNationalRailUpdates([leg]);
+    assert.equal(onlineUpdates.get(tripId)?.platform, '3');
+    assert.equal(onlineUpdates.get(tripId)?.track, '2');
+    assert.equal(onlineUpdates.get(tripId)?.delaySec, 900);
+
+    // 2. Zanik sieci (offline w trasie / tunelu)
+    globalThis.fetch = async () => {
+      throw new Error('Network request failed');
+    };
+
+    // Nawet po wyczyszczeniu cache w RAM (np. restart / długa podróż):
+    resetNationalRailUpdatesCache();
+
+    const offlineUpdates = await fetchNationalRailUpdates([leg]);
+    const offlineItem = offlineUpdates.get(tripId);
+    assert.ok(offlineItem, 'Powinno zwrócić dane z pamięci trwałej');
+    assert.equal(offlineItem?.platform, '3');
+    assert.equal(offlineItem?.track, '2');
+    assert.equal(offlineItem?.delaySec, 900);
+    assert.equal(offlineItem?.agency, 'IC');
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetNationalRailUpdatesCache();
+  }
+});

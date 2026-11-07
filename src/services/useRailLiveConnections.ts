@@ -49,7 +49,6 @@ export function useRailLiveConnections(
   );
 
   useEffect(() => {
-    if (!enabled) return;
     let active = true;
     const trainLegs = connectionsRef.current
       .flatMap((connection) => connection.legs)
@@ -77,7 +76,9 @@ export function useRailLiveConnections(
       railAgency: leg.railAgency,
     }));
 
-    liveTracker.setNationalWatch(watchLegs);
+    if (enabled) {
+      liveTracker.setNationalWatch(watchLegs);
+    }
     const load = () => {
       void fetchZbRailDepartures(trainLegs).then((data) => {
         if (active && data.size > 0) setRailData(data);
@@ -90,6 +91,11 @@ export function useRailLiveConnections(
       });
     };
     load();
+    if (!enabled) {
+      return () => {
+        active = false;
+      };
+    }
     const timer = setInterval(load, 30_000);
     return () => {
       active = false;
@@ -100,7 +106,7 @@ export function useRailLiveConnections(
 
   // Poza kolejami nie ruszamy obiektów: tick live nie może tworzyć nowej listy.
   const enriched = useMemo(() => {
-    if (!enabled || (railData.size === 0 && !national && nationalUpdates.size === 0))
+    if (railData.size === 0 && !national && nationalUpdates.size === 0)
       return connections;
     let touched = false;
     const next = connections.map((connection) => {
@@ -136,10 +142,10 @@ export function useRailLiveConnections(
       return { ...connection, legs };
     });
     return touched ? next : connections;
-  }, [connections, enabled, railData, national, nationalUpdates]);
+  }, [connections, railData, national, nationalUpdates]);
 
   return useMemo(() => {
-    if (!enabled || (railData.size === 0 && !national && nationalUpdates.size === 0))
+    if (railData.size === 0 && !national && nationalUpdates.size === 0)
       return applyLiveDelays(enriched, tripDelays);
     const delays = new Map(tripDelays);
     const now = Date.now();
@@ -161,12 +167,12 @@ export function useRailLiveConnections(
         if (
           update &&
           update.hasRealtimeDelay !== false &&
-          now - update.fetchedAt <= RAIL_LIVE_MAX_AGE_MS
+          now - update.fetchedAt <= 12 * 3600 * 1000
         ) {
           delays.set(leg.tripId, update.delaySec);
         }
       }
     }
     return applyLiveDelays(enriched, delays);
-  }, [enabled, enriched, railData, national, nationalUpdates, tripDelays]);
+  }, [enriched, railData, national, nationalUpdates, tripDelays]);
 }

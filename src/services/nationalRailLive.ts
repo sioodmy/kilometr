@@ -17,6 +17,7 @@ import { ZBIORKOM } from './gtfsConfig';
 import { getNationalActiveServices, getNationalDb } from './gtfsDatabase';
 import { toPlkTripId } from './nationalRailUpdates';
 import { withTimeout } from './net';
+import { kvGet, kvSet } from './storage';
 
 export interface NationalRailLive {
   /** trip_id (pl:...) -> opóźnienie w sekundach. */
@@ -116,21 +117,45 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-/** Katalog stacji zbiorkomu (cache na sesję, ~3.5k krotek). */
+const KEY_ZB_RAIL_STOPS = 'kilometr.cache.zb_rail_stops.v1';
+
+/** Katalog stacji zbiorkomu (cache na sesję + dysk, ~3.5k krotek). */
 function loadStops(): Promise<StopTuple[]> {
   if (stopsPromise) return stopsPromise;
-  stopsPromise = fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`)
-    .then((raw) => {
-      const list = (raw as { stops?: unknown }).stops;
-      if (!Array.isArray(list)) return [];
-      return list.filter(
-        (s): s is StopTuple => Array.isArray(s) && s.length >= 5 && typeof s[0] === 'string',
-      );
-    })
-    .catch(() => {
-      stopsPromise = null;
-      return [];
-    });
+  stopsPromise = (async () => {
+    try {
+      const raw = await fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`);
+      const list = (raw as { stops?: unknown })?.stops;
+      if (Array.isArray(list)) {
+        const tuples = list.filter(
+          (s): s is StopTuple => Array.isArray(s) && s.length >= 5 && typeof s[0] === 'string',
+        );
+        if (tuples.length > 0) {
+          void kvSet(KEY_ZB_RAIL_STOPS, JSON.stringify(tuples));
+          return tuples;
+        }
+      }
+    } catch {
+      // Błąd sieci (np. brak internetu w pociągu)
+    }
+    try {
+      const cached = await kvGet(KEY_ZB_RAIL_STOPS);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const list = Array.isArray(parsed) ? parsed : (parsed as { stops?: unknown[] })?.stops;
+        if (Array.isArray(list)) {
+          const tuples = list.filter(
+            (s): s is StopTuple => Array.isArray(s) && s.length >= 5 && typeof s[0] === 'string',
+          );
+          if (tuples.length > 0) return tuples;
+        }
+      }
+    } catch {
+      // brak cache
+    }
+    stopsPromise = null;
+    return [];
+  })();
   return stopsPromise;
 }
 
@@ -497,6 +522,7 @@ export async function fetchZbStopDepartures(stationName: string): Promise<ZbStop
       });
     })
     .catch(() => {
+      if (hit) return hit.promise;
       departuresCache.delete(stopId);
       return [];
     });

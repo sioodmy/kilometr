@@ -10,6 +10,7 @@ import {
   type ZbVehicleAlert,
 } from '../services/nationalRailLive';
 import { fetchNationalRailUpdates } from './nationalRailUpdates';
+import { kvGet, kvSet } from './storage';
 import { fetchDisruptionsFromWorker, type MpkNewsItem } from './mpkNews';
 
 export interface TrainAlertItem {
@@ -33,9 +34,17 @@ const inFlight = new Map<string, Promise<TrainAlertItem[]>>();
 const results = new Map<string, { at: number; alerts: TrainAlertItem[] }>();
 const TTL_MS = 5 * 60 * 1000;
 
+const KEY_NATIONAL_DISRUPTIONS = 'kilometr.cache.national_disruptions.v1';
+const NATIONAL_DISRUPTIONS_DISK_TTL_MS = 24 * 3600 * 1000;
+
 // Cache dla ogólnokrajowych utrudnień z R2 (polska/disruptions.json)
 let nationalDisruptionsCache: { at: number; items: MpkNewsItem[] } | null = null;
 const DISRUPTIONS_CACHE_TTL = 2 * 60 * 1000;
+
+export function resetNationalDisruptionsCache(): void {
+  nationalDisruptionsCache = null;
+  results.clear();
+}
 
 async function getNationalDisruptions(): Promise<MpkNewsItem[]> {
   const now = Date.now();
@@ -44,12 +53,35 @@ async function getNationalDisruptions(): Promise<MpkNewsItem[]> {
   }
   try {
     const items = await fetchDisruptionsFromWorker('polska');
-    const valid = items ?? [];
-    nationalDisruptionsCache = { at: now, items: valid };
-    return valid;
+    if (items && items.length > 0) {
+      nationalDisruptionsCache = { at: now, items };
+      void kvSet(KEY_NATIONAL_DISRUPTIONS, JSON.stringify({ savedAt: now, items }));
+      return items;
+    }
   } catch {
-    return nationalDisruptionsCache?.items ?? [];
+    // Błąd sieci (brak internetu w pociągu)
   }
+
+  // Fallback 1: pamięć RAM (nawet po upływie 2 minut)
+  if (nationalDisruptionsCache?.items && nationalDisruptionsCache.items.length > 0) {
+    return nationalDisruptionsCache.items;
+  }
+
+  // Fallback 2: pamięć trwała (kv-store)
+  try {
+    const raw = await kvGet(KEY_NATIONAL_DISRUPTIONS);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { savedAt: number; items: MpkNewsItem[] };
+      if (now - parsed.savedAt <= NATIONAL_DISRUPTIONS_DISK_TTL_MS && Array.isArray(parsed.items)) {
+        nationalDisruptionsCache = { at: parsed.savedAt, items: parsed.items };
+        return parsed.items;
+      }
+    }
+  } catch {
+    // brak cache
+  }
+
+  return nationalDisruptionsCache?.items ?? [];
 }
 
 function cleanHeaderTimeframe(raw?: string | null): string {
@@ -65,7 +97,7 @@ function cleanHeaderTimeframe(raw?: string | null): string {
  * 2. Ogólnopolskie komunikaty operacyjne z R2 (/polska/disruptions.json)
  * 3. Zgłoszenia i komunikaty ze zbiorkomu (SSE /api6/pkp/positions/...)
  */
-async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
+export async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
   const candidates = vehicleCandidatesForLeg(leg);
   const cacheKey = [leg.tripId ?? '', leg.trainNumber ?? '', ...candidates].join('|');
   const hit = results.get(cacheKey);
@@ -162,6 +194,9 @@ async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
       }
     }
 
+    if (alerts.length === 0 && hit && hit.alerts.length > 0) {
+      return hit.alerts;
+    }
     results.set(cacheKey, { at: Date.now(), alerts });
     return alerts;
   })().finally(() => {

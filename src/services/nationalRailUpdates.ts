@@ -9,6 +9,7 @@ import type { LegStop } from '../types/models';
 import { TIMETABLE } from './gtfsConfig';
 import { getNationalDb } from './gtfsDatabase';
 import { withTimeout } from './net';
+import { kvGet, kvSet } from './storage';
 
 export interface NationalRailUpdateQueryLeg {
   tripId?: string;
@@ -79,8 +80,72 @@ let cachedApi: {
   data: ApiResponse;
 } | null = null;
 
+const RAIL_UPDATES_STORAGE_KEY = 'kilometr.cache.national_rail_updates.v1';
+const PERSISTENT_CACHE_TTL_MS = 12 * 3600 * 1000;
+
+interface PersistedRailCache {
+  savedAt: number;
+  apiResponses: Record<string, { fetchedAt: number; data: ApiResponse }>;
+  updates: Record<string, NationalRailLegUpdate>;
+}
+
+let memoryRailCache: PersistedRailCache | null = null;
+let storageLoadPromise: Promise<PersistedRailCache | null> | null = null;
+
 export function resetNationalRailUpdatesCache(): void {
   cachedApi = null;
+  memoryRailCache = null;
+  storageLoadPromise = null;
+}
+
+async function getPersistedRailCache(): Promise<PersistedRailCache | null> {
+  if (memoryRailCache) return memoryRailCache;
+  if (storageLoadPromise) return storageLoadPromise;
+  storageLoadPromise = (async () => {
+    try {
+      const raw = await kvGet(RAIL_UPDATES_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PersistedRailCache;
+      if (!parsed || typeof parsed.savedAt !== 'number') return null;
+      if (Date.now() - parsed.savedAt > PERSISTENT_CACHE_TTL_MS) return null;
+      memoryRailCache = parsed;
+      return parsed;
+    } catch {
+      return null;
+    } finally {
+      storageLoadPromise = null;
+    }
+  })();
+  return storageLoadPromise;
+}
+
+async function savePersistedRailCache(
+  requestUrl: string,
+  apiData: ApiResponse,
+  newUpdates: Map<string, NationalRailLegUpdate>,
+): Promise<void> {
+  const current = (await getPersistedRailCache()) ?? {
+    savedAt: Date.now(),
+    apiResponses: {},
+    updates: {},
+  };
+  const now = Date.now();
+  current.savedAt = now;
+  current.apiResponses[requestUrl] = { fetchedAt: now, data: apiData };
+  for (const [key, upd] of newUpdates) {
+    current.updates[key] = upd;
+    const plkId = toPlkTripId(key);
+    if (plkId) {
+      current.updates['pl:' + plkId] = upd;
+      current.updates[plkId] = upd;
+    }
+  }
+  memoryRailCache = current;
+  try {
+    await kvSet(RAIL_UPDATES_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // best-effort
+  }
 }
 
 function parseHmsToSec(hms?: string): number | null {
@@ -324,7 +389,9 @@ export async function fetchNationalRailUpdates(
   const requestUrl = `${baseUrl}/api/rail/delays?${params.toString()}`;
   const now = Date.now();
 
-  let data: ApiResponse;
+  let data: ApiResponse | null = null;
+  let isFromCache = false;
+
   if (
     cachedApi &&
     now - cachedApi.at < CACHE_TTL_MS &&
@@ -339,20 +406,45 @@ export async function fetchNationalRailUpdates(
         signal: timeout.signal,
         headers: { Accept: 'application/json' },
       });
-      if (!res.ok) {
-        return new Map();
+      if (res.ok) {
+        data = (await res.json()) as ApiResponse;
+        cachedApi = {
+          at: Date.now(),
+          url: requestUrl,
+          fetchRef: globalThis.fetch,
+          data,
+        };
       }
-      data = (await res.json()) as ApiResponse;
-      cachedApi = {
-        at: Date.now(),
-        url: requestUrl,
-        fetchRef: globalThis.fetch,
-        data,
-      };
     } catch {
-      return new Map();
+      // Błąd sieci (np. brak zasięgu w pociągu)
     } finally {
       timeout.dispose();
+    }
+  }
+
+  if (!data) {
+    const disk = await getPersistedRailCache();
+    const fallbackEntry =
+      (cachedApi && cachedApi.url === requestUrl ? cachedApi.data : undefined) ??
+      disk?.apiResponses[requestUrl]?.data;
+    if (fallbackEntry) {
+      data = fallbackEntry;
+      isFromCache = true;
+    } else if (disk?.updates) {
+      const fallbackMap = new Map<string, NationalRailLegUpdate>();
+      for (const leg of plLegs) {
+        if (!leg.tripId) continue;
+        const plkId = toPlkTripId(leg.tripId);
+        const canonicalKey = plkId ? 'pl:' + plkId : undefined;
+        const hit =
+          disk.updates[leg.tripId] ??
+          (canonicalKey ? disk.updates[canonicalKey] : undefined) ??
+          (plkId ? disk.updates[plkId] : undefined);
+        if (hit) fallbackMap.set(leg.tripId, hit);
+      }
+      return fallbackMap;
+    } else {
+      return new Map();
     }
   }
 
@@ -504,8 +596,26 @@ export async function fetchNationalRailUpdates(
       confirmed: matchedStop?.confirmed,
       agency: tripData.agency,
       numbers: tripData.numbers,
-      fetchedAt: Date.now(),
+      fetchedAt: data.fetchedAt ?? (isFromCache ? (cachedApi?.at ?? Date.now()) : Date.now()),
     });
+  }
+
+  if (!isFromCache && result.size > 0 && data) {
+    void savePersistedRailCache(requestUrl, data, result);
+  } else if (isFromCache) {
+    const disk = await getPersistedRailCache();
+    if (disk?.updates) {
+      for (const leg of plLegs) {
+        if (!leg.tripId || result.has(leg.tripId)) continue;
+        const plkId = toPlkTripId(leg.tripId);
+        const canonicalKey = plkId ? 'pl:' + plkId : undefined;
+        const hit =
+          disk.updates[leg.tripId] ??
+          (canonicalKey ? disk.updates[canonicalKey] : undefined) ??
+          (plkId ? disk.updates[plkId] : undefined);
+        if (hit) result.set(leg.tripId, hit);
+      }
+    }
   }
 
   return result;
