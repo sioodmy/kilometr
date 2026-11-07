@@ -127,8 +127,17 @@ export function buildMapStages(
   if (!route || route.legs.length === 0) return [];
 
   const raw: Omit<MapStage, 'stageNumber' | 'totalStages'>[] = [];
+  const hasMultipleLegs = route.legs.length > 1;
 
   for (const leg of route.legs) {
+    if (
+      hasMultipleLegs &&
+      leg.mode === 'walk' &&
+      (leg.walkM ?? 0) <= 0 &&
+      (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+    ) {
+      continue;
+    }
     raw.push({
       id: leg.id,
       legId: leg.id,

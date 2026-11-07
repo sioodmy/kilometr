@@ -342,6 +342,7 @@ function needsIntercity(query: RouteQuery): boolean {
 
 function toPlanOptions(query: RouteQuery, onProgress?: (partial: Connection[]) => void): PlanOptions {
   return {
+    fromId: query.fromId,
     fromTitle: query.fromTitle,
     fromLat: query.fromLat,
     fromLon: query.fromLon,

@@ -108,7 +108,7 @@ type RouteTarget = {
 };
 
 /** Start przekazany jawnie: świeży wybór z arkusza wygrywa ze stanem ekranu. */
-type RouteOrigin = { title: string; lat: number; lon: number; custom: boolean };
+type RouteOrigin = { id?: string; title: string; lat: number; lon: number; custom: boolean };
 
 export default function HomeScreen() {
   const s = useStrings();
@@ -914,7 +914,7 @@ export default function HomeScreen() {
     // Cel zablokowany wcześniej przez GPS: start już jest ręczny, więc trasa
     // rusza od razu, bez ponownego wpisywania celu.
     if (pending) {
-      goToRoutes(pending, { title: sel.title, lat: sel.lat, lon: sel.lon, custom: true });
+      goToRoutes(pending, { id: sel.id, title: sel.title, lat: sel.lat, lon: sel.lon, custom: true });
     }
   };
 
@@ -997,6 +997,7 @@ export default function HomeScreen() {
       router.push({
         pathname: '/routes',
         params: {
+          fromId: origin?.id,
           fromTitle,
           fromLat: String(fromLat),
           fromLon: String(fromLon),

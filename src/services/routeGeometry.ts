@@ -155,7 +155,19 @@ function legWaypoints(leg: MapLeg): Coord[] {
 }
 
 export function buildMapRoute(connection: Connection): MapRoute {
-  const legs = connection.legs.map(legToMapLeg);
+  const hasMultipleLegs = connection.legs.length > 1;
+  const filteredLegs = hasMultipleLegs
+    ? connection.legs.filter(
+        (leg) =>
+          !(
+            leg.mode === 'walk' &&
+            (leg.walkM ?? 0) <= 0 &&
+            (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+          ),
+      )
+    : connection.legs;
+  const effectiveLegs = filteredLegs.length > 0 ? filteredLegs : connection.legs;
+  const legs = effectiveLegs.map(legToMapLeg);
   const geometry = legs.some((l) => l.approx) ? 'approx' : 'osrm';
   return {
     id: connection.id,

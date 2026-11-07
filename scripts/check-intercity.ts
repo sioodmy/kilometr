@@ -222,6 +222,31 @@ async function main() {
     check('przyjazd przed terminem', (byArrival.connections[0].arrivalSec ?? 0) <= arriveBy, `${byArrival.connections[0].arriveAt}`);
   }
 
+  // 6. Stacja -> stacja: Katowice -> Warszawa Centralna bez pustego spaceru na początku.
+  const katowice = Array.from(polskaStore.stops.values()).find((s) => s.stop_name === 'Katowice');
+  const warszawa = Array.from(polskaStore.stops.values()).find((s) => s.stop_name === 'Warszawa Centralna');
+  if (katowice && warszawa) {
+    const stationToStation = await planIntercity({
+      ...base,
+      fromTitle: katowice.stop_name ?? 'Katowice',
+      fromLat: katowice.stop_lat,
+      fromLon: katowice.stop_lon,
+      fromId: 'stop-pl:' + katowice.stop_id,
+      toTitle: warszawa.stop_name ?? 'Warszawa Centralna',
+      toLat: warszawa.stop_lat,
+      toLon: warszawa.stop_lon,
+      toId: 'stop-pl:' + warszawa.stop_id,
+      departureTimeSec: undefined,
+      arriveBySec: undefined,
+    });
+    check('stacja -> stacja (Katowice -> Warszawa) ma warianty', stationToStation.connections.length > 0, `${stationToStation.connections.length} opcji`);
+    for (const c of stationToStation.connections) {
+      const firstLeg = c.legs[0];
+      const hasEmptyWalk = firstLeg?.mode === 'walk' && (firstLeg.walkM ?? 0) <= 0;
+      check('pierwsza noga to nie pusty spacer 0m', !hasEmptyWalk, `${firstLeg?.mode} ${firstLeg?.fromStop} -> ${firstLeg?.toStop}`);
+    }
+  }
+
   console.log(failures === 0 ? '\nPASS: planer intercity na prawdziwych danych' : `\nFAIL: ${failures} asercji`);
   process.exit(failures === 0 ? 0 : 1);
 }

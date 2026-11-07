@@ -111,6 +111,7 @@ export default function RoutesScreen() {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const params = useLocalSearchParams<{
+    fromId?: string;
     fromTitle?: string;
     fromLat?: string;
     fromLon?: string;
@@ -131,6 +132,7 @@ export default function RoutesScreen() {
   const [fromTitle, setFromTitle] = useState(params.fromTitle || cityDef.title);
   const [fromLat, setFromLat] = useState(Number(params.fromLat || cityDef.lat));
   const [fromLon, setFromLon] = useState(Number(params.fromLon || cityDef.lon));
+  const [fromId, setFromId] = useState(String(params.fromId ?? ''));
   // Czy start nadal jest GPS-em (a nie ręcznie wybranym punktem). Zmiana na
   // custom wyłącza doprecyzowanie w tle i odwrotnie.
   const [gpsOrigin, setGpsOrigin] = useState(params.fromGps === '1');
@@ -157,6 +159,7 @@ export default function RoutesScreen() {
         setItems([]);
         setLoading(true);
       }
+      setFromId(String(params.fromId ?? ''));
       setFromTitle(params.fromTitle);
       setFromLat(nextLat);
       setFromLon(nextLon);
@@ -406,6 +409,7 @@ export default function RoutesScreen() {
   const queryAt = (depSec: number | undefined) => {
     const cfg = getSettingsSync();
     return {
+      fromId: fromId || undefined,
       fromTitle,
       fromLat,
       fromLon,
@@ -668,6 +672,7 @@ export default function RoutesScreen() {
       }
       setGpsOrigin(false);
       setActiveAnchor(null);
+      setFromId(sug.id);
       setFromTitle(sug.title);
       setFromLat(sug.lat);
       setFromLon(sug.lon);
@@ -939,15 +944,17 @@ export default function RoutesScreen() {
     // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
     setGpsOrigin(false);
     setActiveAnchor(null);
+    const tempId = fromId;
     const tempTitle = fromTitle;
     const tempLat = fromLat;
     const tempLon = fromLon;
 
+    setFromId(toId);
     setFromTitle(toTitle);
     setFromLat(toLat);
     setFromLon(toLon);
 
-    setToId('');
+    setToId(tempId);
     setToTitle(tempTitle);
     setToLat(tempLat);
     setToLon(tempLon);
