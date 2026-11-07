@@ -111,7 +111,7 @@
     "check:nav": "tsx scripts/check-nav.ts",
     "check:navigation-target": "tsx scripts/check-navigation-target.ts",
     "check:nav-map": "tsx --require ./scripts/stub-expo.cjs scripts/check-nav-map.ts",
-    "check:minimap": "tsx scripts/check-minimap.ts",
+    "check:minimap": "tsx scripts/check-minimap.ts && tsx --test test/map-stages.test.ts",
     "check:geometry-cache": "tsx scripts/check-geometry-cache.ts",
     "check:geometry-detour": "tsx --require ./scripts/stub-expo.cjs scripts/check-geometry-detour.ts",
     "check:map-colors": "tsx scripts/check-map-colors.ts",
@@ -136,7 +136,7 @@
     "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs",
     "check:intercity": "tsx --require ./scripts/stub-expo.cjs scripts/check-intercity.ts",
     "check:national-live": "tsx --require ./scripts/stub-expo.cjs scripts/check-national-live.ts",
-"check:rail-delays": "tsx --require ./scripts/stub-expo.cjs --test test/rail-delays.test.ts test/national-rail-updates.test.ts test/ticketing.test.ts",
+    "check:rail-delays": "tsx --require ./scripts/stub-expo.cjs --test test/rail-delays.test.ts test/national-rail-updates.test.ts test/ticketing.test.ts",
     "check:rail-shape": "tsx --require ./scripts/stub-expo.cjs scripts/check-rail-shape.ts",
     "check:ticketing": "tsx --require ./scripts/stub-expo.cjs --test test/ticketing.test.ts"
   },
