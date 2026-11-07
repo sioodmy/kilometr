@@ -26,6 +26,7 @@ class TilePack(val file: File) {
     companion object {
         private const val HEADER_BYTES = 32
         private const val ENTRY_BYTES = 18
+        private const val MAX_TILE_BYTES = 10 * 1024 * 1024
     }
 
     class MissingTile : Exception("Brak kafla w pakiecie")
@@ -54,12 +55,13 @@ class TilePack(val file: File) {
     private data class Entry(val offset: Long, val length: Int, val z: Int, val x: Int, val y: Int)
 
     /** Kafel albo null, gdy pakiet go nie zawiera. */
-    fun tile(z: Int, x: Int, y: Int): ByteArray? {
+    fun tile(z: Int, x: Int, y: Int): ByteArray? = synchronized(raf) {
         val e = find(z, x, y) ?: return null
+        if (e.length <= 0 || e.length > MAX_TILE_BYTES) return null
         val buf = ByteArray(e.length)
         raf.seek(e.offset)
         raf.readFully(buf)
-        return buf
+        buf
     }
 
     /**
@@ -102,5 +104,5 @@ class TilePack(val file: File) {
         return null
     }
 
-    fun close() = raf.close()
+    fun close() = synchronized(raf) { raf.close() }
 }

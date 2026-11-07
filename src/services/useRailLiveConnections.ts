@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection } from '../types/models';
 import { applyLiveDelays } from './routing/engine';
 import {
@@ -29,6 +29,8 @@ export function useRailLiveConnections(
   const [nationalUpdates, setNationalUpdates] = useState<Map<string, NationalRailLegUpdate>>(
     new Map(),
   );
+  const connectionsRef = useRef(connections);
+  connectionsRef.current = connections;
   const signature = useMemo(
     () =>
       JSON.stringify(
@@ -49,7 +51,7 @@ export function useRailLiveConnections(
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const trainLegs = connections
+    const trainLegs = connectionsRef.current
       .flatMap((connection) => connection.legs)
       .filter((leg) => leg.mode === 'train');
     if (trainLegs.length === 0) return;
@@ -94,7 +96,7 @@ export function useRailLiveConnections(
       clearInterval(timer);
       liveTracker.setNationalWatch([]);
     };
-  }, [connections, enabled, signature]);
+  }, [enabled, signature]);
 
   // Poza kolejami nie ruszamy obiektów: tick live nie może tworzyć nowej listy.
   const enriched = useMemo(() => {

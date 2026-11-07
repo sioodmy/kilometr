@@ -14,7 +14,11 @@ import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
 import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
-import { alertsForConnection, type TrainAlertItem, type TrainAlerts } from '../services/railTripAlerts';
+import {
+  alertsForConnection,
+  type TrainAlertItem,
+  type TrainAlerts,
+} from '../services/railTripAlerts';
 
 const MAX_ROWS = 4;
 
@@ -497,16 +501,18 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     };
   }, [lineKey, attempt]);
 
+  const trainAlertKey = useMemo(
+    () =>
+      connection?.legs
+        ?.filter((leg) => leg.mode === 'train' || leg.tripId?.startsWith('pl:') || leg.trainNumber)
+        .map((leg) => `${leg.tripId ?? ''}:${leg.trainNumber ?? ''}:${leg.line ?? ''}`)
+        .join(';') ?? '',
+    [connection?.legs],
+  );
+
   // 2. Ładowanie alertów kolejowych dla bieżącego połączenia
   useEffect(() => {
-    if (!connection) {
-      setTrainAlerts([]);
-      return;
-    }
-    const hasTrainLegs = connection.legs?.some(
-      (leg) => leg.mode === 'train' || leg.tripId?.startsWith('pl:') || leg.trainNumber,
-    );
-    if (!hasTrainLegs) {
+    if (!connection || !trainAlertKey) {
       setTrainAlerts([]);
       return;
     }
@@ -521,7 +527,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return () => {
       alive = false;
     };
-  }, [connection]);
+  }, [connection?.id, trainAlertKey]);
 
   const matchedMpk = useMemo(() => {
     if (lineSet.size === 0) return [];
@@ -553,7 +559,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
               setAttempt((n) => n + 1);
             }}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }] }
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
           >
             <Text style={styles.retryBtnText}>{s.common.retry}</Text>
           </Pressable>

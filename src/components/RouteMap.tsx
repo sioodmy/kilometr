@@ -227,7 +227,14 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     ref,
     () => ({
       setGeometry: (legId, coords, fit = false) =>
-        send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false, fit, pad: padRef.current }),
+        send({
+          t: 'geometry',
+          legId,
+          coords: toGeoJson(coords),
+          approx: false,
+          fit,
+          pad: padRef.current,
+        }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
       reload: restart,
     }),
@@ -249,7 +256,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     send({ t: 'vehicle', vehicle });
   }, [send, vehicle]);
 
+  const lastSelectKey = useRef('');
   const sendSelect = useCallback(() => {
+    const key = `${selectedLegId ?? ''}:${focusCoords?.length ?? 0}:${focusCoords?.[0]?.[0] ?? ''}:${focusCoords?.[0]?.[1] ?? ''}:${stopRange?.join('-') ?? ''}:${focusMaxZoom ?? ''}:${resolvedPadding}`;
+    if (lastSelectKey.current === key) return;
+    lastSelectKey.current = key;
     send({
       t: 'select',
       legId: selectedLegId,
@@ -258,11 +269,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       maxZoom: focusMaxZoom ?? null,
       pad: padRef.current,
     });
-  }, [focusCoords, focusMaxZoom, selectedLegId, send, stopRange]);
+  }, [focusCoords, focusMaxZoom, resolvedPadding, selectedLegId, send, stopRange]);
 
   useEffect(() => {
     sendSelect();
-  }, [sendSelect, resolvedPadding]);
+  }, [sendSelect]);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
