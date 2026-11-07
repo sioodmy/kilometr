@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Connection } from '../types/models';
 import { applyLiveDelays } from './routing/engine';
-import { fetchNationalRailLive, type NationalRailLive } from './nationalRailLive';
+import {
+  fetchNationalRailLive,
+  type NationalLiveLeg,
+  type NationalRailLive,
+} from './nationalRailLive';
 import { fetchNationalRailUpdates, type NationalRailLegUpdate } from './nationalRailUpdates';
 import { fetchZbRailDepartures, railLegKey, type ZbRailDeparture } from './zbiorkomRail';
 import { liveTracker } from './liveTracker';
@@ -31,7 +35,12 @@ export function useRailLiveConnections(
         connections.map((connection) =>
           connection.legs
             .filter((leg) => leg.mode === 'train')
-            .map((leg) => [leg.tripId, leg.line, leg.fromStopId, leg.departAt]),
+            .map((leg) => [
+              leg.tripId,
+              leg.line,
+              leg.fromStopId,
+              leg.scheduledDepartureSec ?? leg.departAt,
+            ]),
         ),
       ),
     [connections],
@@ -40,36 +49,43 @@ export function useRailLiveConnections(
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const nationalLegs = connections
+    const trainLegs = connections
       .flatMap((connection) => connection.legs)
-      .filter((leg) => leg.mode === 'train' && (leg.tripId?.startsWith('pl:') || leg.trainNumber))
-      .map((leg) => ({
-        tripId: leg.tripId ?? '',
-        fromStop: leg.fromStop,
-        toStop: leg.toStop,
-        fromLat: leg.fromLat,
-        fromLon: leg.fromLon,
-        toLat: leg.toLat,
-        toLon: leg.toLon,
-        line: leg.line,
-        trainNumber: leg.trainNumber,
-        railAgency: leg.railAgency,
-      }));
-    if (nationalLegs.length === 0) return;
-    liveTracker.setNationalWatch(nationalLegs);
+      .filter((leg) => leg.mode === 'train');
+    if (trainLegs.length === 0) return;
+
+    const watchLegs: NationalLiveLeg[] = trainLegs.map((leg) => ({
+      tripId: leg.tripId ?? '',
+      mode: leg.mode,
+      fromStop: leg.fromStop,
+      toStop: leg.toStop,
+      fromStopId: leg.fromStopId,
+      toStopId: leg.toStopId,
+      fromLat: leg.fromLat,
+      fromLon: leg.fromLon,
+      toLat: leg.toLat,
+      toLon: leg.toLon,
+      departAt: leg.departAt,
+      arriveAt: leg.arriveAt,
+      scheduledDepartureSec: leg.scheduledDepartureSec,
+      scheduledArrivalSec: leg.scheduledArrivalSec,
+      intermediateStops: leg.intermediateStops,
+      line: leg.line,
+      trainNumber: leg.trainNumber,
+      railAgency: leg.railAgency,
+    }));
+
+    liveTracker.setNationalWatch(watchLegs);
     const load = () => {
-      const legs = connections.flatMap((connection) => connection.legs);
-      void fetchZbRailDepartures(legs).then((data) => {
+      void fetchZbRailDepartures(trainLegs).then((data) => {
         if (active && data.size > 0) setRailData(data);
       });
-      if (nationalLegs.length > 0) {
-        void fetchNationalRailUpdates(nationalLegs).then((data) => {
-          if (active && data.size > 0) setNationalUpdates(data);
-        });
-        void fetchNationalRailLive(nationalLegs).then((data) => {
-          if (active && data.delays.size > 0) setNational(data);
-        });
-      }
+      void fetchNationalRailUpdates(watchLegs).then((data) => {
+        if (active && data.size > 0) setNationalUpdates(data);
+      });
+      void fetchNationalRailLive(watchLegs).then((data) => {
+        if (active && data.delays.size > 0) setNational(data);
+      });
     };
     load();
     const timer = setInterval(load, 30_000);
@@ -140,7 +156,11 @@ export function useRailLiveConnections(
         }
         // Główne źródło: oficjalny feed PKP PLK (nadpisuje wartości heurystyczne)
         const update = nationalUpdates.get(leg.tripId);
-        if (update && now - update.fetchedAt <= RAIL_LIVE_MAX_AGE_MS) {
+        if (
+          update &&
+          update.hasRealtimeDelay !== false &&
+          now - update.fetchedAt <= RAIL_LIVE_MAX_AGE_MS
+        ) {
           delays.set(leg.tripId, update.delaySec);
         }
       }

@@ -1,6 +1,7 @@
 import type { Leg } from '../types/models';
 import { timeStringToSeconds } from '../gtfs/geo';
 import { ZBIORKOM } from './gtfsConfig';
+import { trainNumberVariants } from './nationalRailLive';
 import { withTimeout } from './net';
 
 interface ZbStation {
@@ -201,19 +202,26 @@ async function resolveStation(index: StationIndex, leg: Leg): Promise<ZbStation 
 
 function matchDeparture(departures: ZbRailDeparture[], leg: Leg): ZbRailDeparture | undefined {
   const targetSeconds = scheduledLegSeconds(leg);
-  const targetNumber = leg.trainNumber?.trim();
+  const targetVariants = new Set(trainNumberVariants(leg.trainNumber, leg.line));
   const targetDirection = normalized(leg.direction ?? leg.toStop);
 
-  const matchedByNumber = targetNumber
-    ? departures.find((departure) => departure.trainNumber === targetNumber)
-    : undefined;
+  if (targetVariants.size > 0) {
+    let bestByNum: ZbRailDeparture | undefined;
+    let bestNumDiff = Infinity;
+    for (const departure of departures) {
+      const depVariants = trainNumberVariants(departure.trainNumber);
+      if (!depVariants.some((v) => targetVariants.has(v))) continue;
+      const diff = timeDifference(secondsOfDay(departure.scheduledAt), targetSeconds);
+      if (diff < bestNumDiff) {
+        bestNumDiff = diff;
+        bestByNum = departure;
+      }
+    }
+    return bestNumDiff <= 1800 ? bestByNum : undefined;
+  }
 
-  let best: ZbRailDeparture | undefined = matchedByNumber;
-  let minDiff = matchedByNumber
-    ? timeDifference(secondsOfDay(matchedByNumber.scheduledAt), targetSeconds)
-    : Infinity;
-
-  if (minDiff <= 300) return best;
+  let best: ZbRailDeparture | undefined;
+  let minDiff = Infinity;
 
   for (const departure of departures) {
     const diff = timeDifference(secondsOfDay(departure.scheduledAt), targetSeconds);
@@ -229,8 +237,11 @@ function matchDeparture(departures: ZbRailDeparture[], leg: Leg): ZbRailDepartur
   return minDiff <= 600 ? best : undefined;
 }
 
-export function railLegKey(leg: Pick<Leg, 'fromStop' | 'toStop' | 'departAt' | 'line'>): string {
-  return `${leg.line ?? ''}|${leg.fromStop}|${leg.toStop}|${leg.departAt}`;
+export function railLegKey(
+  leg: Pick<Leg, 'fromStop' | 'toStop' | 'departAt' | 'line'> &
+    Partial<Pick<Leg, 'tripId' | 'scheduledDepartureSec'>>,
+): string {
+  return `${leg.tripId ?? leg.line ?? ''}|${leg.fromStop}|${leg.toStop}|${leg.scheduledDepartureSec ?? leg.departAt}`;
 }
 
 export async function fetchZbRailDepartures(

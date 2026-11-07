@@ -309,7 +309,7 @@ export default function RouteDetailsScreen() {
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
   const dataNote = offline
     ? s.routeDetails.offlineNote
-    : liveStale
+    : liveStale && !item.live
       ? s.routeDetails.noLiveNote
       : null;
 
@@ -444,7 +444,8 @@ export default function RouteDetailsScreen() {
                   })
                 }
               />
-              <ConnectionLineAlerts connection={item} />\n            </View>
+              <ConnectionLineAlerts connection={item} />
+            </View>
           )}
 
           <View style={{ height: 24 }} />
