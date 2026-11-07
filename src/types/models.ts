@@ -223,6 +223,7 @@ export interface Connection {
 }
 
 export interface RouteQuery {
+  fromId?: string;
   fromTitle: string;
   fromLat: number;
   fromLon: number;

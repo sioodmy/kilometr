@@ -135,3 +135,41 @@ test('resolveStageSelection: poprawnie wybiera etap po stage.id lub leg.id', () 
   assert.equal(resolveStageSelection(stages, 'leg-a')?.id, 'leg-a');
   assert.equal(resolveStageSelection(stages, 'leg-b')?.id, 'leg-b');
 });
+
+test('buildMapStages: odrzuca pusty spacer 0m na początku lub końcu trasy z innymi nogami', () => {
+  const zeroWalkStart = createMockLeg({
+    id: 'walk-zero-start',
+    mode: 'walk',
+    fromStop: 'Katowice',
+    toStop: 'Katowice',
+    departAt: '10:00',
+    arriveAt: '10:00',
+    walkM: 0,
+    stopsCount: 0,
+  });
+  const train = createMockLeg({
+    id: 'train-ic',
+    mode: 'train',
+    fromStop: 'Katowice',
+    toStop: 'Warszawa Centralna',
+    departAt: '10:00',
+    arriveAt: '12:30',
+    stopsCount: 5,
+  });
+  const zeroWalkEnd = createMockLeg({
+    id: 'walk-zero-end',
+    mode: 'walk',
+    fromStop: 'Warszawa Centralna',
+    toStop: 'Warszawa Centralna',
+    departAt: '12:30',
+    arriveAt: '12:30',
+    walkM: 0,
+    stopsCount: 0,
+  });
+
+  const stages = buildMapStages(createMockRoute([zeroWalkStart, train, zeroWalkEnd]));
+  assert.equal(stages.length, 1, 'Puste spacery powinny zostać odrzucone, zostaje tylko pociąg');
+  assert.equal(stages[0].id, 'train-ic');
+  assert.equal(stages[0].stageNumber, 1);
+  assert.equal(stages[0].totalStages, 1);
+});

@@ -60,7 +60,18 @@ interface JourneyStripData {
   finalWalkMin: number;
 }
 
-function buildJourneyStripData(legs: Leg[], walkMps: number): JourneyStripData {
+function buildJourneyStripData(rawLegs: Leg[], walkMps: number): JourneyStripData {
+  const legs =
+    rawLegs.length > 1
+      ? rawLegs.filter(
+          (leg) =>
+            !(
+              leg.mode === 'walk' &&
+              (leg.walkM ?? 0) <= 0 &&
+              (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+            ),
+        )
+      : rawLegs;
   const transitLegs: Leg[] = [];
   const transitIndices: number[] = [];
 

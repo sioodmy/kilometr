@@ -847,16 +847,31 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
     [],
   );
 
+  const displayLegs = useMemo(
+    () =>
+      legs.length > 1
+        ? legs.filter(
+            (leg) =>
+              !(
+                leg.mode === 'walk' &&
+                (leg.walkM ?? 0) <= 0 &&
+                (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+              ),
+          )
+        : legs,
+    [legs],
+  );
+
   return (
     <View style={s.list}>
-      {legs.map((leg, i) => {
+      {displayLegs.map((leg, i) => {
         if (leg.mode === 'walk') {
           const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
-          const prevLeg = legs[i - 1];
-          const nextLeg = legs[i + 1];
+          const prevLeg = displayLegs[i - 1];
+          const nextLeg = displayLegs[i + 1];
           const isTransferWalk =
             prevLeg != null &&
             prevLeg.mode !== 'walk' &&

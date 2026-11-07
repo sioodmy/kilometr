@@ -13,13 +13,13 @@
 // dokłada wspólne ID, footpathy miasto-stacja i dedupe agencji. Join po
 // czasie jest prostszy i pozwala trzymać bazę kolejową opcjonalną.
 
-import { planConnections, type PlanOptions } from './engine';
+import { planConnections, SAME_POINT_M, type PlanOptions } from './engine';
 import { gtfsStore, polskaStore } from './store';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
 import { isOutsideServiceArea } from '../serviceArea';
 import { findNearestNationalStations, getNationalDb } from '../gtfsDatabase';
-import { distanceMeters, normalizePolish, secondsToTimeString } from '../../gtfs/geo';
+import { distanceMeters, normalizePolish, secondsToTimeString, timeStringToSeconds } from '../../gtfs/geo';
 import type { Connection, Leg, LegMode } from './types';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
@@ -217,15 +217,51 @@ function interchangeLabel(legs: Leg[], transfers: number): string | undefined {
 /** Skleja nogę miejską z pociągiem (forward). Ostatni spacer nogi miejskiej
  * (dojście do punktu stacji) dostaje przepisany koniec na stację kolejową,
  * żeby timeline pokazał przesiadkę z buforem zamiast "celu podróży". */
+function isZeroWalkConnection(conn: Connection | null | undefined): boolean {
+  if (!conn) return true;
+  const transitLegs = conn.legs.filter((l) => l.mode !== 'walk');
+  if (transitLegs.length > 0) return false;
+  const totalWalkM = conn.legs.reduce((sum, l) => sum + (l.walkM ?? 0), 0);
+  return totalWalkM <= SAME_POINT_M;
+}
+
+function cleanIntercityConnection(conn: Connection): Connection {
+  if (conn.legs.length <= 1) return conn;
+  const legs = conn.legs.filter(
+    (leg) =>
+      !(
+        leg.mode === 'walk' &&
+        (leg.walkM ?? 0) <= 0 &&
+        (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+      ),
+  );
+  if (legs.length === conn.legs.length) return conn;
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const departureSec = first ? timeStringToSeconds(first.departAt) : conn.departureSec;
+  const arrivalSec = last ? timeStringToSeconds(last.arriveAt) : (conn.arrivalSec ?? 0);
+  return {
+    ...conn,
+    legs,
+    departureSec,
+    departAt: first ? first.departAt : conn.departAt,
+    arrivalSec,
+    arriveAt: last ? last.arriveAt : conn.arriveAt,
+    durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
+    interchange: interchangeLabel(legs, conn.transfers),
+  };
+}
+
 function combineForward(
   city: Connection | null,
   rail: Connection,
   options: PlanOptions,
   gateway?: RailStation,
 ): Connection {
+  const effectiveCity = isZeroWalkConnection(city) ? null : city;
   const legs: Leg[] = [];
-  if (city) {
-    for (const leg of city.legs) legs.push({ ...leg });
+  if (effectiveCity) {
+    for (const leg of effectiveCity.legs) legs.push({ ...leg });
     for (let i = legs.length - 1; i >= 0; i--) {
       const leg = legs[i];
       if (leg.mode !== 'walk') break;
@@ -240,23 +276,23 @@ function combineForward(
   }
   legs.push(...rail.legs.map((l) => ({ ...l })));
 
-  const departureSec = city ? city.departureSec : rail.departureSec;
+  const departureSec = effectiveCity ? effectiveCity.departureSec : rail.departureSec;
   const arrivalSec = rail.arrivalSec ?? rail.departureSec + rail.durationMin * 60;
-  const transfers = city ? city.transfers + 1 + rail.transfers : rail.transfers;
+  const transfers = effectiveCity ? effectiveCity.transfers + 1 + rail.transfers : rail.transfers;
 
   return {
     id: '',
-    fromTitle: city ? options.fromTitle : (firstTransitLeg(rail)?.fromStop ?? options.fromTitle),
+    fromTitle: effectiveCity ? options.fromTitle : (firstTransitLeg(rail)?.fromStop ?? options.fromTitle),
     toTitle: rail.toTitle,
-    departInMin: city ? city.departInMin : 0,
+    departInMin: effectiveCity ? effectiveCity.departInMin : 0,
     departureSec,
     arrivalSec,
     departAt: secondsToTimeString(departureSec),
     arriveAt: secondsToTimeString(arrivalSec),
     durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
     transfers,
-    delayMin: Math.max(city?.delayMin ?? 0, rail.delayMin),
-    live: (city?.live ?? false) || rail.live,
+    delayMin: Math.max(effectiveCity?.delayMin ?? 0, rail.delayMin),
+    live: (effectiveCity?.live ?? false) || rail.live,
     legs,
     interchange: interchangeLabel(legs, transfers),
   };
@@ -264,6 +300,30 @@ function combineForward(
 
 /** Skleja pociąg z nogą miejską (reverse: kolej → miasto). */
 function combineReverse(rail: Connection, city: Connection, options: PlanOptions): Connection {
+  if (isZeroWalkConnection(city)) {
+    const legs: Leg[] = rail.legs.map((l) => ({ ...l }));
+    const departureSec = rail.departureSec;
+    const arrivalSec = rail.arrivalSec ?? rail.departureSec + rail.durationMin * 60;
+    const transfers = rail.transfers;
+
+    return {
+      id: '',
+      fromTitle: options.fromTitle,
+      toTitle: rail.toTitle,
+      departInMin: 0,
+      departureSec,
+      arrivalSec,
+      departAt: secondsToTimeString(departureSec),
+      arriveAt: secondsToTimeString(arrivalSec),
+      durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
+      transfers,
+      delayMin: rail.delayMin,
+      live: rail.live,
+      legs,
+      interchange: interchangeLabel(legs, transfers),
+    };
+  }
+
   const legs: Leg[] = rail.legs.map((l) => ({ ...l }));
   const cityLegs = city.legs.map((l) => ({ ...l }));
   // Pierwszy spacer nogi miejskiej zaczyna się "od punktu" (stacji):
@@ -391,11 +451,17 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
     return planForward(options, gateways, destination, destinationStopIds, bufferSec);
   }
 
-  // Start poza miastem: najbliższa stacja kolejowa.
-  const nearOrigin = await findNearestNationalStations(options.fromLat, options.fromLon, 30000, 1);
-  const originStation = nearOrigin[0]
-    ? { stopId: nearOrigin[0].stop_id, name: nearOrigin[0].name, lat: nearOrigin[0].lat, lon: nearOrigin[0].lon }
-    : undefined;
+  // Start poza miastem: stacja z fromId (stop-pl:…) albo najbliższa stacja kolejowa.
+  let originStation: RailStation | undefined;
+  if (options.fromId?.startsWith('stop-pl:')) {
+    originStation = stationById(options.fromId.slice('stop-'.length));
+  }
+  if (!originStation) {
+    const nearOrigin = await findNearestNationalStations(options.fromLat, options.fromLon, 30000, 1);
+    originStation = nearOrigin[0]
+      ? { stopId: nearOrigin[0].stop_id, name: nearOrigin[0].name, lat: nearOrigin[0].lat, lon: nearOrigin[0].lon }
+      : undefined;
+  }
   if (!originStation) return { connections: [], destinationStation: destination };
 
   if (destInsideCity) {
@@ -430,7 +496,7 @@ async function planForward(
     const conn = combineForward(city, rail, options, gateway);
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
-    combined.push(conn);
+    combined.push(cleanIntercityConnection(conn));
   };
 
   if (arrivalMode) {
@@ -579,7 +645,7 @@ async function planReverse(
     const conn = combineReverse(railConn, best, options);
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
-    combined.push(conn);
+    combined.push(cleanIntercityConnection(conn));
   }
 
   return { connections: pickBest(combined), originStation };
@@ -603,11 +669,17 @@ async function planRailOnly(
   const rail = await planConnections(railOptions, polskaStore);
 
   const combined: Connection[] = [];
-  const walkSec = Math.round(
-    (distanceMeters(options.fromLat, options.fromLon, originStation.lat, originStation.lon) * WALK_DETOUR_FACTOR) /
-      (options.walkSpeedMps ?? 1.34),
+  const walkDistM = Math.round(
+    distanceMeters(options.fromLat, options.fromLon, originStation.lat, originStation.lon),
   );
-  const walkToStation = walkSec <= MAX_WALK_TO_STATION_SEC;
+  const walkSec = Math.round((walkDistM * WALK_DETOUR_FACTOR) / (options.walkSpeedMps ?? 1.34));
+  const isAtOriginStation =
+    walkDistM <= SAME_POINT_M ||
+    options.fromId === originStation.stopId ||
+    options.fromId === 'stop-pl:' + originStation.stopId ||
+    normalizePolish(options.fromTitle) === normalizePolish(originStation.name);
+  const walkToStation =
+    !isAtOriginStation && walkDistM > SAME_POINT_M && walkSec > 0 && walkSec <= MAX_WALK_TO_STATION_SEC;
 
   for (const railConn of rail) {
     if (!firstTransitLeg(railConn)) continue;
@@ -621,7 +693,7 @@ async function planRailOnly(
     }
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
-    combined.push(conn);
+    combined.push(cleanIntercityConnection(conn));
   }
 
   return { connections: pickBest(combined), destinationStation: destination, originStation };

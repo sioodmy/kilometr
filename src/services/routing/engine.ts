@@ -16,7 +16,7 @@ import { predictDelaySec } from './delays';
 const WALK_SPEED_MPS = 1.34;
 const WALK_DETOUR_FACTOR = 1.15;
 /** Poniżej tego dystansu start i cel to praktycznie ten sam punkt (spacer, nie przejazd). */
-const SAME_POINT_M = 40;
+export const SAME_POINT_M = 40;
 /** Do ilu sekund spaceru wolno wycinać warianty z przesiadką wolniejsze od marszu. */
 const WALK_BEATS_TRANSIT_MAX_SEC = 15 * 60;
 /**
@@ -273,6 +273,7 @@ export function buildLegStops(
 }
 
 export interface PlanOptions {
+  fromId?: string;
   fromTitle: string;
   fromLat: number;
   fromLon: number;
