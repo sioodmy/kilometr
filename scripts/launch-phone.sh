@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 # Uruchamia apkę Kilometr na telefonie przez USB (ADB + Expo Go).
 # Sam stawia Metro i backend, jeśli nie działają - wystarczy `npm run phone`.
+# Opcjonalnie przyjmuje podścieżkę (np. `scripts/launch-phone.sh /dev/transfer?rail=1&state=conductor`).
 #
 # Wymagania: podłączony telefon (debugowanie USB), zainstalowane Expo Go.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="$HOME/Android/Sdk/platform-tools:$PATH"
+
 METRO_STATUS="http://localhost:8081/status"
 API_HEALTH="http://localhost:3000/api/health"
 METRO_LOG="$ROOT/.expo/phone-metro.log"
 SERVER_LOG="$ROOT/.expo/phone-server.log"
 DEV_URL="exp://127.0.0.1:8081"
 EXPO_GO_PKG="host.exp.exponent"
+
+# Opcjonalna podścieżka (np. /dev/transfer)
+DEV_PATH="${1:-}"
+if [ -n "$DEV_PATH" ]; then
+  if [[ "$DEV_PATH" == /* ]]; then
+    DEV_URL="exp://127.0.0.1:8081/--$DEV_PATH"
+  else
+    DEV_URL="exp://127.0.0.1:8081/--/$DEV_PATH"
+  fi
+fi
 
 fail() { echo "❌ $1" >&2; exit 1; }
 
@@ -65,8 +78,10 @@ else
     || fail "Metro nie wstało w 120 s. Sprawdź log: $METRO_LOG"
 fi
 
-# Backend API: bez niego wyszukiwanie połączeń nie zadziała.
-if curl -sf -o /dev/null "$API_HEALTH" 2>/dev/null; then
+# Backend API: niepotrzebny dla tras /dev/* (np. /dev/transfer)
+if [[ "$DEV_PATH" == /dev/* || "$DEV_PATH" == dev/* ]]; then
+  echo "ℹ️ Ścieżka developerska ($DEV_PATH) - pomijam oczekiwanie na backend."
+elif curl -sf -o /dev/null "$API_HEALTH" 2>/dev/null; then
   echo "🟢 Backend API działa (port 3000)"
 else
   echo "🟡 Backend nie działa - uruchamiam 'npm run server:dev' w tle..."
@@ -95,7 +110,7 @@ adb -s "$DEVICE_ID" shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
 # Otwarcie Expo Go z aplikacją kilometr (błędy celowo widoczne, nie tłumione).
 echo "🚀 Uruchamianie aplikacji w Expo Go ($DEV_URL)..."
-if adb -s "$DEVICE_ID" shell am start -a android.intent.action.VIEW -d "$DEV_URL" "$EXPO_GO_PKG"; then
+if adb -s "$DEVICE_ID" shell "am start -a android.intent.action.VIEW -d '$DEV_URL' -p '$EXPO_GO_PKG'"; then
   echo "🎉 Gotowe! Aplikacja powinna otworzyć się na telefonie."
   echo "   Jeśli telefon wisi na ekranie ładowania >30 s, sprawdź log Metro: $METRO_LOG"
 else
