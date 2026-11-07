@@ -84,7 +84,7 @@ export function TicketInspectionModal({
       presentationStyle="fullScreen"
       onRequestClose={handleClose}
     >
-      <StatusBar style="light" backgroundColor={scheme.surface} />
+      <StatusBar style="light" />
       <SafeAreaView style={styles.safeArea}>
         {/* Pasek górny spójny z motywem aplikacji */}
         <View style={styles.header}>

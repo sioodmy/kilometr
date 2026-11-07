@@ -437,10 +437,14 @@ export default function RouteDetailsScreen() {
               <LegTimeline legs={item.legs} />
               <RouteMapCard
                 connection={item}
-                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+                onOpenMap={(stageId) =>
+                  router.push({
+                    pathname: '/map',
+                    params: stageId ? { id: item.id, stageId } : { id: item.id },
+                  })
+                }
               />
-              <ConnectionLineAlerts connection={item} />
-            </View>
+              <ConnectionLineAlerts connection={item} />\n            </View>
           )}
 
           <View style={{ height: 24 }} />
