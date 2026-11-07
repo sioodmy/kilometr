@@ -1,6 +1,15 @@
+import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { kvGet, kvRemove, kvSet } from './storage';
-import { extractTextFromPdf, parseRailTicketText, type ParsedTicketMetadata } from './ticketParser';
+import {
+  base64ToUint8Array,
+  extractBarcodesFromPdf,
+  extractTextFromPdf,
+  isLikelyRailTicket,
+  parseRailTicketText,
+  uint8ArrayToBase64,
+  type ParsedTicketMetadata,
+} from './ticketParser';
 import type { Connection } from '../types/models';
 import { getTrainLegSummary } from './ticketing';
 
@@ -12,10 +21,12 @@ export interface AttachedRailTicket {
   fileSize: number;
   addedAt: number;
   tripDate?: string;
+  barcodeUri?: string | null;
+  barcodeUris?: string[]; // Wsparcie dla biletów wieloodcinkowych z przesiadką (wiele kodów Aztec)
   metadata: ParsedTicketMetadata;
 }
 
-interface TicketIndexEntry {
+export interface TicketIndexEntry {
   id: string;
   connectionId: string;
   fileUri: string;
@@ -27,6 +38,7 @@ interface TicketIndexEntry {
 
 const TICKET_INDEX_KEY = 'rail_tickets:index';
 const DEFAULT_RETENTION_DAYS = 14;
+const MAX_TICKET_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit bezpieczeństwa (ochrona pamięci i storage)
 
 function getTicketDir(): string | null {
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
@@ -48,16 +60,6 @@ async function ensureTicketDir(): Promise<string | null> {
   }
 }
 
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
 async function loadIndex(): Promise<TicketIndexEntry[]> {
   const raw = await kvGet(TICKET_INDEX_KEY);
   if (!raw) return [];
@@ -74,27 +76,63 @@ async function saveIndex(entries: TicketIndexEntry[]): Promise<void> {
 
 /**
  * Pobiera bilet przypisany do danego połączenia.
+ * Posiada odporny mechanizm odzyskiwania: jeśli connectionId uległo zmianie
+ * (np. przesunięcie godziny przez opóźnienie pociągu), bilet jest dopasowywany po dacie i numerze pociągu.
  */
 export async function getTicketForConnection(
   connectionId: string,
+  connection?: Connection,
 ): Promise<AttachedRailTicket | null> {
+  // 1. Sprawdź bezpośrednio po identyfikatorze połączenia
   const raw = await kvGet(`ticket:${connectionId}`);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as AttachedRailTicket;
-    const fileInfo = await FileSystem.getInfoAsync(parsed.fileUri);
-    if (!fileInfo.exists) {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as AttachedRailTicket;
+      const fileInfo = await FileSystem.getInfoAsync(parsed.fileUri);
+      if (fileInfo.exists) {
+        return parsed;
+      }
       await deleteTicketForConnection(connectionId);
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
+    } catch {}
   }
+
+  // 2. Fallback na wypadek zmiany ID przez opóźnienie lub restart plannera
+  if (connection) {
+    const summary = getTrainLegSummary(connection);
+    const trainNum = summary?.trainNumber?.replace(/\s+/g, '').toUpperCase();
+    const serviceDate = connection.serviceDate;
+
+    if (trainNum || serviceDate) {
+      const index = await loadIndex();
+      for (const entry of index) {
+        const candidateRaw = await kvGet(`ticket:${entry.connectionId}`);
+        if (!candidateRaw) continue;
+        try {
+          const cand = JSON.parse(candidateRaw) as AttachedRailTicket;
+          const candTrain = cand.metadata.trainNumber?.replace(/\s+/g, '').toUpperCase();
+          const matchTrain = Boolean(
+            trainNum && candTrain && (trainNum.includes(candTrain) || candTrain.includes(trainNum)),
+          );
+          const matchDate = !serviceDate || !cand.tripDate || serviceDate === cand.tripDate;
+
+          if (matchTrain && matchDate) {
+            const fileInfo = await FileSystem.getInfoAsync(cand.fileUri);
+            if (fileInfo.exists) {
+              // Zmapuj na bieżący connectionId dla natychmiastowego dostępu
+              await kvSet(`ticket:${connectionId}`, candidateRaw);
+              return cand;
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
- * Usuwa dołączony bilet, kasuje plik PDF oraz czyści indeks.
+ * Usuwa dołączony bilet, kasuje plik PDF, wyekstrahowane kody kreskowe oraz czyści indeks.
  */
 export async function deleteTicketForConnection(connectionId: string): Promise<void> {
   const ticketRaw = await kvGet(`ticket:${connectionId}`);
@@ -103,6 +141,16 @@ export async function deleteTicketForConnection(connectionId: string): Promise<v
       const ticket = JSON.parse(ticketRaw) as AttachedRailTicket;
       if (ticket.fileUri) {
         await FileSystem.deleteAsync(ticket.fileUri, { idempotent: true });
+      }
+      if (ticket.barcodeUri) {
+        await FileSystem.deleteAsync(ticket.barcodeUri, { idempotent: true });
+      }
+      if (ticket.barcodeUris) {
+        for (const uri of ticket.barcodeUris) {
+          if (uri !== ticket.barcodeUri) {
+            await FileSystem.deleteAsync(uri, { idempotent: true });
+          }
+        }
       }
     } catch (err) {
       console.warn('[TicketStorage] Delete file failed:', err);
@@ -119,6 +167,7 @@ export async function deleteTicketForConnection(connectionId: string): Promise<v
 
 /**
  * Otwiera selektor plików i dołącza wybrany bilet PDF do połączenia.
+ * Posiada walidację rozmiaru (< 10 MB), czyszczenie cache oraz rozpoznawanie czy dokument jest biletem.
  */
 export async function importTicketPdf(
   connectionId: string,
@@ -143,6 +192,31 @@ export async function importTicketPdf(
   }
 
   const asset = picked.assets[0];
+
+  // 1. Bezpiecznik rozmiaru: natychmiastowe odrzucenie gigantycznych plików (np. 100 MB ebook)
+  let declaredSize = asset.size ?? 0;
+  if (!declaredSize) {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+      if (fileInfo.exists && typeof fileInfo.size === 'number') {
+        declaredSize = fileInfo.size;
+      }
+    } catch {}
+  }
+
+  if (declaredSize > MAX_TICKET_FILE_SIZE) {
+    // Sprzątnij plik z cache DocumentPicker
+    try {
+      await FileSystem.deleteAsync(asset.uri, { idempotent: true });
+    } catch {}
+
+    Alert.alert(
+      'Plik jest zbyt duży',
+      'Wybrany dokument przekracza 10 MB. Bilety kolejowe w formacie PDF mają zazwyczaj od kilkudziesięciu KB do maksymalnie 2 MB.',
+    );
+    return null;
+  }
+
   const dir = await ensureTicketDir();
   if (!dir) throw new Error('Tickets directory unavailable');
 
@@ -155,17 +229,67 @@ export async function importTicketPdf(
     to: targetUri,
   });
 
-  // Odczyt zawartości i analiza tekstu
+  // Usuwamy plik z tymczasowego cache DocumentPicker, aby zapobiec wyciekom pamięci
+  try {
+    await FileSystem.deleteAsync(asset.uri, { idempotent: true });
+  } catch {}
+
+  // Odczyt zawartości, analiza tekstu i ekstrakcja kodu kreskowego/Aztec
   let metadata: ParsedTicketMetadata = {};
+  let barcodeUri: string | null = null;
+  const barcodeUris: string[] = [];
+  let text = '';
+
   try {
     const base64 = await FileSystem.readAsStringAsync(targetUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
     const bytes = base64ToUint8Array(base64);
-    const text = extractTextFromPdf(bytes);
+
+    // 1. Metadane tekstowe (wagon, miejsce, pasażer, ulga)
+    text = extractTextFromPdf(bytes);
     metadata = parseRailTicketText(text, asset.name);
+
+    // 2. Oryginalne rastry kodów Aztec/QR z PDF (wsparcie wielu kodów dla przesiadek)
+    try {
+      const barcodes = extractBarcodesFromPdf(bytes);
+      for (let i = 0; i < barcodes.length; i++) {
+        const bc = barcodes[i];
+        const bcUri = `${dir}${ticketId}_barcode_${i}.${bc.extension}`;
+        const bcBase64 = uint8ArrayToBase64(bc.bytes);
+        await FileSystem.writeAsStringAsync(bcUri, bcBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        barcodeUris.push(bcUri);
+      }
+      if (barcodeUris.length > 0) {
+        barcodeUri = barcodeUris[0];
+      }
+    } catch (barcodeErr) {
+      console.warn('[TicketStorage] Barcode extraction error:', barcodeErr);
+    }
   } catch (err) {
     console.warn('[TicketStorage] PDF parsing failed, keeping basic metadata:', err);
+  }
+
+  // 2. Bezpiecznik semantyczny: czy to faktycznie jest bilet kolejowy?
+  const hasBarcode = Boolean(barcodeUri);
+  const looksLikeTicket = isLikelyRailTicket(text, asset.name, hasBarcode);
+
+  if (!looksLikeTicket) {
+    // Sprzątamy skopiowane pliki
+    try {
+      await FileSystem.deleteAsync(targetUri, { idempotent: true });
+      for (const uri of barcodeUris) {
+        await FileSystem.deleteAsync(uri, { idempotent: true });
+      }
+    } catch {}
+
+    Alert.alert(
+      'To nie wygląda na bilet kolejowy',
+      'Wybrany dokument PDF nie zawiera kodu do kontroli ani danych podróży kolejowej. Upewnij się, że wybierasz właściwy bilet.',
+    );
+    return null;
   }
 
   // Wzbogać metadane z samego połączenia, jeśli nie zostały znalezione w tekście PDF
@@ -193,9 +317,11 @@ export async function importTicketPdf(
     connectionId,
     fileName: asset.name || 'bilet.pdf',
     fileUri: targetUri,
-    fileSize: asset.size ?? 0,
+    fileSize: declaredSize,
     addedAt: now,
     tripDate: connection?.serviceDate,
+    barcodeUri,
+    barcodeUris,
     metadata,
   };
 
@@ -203,81 +329,78 @@ export async function importTicketPdf(
 
   // Zapis do indeksu
   const current = await loadIndex();
-  const filtered = current.filter((e) => e.connectionId !== connectionId);
-  filtered.push({
-    id: ticket.id,
-    connectionId: ticket.connectionId,
-    fileUri: ticket.fileUri,
+  const updated = current.filter((e) => e.connectionId !== connectionId);
+  updated.push({
+    id: ticketId,
+    connectionId,
+    fileUri: targetUri,
     fileName: ticket.fileName,
     fileSize: ticket.fileSize,
-    addedAt: ticket.addedAt,
+    addedAt: now,
     tripDate: ticket.tripDate,
   });
-  await saveIndex(filtered);
+  await saveIndex(updated);
+
+  // Uruchomienie czyszczenia przedawnionych biletów w tle
+  void cleanupExpiredTickets().catch((err) =>
+    console.warn('[TicketStorage] cleanupExpiredTickets background error:', err),
+  );
 
   return ticket;
 }
 
 /**
- * Otwiera bilet za pomocą systemowej przeglądarki plików lub menu udostępniania.
- */
-export async function openTicketPdf(ticket: AttachedRailTicket): Promise<boolean> {
-  try {
-    const Sharing = await import('expo-sharing');
-    const isAvailable = await Sharing.isAvailableAsync();
-    if (isAvailable) {
-      await Sharing.shareAsync(ticket.fileUri, {
-        mimeType: 'application/pdf',
-        dialogTitle: 'Bilet kolejowy',
-        UTI: 'com.adobe.pdf',
-      });
-      return true;
-    }
-  } catch (err) {
-    console.warn('[TicketStorage] Sharing failed:', err);
-  }
-  return false;
-}
-
-/**
- * Sprawdza czy bilet przekroczył okres retencji (domyślnie 14 dni po dacie podróży lub dodania).
+ * Sprawdza czy bilet kwalifikuje się do usunięcia wg polityki retencji (domyślnie 14 dni).
  */
 export function isTicketExpired(
   entry: { addedAt: number; tripDate?: string },
   now = Date.now(),
   retentionDays = DEFAULT_RETENTION_DAYS,
 ): boolean {
-  const retentionMs = retentionDays * 24 * 3600 * 1000;
+  const maxAgeMs = retentionDays * 24 * 3600 * 1000;
+
   if (entry.tripDate) {
     const tripTimestamp = Date.parse(`${entry.tripDate}T23:59:59`);
-    if (!isNaN(tripTimestamp)) {
-      return now > tripTimestamp + retentionMs;
+    if (!Number.isNaN(tripTimestamp)) {
+      return now > tripTimestamp + maxAgeMs;
     }
   }
-  return now > entry.addedAt + retentionMs;
+
+  return now > entry.addedAt + maxAgeMs;
 }
 
 /**
- * Usuwa przedawnione bilety z bazy i dysku.
- * Zwraca liczbę usuniętych biletów.
+ * Usuwa przedawnione bilety z bazy i dysku w operacji atomowej.
  */
 export async function cleanupExpiredTickets(
   retentionDays = DEFAULT_RETENTION_DAYS,
   now = Date.now(),
 ): Promise<number> {
   const index = await loadIndex();
-  let removedCount = 0;
+  if (index.length === 0) return 0;
+
   const remaining: TicketIndexEntry[] = [];
+  let removedCount = 0;
 
   for (const entry of index) {
     if (isTicketExpired(entry, now, retentionDays)) {
       try {
-        await FileSystem.deleteAsync(entry.fileUri, { idempotent: true });
+        const ticketRaw = await kvGet(`ticket:${entry.connectionId}`);
+        if (ticketRaw) {
+          const ticket = JSON.parse(ticketRaw) as AttachedRailTicket;
+          if (ticket.fileUri) await FileSystem.deleteAsync(ticket.fileUri, { idempotent: true });
+          if (ticket.barcodeUri) await FileSystem.deleteAsync(ticket.barcodeUri, { idempotent: true });
+          if (ticket.barcodeUris) {
+            for (const uri of ticket.barcodeUris) {
+              await FileSystem.deleteAsync(uri, { idempotent: true });
+            }
+          }
+        }
+        await kvRemove(`ticket:${entry.connectionId}`);
+        removedCount++;
       } catch (err) {
-        console.warn('[TicketStorage] cleanup delete file error:', err);
+        console.warn(`[TicketStorage] Failed to prune ticket for ${entry.connectionId}:`, err);
       }
-      await kvRemove(`ticket:${entry.connectionId}`);
-      removedCount++;
     } else {
       remaining.push(entry);
     }
@@ -287,31 +410,61 @@ export async function cleanupExpiredTickets(
     await saveIndex(remaining);
   }
 
-  // Opcjonalnie: skan katalogu tickets/ w poszukiwaniu osieroconych plików PDF
-  try {
-    const dir = getTicketDir();
-    if (dir) {
-      const files = await FileSystem.readDirectoryAsync(dir);
-      const activeUris = new Set(remaining.map((e) => e.fileUri));
-      for (const file of files) {
-        if (!file.endsWith('.pdf')) continue;
-        const fullUri = `${dir}${file}`;
-        if (!activeUris.has(fullUri)) {
-          // Osierocony plik – sprawdź jego wiek
-          const info = await FileSystem.getInfoAsync(fullUri);
-          if (info.exists && info.modificationTime) {
-            const modMs = info.modificationTime * 1000;
-            if (now > modMs + retentionDays * 24 * 3600 * 1000) {
-              await FileSystem.deleteAsync(fullUri, { idempotent: true });
-            }
-          }
-        }
-      }
-    }
-  } catch {
-    // Katalog może nie istnieć lub readDirectory może być niedostępne
-  }
-
   return removedCount;
 }
 
+/**
+ * Zwraca podsumowanie liczby zapisanych biletów i łącznej zajętej pamięci.
+ */
+export async function getTicketsSummary(): Promise<{ count: number; totalBytes: number }> {
+  const index = await loadIndex();
+  let totalBytes = 0;
+  for (const entry of index) {
+    totalBytes += entry.fileSize || 0;
+  }
+  return { count: index.length, totalBytes };
+}
+
+/**
+ * Usuwa wszystkie zapisane bilety PDF i czyści indeks.
+ */
+export async function clearAllTickets(): Promise<void> {
+  const index = await loadIndex();
+  for (const entry of index) {
+    try {
+      await deleteTicketForConnection(entry.connectionId);
+    } catch {}
+  }
+  await kvRemove(TICKET_INDEX_KEY);
+}
+
+/**
+ * Otwiera bilet PDF za pomocą natywnego mechanizmu udostępniania / podglądu systemu.
+ */
+export async function openTicketPdf(ticket: AttachedRailTicket): Promise<boolean> {
+  let Sharing: typeof import('expo-sharing');
+  try {
+    Sharing = await import('expo-sharing');
+  } catch (err) {
+    console.warn('[TicketStorage] expo-sharing unavailable:', err);
+    return false;
+  }
+
+  try {
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      console.warn('[TicketStorage] Sharing is not available on this platform');
+      return false;
+    }
+
+    await Sharing.shareAsync(ticket.fileUri, {
+      mimeType: 'application/pdf',
+      dialogTitle: ticket.fileName || 'Bilet kolejowy',
+      UTI: 'com.adobe.pdf',
+    });
+    return true;
+  } catch (err) {
+    console.warn('[TicketStorage] Open ticket PDF failed:', err);
+    return false;
+  }
+}

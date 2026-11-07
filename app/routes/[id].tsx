@@ -39,8 +39,7 @@ import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
-import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
-import { RailTicketCard } from '../../src/components/RailTicketCard';
+import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
@@ -398,6 +397,7 @@ export default function RouteDetailsScreen() {
           overScrollMode="never"
         >
           <ConnectionSummary item={item} offline={offline} />
+
           {dataNote && (
             <View style={styles.offlineBanner}>
               <CloudOff size={16} color={scheme.onSurfaceVariant} />
@@ -420,21 +420,20 @@ export default function RouteDetailsScreen() {
             </View>
           ) : (
             <View style={styles.detailsContent}>
-              <RailTicketCard connection={item} />
-              {hasTransfers && (
-                <TransferProtectionCard
-                  state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
-                  active={isTrackedThis && trackedTrip?.protectionEnabled === true}
-                  busy={trackingBusy}
-                  onPress={() => {
-                    if (isTrackedThis && trackedTrip?.protectionEnabled) {
-                      openTransferProtection();
-                    } else {
-                      void toggleTracking(true);
-                    }
-                  }}
-                />
-              )}
+              <RouteTravelDeck
+                connection={item}
+                hasTransfers={hasTransfers}
+                transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
+                transferActive={isTrackedThis && trackedTrip?.protectionEnabled === true}
+                trackingBusy={trackingBusy}
+                onTransferPress={() => {
+                  if (isTrackedThis && trackedTrip?.protectionEnabled) {
+                    openTransferProtection();
+                  } else {
+                    void toggleTracking(true);
+                  }
+                }}
+              />
               <LegTimeline legs={item.legs} />
               <RouteMapCard
                 connection={item}
