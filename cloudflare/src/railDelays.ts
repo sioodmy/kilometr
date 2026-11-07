@@ -47,6 +47,7 @@ interface RawFeed {
 
 interface RailTripLive {
   tripId: string;
+  startDate?: string;
   agency: string;
   numbers: string[];
   cancelled: boolean;
@@ -74,6 +75,57 @@ interface CachedFeed {
 
 let cached: CachedFeed | null = null;
 let inflight: Promise<CachedFeed> | null = null;
+
+export function resetRailDelaysCache(): void {
+  cached = null;
+  inflight = null;
+}
+
+function isFinishedTripUpdate(u: RawTripUpdate, feedTimestampMs: number): boolean {
+  if (!Number.isFinite(feedTimestampMs)) return false;
+  const stops = u.stop_times;
+  if (!stops || stops.length === 0) return false;
+  const last = stops[stops.length - 1];
+  const iso = last.arrival ?? last.departure;
+  if (!iso || !iso.includes('T')) return false;
+  const endMs = Date.parse(iso);
+  return Number.isFinite(endMs) && endMs < feedTimestampMs - 15 * 60_000;
+}
+
+function shouldReplaceTripUpdate(
+  existing: RawTripUpdate,
+  candidate: RawTripUpdate,
+  feedTimestampMs: number,
+): boolean {
+  const existingFinished = isFinishedTripUpdate(existing, feedTimestampMs);
+  const candidateFinished = isFinishedTripUpdate(candidate, feedTimestampMs);
+  if (existingFinished !== candidateFinished) {
+    return !candidateFinished;
+  }
+  return (candidate.start_date ?? '') > (existing.start_date ?? '');
+}
+
+function setTripEntry(
+  byTripId: Map<string, RawTripUpdate>,
+  key: string,
+  candidate: RawTripUpdate,
+  feedTimestampMs: number,
+): void {
+  const existing = byTripId.get(key);
+  if (!existing || shouldReplaceTripUpdate(existing, candidate, feedTimestampMs)) {
+    byTripId.set(key, candidate);
+  }
+}
+
+function canonicalPlkTripId(rawId: string): string {
+  const trimmed = rawId.trim().replace(/_LEG\d+$/i, '');
+  const kdMatch = /^KD:T:(\d+):(\d+)(?::\d+)?$/i.exec(trimmed);
+  if (kdMatch) return `PLK_KD_${kdMatch[1]}_${kdMatch[2]}`;
+  const prefixedPlk = /^[A-Z0-9]+:(PLK_.+)$/i.exec(trimmed);
+  if (prefixedPlk) return prefixedPlk[1];
+  if (trimmed.startsWith('pl:')) return trimmed.slice(3);
+  return trimmed;
+}
 
 async function loadFeed(): Promise<CachedFeed> {
   const now = Date.now();
@@ -112,17 +164,19 @@ async function loadFeed(): Promise<CachedFeed> {
 
       const etag = res.headers.get('etag') ?? '';
       const raw = (await res.json()) as RawFeed;
+      const timestamp = raw.timestamp ?? new Date().toISOString();
+      const feedTimestampMs = Date.parse(timestamp);
       const byTripId = new Map<string, RawTripUpdate>();
-      const byNumber = new Map<string, RawTripUpdate[]>();
+      const byNumber = new Map<string, RawTripUpdate[]>;
 
       for (const u of raw.trip_updates ?? []) {
         if (!u.trip_id) continue;
         const normId = u.trip_id.trim();
-        byTripId.set(normId, u);
+        setTripEntry(byTripId, normId, u, feedTimestampMs);
         // Indeksujemy też z prefiksem pl: i bez prefiksu PLK_
-        byTripId.set(`pl:${normId}`, u);
+        setTripEntry(byTripId, `pl:${normId}`, u, feedTimestampMs);
         if (normId.startsWith('PLK_')) {
-          byTripId.set(normId.slice(4), u);
+          setTripEntry(byTripId, normId.slice(4), u, feedTimestampMs);
         }
 
         for (const num of u.numbers ?? []) {
@@ -132,10 +186,20 @@ async function loadFeed(): Promise<CachedFeed> {
         }
       }
 
+      for (const list of byNumber.values()) {
+        if (list.length > 1) {
+          list.sort((a, b) => {
+            if (shouldReplaceTripUpdate(a, b, feedTimestampMs)) return 1;
+            if (shouldReplaceTripUpdate(b, a, feedTimestampMs)) return -1;
+            return 0;
+          });
+        }
+      }
+
       cached = {
         fetchedAt: Date.now(),
         etag,
-        timestamp: raw.timestamp ?? new Date().toISOString(),
+        timestamp,
         byTripId,
         byNumber,
       };
@@ -167,6 +231,7 @@ function summarizeTripUpdate(tripId: string, u: RawTripUpdate): RailTripLive {
 
   return {
     tripId,
+    startDate: u.start_date,
     agency: u.agency_id,
     numbers: u.numbers ?? [],
     cancelled: u.cancelled === true,
@@ -190,7 +255,8 @@ export async function handleRailDelays(req: Request, ctx?: ExecutionContext): Pr
   }
 
   // Edge Cache API: jeśli odpowiedź jest już w cache Cloudflare, zwróć natychmiast (0 ms CPU Workera).
-  const cache = typeof caches !== 'undefined' ? (caches as unknown as { default: Cache }).default : null;
+  const cache =
+    typeof caches !== 'undefined' ? (caches as unknown as { default: Cache }).default : null;
   if (cache && req.method === 'GET') {
     try {
       const match = await cache.match(req);
@@ -230,10 +296,11 @@ export async function handleRailDelays(req: Request, ctx?: ExecutionContext): Pr
         .map((s) => s.trim())
         .filter(Boolean);
       for (const reqId of requestedIds) {
+        const canonical = canonicalPlkTripId(reqId);
         const u =
           feed.byTripId.get(reqId) ||
-          feed.byTripId.get(reqId.replace(/^pl:/, '')) ||
-          feed.byTripId.get(`pl:${reqId}`);
+          feed.byTripId.get(canonical) ||
+          feed.byTripId.get(`pl:${canonical}`);
         if (u) {
           result[reqId] = summarizeTripUpdate(reqId, u);
         }
@@ -273,27 +340,31 @@ export async function handleRailDelays(req: Request, ctx?: ExecutionContext): Pr
       },
     );
 
-    if (cache && ctx && req.method === 'GET') {
+    if (cache && req.method === 'GET') {
       try {
-        ctx.waitUntil(cache.put(req, response.clone()));
+        const putPromise = cache.put(req, response.clone());
+        if (ctx?.waitUntil) {
+          ctx.waitUntil(putPromise);
+        } else {
+          void putPromise.catch(() => {});
+        }
       } catch {
-        // Ignoruj błędy cache.put
+        // Ignoruj błędy zapisu do cache
       }
     }
 
     return response;
   } catch (err) {
-    console.error('Rail delays feed error:', err);
     return new Response(
       JSON.stringify({
-        error: 'feed-unavailable',
+        error: 'upstream-error',
+        message: err instanceof Error ? err.message : String(err),
       }),
       {
         status: 502,
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store',
         },
       },
     );

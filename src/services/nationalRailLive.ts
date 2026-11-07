@@ -12,8 +12,10 @@
 // łącznikiem z bazą PLK jest NUMER POCIĄGU (drugi człon `shortName`) plus
 // zgodność nazw stacji z trasy kursu.
 
-import { getNationalActiveServices, getNationalDb } from './gtfsDatabase';
+import type { Leg, LegStop } from '../types/models';
 import { ZBIORKOM } from './gtfsConfig';
+import { getNationalActiveServices, getNationalDb } from './gtfsDatabase';
+import { toPlkTripId } from './nationalRailUpdates';
 import { withTimeout } from './net';
 
 export interface NationalRailLive {
@@ -77,16 +79,30 @@ function baseTrainNumber(value: string | undefined): string {
  * (zbiorkom podaje numer brygady, który bywa drugim wariantem). „3830/1”
  * -> [3830, 3831], bez ukośnika -> jeden numer.
  */
-function trainNumberVariants(value: string | undefined): string[] {
-  const m = /^(\d{1,7})(?:\/(\d{1,7}))?$/.exec((value ?? '').trim());
-  if (!m) return [];
-  const base = m[1];
-  if (!m[2]) return [base];
-  const suffix = m[2];
-  // „61170/1”: sufiks zastępuje ostatnią cyfrę; „65000/1” -> 65001.
-  const alt =
-    suffix.length >= base.length ? suffix : base.slice(0, base.length - suffix.length) + suffix;
-  return base === alt ? [base] : [base, alt];
+export function trainNumberVariants(
+  value: string | undefined,
+  fallbackLine?: string | undefined,
+): string[] {
+  const out = new Set<string>();
+  for (const src of [value, fallbackLine]) {
+    if (!src) continue;
+    for (const token of src.trim().split(/\s+/)) {
+      const m = /^(\d{1,7})(?:\/(\d{1,7}))?$/.exec(token);
+      if (!m) continue;
+      if (src === fallbackLine && m[1].length < 3) continue;
+      const base = m[1];
+      out.add(base);
+      if (m[2]) {
+        const suffix = m[2];
+        const alt =
+          suffix.length >= base.length
+            ? suffix
+            : base.slice(0, base.length - suffix.length) + suffix;
+        out.add(alt);
+      }
+    }
+  }
+  return [...out];
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -257,7 +273,11 @@ async function findCandidateTrips(
 }
 
 /** Dopasowanie pozycji do kursów: numer pociągu + najbliższa stacja w czasie. */
-function matchPositions(positions: ZbPosition[], candidates: CandidateTrip[]): NationalRailLive {
+function matchPositions(
+  positions: ZbPosition[],
+  candidates: CandidateTrip[],
+  inputLegs: NationalLiveLeg[],
+): NationalRailLive {
   const delays = new Map<string, number>();
   const out = new Map<string, { lat: number; lon: number; bearing?: number; updatedAt: number }>();
   const zbTripIds = new Map<string, string>();
@@ -297,28 +317,56 @@ function matchPositions(positions: ZbPosition[], candidates: CandidateTrip[]): N
       }
     }
     if (!best) continue;
-    delays.set(best.trip.tripId, Math.round(pos.delay / 1000));
-    out.set(best.trip.tripId, {
+    const delaySec = Math.round(pos.delay / 1000);
+    const posEntry = {
       lat: pos.location[1],
       lon: pos.location[0],
       bearing: typeof pos.bearing === 'number' ? pos.bearing : undefined,
       updatedAt: pos.timestamp,
-    });
+    };
+    const zbId = `2:${pos.vehicle.agency}__${pos.vehicle.id.replace(/^_/, '')}`;
+
+    delays.set(best.trip.tripId, delaySec);
+    out.set(best.trip.tripId, posEntry);
     // Id kursu zbiorkomu do strumienia alertów (z pozycji, nie z GTFS).
-    zbTripIds.set(best.trip.tripId, `2:${pos.vehicle.agency}__${pos.vehicle.id.replace(/^_/, '')}`);
+    zbTripIds.set(best.trip.tripId, zbId);
+
+    const matchedPlkId = toPlkTripId(best.trip.tripId);
+    const matchedNums = new Set(trainNumberVariants(best.trip.trainNumber));
+    for (const leg of inputLegs) {
+      if (!leg.tripId || leg.tripId === best.trip.tripId) continue;
+      const legPlkId = toPlkTripId(leg.tripId);
+      const legNums = trainNumberVariants(leg.trainNumber, leg.line);
+      if (
+        (matchedPlkId && legPlkId === matchedPlkId) ||
+        legNums.some((n) => matchedNums.has(n))
+      ) {
+        delays.set(leg.tripId, delaySec);
+        out.set(leg.tripId, posEntry);
+        zbTripIds.set(leg.tripId, zbId);
+      }
+    }
   }
   return { delays, positions: out, zbTripIds, fetchedAt: Date.now() };
 }
 
 export interface NationalLiveLeg {
-  /** trip_id z bazy PLK (pl:...), żeby dopiąć pozycję do nóg w UI. */
+  /** trip_id z bazy PLK (pl:...) lub miejskiej (KD:T:...), żeby dopiąć pozycję i opóźnienie do nóg w UI. */
   tripId?: string;
+  mode?: Leg['mode'];
   fromStop: string;
   toStop: string;
+  fromStopId?: string;
+  toStopId?: string;
   fromLat?: number;
   fromLon?: number;
   toLat?: number;
   toLon?: number;
+  departAt?: string;
+  arriveAt?: string;
+  scheduledDepartureSec?: number;
+  scheduledArrivalSec?: number;
+  intermediateStops?: LegStop[];
   line?: string;
   trainNumber?: string;
   railAgency?: string;
@@ -367,10 +415,12 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
     // Kandydaci po numerach pociągów z nóg (nie po stacjach): okno czasowe
     // liczone na cały kurs, więc live nie znika w połowie długiej trasy.
     const numbers = [
-      ...new Set(trains.flatMap((l) => trainNumberVariants(l.trainNumber ?? '')).filter(Boolean)),
+      ...new Set(
+        trains.flatMap((l) => trainNumberVariants(l.trainNumber, l.line)).filter(Boolean),
+      ),
     ];
     const candidates = await findCandidateTrips(numbers, nowSec);
-    return matchPositions(positions, candidates);
+    return matchPositions(positions, candidates, trains);
   })().catch(() => empty);
 
   positionsCache.set(cacheKey, { at: Date.now(), promise });
@@ -469,11 +519,7 @@ export function vehicleCandidatesForLeg(leg: {
   line?: string;
 }): string[] {
   const agency = (leg.railAgency ?? 'IC').trim() || 'IC';
-  const explicit = trainNumberVariants(leg.trainNumber);
-  const numbers =
-    explicit.length > 0
-      ? explicit
-      : trainNumberVariants(/(\d{1,7}(?:\/\d+)?)/.exec(leg.line ?? '')?.[1]);
+  const numbers = trainNumberVariants(leg.trainNumber, leg.line);
   return numbers.map((n) => `2:${agency}__${n}`);
 }
 

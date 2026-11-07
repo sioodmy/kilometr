@@ -178,6 +178,7 @@ class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
+  private nationalTripDelays = new Map<string, { delaySec: number; updatedAt: number }>();
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
@@ -242,6 +243,7 @@ class LiveTracker {
     this.byId.clear();
     this.byLine.clear();
     this.tripDelays.clear();
+    this.nationalTripDelays.clear();
     this.liveScheduleKey = null;
     this.latestDayIndex = null;
     this.sampleHistory.clear();
@@ -309,13 +311,19 @@ class LiveTracker {
         fetchNationalRailLive(this.nationalWatch),
         fetchNationalRailUpdates(this.nationalWatch).catch(() => new Map()),
       ]);
+      const nowMs = Date.now();
       let changed = false;
       for (const [tripId, delaySec] of live.delays) {
-        this.tripDelays.set(tripId, Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec)));
+        const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec));
+        this.tripDelays.set(tripId, clamped);
+        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
         changed = true;
       }
       for (const [tripId, update] of updates) {
-        this.tripDelays.set(tripId, Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec)));
+        if (update.hasRealtimeDelay === false) continue;
+        const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec));
+        this.tripDelays.set(tripId, clamped);
+        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
         changed = true;
       }
       // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
@@ -435,13 +443,18 @@ class LiveTracker {
    */
   getTripDelays(): Map<string, number> {
     const now = Date.now();
-    return new Map(
-      this.snapshot()
-        .filter(
-          (v) => v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS,
-        )
-        .map((v) => [v.matchedTripId!, v.delaySec!]),
-    );
+    const out = new Map<string, number>();
+    for (const v of this.snapshot()) {
+      if (v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(v.matchedTripId, v.delaySec);
+      }
+    }
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(tripId, entry.delaySec);
+      }
+    }
+    return out;
   }
 
   private latestDayIndex: DayIndex | null = null;
@@ -1453,6 +1466,13 @@ class LiveTracker {
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null)
         delays.set(kept.matchedTripId, kept.delaySec);
+    }
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (nowMs - entry.updatedAt > 300000) {
+        this.nationalTripDelays.delete(tripId);
+        continue;
+      }
+      delays.set(tripId, entry.delaySec);
     }
     const newByLine = new Map<string, TrackedVehicle[]>();
     for (const tracked of byId.values()) {
