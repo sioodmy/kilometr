@@ -1298,6 +1298,7 @@ export const uk: Strings = {
     modeCable: 'Канатна дорога',
     modeVehicle: 'Транспорт',
     currentLocation: (stop: string) => `Поточне місце: ${stop}`,
+    waitingAtTerminus: 'Очікує відправлення з кінцевої',
     liveTracking: 'Відстеження наживо',
     transfer: 'Пересадка',
     transferMinutes: (min: number) => `Пересадка · ~${min} хв`,
