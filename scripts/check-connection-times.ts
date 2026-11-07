@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   boardingDepartureMs,
   boardingDepartureSec,
+  legDurationMin,
   refreshConnectionTimes,
 } from '../src/services/routing/connectionTimes';
 import type { Connection } from '../src/types/models';
@@ -193,6 +194,25 @@ assert.equal(
   refreshConnectionTimes(unknown, new Map([['tram', 300]]), now).legs[0].scheduledDepartureSec,
   undefined,
 );
+
+// Czas trwania odcinka (np. pociąg Wrocław - Katowice 6 stacji ~133 min, a nie stopsCount*2 = 12 min)
+assert.equal(
+  legDurationMin({ departAt: "08:15", arriveAt: "10:28", stopsCount: 6 }),
+  133,
+);
+assert.equal(
+  legDurationMin({ departAt: "23:45", arriveAt: "01:15", stopsCount: 4 }),
+  90,
+);
+assert.equal(
+  legDurationMin({ departAt: "", arriveAt: "", scheduledDepartureSec: 36000, scheduledArrivalSec: 39600 }),
+  60,
+);
+assert.equal(
+  legDurationMin({ departAt: "", arriveAt: "", stopsCount: 5 }),
+  10,
+);
+
 console.log(
   'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ i starsze plany',
 );
