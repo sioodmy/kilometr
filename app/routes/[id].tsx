@@ -153,10 +153,10 @@ export default function RouteDetailsScreen() {
   const currentAlarm = alarm?.connectionId === id ? alarm : null;
 
   useEffect(() => {
-    if (isTrackedThis && trackedTrip?.connection) {
+    if (isTrackedThis && trackedTrip?.connection && loadedItem?.id !== trackedTrip.connection.id) {
       setItem(trackedTrip.connection);
     }
-  }, [isTrackedThis, trackedTrip?.connection]);
+  }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id]);
 
   const hasTransfers = item != null && hasTransfer(item);
 

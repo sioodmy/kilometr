@@ -121,11 +121,15 @@ export function RouteMapCard({
     });
   }, [mountMap, windowHeight]);
 
+  const lastRouteId = useRef<string | null>(null);
   useEffect(() => {
     if (!readyToMountMap) return;
     let cancelled = false;
     let release: (() => void) | undefined;
-    setOfflineBase(undefined);
+    if (lastRouteId.current !== route?.id) {
+      lastRouteId.current = route?.id ?? null;
+      setOfflineBase(undefined);
+    }
     setStatus('loading');
     void acquireMapServerForRoute(route)
       .then((lease) => {
@@ -143,7 +147,7 @@ export function RouteMapCard({
       cancelled = true;
       release?.();
     };
-  }, [attempt, readyToMountMap, route]);
+  }, [attempt, readyToMountMap, route?.id]);
 
   useEffect(() => {
     if (!readyToMountMap || status !== 'loading') return;
@@ -166,7 +170,7 @@ export function RouteMapCard({
       abort.signal,
     );
     return () => abort.abort();
-  }, [route, readyToMountMap]);
+  }, [shapeKey, readyToMountMap]);
 
   const handleSelectStage = useCallback(
     (stageId: string | null) => {
@@ -250,10 +254,7 @@ export function RouteMapCard({
             ]}
           >
             <Text
-              style={[
-                styles.stagePillLabel,
-                activeStage === null && styles.stagePillLabelActive,
-              ]}
+              style={[styles.stagePillLabel, activeStage === null && styles.stagePillLabelActive]}
               numberOfLines={1}
             >
               {s.map.showWholeRoute}
@@ -287,12 +288,7 @@ export function RouteMapCard({
                   focused === focusKey && styles.focused,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.stageIndex,
-                    isSelected && styles.stageIndexActive,
-                  ]}
-                >
+                <Text style={[styles.stageIndex, isSelected && styles.stageIndexActive]}>
                   {st.stageNumber}.
                 </Text>
                 {isWalk ? (
@@ -302,10 +298,7 @@ export function RouteMapCard({
                       color={isSelected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
                     />
                     <Text
-                      style={[
-                        styles.stagePillLabel,
-                        isSelected && styles.stagePillLabelActive,
-                      ]}
+                      style={[styles.stagePillLabel, isSelected && styles.stagePillLabelActive]}
                       numberOfLines={1}
                     >
                       {walkLabel}
@@ -315,10 +308,7 @@ export function RouteMapCard({
                   <>
                     <LineBadge mode={st.leg.mode} line={st.leg.line} compact active={isSelected} />
                     <Text
-                      style={[
-                        styles.stagePillLabel,
-                        isSelected && styles.stagePillLabelActive,
-                      ]}
+                      style={[styles.stagePillLabel, isSelected && styles.stagePillLabelActive]}
                       numberOfLines={1}
                     >
                       {sub}
@@ -454,7 +444,9 @@ export function RouteMapCard({
               {activeStage.endpointRole
                 ? activeStage.departAt
                 : `${activeStage.departAt} \u2192 ${activeStage.arriveAt}`}
-              {activeStage.stopsCount > 0 ? ` \u2022 ${s.map.legStops(activeStage.stopsCount)}` : ''}
+              {activeStage.stopsCount > 0
+                ? ` \u2022 ${s.map.legStops(activeStage.stopsCount)}`
+                : ''}
             </Text>
           </Pressable>
 

@@ -299,8 +299,20 @@ class LiveTracker {
 
   /** Ekran zgłasza nogi kolejowe, dla których chce live (bbox + numery). */
   setNationalWatch(legs: NationalLiveLeg[]): void {
-    this.nationalWatch = legs.slice(0, 12);
-    if (legs.length > 0) void this.pollNational();
+    const next = legs.slice(0, 12);
+    if (
+      this.nationalWatch.length === next.length &&
+      this.nationalWatch.every(
+        (l, i) =>
+          l.tripId === next[i]?.tripId &&
+          l.trainNumber === next[i]?.trainNumber &&
+          l.line === next[i]?.line,
+      )
+    ) {
+      return;
+    }
+    this.nationalWatch = next;
+    if (next.length > 0) void this.pollNational();
   }
 
   private async pollNational(): Promise<void> {
@@ -315,35 +327,43 @@ class LiveTracker {
       let changed = false;
       for (const [tripId, delaySec] of live.delays) {
         const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec));
+        if (this.tripDelays.get(tripId) !== clamped) {
+          changed = true;
+        }
         this.tripDelays.set(tripId, clamped);
         this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
-        changed = true;
       }
       for (const [tripId, update] of updates) {
         if (update.hasRealtimeDelay === false) continue;
         const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec));
+        if (this.tripDelays.get(tripId) !== clamped) {
+          changed = true;
+        }
         this.tripDelays.set(tripId, clamped);
         this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
-        changed = true;
       }
       // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
       // tak samo jak KD (matchedTripId === leg.tripId).
       for (const [tripId, pos] of live.positions) {
         const vehicleId = `PL:${tripId}`;
+        const prev = this.byId.get(vehicleId);
         const leg = this.nationalWatch.find((l) => l.tripId === tripId);
+        const delay = this.tripDelays.get(tripId) ?? null;
+        if (!prev || prev.lat !== pos.lat || prev.lon !== pos.lon || prev.delaySec !== delay) {
+          changed = true;
+        }
         this.byId.set(vehicleId, {
           vehicleId,
           line: leg?.line ?? 'PKP',
           lat: pos.lat,
           lon: pos.lon,
           type: 'train',
-          delaySec: this.tripDelays.get(tripId) ?? null,
+          delaySec: delay,
           matchedTripId: tripId,
           currentStopName: leg?.fromStop,
           nextStopName: leg?.toStop,
           updatedAt: pos.updatedAt,
         });
-        changed = true;
       }
       if (changed) {
         this.lastOk = Date.now();
