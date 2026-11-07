@@ -21,6 +21,16 @@ function prepInCity(cityLoc: string): string {
   return startsWithV ? `у ${cityLoc}` : `в ${cityLoc}`;
 }
 
+function formatDuration(mins: number): string {
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h} год ${m} хв` : `${h} год`;
+  }
+  return `${rounded} хв`;
+}
+
 export const uk: Strings = {
   landing,
   share,
@@ -123,7 +133,7 @@ export const uk: Strings = {
     now: 'Зараз',
     today: 'Сьогодні',
     tomorrow: 'Завтра',
-    durMin: (n: number) => `${n} хв`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `за ${n} хв`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
@@ -1265,7 +1275,7 @@ export const uk: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, час їзди ${dur} хв, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
+      `${dep}, час їзди ${formatDuration(dur)}, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
   },
   vehiclePos: {
@@ -1305,11 +1315,11 @@ export const uk: Strings = {
     nearStop: (mode: string, stop: string) => `${mode} поблизу зупинки: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
-      return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
+      return `${stops} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     stationsSummary: (n: number, mins: number, open: boolean) => {
       const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
-      return `${stations} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
+      return `${stations} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     platformPeron: (code: string) => `Платформа ${code}`,
     platformPole: (code: string) => `Стовп ${code}`,

@@ -8,7 +8,7 @@ export const en: ShareStrings = {
   departure: 'Departure',
   from: 'From',
   to: 'To',
-  duration: (n) => `${n} min`,
+  duration: (n) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
   transfers: (n) => (n === 0 ? 'Direct' : n === 1 ? '1 transfer' : `${n} transfers`),
   walk: 'Walk',
   walkDistance: (n) => `${n} m walk`,

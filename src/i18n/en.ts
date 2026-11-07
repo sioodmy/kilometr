@@ -4,6 +4,16 @@ import type { Strings } from './pl';
 import { en as landing } from './landing/en';
 import { en as share } from './share/en';
 
+function formatDuration(mins: number): string {
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${rounded} min`;
+}
+
 export const en: Strings = {
   landing,
   share,
@@ -104,7 +114,7 @@ export const en: Strings = {
     now: 'Now',
     today: 'Today',
     tomorrow: 'Tomorrow',
-    durMin: (n: number) => `${n} min`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `in ${n} min`,
     departNow: 'due',
     departAgo: (n: number) => `${n} min ago`,
@@ -1211,7 +1221,7 @@ export const en: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, ride time ${dur} min, departure ${depAt}, arrival ${arrAt}, ${via}${lines ? `, lines ${lines}` : ''}`,
+      `${dep}, ride time ${formatDuration(dur)}, departure ${depAt}, arrival ${arrAt}, ${via}${lines ? `, lines ${lines}` : ''}`,
     walkRoute: 'walking route',
   },
   vehiclePos: {
@@ -1250,9 +1260,9 @@ export const en: Strings = {
     transferMinutes: (min: number) => `Transfer · ~${min} min`,
     nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${formatDuration(mins)} • ${open ? 'collapse' : 'expand'} stops`,
     stationsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'station' : 'stations'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stations`,
+      `${n} ${n === 1 ? 'station' : 'stations'} • ~${formatDuration(mins)} • ${open ? 'collapse' : 'expand'} stations`,
     platformPeron: (code: string) => `Platform ${code}`,
     platformPole: (code: string) => `Pole ${code}`,
     platformBay: (code: string) => `Bay ${code}`,

@@ -19,6 +19,16 @@ function prepInCity(cityLoc: string): string {
   return startsWithWConsonant ? `we ${cityLoc}` : `w ${cityLoc}`;
 }
 
+function formatDuration(mins: number): string {
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${rounded} min`;
+}
+
 export const pl = {
   landing,
   share,
@@ -116,7 +126,7 @@ export const pl = {
     now: 'Teraz',
     today: 'Dziś',
     tomorrow: 'Jutro',
-    durMin: (n: number) => `${n} min`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `za ${n} min`,
     departNow: 'za chwilę',
     departAgo: (n: number) => `${n} min temu`,
@@ -1252,7 +1262,7 @@ export const pl = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, czas jazdy ${dur} min, odjazd ${depAt}, przyjazd ${arrAt}, ${via}${lines ? `, linie ${lines}` : ''}`,
+      `${dep}, czas jazdy ${formatDuration(dur)}, odjazd ${depAt}, przyjazd ${arrAt}, ${via}${lines ? `, linie ${lines}` : ''}`,
     walkRoute: 'trasa piesza',
   },
   vehiclePos: {
@@ -1291,9 +1301,9 @@ export const pl = {
     transferMinutes: (min: number) => `Przesiadka · ~${min} min`,
     nearStop: (mode: string, stop: string) => `${mode} w pobliżu przystanku: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
+      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${formatDuration(mins)} • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
     stationsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} stacje`,
+      `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'} • ~${formatDuration(mins)} • ${open ? 'zwiń' : 'rozwiń'} stacje`,
     platformPeron: (code: string) => `Peron ${code}`,
     platformPole: (code: string) => `Słupek ${code}`,
     platformBay: (code: string) => `Stanowisko ${code}`,
