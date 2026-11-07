@@ -1536,6 +1536,30 @@ export const uk: Strings = {
     tram: 'Трамвай',
     bus: 'Автобус',
   },
+  railTickets: {
+    buyKoleo: 'Купити квиток у KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} до ${to} · 1 пересадка`
+        : `${from} до ${to} · ${transfers} пересадки`,
+    attachPdf: 'Додати квиток PDF',
+    attachedTitle: 'Залізничний квиток',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Вагон ${wagon}`);
+      if (seat) parts.push(`Місце ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Показати квиток',
+    removeTicket: 'Видалити квиток',
+    removeConfirmTitle: 'Видалити цей квиток?',
+    removeConfirmBody: 'Файл PDF буде видалено з пам’яті додатка.',
+    fileLabel: (fileName: string) => `Файл: ${fileName}`,
+    importSuccess: 'Квиток PDF успішно додано.',
+    importError: 'Не вдалося завантажити файл PDF.',
+  },
   widgets: {
     journeyTitle: 'Твої напрямки',
     journeyDescription: 'Час виходу й маршрути до збережених і нещодавно знайдених місць',

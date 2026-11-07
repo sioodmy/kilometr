@@ -25,6 +25,7 @@ import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import { migrateFromSqliteKv } from '../src/services/kvMigration';
 import { refreshDepartureAlarm } from '../src/services/departureAlarm';
+import { cleanupExpiredTickets } from '../src/services/ticketStorage';
 import {
   addTripResponseListener,
   getLastTripResponse,
@@ -93,6 +94,7 @@ export default function RootLayout() {
       await initLocale();
       await loadNotificationPreferences();
       await refreshDepartureAlarm();
+      void cleanupExpiredTickets();
       try {
         const seen = await hasSeenOnboarding();
         if (isMounted) setNeedsOnboarding(!seen);

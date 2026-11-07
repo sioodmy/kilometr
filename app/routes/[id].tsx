@@ -41,6 +41,7 @@ import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
 import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
+import { RailTicketCard } from '../../src/components/RailTicketCard';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
@@ -420,6 +421,7 @@ export default function RouteDetailsScreen() {
             </View>
           ) : (
             <View style={styles.detailsContent}>
+              <RailTicketCard connection={item} />
               {hasTransfers && (
                 <TransferProtectionCard
                   state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
