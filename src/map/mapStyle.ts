@@ -2,7 +2,7 @@
 //
 // Kafelki rastrowe odpadły: CARTO i Stadia wymagają klucza, a jasny OSM kłóci
 // się z ciemnym interfejsem. Dlatego rysujemy wektorowe kafelki OSM
-// (OpenFreeMap - bez klucza i bez limitu) i nadpisujemy każdą warstwę
+// (OpenFreeMap, bez klucza i bez limitu) i nadpisujemy każdą warstwę
 // kolorami z `src/theme/tokens`. Dane to nadal OpenStreetMap (ODbL).
 //
 // Schemat źródła to OpenMapTiles (`planet`), więc filtry `class`/`subclass`
@@ -85,11 +85,13 @@ const nameSymbol = (
   size: unknown,
   layout: Record<string, unknown> = {},
   haloWidth = 1.1,
+  minzoom?: number,
 ) => ({
   id,
   type: 'symbol' as const,
   source: 'openmaptiles',
   'source-layer': sourceLayer,
+  ...(minzoom !== undefined ? { minzoom } : {}),
   filter: filter as never,
   paint: labelPaint(color, haloWidth),
   layout: { 'text-field': nameField, 'text-size': size, ...layout },
@@ -131,7 +133,7 @@ function baseLayers() {
       filter: isLine as never,
       paint: {
         'line-color': C.waterLine,
-        'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 9, 0.6, 14, 1.8, 20, 9],
+        'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 0.35, 9, 0.6, 14, 1.8, 20, 9],
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     },
@@ -163,7 +165,8 @@ function baseLayers() {
       filter: ['all', isLine, ROAD_MOTORWAY] as never,
       paint: {
         'line-color': C.casing,
-        'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 2.6, 12, 6.5, 20, 19],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.35, 8, 0.85, 10, 1],
+        'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 4, 0.7, 7, 1.5, 10, 3.2, 12, 6.5, 20, 19],
       },
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
     },
@@ -175,7 +178,8 @@ function baseLayers() {
       filter: ['all', isLine, ROAD_MOTORWAY] as never,
       paint: {
         'line-color': C.motorway,
-        'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 1.2, 12, 3, 20, 15],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.45, 8, 0.85, 10, 1],
+        'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 4, 0.4, 7, 0.85, 10, 1.8, 12, 3, 20, 15],
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     },
@@ -184,10 +188,11 @@ function baseLayers() {
       type: 'line' as const,
       source: 'openmaptiles',
       'source-layer': 'transportation',
+      minzoom: 7,
       filter: ['all', isLine, ROAD_MAJOR] as never,
       paint: {
         'line-color': C.casing,
-        'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 10, 2.8, 16, 8, 20, 16],
+        'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 7, 0.6, 10, 2.2, 16, 8, 20, 16],
       },
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
     },
@@ -196,10 +201,11 @@ function baseLayers() {
       type: 'line' as const,
       source: 'openmaptiles',
       'source-layer': 'transportation',
+      minzoom: 7,
       filter: ['all', isLine, ROAD_MAJOR] as never,
       paint: {
         'line-color': C.major,
-        'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 10, 1.2, 16, 4.5, 20, 11],
+        'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 7, 0.35, 10, 1.1, 16, 4.5, 20, 11],
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     },
@@ -208,6 +214,7 @@ function baseLayers() {
       type: 'line' as const,
       source: 'openmaptiles',
       'source-layer': 'transportation',
+      minzoom: 12,
       filter: ['all', isLine, ROAD_MINOR] as never,
       paint: {
         'line-color': C.minor,
@@ -220,6 +227,7 @@ function baseLayers() {
       type: 'line' as const,
       source: 'openmaptiles',
       'source-layer': 'transportation',
+      minzoom: 13,
       filter: ['all', isLine, ['==', ['get', 'class'], 'path']] as never,
       paint: {
         'line-color': C.footway,
@@ -233,10 +241,12 @@ function baseLayers() {
       type: 'line' as const,
       source: 'openmaptiles',
       'source-layer': 'transportation',
+      minzoom: 8,
       filter: ['all', isLine, ['!', ['has', 'service']], ['==', ['get', 'class'], 'rail']] as never,
       paint: {
         'line-color': C.rail,
-        'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 14, 1, 18, 2.6, 20, 5],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.45, 12, 0.85, 15, 1],
+        'line-width': ['interpolate', ['exponential', 1.3], ['zoom'], 8, 0.5, 12, 0.9, 14, 1.2, 18, 2.6, 20, 5],
       },
       layout: { 'line-join': 'round' },
     },
@@ -261,6 +271,8 @@ function baseLayers() {
       C.waterLabel,
       ['interpolate', ['linear'], ['zoom'], 12, 10, 18, 13],
       { 'symbol-placement': 'line', 'text-font': ['Noto Sans Italic'] },
+      1.1,
+      11,
     ),
     nameSymbol(
       'nazwa-ulicy-glowna',
@@ -269,6 +281,8 @@ function baseLayers() {
       C.roadLabel,
       ['interpolate', ['linear'], ['zoom'], 13, 11, 18, 14],
       { 'symbol-placement': 'line', 'text-font': ['Noto Sans Regular'], 'text-max-width': 8, 'text-rotation-alignment': 'map' },
+      1.1,
+      12,
     ),
     nameSymbol(
       'nazwa-ulicy-drobna',
@@ -277,15 +291,18 @@ function baseLayers() {
       C.roadLabel,
       ['interpolate', ['linear'], ['zoom'], 15, 10, 18, 13],
       { 'symbol-placement': 'line', 'text-font': ['Noto Sans Regular'], 'text-max-width': 7, 'text-rotation-alignment': 'map' },
+      1.1,
+      14,
     ),
     nameSymbol(
       'miejsce-miasto',
       'place',
       ['==', ['get', 'class'], 'city'],
       motif().placeCity,
-      ['interpolate', ['exponential', 1.2], ['zoom'], 5, 12, 9, 16],
-      { 'text-font': ['Noto Sans Bold'], 'text-max-width': 8 },
+      ['interpolate', ['exponential', 1.2], ['zoom'], 4, 10.5, 6, 11.5, 9, 15.5],
+      { 'text-font': ['Noto Sans Bold'], 'text-max-width': 8, 'text-padding': 4 },
       1.5,
+      4,
     ),
     nameSymbol(
       'miejsce-inne',
@@ -293,8 +310,9 @@ function baseLayers() {
       ['match', ['get', 'class'], ['town', 'village', 'suburb', 'neighbourhood'], true, false],
       motif().placeTown,
       ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 14],
-      { 'text-font': ['Noto Sans Regular'], 'text-max-width': 8 },
+      { 'text-font': ['Noto Sans Regular'], 'text-max-width': 8, 'text-padding': 4 },
       1.3,
+      8.5,
     ),
     nameSymbol(
       'miejsce-kraj',
@@ -362,7 +380,7 @@ function buildPoiLayers() {
 
 export const ROUTE_SOURCE_ID = 'kilometr-trasa';
 
-// `sel` na obiekcie linii: 2 = wybrana noga, 1 = przygaszona reszta,
+// `sel` na obiekcie linii: 2 = wybrana noga/etap, 1 = przygaszona reszta,
 // 0 = nic nie wybrane (wtedy wszystkie nogi rysujemy na pełnej szerokości).
 const SEL = ['get', 'sel'];
 const bySel = (selected: unknown, dimmed: unknown, normal: unknown) => [
@@ -377,8 +395,8 @@ const bySel = (selected: unknown, dimmed: unknown, normal: unknown) => [
 
 /**
  * Warstwy trasy: obwódka, linia kursu, przerywany spacer, przystanki
- * pośrednie i niewidoczna warstwa chwytna pod palce. Wszystkie z jednego
- * źródła GeoJSON, więc zmiana geometrii to jedno setData.
+ * pośrednie, etykiety stacji i niewidoczna warstwa chwytna pod palce.
+ * Wszystkie z jednego źródła GeoJSON, więc zmiana geometrii to jedno setData.
  */
 function buildRouteLayers() {
   return [
@@ -389,8 +407,18 @@ function buildRouteLayers() {
       filter: ['==', ['geometry-type'], 'LineString'] as never,
       paint: {
         'line-color': C.routeCasing,
-        'line-width': bySel(9, 7.5, 7.5),
-        'line-opacity': bySel(0.95, 0.45, 0.9),
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4,
+          bySel(7.5, 5.5, 6.2),
+          8,
+          bySel(8.5, 6.5, 7.2),
+          12,
+          bySel(9.5, 7.5, 7.8),
+        ] as never,
+        'line-opacity': bySel(0.95, 0.4, 0.9),
       },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
     },
@@ -401,8 +429,16 @@ function buildRouteLayers() {
       filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'walk'], 1]] as never,
       paint: {
         'line-color': ['coalesce', ['get', 'color'], motif().walk] as never,
-        'line-width': bySel(4.5, 4, 4),
-        'line-opacity': bySel(0.9, 0.35, 0.85),
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4,
+          bySel(3.2, 2.2, 2.6),
+          10,
+          bySel(4.5, 3.6, 4),
+        ] as never,
+        'line-opacity': bySel(0.9, 0.3, 0.85),
         'line-dasharray': [1, 3.2],
       },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
@@ -414,8 +450,18 @@ function buildRouteLayers() {
       filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'walk'], 0]] as never,
       paint: {
         'line-color': ['get', 'color'] as never,
-        'line-width': bySel(6.5, 5.5, 5.5),
-        'line-opacity': bySel(1, 0.4, 1),
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4,
+          bySel(5, 3.2, 3.8),
+          8,
+          bySel(5.8, 4, 4.6),
+          12,
+          bySel(6.8, 5, 5.5),
+        ] as never,
+        'line-opacity': bySel(1, 0.35, 1),
       },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
     },
@@ -433,11 +479,95 @@ function buildRouteLayers() {
       source: ROUTE_SOURCE_ID,
       filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'role'], 'intermediate']] as never,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 16, 4.5, 19, 6.5],
+        'circle-radius': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          5,
+          ['case', ['==', ['get', 'sel'], 2], 2.2, ['==', ['get', 'rail'], 1], 1.7, 0],
+          8,
+          ['case', ['==', ['get', 'sel'], 2], 2.8, ['==', ['get', 'rail'], 1], 2.3, 0],
+          10.5,
+          ['case', ['==', ['get', 'sel'], 2], 3.2, 2.1],
+          13,
+          ['case', ['==', ['get', 'sel'], 2], 3.6, 2.6],
+          16,
+          4.5,
+          19,
+          6.5,
+        ] as never,
         'circle-color': ['coalesce', ['get', 'color'], motif().stopMid] as never,
         'circle-stroke-color': C.land,
-        'circle-stroke-width': 1.5,
-        'circle-opacity': bySel(0.9, 0.35, 0.95),
+        'circle-stroke-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          5,
+          ['case', ['==', ['get', 'sel'], 2], 1.2, ['==', ['get', 'rail'], 1], 0.9, 0],
+          10,
+          ['case', ['==', ['get', 'sel'], 2], 1.4, ['==', ['get', 'rail'], 1], 1.2, 0],
+          11,
+          1.5,
+        ] as never,
+        'circle-opacity': bySel(0.95, 0.25, 0.92),
+        'circle-stroke-opacity': bySel(0.95, 0.25, 0.92),
+      },
+    },
+    {
+      id: 'przystanki-etykiety',
+      type: 'symbol' as const,
+      source: ROUTE_SOURCE_ID,
+      filter: [
+        'all',
+        ['==', ['geometry-type'], 'Point'],
+        ['has', 'name'],
+        [
+          'any',
+          ['==', ['get', 'role'], 'endpoint'],
+          ['==', ['get', 'rail'], 1],
+          ['==', ['get', 'sel'], 2],
+        ],
+      ] as never,
+      layout: {
+        'symbol-sort-key': [
+          'case',
+          ['==', ['get', 'role'], 'endpoint'],
+          1,
+          ['==', ['get', 'sel'], 2],
+          2,
+          10,
+        ] as never,
+        'text-field': ['get', 'name'] as never,
+        'text-font': ['Noto Sans Bold'],
+        'text-size': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4.5,
+          ['case', ['==', ['get', 'role'], 'endpoint'], 10.5, 0],
+          6.5,
+          ['case', ['==', ['get', 'role'], 'endpoint'], 11, ['==', ['get', 'sel'], 2], 10, 9.5],
+          10,
+          ['case', ['==', ['get', 'role'], 'endpoint'], 11.5, 10.5],
+          14,
+          12,
+        ] as never,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.85,
+        'text-max-width': 9,
+        'text-padding': 6,
+        'text-optional': true,
+      },
+      paint: {
+        'text-color': [
+          'case',
+          ['==', ['get', 'role'], 'endpoint'],
+          bySel('#F4F8F6', 'rgba(244, 248, 246, 0.35)', '#F4F8F6'),
+          bySel('#E1EAE6', 'rgba(225, 234, 230, 0.22)', '#D2DDD8'),
+        ] as never,
+        'text-halo-color': C.halo,
+        'text-halo-width': 1.8,
+        'text-halo-blur': 0.4,
       },
     },
   ];
@@ -447,8 +577,8 @@ const EMPTY = { type: 'FeatureCollection' as const, features: [] };
 
 /**
  * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
- * stylu, więc WebView nie musi nic doklejać po wczytaniu - wystarczy
- * `setData` na źródłe GeoJSON.
+ * stylu, więc WebView nie musi nic doklejać po wczytaniu, wystarczy
+ * `setData` na źródle GeoJSON.
  *
  * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:
  * `base` to np. `http://127.0.0.1:45999`. Schemat kafli jest ten sam co

@@ -284,7 +284,8 @@ export function RouteTravelDeck({
                 ticket ? styles.ticketBadgeAttached : styles.ticketBadgeEmpty,
               ]}
             >
-              {ticket ? (\n                ticket.barcodeUri ? (
+              {ticket ? (
+                ticket.barcodeUri ? (
                   <ScanLine size={16} color={scheme.onPrimaryContainer} />
                 ) : (
                   <TrainFront size={16} color={scheme.onPrimaryContainer} />
