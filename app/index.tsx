@@ -141,6 +141,7 @@ export default function HomeScreen() {
     lat: number;
     lon: number;
     title: string;
+    stopId?: string;
     city?: string | null;
   } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
@@ -445,7 +446,7 @@ export default function HomeScreen() {
       if (cancelled) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = l.city ?? null;
-      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
+      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, stopId: l.stopId, city });
       if (outside) {
         // Poza strefą: GPS zostaje tylko jako informacja do karty,
         // a ranking i trasy liczymy z centrum aktywnego miasta, bo start
@@ -811,49 +812,56 @@ export default function HomeScreen() {
     );
   }, [gpsCity, cityGen, s]);
 
-  // Reset startu na GPS: nieudany odczyt zostawia poprzedni start bez zmian,
-  // a fix nie nadpisuje ręcznego wyboru zrobionego w trakcie odczytu.
-  const resetToGps = async () => {
+  // Reset startu na GPS: natychmiast czyści stan w UI do domyślnego/ostatniego GPS,
+  // a świeży fix dociąga się w tle bez blokowania interfejsu.
+  const resetToGps = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const gen = ++startSelGen.current;
+    pendingDestinationRef.current = null;
+    isCustomStartRef.current = false;
+    setIsCustomStart(false);
+
+    const fallbackTitle = gpsLocation?.title ?? defaultLocationForCity(getActiveCityIdSync()).title;
+    const fallbackCoords = gpsLocation
+      ? { lat: gpsLocation.lat, lon: gpsLocation.lon }
+      : (() => {
+          const d = defaultLocationForCity(getActiveCityIdSync());
+          return { lat: d.lat, lon: d.lon };
+        })();
+    const fallbackOrigin = gpsLocation?.stopId || fallbackTitle;
+
+    setLocTitle(fallbackTitle);
+    setCurrentCoords(fallbackCoords);
+    requestSmart(fallbackOrigin, fallbackCoords);
+
     if (gpsUnsupported) {
       blockGpsStart();
       return;
     }
-    const gen = ++startSelGen.current;
-    const customAtStart = isCustomStartRef.current;
-    // Cache tylko gdy start już był GPS: przy ręcznym starcie nie ruszamy
-    // współrzędnych przed potwierdzonym fixem.
-    if (!isCustomStartRef.current && gpsLocation) {
-      setLocTitle(gpsLocation.title);
-      const coords = { lat: gpsLocation.lat, lon: gpsLocation.lon };
-      setCurrentCoords(coords);
-      requestSmart(gpsLocation.title, coords);
-    }
-    try {
-      const l = await LocationService.getCurrentLocation({ force: true });
-      // Ręczny start wybrany w trakcie odczytu unieważnia ten fix.
-      if (gen !== startSelGen.current || isCustomStartRef.current !== customAtStart) return;
-      const outside = isOutsideServiceArea(l.lat, l.lon);
-      const city = (l as { city?: string | null }).city ?? null;
-      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
-      if (outside) {
-        setGpsUnsupported(true);
-        setGpsCity(city);
-        blockGpsStart();
-        return;
-      }
-      setGpsUnsupported(false);
-      setGpsCity(null);
-      pendingDestinationRef.current = null;
-      isCustomStartRef.current = false;
-      setIsCustomStart(false);
-      setLocTitle(l.title);
-      const coords = { lat: l.lat, lon: l.lon };
-      setCurrentCoords(coords);
-      requestSmart(l.stopId || l.title, coords);
-    } catch (err) {
-      // Błąd zostawia poprzedni start: ikona i współrzędne dalej się zgadzają.
-      console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
-    }
+
+    LocationService.getCurrentLocation({ force: true })
+      .then((l) => {
+        // Ręczny start wybrany w trakcie odczytu unieważnia ten fix.
+        if (gen !== startSelGen.current || isCustomStartRef.current) return;
+        const outside = isOutsideServiceArea(l.lat, l.lon);
+        const city = (l as { city?: string | null }).city ?? null;
+        setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, stopId: l.stopId, city });
+        if (outside) {
+          setGpsUnsupported(true);
+          setGpsCity(city);
+          blockGpsStart();
+          return;
+        }
+        setGpsUnsupported(false);
+        setGpsCity(null);
+        setLocTitle(l.title);
+        const coords = { lat: l.lat, lon: l.lon };
+        setCurrentCoords(coords);
+        requestSmart(l.stopId || l.title, coords);
+      })
+      .catch((err) => {
+        console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
+      });
   };
 
   const handleStartSelect = async (sel: Suggestion) => {
@@ -869,7 +877,7 @@ export default function HomeScreen() {
         setQuery('');
         return;
       }
-      await resetToGps();
+      resetToGps();
       if (returnToDestinationAfterStart) {
         setReturnToDestinationAfterStart(false);
         setSheetMode('destination');
@@ -1491,7 +1499,7 @@ export default function HomeScreen() {
               setQuery('');
               setSheetMode('start');
             }}
-            onResetStart={() => void resetToGps()}
+            onResetStart={resetToGps}
             gpsUnsupported={gpsUnsupported}
           />
         )}
