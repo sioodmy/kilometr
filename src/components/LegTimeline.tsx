@@ -39,7 +39,7 @@ import { pl } from '../i18n/pl';
 import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
-import { scheduledLegTimes } from '../services/routing/connectionTimes';
+import { legDurationMin, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
 import { railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
@@ -450,6 +450,10 @@ const TransitLegCard = memo(function TransitLegCard({
     if (physicalStops.length === segmentStops.length) return leg.stopsCount;
     return Math.max(0, physicalStops.length - 1);
   }, [leg]);
+  const durationMin = useMemo(
+    () => legDurationMin({ ...leg, stopsCount }),
+    [leg.departAt, leg.arriveAt, leg.scheduledDepartureSec, leg.scheduledArrivalSec, stopsCount],
+  );
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
@@ -769,8 +773,8 @@ const TransitLegCard = memo(function TransitLegCard({
           <View style={s.stopsSummaryWrap}>
             <Text style={s.stopsSummaryLabel}>
               {leg.mode === 'train'
-                ? t.leg.stationsSummary(stopsCount, stopsCount * 2, expanded)
-                : t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
+                ? t.leg.stationsSummary(stopsCount, durationMin, expanded)
+                : t.leg.stopsSummary(stopsCount, durationMin, expanded)}
             </Text>
           </View>
         </View>

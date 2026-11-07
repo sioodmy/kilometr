@@ -1529,6 +1529,30 @@ export const pl = {
   },
   // Widgety z ekranu głównego. Interpolacje dostają placeholder ('{n}', '{t}'),
   // bo minuty liczy widget natywnie przy każdym tyknięciu.
+  railTickets: {
+    buyKoleo: 'Kup bilet w KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} do ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} do ${to} · 1 przesiadka`
+        : `${from} do ${to} · ${transfers} przesiadki`,
+    attachPdf: 'Dołącz bilet PDF',
+    attachedTitle: 'Bilet kolejowy',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Wagon ${wagon}`);
+      if (seat) parts.push(`Miejsce ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Pokaż bilet',
+    removeTicket: 'Odłącz bilet',
+    removeConfirmTitle: 'Czy na pewno chcesz odłączyć bilet?',
+    removeConfirmBody: 'Plik PDF zostanie usunięty z pamięci aplikacji.',
+    fileLabel: (fileName: string) => `Plik: ${fileName}`,
+    importSuccess: 'Bilet PDF został pomyślnie dodany.',
+    importError: 'Nie udało się wczytać pliku PDF.',
+  },
   widgets: {
     journeyTitle: 'Twoje kierunki',
     journeyDescription: 'Czas wyjścia i linie do zapisanych i ostatnio szukanych miejsc',

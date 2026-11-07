@@ -1493,6 +1493,30 @@ export const de: Strings = {
     tram: 'Tram',
     bus: 'Bus',
   },
+  railTickets: {
+    buyKoleo: 'Fahrkarte in KOLEO kaufen',
+    buyKoleoSub: (from: string, to: string) => `${from} nach ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} nach ${to} · 1 Umstieg`
+        : `${from} nach ${to} · ${transfers} Umstiege`,
+    attachPdf: 'PDF-Fahrkarte anhängen',
+    attachedTitle: 'Zugfahrkarte',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Wagen ${wagon}`);
+      if (seat) parts.push(`Sitzplatz ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Fahrkarte anzeigen',
+    removeTicket: 'Fahrkarte entfernen',
+    removeConfirmTitle: 'Fahrkarte wirklich entfernen?',
+    removeConfirmBody: 'Die PDF-Datei wird aus dem Speicher gelöscht.',
+    fileLabel: (fileName: string) => `Datei: ${fileName}`,
+    importSuccess: 'PDF-Fahrkarte erfolgreich angehängt.',
+    importError: 'PDF-Datei konnte nicht geladen werden.',
+  },
   widgets: {
     journeyTitle: 'Deine Ziele',
     journeyDescription: 'Losgehzeit und Linien zu gespeicherten und zuletzt gesuchten Zielen',
