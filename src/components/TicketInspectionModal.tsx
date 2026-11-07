@@ -11,8 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
-import { ExternalLink, X } from './icons';
+import { ExternalLink, Layers, X } from './icons';
 import { useStrings } from '../i18n';
+import { elev, scheme, shape } from '../theme/tokens';
 import type { AttachedRailTicket } from '../services/ticketStorage';
 import { openTicketPdf } from '../services/ticketStorage';
 import type { Connection } from '../types/models';
@@ -54,8 +55,9 @@ export function TicketInspectionModal({
 
   const title = [trainNumber, seatInfo].filter(Boolean).join(' · ');
 
-  // Kod Aztec powinien zajmować maksymalną przestrzeń ekranu z zachowaniem marginesu Quiet Zone
-  const barcodeSize = Math.min(screenWidth - 48, screenHeight - 240, 360);
+  // Karta kodu Aztec na środku z hojnym marginesem Quiet Zone i corner radiusem
+  const barcodeCardSize = Math.min(screenWidth - 48, screenHeight - 260, 360);
+  const barcodeInnerSize = Math.max(120, barcodeCardSize - 48);
 
   const handleOpenOriginal = async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -82,9 +84,9 @@ export function TicketInspectionModal({
       presentationStyle="fullScreen"
       onRequestClose={handleClose}
     >
-      <StatusBar style="dark" backgroundColor="#FFFFFF" />
+      <StatusBar style="light" backgroundColor={scheme.surface} />
       <SafeAreaView style={styles.safeArea}>
-        {/* Minimalistyczny pasek górny */}
+        {/* Pasek górny spójny z motywem aplikacji */}
         <View style={styles.header}>
           <Pressable
             onPress={handleClose}
@@ -93,7 +95,7 @@ export function TicketInspectionModal({
             accessibilityLabel={s.common.close}
             style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           >
-            <X size={22} color="#1A211E" />
+            <X size={20} color={scheme.onSurface} />
           </Pressable>
 
           {title ? (
@@ -111,39 +113,47 @@ export function TicketInspectionModal({
             style={({ pressed }) => [styles.pdfBtn, pressed && styles.pressed]}
           >
             <Text style={styles.pdfBtnText}>PDF</Text>
-            <ExternalLink size={14} color="#1A211E" />
+            <ExternalLink size={14} color={scheme.onSurfaceVariant} />
           </Pressable>
         </View>
 
-        {/* Wskaźnik przesiadki (jeśli bilet ma więcej niż jeden kod Aztec) */}
+        {/* Przełącznik odcinków przesiadkowych (gdy w PDF jest > 1 kod Aztec) */}
         {barcodes.length > 1 && (
-          <Pressable
-            onPress={handleNextBarcode}
-            accessibilityRole="button"
-            accessibilityLabel={`Kod ${activeBarcodeIndex + 1} z ${barcodes.length}. Dotknij, aby zmienić odcinek.`}
-            style={styles.pagerBar}
-          >
-            <Text style={styles.pagerText}>
-              Odcinek {activeBarcodeIndex + 1} z {barcodes.length} (dotknij, aby zmienić)
-            </Text>
-          </Pressable>
+          <View style={styles.pagerContainer}>
+            <Pressable
+              onPress={handleNextBarcode}
+              accessibilityRole="button"
+              accessibilityLabel={`Odcinek ${activeBarcodeIndex + 1} z ${barcodes.length}. Dotknij, aby zmienić.`}
+              style={({ pressed }) => [styles.pagerChip, pressed && styles.pressed]}
+            >
+              <Layers size={14} color={scheme.onPrimaryContainer} />
+              <Text style={styles.pagerText}>
+                Odcinek {activeBarcodeIndex + 1} z {barcodes.length} · Dotknij, aby zmienić
+              </Text>
+            </Pressable>
+          </View>
         )}
 
-        {/* Czysty, gigantyczny kod Aztec na białym tle */}
-        <View style={styles.barcodeContainer}>
+        {/* Kontener centralny: dedykowana biała karta na kod Aztec z dużym paddingiem i zaokrągleniami */}
+        <View style={styles.barcodeCenterArea}>
           {currentBarcodeUri ? (
             <Pressable
               onPress={handleNextBarcode}
               disabled={barcodes.length <= 1}
-              style={[styles.barcodeWrapper, { width: barcodeSize, height: barcodeSize }]}
+              style={[
+                styles.barcodeCard,
+                { width: barcodeCardSize, height: barcodeCardSize },
+              ]}
             >
-              <Image
-                source={{ uri: currentBarcodeUri }}
-                style={styles.barcodeImage}
-                resizeMode="contain"
-                accessibilityRole="image"
-                accessibilityLabel="Kod Aztec do kontroli kolejowej"
-              />
+              <View style={[styles.barcodeInner, { width: barcodeInnerSize, height: barcodeInnerSize }]}>
+                <Image
+                  source={{ uri: currentBarcodeUri }}
+                  style={styles.barcodeImage}
+                  resizeMode="contain"
+                  accessibilityRole="image"
+                  accessibilityLabel="Kod Aztec do kontroli kolejowej"
+                />
+              </View>
             </Pressable>
           ) : (
             <View style={styles.fallbackBox}>
@@ -159,12 +169,14 @@ export function TicketInspectionModal({
           )}
         </View>
 
-        {/* Dyskretna linia pasażera i ulgi na dole ekranu */}
+        {/* Pasażer i ulga na dole w spójnym chipie M3 */}
         <View style={styles.footer}>
           {meta.passenger || meta.tariff ? (
-            <Text style={styles.footerText} numberOfLines={1}>
-              {[meta.passenger, meta.tariff].filter(Boolean).join(' · ')}
-            </Text>
+            <View style={styles.passengerChip}>
+              <Text style={styles.footerText} numberOfLines={1}>
+                {[meta.passenger, meta.tariff].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
           ) : null}
         </View>
       </SafeAreaView>
@@ -175,7 +187,7 @@ export function TicketInspectionModal({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: scheme.surface,
   },
   header: {
     flexDirection: 'row',
@@ -184,62 +196,84 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E2E8E0',
+    borderBottomColor: scheme.outlineVariant,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   headerTitle: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'Manrope_700Bold',
-    color: '#1A211E',
+    color: scheme.onSurface,
     textAlign: 'center',
-    marginHorizontal: 8,
+    marginHorizontal: 12,
+    letterSpacing: -0.2,
   },
   pdfBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F2',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
   },
   pdfBtnText: {
     fontSize: 13,
-    fontFamily: 'Manrope_600SemiBold',
-    color: '#1A211E',
+    fontFamily: 'Manrope_700Bold',
+    color: scheme.onSurface,
   },
-  pagerBar: {
-    paddingVertical: 6,
+  pagerContainer: {
     alignItems: 'center',
-    backgroundColor: '#F5FBF7',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#CCE8E0',
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  pagerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
   },
   pagerText: {
     fontSize: 12,
     fontFamily: 'Manrope_600SemiBold',
-    color: '#006A60',
+    color: scheme.onPrimaryContainer,
   },
   pressed: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
-  barcodeContainer: {
+  barcodeCenterArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 20,
   },
-  barcodeWrapper: {
+  barcodeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: shape.extraLarge,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    padding: 24,
+    ...elev.level3,
+    shadowColor: '#000000',
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  barcodeInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   barcodeImage: {
     width: '100%',
@@ -247,33 +281,44 @@ const styles = StyleSheet.create({
   },
   fallbackBox: {
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
+    padding: 24,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   fallbackText: {
     fontSize: 14,
     fontFamily: 'Manrope_500Medium',
-    color: '#6F7975',
+    color: scheme.onSurfaceVariant,
   },
   fallbackBtn: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#006A60',
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
   },
   fallbackBtnText: {
     fontSize: 14,
-    fontFamily: 'Manrope_600SemiBold',
-    color: '#FFFFFF',
+    fontFamily: 'Manrope_700Bold',
+    color: scheme.onPrimary,
   },
   footer: {
     paddingHorizontal: 24,
     paddingBottom: 16,
     alignItems: 'center',
   },
+  passengerChip: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+  },
   footerText: {
-    fontSize: 12,
-    fontFamily: 'Manrope_500Medium',
-    color: '#8A938F',
-    letterSpacing: 0.2,
+    fontSize: 13,
+    fontFamily: 'Manrope_600SemiBold',
+    color: scheme.onSurfaceVariant,
+    letterSpacing: 0.1,
   },
 });

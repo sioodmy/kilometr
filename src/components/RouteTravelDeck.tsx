@@ -28,7 +28,7 @@ import {
   X,
 } from './icons';
 import { useStrings } from '../i18n';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
 import { transferNeedsAttention } from './TransferProtectionCard';
@@ -205,7 +205,13 @@ export function RouteTravelDeck({
   const handleBuyKoleo = async () => {
     setTicketSheetOpen(false);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    await openKoleoRoute(connection);
+    const success = await openKoleoRoute(connection);
+    if (!success) {
+      Alert.alert(
+        'Nie można otworzyć KOLEO',
+        'Nie udało się uruchomić aplikacji ani strony KOLEO. Sprawdź połączenie z internetem.',
+      );
+    }
   };
 
   const handleAttachPdf = async () => {
@@ -278,8 +284,7 @@ export function RouteTravelDeck({
                 ticket ? styles.ticketBadgeAttached : styles.ticketBadgeEmpty,
               ]}
             >
-              {ticket ? (
-                ticket.barcodeUri ? (
+              {ticket ? (\n                ticket.barcodeUri ? (
                   <ScanLine size={16} color={scheme.onPrimaryContainer} />
                 ) : (
                   <TrainFront size={16} color={scheme.onPrimaryContainer} />
@@ -483,31 +488,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.cornerLarge,
+    borderRadius: shape.full,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
-    paddingVertical: 4,
+    paddingVertical: 5,
     paddingHorizontal: 6,
     minHeight: 52,
+    ...elev.level1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 3,
-    elevation: 1,
+    elevation: 2,
   },
   segment: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: shape.cornerMedium,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: shape.full,
     gap: 10,
   },
   ticketSegment: {},
   transferSegment: {},
   transferSegmentWarning: {
     backgroundColor: scheme.errorContainer,
+    borderRadius: shape.full,
   },
   divider: {
     width: StyleSheet.hairlineWidth,
@@ -516,9 +523,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
   },
   iconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -576,17 +583,22 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalCard: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopLeftRadius: shape.cornerExtraLarge,
-    borderTopRightRadius: shape.cornerExtraLarge,
+    borderTopLeftRadius: shape.extraLarge,
+    borderTopRightRadius: shape.extraLarge,
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 34,
+    paddingTop: 22,
+    paddingBottom: 36,
     gap: 16,
+    ...elev.level3,
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -605,19 +617,22 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   modalCloseBtn: {
-    padding: 6,
-    borderRadius: 16,
+    width: 32,
+    height: 32,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerHighest,
   },
   modalActions: {
-    gap: 10,
+    gap: 12,
   },
   actionTile: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: shape.cornerMedium,
-    gap: 12,
+    padding: 16,
+    borderRadius: shape.large,
+    gap: 14,
     borderWidth: 1,
   },
   koleoTile: {
@@ -632,17 +647,17 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   actionIconBoxPrimary: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionIconBoxSecondary: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
