@@ -10,7 +10,6 @@ import {
   usePathname,
   useGlobalSearchParams,
 } from 'expo-router';
-import BootSplash from 'react-native-bootsplash';
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -35,6 +34,16 @@ import {
   stopTracking,
   type TripResponse,
 } from '../src/services/notifications';
+
+let BootSplash: { hide: (options?: { fade?: boolean }) => Promise<boolean> } = {
+  hide: async () => false,
+};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  BootSplash = require('react-native-bootsplash').default;
+} catch {
+  // W Expo Go brak natywnego TurboModule RNBootSplash.
+}
 
 LogBox.ignoreAllLogs(true);
 
