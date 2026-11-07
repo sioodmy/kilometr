@@ -122,7 +122,7 @@ function toPlkNumericStopId(stopId?: string): string | null {
  * Wyciąga warianty numeru pociągu bez ukośnika (np. "8308/9" -> ["8308", "8309"],
  * "IC 6146" -> ["6146"]), zgodne z tablicą `numbers` w feedzie PKP PLK.
  */
-export function slashFreeNumbers(trainNumber?: string, line?: string): string[] {
+function slashFreeNumbers(trainNumber?: string, line?: string): string[] {
   const out = new Set<string>();
   for (const src of [trainNumber, line]) {
     if (!src) continue;
