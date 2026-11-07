@@ -49,6 +49,8 @@ import {
   type ZbKdVehicle,
 } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
+import { fetchNationalRailLive, type NationalLiveLeg } from './nationalRailLive';
+import { fetchNationalRailUpdates } from './nationalRailUpdates';
 import {
   MAX_DELAY_SEC,
   MAX_SAMPLE_AGE_MS,
@@ -176,6 +178,7 @@ class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
+  private nationalTripDelays = new Map<string, { delaySec: number; updatedAt: number }>();
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
@@ -240,6 +243,7 @@ class LiveTracker {
     this.byId.clear();
     this.byLine.clear();
     this.tripDelays.clear();
+    this.nationalTripDelays.clear();
     this.liveScheduleKey = null;
     this.latestDayIndex = null;
     this.sampleHistory.clear();
@@ -281,6 +285,74 @@ class LiveTracker {
     this.start();
     if (this.pinned > 0 || AppState.currentState === 'active') {
       this.armTimer(true);
+    }
+  }
+
+  /**
+   * Pociągi ogólnopolskie (`pl:...`): pozycje z zbiorkomu dopasowane po
+   * numerze i nazwach stacji. Wołane przy każdym pollu z nogami kolejowymi,
+   * które ekran właśnie pokazuje (`setNationalWatch`). Bez tego ogólnopolska
+   * baza nie miała żadnego live: KD ma własny feed per miasto, a PLK nie.
+   */
+  private nationalWatch: NationalLiveLeg[] = [];
+  private nationalInFlight = false;
+
+  /** Ekran zgłasza nogi kolejowe, dla których chce live (bbox + numery). */
+  setNationalWatch(legs: NationalLiveLeg[]): void {
+    this.nationalWatch = legs.slice(0, 12);
+    if (legs.length > 0) void this.pollNational();
+  }
+
+  private async pollNational(): Promise<void> {
+    if (this.nationalInFlight || this.nationalWatch.length === 0) return;
+    this.nationalInFlight = true;
+    try {
+      const [live, updates] = await Promise.all([
+        fetchNationalRailLive(this.nationalWatch),
+        fetchNationalRailUpdates(this.nationalWatch).catch(() => new Map()),
+      ]);
+      const nowMs = Date.now();
+      let changed = false;
+      for (const [tripId, delaySec] of live.delays) {
+        const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec));
+        this.tripDelays.set(tripId, clamped);
+        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
+        changed = true;
+      }
+      for (const [tripId, update] of updates) {
+        if (update.hasRealtimeDelay === false) continue;
+        const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec));
+        this.tripDelays.set(tripId, clamped);
+        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
+        changed = true;
+      }
+      // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
+      // tak samo jak KD (matchedTripId === leg.tripId).
+      for (const [tripId, pos] of live.positions) {
+        const vehicleId = `PL:${tripId}`;
+        const leg = this.nationalWatch.find((l) => l.tripId === tripId);
+        this.byId.set(vehicleId, {
+          vehicleId,
+          line: leg?.line ?? 'PKP',
+          lat: pos.lat,
+          lon: pos.lon,
+          type: 'train',
+          delaySec: this.tripDelays.get(tripId) ?? null,
+          matchedTripId: tripId,
+          currentStopName: leg?.fromStop,
+          nextStopName: leg?.toStop,
+          updatedAt: pos.updatedAt,
+        });
+        changed = true;
+      }
+      if (changed) {
+        this.lastOk = Date.now();
+        this.notify();
+      }
+    } catch {
+      // live kolei nie może wywrócić polla miasta
+    } finally {
+      this.nationalInFlight = false;
     }
   }
 
@@ -371,13 +443,18 @@ class LiveTracker {
    */
   getTripDelays(): Map<string, number> {
     const now = Date.now();
-    return new Map(
-      this.snapshot()
-        .filter(
-          (v) => v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS,
-        )
-        .map((v) => [v.matchedTripId!, v.delaySec!]),
-    );
+    const out = new Map<string, number>();
+    for (const v of this.snapshot()) {
+      if (v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(v.matchedTripId, v.delaySec);
+      }
+    }
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(tripId, entry.delaySec);
+      }
+    }
+    return out;
   }
 
   private latestDayIndex: DayIndex | null = null;
@@ -539,6 +616,8 @@ class LiveTracker {
         ok = true;
         if (!rows || rows.length === 0) void this.persistSnapshot([], rails, cityAtStart);
       }
+      // Pociągi ogólnopolskie: osobno od feedu miasta, tylko gdy ekran je pokazuje.
+      await this.pollNational();
       if (ok && safeCityId() === cityAtStart) {
         this.lastOk = Date.now();
         this.notify();
@@ -1387,6 +1466,13 @@ class LiveTracker {
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null)
         delays.set(kept.matchedTripId, kept.delaySec);
+    }
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (nowMs - entry.updatedAt > 300000) {
+        this.nationalTripDelays.delete(tripId);
+        continue;
+      }
+      delays.set(tripId, entry.delaySec);
     }
     const newByLine = new Map<string, TrackedVehicle[]>();
     for (const tracked of byId.values()) {

@@ -1285,6 +1285,8 @@ export const uk: Strings = {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список станцій.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
@@ -1296,6 +1298,7 @@ export const uk: Strings = {
     modeCable: 'Канатна дорога',
     modeVehicle: 'Транспорт',
     currentLocation: (stop: string) => `Поточне місце: ${stop}`,
+    waitingAtTerminus: 'Очікує відправлення з кінцевої',
     liveTracking: 'Відстеження наживо',
     transfer: 'Пересадка',
     transferMinutes: (min: number) => `Пересадка · ~${min} хв`,
@@ -1303,6 +1306,10 @@ export const uk: Strings = {
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
       return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
+    },
+    stationsSummary: (n: number, mins: number, open: boolean) => {
+      const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
+      return `${stations} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     platformPeron: (code: string) => `Платформа ${code}`,
     platformPole: (code: string) => `Стовп ${code}`,
@@ -1529,6 +1536,30 @@ export const uk: Strings = {
     channel: 'Закріплене сполучення',
     tram: 'Трамвай',
     bus: 'Автобус',
+  },
+  railTickets: {
+    buyKoleo: 'Купити квиток у KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} до ${to} · 1 пересадка`
+        : `${from} до ${to} · ${transfers} пересадки`,
+    attachPdf: 'Додати квиток PDF',
+    attachedTitle: 'Залізничний квиток',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Вагон ${wagon}`);
+      if (seat) parts.push(`Місце ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Показати квиток',
+    removeTicket: 'Видалити квиток',
+    removeConfirmTitle: 'Видалити цей квиток?',
+    removeConfirmBody: 'Файл PDF буде видалено з пам’яті додатка.',
+    fileLabel: (fileName: string) => `Файл: ${fileName}`,
+    importSuccess: 'Квиток PDF успішно додано.',
+    importError: 'Не вдалося завантажити файл PDF.',
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

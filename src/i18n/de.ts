@@ -1244,6 +1244,8 @@ export const de: Strings = {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} Richtung ${dir}. Bahnhofsliste ${expanded ? 'ein' : 'aus'}klappen.`,
     vehicleBetween: (mode: string, from: string, to: string) =>
       `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
@@ -1256,12 +1258,15 @@ export const de: Strings = {
     modeCable: 'Seilbahn',
     modeVehicle: 'Fahrzeug',
     currentLocation: (stop: string) => `Aktueller Standort: ${stop}`,
+    waitingAtTerminus: 'Wartet auf Abfahrt an der Endhaltestelle',
     liveTracking: 'Live-Verfolgung',
     transfer: 'Umstieg',
     transferMinutes: (min: number) => `Umstieg · ~${min} Min.`,
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'Bahnhof' : 'Bahnhöfe'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
     platformPeron: (code: string) => `Bahnsteig ${code}`,
     platformPole: (code: string) => `Mast ${code}`,
     platformBay: (code: string) => `Stand ${code}`,
@@ -1488,6 +1493,30 @@ export const de: Strings = {
     channel: 'Angeheftete Verbindung',
     tram: 'Tram',
     bus: 'Bus',
+  },
+  railTickets: {
+    buyKoleo: 'Fahrkarte in KOLEO kaufen',
+    buyKoleoSub: (from: string, to: string) => `${from} nach ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} nach ${to} · 1 Umstieg`
+        : `${from} nach ${to} · ${transfers} Umstiege`,
+    attachPdf: 'PDF-Fahrkarte anhängen',
+    attachedTitle: 'Zugfahrkarte',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Wagen ${wagon}`);
+      if (seat) parts.push(`Sitzplatz ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Fahrkarte anzeigen',
+    removeTicket: 'Fahrkarte entfernen',
+    removeConfirmTitle: 'Fahrkarte wirklich entfernen?',
+    removeConfirmBody: 'Die PDF-Datei wird aus dem Speicher gelöscht.',
+    fileLabel: (fileName: string) => `Datei: ${fileName}`,
+    importSuccess: 'PDF-Fahrkarte erfolgreich angehängt.',
+    importError: 'PDF-Datei konnte nicht geladen werden.',
   },
   widgets: {
     journeyTitle: 'Deine Ziele',

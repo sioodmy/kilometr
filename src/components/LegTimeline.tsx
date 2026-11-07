@@ -39,7 +39,7 @@ import { pl } from '../i18n/pl';
 import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
-import { scheduledLegTimes } from '../services/routing/connectionTimes';
+import { legDurationMin, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
 import { railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
@@ -450,6 +450,10 @@ const TransitLegCard = memo(function TransitLegCard({
     if (physicalStops.length === segmentStops.length) return leg.stopsCount;
     return Math.max(0, physicalStops.length - 1);
   }, [leg]);
+  const durationMin = useMemo(
+    () => legDurationMin({ ...leg, stopsCount }),
+    [leg.departAt, leg.arriveAt, leg.scheduledDepartureSec, leg.scheduledArrivalSec, stopsCount],
+  );
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
@@ -595,6 +599,18 @@ const TransitLegCard = memo(function TransitLegCard({
     return findNearestStopOnRoute(stops, vehicle);
   }, [stops, vehicle, allowLive, leg.live]);
 
+  // Pojazd stoi na pętli przed wyjazdem (początek lub koniec kursu). Pociągi
+  // pomijamy: ich "obecna lokacja" to stacja, nie pętla.
+  const waitingAtTerminus = useMemo(() => {
+    if (!nearestStop || leg.mode === 'train') return false;
+    if (stops.length < 2) return false;
+    const idx = stops.findIndex((stop) => stop.stopId === nearestStop.stopId);
+    if (idx !== 0 && idx !== stops.length - 1) return false;
+    const departSec = timeStringToSeconds(leg.departAt);
+    const minutesToDeparture = (departSec - nowSecOfDay() + 86400) % 86400;
+    return minutesToDeparture > 0 && minutesToDeparture <= 20;
+  }, [nearestStop, stops, leg.mode, leg.departAt]);
+
   const liveNearLabel = useMemo(() => {
     if (!nearestStop) return null;
     const modeName = genericModeNom(t, leg.mode);
@@ -632,7 +648,9 @@ const TransitLegCard = memo(function TransitLegCard({
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={[
-          t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
+          leg.mode === 'train'
+            ? t.leg.expandStationsA11y(leg.line ?? '', leg.direction ?? '', expanded)
+            : t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
           notice,
         ]
           .filter(Boolean)
@@ -692,7 +710,9 @@ const TransitLegCard = memo(function TransitLegCard({
               <View style={s.liveTextCol}>
                 {leg.live ? (
                   <Text style={s.liveLocationLabel} numberOfLines={1}>
-                    {nearestStop
+                    {waitingAtTerminus
+                      ? t.leg.waitingAtTerminus
+                      : nearestStop
                       ? t.leg.currentLocation(nearestStop.name)
                       : leg.liveNextStop
                         ? t.leg.currentLocation(leg.liveNextStop)
@@ -762,10 +782,13 @@ const TransitLegCard = memo(function TransitLegCard({
             </Animated.View>
           )}
 
-          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas */}
+          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas.
+              Kolej zatrzymuje się na stacjach, nie na przystankach. */}
           <View style={s.stopsSummaryWrap}>
             <Text style={s.stopsSummaryLabel}>
-              {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
+              {leg.mode === 'train'
+                ? t.leg.stationsSummary(stopsCount, durationMin, expanded)
+                : t.leg.stopsSummary(stopsCount, durationMin, expanded)}
             </Text>
           </View>
         </View>
@@ -1064,11 +1087,10 @@ const s = StyleSheet.create({
     fontSize: 12.5,
   },
   stopTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
     flex: 1,
-    flexWrap: 'wrap',
   },
   platformBadge: {
     paddingHorizontal: 6,

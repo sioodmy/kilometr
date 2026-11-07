@@ -85,6 +85,31 @@ export function scheduledLegTimes(leg: Leg, anchor: number) {
   };
 }
 
+/**
+ * Czas trwania odcinka w minutach na podstawie godzin odjazdu i przyjazdu.
+ * Obsługuje przejście przez północ oraz fallback do sekund rozkładowych
+ * lub szacunku z liczby przystanków.
+ */
+export function legDurationMin(
+  leg: Pick<Leg, 'departAt' | 'arriveAt'> &
+    Partial<Pick<Leg, 'scheduledDepartureSec' | 'scheduledArrivalSec' | 'stopsCount'>>,
+): number {
+  if (leg.departAt && leg.arriveAt) {
+    const dep = timeStringToSeconds(leg.departAt);
+    let arr = timeStringToSeconds(leg.arriveAt);
+    if (Number.isFinite(dep) && Number.isFinite(arr)) {
+      if (arr < dep) arr += DAY;
+      return Math.max(1, Math.round((arr - dep) / 60));
+    }
+  }
+  if (leg.scheduledDepartureSec != null && leg.scheduledArrivalSec != null) {
+    let diff = leg.scheduledArrivalSec - leg.scheduledDepartureSec;
+    if (diff < 0) diff += DAY;
+    return Math.max(1, Math.round(diff / 60));
+  }
+  return Math.max(1, (leg.stopsCount || 1) * 2);
+}
+
 /** Przelicza godziny od rozkładu, więc kolejne odświeżenia nie sumują opóźnień. */
 export function refreshConnectionTimes(
   connection: Connection,

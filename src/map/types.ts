@@ -1,4 +1,4 @@
-// View-model mapy - to, co WebView dostaje do narysowania. Świadomie oddzielone
+// View-model mapy: to, co WebView dostaje do narysowania. Świadomie oddzielone
 // od domenowego `Connection`: mapa potrzebuje kolorów, ról przystanków i flag
 // „geometria jeszcze się dociąga”, a nie całej reszty planera.
 
@@ -30,6 +30,8 @@ export interface MapLeg {
   toStop: string;
   departAt: string;
   arriveAt: string;
+  departSec?: number;
+  arriveSec?: number;
   stopsCount: number;
   walkM?: number;
   live: boolean;
@@ -81,8 +83,21 @@ export type MapOutMessage =
 /** Komunikat aplikacja -> mapa (RouteMap -> WebView). */
 export type MapInMessage =
   | { t: 'route'; route: MapRoute; fit?: boolean; pad?: [number, number, number, number] }
-  | { t: 'geometry'; legId: string; coords: [number, number][]; approx: boolean; fit?: boolean; pad?: [number, number, number, number] }
-  /** `pad` to marginesy dopasowania widoku (w px), liczone po stronie aplikacji. */
-  | { t: 'select'; legId: string | null; pad?: [number, number, number, number] }
+  | {
+      t: 'geometry';
+      legId: string;
+      coords: [number, number][];
+      approx: boolean;
+      fit?: boolean;
+      pad?: [number, number, number, number];
+    }
+  | {
+      t: 'select';
+      legId: string | null;
+      focusCoords?: [number, number][] | null;
+      stopRange?: [number, number] | null;
+      maxZoom?: number | null;
+      pad?: [number, number, number, number];
+    }
   | { t: 'fit'; pad?: [number, number, number, number] }
   | { t: 'vehicle'; vehicle: MapVehicle | null };

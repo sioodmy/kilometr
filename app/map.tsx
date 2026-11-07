@@ -11,7 +11,13 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, ChevronLeft, ScanLine, WifiOff } from '../src/components/icons';
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  ScanLine,
+  WifiOff,
+} from '../src/components/icons';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -29,7 +35,12 @@ import {
   LineBadge,
   mapLineColor,
 } from '../src/components/LineBadge';
-import { acquireMapServer } from '../src/services/mapServerLease';
+import {
+  buildMapStages,
+  resolveStageSelection,
+  useEnrichedConnection,
+} from '../src/map/stages';
+import { acquireMapServerForRoute } from '../src/services/mapServerLease';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
@@ -55,18 +66,23 @@ export default function RouteMapScreen() {
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
-  const { id: routeId } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId, stageId: initialStageId } = useLocalSearchParams<{
+    id: string;
+    stageId?: string;
+  }>();
   const id = normalizeConnectionId(routeId ?? '');
 
   const [loadedItem, setItem] = useState<Connection | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
   const trackedConnection =
     trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
-  const item = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
+  const rawItem = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
+  const item = useEnrichedConnection(rawItem) ?? rawItem;
   const [loadFailed, setLoadFailed] = useState(false);
   const [panelHeight, setPanelHeight] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(96);
-  const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState<string | null>(initialStageId ?? null);
+  const [geometryVersion, setGeometryVersion] = useState(0);
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
   const [tilesDown, setTilesDown] = useState(false);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
@@ -74,6 +90,7 @@ export default function RouteMapScreen() {
   const offlinePillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mapRef = useRef<RouteMapHandle>(null);
+  const legScrollRef = useRef<ScrollView>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
 
   // Mapa pokazuje pojazd na żywo, więc poll chodzi tylko, gdy ekran widać.
@@ -111,7 +128,7 @@ export default function RouteMapScreen() {
 
   useEffect(() => () => clearOfflinePillTimer(), [clearOfflinePillTimer]);
 
-  // ─── Połączenie ─────────────────────────────────────────────
+  // ─── Połączenie ───────────────────────────────────────────────
   useEffect(() => {
     if (trackedConnection) {
       setItem(trackedConnection);
@@ -145,66 +162,52 @@ export default function RouteMapScreen() {
     };
   }, [id, trackedConnection]);
 
-  // Stare połączenia bywają bez stacji (kurs spoza wycinka). Bez nich noga
-  // to dwa punkty, czyli kreska cięciem zamiast wzdłuż torów. Dociągamy
-  // sekwencję tym samym kanałem co LegTimeline.
-  useEffect(() => {
-    if (!item) return;
-    const connId = item.id;
-    const legs = item.legs;
-    if (
-      !legs.some(
-        (l) =>
-          l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2),
-      )
-    ) {
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const enriched = await Promise.all(
-        legs.map(async (l) => {
-          if (
-            l.mode === 'walk' ||
-            !l.tripId ||
-            (l.intermediateStops && l.intermediateStops.length >= 2)
-          )
-            return l;
-          try {
-            const full = await RoutingService.getTripStops(l.tripId);
-            if (!full || full.length < 2) return l;
-            const b = full.findIndex((s) => s.stopId === l.fromStopId);
-            const a = full.findIndex((s) => s.stopId === l.toStopId);
-            const slice = b >= 0 && a >= 0 && b < a ? full.slice(b, a + 1) : full;
-            return slice.length >= 2 ? { ...l, intermediateStops: slice } : l;
-          } catch {
-            return l;
-          }
-        }),
-      );
-      if (!cancelled && enriched.some((l, i) => l !== legs[i])) {
-        setItem((prev) => (prev && prev.id === connId ? { ...prev, legs: enriched } : prev));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Raz na połączenie: po wzbogaceniu id bez zmian, więc bez pętli.
-  }, [item?.id]);
-
   const route: MapRoute | null = useMemo(() => (item ? buildMapRoute(item) : null), [item]);
 
-  useEffect(() => {
-    setSelectedLegId(null);
-  }, [route?.id]);
+  const stages = useMemo(() => {
+    void geometryVersion;
+    return buildMapStages(route, geometryRef.current);
+  }, [route, geometryVersion]);
 
-  // ─── Geometria ulic (OSRM, w tle) ───────────────────────────
+  const activeStage = useMemo(
+    () => resolveStageSelection(stages, selectedStageId),
+    [stages, selectedStageId],
+  );
+
+  const lastRouteIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!route?.id) return;
+    if (lastRouteIdRef.current === null) {
+      lastRouteIdRef.current = route.id;
+      setSelectedStageId(initialStageId ?? null);
+      return;
+    }
+    if (lastRouteIdRef.current !== route.id) {
+      lastRouteIdRef.current = route.id;
+      setSelectedStageId(null);
+    }
+  }, [initialStageId, route?.id]);
+
+  const cardWidth = useMemo(
+    () => Math.min(width - 40, 290 * Math.max(1, fontScale)),
+    [fontScale, width],
+  );
+
+  useEffect(() => {
+    if (!activeStage) return;
+    const idx = activeStage.stageNumber - 1;
+    const offset = Math.max(0, idx * (cardWidth + 12) - 20);
+    legScrollRef.current?.scrollTo({ x: offset, animated: true });
+  }, [activeStage, cardWidth]);
+
+  // ─── Geometria ulic i torów (OSRM / OSM Overpass, w tle) ──────
   const pushGeometry = useCallback((legId: string, coords: Coord[]) => {
     geometryRef.current.set(legId, coords);
-    mapRef.current?.setGeometry(legId, coords);
+    setGeometryVersion((v) => v + 1);
+    mapRef.current?.setGeometry(legId, coords, true);
   }, []);
 
-  // ─── Zestaw mapy offline ────────────────────────────────────
+  // ─── Zestaw mapy offline ──────────────────────────────────────
   // undefined = jeszcze sprawdzamy lokalny serwer; null = brak pakietu (CDN);
   // string = kafle z telefonu. WebView montujemy dopiero po decyzji, inaczej
   // mapa chwilę ładuje CDN, pada bez sieci i miga żółtym „offline".
@@ -213,7 +216,8 @@ export default function RouteMapScreen() {
     let cancelled = false;
     let release: (() => void) | null = null;
     (async () => {
-      const lease = await acquireMapServer();
+      // Trasy międzyregionalne wychodzą poza pakiet miasta: kafelki online.
+      const lease = await acquireMapServerForRoute(route);
       if (cancelled) {
         lease.release();
         return;
@@ -226,12 +230,13 @@ export default function RouteMapScreen() {
       cancelled = true;
       release?.();
     };
-  }, [markTilesOk]);
+  }, [markTilesOk, route]);
 
   useEffect(() => {
     if (!route) return;
     let cancelled = false;
     const abort = new AbortController();
+    geometryRef.current.clear();
     route.legs.forEach((leg) => {
       if (leg.approx) {
         const straight = straightGeometry(leg);
@@ -260,10 +265,12 @@ export default function RouteMapScreen() {
     geometryRef.current.forEach((coords, legId) => {
       mapRef.current?.setGeometry(legId, coords);
     });
-    mapRef.current?.fit();
-  }, []);
+    if (!activeStage) {
+      mapRef.current?.fit();
+    }
+  }, [activeStage]);
 
-  // ─── Pojazd na żywo ─────────────────────────────────────────
+  // ─── Pojazd na żywo ───────────────────────────────────────────
   useEffect(() => {
     if (!item) return;
     let cancelled = false;
@@ -333,19 +340,46 @@ export default function RouteMapScreen() {
     };
   }, [item, route]);
 
-  // ─── Akcje ──────────────────────────────────────────────────
-  const handleSelectLeg = useCallback(
-    (legId: string) => {
-      if (legId === selectedLegId) mapRef.current?.fit();
-      else setSelectedLegId(legId);
+  // ─── Akcje ────────────────────────────────────────────────────
+  const handleSelectStage = useCallback(
+    (stageId: string) => {
+      if (activeStage?.id === stageId) mapRef.current?.fit();
+      else setSelectedStageId(stageId);
     },
-    [selectedLegId],
+    [activeStage?.id],
+  );
+
+  const handleLegTap = useCallback(
+    (legId: string) => {
+      const next = resolveStageSelection(stages, legId, activeStage?.id ?? null);
+      if (next) {
+        setSelectedStageId(next.id);
+      }
+    },
+    [activeStage?.id, stages],
+  );
+
+  const handleStepStage = useCallback(
+    (delta: -1 | 1) => {
+      if (stages.length === 0) return;
+      if (!activeStage) {
+        setSelectedStageId(delta > 0 ? stages[0].id : stages[stages.length - 1].id);
+        return;
+      }
+      const nextIdx = activeStage.stageNumber - 1 + delta;
+      if (nextIdx < 0 || nextIdx >= stages.length) {
+        setSelectedStageId(null);
+      } else {
+        setSelectedStageId(stages[nextIdx].id);
+      }
+    },
+    [activeStage, stages],
   );
 
   const handleShowRoute = useCallback(() => {
-    if (selectedLegId === null) mapRef.current?.fit();
-    else setSelectedLegId(null);
-  }, [selectedLegId]);
+    if (activeStage === null) mapRef.current?.fit();
+    else setSelectedStageId(null);
+  }, [activeStage]);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -376,7 +410,7 @@ export default function RouteMapScreen() {
     [panelHeight],
   );
 
-  // ─── Render ─────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────
   if (loadFailed && !item) {
     return (
       <View style={styles.safe}>
@@ -438,13 +472,17 @@ export default function RouteMapScreen() {
           ref={mapRef}
           route={route}
           vehicle={vehicle}
-          selectedLegId={selectedLegId}
+          selectedLegId={activeStage?.legId ?? null}
+          focusCoords={activeStage?.focusCoords ?? null}
+          stopRange={activeStage?.stopRange ?? null}
+          focusMaxZoom={activeStage?.focusMaxZoom ?? null}
           offlineBase={offlineBase}
           showPoi
+          fitOnGeometry
           paddingTop={insets.top + 8 + headerHeight + 16}
           paddingBottom={panelHeight + insets.bottom + 16}
           onReady={handleMapReady}
-          onLegTap={handleSelectLeg}
+          onLegTap={handleLegTap}
           onTilesStatus={handleTilesStatus}
           onError={handleMapError}
         />
@@ -502,33 +540,85 @@ export default function RouteMapScreen() {
         onLayout={handlePanelLayout}
       >
         <View style={[styles.panelHead, compact && styles.panelHeadCompact]}>
-          <Text style={styles.panelTitle}>{s.map.stagesTitle}</Text>
-          <Pressable
-            onPress={handleShowRoute}
-            accessibilityRole="button"
-            accessibilityLabel={s.map.showWholeRoute}
-            style={({ pressed }) => [styles.fitBtn, pressed && { opacity: 0.75 }]}
-          >
-            <ScanLine size={20} color={scheme.onPrimaryContainer} />
-            <Text style={styles.fitLabel}>{s.map.showWholeRoute}</Text>
-          </Pressable>
+          <View style={styles.panelTitleWrap}>
+            <Text style={styles.panelTitle}>{s.map.stagesTitle}</Text>
+            <View style={styles.stageCounterChip}>
+              <Text style={styles.stageCounterText}>
+                {activeStage ? `${activeStage.stageNumber}/${stages.length}` : stages.length}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.panelActions}>
+            {stages.length > 1 && (
+              <View style={styles.stepperGroup}>
+                <Pressable
+                  onPress={() => handleStepStage(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.backA11y}
+                  style={({ pressed }) => [styles.stepperBtn, pressed && { opacity: 0.75 }]}
+                >
+                  <ChevronLeft size={18} color={scheme.onSurface} />
+                </Pressable>
+                <Pressable
+                  onPress={() => handleStepStage(1)}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.stagesTitle}
+                  style={({ pressed }) => [styles.stepperBtn, pressed && { opacity: 0.75 }]}
+                >
+                  <ChevronRight size={18} color={scheme.onSurface} />
+                </Pressable>
+              </View>
+            )}
+            <Pressable
+              onPress={handleShowRoute}
+              accessibilityRole="button"
+              accessibilityState={{ selected: activeStage === null }}
+              accessibilityLabel={s.map.showWholeRoute}
+              style={({ pressed }) => [
+                styles.fitBtn,
+                activeStage === null && styles.fitBtnActive,
+                pressed && { opacity: 0.75 },
+              ]}
+            >
+              <ScanLine
+                size={20}
+                color={activeStage === null ? scheme.onPrimaryContainer : scheme.onSurface}
+              />
+              <Text
+                style={[
+                  styles.fitLabel,
+                  activeStage !== null && { color: scheme.onSurface },
+                ]}
+              >
+                {s.map.showWholeRoute}
+              </Text>
+            </Pressable>
+          </View>
         </View>
         <ScrollView
+          ref={legScrollRef}
           style={styles.legScroller}
           horizontal
           showsHorizontalScrollIndicator={false}
           overScrollMode="never"
           contentContainerStyle={styles.legScroll}
         >
-          {route.legs.map((leg) => {
-            const active = leg.id === selectedLegId;
+          {stages.map((stage) => {
+            const { leg } = stage;
+            const active = activeStage?.id === stage.id;
+            const endpointTitle =
+              stage.endpointRole === 'start'
+                ? `${s.map.board}: ${stage.fromStop}`
+                : stage.endpointRole === 'end'
+                  ? `${s.map.alight}: ${stage.toStop}`
+                  : null;
             return (
               <Pressable
-                key={leg.id}
-                onPress={() => handleSelectLeg(leg.id)}
+                key={stage.id}
+                onPress={() => handleSelectStage(stage.id)}
                 style={({ pressed }) => [
                   styles.legCard,
-                  { width: Math.min(width - 40, 260 * Math.max(1, fontScale)) },
+                  { width: cardWidth },
                   active && styles.legCardActive,
                   pressed && { opacity: 0.8 },
                 ]}
@@ -536,25 +626,60 @@ export default function RouteMapScreen() {
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={
                   leg.mode === 'walk'
-                    ? s.map.walkStageA11y(formatWalkDistance(leg.walkM ?? 0))
-                    : s.map.lineStageA11y(leg.line ?? '', leg.direction ?? '')
+                    ? s.map.walkStageA11y(formatWalkDistance(stage.walkM ?? 0))
+                    : s.map.lineStageA11y(leg.line ?? '', stage.toStop)
                 }
               >
-                <LineBadge leg={leg} compact active={active} />
-                <View style={styles.legInfo}>
-                  {leg.fromStop === leg.toStop ? (
-                    <Text
-                      style={[styles.legTitle, active && styles.legTitleActive]}
-                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                <View style={styles.legBadgeColumn}>
+                  <LineBadge mode={leg.mode} line={leg.line} compact active={active} />
+                  {stage.segmentIndex && stage.segmentCount ? (
+                    <View
+                      style={[
+                        styles.segmentPill,
+                        active && styles.segmentPillActive,
+                      ]}
                     >
-                      {leg.toStop}
+                      <Text
+                        style={[
+                          styles.segmentPillText,
+                          active && styles.segmentPillTextActive,
+                        ]}
+                      >
+                        {stage.segmentIndex}/{stage.segmentCount}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text
+                      style={[
+                        styles.stageNumLabel,
+                        active && styles.legTitleActive,
+                      ]}
+                    >
+                      #{stage.stageNumber}
                     </Text>
-                  ) : leg.mode === 'walk' && isFallbackOrigin(leg.fromStop) ? (
+                  )}
+                </View>
+                <View style={styles.legInfo}>
+                  {endpointTitle ? (
                     <Text
                       style={[styles.legTitle, active && styles.legTitleActive]}
                       numberOfLines={fontScale > 1.3 ? undefined : 2}
                     >
-                      {s.connection.walkTo(leg.toStop)}
+                      {endpointTitle}
+                    </Text>
+                  ) : stage.fromStop === stage.toStop ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {stage.toStop}
+                    </Text>
+                  ) : leg.mode === 'walk' && isFallbackOrigin(stage.fromStop) ? (
+                    <Text
+                      style={[styles.legTitle, active && styles.legTitleActive]}
+                      numberOfLines={fontScale > 1.3 ? undefined : 2}
+                    >
+                      {s.connection.walkTo(stage.toStop)}
                     </Text>
                   ) : (
                     <View style={styles.legTitleRow}>
@@ -562,7 +687,7 @@ export default function RouteMapScreen() {
                         style={[styles.legTitle, active && styles.legTitleActive]}
                         numberOfLines={1}
                       >
-                        {leg.fromStop}
+                        {stage.fromStop}
                       </Text>
                       <ArrowRight
                         size={14}
@@ -572,16 +697,18 @@ export default function RouteMapScreen() {
                         style={[styles.legTitle, active && styles.legTitleActive]}
                         numberOfLines={1}
                       >
-                        {leg.toStop}
+                        {stage.toStop}
                       </Text>
                     </View>
                   )}
                   <Text style={[styles.legSub, active && styles.legTitleActive]}>
-                    {leg.departAt}–{leg.arriveAt}
+                    {stage.endpointRole
+                      ? stage.departAt
+                      : `${stage.departAt}–${stage.arriveAt}`}
                     {leg.mode === 'walk'
-                      ? ` • ${formatWalkDistance(leg.walkM ?? 0)}`
-                      : leg.stopsCount > 0
-                        ? ` • ${s.map.legStops(leg.stopsCount)}`
+                      ? ` • ${formatWalkDistance(stage.walkM ?? 0)}`
+                      : stage.stopsCount > 0
+                        ? ` • ${s.map.legStops(stage.stopsCount)}`
                         : ''}
                   </Text>
                 </View>
@@ -670,16 +797,54 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   panelHeadCompact: { flexDirection: 'column', alignItems: 'stretch' },
+  panelTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
   panelTitle: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface, flexShrink: 1 },
+  stageCounterChip: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  stageCounterText: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  panelActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stepperGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepperBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 44,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     gap: 8,
     borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  fitBtnActive: {
     backgroundColor: scheme.primaryContainer,
   },
   fitLabel: { ...type.labelLarge, color: scheme.onPrimaryContainer, flexShrink: 1 },
@@ -692,8 +857,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    padding: 16,
-    minHeight: 96,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 74,
     borderRadius: shape.large,
     borderWidth: 1,
     borderColor: 'transparent',
@@ -702,6 +868,36 @@ const styles = StyleSheet.create({
   legCardActive: {
     backgroundColor: scheme.primaryContainer,
     borderColor: scheme.primary,
+  },
+  legBadgeColumn: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  segmentPill: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  segmentPillActive: {
+    backgroundColor: scheme.primary,
+  },
+  segmentPillText: {
+    ...type.labelSmall,
+    fontSize: 10,
+    lineHeight: 13,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  segmentPillTextActive: {
+    color: scheme.onPrimary,
+  },
+  stageNumLabel: {
+    ...type.labelSmall,
+    fontSize: 10,
+    lineHeight: 13,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   legInfo: { flex: 1, minWidth: 0, gap: 6 },
   legTitleRow: {

@@ -35,12 +35,11 @@ import { useRailLiveConnections } from '../../src/services/useRailLiveConnection
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
-import { RailTripAlerts } from '../../src/components/RailTripAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
-import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
+import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
@@ -310,7 +309,7 @@ export default function RouteDetailsScreen() {
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
   const dataNote = offline
     ? s.routeDetails.offlineNote
-    : liveStale
+    : liveStale && !item.live
       ? s.routeDetails.noLiveNote
       : null;
 
@@ -398,6 +397,7 @@ export default function RouteDetailsScreen() {
           overScrollMode="never"
         >
           <ConnectionSummary item={item} offline={offline} />
+
           {dataNote && (
             <View style={styles.offlineBanner}>
               <CloudOff size={16} color={scheme.onSurfaceVariant} />
@@ -420,27 +420,31 @@ export default function RouteDetailsScreen() {
             </View>
           ) : (
             <View style={styles.detailsContent}>
-              {hasTransfers && (
-                <TransferProtectionCard
-                  state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
-                  active={isTrackedThis && trackedTrip?.protectionEnabled === true}
-                  busy={trackingBusy}
-                  onPress={() => {
-                    if (isTrackedThis && trackedTrip?.protectionEnabled) {
-                      openTransferProtection();
-                    } else {
-                      void toggleTracking(true);
-                    }
-                  }}
-                />
-              )}
+              <RouteTravelDeck
+                connection={item}
+                hasTransfers={hasTransfers}
+                transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
+                transferActive={isTrackedThis && trackedTrip?.protectionEnabled === true}
+                trackingBusy={trackingBusy}
+                onTransferPress={() => {
+                  if (isTrackedThis && trackedTrip?.protectionEnabled) {
+                    openTransferProtection();
+                  } else {
+                    void toggleTracking(true);
+                  }
+                }}
+              />
               <LegTimeline legs={item.legs} />
               <RouteMapCard
                 connection={item}
-                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+                onOpenMap={(stageId) =>
+                  router.push({
+                    pathname: '/map',
+                    params: stageId ? { id: item.id, stageId } : { id: item.id },
+                  })
+                }
               />
               <ConnectionLineAlerts connection={item} />
-              <RailTripAlerts connection={item} />
             </View>
           )}
 

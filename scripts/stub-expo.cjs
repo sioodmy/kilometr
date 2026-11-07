@@ -72,13 +72,29 @@ const stubs = {
   'expo-localization': { getLocales: () => [{ languageCode: 'pl' }] },
   'expo-constants': { default: { executionEnvironment: 'standalone', expoConfig: {} } },
   'expo-sqlite': {
-    openDatabaseAsync: async () => ({
-      execAsync: async () => undefined,
-      getAllAsync: async () => [],
-      getFirstAsync: async () => null,
-      runAsync: async () => ({ lastInsertRowId: 1, changes: 1 }),
-      withTransactionAsync: async (task) => task(),
-    }),
+    openDatabaseAsync: async (name) => {
+      const base = String(name).replace(/^file:\/\//, '').split('/').pop() || String(name);
+      const polskaPath = process.env.POLSKA_DB || '/tmp/opencode/bench/national-real.db';
+      if (base === 'kilometr-gtfs-polska.db' && require('node:fs').existsSync(polskaPath)) {
+        const { DatabaseSync } = require('node:sqlite');
+        const db = new DatabaseSync(polskaPath);
+        return {
+          execAsync: async (sql) => { db.exec(sql); },
+          getAllAsync: async (sql, ...params) => db.prepare(sql).all(...params),
+          getFirstAsync: async (sql, ...params) => db.prepare(sql).get(...params) ?? null,
+          runAsync: async (sql, ...params) => { const r = db.prepare(sql).run(...params); return { lastInsertRowId: 0, changes: r.changes }; },
+          withTransactionAsync: async (task) => { db.exec('BEGIN'); try { await task(); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; } },
+          closeAsync: async () => db.close(),
+        };
+      }
+      return {
+        execAsync: async () => undefined,
+        getAllAsync: async () => [],
+        getFirstAsync: async () => null,
+        runAsync: async () => ({ lastInsertRowId: 1, changes: 1 }),
+        withTransactionAsync: async (task) => task(),
+      };
+    },
   },
   'expo-sqlite/kv-store': {},
   // api.ts ciągnie expo-location na starcie, a to ładuje cały pakiet `expo`

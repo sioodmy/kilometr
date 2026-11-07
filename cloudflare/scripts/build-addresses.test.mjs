@@ -75,6 +75,9 @@ test('Snapshot jest per miasto, trafia do SQLite i działa z cache bez sieci', a
     const metadata = importAddresses(db, snapshot);
     assert.equal(metadata.license, 'ODbL-1.0');
     assert.equal(db.prepare('SELECT street, house, locality FROM addresses').get().house, '12A');
+    // Baza bez przystanków (czysty test) → NULL, czyli brak danych o kacie.
+    assert.equal(db.prepare('SELECT stop_m FROM addresses').get().stop_m, null);
+    assert.equal(db.prepare('SELECT stop_w FROM addresses').get().stop_w, null);
     const offline = async () => {
       throw new Error('offline');
     };
@@ -228,11 +231,84 @@ test('Świeży Overpass wygrywa ze starym snapshotem z R2', async () => {
   }
 });
 
+test('Stops bez kolumny weight dają stop_m bez wag (fallback)', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE stops (stop_id TEXT PRIMARY KEY, lat REAL, lon REAL)');
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?)').run('s1', 51.1, 17.001);
+    const rows = dedupeAddresses(addressesFromElements([element], bounds));
+    importAddresses(db, {
+      schemaVersion: ADDRESS_SCHEMA_VERSION,
+      city: 'wroclaw',
+      bounds,
+      builtAt: new Date().toISOString(),
+      count: rows.length,
+      fingerprint: 'x',
+      rows,
+    });
+    const row = db.prepare('SELECT stop_m, stop_w FROM addresses').get();
+    assert.ok(row.stop_m > 50 && row.stop_m < 100);
+    assert.equal(row.stop_w, 0);
+  } finally {
+    db.close();
+  }
+});
+
 test('Brak pierwszego snapshotu pozwala zachować sam rozkład', () => {
   const db = new DatabaseSync(':memory:');
   try {
     assert.equal(importAddresses(db, null), null);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM addresses').get().n, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('Import zapisuje dystans i wagę połączeń najbliższych przystanków', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE stops (stop_id TEXT PRIMARY KEY, lat REAL, lon REAL, weight INTEGER)');
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?, ?)').run('s1', 51.1, 17.001, 800);
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?, ?)').run('s2', 51.1001, 17.002, 200);
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?, ?)').run('s3', 40.0, 10.0, 99999);
+    const rows = dedupeAddresses(addressesFromElements([element], bounds));
+    importAddresses(db, {
+      schemaVersion: ADDRESS_SCHEMA_VERSION,
+      city: 'wroclaw',
+      bounds,
+      builtAt: new Date().toISOString(),
+      count: rows.length,
+      fingerprint: 'x',
+      rows,
+    });
+    const row = db.prepare('SELECT stop_m, stop_w FROM addresses').get();
+    // 0.001° długości na szerokości 51.1° to ~70 m; oba bliskie przystanki
+    // w promieniu spacerowym sumują wagi, odległy nie ma znaczenia.
+    assert.ok(row.stop_m > 50 && row.stop_m < 100, `oczekiwane ~70 m, jest ${row.stop_m}`);
+    assert.equal(row.stop_w, 1000);
+  } finally {
+    db.close();
+  }
+});
+
+test('Adres bez przystanków w zasięgu dostaje pełną karę (65535)', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('CREATE TABLE stops (stop_id TEXT PRIMARY KEY, lat REAL, lon REAL, weight INTEGER)');
+    db.prepare('INSERT INTO stops VALUES (?, ?, ?, ?)').run('s1', 40.0, 10.0, 99999);
+    const rows = dedupeAddresses(addressesFromElements([element], bounds));
+    importAddresses(db, {
+      schemaVersion: ADDRESS_SCHEMA_VERSION,
+      city: 'wroclaw',
+      bounds,
+      builtAt: new Date().toISOString(),
+      count: rows.length,
+      fingerprint: 'x',
+      rows,
+    });
+    const row = db.prepare('SELECT stop_m, stop_w FROM addresses').get();
+    assert.equal(row.stop_m, 65_535);
+    assert.equal(row.stop_w, 0);
   } finally {
     db.close();
   }

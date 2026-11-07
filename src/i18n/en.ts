@@ -1231,6 +1231,8 @@ export const en: Strings = {
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the station list.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
@@ -1242,12 +1244,15 @@ export const en: Strings = {
     modeCable: 'Cable car',
     modeVehicle: 'Vehicle',
     currentLocation: (stop: string) => `Current location: ${stop}`,
+    waitingAtTerminus: 'Waiting to leave the terminus',
     liveTracking: 'Live tracking',
     transfer: 'Transfer',
     transferMinutes: (min: number) => `Transfer · ~${min} min`,
     nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'station' : 'stations'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stations`,
     platformPeron: (code: string) => `Platform ${code}`,
     platformPole: (code: string) => `Pole ${code}`,
     platformBay: (code: string) => `Bay ${code}`,
@@ -1467,6 +1472,30 @@ export const en: Strings = {
     channel: 'Pinned connection',
     tram: 'Tram',
     bus: 'Bus',
+  },
+  railTickets: {
+    buyKoleo: 'Buy ticket in KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} to ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} to ${to} · 1 transfer`
+        : `${from} to ${to} · ${transfers} transfers`,
+    attachPdf: 'Attach PDF ticket',
+    attachedTitle: 'Train ticket',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Carriage ${wagon}`);
+      if (seat) parts.push(`Seat ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Show ticket',
+    removeTicket: 'Remove ticket',
+    removeConfirmTitle: 'Remove this ticket?',
+    removeConfirmBody: 'The PDF file will be removed from local storage.',
+    fileLabel: (fileName: string) => `File: ${fileName}`,
+    importSuccess: 'PDF ticket attached successfully.',
+    importError: 'Could not load the PDF file.',
   },
   widgets: {
     journeyTitle: 'Your destinations',

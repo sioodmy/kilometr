@@ -32,11 +32,13 @@ const files: Record<string, string> = {
 async function fetchNationalFromUrl(baseUrl: string): Promise<string> {
   const { gunzipSync } = requireCjs('node:zlib') as typeof import('node:zlib');
   const base = baseUrl.replace(/\/$/, '');
-  const manifest = (await (await fetch(`${base}/manifest.json`)).json()) as {
+  const manifest = (await (await fetch(`${base}/polska/manifest.json`)).json()) as {
     version: string;
     db: { sizeBytes: number; uncompressedSizeBytes?: number };
   };
-  const gz = Buffer.from(await (await fetch(`${base}/kilometr-gtfs-polska.db.gz`)).arrayBuffer());
+  const gz = Buffer.from(
+    await (await fetch(`${base}/polska/db/kilometr-gtfs-polska.db.gz`)).arrayBuffer(),
+  );
   if (gz.length !== manifest.db.sizeBytes) {
     throw new Error(`rozmiar gz ${gz.length} != manifest ${manifest.db.sizeBytes}`);
   }

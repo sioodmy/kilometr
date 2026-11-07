@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import {
   boardingDepartureMs,
   boardingDepartureSec,
+  legDurationMin,
   refreshConnectionTimes,
 } from '../src/services/routing/connectionTimes';
+import { predictDelaySec } from '../src/services/routing/delays';
 import type { Connection } from '../src/types/models';
 
 const now = new Date(2026, 9, 27, 11);
@@ -193,6 +195,53 @@ assert.equal(
   refreshConnectionTimes(unknown, new Map([['tram', 300]]), now).legs[0].scheduledDepartureSec,
   undefined,
 );
+
+// Czas trwania odcinka (np. pociąg Wrocław - Katowice 6 stacji ~133 min, a nie stopsCount*2 = 12 min)
+assert.equal(
+  legDurationMin({ departAt: '08:15', arriveAt: '10:28', stopsCount: 6 }),
+  133,
+);
+assert.equal(
+  legDurationMin({ departAt: '23:45', arriveAt: '01:15', stopsCount: 4 }),
+  90,
+);
+assert.equal(
+  legDurationMin({ departAt: '', arriveAt: '', scheduledDepartureSec: 36000, scheduledArrivalSec: 39600 }),
+  60,
+);
+assert.equal(
+  legDurationMin({ departAt: '', arriveAt: '', stopsCount: 5 }),
+  10,
+);
+
+// Opóźnienie pociągu nie może wygasać do 0 dla odjazdów za kilkadziesiąt minut (w przeciwieństwie do tramwajów miejskich)
+assert.equal(predictDelaySec(2580, 2700, 'board', 'train'), 2580);
+assert.equal(predictDelaySec(2580, 7200, 'arrive', 'train'), 2580);
+const futureTrainNow = new Date(2026, 9, 27, 9, 15); // 45 min przed odjazdem o 10:00 (36000)
+const trainConnection: Connection = {
+  ...connection,
+  legs: [
+    connection.legs[0],
+    {
+      ...connection.legs[1],
+      id: 'train-ic',
+      mode: 'train',
+      tripId: 'pl:PLK_IC_2026_107625',
+      line: 'IC 8308/9',
+    },
+    connection.legs[2],
+  ],
+};
+const delayedTrain = refreshConnectionTimes(
+  trainConnection,
+  new Map([['pl:PLK_IC_2026_107625', 2580]]),
+  futureTrainNow,
+);
+assert.equal(delayedTrain.live, true);
+assert.equal(delayedTrain.delayMin, 43);
+assert.equal(delayedTrain.legs[1].delaySec, 2580);
+assert.equal(delayedTrain.legs[1].departAt, '10:43');
+
 console.log(
-  'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ i starsze plany',
+  'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ, pociągi i starsze plany',
 );
