@@ -44,7 +44,7 @@ const enrichedCache = new Map<string, Connection>();
  * Dociąga brakujące `intermediateStops` z bazy GTFS dla wszystkich nóg
  * komunikacji i przycina je do odcinka pasażera (`findUserSegment`).
  */
-export async function enrichConnectionStops(conn: Connection): Promise<Connection> {
+async function enrichConnectionStops(conn: Connection): Promise<Connection> {
   const cached = enrichedCache.get(conn.id);
   if (cached) return cached;
 
