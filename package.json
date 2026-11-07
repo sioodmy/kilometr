@@ -21,7 +21,7 @@
     "expo-notifications": "57.0.24",
     "expo-router": "~57.0.29",
     "expo-sharing": "~57.0.24",
-    "expo-sqlite": "^57.0.4",
+    "expo-sqlite": "^58.0.14",
     "expo-status-bar": "~57.0.1",
     "fflate": "^0.8.3",
     "react": "19.2.3",
