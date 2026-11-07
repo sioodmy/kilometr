@@ -50,6 +50,7 @@ import {
 } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 import { fetchNationalRailLive, type NationalLiveLeg } from './nationalRailLive';
+import { fetchNationalRailUpdates } from './nationalRailUpdates';
 import {
   MAX_DELAY_SEC,
   MAX_SAMPLE_AGE_MS,
@@ -304,10 +305,18 @@ class LiveTracker {
     if (this.nationalInFlight || this.nationalWatch.length === 0) return;
     this.nationalInFlight = true;
     try {
-      const live = await fetchNationalRailLive(this.nationalWatch);
-      if (live.delays.size === 0) return;
+      const [live, updates] = await Promise.all([
+        fetchNationalRailLive(this.nationalWatch),
+        fetchNationalRailUpdates(this.nationalWatch).catch(() => new Map()),
+      ]);
+      let changed = false;
       for (const [tripId, delaySec] of live.delays) {
         this.tripDelays.set(tripId, Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec)));
+        changed = true;
+      }
+      for (const [tripId, update] of updates) {
+        this.tripDelays.set(tripId, Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec)));
+        changed = true;
       }
       // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
       // tak samo jak KD (matchedTripId === leg.tripId).
@@ -320,15 +329,18 @@ class LiveTracker {
           lat: pos.lat,
           lon: pos.lon,
           type: 'train',
-          delaySec: live.delays.get(tripId) ?? null,
+          delaySec: this.tripDelays.get(tripId) ?? null,
           matchedTripId: tripId,
           currentStopName: leg?.fromStop,
           nextStopName: leg?.toStop,
           updatedAt: pos.updatedAt,
         });
+        changed = true;
       }
-      this.lastOk = Date.now();
-      this.notify();
+      if (changed) {
+        this.lastOk = Date.now();
+        this.notify();
+      }
     } catch {
       // live kolei nie może wywrócić polla miasta
     } finally {
