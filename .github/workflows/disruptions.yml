@@ -61,6 +61,7 @@ jobs:
           node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=6
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          PDP_API_KEY: ${{ secrets.PDP_API_KEY }}
 
       - name: Upload disruptions.json do Cloudflare R2
         run: |

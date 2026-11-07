@@ -146,6 +146,18 @@ async function fetchFullArticleText(url) {
       (html.match(/<main[\s\S]*?>([\s\S]*?)<\/main>/i)?.[1]) ||
       '';
 
+    if (url.includes('intercity.pl')) {
+      const main = html.match(/<main[\s\S]*?<\/main>/i)?.[0] || html;
+      let text = main.split(/Informujemy,\s*że mają Państwo prawo/i)[0];
+      text = text.split(/Prosimy o zwracanie uwagi na komunikaty głosowe/i)[0];
+      text = text.split(/Przepraszamy za niedogodności/i)[0];
+      const startIdx = text.search(/W dniu|Informujemy|Z powodu|W związku|Dnia\s+\d/i);
+      if (startIdx !== -1) {
+        text = text.slice(startIdx);
+      }
+      return cleanHtml(text.replace(/<li[^>]*>/gi, '\n• '));
+    }
+
     const cleaned = cleanHtml(rawFragment);
     return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
   } catch {
@@ -164,9 +176,160 @@ function isObviousJunk(title, content) {
   return false;
 }
 
+function cleanIntercityTitle(title) {
+  return title
+    .replace(/w dniu\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/gi, '')
+    .replace(/Aktualizacja:[\s\S]*$/i, '')
+    .replace(/,,/g, '„')
+    .replace(/"/g, '„')
+    .replace(/“/g, '”')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPkpTimeframe(pubDate, text) {
+  const m = text.match(/Aktualizacja:\s*(\d{4}-\d{2}-\d{2})\s*,\s*(\d{2}:\d{2})/i);
+  if (m) {
+    const [, date, time] = m;
+    const [, month, day] = date.split('-');
+    return `${day}.${month}, ${time}`;
+  }
+  if (pubDate) {
+    const d = new Date(pubDate);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const time = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+      return `${day}.${month}, ${time}`;
+    }
+  }
+  return '';
+}
+
+function extractTrainNumbers(text) {
+  const seen = new Set();
+  const yearSet = new Set(['2024', '2025', '2026', '2027', '2028']);
+  const re = /\b(IC|TLK|EIC|EIP|PR|KM|KŚ|KW|KD|Polregio)?\s*(?:nr\s*)?(\d{3,5}(?:\/\d{1,2})?)\b/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const carrier = m[1] ? m[1].toUpperCase() : null;
+    const num = m[2];
+    if (yearSet.has(num)) continue;
+    seen.add(num);
+    if (carrier) seen.add(`${carrier} ${num}`);
+    if (num.includes('/')) {
+      const [base, slash] = num.split('/');
+      seen.add(base);
+      if (carrier) seen.add(`${carrier} ${base}`);
+      if (slash.length <= 2) {
+        const derived = base.slice(0, base.length - slash.length) + slash;
+        seen.add(derived);
+        if (carrier) seen.add(`${carrier} ${derived}`);
+      }
+    }
+  }
+  return [...seen];
+}
+
+function cleanProblemText(text) {
+  let s = text
+    .replace(/^w dniu\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/i, '')
+    .replace(/^dnia\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/i, '')
+    .replace(/Aktualizacja:[\s\S]*?(?:Opublikowano:[\s\S]*?)?(?=(?:W dniu|Dnia|Z powodu|W związku|Niżej|Informujemy))/i, '')
+    .replace(/^(?:W dniu|Dnia)\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?\s*,?\s*/i, '')
+    .replace(/,,/g, '„')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (s.length > 0) {
+    s = s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return s;
+}
+
+function buildPkpDirectAlert(item) {
+  const content = item.fullContent || item.content || '';
+  const headline = cleanIntercityTitle(item.title);
+  const timeframe = extractPkpTimeframe(item.pubDate, content);
+  const allLines = extractTrainNumbers(`${item.title} ${content}`);
+
+  const lower = content.toLowerCase();
+  const titleLower = item.title.toLowerCase();
+
+  const is_emergency =
+    lower.includes('opóźnieni') ||
+    lower.includes('usterk') ||
+    lower.includes('awari') ||
+    lower.includes('wypad') ||
+    titleLower.includes('opóźnieni');
+
+  const disruption_type =
+    lower.includes('usterk') || lower.includes('awari')
+      ? 'infrastructure_failure'
+      : lower.includes('wypad') || lower.includes('potrąc') || lower.includes('zderzen')
+        ? 'accident'
+        : lower.includes('prac') || lower.includes('remont')
+          ? 'planned_works'
+          : lower.includes('pogod') || lower.includes('wichur')
+            ? 'weather'
+            : 'other';
+
+  const severity =
+    lower.includes('odwołan') || lower.includes('zamknięt')
+      ? 'blocking'
+      : lower.includes('honorowanie biletów') || lower.includes('awari')
+        ? 'major'
+        : lower.includes('zastępcze składy') || lower.includes('opóźnieni')
+          ? 'minor'
+          : 'info';
+
+  const is_resolved =
+    lower.includes('ruch przywrócon') || lower.includes('awaria usunięt') || lower.includes('zakończon');
+
+  const bulletsIdx = content.indexOf('•');
+  let problem = bulletsIdx !== -1 ? content.slice(0, bulletsIdx) : content;
+  problem = cleanProblemText(problem);
+  if (!problem || problem.length < 10) {
+    problem = headline;
+  }
+
+  let solution = null;
+  if (bulletsIdx !== -1) {
+    solution = content.slice(bulletsIdx).trim();
+  } else if (lower.includes('honorowanie')) {
+    solution = 'Uzgodniono wzajemne honorowanie biletów.';
+  }
+
+  return {
+    is_transit_alert: true,
+    headline,
+    disruption_type,
+    is_emergency,
+    is_resolved,
+    severity,
+    glance: {
+      problem: problem.slice(0, 400),
+      solution: solution ? solution.slice(0, 500) : null,
+      timeframe,
+    },
+    valid_from: item.pubDate || new Date().toISOString(),
+    valid_to: null,
+    all_lines: allLines,
+    impacted_lines: allLines.slice(0, 8).map((line) => ({
+      line,
+      direction: null,
+      impact_type: lower.includes('zastępcze składy') ? 'special_service' : 'schedule_change',
+      omitted_stops: [],
+      temporary_stops: [],
+      replacement_line: null,
+      details: headline,
+    })),
+    stops: [],
+  };
+}
+
 // Komunikaty PKP Intercity (opóźnienia, awarie, honorowanie biletów, składy zastępcze).
 function parsePkpIntercityList(html, limit) {
-  const cardRegex = /<a href="([^"]*komunikaty\/[^"]*)" class="card[^>]*>([\s\S]*?)<\/a>/gi;
+  const cardRegex = /<a\s+[^>]*href="([^"]*komunikaty\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
   const items = [];
   let match;
   while ((match = cardRegex.exec(html)) !== null && items.length < limit) {
@@ -177,8 +340,9 @@ function parsePkpIntercityList(html, limit) {
     const title = cleanHtml(titleMatch ? (titleMatch[1] || '') : '').replace(/\s+/g, ' ').trim();
     if (!title) continue;
 
-    const dateMatch = title.match(/(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/);
-    const pubDate = dateMatch ? `${dateMatch[1]}T${dateMatch[2] || '00:00'}:00` : null;
+    const dateMatch = block.match(/Aktualizacja:\s*(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/i) ||
+                      title.match(/(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/);
+    const pubDate = dateMatch ? `${dateMatch[1]}T${dateMatch[2] || '00:00'}:00Z` : null;
 
     items.push({
       id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
@@ -279,8 +443,18 @@ async function fetchFeed(url, label, headers, expect) {
 
 async function fetchCityFeed(city, limit) {
   const browserHeaders = {
-    'User-Agent': 'Mozilla/5.0 (compatible; kilometr/1.0)',
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent':
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Linux"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
   };
 
   switch (city) {
@@ -640,6 +814,39 @@ async function processCity(city, limit, cache) {
       continue;
     }
 
+    // Komunikaty PKP nie przechodzą przez model LLM - są dostarczane zwięźle as-is
+    if (city === 'polska') {
+      const directAnalysis = buildPkpDirectAlert(item);
+      cache.entries[item.id] = {
+        city,
+        contentHash,
+        firstSeen: cached?.firstSeen || new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+        item: {
+          id: item.id,
+          title: item.title,
+          link: item.link,
+          pubDate: item.pubDate,
+        },
+        analysis: directAnalysis,
+      };
+
+      const badge = directAnalysis.is_resolved
+        ? '[ZAKOŃCZONE]'
+        : directAnalysis.is_emergency
+          ? '[AWARIA W TOKU]'
+          : '[PLANOWANE]';
+      console.log(`    [ALERT PKP AS-IS ${badge}] ${directAnalysis.headline}`);
+      acceptedAlerts.push({
+        id: item.id,
+        source_title: item.title,
+        link: item.link,
+        published_at: item.pubDate,
+        ...directAnalysis,
+      });
+      continue;
+    }
+
     try {
       const sourceText = `${item.title}\n${item.fullContent || item.content || ''}`;
       let result =
@@ -726,11 +933,6 @@ async function main() {
   console.log(`=== Kilometr: Agregator i Generator Zakłóceń Transportowych ===`);
   console.log(`Provider: ${PROVIDER} | Model: ${MODEL} | Limit: ${LIMIT}`);
 
-  if (!API_KEY && !DRY_RUN) {
-    console.error(`\n[!] Brak klucza API dla providera: ${PROVIDER}.`);
-    console.error(`  export DEEPSEEK_API_KEY="sk-..."`);
-    process.exit(1);
-  }
 
   const cache = loadCache();
   const cachedCount = Object.keys(cache.entries).length;
@@ -750,6 +952,13 @@ async function main() {
     process.exit(1);
   }
   console.log(`Miasta: ${targetCities.join(', ')}`);
+
+  const onlyPolska = targetCities.every((c) => c === 'polska');
+  if (!API_KEY && !DRY_RUN && !onlyPolska) {
+    console.error(`\n[!] Brak klucza API dla providera: ${PROVIDER}.`);
+    console.error(`  export DEEPSEEK_API_KEY="sk-..."`);
+    process.exit(1);
+  }
 
   let totalAccepted = 0;
   let failedCities = 0;
