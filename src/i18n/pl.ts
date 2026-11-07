@@ -1285,6 +1285,7 @@ export const pl = {
     modeCable: 'Kolejka linowa',
     modeVehicle: 'Pojazd',
     currentLocation: (stop: string) => `Obecna lokacja: ${stop}`,
+    waitingAtTerminus: 'Oczekuje na wyjazd z pętli',
     liveTracking: 'Śledzenie na żywo',
     transfer: 'Przesiadka',
     transferMinutes: (min: number) => `Przesiadka · ~${min} min`,

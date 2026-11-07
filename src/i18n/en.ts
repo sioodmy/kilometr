@@ -1244,6 +1244,7 @@ export const en: Strings = {
     modeCable: 'Cable car',
     modeVehicle: 'Vehicle',
     currentLocation: (stop: string) => `Current location: ${stop}`,
+    waitingAtTerminus: 'Waiting to leave the terminus',
     liveTracking: 'Live tracking',
     transfer: 'Transfer',
     transferMinutes: (min: number) => `Transfer · ~${min} min`,

@@ -1258,6 +1258,7 @@ export const de: Strings = {
     modeCable: 'Seilbahn',
     modeVehicle: 'Fahrzeug',
     currentLocation: (stop: string) => `Aktueller Standort: ${stop}`,
+    waitingAtTerminus: 'Wartet auf Abfahrt an der Endhaltestelle',
     liveTracking: 'Live-Verfolgung',
     transfer: 'Umstieg',
     transferMinutes: (min: number) => `Umstieg · ~${min} Min.`,

@@ -599,6 +599,18 @@ const TransitLegCard = memo(function TransitLegCard({
     return findNearestStopOnRoute(stops, vehicle);
   }, [stops, vehicle, allowLive, leg.live]);
 
+  // Pojazd stoi na pętli przed wyjazdem (początek lub koniec kursu). Pociągi
+  // pomijamy: ich "obecna lokacja" to stacja, nie pętla.
+  const waitingAtTerminus = useMemo(() => {
+    if (!nearestStop || leg.mode === 'train') return false;
+    if (stops.length < 2) return false;
+    const idx = stops.findIndex((stop) => stop.stopId === nearestStop.stopId);
+    if (idx !== 0 && idx !== stops.length - 1) return false;
+    const departSec = timeStringToSeconds(leg.departAt);
+    const minutesToDeparture = (departSec - nowSecOfDay() + 86400) % 86400;
+    return minutesToDeparture > 0 && minutesToDeparture <= 20;
+  }, [nearestStop, stops, leg.mode, leg.departAt]);
+
   const liveNearLabel = useMemo(() => {
     if (!nearestStop) return null;
     const modeName = genericModeNom(t, leg.mode);
@@ -698,7 +710,9 @@ const TransitLegCard = memo(function TransitLegCard({
               <View style={s.liveTextCol}>
                 {leg.live ? (
                   <Text style={s.liveLocationLabel} numberOfLines={1}>
-                    {nearestStop
+                    {waitingAtTerminus
+                      ? t.leg.waitingAtTerminus
+                      : nearestStop
                       ? t.leg.currentLocation(nearestStop.name)
                       : leg.liveNextStop
                         ? t.leg.currentLocation(leg.liveNextStop)
