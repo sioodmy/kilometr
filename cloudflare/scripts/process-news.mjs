@@ -21,6 +21,7 @@ const SUPPORTED_CITIES = [
   'olsztyn',
   'opole',
   'rzeszow',
+  'polska',
 ];
 
 const CITY_NAMES = {
@@ -33,6 +34,7 @@ const CITY_NAMES = {
   olsztyn: 'Olsztyn',
   opole: 'Opole',
   rzeszow: 'Rzeszów',
+  polska: 'Polska (Kolej)',
 };
 
 // Podbij przy każdej zmianie promptu: hash cache zależy od tej wersji.
@@ -134,6 +136,7 @@ async function fetchFullArticleText(url) {
     const html = await res.text();
 
     let rawFragment =
+      (html.split(/<span id="mtc"><\/span>/i)[1]?.split(/<\/div>\s*<\/div>\s*<\/div>/i)[0]) ||
       (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container/i)?.[1]) ||
       (html.match(/class="page-main"[\s\S]*?>([\s\S]*?)<\/main>/i)?.[1]) ||
       (html.split(/class="row content mt-4"/i)[1]?.split(/<\/section>/i)[0]) ||
@@ -159,6 +162,33 @@ function isObviousJunk(title, content) {
     return true;
   }
   return false;
+}
+
+// Komunikaty PKP Intercity (opóźnienia, awarie, honorowanie biletów, składy zastępcze).
+function parsePkpIntercityList(html, limit) {
+  const cardRegex = /<a href="([^"]*komunikaty\/[^"]*)" class="card[^>]*>([\s\S]*?)<\/a>/gi;
+  const items = [];
+  let match;
+  while ((match = cardRegex.exec(html)) !== null && items.length < limit) {
+    const rawLink = match[1].replace(/^\/?pl\//, '');
+    const link = `https://www.intercity.pl/pl/${rawLink}`;
+    const block = match[2];
+    const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+    const title = cleanHtml(titleMatch ? (titleMatch[1] || '') : '').replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+
+    const dateMatch = title.match(/(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/);
+    const pubDate = dateMatch ? `${dateMatch[1]}T${dateMatch[2] || '00:00'}:00` : null;
+
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate,
+      content: title,
+    });
+  }
+  return items;
 }
 
 // Lista komunikatów ZTM GZM to serwerowy HTML bez JSON-a i paginacji.
@@ -301,6 +331,15 @@ async function fetchCityFeed(city, limit) {
     case 'rzeszow': {
       const text = await fetchFeed('https://ztm.erzeszow.pl/feed/', 'Rzeszow ZTM', browserHeaders, 'xml');
       return parseRssItems(text, limit);
+    }
+    case 'polska': {
+      const html = await fetchFeed(
+        'https://www.intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/',
+        'PKP Intercity Komunikaty',
+        browserHeaders,
+        'html',
+      );
+      return parsePkpIntercityList(html, limit);
     }
     default:
       throw new Error(`Nieobsługiwane miasto: ${city}. Dostępne: ${SUPPORTED_CITIES.join(', ')}`);

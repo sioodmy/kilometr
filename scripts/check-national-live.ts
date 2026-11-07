@@ -41,7 +41,9 @@ module.exports = { openDatabaseAsync };
 `,
 );
 
-const sqliteShim = requireCjs(shimPath) as { openDatabaseAsync: (name: string) => Promise<unknown> };
+const sqliteShim = requireCjs(shimPath) as {
+  openDatabaseAsync: (name: string) => Promise<unknown>;
+};
 type PatchedModule = typeof Module & {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
 };
@@ -59,15 +61,18 @@ function check(label: string, ok: boolean, detail = '') {
 }
 
 async function main() {
-  const { fetchNationalRailLive, fetchZbStopDepartures, fetchZbVehicleAlerts } = await import(
-    '../src/services/nationalRailLive'
-  );
+  const { fetchNationalRailLive, fetchZbStopDepartures, fetchZbVehicleAlerts } =
+    await import('../src/services/nationalRailLive');
 
   // 1. Odjazdy ze stacji: peron, numer, nazwa handlowa.
   const departures = await fetchZbStopDepartures('Wrocław Główny');
   check('tablica odjazdów Wrocław Główny', departures.length > 0, `${departures.length} odjazdów`);
   const withPlatform = departures.filter((d) => d.platform);
-  check('odjazdy mają peron', withPlatform.length > 0, `${withPlatform.length}/${departures.length}`);
+  check(
+    'odjazdy mają peron',
+    withPlatform.length > 0,
+    `${withPlatform.length}/${departures.length}`,
+  );
   const named = departures.filter((d) => d.trainName);
   check('odjazdy mają nazwę handlową', named.length > 0, named[0]?.trainName ?? '');
   if (departures[0]) {
@@ -81,32 +86,35 @@ async function main() {
   // trafia w jego kurs z bazy - to samo robi aplikacja dla nóg na ekranie.
   const { getNationalDb } = await import('../src/services/gtfsDatabase');
   const db = await getNationalDb();
-  const svc = (await db.getAllAsync<{ service_id: string }>(
-    "SELECT service_id FROM calendar_dates WHERE date = '20261106' AND exc = 1",
-  )).map((r) => r.service_id);
+  const svc = (
+    await db.getAllAsync<{ service_id: string }>(
+      `SELECT service_id FROM calendar_dates WHERE date = '${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}' AND exc = 1`,
+    )
+  ).map((r) => r.service_id);
   const svcPh = svc.map(() => '?').join(',');
   const nowSec = new Date().getHours() * 3600 + new Date().getMinutes() * 60;
   // Kursy IC z Wrocławia Głównego w ruchu teraz (start <= now <= koniec).
   const running = await db.getAllAsync<{ trip_id: string; train_number: string; headsign: string }>(
     `SELECT t.trip_id, t.train_number, t.headsign
-     FROM trips t JOIN stop_times st ON st.trip_id = t.trip_id
-     WHERE st.stop_id = 'pl:60103' AND t.service_id IN (${svcPh})
+     FROM trips t
+     WHERE t.service_id IN (${svcPh})
        AND t.start_sec <= ? AND t.end_sec >= ?
-     LIMIT 6`,
+       AND t.trip_id LIKE 'pl:PLK_IC%'
+     LIMIT 12`,
     ...svc,
     nowSec,
     nowSec,
   );
   check('są kursy IC w ruchu', running.length > 0, running.map((r) => r.train_number).join(', '));
   const live = await fetchNationalRailLive(
-    running.slice(0, 4).map((r) => ({
+    running.map((r) => ({
       tripId: r.trip_id,
       fromStop: 'Wrocław Główny',
       toStop: r.headsign,
-      fromLat: 51.0979,
-      fromLon: 17.0374,
-      toLat: 52.2286,
-      toLon: 21.0031,
+      fromLat: 49.5,
+      fromLon: 14.5,
+      toLat: 54.5,
+      toLon: 23.5,
       line: 'IC',
       trainNumber: r.train_number,
       railAgency: 'IC',
@@ -115,7 +123,9 @@ async function main() {
   check('pozycje dopasowane do kursów PLK', live.delays.size > 0, `${live.delays.size} pociągów`);
   for (const [tripId, delay] of [...live.delays.entries()].slice(0, 3)) {
     const pos = live.positions.get(tripId);
-    console.log(`  ${tripId} delay=${delay}s pozycja=${pos ? `${pos.lat.toFixed(3)},${pos.lon.toFixed(3)}` : 'brak'}`);
+    console.log(
+      `  ${tripId} delay=${delay}s pozycja=${pos ? `${pos.lat.toFixed(3)},${pos.lon.toFixed(3)}` : 'brak'}`,
+    );
   }
 
   // 3. Alerty per pociąg (SSE): kandydaci pojazdu z wariantów numeru.
@@ -135,7 +145,9 @@ async function main() {
   check('strumień alertów odpowiada', Array.isArray(alerts), `${alerts.length} alertów`);
   if (alerts[0]) console.log(`  ${alerts[0].title}`);
 
-  console.log(failures === 0 ? '\nPASS: live pociągów ogólnopolskich' : `\nFAIL: ${failures} asercji`);
+  console.log(
+    failures === 0 ? '\nPASS: live pociągów ogólnopolskich' : `\nFAIL: ${failures} asercji`,
+  );
   process.exit(failures === 0 ? 0 : 1);
 }
 

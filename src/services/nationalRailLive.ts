@@ -84,7 +84,8 @@ function trainNumberVariants(value: string | undefined): string[] {
   if (!m[2]) return [base];
   const suffix = m[2];
   // „61170/1”: sufiks zastępuje ostatnią cyfrę; „65000/1” -> 65001.
-  const alt = suffix.length >= base.length ? suffix : base.slice(0, base.length - suffix.length) + suffix;
+  const alt =
+    suffix.length >= base.length ? suffix : base.slice(0, base.length - suffix.length) + suffix;
   return base === alt ? [base] : [base, alt];
 }
 
@@ -106,7 +107,9 @@ function loadStops(): Promise<StopTuple[]> {
     .then((raw) => {
       const list = (raw as { stops?: unknown }).stops;
       if (!Array.isArray(list)) return [];
-      return list.filter((s): s is StopTuple => Array.isArray(s) && s.length >= 5 && typeof s[0] === 'string');
+      return list.filter(
+        (s): s is StopTuple => Array.isArray(s) && s.length >= 5 && typeof s[0] === 'string',
+      );
     })
     .catch(() => {
       stopsPromise = null;
@@ -139,7 +142,12 @@ interface ZbPosition {
   bearing?: number;
   delay: number;
   headsign: string | null;
-  upcomingStops: { sequence: number; name: string; scheduledArrival: number; scheduledDeparture: number }[];
+  upcomingStops: {
+    sequence: number;
+    name: string;
+    scheduledArrival: number;
+    scheduledDeparture: number;
+  }[];
 }
 
 async function fetchPositions(bbox: string, agencies: string[]): Promise<ZbPosition[]> {
@@ -164,7 +172,7 @@ interface CandidateTrip {
   tripId: string;
   trainNumber: string;
   headsign: string;
-  stops: { name: string; seq: number }[];
+  stops: { name: string; seq: number; arrSec: number; depSec: number }[];
 }
 
 /**
@@ -174,7 +182,10 @@ interface CandidateTrip {
  * połowie podróży odjazd ze stacji startowej leży już poza oknem, przez co
  * live znikał po ~3 h jazdy.
  */
-async function findCandidateTrips(trainNumbers: string[], nowSec: number): Promise<CandidateTrip[]> {
+async function findCandidateTrips(
+  trainNumbers: string[],
+  nowSec: number,
+): Promise<CandidateTrip[]> {
   const db = await getNationalDb();
   const numbers = [...new Set(trainNumbers.flatMap((n) => trainNumberVariants(n)))].filter(Boolean);
   if (numbers.length === 0) return [];
@@ -187,7 +198,9 @@ async function findCandidateTrips(trainNumbers: string[], nowSec: number): Promi
   const svcPlaceholders = [...services].map(() => '?').join(',');
   // Numer w bazie bywa „3830/1” (para kursów), a noga podaje sam numer
   // („3830”) albo pełną parę - dopasowujemy dokładnie albo po prefiksie.
-  const numClauses = numbers.map(() => '(t.train_number = ? OR t.train_number LIKE ?)').join(' OR ');
+  const numClauses = numbers
+    .map(() => '(t.train_number = ? OR t.train_number LIKE ?)')
+    .join(' OR ');
   const numParams = numbers.flatMap((n) => [n, `${n}/%`]);
   const rows = await db.getAllAsync<{ trip_id: string; train_number: string; headsign: string }>(
     `SELECT t.trip_id, t.train_number, t.headsign
@@ -204,20 +217,36 @@ async function findCandidateTrips(trainNumbers: string[], nowSec: number): Promi
 
   const ids = rows.map((r) => r.trip_id);
   const placeholders = ids.map(() => '?').join(',');
-  const seqRows = await db.getAllAsync<{ trip_id: string; stop_id: string; seq: number }>(
-    `SELECT trip_id, stop_id, seq FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
+  const seqRows = await db.getAllAsync<{
+    trip_id: string;
+    stop_id: string;
+    seq: number;
+    arr_sec: number;
+    dep_sec: number;
+  }>(
+    `SELECT trip_id, stop_id, seq, arr_sec, dep_sec FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
     ...ids,
   );
-  const nameRows = await db.getAllAsync<{ stop_id: string; name: string }>('SELECT stop_id, name FROM stops');
+  const nameRows = await db.getAllAsync<{ stop_id: string; name: string }>(
+    'SELECT stop_id, name FROM stops',
+  );
   const nameById = new Map(nameRows.map((s) => [s.stop_id, s.name]));
-  const seqByTrip = new Map<string, { name: string; seq: number }[]>();
+  const seqByTrip = new Map<
+    string,
+    { name: string; seq: number; arrSec: number; depSec: number }[]
+  >();
   for (const r of seqRows) {
     let list = seqByTrip.get(r.trip_id);
     if (!list) {
       list = [];
       seqByTrip.set(r.trip_id, list);
     }
-    list.push({ name: nameById.get(r.stop_id) ?? r.stop_id, seq: r.seq });
+    list.push({
+      name: nameById.get(r.stop_id) ?? r.stop_id,
+      seq: r.seq,
+      arrSec: r.arr_sec,
+      depSec: r.dep_sec,
+    });
   }
   return rows.map((r) => ({
     tripId: r.trip_id,
@@ -254,12 +283,15 @@ function matchPositions(positions: ZbPosition[], candidates: CandidateTrip[]): N
     const nextStop = pos.upcomingStops[0];
     if (!nextStop) continue;
     const nextKey = normalized(nextStop.name);
-    const nextSec = Math.round(nextStop.scheduledArrival / 1000) % 86400;
+    const nextDate = new Date(nextStop.scheduledArrival);
+    const nextSec = nextDate.getHours() * 3600 + nextDate.getMinutes() * 60 + nextDate.getSeconds();
     let best: { trip: CandidateTrip; diff: number } | null = null;
     for (const trip of list) {
       for (const stop of trip.stops) {
         if (normalized(stop.name) !== nextKey) continue;
-        const diff = Math.abs(stop.seq - nextSec);
+        const stopSec = (((stop.arrSec || stop.depSec) % 86400) + 86400) % 86400;
+        const directDiff = Math.abs(stopSec - nextSec);
+        const diff = Math.min(directDiff, 86400 - directDiff);
         if (!best || diff < best.diff) best = { trip, diff };
         break;
       }
@@ -325,7 +357,9 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
   const promise = (async () => {
     const positions = await fetchPositions(
       bbox,
-      agencies.length ? agencies : ['IC', 'PR', 'KD', 'KM', 'KW', 'KS', 'KML', 'LKA', 'SKM', 'SKMT', 'AR'],
+      agencies.length
+        ? agencies
+        : ['IC', 'PR', 'KD', 'KM', 'KW', 'KS', 'KML', 'LKA', 'SKM', 'SKMT', 'AR'],
     );
     if (positions.length === 0) return empty;
     const now = new Date();
@@ -333,9 +367,7 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
     // Kandydaci po numerach pociągów z nóg (nie po stacjach): okno czasowe
     // liczone na cały kurs, więc live nie znika w połowie długiej trasy.
     const numbers = [
-      ...new Set(
-        trains.flatMap((l) => trainNumberVariants(l.trainNumber ?? '')).filter(Boolean),
-      ),
+      ...new Set(trains.flatMap((l) => trainNumberVariants(l.trainNumber ?? '')).filter(Boolean)),
     ];
     const candidates = await findCandidateTrips(numbers, nowSec);
     return matchPositions(positions, candidates);
@@ -403,7 +435,9 @@ export async function fetchZbStopDepartures(stationName: string): Promise<ZbStop
   if (!stopId) return [];
   const hit = departuresCache.get(stopId);
   if (hit && Date.now() - hit.at < 20_000) return hit.promise;
-  const promise = fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops/${encodeURIComponent(stopId)}?limit=100`)
+  const promise = fetchJson(
+    `${ZBIORKOM.baseUrl}/api6-open/pkp/stops/${encodeURIComponent(stopId)}?limit=100`,
+  )
     .then((raw) => {
       const list = (raw as { departures?: unknown }).departures;
       if (!Array.isArray(list)) return [];
