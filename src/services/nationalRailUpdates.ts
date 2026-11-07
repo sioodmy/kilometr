@@ -141,7 +141,8 @@ export async function fetchNationalRailUpdates(
         for (const st of tripData.stops) {
           const depSec = parseHmsToSec(st.dep || st.arr);
           if (depSec !== null) {
-            const diff = Math.abs(depSec - schedSec);
+            const rawDiff = ((depSec - schedSec + 129600) % 86400) - 43200;
+            const diff = Math.abs(rawDiff);
             if (diff < minDiff) {
               minDiff = diff;
               matchedStop = st;
@@ -152,8 +153,8 @@ export async function fetchNationalRailUpdates(
         if (matchedStop && minDiff < 1800) {
           const actualDepSec = parseHmsToSec(matchedStop.dep || matchedStop.arr);
           if (actualDepSec !== null) {
-            // Opóźnienie na tej konkretnej stacji
-            delaySec = actualDepSec - schedSec;
+            // Opóźnienie na tej konkretnej stacji (z uwzględnieniem północy)
+            delaySec = ((actualDepSec - schedSec + 129600) % 86400) - 43200;
           }
         }
       } else if (tripData.stops.length > 0) {

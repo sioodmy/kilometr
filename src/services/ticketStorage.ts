@@ -15,7 +15,7 @@ export interface AttachedRailTicket {
   metadata: ParsedTicketMetadata;
 }
 
-export interface TicketIndexEntry {
+interface TicketIndexEntry {
   id: string;
   connectionId: string;
   fileUri: string;
@@ -315,28 +315,3 @@ export async function cleanupExpiredTickets(
   return removedCount;
 }
 
-/**
- * Zwraca podsumowanie liczby zapisanych biletów i łącznej zajętej pamięci.
- */
-export async function getTicketsSummary(): Promise<{ count: number; totalBytes: number }> {
-  const index = await loadIndex();
-  let totalBytes = 0;
-  for (const entry of index) {
-    totalBytes += entry.fileSize || 0;
-  }
-  return { count: index.length, totalBytes };
-}
-
-/**
- * Usuwa wszystkie zapisane bilety PDF i czyści indeks.
- */
-export async function clearAllTickets(): Promise<void> {
-  const index = await loadIndex();
-  for (const entry of index) {
-    try {
-      await FileSystem.deleteAsync(entry.fileUri, { idempotent: true });
-    } catch {}
-    await kvRemove(`ticket:${entry.connectionId}`);
-  }
-  await kvRemove(TICKET_INDEX_KEY);
-}

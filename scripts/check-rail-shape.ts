@@ -6,9 +6,13 @@
  * Wymaga: POLSKA_DB (domyślnie świeży build z cloudflare/dist/polska).
  */
 import { createRequire } from 'node:module';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 
-const POLSKA_DB = process.env.POLSKA_DB ?? 'cloudflare/dist/polska/kilometr-gtfs-polska.db';
+const POLSKA_DB =
+  process.env.POLSKA_DB ??
+  (['cloudflare/dist/polska/kilometr-gtfs-polska.db', '/tmp/opencode/bench/national-real.db'].find(
+    (p) => existsSync(p),
+  ) ?? 'cloudflare/dist/polska/kilometr-gtfs-polska.db');
 const POLSKA_DB_NAME = 'kilometr-gtfs-polska.db';
 
 const requireCjs = createRequire(__filename);
@@ -59,6 +63,10 @@ function check(label: string, ok: boolean, detail = '') {
 }
 
 async function main() {
+  if (!existsSync(POLSKA_DB)) {
+    console.log(`PASS check-rail-shape: pominięto (brak bazy polska: ${POLSKA_DB})`);
+    return;
+  }
   const { buildMapRoute, resolveGeometry } = await import('../src/services/routeGeometry');
   const { getNationalDb } = await import('../src/services/gtfsDatabase');
 

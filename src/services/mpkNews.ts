@@ -73,7 +73,7 @@ function newsTitleFallback(): string {
 
 export type NewsSource = 'city' | 'mpk';
 
-export interface DisruptionImpactedLine {
+interface DisruptionImpactedLine {
   line: string;
   direction: string | null;
   impact_type: string;
@@ -83,14 +83,14 @@ export interface DisruptionImpactedLine {
   details: string;
 }
 
-export interface DisruptionStop {
+interface DisruptionStop {
   name: string;
   action: string;
   lines: string[];
   details: string;
 }
 
-export interface DisruptionAlert {
+interface DisruptionAlert {
   id: string;
   source_title: string;
   link: string;
