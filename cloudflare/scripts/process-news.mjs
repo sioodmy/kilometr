@@ -247,6 +247,59 @@ function cleanProblemText(text) {
 }
 
 function buildPkpDirectAlert(item) {
+  if (item.pdpData) {
+    const pdp = item.pdpData;
+    const is_emergency = !pdp.endDate;
+    const is_resolved = Boolean(pdp.endDate && new Date(pdp.endDate) <= new Date());
+    const disruption_type =
+      pdp.category === 'INFRASTRUCTURE'
+        ? 'infrastructure_failure'
+        : pdp.category === 'ACCIDENT'
+          ? 'accident'
+          : pdp.category === 'WEATHER'
+            ? 'weather'
+            : pdp.category === 'WORKS'
+              ? 'planned_works'
+              : 'other';
+
+    const severity =
+      pdp.category === 'INFRASTRUCTURE' || pdp.category === 'ACCIDENT'
+        ? 'major'
+        : is_resolved
+          ? 'info'
+          : 'minor';
+
+    const allLines = pdp.lines;
+    const headline = item.title;
+
+    return {
+      is_transit_alert: true,
+      headline,
+      disruption_type,
+      is_emergency,
+      is_resolved,
+      severity,
+      glance: {
+        problem: (item.fullContent || item.content || headline).slice(0, 400),
+        solution: pdp.cause ? `Przyczyna: ${pdp.cause}` : null,
+        timeframe: extractPkpTimeframe(item.pubDate, ''),
+      },
+      valid_from: pdp.startDate || new Date().toISOString(),
+      valid_to: pdp.endDate,
+      all_lines: allLines,
+      impacted_lines: allLines.slice(0, 8).map((line) => ({
+        line,
+        direction: null,
+        impact_type: 'schedule_change',
+        omitted_stops: [],
+        temporary_stops: [],
+        replacement_line: null,
+        details: headline,
+      })),
+      stops: pdp.stationNames || [],
+    };
+  }
+
   const content = item.fullContent || item.content || '';
   const headline = cleanIntercityTitle(item.title);
   const timeframe = extractPkpTimeframe(item.pubDate, content);
@@ -324,6 +377,66 @@ function buildPkpDirectAlert(item) {
       details: headline,
     })),
     stops: [],
+  };
+}
+
+function parsePdpDisruption(d) {
+  const id = String(d.id || d.i || crypto.createHash('sha256').update(d.title || d.t || '').digest('hex').slice(0, 16));
+  const title = (d.title || d.t || '').trim();
+  const description = (d.description || d.desc || d.d || '').trim();
+  const cause = (d.cause || d.c || '').trim();
+  const category = (d.category || d.cat || 'OTHER').toUpperCase();
+  const startDate = d.startDate || d.sd || new Date().toISOString();
+  const endDate = d.endDate || d.ed || null;
+
+  const affectedTrains = d.affectedTrains || d.trains || d.at || [];
+  const lines = new Set();
+  for (const t of affectedTrains) {
+    const num = String(t.trainNumber || t.num || t.n || '').trim();
+    const carrier = String(t.carrier || t.c || '').trim().toUpperCase();
+    if (num) {
+      lines.add(num);
+      if (carrier) lines.add(`${carrier} ${num}`);
+      if (num.includes('/')) {
+        const [base, slash] = num.split('/');
+        lines.add(base);
+        if (carrier) lines.add(`${carrier} ${base}`);
+        if (slash.length <= 2) {
+          const derived = base.slice(0, base.length - slash.length) + slash;
+          lines.add(derived);
+          if (carrier) lines.add(`${carrier} ${derived}`);
+        }
+      }
+    }
+  }
+
+  const extracted = extractTrainNumbers(`${title} ${description}`);
+  for (const l of extracted) lines.add(l);
+
+  const rawStations = d.stations || d.st || [];
+  const stationNames = rawStations
+    .map((s) => (typeof s === 'string' ? s : s.name || s.n || ''))
+    .filter(Boolean);
+
+  const content = [description, cause ? `Przyczyna: ${cause}` : '', stationNames.length ? `Stacje: ${stationNames.join(', ')}` : '']
+    .filter(Boolean)
+    .join('\n');
+
+  return {
+    id: `pdp-${id}`,
+    title,
+    link: 'https://portalpasazera.pl/Utrudnienia',
+    pubDate: startDate,
+    content,
+    fullContent: content,
+    pdpData: {
+      category,
+      cause,
+      startDate,
+      endDate,
+      stationNames,
+      lines: [...lines],
+    },
   };
 }
 
@@ -507,13 +620,58 @@ async function fetchCityFeed(city, limit) {
       return parseRssItems(text, limit);
     }
     case 'polska': {
-      const html = await fetchFeed(
-        'https://www.intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/',
-        'PKP Intercity Komunikaty',
-        browserHeaders,
-        'html',
-      );
-      return parsePkpIntercityList(html, limit);
+      const items = [];
+      const pdpKey = process.env.PDP_API_KEY || '';
+      if (pdpKey) {
+        try {
+          console.log('    [PDP API] Pobieranie oficjalnych utrudnień PKP PLK...');
+          const pdpRes = await fetch('https://pdp-api.plk-sa.pl/api/v1/disruptions', {
+            headers: {
+              'X-API-Key': pdpKey,
+              Accept: 'application/json',
+              'User-Agent': 'kilometr-timetable-bot/1.0',
+            },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (pdpRes.ok) {
+            const data = await pdpRes.json();
+            const list = Array.isArray(data.disruptions)
+              ? data.disruptions
+              : Array.isArray(data.d)
+                ? data.d
+                : [];
+            for (const d of list.slice(0, limit)) {
+              items.push(parsePdpDisruption(d));
+            }
+            console.log(`    [PDP API] Pobrano ${items.length} oficjalnych utrudnień.`);
+          } else {
+            console.warn(`    [!] PDP API zwróciło HTTP ${pdpRes.status}`);
+          }
+        } catch (err) {
+          console.warn(`    [!] Błąd pobierania PDP API:`, err.message);
+        }
+      }
+
+      if (items.length < limit) {
+        try {
+          const html = await fetchFeed(
+            'https://www.intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/',
+            'PKP Intercity Komunikaty',
+            browserHeaders,
+            'html',
+          );
+          const icItems = parsePkpIntercityList(html, limit - items.length);
+          items.push(...icItems);
+        } catch (err) {
+          if (items.length === 0) {
+            throw err;
+          } else {
+            console.warn(`    [!] Intercity 403/błąd (${err.message}), ale pobrano ${items.length} pozycji z PDP API.`);
+          }
+        }
+      }
+
+      return items;
     }
     default:
       throw new Error(`Nieobsługiwane miasto: ${city}. Dostępne: ${SUPPORTED_CITIES.join(', ')}`);
