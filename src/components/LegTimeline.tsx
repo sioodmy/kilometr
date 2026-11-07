@@ -1073,11 +1073,10 @@ const s = StyleSheet.create({
     fontSize: 12.5,
   },
   stopTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
     flex: 1,
-    flexWrap: 'wrap',
   },
   platformBadge: {
     paddingHorizontal: 6,
