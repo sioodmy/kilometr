@@ -3,6 +3,7 @@ import { timeStringToSeconds } from '../gtfs/geo';
 import { ZBIORKOM } from './gtfsConfig';
 import { trainNumberVariants } from './nationalRailLive';
 import { withTimeout } from './net';
+import { kvGet, kvSet } from './storage';
 
 interface ZbStation {
   stopId: string;
@@ -62,41 +63,56 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
+const KEY_ZB_RAIL_STOPS = 'kilometr.cache.zb_rail_stops.v1';
+
 async function loadStations(): Promise<StationIndex> {
   if (stationsPromise) return stationsPromise;
-  stationsPromise = fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`)
-    .then((raw) => {
-      const byStopId = new Map<string, ZbStation>();
-      const byName = new Map<string, ZbStation[]>();
-      if (!isRecord(raw) || !Array.isArray(raw.stops))
-        throw new Error('Nieprawidłowy katalog stacji');
-      for (const entry of raw.stops) {
-        if (!Array.isArray(entry)) continue;
-        const stopId = typeof entry[0] === 'string' ? entry[0] : '';
-        const name = typeof entry[2] === 'string' ? entry[2].trim() : '';
-        if (!stopId || !name) continue;
-        const loc = Array.isArray(entry[4]) ? entry[4] : [];
-        const lon = typeof loc[0] === 'number' ? loc[0] : undefined;
-        const lat = typeof loc[1] === 'number' ? loc[1] : undefined;
-        const station: ZbStation = {
-          stopId,
-          gtfsIds: [stopId],
-          name,
-          lon,
-          lat,
-        };
-        byStopId.set(stopId, station);
-        const key = normalized(name);
-        const group = byName.get(key) ?? [];
-        group.push(station);
-        byName.set(key, group);
+  stationsPromise = (async () => {
+    let raw: unknown;
+    try {
+      raw = await fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`);
+      void kvSet(KEY_ZB_RAIL_STOPS, JSON.stringify(raw));
+    } catch (netErr) {
+      try {
+        const cached = await kvGet(KEY_ZB_RAIL_STOPS);
+        if (cached) raw = JSON.parse(cached);
+      } catch {
+        // brak cache
       }
-      return { byStopId, byName };
-    })
-    .catch((error) => {
+      if (!raw) {
+        stationsPromise = null;
+        throw netErr;
+      }
+    }
+    const byStopId = new Map<string, ZbStation>();
+    const byName = new Map<string, ZbStation[]>();
+    if (!isRecord(raw) || !Array.isArray(raw.stops)) {
       stationsPromise = null;
-      throw error;
-    });
+      throw new Error('Nieprawidłowy katalog stacji');
+    }
+    for (const entry of raw.stops) {
+      if (!Array.isArray(entry)) continue;
+      const stopId = typeof entry[0] === 'string' ? entry[0] : '';
+      const name = typeof entry[2] === 'string' ? entry[2].trim() : '';
+      if (!stopId || !name) continue;
+      const loc = Array.isArray(entry[4]) ? entry[4] : [];
+      const lon = typeof loc[0] === 'number' ? loc[0] : undefined;
+      const lat = typeof loc[1] === 'number' ? loc[1] : undefined;
+      const station: ZbStation = {
+        stopId,
+        gtfsIds: [stopId],
+        name,
+        lon,
+        lat,
+      };
+      byStopId.set(stopId, station);
+      const key = normalized(name);
+      const group = byName.get(key) ?? [];
+      group.push(station);
+      byName.set(key, group);
+    }
+    return { byStopId, byName };
+  })();
   return stationsPromise;
 }
 
@@ -147,7 +163,7 @@ async function fetchStationDepartures(stopId: string): Promise<ZbRailDeparture[]
       });
     })
     .catch((error) => {
-      departuresCache.delete(stopId);
+      if (!cached) departuresCache.delete(stopId);
       throw error;
     });
   departuresCache.set(stopId, { at, promise });
@@ -265,7 +281,19 @@ export async function fetchZbRailDepartures(
   await Promise.all(
     Array.from(legsByStation.entries()).map(async ([stopId, stationLegs]) => {
       try {
-        const departures = await fetchStationDepartures(stopId);
+        let departures: ZbRailDeparture[] = [];
+        try {
+          departures = await fetchStationDepartures(stopId);
+        } catch {
+          const cachedHit = departuresCache.get(stopId);
+          if (cachedHit) {
+            try {
+              departures = await cachedHit.promise;
+            } catch {
+              departures = [];
+            }
+          }
+        }
         for (const leg of stationLegs) {
           const departure = matchDeparture(departures, leg);
           if (departure) results.set(railLegKey(leg), departure);

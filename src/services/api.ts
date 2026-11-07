@@ -385,6 +385,12 @@ export const RoutingService: IRoutingService = {
       if (needsIntercity(query)) {
         const { connections } = await planIntercity(toPlanOptions(query));
         remember(connections);
+        if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
+          void saveConnections(query, connections);
+          void import('./geometryWarmup')
+            .then((m) => m.warmConnections(connections))
+            .catch(() => {});
+        }
         return connections;
       }
 
