@@ -45,7 +45,7 @@ interface RawFeed {
   trip_updates?: RawTripUpdate[];
 }
 
-export interface RailTripLive {
+interface RailTripLive {
   tripId: string;
   agency: string;
   numbers: string[];
@@ -283,11 +283,10 @@ export async function handleRailDelays(req: Request, ctx?: ExecutionContext): Pr
 
     return response;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Rail delays feed error:', err);
     return new Response(
       JSON.stringify({
         error: 'feed-unavailable',
-        message: msg,
       }),
       {
         status: 502,

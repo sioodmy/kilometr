@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { AlertCircle } from './icons';
+import { useStrings } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import { alertsForConnection, type TrainAlerts } from '../services/railTripAlerts';
@@ -13,9 +14,19 @@ import { alertsForConnection, type TrainAlerts } from '../services/railTripAlert
  * reszta dostaje wynik z pamięci.
  */
 export function RailAlertsChip({ connection }: { connection: Connection }) {
+  const s = useStrings();
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
 
+  const hasTrain = useMemo(
+    () =>
+      connection.legs?.some(
+        (l) => l.mode === 'train' || l.tripId?.startsWith('pl:') || l.trainNumber,
+      ),
+    [connection.legs],
+  );
+
   useEffect(() => {
+    if (!hasTrain) return;
     let alive = true;
     void alertsForConnection(connection).then((alerts) => {
       if (alive) setTrainAlerts(alerts);
@@ -23,19 +34,26 @@ export function RailAlertsChip({ connection }: { connection: Connection }) {
     return () => {
       alive = false;
     };
-  }, [connection]);
+  }, [connection, hasTrain]);
 
-  if (trainAlerts.length === 0) return null;
-  const { leg, alerts } = trainAlerts[0];
+  const flatAlerts = useMemo(
+    () =>
+      trainAlerts
+        .flatMap(({ leg, alerts }) => alerts.map((alert) => ({ leg, alert })))
+        .slice(0, 2),
+    [trainAlerts],
+  );
+
+  if (!hasTrain || flatAlerts.length === 0) return null;
 
   return (
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)}>
-      {alerts.slice(0, 2).map((alert, i) => (
+      {flatAlerts.map(({ leg, alert }, i) => (
         <View
-          key={`${leg.id}-${i}`}
+          key={`${leg.id}-${alert.id ?? i}`}
           style={styles.chip}
           accessibilityRole="alert"
-          accessibilityLabel={`${leg.line ?? 'Pociąg'}: ${alert.title}`}
+          accessibilityLabel={`${leg.line ?? s.railAlerts.fallbackLine}: ${alert.title}`}
         >
           <AlertCircle size={15} color={scheme.onWarningContainer} />
           <Text style={styles.text} numberOfLines={1} ellipsizeMode="tail">

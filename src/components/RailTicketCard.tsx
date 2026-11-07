@@ -150,9 +150,9 @@ export function RailTicketCard({ connection }: { connection: Connection }) {
   if (ticket) {
     const meta = ticket.metadata;
     const seatDetails = s.railTickets.attachedDetails(meta.wagon, meta.seat, meta.seatType);
-    const primaryTitle = seatDetails || (meta.trainNumber ? `Pociąg ${meta.trainNumber}` : s.railTickets.attachedTitle);
+    const primaryTitle = seatDetails || (meta.trainNumber ? `${s.railAlerts.fallbackLine} ${meta.trainNumber}` : s.railTickets.attachedTitle);
     const subtitle = meta.fromStation && meta.toStation
-      ? `${meta.fromStation} do ${meta.toStation}`
+      ? s.railTickets.buyKoleoSub(meta.fromStation, meta.toStation)
       : s.railTickets.fileLabel(ticket.fileName);
 
     return (
