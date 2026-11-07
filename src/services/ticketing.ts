@@ -4,7 +4,7 @@ import type { Connection, Leg } from '../types/models';
 /**
  * Sprawdza czy dany odcinek jest odcinkiem kolejowym.
  */
-export function isTrainLeg(leg: Leg): boolean {
+function isTrainLeg(leg: Leg): boolean {
   return leg.mode === 'train' || Boolean(leg.tripId?.startsWith('pl:')) || Boolean(leg.trainNumber && leg.railAgency);
 }
 
