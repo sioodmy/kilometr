@@ -1,3 +1,7 @@
+import { pl } from '../src/i18n/pl';
+import { en } from '../src/i18n/en';
+import { de } from '../src/i18n/de';
+import { uk } from '../src/i18n/uk';
 import assert from 'node:assert/strict';
 import {
   boardingDepartureMs,
@@ -241,6 +245,27 @@ assert.equal(delayedTrain.live, true);
 assert.equal(delayedTrain.delayMin, 43);
 assert.equal(delayedTrain.legs[1].delaySec, 2580);
 assert.equal(delayedTrain.legs[1].departAt, '10:43');
+
+// Formatowanie czasu podróży (human readable dla >= 60 min)
+assert.equal(pl.common.durMin(25), "25 min");
+assert.equal(pl.common.durMin(59), "59 min");
+assert.equal(pl.common.durMin(60), "1h");
+assert.equal(pl.common.durMin(90), "1h 30m");
+assert.equal(pl.common.durMin(120), "2h");
+assert.equal(pl.common.durMin(125), "2h 5m");
+assert.equal(pl.common.durMin(133), "2h 13m");
+
+assert.equal(en.common.durMin(125), "2h 5m");
+assert.equal(de.common.durMin(125), "2h 5m");
+assert.equal(uk.common.durMin(125), "2 год 5 хв");
+assert.equal(uk.common.durMin(60), "1 год");
+
+assert.equal(pl.share.duration(125), "2h 5m");
+assert.equal(en.share.duration(125), "2h 5m");
+assert.equal(de.share.duration(125), "2h 5m");
+assert.equal(uk.share.duration(125), "2 год 5 хв");
+
+assert.equal(pl.landing.journeyDemo.duration(125), "2h 5m");
 
 console.log(
   'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ, pociągi i starsze plany',

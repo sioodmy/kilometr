@@ -6,7 +6,7 @@ export const pl = {
   departure: 'Wyjazd',
   from: 'Skąd',
   to: 'Dokąd',
-  duration: (n: number) => `${n} min`,
+  duration: (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
   transfers: (n: number) =>
     n === 0
       ? 'Bez przesiadek'

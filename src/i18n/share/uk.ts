@@ -8,7 +8,7 @@ export const uk: ShareStrings = {
   departure: 'Відправлення',
   from: 'Звідки',
   to: 'Куди',
-  duration: (n) => `${n} хв`,
+  duration: (n) => (n >= 60 ? `${Math.floor(n / 60)} год${n % 60 > 0 ? ` ${n % 60} хв` : ''}` : `${n} хв`),
   transfers: (n) => {
     if (n === 0) return 'Без пересадок';
     const last = n % 10;

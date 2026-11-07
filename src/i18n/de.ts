@@ -4,6 +4,16 @@ import type { Strings } from './pl';
 import { de as landing } from './landing/de';
 import { de as share } from './share/de';
 
+function formatDuration(mins: number): string {
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${rounded} Min.`;
+}
+
 export const de: Strings = {
   landing,
   share,
@@ -107,7 +117,7 @@ export const de: Strings = {
     now: 'Jetzt',
     today: 'Heute',
     tomorrow: 'Morgen',
-    durMin: (n: number) => `${n} Min.`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `in ${n} Min.`,
     departNow: 'gleich',
     departAgo: (n: number) => `vor ${n} Min.`,
@@ -1224,7 +1234,7 @@ export const de: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, Fahrzeit ${dur} Min., Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
+      `${dep}, Fahrzeit ${formatDuration(dur)}, Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
     walkRoute: 'Fußweg',
   },
   vehiclePos: {
@@ -1264,7 +1274,7 @@ export const de: Strings = {
     transferMinutes: (min: number) => `Umstieg · ~${min} Min.`,
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${formatDuration(mins)} • ${open ? 'ein' : 'aus'}klappen`,
     stationsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Bahnhof' : 'Bahnhöfe'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
     platformPeron: (code: string) => `Bahnsteig ${code}`,
