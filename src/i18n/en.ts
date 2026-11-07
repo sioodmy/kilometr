@@ -1472,6 +1472,30 @@ export const en: Strings = {
     tram: 'Tram',
     bus: 'Bus',
   },
+  railTickets: {
+    buyKoleo: 'Buy ticket in KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} to ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} to ${to} · 1 transfer`
+        : `${from} to ${to} · ${transfers} transfers`,
+    attachPdf: 'Attach PDF ticket',
+    attachedTitle: 'Train ticket',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Carriage ${wagon}`);
+      if (seat) parts.push(`Seat ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Show ticket',
+    removeTicket: 'Remove ticket',
+    removeConfirmTitle: 'Remove this ticket?',
+    removeConfirmBody: 'The PDF file will be removed from local storage.',
+    fileLabel: (fileName: string) => `File: ${fileName}`,
+    importSuccess: 'PDF ticket attached successfully.',
+    importError: 'Could not load the PDF file.',
+  },
   widgets: {
     journeyTitle: 'Your destinations',
     journeyDescription: 'When to leave and which lines to take to saved and recent destinations',
