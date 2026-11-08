@@ -39,6 +39,9 @@ export interface LegVehicleMatch {
   vehicle: TrackedVehicle;
   /** Gdzie pojazd jest wzdłuż nogi (0..1). */
   progress: number;
+  /** Współrzędne rzutowane na oś trasy/toru. */
+  projectedLat?: number;
+  projectedLon?: number;
   /** Opóźnienie policzone z rozkładu NOGI (nie z globalnego dopasowania). */
   delaySec: number;
   /** Dystans pojazdu od linii nogi [m]. */
@@ -211,6 +214,8 @@ export function matchVehicleToLeg(
     return {
       vehicle: v,
       progress: p.progress,
+      projectedLat: p.lat,
+      projectedLon: p.lon,
       delaySec: delay,
       offsetM: p.offsetM,
       heading: p.heading,
