@@ -15,7 +15,7 @@ import { TIMETABLE } from './gtfsConfig';
 import { decompressGzipFile } from '../../modules/kilometr-raptor';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, getMeta, GTFS_IMPORT_COMPLETE_META, setMeta } from './gtfsDatabase';
+import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, GTFS_IMPORT_COMPLETE_META, setMeta } from './gtfsDatabase';
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -98,14 +98,6 @@ async function fetchManifestAt(url: string): Promise<TimetableManifest> {
     throw describeDownloadError(err);
   } finally {
     clearTimeout(timer);
-  }
-}
-
-export async function getLocalTimetableVersion(): Promise<string | null> {
-  try {
-    return await getMeta('timetable_version');
-  } catch {
-    return null;
   }
 }
 
