@@ -250,11 +250,15 @@ export function ConnectionPeek({
                   <Text style={[styles.stopTime, styles.secondary]}>{leg.arriveAt}</Text>
                   <Text style={[styles.stopName, styles.secondary]}>{leg.toStop}</Text>
                 </View>
-                {leg.platformCode && leg.mode !== 'walk' && (
+                {(leg.platformCode || leg.trackCode) && leg.mode !== 'walk' && (
                   <Text style={styles.platform}>
                     {leg.mode === 'train'
-                      ? s.notification.platformPeron(leg.platformCode)
-                      : s.notification.platform(leg.platformCode)}
+                      ? leg.platformCode && leg.trackCode
+                        ? s.notification.platformPeronTrack(leg.platformCode, leg.trackCode)
+                        : leg.platformCode
+                          ? s.notification.platformPeron(leg.platformCode)
+                          : s.notification.platformTrack(leg.trackCode!)
+                      : s.notification.platform(leg.platformCode ?? '')}
                   </Text>
                 )}
               </View>

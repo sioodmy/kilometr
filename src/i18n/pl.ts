@@ -609,7 +609,8 @@ export const pl = {
       `${reason}. Aplikacja pobiera gotową bazę z serwera Kilometr albo klasycznie z otwartych danych miasta.`,
     downloadFailFallback: 'Spróbuj ponownie za chwilę.',
     railTitle: 'Rozkład kolejowy (Polska)',
-    railHint: 'Pociągi wszystkich przewoźników do planowania podróży między miastami: IC, EIC, PolRegio, KM i inni.',
+    railHint:
+      'Pociągi wszystkich przewoźników do planowania podróży między miastami: IC, EIC, PolRegio, KM i inni.',
     railReady: (date: string) => `Pobrany (ważny do ${date})`,
     railEmpty: 'Niepobrany',
     railDownload: 'Pobierz',
@@ -1223,7 +1224,7 @@ export const pl = {
     arrivalShort: (time: string) => `do ${time}`,
   },
   routesFilters: {
-    title: "Filtry",
+    title: 'Filtry',
     filterButton: 'Filtry',
     filterA11y: 'Filtry połączeń',
     vehiclesSection: 'Środek transportu',
@@ -1311,6 +1312,8 @@ export const pl = {
     stationsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'} • ~${formatDuration(mins)} • ${open ? 'zwiń' : 'rozwiń'} stacje`,
     platformPeron: (code: string) => `Peron ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Peron ${code}, tor ${track}`,
+    platformTrack: (track: string) => `Tor ${track}`,
     platformPole: (code: string) => `Słupek ${code}`,
     platformBay: (code: string) => `Stanowisko ${code}`,
     platformPst: (code: string) => `PST Słupek ${code}`,
@@ -1445,6 +1448,8 @@ export const pl = {
     directionTo: (dir: string) => `Do ${dir}`,
     platform: (num: string) => `słup ${num}`,
     platformPeron: (num: string) => `peron ${num}`,
+    platformPeronTrack: (num: string, track: string) => `peron ${num}, tor ${track}`,
+    platformTrack: (track: string) => `tor ${track}`,
     walkApproach: (min: number) => `dojście ~${min} min`,
     rideLength: (min: number) => `przejazd ${min} min`,
     departAt: (at: string) => `odjazd ${at}`,

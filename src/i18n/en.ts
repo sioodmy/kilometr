@@ -593,7 +593,8 @@ export const en: Strings = {
       `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from the city’s open data.`,
     downloadFailFallback: 'Try again in a moment.',
     railTitle: 'National rail timetable',
-    railHint: 'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
+    railHint:
+      'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
     railReady: (date: string) => `Downloaded (valid until ${date})`,
     railEmpty: 'Not downloaded',
     railDownload: 'Download',
@@ -1190,7 +1191,7 @@ export const en: Strings = {
     arrivalShort: (time: string) => `by ${time}`,
   },
   routesFilters: {
-    title: "Filters",
+    title: 'Filters',
     filterButton: 'Filters',
     filterA11y: 'Route filters',
     vehiclesSection: 'Transit mode',
@@ -1270,6 +1271,8 @@ export const en: Strings = {
     stationsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'station' : 'stations'} • ~${formatDuration(mins)} • ${open ? 'collapse' : 'expand'} stations`,
     platformPeron: (code: string) => `Platform ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Platform ${code}, track ${track}`,
+    platformTrack: (track: string) => `Track ${track}`,
     platformPole: (code: string) => `Pole ${code}`,
     platformBay: (code: string) => `Bay ${code}`,
     platformPst: (code: string) => `PST pole ${code}`,
@@ -1396,6 +1399,8 @@ export const en: Strings = {
     directionTo: (dir: string) => `Towards ${dir}`,
     platform: (num: string) => `platform ${num}`,
     platformPeron: (num: string) => `platform ${num}`,
+    platformPeronTrack: (num: string, track: string) => `platform ${num}, track ${track}`,
+    platformTrack: (track: string) => `track ${track}`,
     walkApproach: (min: number) => `~${min} min walk`,
     rideLength: (min: number) => `${min} min ride`,
     departAt: (at: string) => `departs ${at}`,

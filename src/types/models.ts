@@ -183,8 +183,10 @@ export interface Leg {
   fromLon?: number;
   toLat?: number;
   toLon?: number;
-  /** GTFS stop_code / numer słupka (np. 10121) */
+  /** GTFS stop_code / numer słupka (np. 10121) lub numer peronu */
   platformCode?: string;
+  /** Numer toru kolejowego (np. 1, 2, 105) */
+  trackCode?: string;
   stopHint?: string;
   liveNextStop?: string;
   /** Dane handlowe kursu z zbiorkom.live, bez nadpisywania identyfikatorów GTFS. */

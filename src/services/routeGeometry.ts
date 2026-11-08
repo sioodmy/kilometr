@@ -129,7 +129,8 @@ function legStops(leg: Leg): MapStop[] {
 function legToMapLeg(leg: Leg): MapLeg {
   const { bg } = getLineColors(leg.line, leg.mode);
   const stops = legStops(leg);
-  return { id: leg.id,
+  return {
+    id: leg.id,
     geometry: leg.geometry,
     mode: leg.mode,
     line: leg.line,
@@ -144,6 +145,7 @@ function legToMapLeg(leg: Leg): MapLeg {
     live: leg.live,
     tripId: leg.tripId,
     platformCode: leg.platformCode,
+    trackCode: leg.trackCode,
     stops,
     approx: !leg.geometry,
   };
@@ -292,10 +294,7 @@ export async function pinRouteGeometry(route: MapRoute): Promise<void> {
  * Używamy tego dla tras z ostatnich wyszukiwań oraz dla otwieranej trasy.
  * Zwraca liczbę nóg, których geometrię udało się pobrać.
  */
-export async function warmRouteGeometry(
-  route: MapRoute,
-  signal?: AbortSignal,
-): Promise<number> {
+export async function warmRouteGeometry(route: MapRoute, signal?: AbortSignal): Promise<number> {
   let warmed = 0;
   for (const leg of route.legs) {
     if (signal?.aborted) break;
@@ -749,7 +748,10 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
-    if (leg.geometry) { onLeg(leg.id, leg.geometry); continue; }
+    if (leg.geometry) {
+      onLeg(leg.id, leg.geometry);
+      continue;
+    }
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
     const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
@@ -792,11 +794,7 @@ export interface Projection {
  * strzałka pojazdu, kursor joysticka i dopasowanie live korzystają z tego
  * samego rachunku, więc nic się nie rozjeżdża.
  */
-export function projectRoutePoint(
-  coords: Coord[],
-  lat: number,
-  lon: number,
-): Projection | null {
+export function projectRoutePoint(coords: Coord[], lat: number, lon: number): Projection | null {
   if (!coords || coords.length === 0) return null;
   const toRad = (d: number) => (d * Math.PI) / 180;
   if (coords.length === 1) {
@@ -843,7 +841,8 @@ export function projectRoutePoint(
       const phi2 = toRad(lat2);
       const dLambda = toRad(lon2 - lon1);
       const y2 = Math.sin(dLambda) * Math.cos(phi2);
-      const x2 = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+      const x2 =
+        Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
       bestHeading = (Math.atan2(y2, x2) * 180) / Math.PI;
     }
   }
