@@ -103,12 +103,6 @@ export function nearestDepartureMs(sec: number, now: Date = new Date()): number 
   return base;
 }
 
-export function serviceDayStartMs(now: Date, dayShift: number): number {
-  const w = warsawNow(now);
-  const target = dayShift === 0 ? w : shiftWarsawDate(w, dayShift);
-  return sharedTimeMs(target.isoDate, 0);
-}
-
 export function clamp01(v: number): number {
   if (!isFinite(v)) return 0;
   return v < 0 ? 0 : v > 1 ? 1 : v;

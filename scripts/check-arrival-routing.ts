@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mock } from 'node:test';
+import { shiftWarsawDate, warsawNow } from '../src/gtfs/geo';
 import type { GtfsTrip } from '../src/gtfs/types';
 import {
   buildSearchSlices,
@@ -260,9 +261,7 @@ async function checkArrivalRouting() {
     assert.equal(slices.searchStartSec, at(0, 15) - 10800);
     assert.equal(requests.length, 2);
     assert(requests[1].from < at(22, 0));
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const stamp = `${tomorrow.getFullYear()}${String(tomorrow.getMonth() + 1).padStart(2, '0')}${String(tomorrow.getDate()).padStart(2, '0')}`;
+    const stamp = shiftWarsawDate(warsawNow(), 1).dateStr;
     assert.equal(requests[0].date, stamp);
   } finally {
     gtfsStore.getDayIndexSlice = getSlice;
@@ -311,7 +310,7 @@ async function checkArrivalRouting() {
     assert(partials.flat().every((c) => c.arrivalSec !== undefined && c.arrivalSec <= target));
     assert(planned.every((c) => c.departureSec >= 86400));
     const now = new Date();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const nowSec = warsawNow(now).sec;
     const missed = network([
       { id: 'MISSED', stops: ['A', 'D'], times: [[nowSec - 120, nowSec + 30]] },
     ]);

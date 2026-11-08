@@ -8,7 +8,7 @@ export function scheduledLegDepart(leg: Leg): string {
   return leg.departAt;
 }
 
-export function scheduledLegArrive(leg: Leg): string {
+function scheduledLegArrive(leg: Leg): string {
   if (leg.scheduledArrivalSec != null) {
     return secondsToTimeString(leg.scheduledArrivalSec);
   }
