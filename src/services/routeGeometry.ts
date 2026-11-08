@@ -563,13 +563,13 @@ async function fetchLegGeometry(
   signal?: AbortSignal,
 ): Promise<{ coords: Coord[]; fromCache: boolean } | null> {
   if (isApproxOnlyLeg(leg)) return null;
-  // Pociągi ogólnopolskie mają geometrię torów w bazie `polska` (shapes PLK):
+  // Pociągi ogólnopolskie i regionalne mają geometrię torów w bazie `polska` (shapes PLK):
   // router po kafelkach obejmuje tylko pakiet miasta, a OSRM nie jeździ po
-  // torach. Zwracamy wycinek shape'u między stacjami krańcowymi nogi.
-  if (leg.mode === 'train' && leg.tripId?.startsWith('pl:')) {
+  // torach. Zwracamy wycinek shape'u bezpośrednio w osi właściwego toru.
+  if (leg.mode === 'train') {
     const coords = await nationalRailShape(leg, signal);
     if (coords && coords.length > 1) return { coords, fromCache: true };
-    return null;
+    if (leg.tripId?.startsWith('pl:')) return null;
   }
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
@@ -679,30 +679,106 @@ function simplifyPolyline(pts: Coord[], toleranceM: number): Coord[] {
 
 /**
  * Wycinek torów dla nogi kolejowej z bazy `polska`: shape kursu cięty
- * między stacją wsiadania a wysiadania (najbliższe punkty shape'u),
- * z domknięciem do dokładnych współrzędnych stacji i uproszczeniem
- * do ~15 m, żeby most WebView nie nosił tysięcy punktów.
+ * między stacją wsiadania a wysiadania bezpośrednio w osi toru.
+ * Nie doklejamy sztucznie współrzędnych budynku stacji (żeby linia nie
+ * uciekała z torów w budynek dworca) i stosujemy minimalną tolerancję (2 m),
+ * dzięki czemu geometria zachowuje łuki, rozjazdy i właściwy tor.
  */
 async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
-  if (!leg.tripId) return null;
-  const board = leg.stops[0];
-  const alight = leg.stops[leg.stops.length - 1];
+  const stops = leg.stops;
+  if (!stops || stops.length < 2) return null;
+  const board = stops[0];
+  const alight = stops[stops.length - 1];
   if (!board || !alight) return null;
+
   try {
     const { getNationalDb } = await import('./gtfsDatabase');
     const db = await getNationalDb();
-    const trip = await db.getFirstAsync<{ shape: string }>(
-      'SELECT shape FROM trips WHERE trip_id = ?',
-      leg.tripId,
-    );
-    const shapeId = trip?.shape?.replace(/^pl:/, '');
+
+    let shapeId: string | null = null;
+
+    // 1. Sprawdź tripId z nogi (jeśli jest).
+    if (leg.tripId) {
+      const cleanTripId = leg.tripId.replace(/^pl:/, '');
+      const trip = await db.getFirstAsync<{ shape: string }>(
+        'SELECT shape FROM trips WHERE trip_id = ? OR trip_id = ? LIMIT 1',
+        leg.tripId,
+        'pl:' + cleanTripId,
+      );
+      if (trip?.shape) {
+        shapeId = trip.shape.replace(/^pl:/, '');
+      }
+    }
+
+    // 2. Jeśli brak shapeId, a mamy numer pociągu w leg.line:
+    if (!shapeId && leg.line) {
+      const numMatch = leg.line.match(/\b(\d{3,6}(?:\/\d+)?)\b/);
+      if (numMatch) {
+        const trip = await db.getFirstAsync<{ shape: string }>(
+          'SELECT shape FROM trips WHERE (train_number = ? OR train_number LIKE ?) AND shape != "" LIMIT 1',
+          numMatch[1],
+          numMatch[1] + '/%',
+        );
+        if (trip?.shape) {
+          shapeId = trip.shape.replace(/^pl:/, '');
+        }
+      }
+    }
+
+    // 3. Jeśli nadal brak shapeId, znajdź kurs łączący stację początkową i końcową:
+    if (!shapeId) {
+      let boardStopRow = await db.getFirstAsync<{ stop_id: string }>(
+        'SELECT stop_id FROM stops WHERE name = ? LIMIT 1',
+        board.name,
+      );
+      if (!boardStopRow) {
+        boardStopRow = await db.getFirstAsync<{ stop_id: string }>(
+          'SELECT stop_id FROM stops WHERE abs(lat - ?) < 0.02 AND abs(lon - ?) < 0.03 ORDER BY ((lat - ?)*(lat - ?) + (lon - ?)*(lon - ?)*0.36) LIMIT 1',
+          board.lat,
+          board.lon,
+          board.lat,
+          board.lon,
+        );
+      }
+
+      let alightStopRow = await db.getFirstAsync<{ stop_id: string }>(
+        'SELECT stop_id FROM stops WHERE name = ? LIMIT 1',
+        alight.name,
+      );
+      if (!alightStopRow) {
+        alightStopRow = await db.getFirstAsync<{ stop_id: string }>(
+          'SELECT stop_id FROM stops WHERE abs(lat - ?) < 0.02 AND abs(lon - ?) < 0.03 ORDER BY ((lat - ?)*(lat - ?) + (lon - ?)*(lon - ?)*0.36) LIMIT 1',
+          alight.lat,
+          alight.lon,
+          alight.lat,
+          alight.lon,
+        );
+      }
+
+      if (boardStopRow && alightStopRow) {
+        const trip = await db.getFirstAsync<{ shape: string }>(
+          `SELECT t.shape
+           FROM stop_times st1
+           JOIN stop_times st2 ON st1.trip_id = st2.trip_id
+           JOIN trips t ON t.trip_id = st1.trip_id
+           WHERE st1.stop_id = ? AND st2.stop_id = ? AND st1.seq < st2.seq AND t.shape != ''
+           LIMIT 1`,
+          boardStopRow.stop_id,
+          alightStopRow.stop_id,
+        );
+        if (trip?.shape) {
+          shapeId = trip.shape.replace(/^pl:/, '');
+        }
+      }
+    }
+
     if (!shapeId) return null;
     if (signal?.aborted) return null;
+
     const shape = await loadShape(shapeId);
     if (!shape || shape.length < 2) return null;
 
-    // Najbliższy punkt shape'u do stacji wsiadania, potem do wysiadania
-    // (szukamy tylko dalej niż wsiadanie: pociąg jedzie w jedną stronę).
+    // Najbliższy punkt shape'u do stacji wsiadania.
     let boardIdx = -1;
     let boardDist = Infinity;
     for (let i = 0; i < shape.length; i++) {
@@ -712,26 +788,59 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
         boardIdx = i;
       }
     }
-    if (boardIdx < 0) return null;
+    if (boardIdx < 0 || boardDist > 2500) return null;
+
+    // Sekwencja stacji pośrednich, by odnaleźć właściwy punkt końcowy za nimi.
+    let searchStart = boardIdx;
+    if (stops.length > 2) {
+      for (let s = 1; s < stops.length - 1; s++) {
+        const st = stops[s];
+        let midIdx = -1;
+        let midDist = Infinity;
+        for (let i = searchStart; i < shape.length; i++) {
+          const d = distanceM(shape[i], [st.lat, st.lon]);
+          if (d < midDist) {
+            midDist = d;
+            midIdx = i;
+          }
+        }
+        if (midIdx >= searchStart && midDist < 2500) {
+          searchStart = midIdx;
+        }
+      }
+    }
+
+    // Najbliższy punkt shape'u do stacji wysiadania (za stacjami pośrednimi/wsiadaniem).
     let alightIdx = -1;
     let alightDist = Infinity;
-    for (let i = boardIdx + 1; i < shape.length; i++) {
+    for (let i = searchStart + 1; i < shape.length; i++) {
       const d = distanceM(shape[i], [alight.lat, alight.lon]);
       if (d < alightDist) {
         alightDist = d;
         alightIdx = i;
       }
     }
-    if (alightIdx < 0 || alightIdx === boardIdx) return null;
+    if (alightIdx < 0 || alightIdx <= boardIdx || alightDist > 2500) return null;
 
     const slice = shape.slice(boardIdx, alightIdx + 1);
-    const snapped: Coord[] = [[board.lat, board.lon]];
+    if (slice.length < 2) return null;
+
+    // Usuwamy ewentualne sąsiadujące duplikaty.
+    const clean: Coord[] = [];
     for (const p of slice) {
-      const last = snapped[snapped.length - 1];
-      if (last[0] !== p[0] || last[1] !== p[1]) snapped.push(p);
+      if (
+        clean.length === 0 ||
+        clean[clean.length - 1][0] !== p[0] ||
+        clean[clean.length - 1][1] !== p[1]
+      ) {
+        clean.push(p);
+      }
     }
-    snapped.push([alight.lat, alight.lon]);
-    return simplifyPolyline(snapped, 15);
+    if (clean.length < 2) return null;
+
+    // Tolerancja 2 m zachowuje dokładny przebieg toru i rozjazdów,
+    // eliminując jedynie zbędne punkty współliniowe na prostych odcinkach.
+    return simplifyPolyline(clean, 2);
   } catch {
     return null;
   }
@@ -757,7 +866,7 @@ export async function resolveGeometry(
     if (signal?.aborted) return;
     if (result && result.coords.length > 1) onLeg(leg.id, result.coords);
     // Pauza chroni publiczny OSRM; lokalne shape'y PLK jej nie potrzebują.
-    if (leg.mode !== 'walk' && !(leg.mode === 'train' && leg.tripId?.startsWith('pl:'))) {
+    if (leg.mode !== 'walk' && leg.mode !== 'train') {
       await new Promise((r) => setTimeout(r, 350));
     }
   }
