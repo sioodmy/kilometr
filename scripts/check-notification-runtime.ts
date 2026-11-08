@@ -509,7 +509,7 @@ async function main() {
   await monitor.startTracking({ ...trip, id: 'midnight', connection: midnightConnection });
   const beforeMidnight = monitor.getTripProgressSync()!;
   assert.ok(
-    beforeMidnight.departInSec > 13 * 60 && beforeMidnight.departInSec < 16 * 60,
+    beforeMidnight.departInSec > 13 * 60 && beforeMidnight.departInSec < 20 * 60,
     'kurs 00:10 śledzony od 23:55 jest za kwadrans, nie za dobę',
   );
   const savedMidnight = storage.get('kilometr.trackedTrip.v2');

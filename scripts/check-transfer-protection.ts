@@ -1,3 +1,4 @@
+process.env.TZ = 'Europe/Warsaw';
 import assert from 'node:assert/strict';
 import Module, { createRequire } from 'node:module';
 import { mock } from 'node:test';

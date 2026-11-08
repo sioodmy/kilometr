@@ -1,3 +1,4 @@
+process.env.TZ = 'Europe/Warsaw';
 import { pl } from '../src/i18n/pl';
 import { en } from '../src/i18n/en';
 import { de } from '../src/i18n/de';
