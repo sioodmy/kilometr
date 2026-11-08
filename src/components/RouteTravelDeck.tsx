@@ -349,7 +349,7 @@ export function RouteTravelDeck({
               ) : !transferActive ? (
                 <ShieldOff size={16} color={scheme.onSurfaceVariant} />
               ) : isWarning ? (
-                <ShieldAlert size={16} color={scheme.onErrorContainer} />
+                <ShieldAlert size={16} color={scheme.onError} />
               ) : (
                 <ShieldCheck size={16} color={scheme.onPrimaryContainer} />
               )}
