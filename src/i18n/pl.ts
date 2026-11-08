@@ -1383,6 +1383,7 @@ export const pl = {
   railAlerts: {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
     fallbackLine: 'Pociąg',
+    disruptionsBadgeA11y: 'Utrudnienia na trasie',
   },
   data: {
     stepUnpack: 'Rozpakowywanie…',
