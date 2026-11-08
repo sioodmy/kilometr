@@ -9,6 +9,38 @@ function extractHintText(val: StopHintValue | undefined): string | null {
   return val.hint || null;
 }
 
+function normalizePolishText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(
+      /[ąćęłńóśźż]/g,
+      (c) =>
+        ({
+          ą: 'a',
+          ć: 'c',
+          ę: 'e',
+          ł: 'l',
+          ń: 'n',
+          ó: 'o',
+          ś: 's',
+          ź: 'z',
+          ż: 'z',
+        })[c] || c,
+    );
+}
+
+function normalizeSlug(value: string | null | undefined): string {
+  return normalizePolishText(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function normalizeSnake(value: string | null | undefined): string {
+  return normalizePolishText(value)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 /** Dynamiczny import per miasto: 684 KB hints nie trafia do startowego bundla. */
 function loadBundledStopHints(cityId: string): Promise<StopHintsDataset | null> {
   const c = cityId.toLowerCase();
@@ -46,27 +78,28 @@ async function fetchRemoteStopHints(
 }
 
 function useStopHints(cityId: string) {
-  const [data, setData] = useState<StopHintsDataset | null>(() => cache.get(cityId) ?? null);
+  const normCity = (cityId || '').trim().toLowerCase();
+  const [data, setData] = useState<StopHintsDataset | null>(() => cache.get(normCity) ?? null);
 
   useEffect(() => {
     let cancelled = false;
     const abortController = new AbortController();
     const apply = (next: StopHintsDataset) => {
-      cache.set(cityId, next);
+      cache.set(normCity, next);
       if (!cancelled) setData(next);
     };
 
     // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache.
     const load = async () => {
-      const cached = cache.get(cityId);
+      const cached = cache.get(normCity);
       if (cached) {
         apply(cached);
         return;
       }
-      const bundled = await loadBundledStopHints(cityId).catch(() => null);
+      const bundled = await loadBundledStopHints(normCity).catch(() => null);
       if (cancelled) return;
       // Równoległe karty mogły już zdążyć wpisać bundled do cache.
-      const raced = cache.get(cityId);
+      const raced = cache.get(normCity);
       if (raced) {
         apply(raced);
         return;
@@ -76,55 +109,137 @@ function useStopHints(cityId: string) {
       } else {
         setData(null);
       }
-      const remote = await fetchRemoteStopHints(cityId, abortController.signal);
+      const remote = await fetchRemoteStopHints(normCity, abortController.signal);
       if (remote) apply(remote);
     };
 
-    setData(cache.get(cityId) ?? null);
+    const currentCached = cache.get(normCity) ?? null;
+    setData(currentCached);
     void load();
 
     return () => {
       cancelled = true;
       abortController.abort();
     };
-  }, [cityId]);
+  }, [normCity]);
 
   return data;
 }
 
-function resolveStopHint(
+export function resolveStopHint(
   dataset: StopHintsDataset | null,
   stopCode?: string | null,
   stopId?: string | null,
-  _stopName?: string | null,
+  stopName?: string | null,
 ): string | null {
   if (!dataset) return null;
 
   // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101", Kraków "stop_322_117319")
-  if (stopId && dataset.stops[stopId]) {
-    return extractHintText(dataset.stops[stopId]);
-  }
-  // 2. Sprawdź po stopCode (np. Wrocław "20820", GZM "2470011-08702", Kraków "901-01", Warszawa "01")
-  if (stopCode && dataset.stops[stopCode]) {
-    return extractHintText(dataset.stops[stopCode]);
-  }
-
-  // Warianty z normalizacją kluczy (np. leading zeroes lub 5-cyfrowe dopełnienia dla przesiadek)
   if (stopId) {
     const trimmedId = stopId.trim();
     if (dataset.stops[trimmedId]) return extractHintText(dataset.stops[trimmedId]);
+
+    // Odrzuć prefiksy krajowe i relacyjne (np. "pl:5100028" -> "5100028", "stop-pl:5100028" -> "5100028")
+    const strippedPl = trimmedId.startsWith('pl:')
+      ? trimmedId.slice(3)
+      : trimmedId.startsWith('stop-pl:')
+        ? trimmedId.slice(8)
+        : trimmedId.startsWith('stop-')
+          ? trimmedId.slice(5)
+          : null;
+    if (strippedPl && dataset.stops[strippedPl]) return extractHintText(dataset.stops[strippedPl]);
+  }
+
+  // 2. Kombinacja stopName + stopCode (np. Poznań "poznan-glowny73", "poznan-glowny01")
+  // Sprawdzamy PRZED czystym 1-2 cyfrowym stopCode, żeby uniknąć kolizji z odległymi słupkami o tym samym numerze.
+  let slug = '';
+  let snake = '';
+  let cleanName = '';
+  if (stopName) {
+    cleanName = stopName.replace(/\s*\([^)]*\)/g, '').trim();
+    slug = normalizeSlug(cleanName);
+    snake = normalizeSnake(cleanName);
+    const code = (
+      stopCode ||
+      stopName.match(/(?:peron|słupek|stanowisko)\s*(\d+)/i)?.[1] ||
+      ''
+    ).trim();
+
+    if (code) {
+      const pad2 = code.padStart(2, '0');
+      const noZero = code.replace(/^0+/, '');
+      const candidates = [
+        `${slug}${code}`,
+        `${slug}${pad2}`,
+        `${slug}${noZero}`,
+        `${slug}-${code}`,
+        `${slug}-${pad2}`,
+        `${slug}-${noZero}`,
+        `${snake}_${code}`,
+        `${snake}_${pad2}`,
+        `${snake}_${noZero}`,
+        `${snake}${code}`,
+        `${snake}${pad2}`,
+        `${snake}${noZero}`,
+        `${cleanName} ${code}`,
+        `${cleanName} ${pad2}`,
+      ];
+
+      for (const cand of candidates) {
+        if (dataset.stops[cand]) {
+          return extractHintText(dataset.stops[cand]);
+        }
+      }
+
+      // Warianty z sufiksem geohash w kluczu (np. "poznan-glowny73-wqjhw")
+      const primaryPrefix = `${slug}${code}-`;
+      const padPrefix = `${slug}${pad2}-`;
+      for (const [key, val] of Object.entries(dataset.stops)) {
+        if (key.startsWith(primaryPrefix) || key.startsWith(padPrefix)) {
+          return extractHintText(val);
+        }
+      }
+    }
+  }
+
+  // 3. Bezpośredni stopCode (np. Wrocław "20820", GZM "2470011-08702", Kraków "901-01", Warszawa "01")
+  if (stopCode) {
+    const trimmedCode = stopCode.trim();
+    if (dataset.stops[trimmedCode]) return extractHintText(dataset.stops[trimmedCode]);
+  }
+
+  // 4. Warianty z normalizacją kluczy (leading zeroes, pad5, pad2)
+  if (stopId) {
+    const trimmedId = stopId.trim();
     const noLeadingZeros = trimmedId.replace(/^0+/, '');
-    if (noLeadingZeros && dataset.stops[noLeadingZeros]) return extractHintText(dataset.stops[noLeadingZeros]);
+    if (noLeadingZeros && dataset.stops[noLeadingZeros]) {
+      return extractHintText(dataset.stops[noLeadingZeros]);
+    }
     const pad5 = trimmedId.padStart(5, '0');
     if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
   }
   if (stopCode) {
     const trimmedCode = stopCode.trim();
-    if (dataset.stops[trimmedCode]) return extractHintText(dataset.stops[trimmedCode]);
     const noLeadingZeros = trimmedCode.replace(/^0+/, '');
-    if (noLeadingZeros && dataset.stops[noLeadingZeros]) return extractHintText(dataset.stops[noLeadingZeros]);
+    if (noLeadingZeros && dataset.stops[noLeadingZeros]) {
+      return extractHintText(dataset.stops[noLeadingZeros]);
+    }
     const pad5 = trimmedCode.padStart(5, '0');
     if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
+    const pad2 = trimmedCode.padStart(2, '0');
+    if (dataset.stops[pad2]) return extractHintText(dataset.stops[pad2]);
+  }
+
+  // 5. Fallback do klastrów / węzłów przesiadkowych (dataset.clusters lub bezpośredni klucz w stops)
+  if (cleanName) {
+    if (dataset.clusters) {
+      if (dataset.clusters[snake]) return dataset.clusters[snake];
+      if (dataset.clusters[slug]) return dataset.clusters[slug];
+      const lower = cleanName.toLowerCase();
+      if (dataset.clusters[lower]) return dataset.clusters[lower];
+    }
+    if (dataset.stops[snake]) return extractHintText(dataset.stops[snake]);
+    if (dataset.stops[slug]) return extractHintText(dataset.stops[slug]);
   }
 
   return null;
