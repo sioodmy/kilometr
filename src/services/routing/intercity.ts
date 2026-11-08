@@ -1,4 +1,4 @@
-// Planer podóży między miastami: noga miejska (magazyn aktywnego miasta)
+// Planer podróży między miastami: noga miejska (magazyn aktywnego miasta)
 // + noga kolejowa (magazyn ogólnopolski `polska`), sklejone po czasie na
 // stacji bramowej. Bazy NIE są scalane w jeden graf: każdy RAPTOR liczy
 // na własnej sieci, a join pilnuje buforu na peron (trainMinTransferSec).
@@ -61,7 +61,7 @@ const REVERSE_ARRIVAL_CITY_MARGIN_SEC = 15 * 60;
 
 const WALK_DETOUR_FACTOR = 1.15;
 
-/* ─── Indeks stacji (nazwa → stacja) ───────────────────────────────────── */
+/* ─── Indeks stacji (nazwa → stacja) ─────────────────────────────────────────── */
 
 let stationIndexCache: Map<string, RailStation> | null = null;
 
@@ -215,7 +215,7 @@ async function enrichRailLegs(legs: Leg[]): Promise<void> {
   await Promise.all(jobs);
 }
 
-/* ─── Pomocnicze ───────────────────────────────────────────────────────── */
+/* ─── Pomocnicze ───────────────────────────────────────────────────────────── */
 
 function firstTransitLeg(connection: Connection): Leg | undefined {
   return connection.legs.find((l) => l.mode !== 'walk');
@@ -448,7 +448,7 @@ function railQueryOptions(
   };
 }
 
-/* ─── Planer ───────────────────────────────────────────────────────────── */
+/* ─── Planer ─────────────────────────────────────────────────────────────────── */
 
 /**
  * Planuje podróż między miastami. Wymaga pobranej bazy `polska`; bez niej
@@ -520,7 +520,7 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
   return planRailOnly(options, originStation, destination, destinationStopIds);
 }
 
-/* ─── Forward: miasto → kolej ──────────────────────────────────────────── */
+/* ─── Forward: miasto → kolej ───────────────────────────────────────────────── */
 
 async function planForward(
   options: PlanOptions,
@@ -540,7 +540,7 @@ async function planForward(
   const railPromise = planConnections(railOptions, polskaStore);
 
   const combined: Connection[] = [];
-  const finalizeConn = async (city: Connection | null, rail: Connection, gateway?: RailStation) => {
+  const finalizeConn = async (city: Connection, rail: Connection, gateway?: RailStation) => {
     const conn = combineForward(city, rail, options, gateway);
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
@@ -570,12 +570,17 @@ async function planForward(
       const best = city
         .filter((c) => (c.arrivalSec ?? Infinity) <= railConn.departureSec - bufferSec)
         .sort((a, b) => b.departureSec - a.departureSec)[0];
-      await finalizeConn(best ?? null, railConn, gateway);
+      if (best) {
+        await finalizeConn(best, railConn, gateway);
+      }
     }
   } else {
     // Odjazd: noga miejska na bramę (cel = punkt stacji, arrivalSec zawiera
     // dojście piesze), potem join z pociągami po czasie + bufor na peron.
     const cityByGateway = new Map<string, Connection[]>();
+    const cityMinArrival = new Map<string, number>();
+    const cityMaxArrival = new Map<string, number>();
+
     for (const gateway of gateways) {
       const cityOptions: PlanOptions = {
         ...options,
@@ -587,23 +592,49 @@ async function planForward(
         onProgress: undefined,
       };
       const conns = await planConnections(cityOptions, gtfsStore);
-      if (conns.length > 0) cityByGateway.set(gateway.stopId, conns);
+      if (conns.length > 0) {
+        cityByGateway.set(gateway.stopId, conns);
+        let minArr = Infinity;
+        let maxArr = -Infinity;
+        for (const c of conns) {
+          const arr = c.arrivalSec ?? Infinity;
+          if (arr < minArr) minArr = arr;
+          if (arr > maxArr) maxArr = arr;
+        }
+        cityMinArrival.set(gateway.stopId, minArr);
+        cityMaxArrival.set(gateway.stopId, maxArr);
+      }
     }
 
     const rail = await railPromise;
     let followUps = 0;
+    const now = new Date();
+    const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const minDep = options.departureTimeSec ?? currentSec;
+
     for (const railConn of rail) {
       const firstTrain = firstTransitLeg(railConn);
       if (!firstTrain) continue;
       const gatewayId = firstTrain.fromStopId ?? '';
       const gateway = gateways.find((g) => g.stopId === gatewayId);
+      if (!gateway) continue;
       const boardSec = railConn.departureSec;
+      const latestFeasibleArrival = boardSec - bufferSec;
+
+      const conns = cityByGateway.get(gatewayId);
+      const minArr = cityMinArrival.get(gatewayId);
+
+      // Pociąg odjeżdża zanim najszybszy dojazd miejski w ogóle dotrze
+      // na stację - nieosiągalny, pomijamy bez zbędnego zapytania.
+      if (minArr !== undefined && latestFeasibleArrival < minArr) {
+        continue;
+      }
 
       // Najlepsza noga miejska: najpóźniejszy wyjazd, który łapie pociąg.
       let best: Connection | null = null;
-      for (const c of cityByGateway.get(gatewayId) ?? []) {
+      for (const c of conns ?? []) {
         const arrive = c.arrivalSec ?? Infinity;
-        if (arrive + bufferSec <= boardSec && (!best || c.departureSec > best.departureSec)) {
+        if (arrive <= latestFeasibleArrival && (!best || c.departureSec > best.departureSec)) {
           best = c;
         }
       }
@@ -612,33 +643,39 @@ async function planForward(
         continue;
       }
 
-      // Pociąg poza zasięgiem nogi miejskiej: dolicz dojazd "bądź na stacji".
+      // Pociąg poza zasięgiem dotychczasowej nogi miejskiej: dolicz dojazd "bądź na stacji".
+      // Odpytujemy tylko gdy pociąg odjeżdża później niż wyliczone dojazdy (np. za >3 h).
+      const maxArr = cityMaxArrival.get(gatewayId);
+      const isAheadOfHorizon = maxArr === undefined || latestFeasibleArrival > maxArr;
+      if (!isAheadOfHorizon) continue;
+
       if (followUps >= MAX_FOLLOW_UPS) continue;
       followUps++;
-      const arriveBy = boardSec - bufferSec;
       const followOptions: PlanOptions = {
         ...options,
-        toTitle: gateway?.name ?? destination.name,
-        toLat: gateway?.lat ?? destination.lat,
-        toLon: gateway?.lon ?? destination.lon,
+        toTitle: gateway.name,
+        toLat: gateway.lat,
+        toLon: gateway.lon,
         toId: undefined,
         departureTimeSec: undefined,
-        arriveBySec: arriveBy,
+        arriveBySec: latestFeasibleArrival,
         searchAheadSec: undefined,
         onProgress: undefined,
       };
       const follow = await planConnections(followOptions, gtfsStore);
       const late = follow
-        .filter((c) => (c.arrivalSec ?? Infinity) <= arriveBy)
+        .filter((c) => (c.arrivalSec ?? Infinity) <= latestFeasibleArrival && c.departureSec >= minDep)
         .sort((a, b) => b.departureSec - a.departureSec)[0];
-      await finalizeConn(late ?? null, railConn, gateway);
+      if (late) {
+        await finalizeConn(late, railConn, gateway);
+      }
     }
   }
 
   return { connections: pickBest(combined), destinationStation: destination };
 }
 
-/* ─── Reverse: kolej → miasto ──────────────────────────────────────────── */
+/* ─── Reverse: kolej → miasto ───────────────────────────────────────────────── */
 
 async function planReverse(
   options: PlanOptions,
@@ -705,7 +742,7 @@ async function planReverse(
   return { connections: pickBest(combined), originStation };
 }
 
-/* ─── Rail-only: stacja → stacja ───────────────────────────────────────── */
+/* ─── Rail-only: stacja → stacja ───────────────────────────────────────────── */
 
 async function planRailOnly(
   options: PlanOptions,
@@ -720,7 +757,7 @@ async function planRailOnly(
     originStation,
     destination,
   );
-  const rail = await planConnections(railOptions, polskaStore);
+  const rail = await railConnections(railOptions);
 
   const combined: Connection[] = [];
   const walkDistM = Math.round(
@@ -756,7 +793,11 @@ async function planRailOnly(
   return { connections: pickBest(combined), destinationStation: destination, originStation };
 }
 
-/* ─── Następny pociąg (tryb konduktora) ────────────────────────────────── */
+function railConnections(options: PlanOptions): Promise<Connection[]> {
+  return planConnections(options, polskaStore);
+}
+
+/* ─── Następny pociąg (tryb konduktora) ─────────────────────────────────────── */
 
 export interface NextTrain {
   label: string;
@@ -821,7 +862,7 @@ export async function nextNationalTrains(
   }
 }
 
-/* ─── Wybór najlepszych wariantów ──────────────────────────────────────── */
+/* ─── Wybór najlepszych wariantów ───────────────────────────────────────────── */
 
 function pickBest(combined: Connection[]): Connection[] {
   const seen = new Set<string>();
