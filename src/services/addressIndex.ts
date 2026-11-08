@@ -6,7 +6,7 @@ import {
 } from '../../modules/kilometr-raptor';
 import type { Suggestion } from '../types/models';
 import { getActiveCityIdSync } from './cityStore';
-import { getGtfsDb } from './gtfsDatabase';
+import { openGtfsDbHandle, type GtfsDbHandle } from './gtfsDatabase';
 
 interface AddressRow {
   rowid: number;
@@ -34,7 +34,7 @@ async function addressColumns(db: Database): Promise<{ stopCol: string; weightCo
   }
 }
 
-type Database = Awaited<ReturnType<typeof getGtfsDb>>;
+type Database = GtfsDbHandle;
 let readyDb: Database | null = null;
 let readyCityId: string | null = null;
 let addressCount = 0;
@@ -53,7 +53,7 @@ function accepted(writer: BinaryWriter): boolean {
 /** Ładuje paczki do Rust raz po otwarciu bazy miasta, bez kopii katalogu w JS. */
 export async function warmupAddressIndex(): Promise<boolean> {
   const cityId = getActiveCityIdSync();
-  const db = await getGtfsDb();
+  const db = await openGtfsDbHandle();
   if (cityId !== getActiveCityIdSync()) return false;
   if (readyDb === db) return true;
   if (loading?.db === db) return loading.promise;
@@ -72,7 +72,7 @@ export async function warmupAddressIndex(): Promise<boolean> {
         `SELECT rowid, osm_id, street, house, locality, lat, lon${stopCol}${weightCol} FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000`,
         after,
       );
-      if (!current() || db !== (await getGtfsDb()) || !current()) return false;
+      if (!current() || db !== (await openGtfsDbHandle()) || !current()) return false;
       if (!rows.length) break;
       const writer = new BinaryWriter(200_000).u8Val(1).u32(rows.length);
       for (const row of rows) {

@@ -15,10 +15,10 @@ import { uk } from '../i18n/uk';
 import { getActiveCityIdSync } from './cityStore';
 import {
   getActiveServices,
-  getGtfsDb,
   getGtfsStats,
   getMeta,
   needsStopWeights,
+  openGtfsDbHandle,
   poiCount,
 } from './gtfsDatabase';
 
@@ -117,7 +117,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
 
   const fileInfo = await dbFileSize(getCity(cityId).dbFile);
   try {
-    const db = await getGtfsDb();
+    const db = await openGtfsDbHandle();
     const rows = await db.getAllAsync<Record<string, unknown>>('PRAGMA quick_check(1)');
     const values = rows.map((r) => String(Object.values(r)[0] ?? ''));
     const healthy = rows.length > 0 && values.every((v) => v === 'ok');
@@ -152,7 +152,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
 
   let trains = 0;
   try {
-    const db = await getGtfsDb();
+    const db = await openGtfsDbHandle();
     const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes WHERE type = 2');
     trains = row?.n ?? 0;
   } catch {
@@ -176,7 +176,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
   let calendar: DiagResult['calendar'] = null;
   let servicesToday: number | null = null;
   try {
-    const db = await getGtfsDb();
+    const db = await openGtfsDbHandle();
     const cal = await db.getFirstAsync<{ a: string | null; b: string | null }>(
       "SELECT MIN(start_date) AS a, MAX(end_date) AS b FROM calendar WHERE start_date <> '' AND end_date <> ''",
     );
@@ -221,7 +221,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
       if (await needsStopWeights()) {
         weightedStops = 0;
       } else {
-        const db = await getGtfsDb();
+        const db = await openGtfsDbHandle();
         const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
         weightedStops = row?.n ?? 0;
       }
