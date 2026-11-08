@@ -189,6 +189,47 @@ async function main() {
     check('środek wycinka w rozsądnym miejscu', mid[0] > 50.5 && mid[0] < 52.5, `${mid[0].toFixed(2)},${mid[1].toFixed(2)}`);
   }
 
+  // Noga pociągu regionalnego bez prefiksu pl: w tripId
+  const regConn = {
+    id: 'test-km',
+    fromTitle: 'A',
+    toTitle: 'B',
+    departInMin: 0,
+    departureSec: 0,
+    arrivalSec: 0,
+    departAt: '00:00',
+    arriveAt: '00:00',
+    durationMin: 0,
+    transfers: 0,
+    delayMin: 0,
+    live: false,
+    legs: [
+      {
+        id: 'leg-km',
+        mode: 'train' as const,
+        line: 'KM R1',
+        fromStop: 'Warszawa Śródmieście',
+        toStop: 'Grodzisk Mazowiecki',
+        fromLat: 52.2297,
+        fromLon: 21.0044,
+        toLat: 52.1065,
+        toLon: 20.6277,
+        departAt: '00:00',
+        arriveAt: '00:00',
+        stopsCount: 1,
+        live: false,
+        tripId: 'local-km-trip-1234',
+        intermediateStops: [],
+      },
+    ],
+  };
+  const regRoute = buildMapRoute(regConn);
+  const regByLeg = new Map<string, Array<[number, number]>>();
+  await resolveGeometry(regRoute, (legId, coords) => regByLeg.set(legId, coords));
+  const regShape = regByLeg.get('leg-km');
+  check('geometria pociągu regionalnego (bez pl:) dociągnięta', !!regShape && regShape.length > 10, regShape ? `${regShape.length} punktów` : 'brak');
+
+
   console.log(failures === 0 ? '\nPASS: geometria torów' : `\nFAIL: ${failures} asercji`);
   process.exit(failures === 0 ? 0 : 1);
 }
