@@ -58,7 +58,7 @@ function getTransitActionLabel(solutionText: string, s: ReturnType<typeof useStr
  * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
  * Bierzemy ze struktury AI disruption.all_lines, impacted_lines oraz item.lines.
  */
-export function getDisruptionLines(item: MpkNewsItem): string[] {
+function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
