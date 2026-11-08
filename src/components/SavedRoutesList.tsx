@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, Clock3, Footprints, MapPinned, Ticket, X } from './icons';
+import { ArrowRight, Clock3, Footprints, MapPinned, Pin, Ticket, X } from './icons';
 import { LineBadge } from './LineBadge';
 import { transfersLabel } from './ConnectionCard';
 import { scheme, shape, type } from '../theme/tokens';
@@ -15,6 +15,10 @@ export interface SavedRoutesListProps {
   ticketIds?: ReadonlySet<string>;
   onSelect: (route: SavedRoute) => void;
   onRemove: (route: SavedRoute) => void;
+  /** Otwiera pełnoekranowy podgląd biletu PDF do kontroli. */
+  onOpenTicket: (route: SavedRoute) => void;
+  /** Zatrzymuje śledzenie aktywnego kursu, trasa zostaje w historii. */
+  onUnpin: (route: SavedRoute) => void;
 }
 
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
@@ -57,6 +61,8 @@ export const SavedRoutesList = memo(function SavedRoutesList({
   ticketIds,
   onSelect,
   onRemove,
+  onOpenTicket,
+  onUnpin,
 }: SavedRoutesListProps) {
   const s = useStrings();
   const locale = getLocaleSync();
@@ -96,7 +102,7 @@ export const SavedRoutesList = memo(function SavedRoutesList({
             })}
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
           >
-            {/* Nagłówek: Skąd → Dokąd + usuwanie z historii */}
+            {/* Nagłówek: Skąd → Dokąd + akcje karty */}
             <View style={styles.headerRow}>
               <View style={styles.endpoints}>
                 <Text style={styles.endpointText} numberOfLines={1}>
@@ -107,21 +113,63 @@ export const SavedRoutesList = memo(function SavedRoutesList({
                   {conn.toTitle}
                 </Text>
               </View>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onRemove(route);
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={s.home.removeRouteA11y(conn.toTitle)}
-                style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.6 }]}
-              >
-                <X size={16} color={scheme.onSurfaceVariant} />
-              </Pressable>
+              <View style={styles.actions}>
+                {hasTicket && (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onOpenTicket(route);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.railTickets.showTicket}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.actionAccent,
+                      pressed && styles.actionPressed,
+                    ]}
+                  >
+                    <Ticket size={16} color={scheme.onPrimaryContainer} />
+                  </Pressable>
+                )}
+                {active ? (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onUnpin(route);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.routes.stopTrackingTripA11y}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.actionAccent,
+                      pressed && styles.actionPressed,
+                    ]}
+                  >
+                    <Pin size={16} color={scheme.onPrimaryContainer} />
+                  </Pressable>
+                ) : !hasTicket ? (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onRemove(route);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.home.removeRouteA11y(conn.toTitle)}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      pressed && styles.actionPressed,
+                    ]}
+                  >
+                    <X size={16} color={scheme.onSurfaceVariant} />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
 
-            {/* Linie + znaczniki (bilet, aktywna podróż) */}
+            {/* Linie (karta z biletem ma akcje biletu w prawym górnym rogu) */}
             <View style={styles.metaRow}>
               {walkOnly ? (
                 <View style={styles.walkRow}>
@@ -135,21 +183,6 @@ export const SavedRoutesList = memo(function SavedRoutesList({
                       <LineBadge mode={leg.mode} line={leg.line} />
                     </View>
                   ))}
-                </View>
-              )}
-              {hasTicket && (
-                <View
-                  style={styles.ticketBadge}
-                  accessibilityRole="image"
-                  accessibilityLabel={s.home.ticketAttachedA11y}
-                >
-                  <Ticket size={14} color={scheme.onPrimaryContainer} />
-                </View>
-              )}
-              {active && (
-                <View style={styles.activeChip}>
-                  <View style={styles.activeDot} />
-                  <Text style={styles.activeText}>{s.home.routeActive}</Text>
                 </View>
               )}
             </View>
@@ -231,13 +264,25 @@ const styles = StyleSheet.create({
   arrow: {
     flexShrink: 0,
   },
-  removeBtn: {
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  actionBtn: {
     width: 36,
     height: 36,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHighest,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionAccent: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  actionPressed: {
+    opacity: 0.6,
   },
   metaRow: {
     flexDirection: 'row',
@@ -263,34 +308,6 @@ const styles = StyleSheet.create({
   walkText: {
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
-  },
-  ticketBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: shape.small,
-    backgroundColor: scheme.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: scheme.primaryContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: scheme.primary,
-  },
-  activeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: scheme.onPrimaryContainer,
   },
   footerRow: {
     flexDirection: 'row',

@@ -30,7 +30,11 @@ import {
 } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
 import { useTrackedTrip, stopTracking } from '../src/services/notifications';
-import { getTicketConnectionIds } from '../src/services/ticketStorage';
+import {
+  getTicketConnectionIds,
+  getTicketForConnection,
+  type AttachedRailTicket,
+} from '../src/services/ticketStorage';
 import {
   boardingDepartureMs,
   refreshConnectionTimes,
@@ -87,6 +91,7 @@ import {
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { SavedRoutesList } from '../src/components/SavedRoutesList';
+import { TicketInspectionModal } from '../src/components/TicketInspectionModal';
 import type { SavedRoute } from '../src/types/models';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
@@ -385,6 +390,11 @@ export default function HomeScreen() {
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
   // Połączenia z dołączonym biletem: ikona biletu i wyższa pozycja w „Twoich trasach”.
   const [ticketIds, setTicketIds] = useState<Set<string>>(() => new Set());
+  // Bilet otwarty do kontroli z karty trasy (pełnoekranowy podgląd kodu).
+  const [inspection, setInspection] = useState<{
+    ticket: AttachedRailTicket;
+    connection: Connection;
+  } | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
 
   const refreshSavedRoutes = useCallback(() => {
@@ -460,6 +470,35 @@ export default function HomeScreen() {
       }
     },
     [trackedConnId],
+  );
+
+  // Odpięcie aktywnego kursu: zatrzymuje monitor i powiadomienia, trasa zostaje w historii.
+  const handleUnpinSavedRoute = useCallback(
+    (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (route.id !== trackedConnId) return;
+      void stopTracking().catch((err) => console.warn('Failed to stop tracking:', err));
+    },
+    [trackedConnId],
+  );
+
+  // Otwarcie biletu PDF z karty trasy: kod Aztec na pełnym ekranie do kontroli.
+  const handleOpenSavedTicket = useCallback(
+    async (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      try {
+        const ticket = await getTicketForConnection(route.id, route.connection);
+        if (!ticket) {
+          // Bilet mógł wygasnąć po retencji: odśwież ikony, zamiast pokazywać pusty podgląd.
+          refreshTicketIds();
+          return;
+        }
+        setInspection({ ticket, connection: route.connection });
+      } catch (err) {
+        console.warn('Failed to open saved ticket:', err);
+      }
+    },
+    [refreshTicketIds],
   );
 
   const handleSelectSavedRoute = useCallback(
@@ -1674,6 +1713,8 @@ export default function HomeScreen() {
                 ticketIds={ticketIds}
                 onSelect={handleSelectSavedRoute}
                 onRemove={handleRemoveSavedRoute}
+                onOpenTicket={handleOpenSavedTicket}
+                onUnpin={handleUnpinSavedRoute}
               />
             )}
           </ScrollView>
@@ -1806,6 +1847,15 @@ export default function HomeScreen() {
               dataStatus.state === 'importing'
             }
             switchingCityId={switchingCityId}
+          />
+        )}
+
+        {inspection && (
+          <TicketInspectionModal
+            visible
+            ticket={inspection.ticket}
+            connection={inspection.connection}
+            onClose={() => setInspection(null)}
           />
         )}
       </View>
