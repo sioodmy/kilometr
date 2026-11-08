@@ -43,15 +43,21 @@ export function stableConnectionId(connection: Connection): string {
 export function normalizeConnectionId(id: string): string {
   if (!id.startsWith('conn-')) return id;
   const rawPayload = id.slice(5);
+  if (rawPayload.startsWith('[')) {
+    return `conn-${encodeURIComponent(rawPayload)}`;
+  }
   try {
     let current = rawPayload;
     for (let i = 0; i < 3; i++) {
+      if (current.startsWith('[')) break;
       const next = decodeURIComponent(current);
       if (next === current) break;
       current = next;
     }
-    JSON.parse(current);
-    return `conn-${encodeURIComponent(current)}`;
+    if (current.startsWith('[')) {
+      return `conn-${encodeURIComponent(current)}`;
+    }
+    return id;
   } catch {
     return id;
   }
