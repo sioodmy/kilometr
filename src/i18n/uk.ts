@@ -168,7 +168,11 @@ export const uk: Strings = {
     historyEmptyTitle: 'Немає останніх місць',
     historyEmptyBody: 'Знайди сполучення, і воно з’явиться тут як швидка ціль.',
     savedRoutesEmptyTitle: 'Немає збережених маршрутів',
-    savedRoutesEmptyBody: 'Закріпи сполучення шпилькою, щоб мати його завжди під рукою.',
+    savedRoutesEmptyBody:
+      'Почни стежити за сполученням або додай залізничний квиток, і він з’явиться тут.',
+    routeActive: 'У дорозі',
+    ticketAttachedA11y: 'Залізничний квиток збережено',
+    removeRouteA11y: (title: string) => `Видалити сполучення до ${title} з твоїх маршрутів`,
     pinRouteA11y: (title: string) => `Закріпити сполучення до ${title} у твоїх маршрутах`,
     unpinRouteA11y: (title: string) => `Відкріпити сполучення до ${title} з твоїх маршрутів`,
     openConnA11y: (title: string, label: string) => `Відкрити сполучення до ${title}, ${label}`,

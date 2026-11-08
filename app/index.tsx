@@ -14,7 +14,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Bell, Download, History, MapPin, Pin, Settings2 } from '../src/components/icons';
+import { Bell, Download, History, MapPin, MapPinned, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
@@ -29,6 +29,8 @@ import {
   type LocationResult,
 } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { useTrackedTrip, stopTracking } from '../src/services/notifications';
+import { getTicketConnectionIds } from '../src/services/ticketStorage';
 import {
   boardingDepartureMs,
   refreshConnectionTimes,
@@ -381,6 +383,9 @@ export default function HomeScreen() {
 
   const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  // Połączenia z dołączonym biletem: ikona biletu i wyższa pozycja w „Twoich trasach”.
+  const [ticketIds, setTicketIds] = useState<Set<string>>(() => new Set());
+  const { trip: trackedTrip } = useTrackedTrip();
 
   const refreshSavedRoutes = useCallback(() => {
     RoutingService.getSavedRoutes()
@@ -390,16 +395,42 @@ export default function HomeScreen() {
       .catch(() => {});
   }, []);
 
+  const refreshTicketIds = useCallback(() => {
+    getTicketConnectionIds()
+      .then(setTicketIds)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     refreshSavedRoutes();
+    refreshTicketIds();
     return subscribeSavedRoutes(refreshSavedRoutes);
-  }, [refreshSavedRoutes, cityId]);
+  }, [refreshSavedRoutes, refreshTicketIds, cityId]);
 
   useFocusEffect(
     useCallback(() => {
       refreshSavedRoutes();
-    }, [refreshSavedRoutes]),
+      refreshTicketIds();
+    }, [refreshSavedRoutes, refreshTicketIds]),
   );
+
+  // Kolejność „Twoich tras”: aktywnie śledzona podróż → trasy z biletem → reszta
+  // historii. Śledzony kurs może nie być zapisany (start śledzenia bez pinezki),
+  // więc wpięcie go na listę syntetycznym wpisem gwarantuje mu pierwsze miejsce.
+  const orderedSavedRoutes = useMemo(() => {
+    const activeConn = trackedTrip?.connection;
+    const list = [...savedRoutes];
+    if (activeConn && !list.some((r) => r.id === activeConn.id)) {
+      list.push({
+        id: activeConn.id,
+        savedAt: trackedTrip?.startedAt ?? Date.now(),
+        connection: activeConn,
+      });
+    }
+    const rank = (r: SavedRoute) =>
+      activeConn && r.id === activeConn.id ? 0 : ticketIds.has(r.id) ? 1 : 2;
+    return list.sort((a, b) => rank(a) - rank(b) || b.savedAt - a.savedAt);
+  }, [savedRoutes, trackedTrip, ticketIds]);
 
   const handleTabSwitch = useCallback(
     (tab: 'recent' | 'saved') => {
@@ -410,78 +441,26 @@ export default function HomeScreen() {
     [homeTab],
   );
 
-  const isDestinationPinned = useCallback(
-    (d: SmartDestination) => {
-      const conn = firstConns[d.id];
-      return savedRoutes.some(
-        (r) =>
-          (conn && r.id === conn.id) ||
-          (r.connection.toTitle === d.title && r.connection.fromTitle === locTitle) ||
-          r.connection.toTitle === d.title,
-      );
-    },
-    [firstConns, savedRoutes, locTitle],
-  );
+  // Id śledzonego połączenia: wystarczy do warunku usuwania, bez przeładowywania
+  // przy każdym ticku monitora (cały trackedTrip zmienia referencję przy odświeżeniach).
+  const trackedConnId = trackedTrip?.connection.id ?? null;
 
-  const handleTogglePinDestination = useCallback(
-    async (d: SmartDestination) => {
+  const handleRemoveSavedRoute = useCallback(
+    async (route: SavedRoute) => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      const conn = firstConns[d.id];
-      const existing = savedRoutes.find(
-        (r) =>
-          (conn && r.id === conn.id) ||
-          (r.connection.toTitle === d.title && r.connection.fromTitle === locTitle) ||
-          r.connection.toTitle === d.title,
-      );
-      if (existing) {
-        try {
-          await RoutingService.deleteSavedRoute(existing.id);
-        } catch (err) {
-          console.warn("Failed to unpin route:", err);
+      try {
+        await RoutingService.deleteSavedRoute(route.id);
+        // Usuwanie aktywnie śledzonej karty zatrzymuje też monitor: bez tego
+        // wpis wracał na górę listy jako syntetyczna „aktywna podróż”.
+        if (route.id === trackedConnId) {
+          await stopTracking();
         }
-      } else {
-        try {
-          if (conn) {
-            await RoutingService.saveRoute(conn);
-          } else {
-            const s = getSettingsSync();
-            const conns = await RoutingService.getConnections({
-              fromTitle: locTitle,
-              fromLat: currentCoords.lat,
-              fromLon: currentCoords.lon,
-              toId: d.id,
-              toTitle: d.title,
-              toLat: d.lat,
-              toLon: d.lon,
-              maxTransfers: s.maxTransfers,
-              minTransferSec: s.minTransferSec,
-              trainsEnabled: s.trainsEnabled,
-              cableEnabled: s.cableEnabled,
-              allowedTransferModes: s.allowedModes,
-              trainMinTransferSec: s.trainMinTransferSec,
-              maxWalkM: s.maxWalkM,
-              walkSpeedMps: profileWalkSpeedMps(s.walkPace),
-            });
-            if (conns.length > 0) {
-              await RoutingService.saveRoute(conns[0]);
-            }
-          }
-        } catch (err) {
-          console.warn("Failed to pin route:", err);
-        }
+      } catch (err) {
+        console.warn('Failed to delete saved route:', err);
       }
     },
-    [firstConns, savedRoutes, locTitle, currentCoords],
+    [trackedConnId],
   );
-
-  const handleUnpinSavedRoute = useCallback(async (route: SavedRoute) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    try {
-      await RoutingService.deleteSavedRoute(route.id);
-    } catch (err) {
-      console.warn("Failed to delete saved route:", err);
-    }
-  }, []);
 
   const handleSelectSavedRoute = useCallback(
     (route: SavedRoute) => {
@@ -1590,7 +1569,7 @@ export default function HomeScreen() {
                 style={({ pressed }) => [
                   styles.tabBtn,
                   homeTab === 'recent' && styles.tabBtnActive,
-                  pressed && { opacity: 0.8 },
+                  pressed && styles.tabBtnPressed,
                 ]}
               >
                 <History
@@ -1618,10 +1597,10 @@ export default function HomeScreen() {
                 style={({ pressed }) => [
                   styles.tabBtn,
                   homeTab === 'saved' && styles.tabBtnActive,
-                  pressed && { opacity: 0.8 },
+                  pressed && styles.tabBtnPressed,
                 ]}
               >
-                <Pin
+                <MapPinned
                   size={16}
                   color={
                     homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
@@ -1636,7 +1615,7 @@ export default function HomeScreen() {
                 >
                   {s.home.tabSaved}
                 </Text>
-                {savedRoutes.length > 0 && (
+                {orderedSavedRoutes.length > 0 && (
                   <View
                     style={[
                       styles.tabBadge,
@@ -1653,7 +1632,7 @@ export default function HomeScreen() {
                           : styles.tabBadgeTextInactive,
                       ]}
                     >
-                      {savedRoutes.length}
+                      {orderedSavedRoutes.length}
                     </Text>
                   </View>
                 )}
@@ -1680,15 +1659,15 @@ export default function HomeScreen() {
                   onOpenConnection={goToConnection}
                   icons={smartIcons}
                   hideHeader={true}
-                  isPinned={isDestinationPinned}
-                  onTogglePin={handleTogglePinDestination}
                 />
               )
             ) : (
               <SavedRoutesList
-                routes={savedRoutes}
+                routes={orderedSavedRoutes}
+                activeId={trackedConnId}
+                ticketIds={ticketIds}
                 onSelect={handleSelectSavedRoute}
-                onUnpin={handleUnpinSavedRoute}
+                onRemove={handleRemoveSavedRoute}
               />
             )}
           </ScrollView>
@@ -1902,6 +1881,10 @@ const styles = StyleSheet.create({
   tabBtnActive: {
     backgroundColor: scheme.secondaryContainer,
   },
+  tabBtnPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
+  },
   tabLabel: {
     ...type.labelLarge,
     letterSpacing: 0.1,
@@ -1965,7 +1948,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     padding: 20,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.extraLarge,
   },
   emptyText: { flex: 1, gap: 6 },

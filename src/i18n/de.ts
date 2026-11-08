@@ -151,7 +151,11 @@ export const de: Strings = {
     historyEmptyTitle: 'Keine letzten Orte',
     historyEmptyBody: 'Suche eine Verbindung, sie erscheint hier als Schnellziel.',
     savedRoutesEmptyTitle: 'Keine gespeicherten Routen',
-    savedRoutesEmptyBody: 'Pinne eine Verbindung an, um sie immer griffbereit zu haben.',
+    savedRoutesEmptyBody:
+      'Verfolge eine Verbindung oder hänge ein Bahnticket an, dann erscheint sie hier.',
+    routeActive: 'Unterwegs',
+    ticketAttachedA11y: 'Bahnticket gespeichert',
+    removeRouteA11y: (title: string) => `Verbindung nach ${title} aus deinen Routen entfernen`,
     pinRouteA11y: (title: string) => `Verbindung nach ${title} zu deinen Routen anpinnen`,
     unpinRouteA11y: (title: string) => `Verbindung nach ${title} von deinen Routen lösen`,
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
