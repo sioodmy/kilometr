@@ -249,7 +249,7 @@ export function RouteTravelDeck({
     ? (trainSummary?.agency ? `${trainSummary.agency} ${resolvedTrainNum}` : `${resolvedTrainNum}`)
     : 'Bilet';
 
-  const ticketTitle = ticket ? trainLabel : 'Bilet';
+  const ticketTitle = ticket ? trainLabel : s.railTickets.attachedTitle;
 
   const seatParts: string[] = [];
   if (meta?.wagon) seatParts.push(`w. ${meta.wagon}`);
@@ -438,12 +438,13 @@ export function RouteTravelDeck({
                   pressed && styles.tilePressed,
                 ]}
                 accessibilityRole="button"
+                accessibilityLabel={s.railTickets.buyKoleo}
               >
                 <View style={styles.actionIconBoxPrimary}>
                   <TrainFront size={20} color={scheme.onPrimary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitlePrimary}>Kup w KOLEO</Text>
+                  <Text style={styles.actionTitlePrimary}>{s.railTickets.buyKoleo}</Text>
                   <Text style={styles.actionDescPrimary}>
                     Oficjalne taryfy PKP IC, KD, KŚ, Polregio
                   </Text>
@@ -460,6 +461,7 @@ export function RouteTravelDeck({
                   pressed && styles.tilePressed,
                 ]}
                 accessibilityRole="button"
+                accessibilityLabel={s.railTickets.attachPdf}
               >
                 <View style={styles.actionIconBoxSecondary}>
                   {importing ? (
@@ -470,7 +472,7 @@ export function RouteTravelDeck({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.actionTitleSecondary}>
-                    {importing ? 'Wczytywanie...' : 'Dołącz bilet z pliku PDF'}
+                    {importing ? s.railTickets.loading : s.railTickets.attachPdf}
                   </Text>
                   <Text style={styles.actionDescSecondary}>
                     Automatycznie wyciąga kod Aztec do kontroli
@@ -502,11 +504,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     minHeight: 52,
     ...elev.level1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
   },
   segment: {
     flex: 1,

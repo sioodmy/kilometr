@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveIconCircleActive: {
-    backgroundColor: 'rgba(92, 219, 190, 0.16)',
+    backgroundColor: scheme.primaryContainer,
   },
   liveCardTexts: {
     flex: 1,

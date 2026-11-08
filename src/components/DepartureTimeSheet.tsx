@@ -230,6 +230,7 @@ export function DepartureTimeSheet({
         Number(end.slice(0, 4)),
         Number(end.slice(4, 6)) - 1,
         Number(end.slice(6, 8)),
+        23, 59, 59, 999,
       );
       const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
       setMaxDayOffset(Math.max(1, Math.min(13, daysLeft)));

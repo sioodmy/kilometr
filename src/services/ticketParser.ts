@@ -203,8 +203,9 @@ export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[]
         }
       }
 
+      const isImageMask = /\/ImageMask\s+true/.test(dictHeader);
       const bpcMatch = dictHeader.match(/\/BitsPerComponent\s+([0-9]+)/);
-      const bpc = bpcMatch ? parseInt(bpcMatch[1], 10) : 8;
+      const bpc = bpcMatch ? parseInt(bpcMatch[1], 10) : (isImageMask ? 1 : 8);
       const isRgb = dictHeader.includes('/DeviceRGB');
       const decodeInvert = /\/Decode\s*\[\s*1\s+0\s*\]/.test(dictHeader);
 
@@ -669,10 +670,10 @@ function decodePdfString(str: string): string {
     .replace(/\\n/g, ' ')
     .replace(/\\r/g, ' ')
     .replace(/\\t/g, ' ')
-    .replace(/\\/g, ' ')
     .replace(/\\\(/g, '(')
     .replace(/\\\)/g, ')')
-    .replace(/\\\\/g, '\\');
+    .replace(/\\\\/g, '\\')
+    .replace(/\\/g, ' ');
 }
 
 /**

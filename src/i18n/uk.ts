@@ -22,6 +22,7 @@ function prepInCity(cityLoc: string): string {
 }
 
 function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 хв";
   const rounded = Math.round(mins);
   if (rounded >= 60) {
     const h = Math.floor(rounded / 60);
@@ -1564,6 +1565,7 @@ export const uk: Strings = {
     bus: 'Автобус',
   },
   railTickets: {
+    loading: 'Завантаження…',
     buyKoleo: 'Купити квиток у KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
     buyKoleoTransferSub: (from: string, to: string, transfers: number) =>

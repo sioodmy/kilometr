@@ -426,7 +426,7 @@ export async function fetchNationalRailUpdates(
     const disk = await getPersistedRailCache();
     const fallbackEntry =
       (cachedApi && cachedApi.url === requestUrl ? cachedApi.data : undefined) ??
-      disk?.apiResponses[requestUrl]?.data;
+      disk?.apiResponses?.[requestUrl]?.data;
     if (fallbackEntry) {
       data = fallbackEntry;
       isFromCache = true;

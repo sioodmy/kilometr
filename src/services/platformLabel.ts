@@ -11,8 +11,8 @@ export function formatPlatformLabel(
   stopName?: string | null,
   trackCode?: string | null,
 ): string | null {
-  let trimmed = (code || '').trim();
-  const trimmedTrack = (trackCode || '').trim();
+  let trimmed = String(code ?? '').trim();
+  const trimmedTrack = String(trackCode ?? '').trim();
   if (!trimmed && stopName) {
     const m = stopName.trim().match(/\s(\d{2})$/);
     if (m) {
@@ -23,7 +23,11 @@ export function formatPlatformLabel(
 
   if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
     if (trimmedTrack && !trimmed.toLowerCase().includes('tor')) {
-      return `${trimmed}, ${t.leg.platformTrack(trimmedTrack).toLowerCase()}`;
+      const trackPart = t.leg.platformTrack(trimmedTrack);
+      const formattedTrack = trackPart.startsWith('Gleis')
+        ? trackPart
+        : trackPart.charAt(0).toLowerCase() + trackPart.slice(1);
+      return `${trimmed}, ${formattedTrack}`;
     }
     return trimmed;
   }

@@ -20,6 +20,7 @@ function prepInCity(cityLoc: string): string {
 }
 
 function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 min";
   const rounded = Math.round(mins);
   if (rounded >= 60) {
     const h = Math.floor(rounded / 60);
@@ -1557,6 +1558,7 @@ export const pl = {
   // Widgety z ekranu głównego. Interpolacje dostają placeholder ('{n}', '{t}'),
   // bo minuty liczy widget natywnie przy każdym tyknięciu.
   railTickets: {
+    loading: 'Wczytywanie…',
     buyKoleo: 'Kup bilet w KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} do ${to}`,
     buyKoleoTransferSub: (from: string, to: string, transfers: number) =>

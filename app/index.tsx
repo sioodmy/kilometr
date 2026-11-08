@@ -31,6 +31,7 @@ import {
 import { liveTracker } from '../src/services/liveTracker';
 import { useTrackedTrip, stopTracking } from '../src/services/notifications';
 import {
+  deleteTicketForConnection,
   getTicketConnectionIds,
   getTicketForConnection,
   type AttachedRailTicket,
@@ -460,6 +461,8 @@ export default function HomeScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       try {
         await RoutingService.deleteSavedRoute(route.id);
+        void deleteTicketForConnection(route.id).catch(() => {});
+        refreshTicketIds();
         // Usuwanie aktywnie śledzonej karty zatrzymuje też monitor: bez tego
         // wpis wracał na górę listy jako syntetyczna „aktywna podróż”.
         if (route.id === trackedConnId) {
@@ -474,9 +477,14 @@ export default function HomeScreen() {
 
   // Odpięcie aktywnego kursu: zatrzymuje monitor i powiadomienia, trasa zostaje w historii.
   const handleUnpinSavedRoute = useCallback(
-    (route: SavedRoute) => {
+    async (route: SavedRoute) => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       if (route.id !== trackedConnId) return;
+      try {
+        await RoutingService.saveRoute(route.connection);
+      } catch (err) {
+        console.warn('Failed to ensure route saved before unpin:', err);
+      }
       void stopTracking().catch((err) => console.warn('Failed to stop tracking:', err));
     },
     [trackedConnId],

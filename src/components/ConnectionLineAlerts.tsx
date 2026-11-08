@@ -62,9 +62,9 @@ function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
-  const add = (raw?: string | null) => {
-    if (!raw) return;
-    const clean = raw.trim().toUpperCase();
+  const add = (raw?: string | number | null) => {
+    if (raw == null) return;
+    const clean = String(raw).trim().toUpperCase();
     if (!clean || seen.has(clean)) return;
     seen.add(clean);
     result.push(clean);
@@ -162,13 +162,13 @@ const AlertSubCard = memo(function AlertSubCard({
     if (!item.disruption?.impacted_lines) return [];
     const set = new Set<string>();
     for (const imp of item.disruption.impacted_lines) {
-      if ((!imp.line || lineSet.has(imp.line)) && imp.omitted_stops) {
+      if ((!imp.line || lineSet.has(imp.line)) && Array.isArray(imp.omitted_stops)) {
         for (const st of imp.omitted_stops) set.add(st);
       }
     }
     if (set.size === 0) {
       for (const imp of item.disruption.impacted_lines) {
-        if (imp.omitted_stops) {
+        if (Array.isArray(imp.omitted_stops)) {
           for (const st of imp.omitted_stops) set.add(st);
         }
       }
@@ -255,7 +255,7 @@ const AlertSubCard = memo(function AlertSubCard({
       </Text>
 
       {/* 4. Kontekst problemu (Smart AI Glance Problem) */}
-      {problem && problem.trim() !== headline.trim() ? (
+      {problem && (!headline || problem.trim() !== headline.trim()) ? (
         <Text style={styles.problemText}>{problem}</Text>
       ) : null}
 
@@ -412,7 +412,7 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
       </Text>
 
       {/* 4. Kontekst problemu */}
-      {problem && problem.trim() !== headline.trim() ? (
+      {problem && (!headline || problem.trim() !== headline.trim()) ? (
         <Text style={styles.problemText}>{problem}</Text>
       ) : null}
 

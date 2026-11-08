@@ -408,7 +408,8 @@ const TransitLegCard = memo(function TransitLegCard({
     }
     return getActiveCityIdSync();
   }, [leg.fromLat, leg.fromLon]);
-  const resolvedHint = useStopHint(legCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
+  const isTrain = leg.mode === 'train' || Boolean(leg.tripId?.startsWith('pl:'));
+  const resolvedHint = useStopHint(isTrain ? '' : legCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const stopHint = leg.stopHint ?? resolvedHint;
   const departurePlatform = useMemo(
     () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
@@ -618,7 +619,7 @@ const TransitLegCard = memo(function TransitLegCard({
           <View style={s.stopHintContainer}>
             <MapPin size={13} color={scheme.primary} style={s.stopHintIcon} />
             <Text style={s.cardStopHint}>
-              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && hintPlatform ? (
+              {!/^(słupek|peron|stanowisko|tor)\b/i.test(stopHint) && hintPlatform ? (
                 <Text style={s.hintPlatformBold}>{hintPlatform} • </Text>
               ) : null}
               {stopHint}
@@ -947,7 +948,7 @@ const s = StyleSheet.create({
   stopHintContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(92, 219, 190, 0.08)',
+    backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.small,
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -955,7 +956,7 @@ const s = StyleSheet.create({
     marginTop: 4,
     marginBottom: 3,
     borderWidth: 1,
-    borderColor: 'rgba(92, 219, 190, 0.18)',
+    borderColor: scheme.outlineVariant,
     alignSelf: 'flex-start',
   },
   stopHintIcon: {

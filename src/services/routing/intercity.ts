@@ -266,8 +266,21 @@ function cleanIntercityConnection(conn: Connection): Connection {
   if (legs.length === conn.legs.length) return conn;
   const first = legs[0];
   const last = legs[legs.length - 1];
-  const departureSec = first ? timeStringToSeconds(first.departAt) : conn.departureSec;
-  const arrivalSec = last ? timeStringToSeconds(last.arriveAt) : (conn.arrivalSec ?? 0);
+  let departureSec = conn.departureSec;
+  let arrivalSec = conn.arrivalSec ?? (conn.departureSec + conn.durationMin * 60);
+  if (first) {
+    const rawDep = timeStringToSeconds(first.departAt);
+    const dayOffset = Math.floor(departureSec / 86400) * 86400;
+    departureSec = dayOffset + rawDep;
+  }
+  if (last) {
+    const rawArr = timeStringToSeconds(last.arriveAt);
+    const dayOffset = Math.floor(departureSec / 86400) * 86400;
+    arrivalSec = dayOffset + rawArr;
+    if (arrivalSec < departureSec) {
+      arrivalSec += 86400;
+    }
+  }
   return {
     ...conn,
     legs,
@@ -298,14 +311,17 @@ function combineForward(
         leg.toStop = gateway.name;
         leg.toLat = gateway.lat;
         leg.toLon = gateway.lon;
+        break;
       }
-      break;
     }
   }
   legs.push(...rail.legs.map((l) => ({ ...l })));
 
   const departureSec = effectiveCity ? effectiveCity.departureSec : rail.departureSec;
-  const arrivalSec = rail.arrivalSec ?? rail.departureSec + rail.durationMin * 60;
+  let arrivalSec = rail.arrivalSec ?? (rail.departureSec + rail.durationMin * 60);
+  if (arrivalSec < departureSec) {
+    arrivalSec += 86400;
+  }
   const transfers = effectiveCity ? effectiveCity.transfers + 1 + rail.transfers : rail.transfers;
 
   return {
@@ -369,7 +385,10 @@ function combineReverse(rail: Connection, city: Connection, options: PlanOptions
   legs.push(...cityLegs);
 
   const departureSec = rail.departureSec;
-  const arrivalSec = city.arrivalSec ?? city.departureSec + city.durationMin * 60;
+  let arrivalSec = city.arrivalSec ?? (city.departureSec + city.durationMin * 60);
+  if (arrivalSec < departureSec) {
+    arrivalSec += 86400;
+  }
   const transfers = rail.transfers + 1 + city.transfers;
 
   return {
