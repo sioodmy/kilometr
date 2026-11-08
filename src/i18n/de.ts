@@ -155,6 +155,10 @@ export const de: Strings = {
       'Verfolge eine Verbindung oder hänge ein Bahnticket an, dann erscheint sie hier.',
     routeActive: 'Unterwegs',
     ticketAttachedA11y: 'Bahnticket gespeichert',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Angeheftete Fahrt nach ${title}${time ? `, ${time}` : ''}. Tippen zum Öffnen.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Zug nach ${title}, Abfahrt ${time}. Tippen zum Öffnen.`,
     removeRouteA11y: (title: string) => `Verbindung nach ${title} aus deinen Routen entfernen`,
     pinRouteA11y: (title: string) => `Verbindung nach ${title} zu deinen Routen anpinnen`,
     unpinRouteA11y: (title: string) => `Verbindung nach ${title} von deinen Routen lösen`,

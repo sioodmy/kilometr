@@ -16,7 +16,7 @@ import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Bell, Download, History, MapPin, MapPinned, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
-import { useStrings } from '../src/i18n';
+import { useStrings, type Strings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import {
@@ -39,6 +39,7 @@ import {
   boardingDepartureMs,
   refreshConnectionTimes,
 } from '../src/services/routing/connectionTimes';
+import { clockFromMs } from '../src/services/notifications/format';
 import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
@@ -80,6 +81,7 @@ import type {
 import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlacesRow';
 import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
+import type { DockChip } from '../src/components/HomeDockChips';
 import {
   LAST_TRIP_ARM_1,
   LAST_TRIP_ARM_2,
@@ -98,6 +100,17 @@ import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { CitySelectSheet } from '../src/components/CitySelectSheet';
 import type { CityId } from '../src/cities';
 import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
+
+/** Okno widoczności chipu biletu w docku: odjazd w ciągu 3 h. */
+const TICKET_CHIP_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+/** Etykieta czasu chipu: „za 12 min” do godziny, dalej zegar „14:02”. */
+function countdownLabel(deltaMs: number, s: Strings): string {
+  const min = Math.round(deltaMs / 60000);
+  if (min >= 60) return clockFromMs(Date.now() + deltaMs);
+  if (min <= 1) return s.common.departNow;
+  return s.common.departIn(min);
+}
 
 /** Kopia mapy bez klucza; zwraca tę samą referencję, gdy nic nie znika. */
 function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> {
@@ -395,7 +408,7 @@ export default function HomeScreen() {
     ticket: AttachedRailTicket;
     connection: Connection;
   } | null>(null);
-  const { trip: trackedTrip } = useTrackedTrip();
+  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
 
   const refreshSavedRoutes = useCallback(() => {
     RoutingService.getSavedRoutes()
@@ -508,6 +521,79 @@ export default function HomeScreen() {
     },
     [router],
   );
+
+  // Chipy nad search barem: przypięta podróż (śledzony kurs) + pociągi
+  // z biletem odjeżdżające w ciągu 3 h, najbliżej pierwszy. Kurs przypięty
+  // i z biletem to jeden pill: segment biletu doklejamy do chipu podróży.
+  // homeTick (30 s) odświeża odliczanie „za X min”.
+  const dockChips = useMemo<DockChip[]>(() => {
+    const now = Date.now();
+    // Odcinki pojazdowe do LineBadge'ów: pierwsze dwa, dalej chip robi się
+    // zbyt szeroki na szybki skrót.
+    const badgeLegs = (conn: Connection) =>
+      conn.legs.filter((l) => l.mode !== 'walk' && l.line).slice(0, 2);
+
+    let pinnedChip: DockChip | null = null;
+    if (trackedTrip) {
+      const depInSec = trackedProgress?.departInSec ?? null;
+      const time =
+        depInSec != null && depInSec > 0 ? countdownLabel(depInSec * 1000, s) : undefined;
+      pinnedChip = {
+        id: `pinned:${trackedTrip.connection.id}`,
+        badgeLegs: badgeLegs(trackedTrip.connection),
+        title: trackedTrip.toTitle,
+        timeLabel: time,
+        pinned: true,
+        a11yLabel: s.home.dockPinnedA11y(trackedTrip.toTitle, time),
+        onPress: () => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          router.push({ pathname: '/routes/[id]', params: { id: trackedTrip.connection.id } });
+        },
+      };
+    }
+    const tickets: { chip: DockChip; depMs: number }[] = [];
+    for (const route of savedRoutes) {
+      if (!ticketIds.has(route.id)) continue;
+      if (pinnedChip && route.id === trackedTrip?.connection.id) {
+        pinnedChip.ticket = {
+          a11y: s.railTickets.showTicket,
+          onOpen: () => void handleOpenSavedTicket(route),
+        };
+        continue;
+      }
+      const depMs = boardingDepartureMs(route.connection, new Date(now));
+      if (!Number.isFinite(depMs)) continue;
+      const delta = depMs - now;
+      if (delta < 0 || delta > TICKET_CHIP_WINDOW_MS) continue;
+      tickets.push({
+        depMs,
+        chip: {
+          id: `ticket:${route.id}`,
+          badgeLegs: badgeLegs(route.connection),
+          title: route.connection.toTitle,
+          timeLabel: countdownLabel(delta, s),
+          ticket: {
+            a11y: s.railTickets.showTicket,
+            onOpen: () => void handleOpenSavedTicket(route),
+          },
+          a11yLabel: s.home.dockTicketA11y(route.connection.toTitle, clockFromMs(depMs)),
+          onPress: () => handleSelectSavedRoute(route),
+        },
+      });
+    }
+    tickets.sort((a, b) => a.depMs - b.depMs);
+    return [...(pinnedChip ? [pinnedChip] : []), ...tickets.map((t) => t.chip)];
+  }, [
+    trackedTrip,
+    trackedProgress,
+    savedRoutes,
+    ticketIds,
+    homeTick,
+    s,
+    router,
+    handleOpenSavedTicket,
+    handleSelectSavedRoute,
+  ]);
 
   const refreshPlaces = () => {
     const requestedCity = getActiveCityIdSync();
@@ -1738,6 +1824,7 @@ export default function HomeScreen() {
             }}
             onResetStart={resetToGps}
             gpsUnsupported={gpsUnsupported}
+            chips={dockChips}
           />
         )}
 

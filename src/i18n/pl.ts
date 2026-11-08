@@ -165,6 +165,10 @@ export const pl = {
       'Śledź połączenie albo dołącz bilet kolejowy, a trasa zapisze się tutaj.',
     routeActive: 'W trasie',
     ticketAttachedA11y: 'Bilet kolejowy zapisany',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Przypięta podróż do ${title}${time ? `, ${time}` : ''}. Dotknij, aby otworzyć.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Pociąg do ${title}, odjazd ${time}. Dotknij, aby otworzyć.`,
     removeRouteA11y: (title: string) => `Usuń połączenie do ${title} z Twoich tras`,
     pinRouteA11y: (title: string) => `Przypnij połączenie do ${title} do Twoich tras`,
     unpinRouteA11y: (title: string) => `Odepnij połączenie do ${title} z Twoich tras`,

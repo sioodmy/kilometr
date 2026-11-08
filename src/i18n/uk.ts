@@ -172,6 +172,10 @@ export const uk: Strings = {
       'Почни стежити за сполученням або додай залізничний квиток, і він з’явиться тут.',
     routeActive: 'У дорозі',
     ticketAttachedA11y: 'Залізничний квиток збережено',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Закріплена поїздка до ${title}${time ? `, ${time}` : ''}. Торкніться, щоб відкрити.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Потяг до ${title}, відправлення ${time}. Торкніться, щоб відкрити.`,
     removeRouteA11y: (title: string) => `Видалити сполучення до ${title} з твоїх маршрутів`,
     pinRouteA11y: (title: string) => `Закріпити сполучення до ${title} у твоїх маршрутах`,
     unpinRouteA11y: (title: string) => `Відкріпити сполучення до ${title} з твоїх маршрутів`,
