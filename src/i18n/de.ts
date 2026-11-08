@@ -189,8 +189,6 @@ export const de: Strings = {
     unsupportedActionShort: 'Start wählen',
     unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
     unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
-    unsupportedNearestStation: 'Vom nächsten Bahnhof',
-    unsupportedNearestStationA11y: 'Züge vom nächsten Bahnhof zeigen',
     pickStart: 'Startpunkt wählen',
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>

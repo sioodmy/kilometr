@@ -199,8 +199,6 @@ export const pl = {
     unsupportedActionShort: 'Wybierz start',
     unsupportedSwitchCity: (city: string) => `Zmień na ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Zmień miasto na ${city}`,
-    unsupportedNearestStation: 'Z najbliższej stacji kolejowej',
-    unsupportedNearestStationA11y: 'Pokaż pociągi z najbliższej stacji kolejowej',
     pickStart: 'Wybierz punkt startowy',
     gpsBlockedTitle: 'Start z GPS niedostępny',
     gpsBlockedBody: (city: string, supported: string) =>
