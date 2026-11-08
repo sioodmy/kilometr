@@ -10,10 +10,11 @@ import {
   uint8ArrayToBase64,
   type ParsedTicketMetadata,
 } from './ticketParser';
-import type { Connection } from '../types/models';
-import { getTrainLegSummary, slugifyStation } from './ticketing';
+import type { Connection, Leg } from '../types/models';
+import { getTrainLegSummary, isStationMatch } from './ticketing';
 import { isTrainLeg } from './railIdentity';
-import { normalizeConnectionId, stableConnectionId } from './routing/connectionIdentity';
+import { normalizeConnectionId, stableConnectionId, scheduledLegDepart } from './routing/connectionIdentity';
+import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 
 export interface AttachedRailTicket {
   id: string;
@@ -32,6 +33,7 @@ export interface TicketIndexEntry {
   id: string;
   connectionId: string;
   normalizedConnectionId?: string;
+  stableConnectionId?: string;
   fileUri: string;
   fileName: string;
   fileSize: number;
@@ -146,7 +148,38 @@ function parseTrainTokens(trainStr?: string | null): string[] {
   return Array.from(tokens);
 }
 
-function ticketMatchesTrainConnection(
+function timeMatches(leg: Leg, ticketDepartTime?: string): boolean {
+  if (!ticketDepartTime) return false;
+  const target = ticketDepartTime.trim();
+  if (leg.departAt === target) return true;
+
+  if (leg.scheduledDepartureSec != null) {
+    const scheduled = secondsToTimeString(leg.scheduledDepartureSec);
+    if (scheduled === target) return true;
+  }
+
+  const sched = scheduledLegDepart(leg);
+  if (sched && sched === target) return true;
+
+  try {
+    const legSec = timeStringToSeconds(leg.departAt);
+    const targetSec = timeStringToSeconds(target);
+    const diffSec = legSec - targetSec;
+    // Pociąg ma opóźnienie (od 0 do 180 min, dopuszczamy też minimalne różnice rozkładowe do 2 min)
+    if (diffSec >= -120 && diffSec <= 180 * 60) {
+      if (leg.delaySec && Math.abs(diffSec - leg.delaySec) <= 180) {
+        return true;
+      }
+      if (diffSec >= 0 && diffSec <= 90 * 60) {
+        return true;
+      }
+    }
+  } catch {}
+
+  return false;
+}
+
+export function ticketMatchesTrainConnection(
   ticket: AttachedRailTicket,
   connection: Connection,
 ): boolean {
@@ -159,31 +192,63 @@ function ticketMatchesTrainConnection(
   }
 
   const ticketTrainTokens = parseTrainTokens(ticket.metadata.trainNumber);
+  const ticketDigits = ticket.metadata.trainNumber?.match(/\d{3,6}/g) ?? [];
 
   for (const leg of trainLegs) {
     const legTokens = [
       ...parseTrainTokens(leg.trainNumber),
       ...parseTrainTokens(leg.line),
+      ...parseTrainTokens(leg.railLine),
       ...parseTrainTokens(leg.trainName),
+      ...parseTrainTokens(leg.tripId),
+      ...parseTrainTokens(leg.direction),
     ];
 
-    if (ticketTrainTokens.length > 0 && legTokens.length > 0) {
-      const match = ticketTrainTokens.some((tToken) =>
-        legTokens.some((lToken) => {
-          if (tToken === lToken) return true;
-          if (tToken.length >= 3 && lToken.includes(tToken)) return true;
-          if (lToken.length >= 3 && tToken.includes(lToken)) return true;
-          return false;
-        }),
-      );
-      if (match) return true;
+    const legDigits = [
+      ...(leg.trainNumber?.match(/\d{3,6}/g) ?? []),
+      ...(leg.line?.match(/\d{3,6}/g) ?? []),
+      ...(leg.railLine?.match(/\d{3,6}/g) ?? []),
+      ...(leg.tripId?.match(/\d{3,6}/g) ?? []),
+      ...(leg.direction?.match(/\d{3,6}/g) ?? []),
+    ];
+
+    // 1. Dokładne dopasowanie numeru operacyjnego pociągu (ciągi 3-6 cyfr, np. 69123 / 65100)
+    const hasExactDigitMatch = ticketDigits.length > 0 && ticketDigits.some((td) => legDigits.includes(td));
+    if (hasExactDigitMatch) {
+      if (ticket.metadata.fromStation && !isStationMatch(ticket.metadata.fromStation, leg.fromStop)) {
+        // Stacja początkowa ewidentnie inna - pomiń ten leg
+      } else {
+        return true;
+      }
     }
 
+    // 2. Dopasowanie ogólnych tokenów (np. nazwa pociągu "HEWELIUSZ", pełny kod "KD 69123")
+    if (ticketTrainTokens.length > 0 && legTokens.length > 0) {
+      const match = ticketTrainTokens.some((tToken) => {
+        const isCarrierOnly = /^[A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón]{1,3}$/.test(tToken);
+        if (isCarrierOnly) return false;
+        return legTokens.some((lToken) => {
+          if (tToken === lToken) return true;
+          if (tToken.length >= 4 && lToken.includes(tToken)) return true;
+          if (lToken.length >= 4 && tToken.includes(lToken)) return true;
+          return false;
+        });
+      });
+      if (match) {
+        if (!ticket.metadata.fromStation || isStationMatch(ticket.metadata.fromStation, leg.fromStop)) {
+          return true;
+        }
+      }
+    }
+
+    // 3. Dopasowanie po stacjach i godzinie odjazdu (bardzo częste dla pociągów regionalnych D1/S1/KM/PR
+    // zanim zbiorkom / live feed zaktualizuje numer operacyjny)
     if (ticket.metadata.departTime && ticket.metadata.fromStation) {
-      const ticketSlug = slugifyStation(ticket.metadata.fromStation);
-      const legSlug = slugifyStation(leg.fromStop);
-      const timeMatches = leg.departAt === ticket.metadata.departTime;
-      if (ticketSlug === legSlug && timeMatches) {
+      const fromStationOk = isStationMatch(ticket.metadata.fromStation, leg.fromStop);
+      const toStationOk =
+        !ticket.metadata.toStation || isStationMatch(ticket.metadata.toStation, leg.toStop);
+      const timeOk = timeMatches(leg, ticket.metadata.departTime);
+      if (fromStationOk && toStationOk && timeOk) {
         return true;
       }
     }
@@ -247,7 +312,12 @@ export async function getTicketForConnection(
       entry.connectionId === connectionId ||
       entry.connectionId === normalizedId ||
       entry.normalizedConnectionId === normalizedId ||
-      Boolean(stableId && (entry.connectionId === stableId || entry.normalizedConnectionId === stableId));
+      Boolean(
+        stableId &&
+          (entry.connectionId === stableId ||
+            entry.normalizedConnectionId === stableId ||
+            entry.stableConnectionId === stableId),
+      );
 
     if (isDirectMatch) {
       const candidateRaw =
@@ -535,6 +605,10 @@ export async function importTicketPdf(
   if (normalizedId !== connectionId) {
     await kvSet(`ticket:${normalizedId}`, serialized);
   }
+  const stableId = connection ? stableConnectionId(connection) : null;
+  if (stableId && stableId !== connectionId && stableId !== normalizedId) {
+    await kvSet(`ticket:${stableId}`, serialized);
+  }
   await kvSet(`ticket_by_id:${ticketId}`, serialized);
 
   // Zapis do indeksu
@@ -544,12 +618,14 @@ export async function importTicketPdf(
       e.connectionId !== connectionId &&
       e.connectionId !== normalizedId &&
       e.normalizedConnectionId !== normalizedId &&
+      (!stableId || (e.connectionId !== stableId && e.stableConnectionId !== stableId)) &&
       e.id !== ticketId,
   );
   updated.push({
     id: ticketId,
     connectionId,
     normalizedConnectionId: normalizedId,
+    stableConnectionId: stableId ?? undefined,
     fileUri: targetUri,
     fileName: ticket.fileName,
     fileSize: ticket.fileSize,

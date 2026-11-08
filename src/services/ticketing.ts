@@ -2,12 +2,30 @@ import { Linking } from 'react-native';
 import type { Connection, Leg } from '../types/models';
 import { isTrainLeg } from './railIdentity';
 
+function expandPolishStationAbbreviations(str: string): string {
+  return str
+    .replace(/(^|\s)gł\.?(?=\s|$|,)/gi, '$1 glowny')
+    .replace(/(^|\s)gl\.?(?=\s|$|,)/gi, '$1 glowny')
+    .replace(/(^|\s)centr\.?(?=\s|$|,)/gi, '$1 centralna')
+    .replace(/(^|\s)ctr\.?(?=\s|$|,)/gi, '$1 centralna')
+    .replace(/(^|\s)zach\.?(?=\s|$|,)/gi, '$1 zachodnia')
+    .replace(/(^|\s)wsch\.?(?=\s|$|,)/gi, '$1 wschodnia')
+    .replace(/(^|\s)płd\.?(?=\s|$|,)/gi, '$1 poludniowa')
+    .replace(/(^|\s)pld\.?(?=\s|$|,)/gi, '$1 poludniowa')
+    .replace(/(^|\s)płn\.?(?=\s|$|,)/gi, '$1 polnocna')
+    .replace(/(^|\s)pln\.?(?=\s|$|,)/gi, '$1 polnocna')
+    .replace(/(^|\s)m\.(?=\s|$|,)/gi, '$1 miasto');
+}
+
 /**
- * Zamienia nazwę stacji na format przyjazny dla wyszukiwarki KOLEO.
- * Usuwa perony, dopiski w nawiasach, polskie znaki diakrytyczne (w tym ł -> l), znaki specjalne i łączy słowa myślnikiem.
+ * Zamienia nazwę stacji na format przyjazny dla wyszukiwarki KOLEO i dopasowywania biletów.
+ * Rozwija powszechne skróty kolejowe (Gł. -> Główny, Centr. -> Centralna, Zach. -> Zachodnia),
+ * usuwa perony, dopiski w nawiasach, polskie znaki diakrytyczne (w tym ł -> l), znaki specjalne i łączy słowa myślnikiem.
  */
 export function slugifyStation(name: string): string {
-  return name
+  if (!name) return '';
+  const expanded = expandPolishStationAbbreviations(name);
+  return expanded
     .toLowerCase()
     .replace(/\s*\([^)]*\)/g, '')
     .replace(/,.*$/, '')
@@ -16,6 +34,30 @@ export function slugifyStation(name: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Porównuje nazwy stacji kolejowych pod kątem dopasowania biletu do trasy,
+ * tolerując skróty dworcowe oraz warianty rodzajowe (np. Główny vs Główna).
+ */
+export function isStationMatch(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const slugA = slugifyStation(a);
+  const slugB = slugifyStation(b);
+  if (!slugA || !slugB) return false;
+  if (slugA === slugB) return true;
+
+  // Tolerancja odmiany rodzajowej (główny vs główna)
+  const normA = slugA.replace(/glowna$/, 'glowny');
+  const normB = slugB.replace(/glowna$/, 'glowny');
+  if (normA === normB) return true;
+
+  // Prefix check dla stacji jedno- lub wieloczłonowych (np. "Legnica" i "Legnica Dworzec")
+  const minLen = Math.min(normA.length, normB.length);
+  if (minLen >= 5 && (normA.startsWith(normB) || normB.startsWith(normA))) {
+    return true;
+  }
+  return false;
 }
 
 export interface TrainLegSummary {
@@ -101,16 +143,13 @@ export function buildKoleoUrl(connection: Connection): string | null {
  */
 export async function openKoleoRoute(connection: Connection): Promise<boolean> {
   const url = buildKoleoUrl(connection);
-  if (!url) {
-    console.warn('[Ticketing] Could not build KOLEO URL for connection:', connection.id);
-    return false;
-  }
+  if (!url) return false;
 
   try {
     await Linking.openURL(url);
     return true;
   } catch (err) {
-    console.warn('[Ticketing] Failed to open KOLEO URL:', err);
+    console.warn('[Ticketing] Failed to open KOLEO url:', err);
     return false;
   }
 }
