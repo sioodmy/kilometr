@@ -34,7 +34,6 @@ import {
   LOCATION_REFINE_DELTA_M,
   RoutingService,
   SearchService,
-  subscribeSavedRoutes,
   distanceMeters,
   findAnchorForLocation,
   recordTripSearch,
@@ -167,11 +166,7 @@ export default function RoutesScreen() {
       setGpsOrigin(params.fromGps === '1');
       setActiveAnchor(null);
     }
-    if (
-      params.toTitle === undefined ||
-      params.toLat === undefined ||
-      params.toLon === undefined
-    ) {
+    if (params.toTitle === undefined || params.toLat === undefined || params.toLon === undefined) {
       return;
     }
     const nextId = String(params.toId ?? '');
@@ -338,39 +333,6 @@ export default function RoutesScreen() {
       : 'all',
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [savedRouteIds, setSavedRouteIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      RoutingService.getSavedRoutes()
-        .then((routes) => {
-          if (!cancelled) setSavedRouteIds(new Set(routes.map((r) => r.id)));
-        })
-        .catch(() => {});
-    };
-    load();
-    const unsub = subscribeSavedRoutes(load);
-    return () => {
-      cancelled = true;
-      unsub();
-    };
-  }, []);
-
-  const handleTogglePin = useCallback(async (conn: Connection) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const isSaved = savedRouteIds.has(conn.id);
-    try {
-      if (isSaved) {
-        await RoutingService.deleteSavedRoute(conn.id);
-      } else {
-        await RoutingService.saveRoute(conn);
-      }
-    } catch (err) {
-      console.warn("Failed to toggle pin on route:", err);
-    }
-  }, [savedRouteIds]);
-
   const availableModes = useMemo(() => {
     const set = new Set<LegMode>();
     for (const item of items) {
@@ -1003,8 +965,7 @@ export default function RoutesScreen() {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
-  const hasActiveFilters =
-    modeFilter !== 'all' || transfersFilter !== 'all' || liveOnly;
+  const hasActiveFilters = modeFilter !== 'all' || transfersFilter !== 'all' || liveOnly;
   const isCustomTime = targetTimeSec !== undefined || arrivalMode;
 
   const timeDisplayLabel = useMemo(() => {
@@ -1100,13 +1061,11 @@ export default function RoutesScreen() {
             onPress={openConnection}
             peek={peek}
             tick={nowTick}
-            isPinned={savedRouteIds.has(item.id)}
-            onTogglePin={handleTogglePin}
           />
         </Animated.View>
       );
     },
-    [openConnection, nowTick, peek, reduceMotion, savedRouteIds, handleTogglePin],
+    [openConnection, nowTick, peek, reduceMotion],
   );
 
   const headerStyle = styles.routeHeader;
@@ -1359,134 +1318,134 @@ export default function RoutesScreen() {
         </ScrollView>
       ) : (
         <FlatList
-            ref={listRef}
-            accessibilityState={{ busy: loading }}
-            pointerEvents={loading ? 'none' : 'auto'}
-            refreshControl={
-              arrivalMode || noMoreEarlier || offline ? undefined : (
-                <RefreshControl
-                  refreshing={loadingEarlier}
-                  onRefresh={handlePullEarlier}
-                  enabled={!loading && !loadingMore && !noMoreEarlier && !offline}
-                  title={s.routes.earlierAction}
-                  titleColor={scheme.onSurfaceVariant}
-                  tintColor={scheme.primary}
-                  colors={[scheme.primary]}
-                  progressBackgroundColor={scheme.surfaceContainerHigh}
-                />
-              )
-            }
-            data={displayed}
-            maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
-            alwaysBounceVertical={!arrivalMode}
-            initialNumToRender={8}
-            maxToRenderPerBatch={8}
-            // wymusza przeliczenie etykiet „za X min” bez refetchu
-            extraData={nowTick}
-            keyExtractor={connectionKey}
-            contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="never"
-            // Na Androidzie RN domyślnie odpija widoki spoza kadru
-            // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
-            // nagłówkiem powoduje to miganie pustych miejsc w trakcie
-            // przeciągania palcem, więc trzymamy komórki podpięte.
-            removeClippedSubviews={false}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.5}
+          ref={listRef}
+          accessibilityState={{ busy: loading }}
+          pointerEvents={loading ? 'none' : 'auto'}
+          refreshControl={
+            arrivalMode || noMoreEarlier || offline ? undefined : (
+              <RefreshControl
+                refreshing={loadingEarlier}
+                onRefresh={handlePullEarlier}
+                enabled={!loading && !loadingMore && !noMoreEarlier && !offline}
+                title={s.routes.earlierAction}
+                titleColor={scheme.onSurfaceVariant}
+                tintColor={scheme.primary}
+                colors={[scheme.primary]}
+                progressBackgroundColor={scheme.surfaceContainerHigh}
+              />
+            )
+          }
+          data={displayed}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
+          alwaysBounceVertical={!arrivalMode}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          // wymusza przeliczenie etykiet „za X min” bez refetchu
+          extraData={nowTick}
+          keyExtractor={connectionKey}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          // Na Androidzie RN domyślnie odpija widoki spoza kadru
+          // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
+          // nagłówkiem powoduje to miganie pustych miejsc w trakcie
+          // przeciągania palcem, więc trzymamy komórki podpięte.
+          removeClippedSubviews={false}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
 
-            renderItem={renderConnection}
-            ListHeaderComponent={
-              <>
-                {(offline || liveStale) && (
-                  <View style={styles.countRow}>
-                    {offline && (
-                      <Pressable
-                        onPress={() => quietRefresh()}
-                        style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
-                        hitSlop={6}
-                        accessibilityRole="button"
-                        accessibilityLabel={s.routes.offlineTapA11y}
-                      >
-                        <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                        <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
-                      </Pressable>
-                    )}
-                    {liveStale && !offline && (
-                      <View style={styles.offlineChip}>
-                        <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                        <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-                {!arrivalMode && !offline && (
-                  <Pressable
-                    onPress={handlePullEarlier}
-                    onFocus={() => setEarlierFocused(true)}
-                    onBlur={() => setEarlierFocused(false)}
-                    disabled={earlierDisabled}
-                    accessibilityRole="button"
-                    accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
-                    style={({ pressed }) => [
-                      styles.earlierButton,
-                      earlierFocused && styles.earlierFocused,
-                      pressed && { opacity: 0.75 },
-                    ]}
-                  >
-                    {loadingEarlier ? (
-                      <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
-                    ) : !noMoreEarlier ? (
-                      <ChevronUp size={18} color={scheme.onSurfaceVariant} />
-                    ) : null}
-                    <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                      {loadingEarlier
-                        ? s.routes.earlierLoading
-                        : noMoreEarlier
-                          ? s.routes.earlierEmpty
-                          : earlierFailed
-                            ? s.routes.earlierRetry
-                            : s.routes.earlierAction}
-                    </Text>
-                  </Pressable>
-                )}
-              </>
-            }
-            // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
-            // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
-            // widać, to spinner, a po błędzie: nic, czyli lista po cichu
-            // przestawała się dociągać.
-            // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć:
-            // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
-            ListFooterComponent={
-              loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
-                <View style={styles.footer}>
-                  {loadingMore ? (
-                    <ActivityIndicator size="small" color={scheme.primary} />
-                  ) : loadMoreFailed ? (
-                    <>
-                      <Text style={styles.footerText}>{s.routes.moreFail}</Text>
-                      <Pressable
-                        onPress={() => void handleLoadMore()}
-                        style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel={s.routes.moreRetryA11y}
-                      >
-                        <Text style={styles.retryText}>{s.common.retry}</Text>
-                      </Pressable>
-                    </>
-                  ) : (
-                    <Text style={styles.footerText}>
-                      {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
-                    </Text>
+          renderItem={renderConnection}
+          ListHeaderComponent={
+            <>
+              {(offline || liveStale) && (
+                <View style={styles.countRow}>
+                  {offline && (
+                    <Pressable
+                      onPress={() => quietRefresh()}
+                      style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.offlineTapA11y}
+                    >
+                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
+                    </Pressable>
+                  )}
+                  {liveStale && !offline && (
+                    <View style={styles.offlineChip}>
+                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
+                    </View>
                   )}
                 </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              intercityQuery && railDbReady === false ? (
-                <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
-              ) : (
+              )}
+              {!arrivalMode && !offline && (
+                <Pressable
+                  onPress={handlePullEarlier}
+                  onFocus={() => setEarlierFocused(true)}
+                  onBlur={() => setEarlierFocused(false)}
+                  disabled={earlierDisabled}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+                  style={({ pressed }) => [
+                    styles.earlierButton,
+                    earlierFocused && styles.earlierFocused,
+                    pressed && { opacity: 0.75 },
+                  ]}
+                >
+                  {loadingEarlier ? (
+                    <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+                  ) : !noMoreEarlier ? (
+                    <ChevronUp size={18} color={scheme.onSurfaceVariant} />
+                  ) : null}
+                  <Text style={styles.earlierText} accessibilityLiveRegion="polite">
+                    {loadingEarlier
+                      ? s.routes.earlierLoading
+                      : noMoreEarlier
+                        ? s.routes.earlierEmpty
+                        : earlierFailed
+                          ? s.routes.earlierRetry
+                          : s.routes.earlierAction}
+                  </Text>
+                </Pressable>
+              )}
+            </>
+          }
+          // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
+          // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
+          // widać, to spinner, a po błędzie: nic, czyli lista po cichu
+          // przestawała się dociągać.
+          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć:
+          // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
+          ListFooterComponent={
+            loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
+              <View style={styles.footer}>
+                {loadingMore ? (
+                  <ActivityIndicator size="small" color={scheme.primary} />
+                ) : loadMoreFailed ? (
+                  <>
+                    <Text style={styles.footerText}>{s.routes.moreFail}</Text>
+                    <Pressable
+                      onPress={() => void handleLoadMore()}
+                      style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.moreRetryA11y}
+                    >
+                      <Text style={styles.retryText}>{s.common.retry}</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Text style={styles.footerText}>
+                    {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
+                  </Text>
+                )}
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            intercityQuery && railDbReady === false ? (
+              <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
+            ) : (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyTitle}>
                   {liveOnly
@@ -1501,14 +1460,14 @@ export default function RoutesScreen() {
                   {intercityQuery && !hasActiveFilters
                     ? s.intercity.noTrainsHint
                     : transfersFilter !== 'all' && modeFilter !== 'all'
-                    ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
-                    : transfersFilter !== 'all'
-                      ? s.routes.emptyDirect
-                      : modeFilter !== 'all'
-                        ? s.routes.emptyMode(modeGenitive(modeFilter))
-                        : arrivalMode
-                          ? s.routes.emptyArrival
-                          : s.routes.emptyPlain}
+                      ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
+                      : transfersFilter !== 'all'
+                        ? s.routes.emptyDirect
+                        : modeFilter !== 'all'
+                          ? s.routes.emptyMode(modeGenitive(modeFilter))
+                          : arrivalMode
+                            ? s.routes.emptyArrival
+                            : s.routes.emptyPlain}
                 </Text>
                 {transfersFilter !== 'all' && (
                   <Pressable
@@ -1541,9 +1500,9 @@ export default function RoutesScreen() {
                   </Pressable>
                 )}
               </View>
-              )
-            }
-          />
+            )
+          }
+        />
       )}
 
       {/* Bottom sheet filtrów połączeń */}
