@@ -355,7 +355,7 @@ export function RouteTravelDeck({
               ) : !transferActive ? (
                 <ShieldOff size={16} color={scheme.onSurfaceVariant} />
               ) : isWarning ? (
-                <ShieldAlert size={16} color={scheme.onError} />
+                <ShieldAlert size={16} color={scheme.onWarningContainer} />
               ) : (
                 <ShieldCheck size={16} color={scheme.onPrimaryContainer} />
               )}
@@ -520,7 +520,7 @@ const styles = StyleSheet.create({
   ticketSegment: {},
   transferSegment: {},
   transferSegmentWarning: {
-    backgroundColor: scheme.errorContainer,
+    backgroundColor: scheme.warningContainer,
     borderRadius: shape.full,
   },
   divider: {
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.secondaryContainer,
   },
   transferBadgeWarning: {
-    backgroundColor: scheme.onErrorContainer,
+    backgroundColor: scheme.onWarningContainer + '26',
   },
   segmentTextCol: {
     flex: 1,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
   },
   segmentTitleWarning: {
-    color: scheme.onErrorContainer,
+    color: scheme.onWarningContainer,
   },
   segmentSubtitle: {
     fontSize: 11,
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_600SemiBold',
   },
   segmentSubtitleWarning: {
-    color: scheme.onErrorContainer,
+    color: scheme.onWarningContainer,
     fontFamily: 'Manrope_700Bold',
   },
   modalOverlay: {
