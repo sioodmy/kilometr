@@ -58,7 +58,6 @@ export const de: Strings = {
     stayOn: (line: string) => `Bleib in ${line}`,
     changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
     noAlternative:
-
       'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
     conductorTitle: 'Zug verpasst',
     conductorBody:
@@ -598,7 +597,8 @@ export const de: Strings = {
       `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch aus den offenen Daten der Stadt.`,
     downloadFailFallback: 'Versuch es gleich erneut.',
     railTitle: 'Nationales Bahnfahrplan',
-    railHint: 'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
+    railHint:
+      'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
     railReady: (date: string) => `Heruntergeladen (gültig bis ${date})`,
     railEmpty: 'Nicht heruntergeladen',
     railDownload: 'Herunterladen',
@@ -1203,7 +1203,7 @@ export const de: Strings = {
     arrivalShort: (time: string) => `bis ${time}`,
   },
   routesFilters: {
-    title: "Filter",
+    title: 'Filter',
     filterButton: 'Filter',
     filterA11y: 'Routenfilter',
     vehiclesSection: 'Verkehrsmittel',
@@ -1284,6 +1284,8 @@ export const de: Strings = {
     stationsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'Bahnhof' : 'Bahnhöfe'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
     platformPeron: (code: string) => `Bahnsteig ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Bahnsteig ${code}, Gleis ${track}`,
+    platformTrack: (track: string) => `Gleis ${track}`,
     platformPole: (code: string) => `Mast ${code}`,
     platformBay: (code: string) => `Stand ${code}`,
     platformPst: (code: string) => `PST-Mast ${code}`,
@@ -1412,6 +1414,8 @@ export const de: Strings = {
     directionTo: (dir: string) => `Richtung ${dir}`,
     platform: (num: string) => `Gleis ${num}`,
     platformPeron: (num: string) => `Bahnsteig ${num}`,
+    platformPeronTrack: (num: string, track: string) => `Bahnsteig ${num}, Gleis ${track}`,
+    platformTrack: (track: string) => `Gleis ${track}`,
     walkApproach: (min: number) => `~${min} Min. zu Fuß`,
     rideLength: (min: number) => `${min} Min. Fahrt`,
     departAt: (at: string) => `ab ${at}`,

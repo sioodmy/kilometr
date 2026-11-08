@@ -106,8 +106,7 @@ export function useRailLiveConnections(
 
   // Poza kolejami nie ruszamy obiektów: tick live nie może tworzyć nowej listy.
   const enriched = useMemo(() => {
-    if (railData.size === 0 && !national && nationalUpdates.size === 0)
-      return connections;
+    if (railData.size === 0 && !national && nationalUpdates.size === 0) return connections;
     let touched = false;
     const next = connections.map((connection) => {
       let legsChanged = false;
@@ -117,13 +116,15 @@ export function useRailLiveConnections(
         const update = leg.tripId ? nationalUpdates.get(leg.tripId) : undefined;
         if (!rail && !pos && !update) return leg;
         const platformCode = update?.platform ?? rail?.platform ?? leg.platformCode;
+        const trackCode = update?.track ?? leg.trackCode;
         if (
           leg.railAgency === (update?.agency ?? rail?.agency ?? leg.railAgency) &&
           leg.railLine === (rail?.line ?? leg.railLine) &&
           leg.railColor === (rail?.color ?? leg.railColor) &&
           leg.trainNumber === (update?.numbers?.[0] ?? rail?.trainNumber ?? leg.trainNumber) &&
           leg.trainName === (rail?.trainName ?? leg.trainName) &&
-          leg.platformCode === platformCode
+          leg.platformCode === platformCode &&
+          leg.trackCode === trackCode
         )
           return leg;
         legsChanged = true;
@@ -135,6 +136,7 @@ export function useRailLiveConnections(
           trainNumber: update?.numbers?.[0] ?? rail?.trainNumber ?? leg.trainNumber,
           trainName: rail?.trainName ?? leg.trainName,
           platformCode,
+          trackCode,
         };
       });
       if (!legsChanged) return connection;

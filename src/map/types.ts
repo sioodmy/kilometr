@@ -37,6 +37,7 @@ export interface MapLeg {
   live: boolean;
   tripId?: string;
   platformCode?: string;
+  trackCode?: string;
   stops: MapStop[];
   /**
    * true = noga rysowana po prostych między przystankami, dopóki nie wróci
@@ -75,7 +76,14 @@ export interface MapVehicle extends LatLon {
 export type MapOutMessage =
   | { t: 'ready' }
   | { t: 'error'; message: string }
-  | { t: 'stopTap'; stopId: string; legId: string; name: string; role: MapStopRole; arriveSec?: number }
+  | {
+      t: 'stopTap';
+      stopId: string;
+      legId: string;
+      name: string;
+      role: MapStopRole;
+      arriveSec?: number;
+    }
   | { t: 'legTap'; legId: string }
   | { t: 'tiles'; ok: boolean }
   | { t: 'open'; url: string };

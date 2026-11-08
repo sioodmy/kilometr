@@ -75,7 +75,6 @@ export const uk: Strings = {
     stayOn: (line: string) => `Залишайтеся в ${line}`,
     changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
     noAlternative:
-
       'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
     conductorTitle: 'Запізнення на потяг',
     conductorBody:
@@ -617,7 +616,8 @@ export const uk: Strings = {
       `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
     downloadFailFallback: 'Спробуй за мить.',
     railTitle: 'Залізничний розклад (Польща)',
-    railHint: 'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
+    railHint:
+      'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
     railReady: (date: string) => `Завантажено (дійсний до ${date})`,
     railEmpty: 'Не завантажено',
     railDownload: 'Завантажити',
@@ -1242,7 +1242,7 @@ export const uk: Strings = {
     arrivalShort: (time: string) => `до ${time}`,
   },
   routesFilters: {
-    title: "Фільтри",
+    title: 'Фільтри',
     filterButton: 'Фільтри',
     filterA11y: 'Фільтри маршрутів',
     vehiclesSection: 'Транспорт',
@@ -1328,6 +1328,8 @@ export const uk: Strings = {
       return `${stations} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     platformPeron: (code: string) => `Платформа ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Платформа ${code}, колія ${track}`,
+    platformTrack: (track: string) => `Колія ${track}`,
     platformPole: (code: string) => `Стовп ${code}`,
     platformBay: (code: string) => `Місце ${code}`,
     platformPst: (code: string) => `PST-стовп ${code}`,
@@ -1388,7 +1390,8 @@ export const uk: Strings = {
     ready: (date: string) => `Залізничний розклад готовий (дійсний до ${date})`,
     noTrainsTitle: 'Немає потягів',
     noTrainsHint: 'Перевірте дату й час або виберіть іншу станцію призначення.',
-    nearestStation: (name: string, dist: string) => `Найближча залізнична станція: ${name} (${dist})`,
+    nearestStation: (name: string, dist: string) =>
+      `Найближча залізнична станція: ${name} (${dist})`,
     startAtStation: 'Показати потяги з цієї станції',
   },
 
@@ -1456,6 +1459,8 @@ export const uk: Strings = {
     directionTo: (dir: string) => `У напрямку ${dir}`,
     platform: (num: string) => `колія ${num}`,
     platformPeron: (num: string) => `платформа ${num}`,
+    platformPeronTrack: (num: string, track: string) => `платформа ${num}, колія ${track}`,
+    platformTrack: (track: string) => `колія ${track}`,
     walkApproach: (min: number) => `~${min} хв пішки`,
     rideLength: (min: number) => `їзда ${min} хв`,
     departAt: (at: string) => `відправлення о ${at}`,

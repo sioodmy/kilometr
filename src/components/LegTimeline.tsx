@@ -10,11 +10,7 @@ import {
   TrainFront,
   TramFront,
 } from './icons';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
@@ -67,67 +63,8 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-// ─── Etykieta odjazdu: peron / słupek / stanowisko w języku użytkownika ────
-function formatPlatformLabel(
-  t: Strings,
-  code?: string | null,
-  mode?: Leg['mode'],
-  stopName?: string | null,
-): string | null {
-  let trimmed = (code || '').trim();
-  if (!trimmed && stopName) {
-    const m = stopName.trim().match(/\s(\d{2})$/);
-    if (m) {
-      trimmed = m[1];
-    }
-  }
-  if (!trimmed) return null;
-
-  if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  // Węzły GZM: np. 2469011-00103 -> Stanowisko 3
-  const gzmMatch = trimmed.match(/-(\d{3})(\d{2})([a-z]?)$/i);
-  if (gzmMatch) {
-    return t.leg.platformBay(`${parseInt(gzmMatch[2], 10)}`);
-  }
-
-  // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
-  const krkMatch = trimmed.match(/^\d{1,4}-(\d{2})$/);
-  if (krkMatch) {
-    const poleNum = krkMatch[1];
-    const n = parseInt(poleNum, 10);
-    if (mode === 'tram' && (n === 1 || n === 2)) {
-      return t.leg.platformPeron(poleNum);
-    }
-    return t.leg.platformPole(poleNum);
-  }
-
-  // Pociąg / metro
-  if (mode === 'train' || mode === 'subway') {
-    return t.leg.platformPeron(trimmed);
-  }
-
-  // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
-  if (/^\d{1,2}$/.test(trimmed)) {
-    const n = parseInt(trimmed, 10);
-    if (n >= 41 && n <= 49) {
-      return t.leg.platformPst(trimmed);
-    }
-    if (trimmed.startsWith('0') || n >= 10) {
-      return t.leg.platformPole(trimmed);
-    }
-    return t.leg.platformPeron(trimmed);
-  }
-
-  // 5-cyfrowy kod słupka (np. Wrocław 20820)
-  if (/^\d{5}$/.test(trimmed)) {
-    return t.leg.platformPole(trimmed);
-  }
-
-  return t.leg.platformPeron(trimmed);
-}
+import { formatPlatformLabel } from '../services/platformLabel';
+export { formatPlatformLabel };
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
@@ -468,14 +405,14 @@ const TransitLegCard = memo(function TransitLegCard({
   const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const stopHint = leg.stopHint ?? resolvedHint;
   const departurePlatform = useMemo(
-    () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop),
-    [t, leg.platformCode, leg.mode, leg.fromStop],
+    () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
+    [t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],
   );
   // Wskazówki w bazie są tylko po polsku, więc prefiks słupka też musi być polski.
   // Inaczej angielski UI dokleja "Pole 10001" do polskiego zdania.
   const hintPlatform = useMemo(
-    () => formatPlatformLabel(pl, leg.platformCode, leg.mode, leg.fromStop),
-    [leg.platformCode, leg.mode, leg.fromStop],
+    () => formatPlatformLabel(pl, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
+    [leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],
   );
 
   const cacheKey = leg.tripId || leg.id;
@@ -713,10 +650,10 @@ const TransitLegCard = memo(function TransitLegCard({
                     {waitingAtTerminus
                       ? t.leg.waitingAtTerminus
                       : nearestStop
-                      ? t.leg.currentLocation(nearestStop.name)
-                      : leg.liveNextStop
-                        ? t.leg.currentLocation(leg.liveNextStop)
-                        : liveNearLabel || t.leg.liveTracking}
+                        ? t.leg.currentLocation(nearestStop.name)
+                        : leg.liveNextStop
+                          ? t.leg.currentLocation(leg.liveNextStop)
+                          : liveNearLabel || t.leg.liveTracking}
                   </Text>
                 ) : null}
 
@@ -741,9 +678,7 @@ const TransitLegCard = memo(function TransitLegCard({
                   <Text style={s.meta}>{notice}</Text>
                 ) : null}
 
-                {leg.live && liveTimestamp ? (
-                  <LiveDataAge timestamp={liveTimestamp} />
-                ) : null}
+                {leg.live && liveTimestamp ? <LiveDataAge timestamp={liveTimestamp} /> : null}
               </View>
             </View>
           ) : null}

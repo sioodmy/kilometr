@@ -136,7 +136,7 @@
     "stop-hints:context": "node cloudflare/scripts/stop-hints-context.mjs",
     "check:intercity": "tsx --require ./scripts/stub-expo.cjs scripts/check-intercity.ts",
     "check:national-live": "tsx --require ./scripts/stub-expo.cjs scripts/check-national-live.ts",
-    "check:rail-delays": "tsx --require ./scripts/stub-expo.cjs --test test/rail-delays.test.ts test/national-rail-updates.test.ts test/ticketing.test.ts",
+    "check:rail-delays": "tsx --require ./scripts/stub-expo.cjs --test test/rail-delays.test.ts test/national-rail-updates.test.ts test/ticketing.test.ts test/platform-track.test.ts",
     "check:rail-shape": "tsx --require ./scripts/stub-expo.cjs scripts/check-rail-shape.ts",
     "check:ticketing": "tsx --require ./scripts/stub-expo.cjs --test test/ticketing.test.ts",
     "phone:transfer": "bash scripts/preview-transfer.sh",
