@@ -1584,6 +1584,8 @@ export default function HomeScreen() {
                     homeTab === 'recent' ? styles.tabLabelActive : styles.tabLabelInactive,
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
                 >
                   {s.home.tabRecent}
                 </Text>
@@ -1606,36 +1608,40 @@ export default function HomeScreen() {
                     homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
                   }
                 />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {s.home.tabSaved}
-                </Text>
-                {orderedSavedRoutes.length > 0 && (
-                  <View
+                <View style={styles.tabLabelRow}>
+                  <Text
                     style={[
-                      styles.tabBadge,
-                      homeTab === 'saved'
-                        ? styles.tabBadgeActive
-                        : styles.tabBadgeInactive,
+                      styles.tabLabel,
+                      homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
                     ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
                   >
-                    <Text
+                    {s.home.tabSaved}
+                  </Text>
+                  {orderedSavedRoutes.length > 0 && (
+                    <View
                       style={[
-                        styles.tabBadgeText,
+                        styles.tabBadge,
                         homeTab === 'saved'
-                          ? styles.tabBadgeTextActive
-                          : styles.tabBadgeTextInactive,
+                          ? styles.tabBadgeActive
+                          : styles.tabBadgeInactive,
                       ]}
                     >
-                      {orderedSavedRoutes.length}
-                    </Text>
-                  </View>
-                )}
+                      <Text
+                        style={[
+                          styles.tabBadgeText,
+                          homeTab === 'saved'
+                            ? styles.tabBadgeTextActive
+                            : styles.tabBadgeTextInactive,
+                        ]}
+                      >
+                        {orderedSavedRoutes.length}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </Pressable>
             </View>
 
@@ -1869,14 +1875,13 @@ const styles = StyleSheet.create({
   },
   tabBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    minHeight: 60,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: shape.full,
-    gap: 8,
+    gap: 4,
   },
   tabBtnActive: {
     backgroundColor: scheme.secondaryContainer,
@@ -1885,9 +1890,17 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
     opacity: 0.9,
   },
+  tabLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    flexShrink: 1,
+  },
   tabLabel: {
     ...type.labelLarge,
     letterSpacing: 0.1,
+    flexShrink: 1,
   },
   tabLabelActive: {
     color: scheme.onSecondaryContainer,
