@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ticket } from './icons';
@@ -40,6 +40,11 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
   // dock nie „wyrastał” po każdym powrocie z arkusza (komponent montuje
   // się od nowa razem z całym paskiem).
   const open = useSharedValue(chips.length > 0 ? 1 : 0);
+  const lastChipsRef = useRef(chips);
+  if (chips.length > 0) {
+    lastChipsRef.current = chips;
+  }
+  const displayChips = chips.length > 0 ? chips : lastChipsRef.current;
 
   useEffect(() => {
     const target = chips.length > 0 ? 1 : 0;
@@ -52,27 +57,33 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
     opacity: open.value,
   }));
 
+  const isSingle = displayChips.length === 1;
+
   return (
     <Animated.View
       style={[styles.wrap, wrapStyle]}
       accessibilityElementsHidden={chips.length === 0}
       importantForAccessibility={chips.length === 0 ? 'no-hide-descendants' : 'auto'}
     >
-      <ScrollView
-        horizontal
-        contentContainerStyle={[styles.row, chips.length === 1 && styles.rowSingle]}
-        showsHorizontalScrollIndicator={false}
-        overScrollMode="never"
-      >
-        {chips.map((chip) => (
-          <ChipView key={chip.id} chip={chip} />
-        ))}
-      </ScrollView>
+      {isSingle ? (
+        <ChipView chip={displayChips[0]} fullWidth />
+      ) : displayChips.length > 1 ? (
+        <ScrollView
+          horizontal
+          contentContainerStyle={styles.row}
+          showsHorizontalScrollIndicator={false}
+          overScrollMode="never"
+        >
+          {displayChips.map((chip) => (
+            <ChipView key={chip.id} chip={chip} />
+          ))}
+        </ScrollView>
+      ) : null}
     </Animated.View>
   );
 }
 
-function ChipView({ chip }: { chip: DockChip }) {
+function ChipView({ chip, fullWidth }: { chip: DockChip; fullWidth?: boolean }) {
   const ticket = chip.ticket;
   return (
     <Pressable
@@ -83,17 +94,33 @@ function ChipView({ chip }: { chip: DockChip }) {
         styles.chip,
         chip.pinned ? styles.chipPinned : styles.chipPlain,
         ticket && styles.chipWithTicket,
-        pressed && styles.chipPressed,
+        fullWidth && styles.chipFullWidth,
+        fullWidth && ticket && styles.chipFullWidthWithTicket,
+        pressed && (fullWidth ? styles.chipFullWidthPressed : styles.chipPressed),
       ]}
     >
       {chip.badgeLegs.map((leg, index) => (
         <LineBadge key={`${leg.id}-${index}`} leg={leg} compact />
       ))}
-      <Text style={[styles.title, chip.pinned && styles.titlePinned]} numberOfLines={1}>
+      <Text
+        style={[
+          styles.title,
+          chip.pinned && styles.titlePinned,
+          fullWidth && styles.titleFullWidth,
+        ]}
+        numberOfLines={1}
+      >
         {chip.title}
       </Text>
       {chip.timeLabel ? (
-        <Text style={[styles.time, chip.pinned && styles.timePinned]} numberOfLines={1}>
+        <Text
+          style={[
+            styles.time,
+            chip.pinned && styles.timePinned,
+            fullWidth && styles.timeFullWidth,
+          ]}
+          numberOfLines={1}
+        >
           {chip.timeLabel}
         </Text>
       ) : null}
@@ -121,10 +148,9 @@ const styles = StyleSheet.create({
     maxWidth: 600,
     alignSelf: 'center',
     overflow: 'hidden',
+    justifyContent: 'center',
   },
   row: { alignItems: 'center', gap: 12, paddingRight: 18 },
-  // Jeden pill: wyśrodkowany w docku, bez doklejenia do lewej krawędzi.
-  rowSingle: { flexGrow: 1, justifyContent: 'center', paddingRight: 0 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,10 +161,20 @@ const styles = StyleSheet.create({
     // 20 = promień search bara, żeby chipy i bar miały wspólny język kształtu.
     borderRadius: 20,
   },
+  // Pojedynczy pill rozciąga się na pełną szerokość i matchuje search bar poniżej.
+  chipFullWidth: {
+    width: '100%',
+    paddingLeft: 16,
+    paddingRight: 16,
+  },
+  chipFullWidthWithTicket: {
+    paddingRight: 6,
+  },
   chipPinned: { backgroundColor: scheme.secondaryContainer },
   chipPlain: { backgroundColor: scheme.surfaceContainerHighest },
   chipWithTicket: { paddingRight: 4 },
   chipPressed: { transform: [{ scale: 0.96 }], opacity: 0.85 },
+  chipFullWidthPressed: { opacity: 0.85 },
   title: {
     ...type.labelMedium,
     fontWeight: '600',
@@ -146,8 +182,15 @@ const styles = StyleSheet.create({
     maxWidth: 150,
   },
   titlePinned: { color: scheme.onSecondaryContainer },
+  titleFullWidth: {
+    flex: 1,
+    maxWidth: undefined,
+  },
   time: { ...type.labelMedium, fontWeight: '500', color: scheme.onSurfaceVariant },
   timePinned: { color: scheme.onSecondaryContainer, opacity: 0.8 },
+  timeFullWidth: {
+    flexShrink: 0,
+  },
   ticketBtn: {
     width: 32,
     height: 32,
