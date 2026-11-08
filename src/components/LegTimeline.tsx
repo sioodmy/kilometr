@@ -40,6 +40,7 @@ import { reliabilityNotice } from './reliabilityNotice';
 import { railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
+import { suggestCityForCoords } from '../cities';
 import { isFallbackOrigin } from '../config';
 
 // Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
@@ -400,8 +401,14 @@ const TransitLegCard = memo(function TransitLegCard({
   const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
   const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
 
-  const activeCityId = useMemo(() => getActiveCityIdSync(), []);
-  const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
+  const legCityId = useMemo(() => {
+    if (leg.fromLat != null && leg.fromLon != null) {
+      const detected = suggestCityForCoords(leg.fromLat, leg.fromLon);
+      if (detected) return detected.id;
+    }
+    return getActiveCityIdSync();
+  }, [leg.fromLat, leg.fromLon]);
+  const resolvedHint = useStopHint(legCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
   const stopHint = leg.stopHint ?? resolvedHint;
   const departurePlatform = useMemo(
     () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
