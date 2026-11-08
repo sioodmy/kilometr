@@ -25,7 +25,8 @@ import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
-import { RoutingService } from '../../src/services';
+import { RoutingService, subscribeSavedRoutes } from '../../src/services';
+import * as Haptics from 'expo-haptics';
 import { getPlannedConnection } from '../../src/services/api';
 import {
   normalizeConnectionId,
@@ -159,6 +160,54 @@ export default function RouteDetailsScreen() {
   }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id]);
 
   const hasTransfers = item != null && hasTransfer(item);
+  const [isSavedRoute, setIsSavedRoute] = useState(false);
+
+  useEffect(() => {
+    if (!item?.id) return;
+    let cancelled = false;
+    const checkSaved = () => {
+      RoutingService.isRouteSaved(item.id)
+        .then((saved) => {
+          if (!cancelled) setIsSavedRoute(saved);
+        })
+        .catch(() => {});
+    };
+    checkSaved();
+    const unsub = subscribeSavedRoutes(checkSaved);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [item?.id]);
+
+  const isPinned = isSavedRoute || isTrackedThis;
+
+  const togglePin = async () => {
+    if (!item || trackingBusy) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (isPinned) {
+      try {
+        await RoutingService.deleteSavedRoute(item.id);
+        setIsSavedRoute(false);
+        if (isTrackedThis) {
+          await stopTracking();
+        }
+      } catch (err) {
+        console.warn("Failed to unpin route:", err);
+      }
+    } else {
+      try {
+        await RoutingService.saveRoute(item);
+        setIsSavedRoute(true);
+        if (!isTrackedThis && areNotificationsSupported()) {
+          void toggleTracking();
+        }
+      } catch (err) {
+        console.warn("Failed to pin route:", err);
+      }
+    }
+  };
+
 
   // Nagłówek przełącza śledzenie, karta włącza ochronę. Monitor trzyma jedną podróż.
   const toggleTracking = async (enableProtection = false) => {
@@ -369,23 +418,23 @@ export default function RouteDetailsScreen() {
           )}
           {!noLegs && (
             <Pressable
-              onPress={() => void toggleTracking()}
+              onPress={() => void togglePin()}
               disabled={trackingBusy}
               accessibilityRole="button"
-              accessibilityState={{ selected: isTrackedThis }}
+              accessibilityState={{ selected: isPinned }}
               accessibilityLabel={
-                isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
+                isPinned ? s.home.unpinRouteA11y(item.toTitle) : s.home.pinRouteA11y(item.toTitle)
               }
               style={({ pressed }) => [
                 styles.trackBtn,
-                isTrackedThis && styles.trackBtnActive,
+                isPinned && styles.trackBtnActive,
                 pressed && { opacity: 0.7 },
               ]}
               hitSlop={8}
             >
               <Pin
                 size={21}
-                color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                color={isPinned ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
               />
             </Pressable>
           )}

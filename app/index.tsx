@@ -14,7 +14,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Bell, Download, History, MapPin, Settings2 } from '../src/components/icons';
+import { Bell, Download, History, MapPin, Pin, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
@@ -24,6 +24,7 @@ import {
   LocationService,
   RoutingService,
   SearchService,
+  subscribeSavedRoutes,
   recordTripSearch,
   type LocationResult,
 } from '../src/services';
@@ -83,6 +84,8 @@ import {
 } from '../src/components/LastTripPull';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
+import { SavedRoutesList } from '../src/components/SavedRoutesList';
+import type { SavedRoute } from '../src/types/models';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { CitySelectSheet } from '../src/components/CitySelectSheet';
@@ -375,6 +378,119 @@ export default function HomeScreen() {
     }
   };
 
+
+  const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+
+  const refreshSavedRoutes = useCallback(() => {
+    RoutingService.getSavedRoutes()
+      .then((routes) => {
+        setSavedRoutes(routes);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshSavedRoutes();
+    return subscribeSavedRoutes(refreshSavedRoutes);
+  }, [refreshSavedRoutes, cityId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshSavedRoutes();
+    }, [refreshSavedRoutes]),
+  );
+
+  const handleTabSwitch = useCallback(
+    (tab: 'recent' | 'saved') => {
+      if (tab === homeTab) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setHomeTab(tab);
+    },
+    [homeTab],
+  );
+
+  const isDestinationPinned = useCallback(
+    (d: SmartDestination) => {
+      const conn = firstConns[d.id];
+      return savedRoutes.some(
+        (r) =>
+          (conn && r.id === conn.id) ||
+          (r.connection.toTitle === d.title && r.connection.fromTitle === locTitle) ||
+          r.connection.toTitle === d.title,
+      );
+    },
+    [firstConns, savedRoutes, locTitle],
+  );
+
+  const handleTogglePinDestination = useCallback(
+    async (d: SmartDestination) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      const conn = firstConns[d.id];
+      const existing = savedRoutes.find(
+        (r) =>
+          (conn && r.id === conn.id) ||
+          (r.connection.toTitle === d.title && r.connection.fromTitle === locTitle) ||
+          r.connection.toTitle === d.title,
+      );
+      if (existing) {
+        try {
+          await RoutingService.deleteSavedRoute(existing.id);
+        } catch (err) {
+          console.warn("Failed to unpin route:", err);
+        }
+      } else {
+        try {
+          if (conn) {
+            await RoutingService.saveRoute(conn);
+          } else {
+            const s = getSettingsSync();
+            const conns = await RoutingService.getConnections({
+              fromTitle: locTitle,
+              fromLat: currentCoords.lat,
+              fromLon: currentCoords.lon,
+              toId: d.id,
+              toTitle: d.title,
+              toLat: d.lat,
+              toLon: d.lon,
+              maxTransfers: s.maxTransfers,
+              minTransferSec: s.minTransferSec,
+              trainsEnabled: s.trainsEnabled,
+              cableEnabled: s.cableEnabled,
+              allowedTransferModes: s.allowedModes,
+              trainMinTransferSec: s.trainMinTransferSec,
+              maxWalkM: s.maxWalkM,
+              walkSpeedMps: profileWalkSpeedMps(s.walkPace),
+            });
+            if (conns.length > 0) {
+              await RoutingService.saveRoute(conns[0]);
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to pin route:", err);
+        }
+      }
+    },
+    [firstConns, savedRoutes, locTitle, currentCoords],
+  );
+
+  const handleUnpinSavedRoute = useCallback(async (route: SavedRoute) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      await RoutingService.deleteSavedRoute(route.id);
+    } catch (err) {
+      console.warn("Failed to delete saved route:", err);
+    }
+  }, []);
+
+  const handleSelectSavedRoute = useCallback(
+    (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      router.push({ pathname: '/routes/[id]', params: { id: route.connection.id } });
+    },
+    [router],
+  );
+
   const refreshPlaces = () => {
     const requestedCity = getActiveCityIdSync();
     FavoritesService.list()
@@ -514,7 +630,8 @@ export default function HomeScreen() {
     setCurrentCoords({ lat: d.lat, lon: d.lon });
     setFirstConns({});
     setFirstLegs({});
-  }, [cityId]);
+    refreshSavedRoutes();
+  }, [cityId, refreshSavedRoutes]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
@@ -1260,6 +1377,7 @@ export default function HomeScreen() {
     () =>
       subscribeBackupApplied(() => {
         refreshPlaces();
+        refreshSavedRoutes();
         // Ranking liczymy tylko przy znanej pozycji: `smartFromOrigin` i tak
         // podpada pod DEFAULT_LOCATION, a „ostatnie miejsca" z innego miasta
         // to kłamstwo.
@@ -1460,25 +1578,117 @@ export default function HomeScreen() {
               />
             </View>
 
-            <View style={{ height: 24 }} />
-            {smartOrdered.length === 0 && smartReady ? (
-              <View style={styles.emptyCard}>
-                <View style={styles.emptyIcon}>
-                  <History size={20} color={scheme.onSecondaryContainer} />
+            <View style={{ height: 20 }} />
+
+            {/* 2-tab layout: Ostatnie połączenia / Twoje trasy */}
+            <View style={styles.tabContainer} accessibilityRole="tablist">
+              <Pressable
+                onPress={() => handleTabSwitch('recent')}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: homeTab === 'recent' }}
+                accessibilityLabel={s.home.tabRecent}
+                style={({ pressed }) => [
+                  styles.tabBtn,
+                  homeTab === 'recent' && styles.tabBtnActive,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <History
+                  size={16}
+                  color={
+                    homeTab === 'recent' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                  }
+                />
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    homeTab === 'recent' ? styles.tabLabelActive : styles.tabLabelInactive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {s.home.tabRecent}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleTabSwitch('saved')}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: homeTab === 'saved' }}
+                accessibilityLabel={s.home.tabSaved}
+                style={({ pressed }) => [
+                  styles.tabBtn,
+                  homeTab === 'saved' && styles.tabBtnActive,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Pin
+                  size={16}
+                  color={
+                    homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                  }
+                />
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {s.home.tabSaved}
+                </Text>
+                {savedRoutes.length > 0 && (
+                  <View
+                    style={[
+                      styles.tabBadge,
+                      homeTab === 'saved'
+                        ? styles.tabBadgeActive
+                        : styles.tabBadgeInactive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabBadgeText,
+                        homeTab === 'saved'
+                          ? styles.tabBadgeTextActive
+                          : styles.tabBadgeTextInactive,
+                      ]}
+                    >
+                      {savedRoutes.length}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+
+            {homeTab === 'recent' ? (
+              smartOrdered.length === 0 && smartReady ? (
+                <View style={styles.emptyCard}>
+                  <View style={styles.emptyIcon}>
+                    <History size={20} color={scheme.onSecondaryContainer} />
+                  </View>
+                  <View style={styles.emptyText}>
+                    <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+                    <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+                  </View>
                 </View>
-                <View style={styles.emptyText}>
-                  <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-                  <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-                </View>
-              </View>
+              ) : (
+                <SmartHistoryList
+                  items={smartOrdered}
+                  departures={liveDepartures}
+                  lineBadges={firstLegs}
+                  onSelect={goToRoutes}
+                  onOpenConnection={goToConnection}
+                  icons={smartIcons}
+                  hideHeader={true}
+                  isPinned={isDestinationPinned}
+                  onTogglePin={handleTogglePinDestination}
+                />
+              )
             ) : (
-              <SmartHistoryList
-                items={smartOrdered}
-                departures={liveDepartures}
-                lineBadges={firstLegs}
-                onSelect={goToRoutes}
-                onOpenConnection={goToConnection}
-                icons={smartIcons}
+              <SavedRoutesList
+                routes={savedRoutes}
+                onSelect={handleSelectSavedRoute}
+                onUnpin={handleUnpinSavedRoute}
               />
             )}
           </ScrollView>
@@ -1670,6 +1880,64 @@ const styles = StyleSheet.create({
   updateText: { flex: 1, gap: 2, minWidth: 0 },
   updateTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600' },
   updateBody: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  tabContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    padding: 4,
+    marginBottom: 12,
+  },
+  tabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: shape.full,
+    gap: 8,
+  },
+  tabBtnActive: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  tabLabel: {
+    ...type.labelLarge,
+    letterSpacing: 0.1,
+  },
+  tabLabelActive: {
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
+  tabLabelInactive: {
+    color: scheme.onSurfaceVariant,
+    fontWeight: '500',
+  },
+  tabBadge: {
+    borderRadius: shape.full,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeActive: {
+    backgroundColor: scheme.primary,
+  },
+  tabBadgeInactive: {
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
+  tabBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  tabBadgeTextActive: {
+    color: scheme.onPrimary,
+  },
+  tabBadgeTextInactive: {
+    color: scheme.onSurfaceVariant,
+  },
   savedSection: { marginTop: 20 },
   sectionHeader: {
     flexDirection: 'row',

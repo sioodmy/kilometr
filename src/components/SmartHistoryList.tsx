@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { History } from './icons';
+import { History, Pin } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';
@@ -19,6 +19,8 @@ export function SmartHistoryList({
   onOpenConnection,
   hideHeader,
   icons,
+  isPinned,
+  onTogglePin,
 }: {
   items: SmartDestination[];
   /** Najszybszy odjazd do celu w minutach, kluczem id destynacji. */
@@ -32,6 +34,10 @@ export function SmartHistoryList({
   hideHeader?: boolean;
   /** Ikonki jak w wyszukiwarce, kluczem id destynacji. */
   icons?: Record<string, SuggestionIconMeta | undefined>;
+  /** Czy destynacja ma przypiętą trasę. */
+  isPinned?: (d: SmartDestination) => boolean;
+  /** Kliknięcie w pinezkę - zapisuje trasę lub ją usuwa. */
+  onTogglePin?: (d: SmartDestination) => void;
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
@@ -53,6 +59,7 @@ export function SmartHistoryList({
           const meta = icons?.[d.id];
           const Icon = meta?.Icon ?? History;
           const badge = lineBadges?.[d.id];
+          const pinned = isPinned ? isPinned(d) : false;
           // Stałe sloty zapobiegają przesuwaniu tekstu po wczytaniu ikon i odjazdów.
           return (
             <Pressable
@@ -112,6 +119,31 @@ export function SmartHistoryList({
                   <View style={styles.rightPlaceholder} />
                 )}
               </View>
+              {onTogglePin && (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onTogglePin(d);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    pinned
+                      ? s.home.unpinRouteA11y(d.title)
+                      : s.home.pinRouteA11y(d.title)
+                  }
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.pinBtn,
+                    pinned && styles.pinBtnActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Pin
+                    size={18}
+                    color={pinned ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                  />
+                </Pressable>
+              )}
             </Pressable>
           );
         })}
@@ -193,5 +225,17 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
     flexShrink: 1,
     textAlign: 'center',
+  },
+  pinBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    marginLeft: 2,
+  },
+  pinBtnActive: {
+    backgroundColor: scheme.primaryContainer,
   },
 });

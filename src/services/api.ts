@@ -273,6 +273,7 @@ subscribeActiveCity((id) => {
   if (id === recentCityId) return;
   recentCityId = id;
   recentPlannedConnections.clear();
+  notifySavedRoutesChanged();
 });
 
 function rememberRecent(connection: Connection): void {
@@ -446,6 +447,7 @@ export const RoutingService: IRoutingService = {
         }
         // Zapis musi się udać, inaczej UI nie może pokazać trasy jako zapisanej.
         await kvSetStrict(savedRoutesKey(), JSON.stringify(all));
+        notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
         throw err;
@@ -459,11 +461,16 @@ export const RoutingService: IRoutingService = {
         const all = await readSavedRoutes();
         const filtered = all.filter(r => r.id !== id);
         await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
+        notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to delete saved route:', err);
         throw err;
       }
     });
+  },
+
+  async getSavedRoutes(key?: string): Promise<SavedRoute[]> {
+    return getSavedRoutes(key);
   },
 
   async isRouteSaved(id: string): Promise<boolean> {
@@ -496,6 +503,26 @@ export function savedRoutesKey(cityId?: string): string {
 // Odczyt listy zapisanych tras do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
 // żeby save/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+
+const savedRoutesListeners = new Set<() => void>();
+
+export function subscribeSavedRoutes(listener: () => void): () => void {
+  savedRoutesListeners.add(listener);
+  return () => {
+    savedRoutesListeners.delete(listener);
+  };
+}
+
+export function notifySavedRoutesChanged(): void {
+  for (const listener of savedRoutesListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[RoutingService] notifySavedRoutesChanged error:', err);
+    }
+  }
+}
+
 export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
   const raw = await kvGetStrict(key ?? savedRoutesKey());
   if (!raw) return [];
