@@ -60,7 +60,7 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
     >
       <ScrollView
         horizontal
-        contentContainerStyle={styles.row}
+        contentContainerStyle={[styles.row, chips.length === 1 && styles.rowSingle]}
         showsHorizontalScrollIndicator={false}
         overScrollMode="never"
       >
@@ -123,6 +123,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   row: { alignItems: 'center', gap: 12, paddingRight: 18 },
+  // Jeden pill: wyśrodkowany w docku, bez doklejenia do lewej krawędzi.
+  rowSingle: { flexGrow: 1, justifyContent: 'center', paddingRight: 0 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
