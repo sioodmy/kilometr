@@ -1348,32 +1348,6 @@ export default function HomeScreen() {
     [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
   );
 
-  /** Poza obsługiwanym miastem: pociągi z najbliższej stacji kolejowej. */
-  const [nearestStationBusy, setNearestStationBusy] = useState(false);
-  const handleNearestStation = async (coords: { lat: number; lon: number }) => {
-    if (nearestStationBusy) return;
-    setNearestStationBusy(true);
-    try {
-      const { findNearestNationalStations } = await import('../src/services/gtfsDatabase');
-      const stations = await findNearestNationalStations(coords.lat, coords.lon, 30000, 1);
-      const station = stations[0];
-      if (!station) return;
-      router.push({
-        pathname: '/routes',
-        params: {
-          fromTitle: station.name,
-          fromLat: String(station.lat),
-          fromLon: String(station.lon),
-          fromGps: '0',
-        },
-      });
-    } catch {
-      // bez bazy/stacji: zostajemy na ekranie głównym
-    } finally {
-      setNearestStationBusy(false);
-    }
-  };
-
   const handleCityChange = async (id: CityId) => {
     const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
     if (id === cityId || switchingCity || dataBusy) return;
@@ -1645,10 +1619,6 @@ export default function HomeScreen() {
                   setQuery('');
                   setSheetMode('start');
                 }}
-                onNearestStation={
-                  gpsLocation ? () => void handleNearestStation(gpsLocation) : undefined
-                }
-                nearestStationBusy={nearestStationBusy}
               />
             )}
 
@@ -1741,40 +1711,17 @@ export default function HomeScreen() {
                     homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
                   }
                 />
-                <View style={styles.tabLabelRow}>
-                  <Text
-                    style={[
-                      styles.tabLabel,
-                      homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.85}
-                  >
-                    {s.home.tabSaved}
-                  </Text>
-                  {orderedSavedRoutes.length > 0 && (
-                    <View
-                      style={[
-                        styles.tabBadge,
-                        homeTab === 'saved'
-                          ? styles.tabBadgeActive
-                          : styles.tabBadgeInactive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.tabBadgeText,
-                          homeTab === 'saved'
-                            ? styles.tabBadgeTextActive
-                            : styles.tabBadgeTextInactive,
-                        ]}
-                      >
-                        {orderedSavedRoutes.length}
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  {s.home.tabSaved}
+                </Text>
               </Pressable>
             </View>
 
@@ -2035,13 +1982,6 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
     opacity: 0.9,
   },
-  tabLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: '100%',
-    flexShrink: 1,
-  },
   tabLabel: {
     ...type.labelLarge,
     letterSpacing: 0.1,
@@ -2054,30 +1994,6 @@ const styles = StyleSheet.create({
   tabLabelInactive: {
     color: scheme.onSurfaceVariant,
     fontWeight: '500',
-  },
-  tabBadge: {
-    borderRadius: shape.full,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    minWidth: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabBadgeActive: {
-    backgroundColor: scheme.primary,
-  },
-  tabBadgeInactive: {
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  tabBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  tabBadgeTextActive: {
-    color: scheme.onPrimary,
-  },
-  tabBadgeTextInactive: {
-    color: scheme.onSurfaceVariant,
   },
   savedSection: { marginTop: 20 },
   sectionHeader: {
