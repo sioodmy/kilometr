@@ -15,7 +15,7 @@ import { alertTouchesRoute } from "./ConnectionLineAlerts";
  * Wyświetla subtelną ikonę ostrzeżenia w nagłówku, gdy na trasie (kolej lub zbiorkom)
  * występują utrudnienia. Szczegóły pasażer sprawdza na ekranie trasy.
  */
-export function ConnectionDisruptionBadge({
+export function RailAlertsChip({
   connection,
   dimmed,
 }: {
@@ -95,8 +95,6 @@ export function ConnectionDisruptionBadge({
     </Animated.View>
   );
 }
-
-export const RailAlertsChip = ConnectionDisruptionBadge;
 
 const styles = StyleSheet.create({
   badge: {
