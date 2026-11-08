@@ -152,6 +152,10 @@ export const en: Strings = {
     savedRoutesEmptyBody: 'Track a connection or attach a rail ticket, and it lands here.',
     routeActive: 'En route',
     ticketAttachedA11y: 'Rail ticket saved',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Pinned trip to ${title}${time ? `, ${time}` : ''}. Tap to open.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Train to ${title}, departs ${time}. Tap to open.`,
     removeRouteA11y: (title: string) => `Remove connection to ${title} from your routes`,
     pinRouteA11y: (title: string) => `Pin connection to ${title} to your routes`,
     unpinRouteA11y: (title: string) => `Unpin connection to ${title} from your routes`,
