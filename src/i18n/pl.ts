@@ -486,6 +486,7 @@ export const pl = {
     needDownload:
       'To miasto nie ma jeszcze rozkładu na telefonie. Pobierz go w sekcji „Rozkład i mapy”.',
     changeAction: 'Zmień',
+    downloadAction: 'Pobierz rozkład',
     selectTitle: 'Wybierz miasto',
     selectSub: 'Wybierz aglomerację, w której chcesz planować podróże.',
     searchPlaceholder: 'Miasto lub przewoźnik',

@@ -474,6 +474,7 @@ export const de: Strings = {
     needDownload:
       'Für diese Stadt liegt noch kein Fahrplan auf dem Telefon. Lade ihn unter „Fahrplan und Karten“.',
     changeAction: 'Ändern',
+    downloadAction: 'Fahrplan herunterladen',
     selectTitle: 'Stadt wählen',
     selectSub: 'Wählen Sie das Verkehrsgebiet für Ihre Routen.',
     searchPlaceholder: 'Stadt oder Betreiber',
