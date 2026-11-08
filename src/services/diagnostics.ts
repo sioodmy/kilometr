@@ -1,6 +1,6 @@
-// Diagnostyka danych offline: health check bazy GTFS pod kartę w Ustawieniach.
-// Tylko odczyty (quick_check, liczniki, kalendarz, wagi, POI, rozmiar pliku).
-// Naprawa to osobna akcja w UI (ponowne pobranie przez dataManager).
+// Diagnostyka danych offline: health check pod kartę w Ustawieniach.
+// Sprawdza bazę miasta, kolej ogólnopolską, mapę offline, wyszukiwarkę
+// i źródła live. Tylko odczyty; naprawa to osobna akcja w UI (dataManager).
 
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
@@ -13,11 +13,17 @@ import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { uk } from '../i18n/uk';
 import { getActiveCityIdSync } from './cityStore';
+import { liveTracker } from './liveTracker';
+import { getOfflineMapInfo, type OfflineMapState } from './offlineMap';
 import {
   getActiveServices,
   getGtfsDb,
   getGtfsStats,
   getMeta,
+  getNationalMeta,
+  getNationalTimetableEndDate,
+  hasNationalDb,
+  NATIONAL_DB_FILE,
   needsStopWeights,
   poiCount,
 } from './gtfsDatabase';
@@ -34,13 +40,29 @@ function cityNameOf(cityId: string): string {
 
 export type DiagLevel = 'ok' | 'warn' | 'error';
 
-type DiagItemId = 'db' | 'counts' | 'trains' | 'calendar' | 'search';
+type DiagItemId = 'db' | 'counts' | 'trains' | 'rail' | 'calendar' | 'search' | 'map' | 'live';
 
 export interface DiagItem {
   id: DiagItemId;
   level: DiagLevel;
   title: string;
   detail: string | null;
+}
+
+/** Baza kolejowa (`polska`): null, gdy nie pobrano. */
+export interface DiagRail {
+  version: string | null;
+  endDate: string | null;
+  dbBytes: number | null;
+}
+
+/** Zdrowie jednego źródła live (zbiorkom/MPK/kolej) w bieżącej sesji. */
+export interface DiagLiveSource {
+  source: string;
+  attempts: number;
+  failures: number;
+  lastError: string | null;
+  lastSuccessAt: number | null;
 }
 
 export interface DiagResult {
@@ -51,13 +73,20 @@ export interface DiagResult {
   cityName: string;
   timetableVersion: string | null;
   importedAt: string | null;
+  lastCheck: string | null;
+  remoteVersion: string | null;
+  feeds: string | null;
   dbBytes: number | null;
   counts: { stops: number; routes: number; trips: number; stopTimes: number };
   calendar: { from: string; to: string } | null;
   servicesToday: number | null;
   weightedStops: number;
   pois: number;
+  addresses: number;
   trains: number;
+  rail: DiagRail | null;
+  map: { state: OfflineMapState; bytes: number | null };
+  live: DiagLiveSource[];
 }
 
 export function diagOverall(result: DiagResult): DiagLevel {
@@ -89,6 +118,13 @@ function daysUntil(toKey: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return Math.round((to.getTime() - now.getTime()) / 86400000);
+}
+
+/** Znacznik czasu live jako HH:MM (raport i detale źródeł). */
+function clockOf(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 async function dbFileSize(name: string): Promise<{ main: number | null; wal: number | null; orphan: string | null }> {
@@ -173,6 +209,46 @@ export async function runDiagnostics(): Promise<DiagResult> {
             : t.diagTrainsNone,
   });
 
+  // Kolej ogólnopolska (dataset `polska`): pobierana lazy, więc brak pliku
+  // to nie błąd. Problemy: przeterminowany rozkład, uszkodzony plik.
+  const railFiles = await dbFileSize(NATIONAL_DB_FILE);
+  let rail: DiagRail | null = null;
+  try {
+    if (await hasNationalDb()) {
+      rail = {
+        version: await getNationalMeta('timetable_version').catch(() => null),
+        endDate: await getNationalTimetableEndDate().catch(() => null),
+        dbBytes: railFiles.main,
+      };
+    }
+  } catch {
+    rail = null;
+  }
+  if (!rail) {
+    items.push({ id: 'rail', level: 'ok', title: t.diagRail, detail: t.diagRailNone });
+  } else {
+    const unknown = t.diagReportUnknown;
+    const parts = [t.diagRailLine(rail.version ?? unknown, rail.endDate ? fmtDay(rail.endDate) : null)];
+    if (rail.dbBytes != null) parts.push(t.diagDbSize(mb(rail.dbBytes)));
+    if (railFiles.orphan) parts.push(t.diagDbOrphan(railFiles.orphan));
+    if (railFiles.wal != null && railFiles.wal > 0) parts.push(t.diagDbWal(mb(railFiles.wal)));
+    const today = todayKey();
+    const left = rail.endDate ? daysUntil(rail.endDate) : null;
+    const outside = rail.endDate != null && today > rail.endDate;
+    const walGrown = railFiles.wal != null && railFiles.wal > WAL_WARN_BYTES;
+    const head = outside
+      ? `${t.diagRailOutside}. `
+      : left != null && left <= 7
+        ? `${t.diagRailExpiring(left)}. `
+        : '';
+    items.push({
+      id: 'rail',
+      level: outside ? 'error' : (left != null && left <= 7) || railFiles.orphan != null || walGrown ? 'warn' : 'ok',
+      title: t.diagRail,
+      detail: `${head}${parts.join('. ')}`,
+    });
+  }
+
   let calendar: DiagResult['calendar'] = null;
   let servicesToday: number | null = null;
   try {
@@ -216,6 +292,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
 
   let weightedStops = 0;
   let pois = 0;
+  let addresses = 0;
   try {
     if (!empty) {
       if (await needsStopWeights()) {
@@ -227,21 +304,73 @@ export async function runDiagnostics(): Promise<DiagResult> {
       }
     }
     pois = await poiCount();
+    if (!empty) {
+      const db = await getGtfsDb();
+      const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM addresses');
+      addresses = row?.n ?? 0;
+    }
   } catch {
     // liczniki zostają zerowe, poziom niżej
   }
   const weightsMissing = !empty && weightedStops === 0;
+  const poisMissing = !empty && pois === 0;
+  const addressesMissing = !empty && addresses === 0;
   items.push({
     id: 'search',
-    level: empty ? 'error' : weightsMissing || pois === 0 ? 'warn' : 'ok',
+    level: empty ? 'error' : weightsMissing || poisMissing || addressesMissing ? 'warn' : 'ok',
     title: t.diagSearch,
     detail: empty
       ? t.diagCountsEmpty
-      : weightsMissing || pois === 0
-        ? [weightsMissing ? t.diagSearchWeights : null, pois === 0 ? t.diagSearchPois : null]
+      : weightsMissing || poisMissing || addressesMissing
+        ? [
+            weightsMissing ? t.diagSearchWeights : null,
+            poisMissing ? t.diagSearchPois : null,
+            addressesMissing ? t.diagSearchNoAddresses : null,
+          ]
             .filter((v): v is string => !!v)
             .join('. ')
-        : t.diagSearchOk(weightedStops, pois),
+        : t.diagSearchOk(weightedStops, pois, addresses),
+  });
+
+  // Mapa offline: pakiet kafli aktywnego miasta. Brak pliku to nie błąd
+  // (mapa działa online), uszkodzony pakiet już tak.
+  let map: DiagResult['map'] = { state: 'missing', bytes: null };
+  try {
+    map = await getOfflineMapInfo();
+  } catch {
+    // zostaje missing, poziom niżej
+  }
+  items.push({
+    id: 'map',
+    level: map.state === 'invalid' ? 'error' : 'ok',
+    title: t.diagMap,
+    detail:
+      map.state === 'ready'
+        ? t.diagMapReady(map.bytes != null ? mb(map.bytes) : t.diagReportUnknown)
+        : map.state === 'invalid'
+          ? t.diagMapInvalid
+          : t.diagMapNone,
+  });
+
+  // Źródła live (zbiorkom/MPK/kolej): zdrowie z bieżącej sesji trackera.
+  // Nazwy źródeł zostają techniczne, to raport debugowy.
+  const live: DiagLiveSource[] = Object.entries(liveTracker.getSourceHealth()).map(
+    ([source, h]) => ({ source, ...h }),
+  );
+  const liveParts = live.map((l) => {
+    if (l.lastSuccessAt != null) {
+      const at = clockOf(l.lastSuccessAt);
+      return l.failures > 0 ? t.diagLiveRecoveredLine(l.source, at) : t.diagLiveOkLine(l.source, at);
+    }
+    if (l.lastError) return t.diagLiveErrLine(l.source, l.lastError);
+    return t.diagLiveNoAnswer(l.source);
+  });
+  const liveBroken = live.some((l) => l.lastSuccessAt == null);
+  items.push({
+    id: 'live',
+    level: live.length === 0 || !liveBroken ? 'ok' : 'warn',
+    title: t.diagLive,
+    detail: live.length === 0 ? t.diagLiveNone : liveParts.join('; '),
   });
 
   let appVersion: string | null = null;
@@ -254,6 +383,9 @@ export async function runDiagnostics(): Promise<DiagResult> {
   const size = fileInfo;
   const timetableVersion = await getMeta('timetable_version').catch(() => null);
   const importedAt = await getMeta('gtfs_imported_at').catch(() => null);
+  const lastCheck = await getMeta('gtfs_last_check').catch(() => null);
+  const remoteVersion = await getMeta('gtfs_remote_version').catch(() => null);
+  const feeds = await getMeta('feeds').catch(() => null);
 
   return {
     items,
@@ -263,13 +395,20 @@ export async function runDiagnostics(): Promise<DiagResult> {
     cityName: cityNameOf(cityId),
     timetableVersion,
     importedAt,
+    lastCheck,
+    remoteVersion,
+    feeds,
     dbBytes: size.main,
     counts,
     calendar,
     servicesToday,
     weightedStops,
     pois,
+    addresses,
     trains,
+    rail,
+    map,
+    live,
   };
 }
 
@@ -286,11 +425,42 @@ function buildReport(r: DiagResult): string {
     `Kilometr ${r.appVersion ?? unknown} (${r.os})`,
     `${t.diagReportCity}: ${r.cityName}`,
     `${t.diagReportTimetable}: ${r.timetableVersion ?? unknown} / ${t.diagReportImported}: ${r.importedAt ?? unknown}`,
-    `${t.diagReportDb}: ${r.dbBytes != null ? `${mb(r.dbBytes)} MB` : unknown}`,
+    `${t.diagReportLastCheck}: ${r.lastCheck ?? unknown} / ${t.diagReportRemote}: ${r.remoteVersion ?? unknown}`,
+  ];
+  if (r.feeds) lines.push(`${t.diagReportFeeds}: ${r.feeds}`);
+  lines.push(`${t.diagReportDb}: ${r.dbBytes != null ? `${mb(r.dbBytes)} MB` : unknown}`);
+  lines.push(
+    `${t.diagReportRail}: ${
+      r.rail
+        ? `${t.diagRailLine(r.rail.version ?? unknown, r.rail.endDate ? fmtDay(r.rail.endDate) : null)}${r.rail.dbBytes != null ? `, ${mb(r.rail.dbBytes)} MB` : ''}`
+        : t.diagReportNotDownloaded
+    }`,
+  );
+  lines.push(
+    `${t.diagReportMap}: ${
+      r.map.state === 'ready'
+        ? t.diagMapReady(r.map.bytes != null ? mb(r.map.bytes) : unknown)
+        : r.map.state === 'invalid'
+          ? t.diagReportMapInvalid
+          : t.diagReportNotDownloaded
+    }`,
+  );
+  if (r.live.length > 0) {
+    const parts = r.live.map((l) => {
+      if (l.lastSuccessAt != null) {
+        const at = clockOf(l.lastSuccessAt);
+        return l.failures > 0 ? t.diagLiveRecoveredLine(l.source, at) : t.diagLiveOkLine(l.source, at);
+      }
+      if (l.lastError) return t.diagLiveErrLine(l.source, l.lastError);
+      return t.diagLiveNoAnswer(l.source);
+    });
+    lines.push(`${t.diagReportLive}: ${parts.join('; ')}`);
+  }
+  lines.push(
     t.diagCountsLine(r.counts.stops, r.counts.routes, r.counts.trips, r.counts.stopTimes),
     r.calendar ? t.diagCalendarLine(fmtDay(r.calendar.from), fmtDay(r.calendar.to)) : t.diagCalendarEmpty,
     ...r.items.map((i) => `- [${levelWord(i.level)}] ${i.title}${i.detail ? `: ${i.detail}` : ''}`),
-  ];
+  );
   return lines.join('\n');
 }
 
