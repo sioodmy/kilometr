@@ -64,7 +64,6 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
 }
 
 import { formatPlatformLabel } from '../services/platformLabel';
-export { formatPlatformLabel };
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało

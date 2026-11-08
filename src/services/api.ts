@@ -513,7 +513,7 @@ export function subscribeSavedRoutes(listener: () => void): () => void {
   };
 }
 
-export function notifySavedRoutesChanged(): void {
+function notifySavedRoutesChanged(): void {
   for (const listener of savedRoutesListeners) {
     try {
       listener();
