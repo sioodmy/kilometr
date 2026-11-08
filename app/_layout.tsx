@@ -177,14 +177,14 @@ export default function RootLayout() {
               screenOptions={{
                 headerShown: false,
                 contentStyle: { backgroundColor: scheme.surface },
-                // Jednolite, szybkie przejścia między ekranami (iOS + Android).
+                // Jednolite, szybkie przejścia między ekranami Material 3 Expressive (iOS + Android).
                 // animationMatchesGesture synchronizuje animację z gestem wstecz.
                 animation: reduceMotion
                   ? 'none'
                   : Platform.OS === 'android'
                     ? 'fade_from_bottom'
                     : 'slide_from_right',
-                animationDuration: 300,
+                animationDuration: 200,
                 animationMatchesGesture: true,
                 gestureEnabled: true,
                 gestureDirection: 'horizontal',
@@ -197,7 +197,7 @@ export default function RootLayout() {
                 name="routes"
                 options={{
                   headerShown: false,
-                  animation: reduceMotion ? "none" : "fade",
+                  animation: reduceMotion ? 'none' : 'fade',
                   animationDuration: 240,
                 }}
               />
@@ -210,11 +210,15 @@ export default function RootLayout() {
               <Stack.Screen
                 name="news"
                 options={{
-                  presentation: 'modal',
-                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
-                  animationDuration: 300,
+                  presentation: 'card',
+                  animation: reduceMotion
+                    ? 'none'
+                    : Platform.OS === 'android'
+                      ? 'fade_from_bottom'
+                      : 'slide_from_right',
+                  animationDuration: 200,
                   animationMatchesGesture: true,
-                  gestureDirection: 'vertical',
+                  gestureDirection: 'horizontal',
                 }}
               />
               <Stack.Screen
@@ -226,17 +230,23 @@ export default function RootLayout() {
                     : Platform.OS === 'android'
                       ? 'fade_from_bottom'
                       : 'slide_from_right',
-                  animationDuration: 300,
+                  animationDuration: 200,
+                  animationMatchesGesture: true,
+                  gestureDirection: 'horizontal',
                 }}
               />
               <Stack.Screen
                 name="settings"
                 options={{
-                  presentation: 'modal',
-                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
-                  animationDuration: 300,
+                  presentation: 'card',
+                  animation: reduceMotion
+                    ? 'none'
+                    : Platform.OS === 'android'
+                      ? 'fade_from_bottom'
+                      : 'slide_from_right',
+                  animationDuration: 200,
                   animationMatchesGesture: true,
-                  gestureDirection: 'vertical',
+                  gestureDirection: 'horizontal',
                 }}
               />
             </Stack>
