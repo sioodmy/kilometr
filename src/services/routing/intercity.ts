@@ -24,8 +24,10 @@ import {
   normalizePolish,
   secondsToTimeString,
   timeStringToSeconds,
+  warsawNow,
 } from '../../gtfs/geo';
 import type { Connection, Leg, LegMode } from './types';
+import { sharedTimeMs } from '../../sharing/progress';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
 /** Stacja kolejowa w magazynie ogólnopolskim. */
@@ -628,7 +630,7 @@ async function planForward(
     const rail = await railPromise;
     let followUps = 0;
     const now = new Date();
-    const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const currentSec = warsawNow(now).sec;
     const minDep = options.departureTimeSec ?? currentSec;
 
     for (const railConn of rail) {
@@ -839,9 +841,8 @@ export async function nextNationalTrains(
   try {
     const gtfs = await import('../gtfsDatabase');
     const db = await gtfs.getNationalDb();
-    const after = new Date(afterMs);
-    const dateStr = `${after.getFullYear()}${String(after.getMonth() + 1).padStart(2, '0')}${String(after.getDate()).padStart(2, '0')}`;
-    const services = await gtfs.getNationalActiveServices(after.getDay(), dateStr);
+    const afterWarsaw = warsawNow(new Date(afterMs));
+    const services = await gtfs.getNationalActiveServices(afterWarsaw.weekday, afterWarsaw.dateStr);
     if (services.size === 0) return [];
     const placeholders = [...services].map(() => '?').join(',');
     const rows = await db.getAllAsync<{
@@ -859,12 +860,11 @@ export async function nextNationalTrains(
        LIMIT 60`,
       toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services],
     );
-    const dayStartMs = new Date(after).setHours(0, 0, 0, 0);
     const out: NextTrain[] = [];
     for (const row of rows) {
       // Czas GTFS liczy się od doby serwisowej; odjazdy po północy
       // (24:xx+) mają dep_sec > 86400 i należą do „jutra” zegara.
-      const departAtMs = dayStartMs + row.dep_sec * 1000;
+      const departAtMs = sharedTimeMs(afterWarsaw.isoDate, row.dep_sec);
       if (departAtMs <= afterMs) continue;
       out.push({
         label: row.train_number

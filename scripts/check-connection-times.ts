@@ -169,6 +169,16 @@ assert.ok((boardingDepartureMs(nightDelayed, midnight) - midnight.getTime()) / 6
 const tomorrow = { ...connection, departureSec: connection.departureSec + 86400 };
 assert.strictEqual(refreshConnectionTimes(tomorrow, new Map([['tram', 600]]), now), tomorrow);
 
+const directNight: Connection = {
+  ...overnight,
+  departureSec: 86700,
+  arrivalSec: 87600,
+  legs: [overnight.legs[1]],
+};
+const directNightDelayed = refreshConnectionTimes(directNight, new Map([['tram', 300]]), midnight);
+assert.equal(directNightDelayed.live, true);
+assert.equal(directNightDelayed.legs[0].departAt, '00:08');
+
 const legacy: Connection = {
   ...connection,
   legs: [
