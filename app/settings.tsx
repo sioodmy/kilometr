@@ -17,6 +17,7 @@ import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
+  FadeOut,
   FadeOutUp,
   LinearTransition,
   useAnimatedStyle,
@@ -322,7 +323,6 @@ export default function SettingsScreen() {
   const [switchingCity, setSwitchingCity] = useState(false);
   const [switchingCityId, setSwitchingCityId] = useState<CityId | null>(null);
   const [citySheetOpen, setCitySheetOpen] = useState(false);
-  const [justSwitched, setJustSwitched] = useState<CityId | null>(null);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
   const [hasTrains, setHasTrains] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
@@ -351,22 +351,25 @@ export default function SettingsScreen() {
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const hasTimetable = dataStatus.state === 'ready';
+  const showDownloadCta = !hasTimetable;
+  const downloadBtnText = busy
+    ? dataStatus.state === 'downloading'
+      ? s.settings.dataDownloading(Math.round(dataStatus.progress * 100))
+      : dataStatus.state === 'importing'
+        ? s.settings.dataStep(dataStatus.step, Math.round(dataStatus.progress * 100))
+        : s.routes.downloadingPlain
+    : s.city.downloadAction;
 
   const handleCityChange = async (id: CityId) => {
     if (id === cityId || switchingCity || busy) return;
     setSwitchingCity(true);
     setSwitchingCityId(id);
-    setJustSwitched(null);
     setOutcome(null);
     try {
       await setCity(id);
       await refreshDataStatus()
         .then(setDataStatus)
         .catch(() => {});
-      // Potwierdzenie zostaje na ekranie po zakończeniu zmiany. Wcześniej
-      // znikało razem ze spinnerem, więc użytkownik nie dostawał żadnego
-      // znaku, że przełączenie w ogóle się udało.
-      setJustSwitched(id);
     } finally {
       setSwitchingCity(false);
       setSwitchingCityId(null);
@@ -438,48 +441,83 @@ export default function SettingsScreen() {
         {!activeSection && (
           <>
             <View style={styles.cityPanel}>
-              <Pressable
-                onPress={() => setCitySheetOpen(true)}
-                disabled={switchingCity || busy}
-                style={({ pressed }) => [
-                  styles.cityTile,
-                  (switchingCity || busy) && { opacity: 0.6 },
-                  pressed && !(switchingCity || busy) && { opacity: 0.8 },
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: switchingCity || busy }}
-                accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
-                accessibilityHint={s.city.settingsHint}
+              <Animated.View
+                layout={
+                  reduceMotion
+                    ? undefined
+                    : LinearTransition.duration(260).easing(Easing.bezier(0.2, 0, 0, 1))
+                }
+                style={styles.cityCard}
               >
-                <View style={styles.cityTileIconWrap}>
-                  <MapPin size={22} color={scheme.primary} />
-                </View>
-                <View style={styles.cityTileInfo}>
-                  <View style={styles.cityTileHeaderRow}>
-                    <Text style={styles.cityLabel}>{s.city.section}</Text>
+                <Pressable
+                  onPress={() => setCitySheetOpen(true)}
+                  disabled={switchingCity || busy}
+                  style={({ pressed }) => [
+                    styles.cityTile,
+                    showDownloadCta && styles.cityTileWithAction,
+                    (switchingCity || busy) && { opacity: 0.6 },
+                    pressed && !(switchingCity || busy) && { opacity: 0.8 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: switchingCity || busy }}
+                  accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+                  accessibilityHint={s.city.settingsHint}
+                >
+                  <View style={styles.cityTileIconWrap}>
+                    <MapPin size={22} color={scheme.primary} />
                   </View>
-                  <Text style={styles.cityTileName}>{s.city.name(cityId)}</Text>
-                  <Text style={styles.cityTileFeeds}>{s.city.feeds(cityId)}</Text>
-                </View>
-                <ChevronRight size={22} color={scheme.primary} />
-              </Pressable>
-              {switchingCity ? (
-                <View style={styles.switchRow}>
-                  <ActivityIndicator size="small" color={scheme.primary} />
-                  <Text style={styles.switchText}>{s.city.switching}</Text>
-                </View>
-              ) : justSwitched ? (
-                <View style={styles.switchRow}>
-                  <Check size={16} color={scheme.primary} />
-                  <Text style={styles.switchText}>{s.city.changed(s.city.name(justSwitched))}</Text>
-                </View>
-              ) : null}
-              {busy && !switchingCity && (
-                <Text style={styles.warnHint}>{s.city.blockedByDownload}</Text>
-              )}
-              {!busy && !switchingCity && dataStatus.state === 'empty' ? (
-                <Text style={styles.warnHint}>{s.city.needDownload}</Text>
-              ) : null}
+                  <View style={styles.cityTileInfo}>
+                    <View style={styles.cityTileHeaderRow}>
+                      <Text style={styles.cityLabel}>{s.city.section}</Text>
+                    </View>
+                    <Text style={styles.cityTileName}>{s.city.name(cityId)}</Text>
+                    <Text style={styles.cityTileFeeds}>{s.city.feeds(cityId)}</Text>
+                  </View>
+                  {switchingCity ? (
+                    <ActivityIndicator size="small" color={scheme.primary} />
+                  ) : (
+                    <ChevronRight size={22} color={scheme.primary} />
+                  )}
+                </Pressable>
+                {showDownloadCta && (
+                  <Animated.View
+                    entering={
+                      reduceMotion
+                        ? undefined
+                        : FadeInDown.duration(220).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                    }
+                    exiting={
+                      reduceMotion
+                        ? undefined
+                        : FadeOut.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
+                    }
+                    style={styles.cityDownloadSection}
+                  >
+                    <Pressable
+                      onPress={() => {
+                        void Haptics.selectionAsync().catch(() => {});
+                        void handleDownload();
+                      }}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.city.downloadAction}
+                      accessibilityState={{ busy, disabled: busy }}
+                      style={({ pressed }) => [
+                        styles.cityDownloadBtn,
+                        busy && styles.cityDownloadBtnBusy,
+                        pressed && !busy && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+                      ]}
+                    >
+                      {busy ? (
+                        <ActivityIndicator size="small" color={scheme.onPrimary} />
+                      ) : (
+                        <Download size={18} color={scheme.onPrimary} />
+                      )}
+                      <Text style={styles.cityDownloadText}>{downloadBtnText}</Text>
+                    </Pressable>
+                  </Animated.View>
+                )}
+              </Animated.View>
             </View>
 
             <View style={styles.menuGroup}>
@@ -932,8 +970,6 @@ const styles = StyleSheet.create({
   settingTitle: { ...type.bodyLarge, color: scheme.onSurface, fontWeight: '500' },
   settingHint: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
   warnHint: { ...type.bodySmall, color: scheme.warning, lineHeight: 17 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  switchText: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: scheme.outlineVariant },
   stepper: {
     flexDirection: 'row',
@@ -995,15 +1031,46 @@ const styles = StyleSheet.create({
   // bez żadnej informacji, a niżej w karcie jechał pasek postępu pobierania.
   langChipDisabled: { opacity: 0.45 },
   langChipTextActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
-  cityTile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  cityCard: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.extraLarge,
+    overflow: "hidden",
+  },
+  cityTile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     paddingHorizontal: 20,
     paddingVertical: 24,
     minHeight: 64,
+  },
+  cityTileWithAction: {
+    paddingBottom: 14,
+  },
+  cityDownloadSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  cityDownloadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: scheme.primary,
+    borderRadius: shape.large,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  cityDownloadBtnBusy: {
+    opacity: 0.85,
+  },
+  cityDownloadText: {
+    ...type.labelLarge,
+    fontWeight: "600",
+    color: scheme.onPrimary,
+    flexShrink: 1,
+    textAlign: "center",
   },
   cityTileIconWrap: {
     width: 44,

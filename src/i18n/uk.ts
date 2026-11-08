@@ -493,6 +493,7 @@ export const uk: Strings = {
     needDownload:
       'Для цього міста ще немає розкладу на телефоні. Завантаж його в розділі «Розклад і карти».',
     changeAction: 'Змінити',
+    downloadAction: 'Завантажити розклад',
     selectTitle: 'Оберіть місто',
     selectSub: 'Оберіть агломерацію для планування поїздок.',
     searchPlaceholder: 'Місто або перевізник',

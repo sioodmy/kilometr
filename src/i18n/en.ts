@@ -473,6 +473,7 @@ export const en: Strings = {
     needDownload:
       'This city has no timetable on the phone yet. Download it under Timetable and maps.',
     changeAction: 'Change',
+    downloadAction: 'Download timetable',
     selectTitle: 'Select city',
     selectSub: 'Choose the transit area you want to travel in.',
     searchPlaceholder: 'City or operator',
