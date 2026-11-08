@@ -49,7 +49,7 @@ export function getTrainLegSummary(connection: Connection): TrainLegSummary | nu
     toStation: lastTrain.toStop,
     departureTime: firstTrain.departAt || connection.departAt,
     agency: firstTrain.railAgency,
-    trainNumber: firstTrain.trainNumber,
+    trainNumber: firstTrain.trainNumber || firstTrain.line,
   };
 }
 

@@ -11,7 +11,9 @@ import {
   type ParsedTicketMetadata,
 } from './ticketParser';
 import type { Connection } from '../types/models';
-import { getTrainLegSummary } from './ticketing';
+import { getTrainLegSummary, slugifyStation } from './ticketing';
+import { isTrainLeg } from './railIdentity';
+import { normalizeConnectionId, stableConnectionId } from './routing/connectionIdentity';
 
 export interface AttachedRailTicket {
   id: string;
@@ -26,27 +28,32 @@ export interface AttachedRailTicket {
   metadata: ParsedTicketMetadata;
 }
 
-interface TicketIndexEntry {
+export interface TicketIndexEntry {
   id: string;
   connectionId: string;
+  normalizedConnectionId?: string;
   fileUri: string;
   fileName: string;
   fileSize: number;
   addedAt: number;
   tripDate?: string;
+  trainNumber?: string;
+  departTime?: string;
+  fromStation?: string;
+  toStation?: string;
 }
 
 const TICKET_INDEX_KEY = 'rail_tickets:index';
 const DEFAULT_RETENTION_DAYS = 14;
 const MAX_TICKET_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit bezpieczeństwa (ochrona pamięci i storage)
 
-function getTicketDir(): string | null {
+export function getTicketDir(): string | null {
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
   if (!base) return null;
   return base.endsWith('/') ? `${base}tickets/` : `${base}/tickets/`;
 }
 
-async function ensureTicketDir(): Promise<string | null> {
+export async function ensureTicketDir(): Promise<string | null> {
   const dir = getTicketDir();
   if (!dir) return null;
   try {
@@ -60,7 +67,132 @@ async function ensureTicketDir(): Promise<string | null> {
   }
 }
 
-async function loadIndex(): Promise<TicketIndexEntry[]> {
+/**
+ * Rozwiązuje ścieżkę do biletu/kodu dynamicznie względem bieżącego kontenera aplikacji.
+ * Na iOS UUID kontenera sandboxu aplikacji zmienia się pomiędzy restartami aplikacji.
+ */
+export function resolveTicketUri(storedUri?: string | null, fallbackFileName?: string): string | null {
+  if (!storedUri && !fallbackFileName) return null;
+  const dir = getTicketDir();
+  if (!dir) return storedUri ?? null;
+  const rawFileName = storedUri ? storedUri.split('/').pop()?.split('?')[0] : fallbackFileName;
+  if (!rawFileName) return storedUri ?? null;
+  return `${dir}${rawFileName}`;
+}
+
+async function checkTicketFileExists(
+  uri: string,
+  fallbackFileName?: string,
+): Promise<{ exists: boolean; resolvedUri: string }> {
+  try {
+    const directInfo = await FileSystem.getInfoAsync(uri);
+    if (directInfo.exists) {
+      return { exists: true, resolvedUri: uri };
+    }
+  } catch {}
+
+  const resolved = resolveTicketUri(uri, fallbackFileName);
+  if (resolved && resolved !== uri) {
+    try {
+      const resolvedInfo = await FileSystem.getInfoAsync(resolved);
+      if (resolvedInfo.exists) {
+        return { exists: true, resolvedUri: resolved };
+      }
+    } catch {}
+  }
+
+  return { exists: false, resolvedUri: resolved ?? uri };
+}
+
+function resolveTicketUrisInPlace(ticket: AttachedRailTicket, resolvedFileUri?: string): AttachedRailTicket {
+  if (resolvedFileUri) {
+    ticket.fileUri = resolvedFileUri;
+  }
+  if (ticket.barcodeUri) {
+    const resolvedBarcode = resolveTicketUri(ticket.barcodeUri);
+    if (resolvedBarcode) ticket.barcodeUri = resolvedBarcode;
+  }
+  if (ticket.barcodeUris && ticket.barcodeUris.length > 0) {
+    ticket.barcodeUris = ticket.barcodeUris.map((u) => resolveTicketUri(u) ?? u);
+  }
+  return ticket;
+}
+
+function normalizeTrainStr(str?: string | null): string {
+  if (!str) return '';
+  return str.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+function parseTrainTokens(trainStr?: string | null): string[] {
+  if (!trainStr) return [];
+  const clean = trainStr.trim().toUpperCase();
+  const tokens = new Set<string>();
+  const normalized = normalizeTrainStr(clean);
+  if (normalized) tokens.add(normalized);
+
+  const parts = clean.split(/[\s/]+/);
+  for (const part of parts) {
+    const norm = normalizeTrainStr(part);
+    if (norm) tokens.add(norm);
+  }
+
+  const digitsMatch = clean.match(/\d{3,6}/g);
+  if (digitsMatch) {
+    for (const d of digitsMatch) {
+      tokens.add(d);
+    }
+  }
+
+  return Array.from(tokens);
+}
+
+function ticketMatchesTrainConnection(
+  ticket: AttachedRailTicket,
+  connection: Connection,
+): boolean {
+  const trainLegs = connection.legs.filter(isTrainLeg);
+  if (trainLegs.length === 0) return false;
+
+  const serviceDate = connection.serviceDate;
+  if (serviceDate && ticket.tripDate && serviceDate !== ticket.tripDate) {
+    return false;
+  }
+
+  const ticketTrainTokens = parseTrainTokens(ticket.metadata.trainNumber);
+
+  for (const leg of trainLegs) {
+    const legTokens = [
+      ...parseTrainTokens(leg.trainNumber),
+      ...parseTrainTokens(leg.line),
+      ...parseTrainTokens(leg.trainName),
+    ];
+
+    if (ticketTrainTokens.length > 0 && legTokens.length > 0) {
+      const match = ticketTrainTokens.some((tToken) =>
+        legTokens.some((lToken) => {
+          if (tToken === lToken) return true;
+          if (tToken.length >= 3 && lToken.includes(tToken)) return true;
+          if (lToken.length >= 3 && tToken.includes(lToken)) return true;
+          return false;
+        }),
+      );
+      if (match) return true;
+    }
+
+    if (ticket.metadata.departTime && ticket.metadata.fromStation) {
+      const ticketSlug = slugifyStation(ticket.metadata.fromStation);
+      const legSlug = slugifyStation(leg.fromStop);
+      const timeMatches = leg.departAt === ticket.metadata.departTime;
+      if (ticketSlug === legSlug && timeMatches) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export async function loadIndex(): Promise<TicketIndexEntry[]> {
   const raw = await kvGet(TICKET_INDEX_KEY);
   if (!raw) return [];
   try {
@@ -70,7 +202,7 @@ async function loadIndex(): Promise<TicketIndexEntry[]> {
   }
 }
 
-async function saveIndex(entries: TicketIndexEntry[]): Promise<void> {
+export async function saveIndex(entries: TicketIndexEntry[]): Promise<void> {
   await kvSet(TICKET_INDEX_KEY, JSON.stringify(entries));
 }
 
@@ -83,48 +215,76 @@ export async function getTicketForConnection(
   connectionId: string,
   connection?: Connection,
 ): Promise<AttachedRailTicket | null> {
+  const normalizedId = normalizeConnectionId(connectionId);
+
   // 1. Sprawdź bezpośrednio po identyfikatorze połączenia
-  const raw = await kvGet(`ticket:${connectionId}`);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as AttachedRailTicket;
-      const fileInfo = await FileSystem.getInfoAsync(parsed.fileUri);
-      if (fileInfo.exists) {
-        return parsed;
-      }
-      await deleteTicketForConnection(connectionId);
-    } catch {}
+  const candidateKeys = [
+    `ticket:${connectionId}`,
+    ...(normalizedId !== connectionId ? [`ticket:${normalizedId}`] : []),
+    ...(connection ? [`ticket:${stableConnectionId(connection)}`] : []),
+  ];
+
+  for (const key of candidateKeys) {
+    const raw = await kvGet(key);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as AttachedRailTicket;
+        const { exists, resolvedUri } = await checkTicketFileExists(parsed.fileUri, `${parsed.id}.pdf`);
+        if (exists) {
+          resolveTicketUrisInPlace(parsed, resolvedUri);
+          return parsed;
+        }
+      } catch {}
+    }
   }
 
-  // 2. Fallback na wypadek zmiany ID przez opóźnienie lub restart plannera
-  if (connection) {
-    const summary = getTrainLegSummary(connection);
-    const trainNum = summary?.trainNumber?.replace(/\s+/g, '').toUpperCase();
-    const serviceDate = connection.serviceDate;
+  // 2. Wyszukanie w indeksie biletów (po connectionId lub stableConnectionId)
+  const index = await loadIndex();
+  const stableId = connection ? stableConnectionId(connection) : null;
 
-    if (trainNum || serviceDate) {
-      const index = await loadIndex();
-      for (const entry of index) {
-        const candidateRaw = await kvGet(`ticket:${entry.connectionId}`);
-        if (!candidateRaw) continue;
+  for (const entry of index) {
+    const isDirectMatch =
+      entry.connectionId === connectionId ||
+      entry.connectionId === normalizedId ||
+      entry.normalizedConnectionId === normalizedId ||
+      Boolean(stableId && (entry.connectionId === stableId || entry.normalizedConnectionId === stableId));
+
+    if (isDirectMatch) {
+      const candidateRaw =
+        (await kvGet(`ticket_by_id:${entry.id}`)) ??
+        (await kvGet(`ticket:${entry.connectionId}`));
+      if (candidateRaw) {
         try {
           const cand = JSON.parse(candidateRaw) as AttachedRailTicket;
-          const candTrain = cand.metadata.trainNumber?.replace(/\s+/g, '').toUpperCase();
-          const matchTrain = Boolean(
-            trainNum && candTrain && (trainNum.includes(candTrain) || candTrain.includes(trainNum)),
-          );
-          const matchDate = !serviceDate || !cand.tripDate || serviceDate === cand.tripDate;
-
-          if (matchTrain && matchDate) {
-            const fileInfo = await FileSystem.getInfoAsync(cand.fileUri);
-            if (fileInfo.exists) {
-              // Zmapuj na bieżący connectionId dla natychmiastowego dostępu
-              await kvSet(`ticket:${connectionId}`, candidateRaw);
-              return cand;
-            }
+          const { exists, resolvedUri } = await checkTicketFileExists(cand.fileUri, `${cand.id}.pdf`);
+          if (exists) {
+            resolveTicketUrisInPlace(cand, resolvedUri);
+            await kvSet(`ticket:${connectionId}`, JSON.stringify(cand));
+            return cand;
           }
         } catch {}
       }
+    }
+  }
+
+  // 3. Fallback: dopasowanie po numerze pociągu / relacji / dacie z indeksu
+  if (connection) {
+    for (const entry of index) {
+      const candidateRaw =
+        (await kvGet(`ticket_by_id:${entry.id}`)) ??
+        (await kvGet(`ticket:${entry.connectionId}`));
+      if (!candidateRaw) continue;
+      try {
+        const cand = JSON.parse(candidateRaw) as AttachedRailTicket;
+        if (ticketMatchesTrainConnection(cand, connection)) {
+          const { exists, resolvedUri } = await checkTicketFileExists(cand.fileUri, `${cand.id}.pdf`);
+          if (exists) {
+            resolveTicketUrisInPlace(cand, resolvedUri);
+            await kvSet(`ticket:${connectionId}`, JSON.stringify(cand));
+            return cand;
+          }
+        }
+      } catch {}
     }
   }
 
@@ -135,33 +295,77 @@ export async function getTicketForConnection(
  * Usuwa dołączony bilet, kasuje plik PDF, wyekstrahowane kody kreskowe oraz czyści indeks.
  */
 export async function deleteTicketForConnection(connectionId: string): Promise<void> {
-  const ticketRaw = await kvGet(`ticket:${connectionId}`);
-  if (ticketRaw) {
-    try {
-      const ticket = JSON.parse(ticketRaw) as AttachedRailTicket;
-      if (ticket.fileUri) {
-        await FileSystem.deleteAsync(ticket.fileUri, { idempotent: true });
-      }
-      if (ticket.barcodeUri) {
-        await FileSystem.deleteAsync(ticket.barcodeUri, { idempotent: true });
-      }
-      if (ticket.barcodeUris) {
-        for (const uri of ticket.barcodeUris) {
-          if (uri !== ticket.barcodeUri) {
-            await FileSystem.deleteAsync(uri, { idempotent: true });
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[TicketStorage] Delete file failed:', err);
+  const normalizedId = normalizeConnectionId(connectionId);
+  const candidateKeys = [
+    `ticket:${connectionId}`,
+    ...(normalizedId !== connectionId ? [`ticket:${normalizedId}`] : []),
+  ];
+
+  let foundTicket: AttachedRailTicket | null = null;
+  for (const key of candidateKeys) {
+    const ticketRaw = await kvGet(key);
+    if (ticketRaw) {
+      try {
+        foundTicket = JSON.parse(ticketRaw) as AttachedRailTicket;
+        break;
+      } catch {}
     }
   }
 
-  await kvRemove(`ticket:${connectionId}`);
+  const index = await loadIndex();
+  const matchedEntry = index.find(
+    (e) =>
+      e.connectionId === connectionId ||
+      e.connectionId === normalizedId ||
+      e.normalizedConnectionId === normalizedId,
+  );
+
+  if (!foundTicket && matchedEntry) {
+    const raw =
+      (await kvGet(`ticket_by_id:${matchedEntry.id}`)) ??
+      (await kvGet(`ticket:${matchedEntry.connectionId}`));
+    if (raw) {
+      try {
+        foundTicket = JSON.parse(raw) as AttachedRailTicket;
+      } catch {}
+    }
+  }
+
+  if (foundTicket) {
+    const targetFile = resolveTicketUri(foundTicket.fileUri, `${foundTicket.id}.pdf`) ?? foundTicket.fileUri;
+    try {
+      await FileSystem.deleteAsync(targetFile, { idempotent: true });
+    } catch {}
+
+    const barcodes = [
+      ...(foundTicket.barcodeUri ? [foundTicket.barcodeUri] : []),
+      ...(foundTicket.barcodeUris ?? []),
+    ];
+    for (const bUri of barcodes) {
+      const resolved = resolveTicketUri(bUri) ?? bUri;
+      try {
+        await FileSystem.deleteAsync(resolved, { idempotent: true });
+      } catch {}
+    }
+
+    if (foundTicket.id) {
+      await kvRemove(`ticket_by_id:${foundTicket.id}`);
+    }
+  }
+
+  for (const key of candidateKeys) {
+    await kvRemove(key);
+  }
 
   // Aktualizacja indeksu
-  const current = await loadIndex();
-  const filtered = current.filter((e) => e.connectionId !== connectionId);
+  const ticketId = foundTicket?.id ?? matchedEntry?.id;
+  const filtered = index.filter(
+    (e) =>
+      e.connectionId !== connectionId &&
+      e.connectionId !== normalizedId &&
+      e.normalizedConnectionId !== normalizedId &&
+      (!ticketId || e.id !== ticketId),
+  );
   await saveIndex(filtered);
 }
 
@@ -205,7 +409,6 @@ export async function importTicketPdf(
   }
 
   if (declaredSize > MAX_TICKET_FILE_SIZE) {
-    // Sprzątnij plik z cache DocumentPicker
     try {
       await FileSystem.deleteAsync(asset.uri, { idempotent: true });
     } catch {}
@@ -229,7 +432,6 @@ export async function importTicketPdf(
     to: targetUri,
   });
 
-  // Usuwamy plik z tymczasowego cache DocumentPicker, aby zapobiec wyciekom pamięci
   try {
     await FileSystem.deleteAsync(asset.uri, { idempotent: true });
   } catch {}
@@ -246,11 +448,9 @@ export async function importTicketPdf(
     });
     const bytes = base64ToUint8Array(base64);
 
-    // 1. Metadane tekstowe (wagon, miejsce, pasażer, ulga)
     text = extractTextFromPdf(bytes);
     metadata = parseRailTicketText(text, asset.name);
 
-    // 2. Oryginalne rastry kodów Aztec/QR z PDF (wsparcie wielu kodów dla przesiadek)
     try {
       const barcodes = extractBarcodesFromPdf(bytes);
       for (let i = 0; i < barcodes.length; i++) {
@@ -277,7 +477,6 @@ export async function importTicketPdf(
   const looksLikeTicket = isLikelyRailTicket(text, asset.name, hasBarcode);
 
   if (!looksLikeTicket) {
-    // Sprzątamy skopiowane pliki
     try {
       await FileSystem.deleteAsync(targetUri, { idempotent: true });
       for (const uri of barcodeUris) {
@@ -312,6 +511,11 @@ export async function importTicketPdf(
   }
 
   const now = Date.now();
+  let tripDate = connection?.serviceDate;
+  if (!tripDate && metadata.departDate) {
+    tripDate = metadata.departDate;
+  }
+
   const ticket: AttachedRailTicket = {
     id: ticketId,
     connectionId,
@@ -319,29 +523,45 @@ export async function importTicketPdf(
     fileUri: targetUri,
     fileSize: declaredSize,
     addedAt: now,
-    tripDate: connection?.serviceDate,
+    tripDate,
     barcodeUri,
     barcodeUris,
     metadata,
   };
 
-  await kvSet(`ticket:${connectionId}`, JSON.stringify(ticket));
+  const serialized = JSON.stringify(ticket);
+  await kvSet(`ticket:${connectionId}`, serialized);
+  const normalizedId = normalizeConnectionId(connectionId);
+  if (normalizedId !== connectionId) {
+    await kvSet(`ticket:${normalizedId}`, serialized);
+  }
+  await kvSet(`ticket_by_id:${ticketId}`, serialized);
 
   // Zapis do indeksu
   const current = await loadIndex();
-  const updated = current.filter((e) => e.connectionId !== connectionId);
+  const updated = current.filter(
+    (e) =>
+      e.connectionId !== connectionId &&
+      e.connectionId !== normalizedId &&
+      e.normalizedConnectionId !== normalizedId &&
+      e.id !== ticketId,
+  );
   updated.push({
     id: ticketId,
     connectionId,
+    normalizedConnectionId: normalizedId,
     fileUri: targetUri,
     fileName: ticket.fileName,
     fileSize: ticket.fileSize,
     addedAt: now,
     tripDate: ticket.tripDate,
+    trainNumber: metadata.trainNumber,
+    departTime: metadata.departTime,
+    fromStation: metadata.fromStation,
+    toStation: metadata.toStation,
   });
   await saveIndex(updated);
 
-  // Uruchomienie czyszczenia przedawnionych biletów w tle
   void cleanupExpiredTickets().catch((err) =>
     console.warn('[TicketStorage] cleanupExpiredTickets background error:', err),
   );
@@ -355,7 +575,17 @@ export async function importTicketPdf(
  */
 export async function getTicketConnectionIds(): Promise<Set<string>> {
   const index = await loadIndex();
-  return new Set(index.map((e) => e.connectionId));
+  const set = new Set<string>();
+  for (const entry of index) {
+    if (entry.connectionId) {
+      set.add(entry.connectionId);
+      set.add(normalizeConnectionId(entry.connectionId));
+    }
+    if (entry.normalizedConnectionId) {
+      set.add(entry.normalizedConnectionId);
+    }
+  }
+  return set;
 }
 
 /**
@@ -394,18 +624,27 @@ export async function cleanupExpiredTickets(
   for (const entry of index) {
     if (isTicketExpired(entry, now, retentionDays)) {
       try {
-        const ticketRaw = await kvGet(`ticket:${entry.connectionId}`);
+        const ticketRaw =
+          (await kvGet(`ticket_by_id:${entry.id}`)) ??
+          (await kvGet(`ticket:${entry.connectionId}`));
         if (ticketRaw) {
           const ticket = JSON.parse(ticketRaw) as AttachedRailTicket;
-          if (ticket.fileUri) await FileSystem.deleteAsync(ticket.fileUri, { idempotent: true });
-          if (ticket.barcodeUri) await FileSystem.deleteAsync(ticket.barcodeUri, { idempotent: true });
-          if (ticket.barcodeUris) {
-            for (const uri of ticket.barcodeUris) {
-              await FileSystem.deleteAsync(uri, { idempotent: true });
-            }
+          const targetFile = resolveTicketUri(ticket.fileUri, `${ticket.id}.pdf`) ?? ticket.fileUri;
+          await FileSystem.deleteAsync(targetFile, { idempotent: true });
+          const barcodes = [
+            ...(ticket.barcodeUri ? [ticket.barcodeUri] : []),
+            ...(ticket.barcodeUris ?? []),
+          ];
+          for (const uri of barcodes) {
+            const resolved = resolveTicketUri(uri) ?? uri;
+            await FileSystem.deleteAsync(resolved, { idempotent: true });
           }
         }
         await kvRemove(`ticket:${entry.connectionId}`);
+        if (entry.normalizedConnectionId) {
+          await kvRemove(`ticket:${entry.normalizedConnectionId}`);
+        }
+        await kvRemove(`ticket_by_id:${entry.id}`);
         removedCount++;
       } catch (err) {
         console.warn(`[TicketStorage] Failed to prune ticket for ${entry.connectionId}:`, err);
@@ -441,7 +680,8 @@ export async function openTicketPdf(ticket: AttachedRailTicket): Promise<boolean
       return false;
     }
 
-    await Sharing.shareAsync(ticket.fileUri, {
+    const resolvedUri = resolveTicketUri(ticket.fileUri, `${ticket.id}.pdf`) ?? ticket.fileUri;
+    await Sharing.shareAsync(resolvedUri, {
       mimeType: 'application/pdf',
       dialogTitle: ticket.fileName || 'Bilet kolejowy',
       UTI: 'com.adobe.pdf',
