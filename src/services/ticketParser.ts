@@ -12,6 +12,7 @@ export interface ParsedTicketMetadata {
   toStation?: string;
   departDate?: string;
   departTime?: string;
+  arriveTime?: string;
 }
 
 export interface ExtractedBarcode {
@@ -786,18 +787,57 @@ export function parseRailTicketText(text: string, fileName?: string): ParsedTick
     result.ticketNumber = ticketNoMatch[1].trim();
   }
 
-  // 8. Czas odjazdu i stacje z zapisu relacji (np. "18.10 13:47 Katowice -> Wrocław Główny" lub "Wrocław Główny - Legnica")
+  // 8. Czas odjazdu i stacje z zapisu relacji (np. "18.10 13:47 Katowice -> Wrocław Główny", "Wrocław Główny - Legnica" lub PKP IC "Odjazd: 14:25 Wrocław Główny")
   const relacjaMatch = text.match(
-    /([0-2]?[0-9]:[0-5][0-9])\s+([A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón\s]+?)\s*->\s*([A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón\s]+?)(?:\s+[0-9]{2}\.[0-9]{2}|\s+[0-2]?[0-9]:[0-5][0-9]|\s+\*|$)/i,
+    /([0-2]?[0-9]:[0-5][0-9])\s+([A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón.\s-]+?)\s*->\s*([A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón.\s-]+?)(?:\s+[0-9]{2}\.[0-9]{2}|\s+[0-2]?[0-9]:[0-5][0-9]|\s+\*|$)/i,
   );
   if (relacjaMatch) {
     result.departTime = relacjaMatch[1];
     result.fromStation = relacjaMatch[2].trim();
     result.toStation = relacjaMatch[3].trim();
   } else {
-    const timeMatch = text.match(/\bodjazd[:\s]*([0-2]?[0-9]:[0-5][0-9])\b/i);
-    if (timeMatch) {
-      result.departTime = timeMatch[1];
+    // Format PKP Intercity / Polregio / Koleje Śląskie:
+    // Odjazd: 14:25 Wrocław Główny
+    // Przyjazd: 17:15 Poznań Główny
+    const odjazdMatch = text.match(
+      /\bodjazd[:\s]*([0-2]?[0-9]:[0-5][0-9])(?:\s+([A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón.\s-]+?))?(?=\s*(?:przyjazd|wagon|miejsce|klasa|\n|\r|$))/i,
+    );
+    if (odjazdMatch) {
+      result.departTime = odjazdMatch[1];
+      const st = odjazdMatch[2]?.trim();
+      if (st && st.length > 2) {
+        result.fromStation = st;
+      }
+    } else {
+      const timeMatch = text.match(/\bodjazd[:\s]*([0-2]?[0-9]:[0-5][0-9])\b/i);
+      if (timeMatch) {
+        result.departTime = timeMatch[1];
+      }
+    }
+
+    const przyjazdMatch = text.match(
+      /\bprzyjazd[:\s]*([0-2]?[0-9]:[0-5][0-9])(?:\s+([A-ZŁŚĆŹŻĄĘÓŃa-złśćźżąęón.\s-]+?))?(?=\s*(?:wagon|miejsce|klasa|\n|\r|$))/i,
+    );
+    if (przyjazdMatch) {
+      result.arriveTime = przyjazdMatch[1];
+      const st = przyjazdMatch[2]?.trim();
+      if (st && st.length > 2) {
+        result.toStation = st;
+      }
+    }
+  }
+
+  // 9. Data odjazdu / podróży (np. "2026-11-08", "18.10.2026", "Data: 18.10.2026")
+  const dateIso = text.match(/\b(20[2-3][0-9])[-.](0[1-9]|1[0-2])[-.]([0-3][0-9])\b/);
+  if (dateIso) {
+    result.departDate = dateIso[1] + '-' + dateIso[2] + '-' + dateIso[3];
+  } else {
+    const datePl = text.match(/\b([0-3]?[0-9])\.(0[1-9]|1[0-2])\.(20[2-3][0-9])\b/);
+    if (datePl) {
+      const day = datePl[1].padStart(2, '0');
+      const month = datePl[2];
+      const year = datePl[3];
+      result.departDate = year + '-' + month + '-' + day;
     }
   }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Modal,
   Pressable,
   StyleSheet,
@@ -123,11 +124,22 @@ export function RouteTravelDeck({
 
   useEffect(() => {
     let active = true;
-    void getTicketForConnection(connection.id, connection).then((t) => {
-      if (active) setTicket(t);
+    const loadTicket = () => {
+      void getTicketForConnection(connection.id, connection).then((t) => {
+        if (active) setTicket(t);
+      });
+    };
+    loadTicket();
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        loadTicket();
+      }
     });
+
     return () => {
       active = false;
+      sub.remove();
     };
   }, [connection.id, connection.serviceDate]);
 
@@ -225,9 +237,11 @@ export function RouteTravelDeck({
         setTicketSheetOpen(false);
         // Połączenie z biletem trafia do „Twoich tras”: bilet jest powodem,
         // dla którego user wróci do tej trasy (kontrola, historia przejazdu).
-        RoutingService.saveRoute(connection).catch((err) =>
-          console.warn('[RouteTravelDeck] saveRoute for ticket failed:', err),
-        );
+        try {
+          await RoutingService.saveRoute(connection);
+        } catch (err) {
+          console.warn('[RouteTravelDeck] saveRoute for ticket failed:', err);
+        }
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
         if (imported.barcodeUri) {

@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
 import { kvGetStrict, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
-import { getCity, cityKey, suggestCityForCoords } from '../cities';
+
+import { getCity, cityKey, suggestCityForCoords, CITIES } from '../cities';
 import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import {
   Connection,
@@ -422,6 +423,17 @@ export const RoutingService: IRoutingService = {
     const allSaved = await getSavedRoutes();
     const hit = allSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
     if (hit) return { connection: hit, source: 'live' };
+
+    // Szukanie w zapisanych trasach innych miast (np. podróż międzymiastowa lub po zmianie aktywnego miasta)
+    const activeCity = getActiveCityIdSync();
+    for (const city of CITIES) {
+      if (city.id === activeCity) continue;
+      try {
+        const otherSaved = await readSavedRoutes(savedRoutesKey(city.id));
+        const otherHit = otherSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
+        if (otherHit) return { connection: otherHit, source: 'live' };
+      } catch {}
+    }
 
     const cached = await findCachedConnection(id);
     if (cached) {

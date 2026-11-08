@@ -82,10 +82,18 @@ export default function RouteDetailsScreen() {
     return false;
   }, [trackedTrip, id]);
 
+  const matchesRouteId = useCallback(
+    (candidateId?: string | null) => {
+      if (!candidateId) return false;
+      return candidateId === id || normalizeConnectionId(candidateId) === id;
+    },
+    [id],
+  );
+
   const immediateItem =
-    cachedItem?.id === id
+    matchesRouteId(cachedItem?.id)
       ? cachedItem
-      : alarmItem?.id === id
+      : matchesRouteId(alarmItem?.id)
         ? alarmItem
         : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
@@ -94,7 +102,7 @@ export default function RouteDetailsScreen() {
   const rawItem =
     isTrackedThis && trackedTrip
       ? trackedTrip.connection
-      : loadedItem?.id === id
+      : matchesRouteId(loadedItem?.id)
         ? loadedItem
         : (immediateItem ?? null);
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.

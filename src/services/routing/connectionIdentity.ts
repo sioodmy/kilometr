@@ -1,14 +1,14 @@
 import { secondsToTimeString } from '../../gtfs/geo';
 import type { Connection, Leg } from './types';
 
-function scheduledLegDepart(leg: Leg): string {
+export function scheduledLegDepart(leg: Leg): string {
   if (leg.scheduledDepartureSec != null) {
     return secondsToTimeString(leg.scheduledDepartureSec);
   }
   return leg.departAt;
 }
 
-function scheduledLegArrive(leg: Leg): string {
+export function scheduledLegArrive(leg: Leg): string {
   if (leg.scheduledArrivalSec != null) {
     return secondsToTimeString(leg.scheduledArrivalSec);
   }
@@ -40,9 +40,21 @@ export function stableConnectionId(connection: Connection): string {
   return `conn-${encodeURIComponent(connectionIdentity(connection))}`;
 }
 
-/** Expo Router odkodowuje parametry, ale cache przechowuje ID z zakodowanym JSON-em. */
 export function normalizeConnectionId(id: string): string {
-  return id.startsWith('conn-[') ? `conn-${encodeURIComponent(id.slice(5))}` : id;
+  if (!id.startsWith('conn-')) return id;
+  const rawPayload = id.slice(5);
+  try {
+    let current = rawPayload;
+    for (let i = 0; i < 3; i++) {
+      const next = decodeURIComponent(current);
+      if (next === current) break;
+      current = next;
+    }
+    JSON.parse(current);
+    return `conn-${encodeURIComponent(current)}`;
+  } catch {
+    return id;
+  }
 }
 
 // Kolejność kosztowa planera wybiera wariant, ID kursów GTFS nie rozróżnia duplikatów.

@@ -22,7 +22,6 @@ import {
   type AttachedRailTicket,
 } from '../src/services/ticketStorage';
 import { kvSet } from '../src/services/storage';
-import * as FileSystem from 'expo-file-system/legacy';
 import type { Connection, Leg } from '../src/types/models';
 
 describe('Ticketing Service', () => {
