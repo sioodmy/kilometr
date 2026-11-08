@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints, Pin } from './icons';
+import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
@@ -201,8 +201,6 @@ export const ConnectionCard = memo(function ConnectionCard({
   dimmed = false,
   tick = 0,
   peek,
-  isPinned,
-  onTogglePin,
 }: {
   item: Connection;
   onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
@@ -211,8 +209,6 @@ export const ConnectionCard = memo(function ConnectionCard({
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
   peek?: ConnectionPeekHandlers;
-  isPinned?: boolean;
-  onTogglePin?: (item: Connection) => void;
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
@@ -320,35 +316,8 @@ export const ConnectionCard = memo(function ConnectionCard({
             <RailAlertsChip connection={item} dimmed={dimmed} />
             <View style={styles.duration}>
               <Clock3 size={14} color={scheme.onSecondaryContainer} />
-              <Text style={styles.durationText}>
-                {s.common.durMin(item.durationMin)}
-              </Text>
+              <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
             </View>
-            {onTogglePin && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onTogglePin(item);
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isPinned
-                    ? s.home.unpinRouteA11y(item.toTitle)
-                    : s.home.pinRouteA11y(item.toTitle)
-                }
-                style={({ pressed }) => [
-                  styles.pinBtn,
-                  isPinned && styles.pinBtnActive,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <Pin
-                  size={16}
-                  color={isPinned ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                />
-              </Pressable>
-            )}
           </View>
         </View>
 
@@ -389,8 +358,6 @@ export const ConnectionCard = memo(function ConnectionCard({
           </Text>
         )}
         {notice && <Text style={[styles.delay, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
-
-
       </Pressable>
     </ConnectionPeekTarget>
   );
@@ -410,17 +377,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  pinBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: shape.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  pinBtnActive: {
-    backgroundColor: scheme.primaryContainer,
   },
   schedule: {
     flexDirection: 'row',
