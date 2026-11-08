@@ -553,7 +553,7 @@ export function DepartureTimeSheet({
           {isPast ? (
             <View style={styles.warningBox}>
               <View style={styles.warningLeft}>
-                <AlertCircle size={16} color={scheme.onErrorContainer} />
+                <AlertCircle size={16} color={scheme.warning} />
                 <Text style={styles.warningText}>{s.timeSheet.pastWarning}</Text>
               </View>
               <Pressable
@@ -757,12 +757,14 @@ const styles = StyleSheet.create({
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: scheme.errorContainer,
+    gap: 10,
+    backgroundColor: scheme.surfaceContainerHigh,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: shape.medium,
+    borderRadius: shape.large,
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
   },
   warningLeft: {
     flexDirection: 'row',
@@ -772,22 +774,22 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...type.bodySmall,
-    color: scheme.onErrorContainer,
+    color: scheme.onSurfaceVariant,
     fontWeight: '500',
     flex: 1,
   },
   warningAction: {
-    minHeight: 44,
+    minHeight: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: shape.small,
-    backgroundColor: scheme.error,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
   },
   warningActionText: {
     ...type.labelSmall,
-    color: scheme.onError,
+    color: scheme.onSecondaryContainer,
     fontWeight: '600',
   },
   confirmBtn: {

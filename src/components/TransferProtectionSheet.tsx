@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   stopText: {
     fontSize: 14,
     lineHeight: 20,
-    color: scheme.error,
+    color: scheme.onSurfaceVariant,
     textAlign: 'center',
     flexShrink: 1,
   },
