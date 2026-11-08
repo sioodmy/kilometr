@@ -3,6 +3,7 @@ import type {
   LegStop,
   RouteQuery,
   SavedPlace,
+  SavedRoute,
   SmartDestination,
   Suggestion,
 } from '../types/models';
@@ -37,6 +38,7 @@ export interface IRoutingService {
   saveRoute(connection: Connection): Promise<void>;
   deleteSavedRoute(id: string): Promise<void>;
   isRouteSaved(id: string): Promise<boolean>;
+  getSavedRoutes(key?: string): Promise<SavedRoute[]>;
   /** Pełna sekwencja przystanków kursu (cała linia). Zwraca [] gdy brak danych. */
   getTripStops(tripId: string): Promise<LegStop[]>;
 }

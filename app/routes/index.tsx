@@ -34,6 +34,7 @@ import {
   LOCATION_REFINE_DELTA_M,
   RoutingService,
   SearchService,
+  subscribeSavedRoutes,
   distanceMeters,
   findAnchorForLocation,
   recordTripSearch,
@@ -337,6 +338,38 @@ export default function RoutesScreen() {
       : 'all',
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [savedRouteIds, setSavedRouteIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      RoutingService.getSavedRoutes()
+        .then((routes) => {
+          if (!cancelled) setSavedRouteIds(new Set(routes.map((r) => r.id)));
+        })
+        .catch(() => {});
+    };
+    load();
+    const unsub = subscribeSavedRoutes(load);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+
+  const handleTogglePin = useCallback(async (conn: Connection) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const isSaved = savedRouteIds.has(conn.id);
+    try {
+      if (isSaved) {
+        await RoutingService.deleteSavedRoute(conn.id);
+      } else {
+        await RoutingService.saveRoute(conn);
+      }
+    } catch (err) {
+      console.warn("Failed to toggle pin on route:", err);
+    }
+  }, [savedRouteIds]);
 
   const availableModes = useMemo(() => {
     const set = new Set<LegMode>();
@@ -1067,11 +1100,13 @@ export default function RoutesScreen() {
             onPress={openConnection}
             peek={peek}
             tick={nowTick}
+            isPinned={savedRouteIds.has(item.id)}
+            onTogglePin={handleTogglePin}
           />
         </Animated.View>
       );
     },
-    [openConnection, nowTick, peek, reduceMotion],
+    [openConnection, nowTick, peek, reduceMotion, savedRouteIds, handleTogglePin],
   );
 
   const headerStyle = styles.routeHeader;
