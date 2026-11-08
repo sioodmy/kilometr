@@ -1,26 +1,34 @@
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { AlertCircle } from './icons';
-import { useStrings } from '../i18n';
-import { scheme, shape, type } from '../theme/tokens';
-import type { Connection } from '../types/models';
-import { alertsForConnection, type TrainAlerts } from '../services/railTripAlerts';
+import { useEffect, useMemo, useState } from "react";
+import { StyleSheet } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { TriangleAlert } from "./icons";
+import { useStrings } from "../i18n";
+import { scheme, shape } from "../theme/tokens";
+import type { Connection } from "../types/models";
+import { alertsForConnection, type TrainAlerts } from "../services/railTripAlerts";
+import { linesFromConnections } from "../services/recentRouteLines";
+import { getCachedNews } from "../services/mpkNews";
+import { alertTouchesRoute } from "./ConnectionLineAlerts";
 
 /**
- * Kompaktowy chip alertów per pociąg na liście połączeń: jedna linia
- * (temat utrudnienia) pod wierszem opóźnienia. Cache w serwisie sprawia,
- * że osiem kart nie otwiera ośmiu strumieni - pierwszy odczyt idzie raz,
- * reszta dostaje wynik z pamięci.
+ * Kompaktowy wskaźnik utrudnień w stylu Material 3 Expressive na karcie połączenia.
+ * Wyświetla subtelną ikonę ostrzeżenia w nagłówku, gdy na trasie (kolej lub zbiorkom)
+ * występują utrudnienia. Szczegóły pasażer sprawdza na ekranie trasy.
  */
-export function RailAlertsChip({ connection }: { connection: Connection }) {
+export function ConnectionDisruptionBadge({
+  connection,
+  dimmed,
+}: {
+  connection: Connection;
+  dimmed?: boolean;
+}) {
   const s = useStrings();
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
 
   const hasTrain = useMemo(
     () =>
       connection.legs?.some(
-        (l) => l.mode === 'train' || l.tripId?.startsWith('pl:') || l.trainNumber,
+        (l) => l.mode === "train" || l.tripId?.startsWith("pl:") || l.trainNumber,
       ),
     [connection.legs],
   );
@@ -36,49 +44,78 @@ export function RailAlertsChip({ connection }: { connection: Connection }) {
     };
   }, [connection, hasTrain]);
 
-  const flatAlerts = useMemo(
-    () =>
-      trainAlerts
-        .flatMap(({ leg, alerts }) => alerts.map((alert) => ({ leg, alert })))
-        .slice(0, 2),
+  const hasTrainDisruptions = useMemo(
+    () => trainAlerts.some((ta) => ta.alerts.length > 0),
     [trainAlerts],
   );
 
-  if (!hasTrain || flatAlerts.length === 0) return null;
+  const routeLines = useMemo(() => linesFromConnections([connection]), [connection]);
+  const lineSet = useMemo(
+    () => new Set(routeLines.map((l) => l.trim().toUpperCase())),
+    [routeLines],
+  );
+
+  const cityDisruptions = useMemo(() => {
+    if (lineSet.size === 0) return [];
+    const cached = getCachedNews() ?? [];
+    return cached.filter((item) => alertTouchesRoute(item, lineSet));
+  }, [lineSet]);
+
+  const hasCityDisruptions = cityDisruptions.length > 0;
+
+  const isUrgent = useMemo(() => {
+    const urgentTrain = trainAlerts.some((ta) => ta.alerts.some((a) => a.isUrgent));
+    const urgentCity = cityDisruptions.some(
+      (item) => item.urgent || item.disruption?.severity === "blocking",
+    );
+    return urgentTrain || urgentCity;
+  }, [trainAlerts, cityDisruptions]);
+
+  if (!hasTrainDisruptions && !hasCityDisruptions) {
+    return null;
+  }
 
   return (
-    <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)}>
-      {flatAlerts.map(({ leg, alert }, i) => (
-        <View
-          key={`${leg.id}-${alert.id ?? i}`}
-          style={styles.chip}
-          accessibilityRole="alert"
-          accessibilityLabel={`${leg.line ?? s.railAlerts.fallbackLine}: ${alert.title}`}
-        >
-          <AlertCircle size={15} color={scheme.onWarningContainer} />
-          <Text style={styles.text} numberOfLines={1} ellipsizeMode="tail">
-            {alert.title}
-          </Text>
-        </View>
-      ))}
+    <Animated.View
+      entering={FadeIn.duration(180)}
+      exiting={FadeOut.duration(150)}
+      style={[
+        styles.badge,
+        isUrgent ? styles.badgeUrgent : styles.badgeWarning,
+        dimmed && styles.dimmed,
+      ]}
+      pointerEvents="none"
+      accessibilityRole="image"
+      accessibilityLabel={s.railAlerts.disruptionsBadgeA11y}
+    >
+      <TriangleAlert
+        size={15}
+        color={isUrgent ? scheme.error : scheme.warning}
+      />
     </Animated.View>
   );
 }
 
+export const RailAlertsChip = ConnectionDisruptionBadge;
+
 const styles = StyleSheet.create({
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.warningContainer,
-    marginBottom: 6,
+  badge: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
   },
-  text: {
-    ...type.bodySmall,
-    color: scheme.onWarningContainer,
-    flex: 1,
+  badgeWarning: {
+    backgroundColor: scheme.warning + "24",
+    borderColor: scheme.warning + "44",
+  },
+  badgeUrgent: {
+    backgroundColor: scheme.error + "24",
+    borderColor: scheme.error + "44",
+  },
+  dimmed: {
+    opacity: 0.6,
   },
 });

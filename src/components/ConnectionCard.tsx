@@ -317,6 +317,7 @@ export const ConnectionCard = memo(function ConnectionCard({
             {walkOnly ? s.connection.walkRoute : departureText}
           </Text>
           <View style={styles.scheduleRight}>
+            <RailAlertsChip connection={item} dimmed={dimmed} />
             <View style={styles.duration}>
               <Clock3 size={14} color={scheme.onSecondaryContainer} />
               <Text style={styles.durationText}>
@@ -389,8 +390,7 @@ export const ConnectionCard = memo(function ConnectionCard({
         )}
         {notice && <Text style={[styles.delay, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
 
-        {/* Alerty per pociąg (kompaktowo, pod wierszem opóźnienia). */}
-        <RailAlertsChip connection={item} />
+
       </Pressable>
     </ConnectionPeekTarget>
   );

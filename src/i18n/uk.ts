@@ -1402,6 +1402,7 @@ export const uk: Strings = {
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',
+    disruptionsBadgeA11y: 'Ускладнення на маршруті',
   },
 
   data: {

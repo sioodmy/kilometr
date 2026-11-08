@@ -1341,6 +1341,7 @@ export const en: Strings = {
   railAlerts: {
     cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',
+    disruptionsBadgeA11y: 'Disruptions on route',
   },
 
   data: {

@@ -58,7 +58,7 @@ function getTransitActionLabel(solutionText: string, s: ReturnType<typeof useStr
  * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
  * Bierzemy ze struktury AI disruption.all_lines, impacted_lines oraz item.lines.
  */
-function getDisruptionLines(item: MpkNewsItem): string[] {
+export function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
@@ -86,7 +86,7 @@ function getDisruptionLines(item: MpkNewsItem): string[] {
 /**
  * Sprawdza, czy utrudnienie dotyczy linii z bieżącego połączenia.
  */
-function alertTouchesRoute(item: MpkNewsItem, lineSet: Set<string>): boolean {
+export function alertTouchesRoute(item: MpkNewsItem, lineSet: Set<string>): boolean {
   if (lineSet.size === 0) return false;
   const alertLines = getDisruptionLines(item);
   if (alertLines.length > 0) {
