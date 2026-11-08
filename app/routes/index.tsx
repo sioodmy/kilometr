@@ -15,14 +15,12 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Anchor,
   ChevronUp,
   ChevronLeft,
   Clock3,
   CloudOff,
   Flag,
   SlidersHorizontal,
-  X,
 } from '../../src/components/icons';
 import Animated, { Easing, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
@@ -1086,24 +1084,14 @@ export default function RoutesScreen() {
               ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
               : s.routes.changeFromA11y(fromTitle)
           }
-          accessory={
-            activeAnchor && (
-              <View style={styles.anchorSub}>
-                <Anchor size={12} color={scheme.primary} />
-                <Text style={styles.anchorSubText} numberOfLines={1}>
-                  {activeAnchor.stopName}
-                  <Text style={styles.anchorSubPlace}> · {activeAnchor.placeName}</Text>
-                </Text>
-                <Pressable
-                  onPress={handleDismissAnchor}
-                  style={({ pressed }) => [styles.anchorX, pressed && { opacity: 0.6 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.dismissAnchorA11y}
-                >
-                  <X size={12} color={scheme.onSurfaceVariant} />
-                </Pressable>
-              </View>
-            )
+          anchor={
+            activeAnchor
+              ? {
+                  stopName: activeAnchor.stopName,
+                  onDismiss: handleDismissAnchor,
+                  dismissA11y: s.routes.dismissAnchorA11y,
+                }
+              : undefined
           }
         />
 
@@ -1613,33 +1601,6 @@ const styles = StyleSheet.create({
   },
   // Karta aktywnej podróży nad listą połączeń
   activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
-  // Dopiska kotwicy pod tytułem startu: ta sama typografia co nagłówek,
-  // tylko mniejsza i w kolorze primary: zero pigułek, zero tła.
-  anchorSub: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-    maxWidth: '100%',
-  },
-  anchorSubText: {
-    ...type.labelMedium,
-    fontWeight: '600',
-    color: scheme.primary,
-    flexShrink: 1,
-  },
-  anchorSubPlace: {
-    fontWeight: '500',
-    color: scheme.onSurfaceVariant,
-  },
-  // Cichy X bez kółka: dopiska ma wyglądać jak tekst, nie jak chip.
-  anchorX: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
   filterCardsRow: {
     flexDirection: 'row',
     gap: 10,
