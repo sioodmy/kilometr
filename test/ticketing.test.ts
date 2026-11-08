@@ -12,7 +12,17 @@ import {
   uint8ArrayToBase64,
   unfilterPngPredictor,
 } from '../src/services/ticketParser';
-import { isTicketExpired } from '../src/services/ticketStorage';
+import {
+  isTicketExpired,
+  resolveTicketUri,
+  getTicketForConnection,
+  getTicketConnectionIds,
+  saveIndex,
+  getTicketDir,
+  type AttachedRailTicket,
+} from '../src/services/ticketStorage';
+import { kvSet } from '../src/services/storage';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { Connection, Leg } from '../src/types/models';
 
 describe('Ticketing Service', () => {
@@ -357,5 +367,151 @@ describe('Ticketing Service', () => {
       isTicketExpired({ addedAt: now - 20 * 24 * 3600 * 1000, tripDate: '2026-10-25' }, now, 14),
       true,
     );
+  });
+
+  it('resolveTicketUri re-anchors stale iOS sandbox container UUID paths to current ticket directory', () => {
+    const staleUri =
+      'file:///var/mobile/Containers/Data/Application/1111-2222-3333/Documents/tickets/ticket_1731112233.pdf';
+    const resolved = resolveTicketUri(staleUri);
+    const expectedDir = getTicketDir();
+    assert.ok(expectedDir);
+    assert.equal(resolved, `${expectedDir}ticket_1731112233.pdf`);
+
+    const staleBarcodeUri =
+      'file:///var/mobile/Containers/Data/Application/1111-2222-3333/Documents/tickets/ticket_1731112233_barcode_0.png';
+    const resolvedBarcode = resolveTicketUri(staleBarcodeUri);
+    assert.equal(resolvedBarcode, `${expectedDir}ticket_1731112233_barcode_0.png`);
+  });
+
+  it('getTicketForConnection recovers ticket across simulated app restart and container UUID migration', async () => {
+    const fsLegacy = require('expo-file-system/legacy');
+    const origGetInfo = fsLegacy.getInfoAsync;
+    try {
+      const ticketId = 'ticket_restart_test';
+      const staleUri = `file:///var/mobile/Containers/Data/Application/OLD-UUID-1234/Documents/tickets/${ticketId}.pdf`;
+      const staleBarcodeUri = `file:///var/mobile/Containers/Data/Application/OLD-UUID-1234/Documents/tickets/${ticketId}_barcode_0.jpg`;
+      const currentDir = getTicketDir();
+      assert.ok(currentDir);
+      const activeUri = `${currentDir}${ticketId}.pdf`;
+      const activeBarcodeUri = `${currentDir}${ticketId}_barcode_0.jpg`;
+
+      fsLegacy.getInfoAsync = async (uri: string) => {
+        if (uri === activeUri || uri === activeBarcodeUri) {
+          return { exists: true, size: 1024 };
+        }
+        return { exists: false };
+      };
+
+      const connId = 'conn-%5B%5B51.098%2C17.036%2C%22Wroc%C5%82aw%20G%C5%82%C3%B3wny%22%5D%2C%5B52.229%2C21.012%2C%22Warszawa%20Centralna%22%5D%2C0%2C%5B%5B%22train%22%2C%22IC%2065100%22%2C%22101%22%2C%22202%22%2C%2214%3A25%22%2C%2217%3A15%22%5D%5D%5D';
+
+      const attachedTicket: AttachedRailTicket = {
+        id: ticketId,
+        connectionId: connId,
+        fileName: 'bilet_intercity.pdf',
+        fileUri: staleUri,
+        fileSize: 1024,
+        addedAt: Date.now(),
+        tripDate: '2026-11-20',
+        barcodeUri: staleBarcodeUri,
+        barcodeUris: [staleBarcodeUri],
+        metadata: {
+          trainNumber: 'IC 65100',
+          seat: '74',
+          wagon: '5',
+          passenger: 'Jan Kowalski',
+        },
+      };
+
+      await kvSet(`ticket:${connId}`, JSON.stringify(attachedTicket));
+      await kvSet(`ticket_by_id:${ticketId}`, JSON.stringify(attachedTicket));
+
+      const direct = await getTicketForConnection(connId);
+      assert.ok(direct, 'Bilet powinien zostać znaleziony po restarcie');
+      assert.equal(direct?.id, ticketId);
+      assert.equal(direct?.fileUri, activeUri, 'Ścieżka pliku PDF musi zostać zaktualizowana do bieżącego kontenera');
+      assert.equal(direct?.barcodeUri, activeBarcodeUri, 'Ścieżka kodu kreskowego musi zostać zaktualizowana');
+
+      const decodedConnId = 'conn-[[51.098,17.036,"Wrocław Główny"],[52.229,21.012,"Warszawa Centralna"],0,[["train","IC 65100","101","202","14:25","17:15"]]]';
+      const fromDecoded = await getTicketForConnection(decodedConnId);
+      assert.ok(fromDecoded, 'Bilet powinien zostać znaleziony nawet przy zdekodowanym ID połączenia');
+      assert.equal(fromDecoded?.id, ticketId);
+    } finally {
+      fsLegacy.getInfoAsync = origGetInfo;
+    }
+  });
+
+  it('getTicketForConnection recovers ticket via train fallback when connectionId changes slightly', async () => {
+    const fsLegacy = require('expo-file-system/legacy');
+    const origGetInfo = fsLegacy.getInfoAsync;
+    try {
+      const ticketId = 'ticket_fallback_test';
+      const currentDir = getTicketDir();
+      assert.ok(currentDir);
+      const activeUri = `${currentDir}${ticketId}.pdf`;
+
+      fsLegacy.getInfoAsync = async (uri: string) => {
+        if (uri.includes(ticketId)) return { exists: true, size: 2048 };
+        return { exists: false };
+      };
+
+      const originalConnId = 'conn-initial-plan-id';
+      const attachedTicket: AttachedRailTicket = {
+        id: ticketId,
+        connectionId: originalConnId,
+        fileName: 'bilet_kd.pdf',
+        fileUri: activeUri,
+        fileSize: 2048,
+        addedAt: Date.now(),
+        tripDate: '2026-11-20',
+        metadata: {
+          trainNumber: 'KD 69123',
+          fromStation: 'Wrocław Główny',
+          toStation: 'Legnica',
+          departTime: '14:25',
+        },
+      };
+
+      await saveIndex([
+        {
+          id: ticketId,
+          connectionId: originalConnId,
+          fileUri: activeUri,
+          fileName: 'bilet_kd.pdf',
+          fileSize: 2048,
+          addedAt: Date.now(),
+          tripDate: '2026-11-20',
+          trainNumber: 'KD 69123',
+        },
+      ]);
+      await kvSet(`ticket_by_id:${ticketId}`, JSON.stringify(attachedTicket));
+
+      const newSearchedConnection = {
+        id: 'conn-different-gps-coords-after-search',
+        departAt: '14:25',
+        arriveAt: '15:10',
+        serviceDate: '2026-11-20',
+        legs: [
+          {
+            mode: 'train',
+            line: 'KD',
+            trainNumber: '69123',
+            fromStop: 'Wrocław Główny',
+            toStop: 'Legnica',
+            departAt: '14:25',
+            arriveAt: '15:10',
+          },
+        ],
+      } as unknown as Connection;
+
+      const found = await getTicketForConnection(newSearchedConnection.id, newSearchedConnection);
+      assert.ok(found, 'Bilet powinien zostać odnaleziony na podstawie numeru pociągu i daty');
+      assert.equal(found?.id, ticketId);
+      assert.equal(found?.metadata.trainNumber, 'KD 69123');
+
+      const ids = await getTicketConnectionIds();
+      assert.ok(ids.has(originalConnId));
+    } finally {
+      fsLegacy.getInfoAsync = origGetInfo;
+    }
   });
 });

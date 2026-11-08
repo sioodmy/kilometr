@@ -60,9 +60,24 @@ async function ensureDir(): Promise<string | null> {
   }
 }
 
-/** Bezpieczna nazwa pliku z klucza (zastąp nielegalne znaki). */
+/** Bezpieczna nazwa pliku z klucza (zastąp nielegalne znaki i zapobiegaj ENAMETOOLONG). */
 function keyToFile(dir: string, key: string): string {
-  return `${dir}${encodeURIComponent(key)}`;
+  const encoded = encodeURIComponent(key);
+  if (encoded.length <= 150) {
+    return `${dir}${encoded}`;
+  }
+  // Długie klucze (np. ID połączeń w biletach kolejowych) przekraczają limit
+  // 255 bajtów nazwy pliku na ext4/f2fs/APFS, powodując ENAMETOOLONG i cichy brak zapisu na dysk.
+  const prefix = encoded.slice(0, 40);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c64e6d;
+  for (let i = 0; i < key.length; i++) {
+    const ch = key.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  const hash = `${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`;
+  return `${dir}${prefix}_h_${hash}`;
 }
 
 export async function kvGet(key: string): Promise<string | null> {

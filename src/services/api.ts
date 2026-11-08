@@ -420,7 +420,7 @@ export const RoutingService: IRoutingService = {
     if (found) return { connection: found, source: 'live' };
 
     const allSaved = await getSavedRoutes();
-    const hit = allSaved.find(r => r.id === id)?.connection;
+    const hit = allSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
     if (hit) return { connection: hit, source: 'live' };
 
     const cached = await findCachedConnection(id);
@@ -438,7 +438,8 @@ export const RoutingService: IRoutingService = {
     return withRoutesLock(async () => {
       try {
         const all = await readSavedRoutes();
-        const existingIdx = all.findIndex((r) => r.id === connection.id);
+        const normId = normalizeConnectionId(connection.id);
+        const existingIdx = all.findIndex((r) => r.id === connection.id || normalizeConnectionId(r.id) === normId);
         const entry: SavedRoute = { id: connection.id, savedAt: Date.now(), connection };
         if (existingIdx >= 0) {
           all[existingIdx] = entry;
@@ -459,7 +460,8 @@ export const RoutingService: IRoutingService = {
     return withRoutesLock(async () => {
       try {
         const all = await readSavedRoutes();
-        const filtered = all.filter(r => r.id !== id);
+        const normId = normalizeConnectionId(id);
+        const filtered = all.filter(r => r.id !== id && normalizeConnectionId(r.id) !== normId);
         await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
         notifySavedRoutesChanged();
       } catch (err) {
@@ -476,7 +478,8 @@ export const RoutingService: IRoutingService = {
   async isRouteSaved(id: string): Promise<boolean> {
     try {
       const all = await getSavedRoutes();
-      return all.some(r => r.id === id);
+      const normId = normalizeConnectionId(id);
+      return all.some(r => r.id === id || normalizeConnectionId(r.id) === normId);
     } catch {
       return false;
     }
