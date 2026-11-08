@@ -278,6 +278,15 @@ export interface NationalStation {
 /** Czy plik bazy krajowej istnieje i ma stacje (tani EXISTS, bez ładowania). */
 export async function hasNationalDb(): Promise<boolean> {
   try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const main = `${base.replace(/\/+$/, '')}/SQLite/${NATIONAL_DB_FILE}`;
+      const info = await FileSystem.getInfoAsync(main);
+      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) {
+        return false;
+      }
+    }
     const db = await getNationalDb();
     const row = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stops) AS n');
     return (row?.n ?? 0) > 0;

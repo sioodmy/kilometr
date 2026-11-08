@@ -117,7 +117,7 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-const KEY_ZB_RAIL_STOPS = 'kilometr.cache.zb_rail_stops.v1';
+const KEY_ZB_RAIL_STOPS = 'kilometr.cache.zb_rail_stop_tuples.v1';
 
 /** Katalog stacji zbiorkomu (cache na sesję + dysk, ~3.5k krotek). */
 function loadStops(): Promise<StopTuple[]> {
@@ -601,15 +601,16 @@ export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAl
   const hit = alertsCache.get(vehicle);
   if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.promise;
   const promise = (async () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ZBIORKOM.timeoutMs);
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), ZBIORKOM.timeoutMs);
       const res = await fetch(
         `${ZBIORKOM.baseUrl}/api6/pkp/positions/${encodeURIComponent(vehicle)}/stream`,
         { headers: { Accept: 'text/event-stream' }, signal: ctrl.signal },
       );
       if (!res.ok || !res.body) return [];
-      const reader = res.body.getReader();
+      reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let alerts: ZbVehicleAlert[] | null = null;
@@ -638,11 +639,14 @@ export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAl
           eventEnd = buffer.indexOf('\n\n');
         }
       }
-      clearTimeout(timer);
-      await reader.cancel().catch(() => {});
       return alerts ?? [];
     } catch {
       return [];
+    } finally {
+      clearTimeout(timer);
+      if (reader) {
+        await reader.cancel().catch(() => {});
+      }
     }
   })();
   alertsCache.set(vehicle, { at: Date.now(), promise });

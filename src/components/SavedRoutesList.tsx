@@ -6,6 +6,7 @@ import { transfersLabel } from './ConnectionCard';
 import { scheme, shape, type } from '../theme/tokens';
 import type { SavedRoute } from '../types/models';
 import { getLocaleSync, useStrings } from '../i18n';
+import type { Strings } from '../i18n/pl';
 
 export interface SavedRoutesListProps {
   routes: SavedRoute[];
@@ -99,7 +100,7 @@ export const SavedRoutesList = memo(function SavedRoutesList({
             accessibilityLabel={routeA11yLabel(conn, dateLabel, {
               active: active ? s.home.routeActive : null,
               ticket: hasTicket ? s.home.ticketAttachedA11y : null,
-            })}
+            }, s)}
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
           >
             {/* Nagłówek: Skąd → Dokąd + akcje karty */}
@@ -149,7 +150,7 @@ export const SavedRoutesList = memo(function SavedRoutesList({
                   >
                     <Pin size={16} color={scheme.onPrimaryContainer} />
                   </Pressable>
-                ) : !hasTicket ? (
+                ) : (
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
@@ -165,7 +166,7 @@ export const SavedRoutesList = memo(function SavedRoutesList({
                   >
                     <X size={16} color={scheme.onSurfaceVariant} />
                   </Pressable>
-                ) : null}
+                )}
               </View>
             </View>
 
@@ -216,12 +217,13 @@ function routeA11yLabel(
   conn: SavedRoute['connection'],
   dateLabel: string,
   marks: { active: string | null; ticket: string | null },
+  s: Strings,
 ): string {
   const parts = [
     `${conn.fromTitle} → ${conn.toTitle}`,
     dateLabel,
     `${conn.departAt} – ${conn.arriveAt}`,
-    `${conn.durationMin} min`,
+    s.common.durMin(conn.durationMin),
   ];
   if (marks.active) parts.push(marks.active);
   if (marks.ticket) parts.push(marks.ticket);

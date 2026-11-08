@@ -685,7 +685,7 @@ export default function RouteMapScreen() {
                     <View style={styles.legTitleRow}>
                       <Text
                         style={[styles.legTitle, active && styles.legTitleActive]}
-                        numberOfLines={1}
+                        numberOfLines={fontScale > 1.3 ? 2 : 1}
                       >
                         {stage.fromStop}
                       </Text>
@@ -695,7 +695,7 @@ export default function RouteMapScreen() {
                       />
                       <Text
                         style={[styles.legTitle, active && styles.legTitleActive]}
-                        numberOfLines={1}
+                        numberOfLines={fontScale > 1.3 ? 2 : 1}
                       >
                         {stage.toStop}
                       </Text>
@@ -909,7 +909,8 @@ const styles = StyleSheet.create({
     ...type.bodyMedium,
     fontWeight: '500',
     color: scheme.onSurface,
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
   },
   legTitleActive: { color: scheme.onPrimaryContainer },
   legSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },

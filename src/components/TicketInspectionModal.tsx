@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Image,
   Modal,
@@ -43,6 +43,10 @@ export function TicketInspectionModal({
       : [];
 
   const [activeBarcodeIndex, setActiveBarcodeIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveBarcodeIndex(0);
+  }, [ticket.id, visible]);
 
   const meta = ticket.metadata;
   const trainSummary = connection ? getTrainLegSummary(connection) : null;

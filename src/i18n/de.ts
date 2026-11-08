@@ -5,6 +5,7 @@ import { de as landing } from './landing/de';
 import { de as share } from './share/de';
 
 function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 Min.";
   const rounded = Math.round(mins);
   if (rounded >= 60) {
     const h = Math.floor(rounded / 60);
@@ -1524,6 +1525,7 @@ export const de: Strings = {
     bus: 'Bus',
   },
   railTickets: {
+    loading: 'Laden…',
     buyKoleo: 'Fahrkarte in KOLEO kaufen',
     buyKoleoSub: (from: string, to: string) => `${from} nach ${to}`,
     buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
