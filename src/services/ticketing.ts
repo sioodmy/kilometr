@@ -1,12 +1,6 @@
 import { Linking } from 'react-native';
 import type { Connection, Leg } from '../types/models';
-
-/**
- * Sprawdza czy dany odcinek jest odcinkiem kolejowym.
- */
-function isTrainLeg(leg: Leg): boolean {
-  return leg.mode === 'train' || Boolean(leg.tripId?.startsWith('pl:')) || Boolean(leg.trainNumber && leg.railAgency);
-}
+import { isTrainLeg } from './railIdentity';
 
 /**
  * Zamienia nazwę stacji na format przyjazny dla wyszukiwarki KOLEO.

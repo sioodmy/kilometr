@@ -37,6 +37,20 @@ export function getRailAgencyColor(agency?: string): string | undefined {
   return RAIL_AGENCY_COLORS[upper] ?? RAIL_AGENCY_COLORS[agency];
 }
 
+/**
+ * Sprawdza czy dany odcinek jest odcinkiem kolejowym (pociąg).
+ */
+export function isTrainLeg(
+  leg: Pick<Leg, 'mode'> & Partial<Pick<Leg, 'tripId' | 'fromStopId' | 'trainNumber' | 'railAgency'>>,
+): boolean {
+  return (
+    leg.mode === 'train' ||
+    Boolean(leg.tripId?.startsWith('pl:')) ||
+    Boolean(leg.fromStopId?.startsWith('pl:') || leg.fromStopId?.startsWith('stop-pl:')) ||
+    Boolean(leg.trainNumber && leg.railAgency)
+  );
+}
+
 /** Rozpoznaje przewoźnika kolejowego po nazwie/kodzie linii i opcjonalnym mieście. */
 export function inferRailAgencyFromLine(line?: string, cityId?: string): string | undefined {
   if (!line) return undefined;

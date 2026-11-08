@@ -37,7 +37,7 @@ import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { legDurationMin, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
-import { railDirectionLabel } from '../services/railIdentity';
+import { isTrainLeg, railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
 import { suggestCityForCoords } from '../cities';
@@ -401,16 +401,23 @@ const TransitLegCard = memo(function TransitLegCard({
   const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
   const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
 
+  const isTrain = isTrainLeg(leg);
   const legCityId = useMemo(() => {
+    if (isTrain) return null;
     if (leg.fromLat != null && leg.fromLon != null) {
       const detected = suggestCityForCoords(leg.fromLat, leg.fromLon);
       if (detected) return detected.id;
     }
     return getActiveCityIdSync();
-  }, [leg.fromLat, leg.fromLon]);
-  const isTrain = leg.mode === 'train' || Boolean(leg.tripId?.startsWith('pl:'));
-  const resolvedHint = useStopHint(isTrain ? '' : legCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
-  const stopHint = leg.stopHint ?? resolvedHint;
+  }, [isTrain, leg.fromLat, leg.fromLon]);
+  const resolvedHint = useStopHint(
+    isTrain ? '' : (legCityId ?? ''),
+    leg.platformCode,
+    leg.fromStopId,
+    leg.fromStop,
+    leg.mode,
+  );
+  const stopHint = isTrain ? null : (leg.stopHint ?? resolvedHint);
   const departurePlatform = useMemo(
     () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
     [t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],

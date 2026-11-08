@@ -67,10 +67,10 @@ async function fetchRemoteStopHints(
   signal?: AbortSignal,
 ): Promise<StopHintsDataset | null> {
   try {
-    const res = await fetch(`https://data.kilometr.app/${cityId}/stop-hints.json`, { signal });
+    const res = await fetch(`https://data.kilometr.app/${encodeURIComponent(cityId)}/stop-hints.json`, { signal });
     if (!res.ok) return null;
-    const remote: StopHintsDataset = await res.json();
-    return remote && remote.stops ? remote : null;
+    const json = (await res.json()) as StopHintsDataset;
+    return json && json.stops ? json : null;
   } catch {
     // Offline / fallback do bazy bundled
     return null;
@@ -79,9 +79,16 @@ async function fetchRemoteStopHints(
 
 function useStopHints(cityId: string) {
   const normCity = (cityId || '').trim().toLowerCase();
-  const [data, setData] = useState<StopHintsDataset | null>(() => cache.get(normCity) ?? null);
+  const [data, setData] = useState<StopHintsDataset | null>(() =>
+    normCity ? cache.get(normCity) ?? null : null,
+  );
 
   useEffect(() => {
+    if (!normCity) {
+      setData(null);
+      return;
+    }
+
     let cancelled = false;
     const abortController = new AbortController();
     const apply = (next: StopHintsDataset) => {
@@ -131,23 +138,23 @@ export function resolveStopHint(
   stopCode?: string | null,
   stopId?: string | null,
   stopName?: string | null,
+  mode?: string | null,
 ): string | null {
   if (!dataset) return null;
+  // Połączenia kolejowe (dworce PKP / pociągi) nie posiadają bazy mikrowskazówek
+  if (mode === 'train') return null;
 
   // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101", Kraków "stop_322_117319")
   if (stopId) {
     const trimmedId = stopId.trim();
+    // Stacje kolejowe PKP z feedu krajowego nie posiadają bazy stop hints
+    if (trimmedId.startsWith('pl:') || trimmedId.startsWith('stop-pl:')) {
+      return null;
+    }
     if (dataset.stops[trimmedId]) return extractHintText(dataset.stops[trimmedId]);
 
-    // Odrzuć prefiksy krajowe i relacyjne (np. "pl:5100028" -> "5100028", "stop-pl:5100028" -> "5100028")
-    const strippedPl = trimmedId.startsWith('pl:')
-      ? trimmedId.slice(3)
-      : trimmedId.startsWith('stop-pl:')
-        ? trimmedId.slice(8)
-        : trimmedId.startsWith('stop-')
-          ? trimmedId.slice(5)
-          : null;
-    if (strippedPl && dataset.stops[strippedPl]) return extractHintText(dataset.stops[strippedPl]);
+    const strippedStop = trimmedId.startsWith('stop-') ? trimmedId.slice(5) : null;
+    if (strippedStop && dataset.stops[strippedStop]) return extractHintText(dataset.stops[strippedStop]);
   }
 
   // 2. Kombinacja stopName + stopCode (np. Poznań "poznan-glowny73", "poznan-glowny01")
@@ -161,7 +168,7 @@ export function resolveStopHint(
     snake = normalizeSnake(cleanName);
     const code = (
       stopCode ||
-      stopName.match(/(?:peron|słupek|stanowisko)\s*(\d+)/i)?.[1] ||
+      stopName.match(/(?:peron|słupek|stanowisko)\s*(\\d+)/i)?.[1] ||
       ''
     ).trim();
 
@@ -250,10 +257,15 @@ export function useStopHint(
   stopCode?: string | null,
   stopId?: string | null,
   stopName?: string | null,
+  mode?: string | null,
 ): string | null {
-  const dataset = useStopHints(cityId);
+  const isTrain =
+    mode === 'train' ||
+    Boolean(stopId && (stopId.startsWith('pl:') || stopId.startsWith('stop-pl:')));
+  const normCity = isTrain ? '' : (cityId || '').trim().toLowerCase();
+  const dataset = useStopHints(normCity);
   return useMemo(
-    () => resolveStopHint(dataset, stopCode, stopId, stopName),
-    [dataset, stopCode, stopId, stopName],
+    () => (isTrain ? null : resolveStopHint(dataset, stopCode, stopId, stopName, mode)),
+    [isTrain, dataset, stopCode, stopId, stopName, mode],
   );
 }
