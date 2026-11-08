@@ -350,6 +350,15 @@ export async function importTicketPdf(
 }
 
 /**
+ * Identyfikatory połączeń z dołączonym biletem: napędza ikonę biletu
+ * i kolejność w sekcji „Twoje trasy” na ekranie głównym.
+ */
+export async function getTicketConnectionIds(): Promise<Set<string>> {
+  const index = await loadIndex();
+  return new Set(index.map((e) => e.connectionId));
+}
+
+/**
  * Sprawdza czy bilet kwalifikuje się do usunięcia wg polityki retencji (domyślnie 14 dni).
  */
 export function isTicketExpired(

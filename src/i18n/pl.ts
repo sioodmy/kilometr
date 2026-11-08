@@ -161,7 +161,11 @@ export const pl = {
     historyEmptyTitle: 'Brak ostatnich miejsc',
     historyEmptyBody: 'Wyszukaj połączenie, a zapisze się tutaj jako szybki cel.',
     savedRoutesEmptyTitle: 'Brak Twoich tras',
-    savedRoutesEmptyBody: 'Przypnij połączenie pinezką, aby mieć je zawsze pod ręką.',
+    savedRoutesEmptyBody:
+      'Śledź połączenie albo dołącz bilet kolejowy, a trasa zapisze się tutaj.',
+    routeActive: 'W trasie',
+    ticketAttachedA11y: 'Bilet kolejowy zapisany',
+    removeRouteA11y: (title: string) => `Usuń połączenie do ${title} z Twoich tras`,
     pinRouteA11y: (title: string) => `Przypnij połączenie do ${title} do Twoich tras`,
     unpinRouteA11y: (title: string) => `Odepnij połączenie do ${title} z Twoich tras`,
     openConnA11y: (title: string, label: string) => `Otwórz połączenie do ${title}, ${label}`,

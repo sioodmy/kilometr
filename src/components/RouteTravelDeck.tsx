@@ -33,6 +33,7 @@ import type { Connection } from '../types/models';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
 import { transferNeedsAttention } from './TransferProtectionCard';
 import { getTrainLegSummary, hasTrainLegs, openKoleoRoute } from '../services/ticketing';
+import { RoutingService } from '../services';
 import {
   deleteTicketForConnection,
   getTicketForConnection,
@@ -222,6 +223,11 @@ export function RouteTravelDeck({
       if (imported) {
         setTicket(imported);
         setTicketSheetOpen(false);
+        // Połączenie z biletem trafia do „Twoich tras”: bilet jest powodem,
+        // dla którego user wróci do tej trasy (kontrola, historia przejazdu).
+        RoutingService.saveRoute(connection).catch((err) =>
+          console.warn('[RouteTravelDeck] saveRoute for ticket failed:', err),
+        );
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
         if (imported.barcodeUri) {
