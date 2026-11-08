@@ -59,6 +59,7 @@ export interface Leg {
 
 export interface Connection {
   id: string;
+  serviceDate?: string;
   fromTitle: string;
   toTitle: string;
   departInMin: number;

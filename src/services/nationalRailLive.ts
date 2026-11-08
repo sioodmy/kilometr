@@ -13,6 +13,7 @@
 // zgodność nazw stacji z trasy kursu.
 
 import type { Leg, LegStop } from '../types/models';
+import { warsawNow } from '../gtfs/geo';
 import { ZBIORKOM } from './gtfsConfig';
 import { getNationalActiveServices, getNationalDb } from './gtfsDatabase';
 import { toPlkTripId } from './nationalRailUpdates';
@@ -232,8 +233,9 @@ async function findCandidateTrips(
   if (numbers.length === 0) return [];
 
   const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  const services = await getNationalActiveServices(now.getDay(), dateStr);
+  const nowWarsaw = warsawNow(now);
+  const dateStr = nowWarsaw.dateStr;
+  const services = await getNationalActiveServices(nowWarsaw.weekday, dateStr);
   if (services.size === 0) return [];
 
   const svcPlaceholders = [...services].map(() => '?').join(',');
@@ -329,7 +331,7 @@ function matchPositions(
     if (!nextStop) continue;
     const nextKey = normalized(nextStop.name);
     const nextDate = new Date(nextStop.scheduledArrival);
-    const nextSec = nextDate.getHours() * 3600 + nextDate.getMinutes() * 60 + nextDate.getSeconds();
+    const nextSec = warsawNow(nextDate).sec;
     let best: { trip: CandidateTrip; diff: number } | null = null;
     for (const trip of list) {
       for (const stop of trip.stops) {
@@ -436,7 +438,7 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
     );
     if (positions.length === 0) return empty;
     const now = new Date();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60;
+    const nowSec = warsawNow(now).sec;
     // Kandydaci po numerach pociągów z nóg (nie po stacjach): okno czasowe
     // liczone na cały kurs, więc live nie znika w połowie długiej trasy.
     const numbers = [

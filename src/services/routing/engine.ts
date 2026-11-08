@@ -1,7 +1,7 @@
 import { DayIndex, gtfsStore, polskaStore, LocalGtfsStore } from './store';
 import { DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
 import { AllowedTransferModes, Connection, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
-import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
+import { distanceMeters, secondsToTimeString, shiftWarsawDate, warsawNow } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { MAX_DELAY_SEC } from '../liveQuality';
 import { emptyRoutingSnapshot, type RoutingSnapshot } from './reliability';
@@ -126,17 +126,18 @@ export async function buildSearchSlices(
   horizonSec = 10800,
 ): Promise<SearchSlices> {
   const now = new Date();
+  const nowWarsaw = warsawNow(now);
   // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
   // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
   const dayOffsetSec = Math.floor(rawTargetSec / 86400) * 86400;
   let departureSec = rawTargetSec % 86400;
   if (departureSec < 0) departureSec += 86400;
-  const targetDate = new Date(now);
-  targetDate.setDate(targetDate.getDate() + Math.round(dayOffsetSec / 86400));
-  const weekday = targetDate.getDay();
-  const dateStr = toDateStr(targetDate);
+  const dayShift = Math.round(dayOffsetSec / 86400);
+  const targetWarsaw = dayShift === 0 ? nowWarsaw : shiftWarsawDate(nowWarsaw, dayShift);
+  const weekday = targetWarsaw.weekday;
+  const dateStr = targetWarsaw.dateStr;
   // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
-  // a przesiadkowe nogi jeszcze dalej - bierzemy zapas do +3 h.
+  // a przesiadkowe nogi jeszcze dalej, bierzemy zapas do +3 h.
   // Przyjazd obejmuje też wyjście przed północą poprzedniego dnia.
   // Kolej (store=polskaStore) dostaje szerszy horyzont: pociągi jeżdżą
   // rzadziej niż tramwaje i pierwszy sensowny odjazd bywa poza +3 h.
@@ -151,11 +152,10 @@ export async function buildSearchSlices(
   let searchIndex = dayIndex;
   let patternOffsets: Map<string, number> | undefined;
   if (searchStartSec < 7 * 3600) {
-    const yDate = new Date(targetDate);
-    yDate.setDate(yDate.getDate() - 1);
+    const yWarsaw = shiftWarsawDate(targetWarsaw, -1);
     const overnightIdx = await store.getDayIndexSlice(
-      yDate.getDay(),
-      toDateStr(yDate),
+      yWarsaw.weekday,
+      yWarsaw.dateStr,
       86400 + Math.min(-7200, searchStartSec - MAX_DELAY_SEC),
       86400 + (arrivalMode ? departureSec + 600 : departureSec + horizonSec),
     );
@@ -165,11 +165,10 @@ export async function buildSearchSlices(
   } else if (!arrivalMode && departureSec + horizonSec > 86400) {
     // Lustro nocnego merge'a: wieczorem horyzont sięga po północy, a część
     // feedów (np. GZM) zapisuje kursy 00:xx w jutrzejszym dniu serwisowym.
-    const tDate = new Date(targetDate);
-    tDate.setDate(tDate.getDate() + 1);
+    const tWarsaw = shiftWarsawDate(targetWarsaw, 1);
     const tomorrowIdx = await store.getDayIndexSlice(
-      tDate.getDay(),
-      toDateStr(tDate),
+      tWarsaw.weekday,
+      tWarsaw.dateStr,
       0,
       departureSec + horizonSec - 86400,
     );
@@ -189,7 +188,7 @@ export async function warmupRouting(): Promise<void> {
   try {
     await gtfsStore.load();
     const now = new Date();
-    const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const currentSec = warsawNow(now).sec;
     const slices = await buildSearchSlices(currentSec);
     await warmupRaptorNet(gtfsStore, slices.searchIndex, slices.patternOffsets);
   } catch (err) {
@@ -334,19 +333,13 @@ export interface PlanOptions {
   destinationStopIds?: string[];
 }
 
-/** Formatuj datę do YYYYMMDD (dla calendar_dates.txt). */
-function toDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
 
 interface MapCtx {
   currentSec: number;
   dayOffsetSec: number;
   tripDelays: Map<string, number>;
   confidence: RoutingSnapshot['confidence'];
+  serviceDate?: string;
 }
 
 /** Stosuje wagi RAPTOR-a także na liście: czas, marsz i przesiadki.
@@ -543,6 +536,7 @@ function mapJourneysToConnections(
       live: overallLive,
       legs: mergedLegs,
       interchange,
+      serviceDate: ctx.serviceDate,
     });
   }
 
@@ -652,6 +646,7 @@ function buildWalkOnlyConnection(
   walkArrSec: number,
   walkSec: number,
   currentSec: number,
+  serviceDate?: string,
 ): Connection {
   const walkInMin = Math.max(0, Math.round((walkDepSec - currentSec) / 60));
   return {
@@ -667,6 +662,7 @@ function buildWalkOnlyConnection(
     transfers: 0,
     delayMin: 0,
     live: false,
+    serviceDate,
     legs: [
       {
         id: 'walk-only-l1',
@@ -696,7 +692,8 @@ export async function planConnections(
   await store.load();
 
   const now = new Date();
-  const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const nowWarsaw = warsawNow(now);
+  const currentSec = nowWarsaw.sec;
 
   // Wycinek dnia (+ nocny merge) przez SHARED buildSearchSlices: rozgrzewka
   // uruchamiana tym samym kodem, co samo wyszukiwanie.
@@ -711,6 +708,8 @@ export async function planConnections(
   const horizonSec = options.searchAheadSec ?? 10800;
   const slices = await buildSearchSlices(rawTarget, arrivalMode, store, horizonSec);
   const { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
+  const dayShift = Math.round(dayOffsetSec / 86400);
+  const targetWarsaw = dayShift === 0 ? nowWarsaw : shiftWarsawDate(nowWarsaw, dayShift);
   // Przyjazd na jutro: kurs może wyjechać jeszcze dziś wieczorem, więc dolna
   // granica to „teraz” w zegarze dnia docelowego, a nie start okna przyjazdu.
   const earliestDepartureSec = arrivalMode && rawTarget >= currentSec
@@ -740,7 +739,7 @@ export async function planConnections(
   const walkArrSec = arrivalMode ? rawTarget : departureSec + dayOffsetSec + directWalkSec;
   const walkDepSec = walkArrSec - directWalkSec;
   if (directM <= SAME_POINT_M) {
-    return [buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec)];
+    return [buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec, targetWarsaw.isoDate)];
   }
 
   // 1. Resolve candidate boarding stops near origin. Jawne id (intercity:
@@ -832,7 +831,7 @@ export async function planConnections(
       if (modes === 'all') return true;
       return transit.every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus'));
     });
-  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence };
+  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence, serviceDate: targetWarsaw.isoDate };
   const sortPartial = (list: Connection[]) =>
     sortConnectionsByCost(list, userWalkSpeed, arrivalMode ? rawTarget : undefined, cost);
   const select = (list: RawJourney[]) =>
@@ -904,7 +903,7 @@ export async function planConnections(
   const canStartWalk = !arrivalMode || walkDepSec >= earliestDepartureSec + dayOffsetSec;
   const walkAdded = directM > 0 && directM <= maxWalkM && canStartWalk;
   if (walkAdded) {
-    connections.push(buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec));
+    connections.push(buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec, targetWarsaw.isoDate));
   }
 
   // Marsz bije przesiadki: gdy pieszo docierasz równie szybko jak wariantem

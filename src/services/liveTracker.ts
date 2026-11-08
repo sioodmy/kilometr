@@ -20,7 +20,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
-import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
+import { distanceMeters, projectPointToPolyline, shiftWarsawDate, warsawNow } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
 import {
   fetchZbBialystokRows,
@@ -167,12 +167,6 @@ interface PatternPolylineNode {
   schedulePos: number;
 }
 
-function toDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
 
 class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
@@ -493,18 +487,18 @@ class LiveTracker {
     now: Date,
     nowSec: number,
   ): Promise<{ dayIndex: DayIndex; offsets?: Map<string, number> }> {
+    const nowWarsaw = warsawNow(now);
     const dayIndex = await gtfsStore.getDayIndexSlice(
-      now.getDay(),
-      toDateStr(now),
+      nowWarsaw.weekday,
+      nowWarsaw.dateStr,
       nowSec - WINDOW_SEC,
       nowSec + 3600,
     );
     if (nowSec >= 7 * 3600) return { dayIndex };
-    const prev = new Date(now);
-    prev.setDate(prev.getDate() - 1);
+    const prevWarsaw = shiftWarsawDate(nowWarsaw, -1);
     const overnight = await gtfsStore.getDayIndexSlice(
-      prev.getDay(),
-      toDateStr(prev),
+      prevWarsaw.weekday,
+      prevWarsaw.dateStr,
       86400 + nowSec - WINDOW_SEC,
       86400 + nowSec + 3600,
     );
@@ -729,7 +723,7 @@ class LiveTracker {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
       const now = new Date();
-      const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      const nowSec = warsawNow(now).sec;
       const { dayIndex, offsets } = await this.liveDayIndex(now, nowSec);
 
       const patternPolylines = new Map<string, PatternPolylineNode[]>();
@@ -940,7 +934,7 @@ class LiveTracker {
       throw new Error(`gtfs load failed: ${String(err)}`);
     }
     const now = new Date();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const nowSec = warsawNow(now).sec;
     let dayIndex: DayIndex;
     let offsets: Map<string, number> | undefined;
     try {
@@ -1428,7 +1422,7 @@ class LiveTracker {
       throw new Error(`gtfs load failed: ${String(err)}`);
     }
     const now = new Date();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const nowSec = warsawNow(now).sec;
     let dayIndex: DayIndex;
     let offsets: Map<string, number> | undefined;
     try {
