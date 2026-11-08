@@ -55,7 +55,7 @@ export function getTicketDir(): string | null {
   return base.endsWith('/') ? `${base}tickets/` : `${base}/tickets/`;
 }
 
-export async function ensureTicketDir(): Promise<string | null> {
+async function ensureTicketDir(): Promise<string | null> {
   const dir = getTicketDir();
   if (!dir) return null;
   try {
@@ -179,7 +179,7 @@ function timeMatches(leg: Leg, ticketDepartTime?: string): boolean {
   return false;
 }
 
-export function ticketMatchesTrainConnection(
+function ticketMatchesTrainConnection(
   ticket: AttachedRailTicket,
   connection: Connection,
 ): boolean {
@@ -257,7 +257,7 @@ export function ticketMatchesTrainConnection(
   return false;
 }
 
-export async function loadIndex(): Promise<TicketIndexEntry[]> {
+async function loadIndex(): Promise<TicketIndexEntry[]> {
   const raw = await kvGet(TICKET_INDEX_KEY);
   if (!raw) return [];
   try {
