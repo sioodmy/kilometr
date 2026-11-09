@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -116,6 +116,9 @@ export function RouteTravelDeck({
   const [ticketSheetOpen, setTicketSheetOpen] = useState(false);
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Import trwa, a systemowy picker wraca do apki jako 'active'. Bez tej flagi
+  // przeładowanie z dysku mogłoby nadpisać świeżo dodany bilet stanem sprzed importu.
+  const importInFlight = useRef(false);
 
   const isTrainTrip = hasTrainLegs(connection);
   const trainSummary = getTrainLegSummary(connection);
@@ -126,13 +129,16 @@ export function RouteTravelDeck({
     let active = true;
     const loadTicket = () => {
       void getTicketForConnection(connection.id, connection).then((t) => {
-        if (active) setTicket(t);
+        // Reload (powrót do apki, zmiana połączenia) nie może zgasić biletu,
+        // który już jest na ekranie. Bilet znika tylko przez jawne odpięcie.
+        if (!active) return;
+        setTicket((prev) => (t === null && prev !== null ? prev : t));
       });
     };
     loadTicket();
 
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
+      if (state === 'active' && !importInFlight.current) {
         loadTicket();
       }
     });
@@ -228,6 +234,8 @@ export function RouteTravelDeck({
   };
 
   const handleAttachPdf = async () => {
+    if (importInFlight.current) return;
+    importInFlight.current = true;
     try {
       setImporting(true);
       void Haptics.selectionAsync().catch(() => {});
@@ -246,12 +254,15 @@ export function RouteTravelDeck({
         // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
         if (imported.barcodeUri) {
           setInspectionOpen(true);
+        } else {
+          Alert.alert(s.railTickets.attachedTitle, s.railTickets.importSuccess);
         }
       }
     } catch (err) {
       console.warn('[RouteTravelDeck] attach error:', err);
       Alert.alert(s.common.storageFailTitle, s.railTickets.importError);
     } finally {
+      importInFlight.current = false;
       setImporting(false);
     }
   };
