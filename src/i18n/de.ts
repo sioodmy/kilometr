@@ -1460,6 +1460,9 @@ export const de: Strings = {
     transfers: (n: number) => `${n} ${n === 1 ? 'Umstieg' : 'Umstiege'}`,
     newDeparture: (at: string) => `neue Abfahrt ${at}`,
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
+    compensationTitle: 'Erstattung bei Zugverspätung',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Zug ${train} war` : 'Der Zug war'} über ${thresholdMin} Minuten verspätet. Du kannst eine Erstattung von ${percent} % des Fahrpreises beantragen.`,
   },
   ios: {
     departure: 'Abfahrt',

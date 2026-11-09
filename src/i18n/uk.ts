@@ -1506,6 +1506,9 @@ export const uk: Strings = {
       isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
+    compensationTitle: 'Компенсація за затримку потяга',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Потяг ${train}` : 'Потяг'} запізнився більш ніж на ${thresholdMin} хвилин. Ти можеш подати заявку на повернення ${percent}% вартості квитка.`,
   },
   ios: {
     departure: 'Відправлення',

@@ -391,6 +391,7 @@ export async function fetchNationalRailUpdates(
 
   let data: ApiResponse | null = null;
   let isFromCache = false;
+  let cacheFetchedAt: number | undefined;
 
   if (
     cachedApi &&
@@ -424,12 +425,14 @@ export async function fetchNationalRailUpdates(
 
   if (!data) {
     const disk = await getPersistedRailCache();
+    const diskEntry = disk?.apiResponses?.[requestUrl];
     const fallbackEntry =
-      (cachedApi && cachedApi.url === requestUrl ? cachedApi.data : undefined) ??
-      disk?.apiResponses?.[requestUrl]?.data;
+      (cachedApi && cachedApi.url === requestUrl ? cachedApi.data : undefined) ?? diskEntry?.data;
     if (fallbackEntry) {
       data = fallbackEntry;
       isFromCache = true;
+      // Czas z dysku, nie „teraz”: inaczej stary cache wygląda na świeży feed.
+      cacheFetchedAt = diskEntry?.fetchedAt;
     } else if (disk?.updates) {
       const fallbackMap = new Map<string, NationalRailLegUpdate>();
       for (const leg of plLegs) {
@@ -596,7 +599,10 @@ export async function fetchNationalRailUpdates(
       confirmed: matchedStop?.confirmed,
       agency: tripData.agency,
       numbers: tripData.numbers,
-      fetchedAt: data.fetchedAt ?? (isFromCache ? (cachedApi?.at ?? Date.now()) : Date.now()),
+      fetchedAt:
+        data.fetchedAt ??
+        cacheFetchedAt ??
+        (isFromCache ? (cachedApi?.at ?? Date.now()) : Date.now()),
     });
   }
 

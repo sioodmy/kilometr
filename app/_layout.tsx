@@ -30,6 +30,7 @@ import {
   getLastTripResponse,
   restoreTrackedTrip,
   setupNotifications,
+  startTicketCompensationMonitor,
   startTrackedTripListener,
   stopTracking,
   type TripResponse,
@@ -116,6 +117,7 @@ export default function RootLayout() {
       .then(async () => {
         await setupNotifications();
         await restoreTrackedTrip();
+        startTicketCompensationMonitor();
       })
       .catch((err) => console.warn('[RootLayout] init:', err))
       .finally(() => {

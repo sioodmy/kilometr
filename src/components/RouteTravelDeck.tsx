@@ -32,6 +32,7 @@ import { useStrings } from '../i18n';
 import { elev, scheme, shape } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
+import { checkTicketCompensation } from '../services/notifications';
 import { transferNeedsAttention } from './TransferProtectionCard';
 import { getTrainLegSummary, hasTrainLegs, openKoleoRoute } from '../services/ticketing';
 import { RoutingService } from '../services';
@@ -250,6 +251,7 @@ export function RouteTravelDeck({
         } catch (err) {
           console.warn('[RouteTravelDeck] saveRoute for ticket failed:', err);
         }
+        void checkTicketCompensation();
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
         if (imported.barcodeUri) {

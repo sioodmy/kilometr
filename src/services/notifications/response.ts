@@ -38,7 +38,7 @@ function parseData(data: unknown, actionIdentifier: string | undefined): TripRes
     if (typeof v === 'string') link[k] = v;
   }
   return {
-    link: link.sharedTrip || (link.toLat && link.toLon) ? link : null,
+    link: link.sharedTrip || link.open || (link.toLat && link.toLon) ? link : null,
     stop,
     alert: typeof d.alert === 'string' ? d.alert : null,
   };

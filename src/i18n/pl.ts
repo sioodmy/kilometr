@@ -1497,6 +1497,10 @@ export const pl = {
       n === 1 ? '1 przesiadka' : isFew(n) ? `${n} przesiadki` : `${n} przesiadek`,
     newDeparture: (at: string) => `nowy odjazd ${at}`,
     delayTitle: (line: string, eta: string) => `Opóźnienie • ${line} • ${eta}`,
+    // Zwrot przysługuje za opóźnienie na końcu podróży, nie za jego wzrost.
+    compensationTitle: 'Rekompensata za opóźnienie pociągu',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `Opóźnienie ${train ? `pociągu ${train} ` : ''}przekroczyło ${thresholdMin} minut. Możesz ubiegać się o zwrot ${percent}% ceny biletu.`,
   },
   ios: {
     departure: 'Odjazd',

@@ -16,6 +16,7 @@ import { getTrainLegSummary, isStationMatch } from './ticketing';
 import { isTrainLeg } from './railIdentity';
 import { normalizeConnectionId, stableConnectionId, scheduledLegDepart } from './routing/connectionIdentity';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
+import { connectionDelayAtAttachSec, fetchDelayAtAttachSec } from './notifications/compensation';
 
 export interface AttachedRailTicket {
   id: string;
@@ -27,6 +28,8 @@ export interface AttachedRailTicket {
   tripDate?: string;
   barcodeUri?: string | null;
   barcodeUris?: string[]; // Wsparcie dla biletów wieloodcinkowych z przesiadką (wiele kodów Aztec)
+  /** Opóźnienie kursu w chwili dołączenia biletu; blokuje alert o zastanym opóźnieniu. */
+  delayAtAttachSec?: number;
   metadata: ParsedTicketMetadata;
 }
 
@@ -44,6 +47,7 @@ export interface TicketIndexEntry {
   departTime?: string;
   fromStation?: string;
   toStation?: string;
+  delayAtAttachSec?: number;
 }
 
 const TICKET_INDEX_KEY = 'rail_tickets:index';
@@ -268,6 +272,11 @@ async function loadIndex(): Promise<TicketIndexEntry[]> {
   }
 }
 
+/** Surowy indeks biletów; monitor rekompensat czyta z niego daty i opóźnienie bazowe. */
+export async function getTicketIndex(): Promise<TicketIndexEntry[]> {
+  return loadIndex();
+}
+
 export async function saveIndex(entries: TicketIndexEntry[]): Promise<void> {
   await kvSet(TICKET_INDEX_KEY, JSON.stringify(entries));
 }
@@ -486,6 +495,12 @@ export async function importTicketPdf(
     return null;
   }
 
+  // Baseline liczony równolegle z kopiowaniem i parsowaniem PDF, żeby
+  // dołączenie biletu nie czekało na feed PKP dłużej niż to konieczne.
+  const liveDelayPromise: Promise<number | null> = connection
+    ? fetchDelayAtAttachSec(connection).catch(() => null)
+    : Promise.resolve(null);
+
   const dir = await ensureTicketDir();
   if (!dir) throw new Error('Tickets directory unavailable');
 
@@ -577,6 +592,11 @@ export async function importTicketPdf(
   }
 
   const now = Date.now();
+  // Feed PKP jest dokładniejszy niż opóźnienie zapisane w połączeniu; offline
+  // zostaje wartość z połączenia, a brak jakichkolwiek danych blokuje alert.
+  const delayAtAttachSec = connection
+    ? ((await liveDelayPromise) ?? connectionDelayAtAttachSec(connection))
+    : undefined;
   let tripDate = connection?.serviceDate;
   if (!tripDate && metadata.departDate) {
     tripDate = metadata.departDate;
@@ -592,6 +612,7 @@ export async function importTicketPdf(
     tripDate,
     barcodeUri,
     barcodeUris,
+    delayAtAttachSec,
     metadata,
   };
 
@@ -631,6 +652,7 @@ export async function importTicketPdf(
     departTime: metadata.departTime,
     fromStation: metadata.fromStation,
     toStation: metadata.toStation,
+    delayAtAttachSec,
   });
   await saveIndex(updated);
 
