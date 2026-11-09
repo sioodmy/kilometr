@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as DocumentPicker from 'expo-document-picker';
 import { kvGet, kvRemove, kvSet } from './storage';
 import {
   base64ToUint8Array,
@@ -447,25 +448,20 @@ export async function importTicketPdf(
   connectionId: string,
   connection?: Connection,
 ): Promise<AttachedRailTicket | null> {
-  let DocumentPicker: typeof import('expo-document-picker');
-  try {
-    DocumentPicker = await import('expo-document-picker');
-  } catch (err) {
-    console.warn('[TicketStorage] DocumentPicker unavailable:', err);
-    return null;
-  }
-
   const picked = await DocumentPicker.getDocumentAsync({
     type: ['application/pdf', 'application/octet-stream'],
     copyToCacheDirectory: true,
     multiple: false,
   });
 
-  if (picked.canceled || !picked.assets?.[0]?.uri) {
+  if (picked.canceled) {
     return null;
   }
 
-  const asset = picked.assets[0];
+  const asset = picked.assets?.[0];
+  if (!asset?.uri) {
+    throw new Error('DocumentPicker returned no file uri');
+  }
 
   // 1. Bezpiecznik rozmiaru: natychmiastowe odrzucenie gigantycznych plików (np. 100 MB ebook)
   let declaredSize = asset.size ?? 0;
