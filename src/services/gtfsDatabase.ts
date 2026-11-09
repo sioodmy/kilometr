@@ -43,14 +43,22 @@ export interface GtfsDbHandle {
 
 let closingDb: Promise<void> | null = null;
 
+// Uchwyt trzyma samą bazę: ten sam plik musi dawać ten sam uchwyt, bo
+// indeks adresów porównuje referencje (readyDb === db).
+const handles = new WeakMap<SQLite.SQLiteDatabase, GtfsDbHandle>();
+
 function dbHandle(db: SQLite.SQLiteDatabase): GtfsDbHandle {
-  return {
+  const cached = handles.get(db);
+  if (cached) return cached;
+  const handle: GtfsDbHandle = {
     getAllAsync: (sql, ...params) => db.getAllAsync(sql, ...params),
     getFirstAsync: (sql, ...params) => db.getFirstAsync(sql, ...params),
     runAsync: (sql, ...params) => db.runAsync(sql, ...params),
     execAsync: (sql) => db.execAsync(sql),
     withTransactionAsync: (task) => db.withTransactionAsync(task),
   };
+  handles.set(db, handle);
+  return handle;
 }
 
 /** Uchwyt do zapytań; po zamknięciu bazy dostajesz uchwyt nowej. */

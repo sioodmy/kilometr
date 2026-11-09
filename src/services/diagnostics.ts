@@ -50,14 +50,14 @@ export interface DiagItem {
 }
 
 /** Baza kolejowa (`polska`): null, gdy nie pobrano. */
-export interface DiagRail {
+interface DiagRail {
   version: string | null;
   endDate: string | null;
   dbBytes: number | null;
 }
 
 /** Zdrowie jednego źródła live (zbiorkom/MPK/kolej) w bieżącej sesji. */
-export interface DiagLiveSource {
+interface DiagLiveSource {
   source: string;
   attempts: number;
   failures: number;
@@ -305,7 +305,7 @@ export async function runDiagnostics(): Promise<DiagResult> {
     }
     pois = await poiCount();
     if (!empty) {
-      const db = await getGtfsDb();
+      const db = await openGtfsDbHandle();
       const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM addresses');
       addresses = row?.n ?? 0;
     }
