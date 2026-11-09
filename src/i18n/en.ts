@@ -1444,6 +1444,9 @@ export const en: Strings = {
     transfers: (n: number) => `${n} ${n === 1 ? 'change' : 'changes'}`,
     newDeparture: (at: string) => `new departure ${at}`,
     delayTitle: (line: string, eta: string) => `Delayed • ${line} • ${eta}`,
+    compensationTitle: 'Train delay compensation',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Train ${train}` : 'The train'} was more than ${thresholdMin} minutes late. You can claim a ${percent}% refund of the ticket price.`,
   },
   ios: {
     departure: 'Departure',
