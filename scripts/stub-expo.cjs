@@ -17,7 +17,9 @@ const Module = require('node:module');
 const fsStub = {
   documentDirectory: '/tmp/kilometr-check/',
   cacheDirectory: '/tmp/kilometr-check/cache/',
+  EncodingType: { Base64: 'base64', UTF8: 'utf8' },
   makeDirectoryAsync: async () => undefined,
+  copyAsync: async () => undefined,
   getInfoAsync: async () => ({ exists: false }),
   readAsStringAsync: async () => '',
   writeAsStringAsync: async () => undefined,
