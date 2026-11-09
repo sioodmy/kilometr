@@ -17,7 +17,7 @@ export interface ParsedTicketMetadata {
 
 export interface ExtractedBarcode {
   bytes: Uint8Array;
-  extension: 'jpg' | 'bmp';
+  extension: 'png' | 'jpg';
   width: number;
   height: number;
 }
@@ -75,12 +75,20 @@ export function uint8ArrayToBase64(bytes: Uint8Array): string {
  * Wyciąga czytelny tekst ze strumieni obiektów PDF.
  * Obsługuje strumienie kompresowane FlateDecode (zlib i raw deflate),
  * tabele mapowania znaków CMap (/ToUnicode) oraz zapis tekstowy w nawiasach i hex.
+ *
+ * CMap-y są mapowane per czcionka (operator Tf): bilety PKP IC używają kilku
+ * subset fontów, gdzie te same ID glyphów oznaczają różne znaki. Scalona mapa
+ * (fallback) produkuje wtedy "Wagoł" zamiast "Wagon".
  */
 export function extractTextFromPdf(pdfBytes: Uint8Array): string {
   const textChunks: string[] = [];
   const latin1Str = uint8ArrayToLatin1(pdfBytes);
+  const objectIndex = buildObjectIndex(latin1Str);
 
-  // Wstępna budowa mapy znaków CMap (częsta w biletach KOLEO / PKP IC z fontami subset)
+  // contentStreamId -> fontName -> CMap tej czcionki
+  const fontCMapsByContent = buildContentFontCMaps(pdfBytes, latin1Str, objectIndex);
+
+  // Fallback: mapa scalona ze wszystkich CMap w dokumencie
   const glyphMap = buildCMap(pdfBytes, latin1Str);
 
   // Wyszukiwanie obiektów: obj ... stream ... endstream
@@ -92,8 +100,12 @@ export function extractTextFromPdf(pdfBytes: Uint8Array): string {
     const streamStart = match.index;
     const dictHeader = latin1Str.slice(Math.max(0, streamStart - 800), streamStart);
 
-    // Pomiń strumienie będące obrazami lub samymi tabelami CMap przy czytaniu tekstu
+    // Pomiń strumienie będące obrazami oraz plikami fontów (FontFile/Length1):
+    // binarne tabele outline to śmieci, z których regexy wyciągają fałszywe dane.
     if (dictHeader.includes('/Image')) {
+      continue;
+    }
+    if (/\/(FontFile[123]?|Length[123])\b/.test(dictHeader)) {
       continue;
     }
 
@@ -117,22 +129,156 @@ export function extractTextFromPdf(pdfBytes: Uint8Array): string {
     }
 
     const decodedStreamText = uint8ArrayToLatin1(streamBytes);
-    extractStringsFromStream(decodedStreamText, textChunks, glyphMap);
+    const ownerObjId = findOwningObjectId(objectIndex, streamStart);
+    const fontCMaps = ownerObjId !== null ? fontCMapsByContent.get(ownerObjId) : undefined;
+    extractStringsFromStream(decodedStreamText, textChunks, glyphMap, fontCMaps);
   }
 
   if (textChunks.length === 0) {
-    extractStringsFromStream(latin1Str, textChunks, glyphMap);
+    extractStringsFromStream(latin1Str, textChunks, glyphMap, null);
   }
 
   return textChunks.join(' ');
 }
 
+/** Id obiektu, w którym leży dany offset strumienia. */
+function findOwningObjectId(
+  objectIndex: Map<number, { start: number; end: number }>,
+  streamStart: number,
+): number | null {
+  // Map zachowuje kolejność wstawiania, czyli kolejność w dokumencie.
+  let bestId: number | null = null;
+  let bestStart = -1;
+  for (const [id, pos] of objectIndex) {
+    if (pos.start > streamStart) break;
+    if (pos.start > bestStart) {
+      bestStart = pos.start;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
+
+/**
+ * Buduje mapę: id strumienia treści strony -> nazwa zasobu fontu (/F1) -> CMap.
+ * Graf: Page -> Resources -> Font -> Type0 font -> ToUnicode (strumień CMap).
+ */
+function buildContentFontCMaps(
+  pdfBytes: Uint8Array,
+  latin1Str: string,
+  objectIndex: Map<number, { start: number; end: number }>,
+): Map<number, Map<string, Map<number, string>>> {
+  const result = new Map<number, Map<string, Map<number, string>>>();
+  const cmapCache = new Map<number, Map<number, string>>();
+
+  const cmapForFont = (fontObjId: number): Map<number, string> | null => {
+    if (cmapCache.has(fontObjId)) {
+      return cmapCache.get(fontObjId)!;
+    }
+    let cmap: Map<number, string> | null = null;
+    const fontText = getObjectText(latin1Str, objectIndex, fontObjId);
+    const toUnicodeMatch = fontText?.match(/\/ToUnicode\s+(\d+)\s+0\s+R/);
+    if (toUnicodeMatch) {
+      cmap = parseCMapObject(pdfBytes, latin1Str, objectIndex, parseInt(toUnicodeMatch[1], 10));
+    }
+    cmapCache.set(fontObjId, cmap ?? new Map());
+    return cmap && cmap.size > 0 ? cmap : null;
+  };
+
+  // Strony: /Contents N 0 R + /Resources (ref lub inline)
+  const pageRegex = /\/Type\s*\/Page\b[\s\S]*?\/Contents\s+\d+\s+0\s+R[\s\S]*?>>/g;
+  let page: RegExpExecArray | null;
+  while ((page = pageRegex.exec(latin1Str)) !== null) {
+    const pageDict = page[0];
+    const contentsRefs = [...pageDict.matchAll(/\/Contents\s+(\d+)\s+0\s+R/g)].map((m) =>
+      parseInt(m[1], 10),
+    );
+    if (contentsRefs.length === 0) continue;
+
+    // Parsuj pary /Nazwa N 0 R z dicta fontów
+    const parseFontPairs = (fontDictText: string): Map<string, Map<number, string>> => {
+      const fonts = new Map<string, Map<number, string>>();
+      const pairRegex = /\/(\w+)\s+(\d+)\s+0\s+R/g;
+      let pair: RegExpExecArray | null;
+      while ((pair = pairRegex.exec(fontDictText)) !== null) {
+        const cmap = cmapForFont(parseInt(pair[2], 10));
+        if (cmap) fonts.set(pair[1], cmap);
+      }
+      return fonts;
+    };
+
+    const resourcesRef = pageDict.match(/\/Resources\s+(\d+)\s+0\s+R/);
+    let fontDictText: string | null = null;
+    if (resourcesRef) {
+      const resourcesText = getObjectText(latin1Str, objectIndex, parseInt(resourcesRef[1], 10));
+      const fontRef = resourcesText?.match(/\/Font\s+(\d+)\s+0\s+R/);
+      if (fontRef) {
+        fontDictText = getObjectText(latin1Str, objectIndex, parseInt(fontRef[1], 10));
+      } else {
+        const inlineFont = resourcesText?.match(/\/Font\s*<<([\s\S]*?)>>/);
+        fontDictText = inlineFont ? inlineFont[1] : null;
+      }
+    } else {
+      const inlineFont = pageDict.match(/\/Font\s*<<([\s\S]*?)>>/);
+      fontDictText = inlineFont ? inlineFont[1] : null;
+    }
+
+    if (fontDictText) {
+      const fonts = parseFontPairs(fontDictText);
+      if (fonts.size > 0) {
+        for (const contentsId of contentsRefs) {
+          result.set(contentsId, fonts);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/** Parsuje CMap z obiektu ToUnicode (strumień z beginbfchar/beginbfrange). */
+function parseCMapObject(
+  pdfBytes: Uint8Array,
+  latin1Str: string,
+  objectIndex: Map<number, { start: number; end: number }>,
+  cmapObjId: number,
+): Map<number, string> {
+  const map = new Map<number, string>();
+  const pos = objectIndex.get(cmapObjId);
+  if (!pos) return map;
+  const objRegion = latin1Str.slice(pos.start, pos.end);
+  const streamMatch = objRegion.match(/stream[\r\n]+([\s\S]*?)[\r\n]+endstream/);
+  if (!streamMatch) return map;
+  const content = streamMatch[1];
+  const offset = pos.start + objRegion.indexOf(content);
+  const rawSlice = pdfBytes.subarray(offset, offset + content.length);
+  let decoded: string;
+  try {
+    decoded = uint8ArrayToLatin1(fflate.unzlibSync(rawSlice));
+  } catch {
+    try {
+      decoded = uint8ArrayToLatin1(fflate.inflateSync(rawSlice));
+    } catch {
+      decoded = content;
+    }
+  }
+  if (decoded.includes('beginbfchar') || decoded.includes('beginbfrange')) {
+    parseCMapContent(decoded, map);
+  }
+  return map;
+}
+
 /**
  * Skanuje PDF pod kątem osadzonych kodów Aztec / QR we wszystkich strumieniach XObject Image.
  * Zwraca listę wszystkich poprawnych kodów 2D (dla biletów z przesiadką).
+ *
+ * Obsługuje obrazy JPEG (DCTDecode), grayscale/maski 1-bit, DeviceRGB oraz
+ * palety /Indexed z predyktorem PNG (typowy format kodu Aztec w nowych biletach PKP IC).
+ * Kody rastrowe zapisujemy jako PNG: Fresco na Androidzie nie dekoduje BMP.
  */
 export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[] {
   const latin1Str = uint8ArrayToLatin1(pdfBytes);
+  const objectIndex = buildObjectIndex(latin1Str);
   const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
   let match: RegExpExecArray | null;
 
@@ -164,8 +310,14 @@ export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[]
       continue;
     }
 
-    // Kod kontrolny na bilecie ma min. 80x80 px i zazwyczaj nie przekracza 1200x1200 px
-    if (width < 80 || height < 80 || width > 1200 || height > 1200) {
+    // Logo i ikony mają kanał alfa (/SMask); kody do kontroli są zawsze nieprzezroczyste.
+    if (/\/SMask\b/.test(dictHeader)) {
+      continue;
+    }
+
+    // Kod kontrolny na bilecie ma min. 60x60 px (kompaktowe Aztec 79x79 w PKP IC)
+    // i zazwyczaj nie przekracza 1200x1200 px.
+    if (width < 60 || height < 60 || width > 1200 || height > 1200) {
       continue;
     }
 
@@ -207,45 +359,68 @@ export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[]
       const isImageMask = /\/ImageMask\s+true/.test(dictHeader);
       const bpcMatch = dictHeader.match(/\/BitsPerComponent\s+([0-9]+)/);
       const bpc = bpcMatch ? parseInt(bpcMatch[1], 10) : (isImageMask ? 1 : 8);
-      const isRgb = dictHeader.includes('/DeviceRGB');
       const decodeInvert = /\/Decode\s*\[\s*1\s+0\s*\]/.test(dictHeader);
 
-      // Sprawdź czy strumień używa filtra PNG Predictor (np. Predictor 15 w KOLEO)
-      const hasPngPredictor = /\/Predictor\s+(?:10|11|12|13|14|15)/.test(dictHeader);
-      if (hasPngPredictor && bpc === 8) {
-        const bytesPerPixel = isRgb ? 3 : 1;
+      // DecodeParms bywa obiektem po referencji (np. Predictor 15 w osobnym obj),
+      // więc parametry predyktora czytamy też z ciała wskazanego obiektu.
+      const decodeParms = resolveDecodeParms(latin1Str, objectIndex, dictHeader);
+      const isIndexed = /\/Indexed/.test(dictHeader);
+      const baseColors = isIndexed ? 1 : dictHeader.includes('/DeviceRGB') ? 3 : 1;
+      const colors = decodeParms?.colors ?? baseColors;
+      const predictor = decodeParms?.predictor ?? 0;
+
+      if (predictor >= 10 && bpc === 8) {
+        const bytesPerPixel = colors;
         const expectedLen = (width * bytesPerPixel + 1) * height;
         if (uncompressed.length >= expectedLen) {
           uncompressed = unfilterPngPredictor(uncompressed, width, height, bytesPerPixel);
         }
       }
 
-      let bmpBytes: Uint8Array | null = null;
+      let gray: Uint8Array | null = null;
 
-      if (bpc === 1) {
-        // Monochromatyczna 1-bitowa maska kodu 2D z automatyczną normalizacją polaryzacji
-        const gray8 = unpack1BitToGray8(width, height, uncompressed, decodeInvert);
-        normalizeBarcodePolarity(gray8, width, height);
-        bmpBytes = createBmpGray8(width, height, gray8);
-      } else if (bpc === 8) {
-        if (isRgb && uncompressed.length >= width * height * 3) {
-          bmpBytes = createBmpRgb24(width, height, uncompressed);
-        } else if (uncompressed.length >= width * height) {
-          const grayCopy = new Uint8Array(uncompressed.subarray(0, width * height));
-          if (decodeInvert) {
-            for (let i = 0; i < grayCopy.length; i++) grayCopy[i] = 255 - grayCopy[i];
+      if (isIndexed) {
+        // Paleta: /ColorSpace [/Indexed /DeviceRGB hival N 0 R]
+        const palMatch = dictHeader.match(
+          /\/Indexed\s*\/Device(?:RGB|Gray)\s+\d+\s+(\d+)\s+0\s+R/,
+        );
+        if (palMatch) {
+          const palette = loadIndexedPalette(
+            pdfBytes,
+            latin1Str,
+            objectIndex,
+            parseInt(palMatch[1], 10),
+          );
+          if (palette) {
+            gray = mapIndexedToGray(uncompressed, width, height, palette);
           }
-          normalizeBarcodePolarity(grayCopy, width, height);
-          bmpBytes = createBmpGray8(width, height, grayCopy);
+        }
+      } else if (bpc === 1) {
+        // Monochromatyczna 1-bitowa maska kodu 2D
+        gray = unpack1BitToGray8(width, height, uncompressed, decodeInvert);
+      } else if (bpc === 8) {
+        if (colors === 3 && uncompressed.length >= width * height * 3) {
+          gray = rgbToGray8(uncompressed, width, height);
+        } else if (uncompressed.length >= width * height) {
+          gray = new Uint8Array(uncompressed.subarray(0, width * height));
+          if (decodeInvert) {
+            for (let i = 0; i < gray.length; i++) gray[i] = 255 - gray[i];
+          }
         }
       }
 
-      if (bmpBytes) {
+      if (gray) {
+        // Kod 2D to kontrastowa matryca czarno-biała; kolorowe kwadratowe
+        // grafiki (logotypy, flagi) mają mało skrajnych wartości luminancji.
+        if (!isMonochromeMatrix(gray)) {
+          continue;
+        }
+        normalizeBarcodePolarity(gray, width, height);
         const aspectDiff = Math.abs(1 - ratio);
         const score = 80 - aspectDiff * 50 + Math.min(width, 400) / 10;
         candidates.push({
-          bytes: bmpBytes,
-          extension: 'bmp',
+          bytes: createPngGray8(width, height, gray),
+          extension: 'png',
           width,
           height,
           score,
@@ -272,10 +447,24 @@ export function extractBarcodeFromPdf(pdfBytes: Uint8Array): ExtractedBarcode | 
 }
 
 /**
+ * Sprawdza, czy obraz to kontrastowa matryca czarno-biała (kod 2D),
+ * a nie kolorowa grafika: wymagamy wyraźnych udziałów czerni i bieli.
+ */
+function isMonochromeMatrix(gray: Uint8Array): boolean {
+  let dark = 0;
+  let light = 0;
+  for (let i = 0; i < gray.length; i++) {
+    if (gray[i] < 48) dark++;
+    else if (gray[i] > 207) light++;
+  }
+  const total = gray.length;
+  return dark >= total * 0.15 && light >= total * 0.15;
+}
+
+/**
  * Gwarantuje prawidłową polaryzację matrycy 2D (czarne moduły na białej strefie ciszy Quiet Zone).
  * Jeśli margines kodu jest ciemny (negatyw), odwraca piksele.
- */
-function normalizeBarcodePolarity(pixels: Uint8Array, width: number, height: number): void {
+ */function normalizeBarcodePolarity(pixels: Uint8Array, width: number, height: number): void {
   let borderSum = 0;
   let borderCount = 0;
   for (let x = 0; x < width; x++) {
@@ -373,90 +562,194 @@ function unpack1BitToGray8(
 }
 
 /**
- * Tworzy poprawny plik BMP 8-bit ze skali szarości z 1024-bajtową paletą barw.
+ * Tworzy plik PNG 8-bit grayscale (color type 0) ze surowych pikseli.
+ * Fresco w React Native nie dekoduje BMP, więc kody Aztec muszą być PNG.
  */
-function createBmpGray8(width: number, height: number, rawPixels: Uint8Array): Uint8Array {
-  const stride = (width + 3) & ~3;
-  const padding = stride - width;
-  const dataSize = stride * height;
-  const fileSize = 54 + 1024 + dataSize;
-  const buf = new Uint8Array(fileSize);
-  const view = new DataView(buf.buffer);
-
-  buf[0] = 0x42; // 'B'
-  buf[1] = 0x4d; // 'M'
-  view.setUint32(2, fileSize, true);
-  view.setUint32(10, 54 + 1024, true);
-
-  view.setUint32(14, 40, true);
-  view.setInt32(18, width, true);
-  view.setInt32(22, height, true);
-  view.setUint16(26, 1, true);
-  view.setUint16(28, 8, true);
-  view.setUint32(34, dataSize, true);
-
-  let pOffset = 54;
-  for (let i = 0; i < 256; i++) {
-    buf[pOffset++] = i;
-    buf[pOffset++] = i;
-    buf[pOffset++] = i;
-    buf[pOffset++] = 0;
+export function createPngGray8(width: number, height: number, pixels: Uint8Array): Uint8Array {
+  const stride = width + 1; // bajt filtra 0 na początku każdego wiersza
+  const raw = new Uint8Array(stride * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * stride] = 0;
+    raw.set(pixels.subarray(y * width, (y + 1) * width), y * stride + 1);
   }
 
-  let dst = 54 + 1024;
-  for (let y = height - 1; y >= 0; y--) {
-    const src = y * width;
-    buf.set(rawPixels.subarray(src, src + width), dst);
-    dst += width;
-    for (let p = 0; p < padding; p++) {
-      buf[dst++] = 0;
-    }
-  }
+  const ihdr = new Uint8Array(13);
+  const ihdrView = new DataView(ihdr.buffer);
+  ihdrView.setUint32(0, width);
+  ihdrView.setUint32(4, height);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 0; // color type: grayscale
 
-  return buf;
+  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdrChunk = pngChunk('IHDR', ihdr);
+  const idatChunk = pngChunk('IDAT', fflate.zlibSync(raw));
+  const iendChunk = pngChunk('IEND', new Uint8Array(0));
+
+  const png = new Uint8Array(
+    signature.length + ihdrChunk.length + idatChunk.length + iendChunk.length,
+  );
+  let offset = 0;
+  png.set(signature, offset);
+  offset += signature.length;
+  png.set(ihdrChunk, offset);
+  offset += ihdrChunk.length;
+  png.set(idatChunk, offset);
+  offset += idatChunk.length;
+  png.set(iendChunk, offset);
+  return png;
+}
+
+const PNG_CRC_TABLE = new Uint32Array(256);
+for (let n = 0; n < 256; n++) {
+  let c = n;
+  for (let k = 0; k < 8; k++) {
+    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  PNG_CRC_TABLE[n] = c >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  for (let i = 0; i < 4; i++) {
+    out[4 + i] = type.charCodeAt(i);
+  }
+  out.set(data, 8);
+  let c = 0xffffffff;
+  for (let i = 4; i < 8 + data.length; i++) {
+    c = PNG_CRC_TABLE[(c ^ out[i]) & 0xff] ^ (c >>> 8);
+  }
+  view.setUint32(8 + data.length, (c ^ 0xffffffff) >>> 0);
+  return out;
 }
 
 /**
- * Tworzy 24-bitowy plik BMP RGB (BGR order) z paddingiem wierszy do wielokrotności 4 bajtów.
+ * Konwertuje piksele RGB24 na grayscale 8-bit (luminancja ITU-R BT.601).
  */
-function createBmpRgb24(width: number, height: number, rawRgb: Uint8Array): Uint8Array {
-  const rowSize = width * 3;
-  const stride = (rowSize + 3) & ~3;
-  const padding = stride - rowSize;
-  const dataSize = stride * height;
-  const fileSize = 54 + dataSize;
-  const buf = new Uint8Array(fileSize);
-  const view = new DataView(buf.buffer);
+function rgbToGray8(rgb: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(width * height);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = (rgb[i * 3] * 299 + rgb[i * 3 + 1] * 587 + rgb[i * 3 + 2] * 114) / 1000;
+  }
+  return out;
+}
 
-  buf[0] = 0x42;
-  buf[1] = 0x4d;
-  view.setUint32(2, fileSize, true);
-  view.setUint32(10, 54, true);
+/**
+ * Mapuje indeksy palety /Indexed na grayscale według luminancji kolorów palety.
+ * Paleta to zdekompresowane wpisy RGB (3 bajty na kolor).
+ */
+function mapIndexedToGray(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  palette: Uint8Array,
+): Uint8Array | null {
+  if (data.length < width * height) return null;
+  const paletteCount = Math.floor(palette.length / 3);
+  const lum = new Uint8Array(paletteCount);
+  for (let i = 0; i < paletteCount; i++) {
+    lum[i] = (palette[i * 3] * 299 + palette[i * 3 + 1] * 587 + palette[i * 3 + 2] * 114) / 1000;
+  }
+  const out = new Uint8Array(width * height);
+  for (let i = 0; i < out.length; i++) {
+    const idx = data[i];
+    out[i] = idx < paletteCount ? lum[idx] : 255;
+  }
+  return out;
+}
 
-  view.setUint32(14, 40, true);
-  view.setInt32(18, width, true);
-  view.setInt32(22, height, true);
-  view.setUint16(26, 1, true);
-  view.setUint16(28, 24, true);
-  view.setUint32(34, dataSize, true);
+/** Pozycje obiektów PDF: id -> [start, end) w latin1. Pierwsze wystąpienie wygrywa. */
+function buildObjectIndex(latin1Str: string): Map<number, { start: number; end: number }> {
+  const positions: Array<{ id: number; start: number }> = [];
+  const re = /(\d+)\s+0\s+obj/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(latin1Str)) !== null) {
+    positions.push({ id: parseInt(m[1], 10), start: m.index });
+  }
+  const index = new Map<number, { start: number; end: number }>();
+  for (let i = 0; i < positions.length; i++) {
+    if (index.has(positions[i].id)) continue;
+    const end = i + 1 < positions.length ? positions[i + 1].start : latin1Str.length;
+    index.set(positions[i].id, { start: positions[i].start, end });
+  }
+  return index;
+}
 
-  let dst = 54;
-  for (let y = height - 1; y >= 0; y--) {
-    let src = y * rowSize;
-    for (let x = 0; x < width; x++) {
-      const r = rawRgb[src++];
-      const g = rawRgb[src++];
-      const b = rawRgb[src++];
-      buf[dst++] = b;
-      buf[dst++] = g;
-      buf[dst++] = r;
-    }
-    for (let p = 0; p < padding; p++) {
-      buf[dst++] = 0;
-    }
+/** Tekst obiektu (nagłówek dict) po id; tnimy do 4 KB, żeby nie ciąć binarnych strumieni. */
+function getObjectText(
+  latin1Str: string,
+  objectIndex: Map<number, { start: number; end: number }>,
+  objectId: number,
+): string | null {
+  const pos = objectIndex.get(objectId);
+  if (!pos) return null;
+  return latin1Str.slice(pos.start, Math.min(pos.end, pos.start + 4096));
+}
+
+/**
+ * Parametry dekodowania obrazu: /DecodeParms bywa wpisane inline lub przez
+ * referencję do innego obiektu (predyktor PNG w osobnym obj, jak w PKP IC).
+ */
+function resolveDecodeParms(
+  latin1Str: string,
+  objectIndex: Map<number, { start: number; end: number }>,
+  dictHeader: string,
+): { predictor: number; colors: number } | null {
+  const parseParms = (text: string): { predictor: number; colors: number } | null => {
+    const predictorMatch = text.match(/\/Predictor\s+([0-9]+)/);
+    if (!predictorMatch) return null;
+    const colorsMatch = text.match(/\/Colors\s+([0-9]+)/);
+    return {
+      predictor: parseInt(predictorMatch[1], 10),
+      colors: colorsMatch ? parseInt(colorsMatch[1], 10) : 1,
+    };
+  };
+
+  const inlineMatch = dictHeader.match(/\/DecodeParms\s*<<([^>]*)>>/);
+  if (inlineMatch) {
+    const parsed = parseParms(inlineMatch[1]);
+    if (parsed) return parsed;
   }
 
-  return buf;
+  const refMatch = dictHeader.match(/\/DecodeParms\s+(\d+)\s+0\s+R/);
+  if (refMatch) {
+    const objText = getObjectText(latin1Str, objectIndex, parseInt(refMatch[1], 10));
+    if (objText) {
+      const parsed = parseParms(objText);
+      if (parsed) return parsed;
+    }
+  }
+  return null;
+}
+
+/**
+ * Ładuje paletę colorspace /Indexed: strumień obiektu wskazanego w /ColorSpace,
+ * zdekompresowany do wpisów RGB (3 bajty na kolor).
+ */
+function loadIndexedPalette(
+  pdfBytes: Uint8Array,
+  latin1Str: string,
+  objectIndex: Map<number, { start: number; end: number }>,
+  paletteObjId: number,
+): Uint8Array | null {
+  const pos = objectIndex.get(paletteObjId);
+  if (!pos) return null;
+  const objRegion = latin1Str.slice(pos.start, pos.end);
+  const streamMatch = objRegion.match(/stream[\r\n]+([\s\S]*?)[\r\n]+endstream/);
+  if (!streamMatch) return null;
+  const content = streamMatch[1];
+  const offset = pos.start + objRegion.indexOf(content);
+  const rawSlice = pdfBytes.subarray(offset, offset + content.length);
+  try {
+    return fflate.unzlibSync(rawSlice);
+  } catch {
+    try {
+      return fflate.inflateSync(rawSlice);
+    } catch {
+      return null;
+    }
+  }
 }
 
 /**
@@ -565,12 +858,33 @@ function latin1ToUint8Array(str: string): Uint8Array {
 
 /**
  * Wyciąga literały tekstowe z poleceń PDF (Tj, TJ, ', ") zapisane w nawiasach lub hex.
+ * Gdy dostępne są CMap-y per czcionka, hexy dekodowane są mapą aktualnego fontu
+ * z ostatniego operatora Tf przed danym tekstem.
  */
 function extractStringsFromStream(
   streamText: string,
   out: string[],
   glyphMap: Map<number, string>,
+  fontCMaps?: Map<string, Map<number, string>> | null,
 ): void {
+  // Pozycje operatorów Tf: /F1 12 Tf - zmienia aktywną czcionkę
+  const tfOps: Array<{ end: number; font: string }> = [];
+  if (fontCMaps && fontCMaps.size > 0) {
+    const tfRegex = /\/(\w+)\s+[-0-9.]+\s+Tf/g;
+    let tf: RegExpExecArray | null;
+    while ((tf = tfRegex.exec(streamText)) !== null) {
+      tfOps.push({ end: tf.index + tf[0].length, font: tf[1] });
+    }
+  }
+  const cmapAt = (pos: number): Map<number, string> => {
+    for (let i = tfOps.length - 1; i >= 0; i--) {
+      if (tfOps[i].end <= pos) {
+        return fontCMaps?.get(tfOps[i].font) ?? glyphMap;
+      }
+    }
+    return glyphMap;
+  };
+
   const stringRegex = /\(([^)]*)\)\s*(?:Tj|'|")/g;
   let match: RegExpExecArray | null;
 
@@ -584,6 +898,7 @@ function extractStringsFromStream(
   const arrayTjRegex = /\[([\s\S]*?)\]\s*TJ/g;
   while ((match = arrayTjRegex.exec(streamText)) !== null) {
     const inside = match[1];
+    const activeMap = cmapAt(match.index);
     const subMatchRegex = /\(([^)]*)\)/g;
     let sub: RegExpExecArray | null;
     let accumulated = '';
@@ -598,7 +913,7 @@ function extractStringsFromStream(
     let hexSub: RegExpExecArray | null;
     let hexAccumulated = '';
     while ((hexSub = hexSubRegex.exec(inside)) !== null) {
-      hexAccumulated += decodeHexPdfString(hexSub[1], glyphMap);
+      hexAccumulated += decodeHexPdfString(hexSub[1], activeMap);
     }
     if (hexAccumulated.trim().length > 0) {
       out.push(hexAccumulated);
@@ -607,7 +922,7 @@ function extractStringsFromStream(
 
   const singleHexRegex = /<([0-9a-fA-F]+)>\s*(?:Tj|'|")/g;
   while ((match = singleHexRegex.exec(streamText)) !== null) {
-    const decoded = decodeHexPdfString(match[1], glyphMap);
+    const decoded = decodeHexPdfString(match[1], cmapAt(match.index));
     if (decoded.trim().length > 0) {
       out.push(decoded);
     }
@@ -727,18 +1042,26 @@ export function isLikelyRailTicket(
 export function parseRailTicketText(text: string, fileName?: string): ParsedTicketMetadata {
   const result: ParsedTicketMetadata = {};
 
-  // 1. Numer pociągu (np. IC 65100, KD 69123, KŚ 44102, PR 67201, TLK 38102, EIP 1600, OsP 69123, D1 66201, S1 44102)
-  const trainMatch = text.match(
-    /\b(EIP|EIC|IC|TLK|KD|REGIO|PR|KM|KŚ|KS|ŁKA|LKA|KW|KMŁ|KML|SKM|OsP?|D[0-9]{1,2}|S[0-9]{1,2})\s*([0-9]{3,6})\b/i,
+  // 1. Numer pociągu. Najpierw etykieta "Pociąg: 1514" / "Pociąg IC 3812" (nowe bilety
+  // PKP IC podają sam numer bez prefiksu przewoźnika), potem wzorzec z prefiksem.
+  const pociagMatch = text.match(
+    /\bpoci[ąa]g(?:\s+(?:numer|nr))?\s*[:\-]?\s*((?:EIP|EIC|IC|TLK|KD|REGIO|PR|KM)?\s*[0-9]{3,6})\b/i,
   );
-  if (trainMatch) {
-    result.trainNumber = `${trainMatch[1].toUpperCase()} ${trainMatch[2]}`;
-  } else if (fileName) {
-    const fileTrain = fileName.match(
-      /\b(EIP|EIC|IC|TLK|KD|REGIO|PR|KM|KŚ|KS|ŁKA|LKA|KW|KMŁ|KML|SKM|OsP?|D[0-9]{1,2}|S[0-9]{1,2})[\s_\-]*([0-9]{3,6})\b/i,
+  if (pociagMatch) {
+    result.trainNumber = pociagMatch[1].replace(/\s+/g, ' ').trim().toUpperCase();
+  } else {
+    const trainMatch = text.match(
+      /\b(EIP|EIC|IC|TLK|KD|REGIO|PR|KM|KŚ|KS|ŁKA|LKA|KW|KMŁ|KML|SKM|OsP?|D[0-9]{1,2}|S[0-9]{1,2})\s*([0-9]{3,6})\b/i,
     );
-    if (fileTrain) {
-      result.trainNumber = `${fileTrain[1].toUpperCase()} ${fileTrain[2]}`;
+    if (trainMatch) {
+      result.trainNumber = `${trainMatch[1].toUpperCase()} ${trainMatch[2]}`;
+    } else if (fileName) {
+      const fileTrain = fileName.match(
+        /\b(EIP|EIC|IC|TLK|KD|REGIO|PR|KM|KŚ|KS|ŁKA|LKA|KW|KMŁ|KML|SKM|OsP?|D[0-9]{1,2}|S[0-9]{1,2})[\s_\-]*([0-9]{3,6})\b/i,
+      );
+      if (fileTrain) {
+        result.trainNumber = `${fileTrain[1].toUpperCase()} ${fileTrain[2]}`;
+      }
     }
   }
 
@@ -827,18 +1150,30 @@ export function parseRailTicketText(text: string, fileName?: string): ParsedTick
     }
   }
 
-  // 9. Data odjazdu / podróży (np. "2026-11-08", "18.10.2026", "Data: 18.10.2026")
+  // 9. Data odjazdu / podróży. Priorytet: pełna data przy etykiecie "Data odjazdu"
+  // (nowy format PKP IC), potem data przy relacji "18.10 13:47 Katowice ->"
+  // (stary format PKP IC nie powtarza roku w wierszu relacji), na końcu pierwsza
+  // pełna data w tekście (np. data wystawienia biletu).
+  const labeledDate = text.match(
+    /\bdata\s+odjazdu[\s\S]{0,40}?([0-3]?[0-9])\.(0[1-9]|1[0-2])\.(20[2-3][0-9])/i,
+  );
+  const relacjaDate = text.match(
+    /\b([0-3]?[0-9])\.(0[1-9]|1[0-2])\.?\s+([0-2]?[0-9]:[0-5][0-9])\s+[A-ZŁŚĆŹŻĄĘÓŃ]/,
+  );
   const dateIso = text.match(/\b(20[2-3][0-9])[-.](0[1-9]|1[0-2])[-.]([0-3][0-9])\b/);
-  if (dateIso) {
+  const datePl = text.match(/\b([0-3]?[0-9])\.(0[1-9]|1[0-2])\.(20[2-3][0-9])\b/);
+
+  if (labeledDate) {
+    result.departDate = `${labeledDate[3]}-${labeledDate[2]}-${labeledDate[1].padStart(2, '0')}`;
+  } else if (relacjaDate) {
+    // Rok: najpóźniejszy pełny rok w tekście (np. rok wystawienia), brak -> bieżący.
+    const years = [...text.matchAll(/\b(20[2-3][0-9])\b/g)].map((m) => parseInt(m[1], 10));
+    const year = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
+    result.departDate = `${year}-${relacjaDate[2]}-${relacjaDate[1].padStart(2, '0')}`;
+  } else if (dateIso) {
     result.departDate = dateIso[1] + '-' + dateIso[2] + '-' + dateIso[3];
-  } else {
-    const datePl = text.match(/\b([0-3]?[0-9])\.(0[1-9]|1[0-2])\.(20[2-3][0-9])\b/);
-    if (datePl) {
-      const day = datePl[1].padStart(2, '0');
-      const month = datePl[2];
-      const year = datePl[3];
-      result.departDate = year + '-' + month + '-' + day;
-    }
+  } else if (datePl) {
+    result.departDate = `${datePl[3]}-${datePl[2]}-${datePl[1].padStart(2, '0')}`;
   }
 
   return result;
