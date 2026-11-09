@@ -18,11 +18,19 @@ Te reguły są domyślne (good defaults), nie święte prawo. User może je nadp
 
 ## Praca w wątku
 
-- Nie rozpisuj się: krótkie komunikaty, po prostu rób. Nie wypisuj planów ani opisów działań.
+- Nie rozpisuj się: krótkie komunikaty, po prostu rób. Nie wypisuj planów ani opisów działań. Jeśli user o plan poprosi, max 10 linii.
 - Pytanie od usera = read-only. Nie edytuj, dopóki tak napisał.
 - Jak robota może pójść dalej bez usera, jedź do końca. Zatrzymuj się tylko gdy: (a) user poprosił "stop przed X", (b) przed akcją destrukcyjną, (c) druga próba naprawy też pada.
 - Błąd pokaż od razu, w jednej linii, nie ukrywaj go w opisie. Blocker: jedno zdanie, czego dokładnie potrzebujesz.
 - Podsumowanie: co zrobione / co nie / co dalej. Maksymalnie kilka linii.
+
+## Budżet kontekstu (OBOWIĄZKOWE)
+
+- Jeden wątek = jedno zadanie. Nowe zadanie = nowy wątek, nie "kontynuuj" w starym.
+- Kontekst > 150k tokenów albo 2 przerwania usera: napisz HANDOFF i poproś o nowy wątek.
+  HANDOFF max 10 linii: co zrobione / co zostało / pliki / decyzje / ryzyka.
+- Po przerwaniu nie wznawiaj z pełnym kontekstem. Najpierw HANDOFF, potem nowy wątek.
+- Jeśli user zmieni model w trakcie wątku, zaproponuj HANDOFF i nowy wątek (cache przepada).
 
 ## Codowanie
 
@@ -31,11 +39,27 @@ Te reguły są domyślne (good defaults), nie święte prawo. User może je nadp
 - Nie rozszerzaj zakresu. Pre-existing bugi: nie naprawiaj w tej samej robocie, wpisz follow-up w podsumowaniu.
 - Działania destrukcyjne (usuwanie danych, force push, kill procesów, migracje) tylko na wyraźną prośbę. Killuj tylko procesy, które sam uruchomiłeś.
 
+## Czytanie i komendy
+
+- Najpierw `rg -n`, potem `read` z offset/limit. Nigdy cały plik > 300 linii.
+- Nie czytaj drugi raz tego samego pliku. Jeśli musisz, tylko zmieniony zakres.
+- Duże wyjście zawsze tnij: `| head -50`, `| tail -20`, `--stat`, `-l`.
+- Zakaz: `git log -p`, `cat` wielkich plików, `git diff` bez `--stat` na dużych zmianach.
+- Shell nie ma node/npm/tsc w PATH. Zawsze `nix develop .#ci -c '<cmd>'`.
+
 ## Weryfikacja
 
-- Celowana najpierw: `npx tsc --noEmit`, lint na zmienionych plikach, skupione testy. Full build tylko na pozwolenie (patrz Build).
-- Testy: celowe, nie slop. Regression test na małą poprawkę to overkill.
+- Celowana najpierw: `nix develop .#ci -c 'npm run typecheck'`, lint na zmienionych plikach, skupione testy. Full build tylko na pozwolenie (patrz Build).
+- Typecheck raz na logiczny kawałek, nie po każdej edycji. Zbierz wszystkie błędy, napraw jednym passem.
+- Ten sam błąd typecheck 2x: stop, pokaż błąd, nie zmieniaj kodu losowo.
+- Testy celowane, nie slop i nie pełny `npm test` przy zmianie jednego pliku. Regression test na małą poprawkę to overkill.
 - Duży diff: najpierw przeczytaj własne podsumowanie i sprawdź, czy nic nie uciekło.
+
+## Czekanie
+
+- Zakaz `gh pr checks --watch`, `gh run watch`, `sleep` w pętli.
+- Status CI: jedno sprawdzenie na turę albo `watch_pull_request` i koniec tury.
+- Buildy i testy na telefonie: tylko Azure, nigdy lokalnie.
 
 ## TypeScript i komentarze
 
@@ -66,7 +90,8 @@ Te reguły są domyślne (good defaults), nie święte prawo. User może je nadp
 
 ## Anti-Slop (UI / teksty / docs) - OBOWIĄZKOWE
 
-- Zanim edytujesz cokolwiek widocznego dla ludzi: przeczytaj core `.agents/skills/antislop/SKILL.md` + pasujące skille z mapy poniżej. Stosuj zasady W TRAKCIE pisania, na koniec raport PASS/FAIL z Delivery Gate w 4 blokach.
+- Zanim edytujesz cokolwiek widocznego dla ludzi: przeczytaj core `.agents/skills/antislop/SKILL.md` + jeden pasujący skill z mapy poniżej. Stosuj zasady W TRAKCIE pisania, na koniec raport PASS/FAIL z Delivery Gate w 4 blokach.
+- Zmiana < 50 linii w jednym komponencie: checklista z tego pliku, bez ładowania skilli.
 - Mapowanie:
   - UI / visual (kolor, layout, komponenty, motion): `antislop-ui`
   - copy / tekst (nagłówki, CTA, landing, PR, docs, i18n): `antislop-copywriting`
@@ -99,6 +124,7 @@ Te reguły są domyślne (good defaults), nie święte prawo. User może je nadp
 ## Buildy
 
 - Nie buduj APK lokalnie bez pozwolenia usera.
+- Zakaz lokalnie: `gradle`, `expo run`, `adb install`, `assembleDebug`, `npm run start` w pętli. Test na telefonie = build z Azure + instalacja z linku.
 - Wszystkie AAB korzystają ze wspólnego licznika workflow Play; nie twórz osobnych pasm versionCode dla testów i produkcji.
 
 ## Commity
