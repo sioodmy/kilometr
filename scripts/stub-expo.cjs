@@ -69,6 +69,9 @@ const rnStub = {
 const stubs = {
   'expo-file-system': fsStub,
   'expo-file-system/legacy': fsStub,
+  'expo-document-picker': {
+    getDocumentAsync: async () => ({ canceled: true, assets: [] }),
+  },
   'expo-localization': { getLocales: () => [{ languageCode: 'pl' }] },
   'expo-constants': { default: { executionEnvironment: 'standalone', expoConfig: {} } },
   'expo-sqlite': {
