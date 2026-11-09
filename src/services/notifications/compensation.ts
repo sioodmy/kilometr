@@ -7,9 +7,9 @@ import { isTrainLeg } from '../railIdentity';
 // na końcu trasy; bez Expo, więc da się sprawdzić w node.
 
 /** Margines na różnice między feedem PKP a naszą bazą. */
-export const COMPENSATION_MARGIN_MIN = 10;
-export const COMPENSATION_FIRST_THRESHOLD_MIN = 60;
-export const COMPENSATION_SECOND_THRESHOLD_MIN = 120;
+const COMPENSATION_MARGIN_MIN = 10;
+const COMPENSATION_FIRST_THRESHOLD_MIN = 60;
+const COMPENSATION_SECOND_THRESHOLD_MIN = 120;
 /** Bilet musi być dodany najpóźniej tyle przed odjazdem. */
 export const COMPENSATION_MIN_ADVANCE_MS = 60 * 60_000;
 /** Monitor patrzy na kurs od 2 h przed odjazdem do 2 h po planowym przybyciu. */
@@ -122,7 +122,7 @@ export function isCompensationCandidate(options: CompensationCandidateOptions): 
 }
 
 /** Okno, w którym monitor w ogóle odpytuje feed dla danego biletu. */
-export function isWithinCompensationWindow(
+function isWithinCompensationWindow(
   boardingDepartureMs: number,
   arrivalMs: number,
   now: number,
