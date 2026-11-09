@@ -74,8 +74,7 @@ export const pl = {
     changedBody: (line: string, stop: string) => `Przesiądź się na ${line} na przystanku ${stop}.`,
     noAlternative: 'Nie ma teraz innej trasy. Sprawdzimy ponownie za chwilę.',
     conductorTitle: 'Spóźnienie na pociąg',
-    conductorBody:
-      'Poinformuj konduktora o spóźnieniu na przesiadkę. Bilet na pociąg dalekobieżny zachowuje ważność zgodnie z warunkami przewoźnika.',
+    conductorBody: 'Poinformuj drużynę konduktorską o zamiarze przesiadki',
     nextTrainLabel: 'Następny pociąg',
     nextTrainAt: (time: string) => `odjeżdża o ${time}`,
     unavailable: 'Nie możemy ocenić przesiadki',

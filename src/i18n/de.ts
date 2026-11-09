@@ -61,8 +61,7 @@ export const de: Strings = {
     noAlternative:
       'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
     conductorTitle: 'Zug verpasst',
-    conductorBody:
-      'Informiere den Schaffner, dass du den Anschluss verpasst. Fernverkehrstickets bleiben gemäß Beförderungsbedingungen gültig.',
+    conductorBody: 'Informiere das Zugpersonal über den geplanten Umstieg',
     nextTrainLabel: 'Nächster Zug',
     nextTrainAt: (time: string) => `fährt ab um ${time}`,
 
