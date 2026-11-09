@@ -60,8 +60,7 @@ export const en: Strings = {
     changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
     noAlternative: 'No other route is available right now. We will check again shortly.',
     conductorTitle: 'Missed your train',
-    conductorBody:
-      "Tell the conductor you are missing your connection. Long-distance tickets stay valid according to the operator's terms.",
+    conductorBody: 'Tell the train crew you plan to change trains',
     nextTrainLabel: 'Next train',
     nextTrainAt: (time: string) => `departs at ${time}`,
 
