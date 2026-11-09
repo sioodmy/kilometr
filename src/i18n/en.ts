@@ -1554,6 +1554,27 @@ export const en: Strings = {
     fileLabel: (fileName: string) => `File: ${fileName}`,
     importSuccess: 'PDF ticket attached successfully.',
     importError: 'Could not load the PDF file.',
+    rejectTooLargeTitle: 'File is too large',
+    rejectTooLargeBody:
+      'The selected file exceeds 10 MB. Rail tickets in PDF are usually between a few dozen KB and 2 MB.',
+    rejectNotTicketTitle: 'This does not look like a rail ticket',
+    rejectNotTicketBody:
+      'The document has no inspection code and no rail travel details. Make sure you pick the right file.',
+    rejectWrongTrainTitle: 'This ticket is for a different train',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `The ticket is for train ${ticketTrain}, but this route uses train ${connectionTrain}. Pick a ticket for the right connection.`,
+    rejectWrongDateTitle: 'Ticket for a different day',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `The ticket is valid on ${ticketDate}, but this connection runs on ${connectionDate}.`,
+    deleteTicket: 'Delete ticket',
+    deleteTicketTitle: 'Delete this ticket?',
+    deleteTicketBody: 'The PDF file and the Aztec code will be permanently removed from the app storage.',
+    inspectionNoBarcode: 'No raster code found in the PDF',
+    inspectionBarcodeA11y: 'Aztec code for ticket inspection',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Leg ${current} of ${total} · Tap to switch`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Leg ${current} of ${total}. Tap to switch.`,
   },
   widgets: {
     journeyTitle: 'Your destinations',

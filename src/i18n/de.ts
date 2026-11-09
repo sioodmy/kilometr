@@ -1575,6 +1575,27 @@ export const de: Strings = {
     fileLabel: (fileName: string) => `Datei: ${fileName}`,
     importSuccess: 'PDF-Fahrkarte erfolgreich angehängt.',
     importError: 'PDF-Datei konnte nicht geladen werden.',
+    rejectTooLargeTitle: 'Datei ist zu groß',
+    rejectTooLargeBody:
+      'Die gewählte Datei ist größer als 10 MB. Bahnfahrkarten als PDF sind meist zwischen wenigen Dutzend KB und 2 MB groß.',
+    rejectNotTicketTitle: 'Das sieht nicht nach einer Bahnfahrkarte aus',
+    rejectNotTicketBody:
+      'Das Dokument enthält keinen Kontrollcode und keine Reisedaten. Stelle sicher, dass du die richtige Datei wählst.',
+    rejectWrongTrainTitle: 'Diese Fahrkarte gilt für einen anderen Zug',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Die Fahrkarte gilt für Zug ${ticketTrain}, aber diese Route fährt mit Zug ${connectionTrain}. Wähle die Fahrkarte für die richtige Verbindung.`,
+    rejectWrongDateTitle: 'Fahrkarte für einen anderen Tag',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Die Fahrkarte gilt am ${ticketDate}, aber diese Verbindung fährt am ${connectionDate}.`,
+    deleteTicket: 'Fahrkarte löschen',
+    deleteTicketTitle: 'Diese Fahrkarte löschen?',
+    deleteTicketBody: 'Die PDF-Datei und der Aztec-Code werden dauerhaft aus dem App-Speicher gelöscht.',
+    inspectionNoBarcode: 'Kein Rastercode im PDF gefunden',
+    inspectionBarcodeA11y: 'Aztec-Code für die Fahrkartenkontrolle',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Abschnitt ${current} von ${total} · Tippen zum Wechseln`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Abschnitt ${current} von ${total}. Tippen zum Wechseln.`,
   },
   widgets: {
     journeyTitle: 'Deine Ziele',

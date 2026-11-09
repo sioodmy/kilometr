@@ -1619,6 +1619,27 @@ export const uk: Strings = {
     fileLabel: (fileName: string) => `Файл: ${fileName}`,
     importSuccess: 'Квиток PDF успішно додано.',
     importError: 'Не вдалося завантажити файл PDF.',
+    rejectTooLargeTitle: 'Файл занадто великий',
+    rejectTooLargeBody:
+      'Вибраний файл перевищує 10 МБ. Залізничні квитки в PDF зазвичай мають від кількох десятків КБ до 2 МБ.',
+    rejectNotTicketTitle: 'Це не схоже на залізничний квиток',
+    rejectNotTicketBody:
+      'Документ не містить коду для контролю та даних про залізничну поїздку. Переконайтеся, що вибираєте правильний файл.',
+    rejectWrongTrainTitle: 'Це квиток на інший потяг',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Квиток на потяг ${ticketTrain}, а цей маршрут їде потягом ${connectionTrain}. Виберіть квиток на потрібне з’єднання.`,
+    rejectWrongDateTitle: 'Квиток на інший день',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Квиток діє ${ticketDate}, а це з’єднання їде ${connectionDate}.`,
+    deleteTicket: 'Видалити квиток',
+    deleteTicketTitle: 'Видалити цей квиток?',
+    deleteTicketBody: 'Файл PDF і код Aztec буде остаточно видалено з пам’яті додатка.',
+    inspectionNoBarcode: 'У PDF немає растрового коду',
+    inspectionBarcodeA11y: 'Код Aztec для контролю квитків',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Ділянка ${current} з ${total} · Торкніться, щоб змінити`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Ділянка ${current} з ${total}. Торкніться, щоб змінити.`,
   },
   widgets: {
     journeyTitle: 'Твої напрямки',
