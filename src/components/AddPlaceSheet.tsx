@@ -1080,16 +1080,6 @@ export function AddPlaceSheet({
                   </View>
                 ) : (
                   <View style={styles.mainActionRow}>
-                    {isEditing && onDelete && (
-                      <Pressable
-                        onPress={() => setConfirmDelete(true)}
-                        style={({ pressed }) => [styles.deleteActionBtn, pressed && { opacity: 0.8 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel={s.places.removeA11y(initialPlace!.name)}
-                      >
-                        <Trash2 size={19} color={scheme.error} />
-                      </Pressable>
-                    )}
                     <Pressable
                       onPress={() => void handleSave()}
                       disabled={saving || !name.trim() || !selectedLoc}
@@ -1125,6 +1115,16 @@ export function AddPlaceSheet({
                         {isEditing ? s.places.saveChanges : s.places.savePlace}
                       </Text>
                     </Pressable>
+                    {isEditing && onDelete && (
+                      <Pressable
+                        onPress={() => setConfirmDelete(true)}
+                        style={({ pressed }) => [styles.deleteActionBtn, pressed && { opacity: 0.8 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={s.places.removeA11y(initialPlace!.name)}
+                      >
+                        <Trash2 size={19} color={scheme.onSurfaceVariant} />
+                      </Pressable>
+                    )}
                   </View>
                 )}
               </View>
@@ -1354,7 +1354,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: shape.large,
-    backgroundColor: scheme.errorContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
