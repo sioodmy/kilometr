@@ -36,6 +36,8 @@ Te reguły są domyślne (good defaults), nie święte prawo. User może je nadp
 
 - Minimalizm: measure twice, cut once, YAGNI. Nie zachowuj złożoności dlatego, że już istnieje. Nie dodawaj machinerii, bo wygląda imponująco.
 - Zanim zaczniesz, sprawdź, czy istnieje "stupid simple solution" i rób tak, jeśli działa.
+- Bug fix: najpierw `rg` po wszystkich callerach funkcji, potem napraw root cause raz we wspólnym kodzie.
+- `shortcut: <limit>, <kiedy upgradować>` w komentarzu, gdy świadomie zostawiasz ograniczenie.
 - Nie rozszerzaj zakresu. Pre-existing bugi: nie naprawiaj w tej samej robocie, wpisz follow-up w podsumowaniu.
 - Działania destrukcyjne (usuwanie danych, force push, kill procesów, migracje) tylko na wyraźną prośbę. Killuj tylko procesy, które sam uruchomiłeś.
 
