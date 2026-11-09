@@ -1614,6 +1614,27 @@ export const pl = {
     fileLabel: (fileName: string) => `Plik: ${fileName}`,
     importSuccess: 'Bilet PDF został pomyślnie dodany.',
     importError: 'Nie udało się wczytać pliku PDF.',
+    rejectTooLargeTitle: 'Plik jest zbyt duży',
+    rejectTooLargeBody:
+      'Wybrany plik przekracza 10 MB. Bilety kolejowe w PDF mają zwykle od kilkudziesięciu KB do 2 MB.',
+    rejectNotTicketTitle: 'To nie wygląda na bilet kolejowy',
+    rejectNotTicketBody:
+      'Dokument nie zawiera kodu do kontroli ani danych podróży kolejowej. Upewnij się, że wybierasz właściwy plik.',
+    rejectWrongTrainTitle: 'To bilet na inny pociąg',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Bilet jest na pociąg ${ticketTrain}, a ta trasa jedzie pociągiem ${connectionTrain}. Wybierz bilet na właściwy połączenie.`,
+    rejectWrongDateTitle: 'Bilet na inny dzień',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Bilet obowiązuje ${ticketDate}, a to połączenie jedzie ${connectionDate}.`,
+    deleteTicket: 'Usuń bilet',
+    deleteTicketTitle: 'Usunąć ten bilet?',
+    deleteTicketBody: 'Plik PDF i kod Aztec zostaną trwale usunięte z pamięci aplikacji.',
+    inspectionNoBarcode: 'Brak kodu rastrowego w PDF',
+    inspectionBarcodeA11y: 'Kod Aztec do kontroli kolejowej',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Odcinek ${current} z ${total} · Dotknij, aby zmienić`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Odcinek ${current} z ${total}. Dotknij, aby zmienić.`,
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',

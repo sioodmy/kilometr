@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import { kvGet, kvRemove, kvSet } from './storage';
@@ -50,9 +49,33 @@ export interface TicketIndexEntry {
   delayAtAttachSec?: number;
 }
 
+/** Dlaczego bilet nie został dołączony; UI pokazuje dla tego dialog M3. */
+export type TicketRejectionReason = 'tooLarge' | 'notTicket' | 'wrongTrain' | 'wrongDate';
+
+export interface TicketImportRejected {
+  status: 'rejected';
+  reason: TicketRejectionReason;
+  /** Numer pociągu z biletu (wrongTrain). */
+  ticketTrainNumber?: string;
+  /** Numer pociągu łączenia (wrongTrain). */
+  connectionTrainNumber?: string;
+  /** Data z biletu, format YYYY-MM-DD (wrongDate). */
+  ticketDate?: string;
+  /** Data połączenia, format YYYY-MM-DD (wrongDate). */
+  connectionDate?: string;
+}
+
+export type TicketImportResult =
+  | { status: 'attached'; ticket: AttachedRailTicket }
+  | { status: 'cancelled' }
+  | TicketImportRejected;
+
 const TICKET_INDEX_KEY = 'rail_tickets:index';
 const DEFAULT_RETENTION_DAYS = 14;
 const MAX_TICKET_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit bezpieczeństwa (ochrona pamięci i storage)
+// Bilet dodany w ciągu doby od teraz nigdy nie jest sprzątany: retencja czyta
+// stare pliki, a nie walczy z użytkownikiem, który właśnie dołączył bilet.
+const RETENTION_GRACE_MS = 24 * 3600 * 1000;
 
 export function getTicketDir(): string | null {
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
@@ -451,12 +474,16 @@ export async function deleteTicketForConnection(connectionId: string): Promise<v
 
 /**
  * Otwiera selektor plików i dołącza wybrany bilet PDF do połączenia.
- * Posiada walidację rozmiaru (< 10 MB), czyszczenie cache oraz rozpoznawanie czy dokument jest biletem.
+ *
+ * Walidacja: rozmiar (< 10 MB), wygląd biletu kolejowego oraz zgodność
+ * z połączeniem (data i numer pociągu). Brak wagonu/miejsca/ulgi w tekście
+ * NIE blokuje dodania: to dane opcjonalne. Odrzucenia zwracamy jako
+ * TicketImportRejected (komunikat pokazuje UI), bez alertów w serwisie.
  */
 export async function importTicketPdf(
   connectionId: string,
   connection?: Connection,
-): Promise<AttachedRailTicket | null> {
+): Promise<TicketImportResult> {
   const picked = await DocumentPicker.getDocumentAsync({
     type: ['application/pdf', 'application/octet-stream'],
     copyToCacheDirectory: true,
@@ -464,7 +491,7 @@ export async function importTicketPdf(
   });
 
   if (picked.canceled) {
-    return null;
+    return { status: 'cancelled' };
   }
 
   const asset = picked.assets?.[0];
@@ -487,12 +514,7 @@ export async function importTicketPdf(
     try {
       await FileSystem.deleteAsync(asset.uri, { idempotent: true });
     } catch {}
-
-    Alert.alert(
-      'Plik jest zbyt duży',
-      'Wybrany dokument przekracza 10 MB. Bilety kolejowe w formacie PDF mają zazwyczaj od kilkudziesięciu KB do maksymalnie 2 MB.',
-    );
-    return null;
+    return { status: 'rejected', reason: 'tooLarge' };
   }
 
   // Baseline liczony równolegle z kopiowaniem i parsowaniem PDF, żeby
@@ -558,21 +580,65 @@ export async function importTicketPdf(
   const looksLikeTicket = isLikelyRailTicket(text, asset.name, hasBarcode);
 
   if (!looksLikeTicket) {
-    try {
-      await FileSystem.deleteAsync(targetUri, { idempotent: true });
-      for (const uri of barcodeUris) {
-        await FileSystem.deleteAsync(uri, { idempotent: true });
-      }
-    } catch {}
-
-    Alert.alert(
-      'To nie wygląda na bilet kolejowy',
-      'Wybrany dokument PDF nie zawiera kodu do kontroli ani danych podróży kolejowej. Upewnij się, że wybierasz właściwy bilet.',
-    );
-    return null;
+    await discardImportedFiles(targetUri, barcodeUris);
+    return { status: 'rejected', reason: 'notTicket' };
   }
 
-  // Wzbogać metadane z samego połączenia, jeśli nie zostały znalezione w tekście PDF
+  // 3. Zgodność z połączeniem. Sprawdzamy tylko dane, które udało się
+  // odczytać z biletu: nieczytelny numer czy data nie blokuje dodania.
+  if (connection) {
+    const summary = getTrainLegSummary(connection);
+    const trainLegs = connection.legs.filter(isTrainLeg);
+
+    if (metadata.departDate && connection.serviceDate && summary) {
+      const dateOk =
+        metadata.departDate === connection.serviceDate ||
+        metadata.departDate === nextCalendarDay(connection.serviceDate);
+      if (!dateOk) {
+        await discardImportedFiles(targetUri, barcodeUris);
+        return {
+          status: 'rejected',
+          reason: 'wrongDate',
+          ticketDate: metadata.departDate,
+          connectionDate: connection.serviceDate,
+        };
+      }
+    }
+
+    const ticketDigits = metadata.trainNumber?.match(/\d{3,6}/g) ?? [];
+    if (summary && ticketDigits.length > 0) {
+      const legDigits = trainLegs.flatMap((leg) => [
+        ...(leg.trainNumber?.match(/\d{3,6}/g) ?? []),
+        ...(leg.line?.match(/\d{3,6}/g) ?? []),
+        ...(leg.railLine?.match(/\d{3,6}/g) ?? []),
+        ...(leg.tripId?.match(/\d{3,6}/g) ?? []),
+      ]);
+      const digitsMatch = ticketDigits.some((d) => legDigits.includes(d));
+      // Ten sam odcinek i godzina: numer mógł się różnić zapisem (np. sam numer
+      // operacyjny vs pełny kod), więc nie odrzucamy.
+      const stationTimeMatch =
+        metadata.fromStation && metadata.departTime
+          ? trainLegs.some(
+              (leg) =>
+                isStationMatch(metadata.fromStation, leg.fromStop) &&
+                timeMatches(leg, metadata.departTime),
+            )
+          : false;
+
+      if (!digitsMatch && !stationTimeMatch) {
+        await discardImportedFiles(targetUri, barcodeUris);
+        return {
+          status: 'rejected',
+          reason: 'wrongTrain',
+          ticketTrainNumber: metadata.trainNumber,
+          connectionTrainNumber: summary.trainNumber,
+        };
+      }
+    }
+  }
+
+  // Wzbogać metadane z samego połączenia, jeśli nie zostały znalezione w tekście PDF.
+  // Te dane napędzają odzyskiwanie biletu po powrocie (zmienne ID połączeń).
   if (connection) {
     const summary = getTrainLegSummary(connection);
     if (summary) {
@@ -660,7 +726,26 @@ export async function importTicketPdf(
     console.warn('[TicketStorage] cleanupExpiredTickets background error:', err),
   );
 
-  return ticket;
+  return { status: 'attached', ticket };
+}
+
+/** Usuwa plik biletu i wyekstrahowane kody po odrzuconym imporcie. */
+async function discardImportedFiles(targetUri: string, barcodeUris: string[]): Promise<void> {
+  try {
+    await FileSystem.deleteAsync(targetUri, { idempotent: true });
+    for (const uri of barcodeUris) {
+      await FileSystem.deleteAsync(uri, { idempotent: true });
+    }
+  } catch {}
+}
+
+/** Następny dzień kalendarzowy w formacie YYYY-MM-DD (podróże po północy). */
+function nextCalendarDay(dateStr: string): string | null {
+  const ts = Date.parse(`${dateStr}T12:00:00Z`);
+  if (Number.isNaN(ts)) return null;
+  const next = new Date(ts + 24 * 3600 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`;
 }
 
 /**
@@ -684,12 +769,17 @@ export async function getTicketConnectionIds(): Promise<Set<string>> {
 
 /**
  * Sprawdza czy bilet kwalifikuje się do usunięcia wg polityki retencji (domyślnie 14 dni).
+ * Bilet dodany w ciągu ostatniej doby nigdy nie jest przedawniony.
  */
 export function isTicketExpired(
   entry: { addedAt: number; tripDate?: string },
   now = Date.now(),
   retentionDays = DEFAULT_RETENTION_DAYS,
 ): boolean {
+  if (now < entry.addedAt + RETENTION_GRACE_MS) {
+    return false;
+  }
+
   const maxAgeMs = retentionDays * 24 * 3600 * 1000;
 
   if (entry.tripDate) {

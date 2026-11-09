@@ -11,19 +11,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
-import { ExternalLink, Layers, X } from './icons';
+import { AlertCircle, ExternalLink, Layers, Trash2, X } from './icons';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape } from '../theme/tokens';
 import type { AttachedRailTicket } from '../services/ticketStorage';
 import { openTicketPdf } from '../services/ticketStorage';
 import type { Connection } from '../types/models';
 import { getTrainLegSummary } from '../services/ticketing';
+import { M3Dialog } from './M3Dialog';
 
 export interface TicketInspectionModalProps {
   visible: boolean;
   ticket: AttachedRailTicket;
   connection?: Connection;
   onClose: () => void;
+  /** Potwierdzone usunięcie biletu z pamięci aplikacji. */
+  onDelete?: () => void;
 }
 
 export function TicketInspectionModal({
@@ -31,9 +34,18 @@ export function TicketInspectionModal({
   ticket,
   connection,
   onClose,
+  onDelete,
 }: TicketInspectionModalProps) {
   const s = useStrings();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Stare bilety (sprzed poprawki PNG) mają kody .bmp, których Fresco nie
+  // dekoduje: po błędzie ładowania pokazujemy fallback z przyciskiem PDF.
+  const [barcodeLoadFailed, setBarcodeLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setBarcodeLoadFailed(false);
+  }, [ticket.id, visible]);
 
   // Lista kodów kreskowych (wsparcie biletów z przesiadką)
   const barcodes = ticket.barcodeUris && ticket.barcodeUris.length > 0
@@ -79,6 +91,16 @@ export function TicketInspectionModal({
     setActiveBarcodeIndex((prev) => (prev + 1) % barcodes.length);
   };
 
+  const handleDeletePress = () => {
+    void Haptics.selectionAsync().catch(() => {});
+    setConfirmDelete(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    setConfirmDelete(false);
+    onDelete?.();
+  };
+
   const currentBarcodeUri = barcodes[activeBarcodeIndex] || null;
 
   return (
@@ -110,15 +132,28 @@ export function TicketInspectionModal({
             <View style={{ flex: 1 }} />
           )}
 
-          <Pressable
-            onPress={handleOpenOriginal}
-            accessibilityRole="button"
-            accessibilityLabel={s.railTickets.showTicket}
-            style={({ pressed }) => [styles.pdfBtn, pressed && styles.pressed]}
-          >
-            <Text style={styles.pdfBtnText}>PDF</Text>
-            <ExternalLink size={14} color={scheme.onSurfaceVariant} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={handleOpenOriginal}
+              accessibilityRole="button"
+              accessibilityLabel={s.railTickets.showTicket}
+              style={({ pressed }) => [styles.pdfBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.pdfBtnText}>PDF</Text>
+              <ExternalLink size={14} color={scheme.onSurfaceVariant} />
+            </Pressable>
+
+            {onDelete && (
+              <Pressable
+                onPress={handleDeletePress}
+                accessibilityRole="button"
+                accessibilityLabel={s.railTickets.deleteTicket}
+                style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+              >
+                <Trash2 size={18} color={scheme.onSurfaceVariant} />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         {/* Przełącznik odcinków przesiadkowych (gdy w PDF jest > 1 kod Aztec) */}
@@ -127,12 +162,15 @@ export function TicketInspectionModal({
             <Pressable
               onPress={handleNextBarcode}
               accessibilityRole="button"
-              accessibilityLabel={`Odcinek ${activeBarcodeIndex + 1} z ${barcodes.length}. Dotknij, aby zmienić.`}
+              accessibilityLabel={s.railTickets.inspectionSegmentA11y(
+                activeBarcodeIndex + 1,
+                barcodes.length,
+              )}
               style={({ pressed }) => [styles.pagerChip, pressed && styles.pressed]}
             >
               <Layers size={14} color={scheme.onPrimaryContainer} />
               <Text style={styles.pagerText}>
-                Odcinek {activeBarcodeIndex + 1} z {barcodes.length} · Dotknij, aby zmienić
+                {s.railTickets.inspectionSegmentLabel(activeBarcodeIndex + 1, barcodes.length)}
               </Text>
             </Pressable>
           </View>
@@ -140,7 +178,7 @@ export function TicketInspectionModal({
 
         {/* Kontener centralny: dedykowana biała karta na kod Aztec z dużym paddingiem i zaokrągleniami */}
         <View style={styles.barcodeCenterArea}>
-          {currentBarcodeUri ? (
+          {currentBarcodeUri && !barcodeLoadFailed ? (
             <Pressable
               onPress={handleNextBarcode}
               disabled={barcodes.length <= 1}
@@ -155,13 +193,14 @@ export function TicketInspectionModal({
                   style={styles.barcodeImage}
                   resizeMode="contain"
                   accessibilityRole="image"
-                  accessibilityLabel="Kod Aztec do kontroli kolejowej"
+                  accessibilityLabel={s.railTickets.inspectionBarcodeA11y}
+                  onError={() => setBarcodeLoadFailed(true)}
                 />
               </View>
             </Pressable>
           ) : (
             <View style={styles.fallbackBox}>
-              <Text style={styles.fallbackText}>Brak kodu rastrowego w PDF</Text>
+              <Text style={styles.fallbackText}>{s.railTickets.inspectionNoBarcode}</Text>
               <Pressable
                 onPress={handleOpenOriginal}
                 style={styles.fallbackBtn}
@@ -184,6 +223,20 @@ export function TicketInspectionModal({
           ) : null}
         </View>
       </SafeAreaView>
+
+      {/* Potwierdzenie usunięcia biletu (M3 Expressive) */}
+      <M3Dialog
+        visible={confirmDelete}
+        icon={<AlertCircle size={30} color={scheme.onErrorContainer} />}
+        iconContainerColor={scheme.errorContainer}
+        title={s.railTickets.deleteTicketTitle}
+        message={s.railTickets.deleteTicketBody}
+        actions={[
+          { label: s.common.cancel, onPress: () => {}, tonal: true },
+          { label: s.railTickets.deleteTicket, onPress: handleDeleteConfirm, destructive: true },
+        ]}
+        onClose={() => setConfirmDelete(false)}
+      />
     </Modal>
   );
 }
@@ -218,6 +271,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 12,
     letterSpacing: -0.2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   pdfBtn: {
     flexDirection: 'row',

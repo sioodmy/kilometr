@@ -42,8 +42,19 @@ import {
   importTicketPdf,
   openTicketPdf,
   type AttachedRailTicket,
+  type TicketImportRejected,
 } from '../services/ticketStorage';
 import { TicketInspectionModal } from './TicketInspectionModal';
+import { M3Dialog } from './M3Dialog';
+import { AlertCircle, FileDoc } from './icons';
+
+/** YYYY-MM-DD -> DD.MM.YYYY do wyświetlania dat w komunikatach. */
+function formatDateForDisplay(date?: string): string {
+  if (!date) return '';
+  const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return date;
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -117,6 +128,7 @@ export function RouteTravelDeck({
   const [ticketSheetOpen, setTicketSheetOpen] = useState(false);
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [rejection, setRejection] = useState<TicketImportRejected | null>(null);
   // Import trwa, a systemowy picker wraca do apki jako 'active'. Bez tej flagi
   // przeładowanie z dysku mogłoby nadpisać świeżo dodany bilet stanem sprzed importu.
   const importInFlight = useRef(false);
@@ -240,8 +252,9 @@ export function RouteTravelDeck({
     try {
       setImporting(true);
       void Haptics.selectionAsync().catch(() => {});
-      const imported = await importTicketPdf(connection.id, connection);
-      if (imported) {
+      const result = await importTicketPdf(connection.id, connection);
+      if (result.status === 'attached') {
+        const imported = result.ticket;
         setTicket(imported);
         setTicketSheetOpen(false);
         // Połączenie z biletem trafia do „Twoich tras”: bilet jest powodem,
@@ -254,11 +267,14 @@ export function RouteTravelDeck({
         void checkTicketCompensation();
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
-        if (imported.barcodeUri) {
+        if (imported.barcodeUri || (imported.barcodeUris && imported.barcodeUris.length > 0)) {
           setInspectionOpen(true);
         } else {
           Alert.alert(s.railTickets.attachedTitle, s.railTickets.importSuccess);
         }
+      } else if (result.status === 'rejected') {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        setRejection(result);
       }
     } catch (err) {
       console.warn('[RouteTravelDeck] attach error:', err);
@@ -268,6 +284,41 @@ export function RouteTravelDeck({
       setImporting(false);
     }
   };
+
+  // Treść dialogu odrzucenia zależna od powodu (M3 Expressive)
+  const rejectionContent = (() => {
+    if (!rejection) return null;
+    switch (rejection.reason) {
+      case 'tooLarge':
+        return {
+          title: s.railTickets.rejectTooLargeTitle,
+          message: s.railTickets.rejectTooLargeBody,
+        };
+      case 'notTicket':
+        return {
+          title: s.railTickets.rejectNotTicketTitle,
+          message: s.railTickets.rejectNotTicketBody,
+        };
+      case 'wrongTrain':
+        return {
+          title: s.railTickets.rejectWrongTrainTitle,
+          message: s.railTickets.rejectWrongTrainBody(
+            rejection.ticketTrainNumber ?? '',
+            rejection.connectionTrainNumber ?? '',
+          ),
+        };
+      case 'wrongDate':
+        return {
+          title: s.railTickets.rejectWrongDateTitle,
+          message: s.railTickets.rejectWrongDateBody(
+            formatDateForDisplay(rejection.ticketDate),
+            formatDateForDisplay(rejection.connectionDate),
+          ),
+        };
+      default:
+        return null;
+    }
+  })();
 
   // --- Dane tekstowe segmentu biletu ---
   const meta = ticket?.metadata;
@@ -421,6 +472,35 @@ export function RouteTravelDeck({
           ticket={ticket}
           connection={connection}
           onClose={() => setInspectionOpen(false)}
+          onDelete={async () => {
+            await deleteTicketForConnection(connection.id);
+            setInspectionOpen(false);
+            setTicket(null);
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          }}
+        />
+      )}
+
+      {/* ODRZUCENIE BILETU: dialog M3 z wyjaśnieniem (zły pociąg, zła data, to nie bilet) */}
+      {rejection && rejectionContent && (
+        <M3Dialog
+          visible
+          icon={
+            rejection.reason === 'notTicket' ? (
+              <FileDoc size={30} color={scheme.onSecondaryContainer} />
+            ) : (
+              <AlertCircle size={30} color={scheme.onErrorContainer} />
+            )
+          }
+          iconContainerColor={
+            rejection.reason === 'notTicket'
+              ? scheme.secondaryContainer
+              : scheme.errorContainer
+          }
+          title={rejectionContent.title}
+          message={rejectionContent.message}
+          actions={[{ label: s.common.close, onPress: () => {} }]}
+          onClose={() => setRejection(null)}
         />
       )}
 

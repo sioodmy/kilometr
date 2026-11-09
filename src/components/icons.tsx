@@ -72,6 +72,7 @@ export const Dumbbell = icon('fitness-center');
 export const ExternalLink = icon('open-in-new');
 export const FileDown = icon('file-download');
 export const FileUp = icon('file-upload');
+export const FileDoc = icon('description');
 export const Film = icon('movie');
 export const Flag = icon('flag');
 export const Footprints = icon('directions-walk');
