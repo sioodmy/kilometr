@@ -14,6 +14,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
+import { RailAmenities } from './RailAmenities';
 import { LiveSensors } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
@@ -639,6 +640,15 @@ const TransitLegCard = memo(function TransitLegCard({
 
         {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
         <View style={s.cardMiddleSection}>
+          {isTrain ? (
+            <RailAmenities
+              tripId={leg.tripId}
+              agency={leg.railAgency}
+              trainNumber={leg.trainNumber}
+              line={leg.line}
+              trainName={leg.trainName}
+            />
+          ) : null}
           <View style={s.cardTop}>
             <View style={s.badgeWrap} onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}>
               <LineBadge leg={leg} />

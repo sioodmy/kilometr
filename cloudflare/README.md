@@ -281,9 +281,17 @@ cloudflare/
   package.json           tylko wrangler jako devDep
   src/index.ts           Worker: manifest, baza, /api/kd/*, health
   scripts/build-timetable.mjs  build bazy per-miasto (Node ≥ 22, zero deps)
+  scripts/build-polska.mjs     build ogólnopolskiej bazy kolejowej
   data/kd-station-coords.json  cache współrzędnych stacji KD
+  data/rail-amenities.json     udogodnienia składu z vagonweb (scraper: scripts/vagonweb)
   dist/                  artefakty buildu (gitignore)
 ```
+
+`build-polska.mjs` wypełnia tabelę `trip_amenities` z
+`data/rail-amenities.json` (dopasowanie po `agency` + numerze pociągu).
+Brak pliku nie wywraca buildu: baza powstaje wtedy bez udogodnień, a
+aplikacja po prostu nie pokazuje ikon. Plik odświeża się ręcznie, patrz
+`scripts/vagonweb/README.md`.
 
 ## Weryfikacja buildu
 

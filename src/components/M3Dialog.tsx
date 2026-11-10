@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { elev, scheme, shape } from '../theme/tokens';
 import { useStrings } from '../i18n';
 
-export interface M3DialogAction {
+interface M3DialogAction {
   label: string;
   onPress: () => void;
   /** Przycisk tekstowy zamiast wypełnionego. */
