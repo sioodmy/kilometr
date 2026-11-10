@@ -200,7 +200,29 @@ export interface Leg {
   routeId?: string;
   /** pełna sekwencja przystanków kursu (cała linia); nasz odcinek to podzbiór */
   intermediateStops?: LegStop[];
+  /** Udogodnienia składu z vagonweb (klucze z RAIL_AMENITIES), puste = brak danych. */
+  amenities?: RailAmenity[];
+  /** Liczniki przy udogodnieniach (np. miejsca na rowery). */
+  amenityCounts?: Partial<Record<RailAmenity, number>>;
 }
+
+/**
+ * Klucze udogodnień pokazywanych w karcie połączenia. Muszą się zgadzać
+ * z UDOGODNIENIA_UI w scripts/vagonweb/scrape_vagonweb.py i z sekcją
+ * railAmenities w słownikach i18n.
+ */
+export type RailAmenity =
+  | 'klimatyzacja'
+  | 'gniazdka_230V'
+  | 'gniazdka_usb'
+  | 'wifi'
+  | 'wagon_restauracyjny'
+  | 'bar'
+  | 'przewoz_rowerow'
+  | 'dostepny_wozkarze'
+  | 'miejsca_lezace'
+  | 'miejsca_sypialne'
+  | 'strefa_ciszy';
 
 export interface Connection {
   id: string;

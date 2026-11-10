@@ -1367,6 +1367,21 @@ export const en: Strings = {
     startAtStation: 'Show trains from this station',
   },
 
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Air conditioning',
+    gniazdka_230V: (_n?: number) => 'Power sockets',
+    gniazdka_usb: (_n?: number) => 'USB ports',
+    wifi: (_n?: number) => 'Wi-Fi',
+    wagon_restauracyjny: (_n?: number) => 'Dining car',
+    bar: (_n?: number) => 'Bar',
+    przewoz_rowerow: (n?: number) => (n ? `Bikes (${n})` : 'Bike carriage'),
+    dostepny_wozkarze: (_n?: number) => 'Wheelchair accessible',
+    miejsca_lezace: (_n?: number) => 'Couchettes',
+    miejsca_sypialne: (_n?: number) => 'Sleepers',
+    strefa_ciszy: (_n?: number) => 'Quiet zone',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Onboard: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',

@@ -25,7 +25,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DATA = join(ROOT, 'data');
 const DIST = join(ROOT, 'dist', 'polska');
 const DB_FILE = join(DIST, 'kilometr-gtfs-polska.db');
 const DB_GZ_FILE = join(DIST, 'kilometr-gtfs-polska.db.gz');
@@ -44,7 +45,7 @@ const UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilome
 const PUBLIC_URL = process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app';
 /** Rewizja schematu bazy: podbicie wymusza re-download na telefonach
  *  (wersja z fingerprintu feedu nie zmienia się, dopóki PLK nie ruszy rozkładu). */
-const SCHEMA_REV = 3;
+const SCHEMA_REV = 4;
 
 const FORCE = new Set(process.argv.slice(2)).has('--force');
 
@@ -110,6 +111,78 @@ function hmsToSec(hms) {
     .trim()
     .split(':');
   return (Number(p[0]) || 0) * 3600 + (Number(p[1]) || 0) * 60 + (Number(p[2]) || 0);
+}
+
+/* ─── Udogodnienia składu (vagonweb) ──────────────────────────────────── */
+
+/**
+ * Kolejność bitów w trip_amenities.bits. Musi być identyczna z
+ * RAIL_AMENITY_ORDER w src/services/railAmenities.ts oraz z UDOGODNIENIA_UI
+ * w scripts/vagonweb/scrape_vagonweb.py.
+ */
+const AMENITY_ORDER = [
+  'klimatyzacja',
+  'gniazdka_230V',
+  'gniazdka_usb',
+  'wifi',
+  'wagon_restauracyjny',
+  'bar',
+  'przewoz_rowerow',
+  'dostepny_wozkarze',
+  'miejsca_lezace',
+  'miejsca_sypialne',
+  'strefa_ciszy',
+];
+
+/**
+ * Kod przewoźnika vagonweb -> agency_id feedu PLK. Ta sama mapa jest
+ * w scripts/vagonweb/scrape_vagonweb.py (VAGONWEB_AGENCY).
+ */
+const VAGONWEB_AGENCY = {
+  PKPIC: 'IC',
+  PREG: 'PR',
+  RJPL: 'RJ',
+  LEPL: 'LE',
+  SKMWA: 'SKM',
+  KSL: 'KŚ',
+  SKPL: 'SKPL',
+};
+
+function encodeAmenities(keys) {
+  let bits = 0;
+  for (const key of keys || []) {
+    const i = AMENITY_ORDER.indexOf(key);
+    if (i >= 0) bits |= 1 << i;
+  }
+  return bits;
+}
+
+/**
+ * Wczytuje cloudflare/data/rail-amenities.json (wyjście scrapera vagonweb)
+ * i zwraca mapę `agency|numer` -> { bits, numbers }. Brak pliku nie wywraca
+ * buildu: baza powstaje wtedy bez tabeli udogodnień.
+ */
+function readAmenitiesFile() {
+  const file = join(DATA, 'rail-amenities.json');
+  if (!existsSync(file)) {
+    log('brak data/rail-amenities.json - buduję bez udogodnień składu');
+    return null;
+  }
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  const byKey = new Map();
+  for (const entry of raw.pociagi || []) {
+    const agency = VAGONWEB_AGENCY[entry.agency] || entry.agency || '';
+    const number = String(entry.numer || '').trim();
+    if (!agency || !number) continue;
+    const bits = encodeAmenities(entry.udogodnienia);
+    if (!bits) continue;
+    byKey.set(`${agency}|${number}`, {
+      bits,
+      numbers: entry.liczby && Object.keys(entry.liczby).length ? JSON.stringify(entry.liczby) : '',
+    });
+  }
+  log(`udogodnienia: ${byKey.size} pociągów z pliku (${raw.rok ?? '?'})`);
+  return byKey;
 }
 
 /* ─── HTTP ────────────────────────────────────────────────────────────── */
@@ -202,6 +275,11 @@ CREATE TABLE calendar_dates (
 );
 CREATE INDEX idx_caldate_date ON calendar_dates (date);
 CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+CREATE TABLE trip_amenities (
+  trip_id TEXT PRIMARY KEY NOT NULL,
+  bits INTEGER NOT NULL,
+  numbers TEXT NOT NULL DEFAULT ''
+);
 `;
 
 /* ─── Build ───────────────────────────────────────────────────────────── */
@@ -451,6 +529,38 @@ async function main() {
   }
   db.exec('COMMIT');
   log(`stop_times: ${stopTimesCount}`);
+
+  // 5b. Udogodnienia składu: dopasowanie do kursów po agency + numerze pociągu.
+  //     Numer w vagonweb bywa złożony ("113/41006/7"), w feedzie PLK jest
+  //     pierwszy człon, więc próbujemy też wariantów (jak trainNumberVariants).
+  const amenities = readAmenitiesFile();
+  if (amenities) {
+    const insAmenity = db.prepare(
+      'INSERT OR REPLACE INTO trip_amenities (trip_id, bits, numbers) VALUES (?, ?, ?)',
+    );
+    let matched = 0;
+    db.exec('BEGIN');
+    for (const [tid, trip] of trips) {
+      const list = timesByTrip.get(tid);
+      if (!list || list.length < 2) continue;
+      const route = railRoutes.get(trip.routeId);
+      const agency = route?.agency ?? '';
+      if (!agency || !trip.num) continue;
+      const variants = new Set([trip.num]);
+      for (const part of String(trip.num).split('/')) {
+        if (part.trim()) variants.add(part.trim());
+      }
+      for (const num of variants) {
+        const hit = amenities.get(`${agency}|${num}`);
+        if (!hit) continue;
+        insAmenity.run(`pl:${tid}`, hit.bits, hit.numbers);
+        matched++;
+        break;
+      }
+    }
+    db.exec('COMMIT');
+    log(`udogodnienia: dopasowano ${matched} kursów`);
+  }
 
   // 6. Wagi stacji (ranking wyszukiwarki: liczba odjazdów).
   db.exec('PRAGMA synchronous = NORMAL;');
@@ -732,7 +842,12 @@ async function main() {
   log(`manifest: version=${version} gz=${(gzSize / 1048576).toFixed(1)} MB`);
 }
 
-main().catch((err) => {
-  console.error('[polska] build failed:', err);
-  process.exit(1);
-});
+// Eksporty dla testów; uruchomienie buildu tylko przy bezpośrednim wywołaniu.
+export { AMENITY_ORDER, VAGONWEB_AGENCY, encodeAmenities };
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[polska] build failed:', err);
+    process.exit(1);
+  });
+}

@@ -394,4 +394,7 @@ export async function downloadNationalDb(
   // starej wersji. clearRaptorNetCache jest globalny (rzadka operacja).
   const { polskaStore } = await import('./routing/store');
   polskaStore.reset();
+  // Udogodnienia też siedzą w tej bazie: cache per pociąg trzymałby stare bity.
+  const { resetRailAmenitiesCache } = await import('./railAmenities');
+  resetRailAmenitiesCache();
 }

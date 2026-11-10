@@ -1428,6 +1428,21 @@ export const uk: Strings = {
     startAtStation: 'Показати потяги з цієї станції',
   },
 
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Кондиціонер',
+    gniazdka_230V: (_n?: number) => 'Розетки',
+    gniazdka_usb: (_n?: number) => 'USB-порти',
+    wifi: (_n?: number) => 'Wi-Fi',
+    wagon_restauracyjny: (_n?: number) => 'Вагон-ресторан',
+    bar: (_n?: number) => 'Бар',
+    przewoz_rowerow: (n?: number) => (n ? `Велосипеди (${n})` : 'Перевезення велосипедів'),
+    dostepny_wozkarze: (_n?: number) => 'Доступний для візків',
+    miejsca_lezace: (_n?: number) => 'Місця для лежання',
+    miejsca_sypialne: (_n?: number) => 'Спальні місця',
+    strefa_ciszy: (_n?: number) => 'Тиха зона',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Зручності: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',

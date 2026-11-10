@@ -1383,6 +1383,21 @@ export const de: Strings = {
     startAtStation: 'Züge von diesem Bahnhof zeigen',
   },
 
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Klimaanlage',
+    gniazdka_230V: (_n?: number) => 'Steckdosen',
+    gniazdka_usb: (_n?: number) => 'USB-Anschlüsse',
+    wifi: (_n?: number) => 'WLAN',
+    wagon_restauracyjny: (_n?: number) => 'Speisewagen',
+    bar: (_n?: number) => 'Bar',
+    przewoz_rowerow: (n?: number) => (n ? `Fahrräder (${n})` : 'Fahrradmitnahme'),
+    dostepny_wozkarze: (_n?: number) => 'Rollstuhlgerecht',
+    miejsca_lezace: (_n?: number) => 'Liegewagen',
+    miejsca_sypialne: (_n?: number) => 'Schlafwagen',
+    strefa_ciszy: (_n?: number) => 'Ruhebereich',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Ausstattung: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',

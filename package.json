@@ -89,6 +89,7 @@
     "check:polish-inflections": "tsx scripts/check-polish-inflections.ts",
     "check:search": "tsx --require ./scripts/stub-expo.cjs scripts/check-search.ts",
     "check:pois": "node --test cloudflare/scripts/build-pois.test.mjs",
+    "check:polska": "node --test cloudflare/scripts/build-polska.test.mjs",
     "check:news": "node --test cloudflare/scripts/process-news.test.mjs",
     "check:addresses": "node --test cloudflare/scripts/build-addresses.test.mjs && tsx --require ./scripts/stub-expo.cjs scripts/check-addresses.ts",
     "check:search-speed": "tsx --require ./scripts/stub-expo.cjs scripts/check-search-speed.ts",

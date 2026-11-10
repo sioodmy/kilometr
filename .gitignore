@@ -65,6 +65,11 @@ cloudflare/.wrangler/
 cloudflare/.cache/
 cloudflare/data/*-new.json
 cloudflare/data/news-cache.json
+
+# cache scrapera vagonweb (pobrane składy, ~3 MB/rok) - nie commitować,
+# wynik leży w cloudflare/data/rail-amenities.json
+scripts/vagonweb/cache/
+scripts/vagonweb/log/
 .wrangler/
 
 # generowane przez plugin react-native-bootsplash w prebuildzie
