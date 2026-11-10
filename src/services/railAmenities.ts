@@ -8,7 +8,7 @@ import { getNationalDb } from './gtfsDatabase';
 import { trainNumberVariants } from './nationalRailLive';
 
 /** Kolejność ikon w karcie: najważniejsze pierwsze (ta sama co w skrypcie). */
-export const RAIL_AMENITY_ORDER: readonly RailAmenity[] = [
+const RAIL_AMENITY_ORDER: readonly RailAmenity[] = [
   'klimatyzacja',
   'gniazdka_230V',
   'gniazdka_usb',
@@ -30,24 +30,8 @@ export interface RailAmenities {
 }
 
 /** Maska bitowa z rzędu tabeli -> klucze w kolejności wyświetlania. */
-export function decodeAmenities(bits: number): RailAmenity[] {
+function decodeAmenities(bits: number): RailAmenity[] {
   return RAIL_AMENITY_ORDER.filter((_, i) => (bits & (1 << i)) !== 0);
-}
-
-/** Klucze z pliku JSON -> maska bitowa (build-polska). */
-export function encodeAmenities(keys: readonly string[]): number {
-  let bits = 0;
-  for (const key of keys) {
-    const index = RAIL_AMENITY_ORDER.indexOf(key as RailAmenity);
-    if (index >= 0) bits |= 1 << index;
-  }
-  return bits;
-}
-
-/** Tylko znane klucze, w kolejności wyświetlania (nieufne dane z pliku). */
-export function sanitizeAmenities(keys: readonly string[]): RailAmenity[] {
-  const seen = new Set(keys.filter((k) => AMENITY_SET.has(k)));
-  return RAIL_AMENITY_ORDER.filter((k) => seen.has(k));
 }
 
 const cache = new Map<string, RailAmenities | null>();
