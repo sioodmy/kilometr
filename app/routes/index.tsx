@@ -1070,9 +1070,12 @@ export default function RoutesScreen() {
   const handleOpenFrom = useCallback(() => setSheetFor('from'), []);
   const handleOpenTo = useCallback(() => setSheetFor('to'), []);
 
+  // Klucz tylko przy realnej zmianie kotwicy: bez niego pole originu
+  // odtwarzało animację wejścia przy każdym wyszukaniu trasy.
+  const anchorKey = activeAnchor ? `anchor:${activeAnchor.placeId}` : 'gps';
   const routeHeader = useMemo(
     () => (
-      <View style={headerStyle}>
+      <View style={headerStyle} key={anchorKey}>
         <RouteEndpoints
           from={fromTitle}
           to={toTitle}
@@ -1163,6 +1166,7 @@ export default function RoutesScreen() {
       timeDisplayLabel,
       arrivalMode,
       headerStyle,
+      anchorKey,
     ],
   );
 

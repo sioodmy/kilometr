@@ -1,8 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown, FadeOutUp, ZoomIn, ZoomOut } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, FadeOut } from 'react-native-reanimated';
 import { Anchor, ArrowUpDown, X } from './icons';
 import { useStrings } from '../i18n';
 import { scheme, shape, type } from '../theme/tokens';
+
+// Kotwica i GPS podmieniają się w tym samym polu: krótki crossfade, zero
+// sprężyny. Spring tu sprężynował całe pole przy każdym wejściu na ekran.
+const SWAP_IN = FadeIn.duration(140).easing(Easing.out(Easing.quad));
+const SWAP_OUT = FadeOut.duration(90).easing(Easing.in(Easing.quad));
 
 export function RouteEndpoints({
   from,
@@ -35,12 +40,7 @@ export function RouteEndpoints({
           {anchor ? (
             // Kotwica JEST efektywnym startem: zajmuje pole originu zamiast
             // surowego GPS, więc user widzi jedno, to co napędza wyszukiwanie.
-            <Animated.View
-              key="anchor"
-              style={styles.anchorRow}
-              entering={ZoomIn.springify().damping(17).stiffness(320)}
-              exiting={ZoomOut.duration(150)}
-            >
+            <Animated.View key="anchor" style={styles.anchorRow} entering={SWAP_IN} exiting={SWAP_OUT}>
               <Anchor size={13} color={scheme.primary} />
               <Text style={styles.originAnchor} numberOfLines={1}>
                 {anchor.stopName}
@@ -57,11 +57,7 @@ export function RouteEndpoints({
             </Animated.View>
           ) : (
             // GPS wraca na swoje miejsce po usunięciu kotwicy.
-            <Animated.View
-              key="gps"
-              entering={FadeInDown.springify().damping(20).stiffness(280)}
-              exiting={FadeOutUp.duration(120)}
-            >
+            <Animated.View key="gps" entering={SWAP_IN} exiting={SWAP_OUT}>
               <Text style={styles.origin} numberOfLines={1}>
                 {from}
               </Text>
