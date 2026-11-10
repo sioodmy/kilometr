@@ -45,7 +45,7 @@
     "@types/react": "~19.2.2",
     "esbuild": "0.28.2",
     "eslint": "^10.14.0",
-    "globals": "^17.13.0",
+    "globals": "^17.14.0",
     "knip": "^6.44.0",
     "maplibre-gl": "6.4.1",
     "patch-package": "8.0.1",
