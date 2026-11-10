@@ -1,4 +1,4 @@
-// Planer podóży między miastami: noga miejska (magazyn aktywnego miasta)
+// Planer podróży między miastami: noga miejska (magazyn aktywnego miasta)
 // + noga kolejowa (magazyn ogólnopolski `polska`), sklejone po czasie na
 // stacji bramowej. Bazy NIE są scalane w jeden graf: każdy RAPTOR liczy
 // na własnej sieci, a join pilnuje buforu na peron (trainMinTransferSec).
@@ -13,14 +13,21 @@
 // dokłada wspólne ID, footpathy miasto-stacja i dedupe agencji. Join po
 // czasie jest prostszy i pozwala trzymać bazę kolejową opcjonalną.
 
-import { planConnections, type PlanOptions } from './engine';
+import { planConnections, SAME_POINT_M, type PlanOptions } from './engine';
 import { gtfsStore, polskaStore } from './store';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
 import { isOutsideServiceArea } from '../serviceArea';
 import { findNearestNationalStations, getNationalDb } from '../gtfsDatabase';
-import { distanceMeters, normalizePolish, secondsToTimeString } from '../../gtfs/geo';
+import {
+  distanceMeters,
+  normalizePolish,
+  secondsToTimeString,
+  timeStringToSeconds,
+  warsawNow,
+} from '../../gtfs/geo';
 import type { Connection, Leg, LegMode } from './types';
+import { sharedTimeMs } from '../../sharing/progress';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
 /** Stacja kolejowa w magazynie ogólnopolskim. */
@@ -56,12 +63,13 @@ const REVERSE_ARRIVAL_CITY_MARGIN_SEC = 15 * 60;
 
 const WALK_DETOUR_FACTOR = 1.15;
 
-/* ─── Indeks stacji (nazwa → stacja) ───────────────────────────────────── */
+/* ─── Indeks stacji (nazwa → stacja) ─────────────────────────────────────────── */
 
 let stationIndexCache: Map<string, RailStation> | null = null;
 
 function stationIndex(): Map<string, RailStation> {
-  if (stationIndexCache && stationIndexCache.size === polskaStore.stops.size) return stationIndexCache;
+  if (stationIndexCache && stationIndexCache.size === polskaStore.stops.size)
+    return stationIndexCache;
   const map = new Map<string, RailStation>();
   for (const s of polskaStore.stops.values()) {
     map.set(normalizePolish(s.stop_name ?? ''), {
@@ -111,7 +119,12 @@ interface RailTripMeta {
 }
 
 const railTripMetaCache = new Map<string, RailTripMeta>();
-const railPlatformCache = new Map<string, string>();
+interface RailStopLocation {
+  platform: string;
+  track: string;
+}
+
+const railPlatformCache = new Map<string, RailStopLocation>();
 
 async function railTripMeta(tripId: string): Promise<RailTripMeta> {
   const hit = railTripMetaCache.get(tripId);
@@ -142,28 +155,37 @@ async function railTripMeta(tripId: string): Promise<RailTripMeta> {
   return meta;
 }
 
-async function railPlatform(tripId: string, stopId: string): Promise<string> {
+async function railPlatform(tripId: string, stopId: string): Promise<RailStopLocation> {
   const key = `${tripId}:${stopId}`;
   const hit = railPlatformCache.get(key);
   if (hit !== undefined) return hit;
-  let platform = '';
+  let loc: RailStopLocation = { platform: '', track: '' };
   try {
     const db = await getNationalDb();
-    const row = await db.getFirstAsync<{ platform: string }>(
-      'SELECT platform FROM stop_times WHERE trip_id = ? AND stop_id = ?',
-      tripId,
-      stopId,
-    );
-    platform = row?.platform ?? '';
+    try {
+      const row = await db.getFirstAsync<{ platform: string; track?: string }>(
+        'SELECT platform, track FROM stop_times WHERE trip_id = ? AND stop_id = ?',
+        tripId,
+        stopId,
+      );
+      loc = { platform: row?.platform ?? '', track: row?.track ?? '' };
+    } catch {
+      const row = await db.getFirstAsync<{ platform: string }>(
+        'SELECT platform FROM stop_times WHERE trip_id = ? AND stop_id = ?',
+        tripId,
+        stopId,
+      );
+      loc = { platform: row?.platform ?? '', track: '' };
+    }
   } catch {
-    // best-effort: peron nie jest krytyczny dla routingu
+    // best-effort: peron i tor nie sa krytyczne dla routingu
   }
-  railPlatformCache.set(key, platform);
+  railPlatformCache.set(key, loc);
   if (railPlatformCache.size > 4000) {
     const oldest = railPlatformCache.keys().next().value;
     if (oldest !== undefined) railPlatformCache.delete(oldest);
   }
-  return platform;
+  return loc;
 }
 
 /** Wzbogaca nogi kolejowe o numer/nazwę pociągu, przewoźnika i peron. */
@@ -186,15 +208,16 @@ async function enrichRailLegs(legs: Leg[]): Promise<void> {
         if (category) {
           leg.line = meta.trainNumber ? `${category} ${meta.trainNumber}` : category;
         }
-        const platform = await railPlatform(leg.tripId!, leg.fromStopId ?? '');
+        const { platform, track } = await railPlatform(leg.tripId!, leg.fromStopId ?? '');
         if (platform) leg.platformCode = platform;
+        if (track) leg.trackCode = track;
       })(),
     );
   }
   await Promise.all(jobs);
 }
 
-/* ─── Pomocnicze ───────────────────────────────────────────────────────── */
+/* ─── Pomocnicze ───────────────────────────────────────────────────────────── */
 
 function firstTransitLeg(connection: Connection): Leg | undefined {
   return connection.legs.find((l) => l.mode !== 'walk');
@@ -209,7 +232,14 @@ function lastTransitLeg(connection: Connection): Leg | undefined {
 
 function interchangeLabel(legs: Leg[], transfers: number): string | undefined {
   if (transfers <= 0) return undefined;
-  const via = Array.from(new Set(legs.filter((l) => l.mode !== 'walk').slice(0, -1).map((l) => l.toStop)));
+  const via = Array.from(
+    new Set(
+      legs
+        .filter((l) => l.mode !== 'walk')
+        .slice(0, -1)
+        .map((l) => l.toStop),
+    ),
+  );
   if (via.length === 0) return undefined;
   return via.length === 1 ? `Przesiadka: ${via[0]}` : `Przesiadki: ${via.join(' • ')}`;
 }
@@ -217,15 +247,64 @@ function interchangeLabel(legs: Leg[], transfers: number): string | undefined {
 /** Skleja nogę miejską z pociągiem (forward). Ostatni spacer nogi miejskiej
  * (dojście do punktu stacji) dostaje przepisany koniec na stację kolejową,
  * żeby timeline pokazał przesiadkę z buforem zamiast "celu podróży". */
+function isZeroWalkConnection(conn: Connection | null | undefined): boolean {
+  if (!conn) return true;
+  const transitLegs = conn.legs.filter((l) => l.mode !== 'walk');
+  if (transitLegs.length > 0) return false;
+  const totalWalkM = conn.legs.reduce((sum, l) => sum + (l.walkM ?? 0), 0);
+  return totalWalkM <= SAME_POINT_M;
+}
+
+function cleanIntercityConnection(conn: Connection): Connection {
+  if (conn.legs.length <= 1) return conn;
+  const legs = conn.legs.filter(
+    (leg) =>
+      !(
+        leg.mode === 'walk' &&
+        (leg.walkM ?? 0) <= 0 &&
+        (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+      ),
+  );
+  if (legs.length === conn.legs.length) return conn;
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  let departureSec = conn.departureSec;
+  let arrivalSec = conn.arrivalSec ?? (conn.departureSec + conn.durationMin * 60);
+  if (first) {
+    const rawDep = timeStringToSeconds(first.departAt);
+    const dayOffset = Math.floor(departureSec / 86400) * 86400;
+    departureSec = dayOffset + rawDep;
+  }
+  if (last) {
+    const rawArr = timeStringToSeconds(last.arriveAt);
+    const dayOffset = Math.floor(departureSec / 86400) * 86400;
+    arrivalSec = dayOffset + rawArr;
+    if (arrivalSec < departureSec) {
+      arrivalSec += 86400;
+    }
+  }
+  return {
+    ...conn,
+    legs,
+    departureSec,
+    departAt: first ? first.departAt : conn.departAt,
+    arrivalSec,
+    arriveAt: last ? last.arriveAt : conn.arriveAt,
+    durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
+    interchange: interchangeLabel(legs, conn.transfers),
+  };
+}
+
 function combineForward(
   city: Connection | null,
   rail: Connection,
   options: PlanOptions,
   gateway?: RailStation,
 ): Connection {
+  const effectiveCity = isZeroWalkConnection(city) ? null : city;
   const legs: Leg[] = [];
-  if (city) {
-    for (const leg of city.legs) legs.push({ ...leg });
+  if (effectiveCity) {
+    for (const leg of effectiveCity.legs) legs.push({ ...leg });
     for (let i = legs.length - 1; i >= 0; i--) {
       const leg = legs[i];
       if (leg.mode !== 'walk') break;
@@ -234,29 +313,34 @@ function combineForward(
         leg.toStop = gateway.name;
         leg.toLat = gateway.lat;
         leg.toLon = gateway.lon;
+        break;
       }
-      break;
     }
   }
   legs.push(...rail.legs.map((l) => ({ ...l })));
 
-  const departureSec = city ? city.departureSec : rail.departureSec;
-  const arrivalSec = rail.arrivalSec ?? rail.departureSec + rail.durationMin * 60;
-  const transfers = city ? city.transfers + 1 + rail.transfers : rail.transfers;
+  const departureSec = effectiveCity ? effectiveCity.departureSec : rail.departureSec;
+  let arrivalSec = rail.arrivalSec ?? (rail.departureSec + rail.durationMin * 60);
+  if (arrivalSec < departureSec) {
+    arrivalSec += 86400;
+  }
+  const transfers = effectiveCity ? effectiveCity.transfers + 1 + rail.transfers : rail.transfers;
 
   return {
     id: '',
-    fromTitle: city ? options.fromTitle : (firstTransitLeg(rail)?.fromStop ?? options.fromTitle),
+    fromTitle: effectiveCity
+      ? options.fromTitle
+      : (firstTransitLeg(rail)?.fromStop ?? options.fromTitle),
     toTitle: rail.toTitle,
-    departInMin: city ? city.departInMin : 0,
+    departInMin: effectiveCity ? effectiveCity.departInMin : 0,
     departureSec,
     arrivalSec,
     departAt: secondsToTimeString(departureSec),
     arriveAt: secondsToTimeString(arrivalSec),
     durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
     transfers,
-    delayMin: Math.max(city?.delayMin ?? 0, rail.delayMin),
-    live: (city?.live ?? false) || rail.live,
+    delayMin: Math.max(effectiveCity?.delayMin ?? 0, rail.delayMin),
+    live: (effectiveCity?.live ?? false) || rail.live,
     legs,
     interchange: interchangeLabel(legs, transfers),
   };
@@ -264,6 +348,30 @@ function combineForward(
 
 /** Skleja pociąg z nogą miejską (reverse: kolej → miasto). */
 function combineReverse(rail: Connection, city: Connection, options: PlanOptions): Connection {
+  if (isZeroWalkConnection(city)) {
+    const legs: Leg[] = rail.legs.map((l) => ({ ...l }));
+    const departureSec = rail.departureSec;
+    const arrivalSec = rail.arrivalSec ?? rail.departureSec + rail.durationMin * 60;
+    const transfers = rail.transfers;
+
+    return {
+      id: '',
+      fromTitle: options.fromTitle,
+      toTitle: rail.toTitle,
+      departInMin: 0,
+      departureSec,
+      arrivalSec,
+      departAt: secondsToTimeString(departureSec),
+      arriveAt: secondsToTimeString(arrivalSec),
+      durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
+      transfers,
+      delayMin: rail.delayMin,
+      live: rail.live,
+      legs,
+      interchange: interchangeLabel(legs, transfers),
+    };
+  }
+
   const legs: Leg[] = rail.legs.map((l) => ({ ...l }));
   const cityLegs = city.legs.map((l) => ({ ...l }));
   // Pierwszy spacer nogi miejskiej zaczyna się "od punktu" (stacji):
@@ -279,7 +387,10 @@ function combineReverse(rail: Connection, city: Connection, options: PlanOptions
   legs.push(...cityLegs);
 
   const departureSec = rail.departureSec;
-  const arrivalSec = city.arrivalSec ?? city.departureSec + city.durationMin * 60;
+  let arrivalSec = city.arrivalSec ?? (city.departureSec + city.durationMin * 60);
+  if (arrivalSec < departureSec) {
+    arrivalSec += 86400;
+  }
   const transfers = rail.transfers + 1 + city.transfers;
 
   return {
@@ -307,7 +418,9 @@ function walkLegToStation(
   arriveSec: number,
   walkSec: number,
 ): Leg {
-  const distM = Math.round(distanceMeters(options.fromLat, options.fromLon, station.lat, station.lon));
+  const distM = Math.round(
+    distanceMeters(options.fromLat, options.fromLon, station.lat, station.lon),
+  );
   const departSec = arriveSec - walkSec;
   return {
     id: 'ic-walk-start',
@@ -329,7 +442,13 @@ function walkLegToStation(
 }
 
 /** Wspólne opcje zapytania kolejowego (magazyn polska, szeroki horyzont). */
-function railQueryOptions(options: PlanOptions, origins: string[], destinations: string[], from: RailStation, to: RailStation): PlanOptions {
+function railQueryOptions(
+  options: PlanOptions,
+  origins: string[],
+  destinations: string[],
+  from: RailStation,
+  to: RailStation,
+): PlanOptions {
   return {
     ...options,
     fromTitle: from.name,
@@ -350,7 +469,7 @@ function railQueryOptions(options: PlanOptions, origins: string[], destinations:
   };
 }
 
-/* ─── Planer ───────────────────────────────────────────────────────────── */
+/* ─── Planer ─────────────────────────────────────────────────────────────────── */
 
 /**
  * Planuje podróż między miastami. Wymaga pobranej bazy `polska`; bez niej
@@ -391,11 +510,27 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
     return planForward(options, gateways, destination, destinationStopIds, bufferSec);
   }
 
-  // Start poza miastem: najbliższa stacja kolejowa.
-  const nearOrigin = await findNearestNationalStations(options.fromLat, options.fromLon, 30000, 1);
-  const originStation = nearOrigin[0]
-    ? { stopId: nearOrigin[0].stop_id, name: nearOrigin[0].name, lat: nearOrigin[0].lat, lon: nearOrigin[0].lon }
-    : undefined;
+  // Start poza miastem: stacja z fromId (stop-pl:…) albo najbliższa stacja kolejowa.
+  let originStation: RailStation | undefined;
+  if (options.fromId?.startsWith('stop-pl:')) {
+    originStation = stationById(options.fromId.slice('stop-'.length));
+  }
+  if (!originStation) {
+    const nearOrigin = await findNearestNationalStations(
+      options.fromLat,
+      options.fromLon,
+      30000,
+      1,
+    );
+    originStation = nearOrigin[0]
+      ? {
+          stopId: nearOrigin[0].stop_id,
+          name: nearOrigin[0].name,
+          lat: nearOrigin[0].lat,
+          lon: nearOrigin[0].lon,
+        }
+      : undefined;
+  }
   if (!originStation) return { connections: [], destinationStation: destination };
 
   if (destInsideCity) {
@@ -406,7 +541,7 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
   return planRailOnly(options, originStation, destination, destinationStopIds);
 }
 
-/* ─── Forward: miasto → kolej ──────────────────────────────────────────── */
+/* ─── Forward: miasto → kolej ───────────────────────────────────────────────── */
 
 async function planForward(
   options: PlanOptions,
@@ -426,11 +561,11 @@ async function planForward(
   const railPromise = planConnections(railOptions, polskaStore);
 
   const combined: Connection[] = [];
-  const finalizeConn = async (city: Connection | null, rail: Connection, gateway?: RailStation) => {
+  const finalizeConn = async (city: Connection, rail: Connection, gateway?: RailStation) => {
     const conn = combineForward(city, rail, options, gateway);
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
-    combined.push(conn);
+    combined.push(cleanIntercityConnection(conn));
   };
 
   if (arrivalMode) {
@@ -456,12 +591,17 @@ async function planForward(
       const best = city
         .filter((c) => (c.arrivalSec ?? Infinity) <= railConn.departureSec - bufferSec)
         .sort((a, b) => b.departureSec - a.departureSec)[0];
-      await finalizeConn(best ?? null, railConn, gateway);
+      if (best) {
+        await finalizeConn(best, railConn, gateway);
+      }
     }
   } else {
     // Odjazd: noga miejska na bramę (cel = punkt stacji, arrivalSec zawiera
     // dojście piesze), potem join z pociągami po czasie + bufor na peron.
     const cityByGateway = new Map<string, Connection[]>();
+    const cityMinArrival = new Map<string, number>();
+    const cityMaxArrival = new Map<string, number>();
+
     for (const gateway of gateways) {
       const cityOptions: PlanOptions = {
         ...options,
@@ -473,23 +613,49 @@ async function planForward(
         onProgress: undefined,
       };
       const conns = await planConnections(cityOptions, gtfsStore);
-      if (conns.length > 0) cityByGateway.set(gateway.stopId, conns);
+      if (conns.length > 0) {
+        cityByGateway.set(gateway.stopId, conns);
+        let minArr = Infinity;
+        let maxArr = -Infinity;
+        for (const c of conns) {
+          const arr = c.arrivalSec ?? Infinity;
+          if (arr < minArr) minArr = arr;
+          if (arr > maxArr) maxArr = arr;
+        }
+        cityMinArrival.set(gateway.stopId, minArr);
+        cityMaxArrival.set(gateway.stopId, maxArr);
+      }
     }
 
     const rail = await railPromise;
     let followUps = 0;
+    const now = new Date();
+    const currentSec = warsawNow(now).sec;
+    const minDep = options.departureTimeSec ?? currentSec;
+
     for (const railConn of rail) {
       const firstTrain = firstTransitLeg(railConn);
       if (!firstTrain) continue;
       const gatewayId = firstTrain.fromStopId ?? '';
       const gateway = gateways.find((g) => g.stopId === gatewayId);
+      if (!gateway) continue;
       const boardSec = railConn.departureSec;
+      const latestFeasibleArrival = boardSec - bufferSec;
+
+      const conns = cityByGateway.get(gatewayId);
+      const minArr = cityMinArrival.get(gatewayId);
+
+      // Pociąg odjeżdża zanim najszybszy dojazd miejski w ogóle dotrze
+      // na stację - nieosiągalny, pomijamy bez zbędnego zapytania.
+      if (minArr !== undefined && latestFeasibleArrival < minArr) {
+        continue;
+      }
 
       // Najlepsza noga miejska: najpóźniejszy wyjazd, który łapie pociąg.
       let best: Connection | null = null;
-      for (const c of cityByGateway.get(gatewayId) ?? []) {
+      for (const c of conns ?? []) {
         const arrive = c.arrivalSec ?? Infinity;
-        if (arrive + bufferSec <= boardSec && (!best || c.departureSec > best.departureSec)) {
+        if (arrive <= latestFeasibleArrival && (!best || c.departureSec > best.departureSec)) {
           best = c;
         }
       }
@@ -498,33 +664,39 @@ async function planForward(
         continue;
       }
 
-      // Pociąg poza zasięgiem nogi miejskiej: dolicz dojazd "bądź na stacji".
+      // Pociąg poza zasięgiem dotychczasowej nogi miejskiej: dolicz dojazd "bądź na stacji".
+      // Odpytujemy tylko gdy pociąg odjeżdża później niż wyliczone dojazdy (np. za >3 h).
+      const maxArr = cityMaxArrival.get(gatewayId);
+      const isAheadOfHorizon = maxArr === undefined || latestFeasibleArrival > maxArr;
+      if (!isAheadOfHorizon) continue;
+
       if (followUps >= MAX_FOLLOW_UPS) continue;
       followUps++;
-      const arriveBy = boardSec - bufferSec;
       const followOptions: PlanOptions = {
         ...options,
-        toTitle: gateway?.name ?? destination.name,
-        toLat: gateway?.lat ?? destination.lat,
-        toLon: gateway?.lon ?? destination.lon,
+        toTitle: gateway.name,
+        toLat: gateway.lat,
+        toLon: gateway.lon,
         toId: undefined,
         departureTimeSec: undefined,
-        arriveBySec: arriveBy,
+        arriveBySec: latestFeasibleArrival,
         searchAheadSec: undefined,
         onProgress: undefined,
       };
       const follow = await planConnections(followOptions, gtfsStore);
       const late = follow
-        .filter((c) => (c.arrivalSec ?? Infinity) <= arriveBy)
+        .filter((c) => (c.arrivalSec ?? Infinity) <= latestFeasibleArrival && c.departureSec >= minDep)
         .sort((a, b) => b.departureSec - a.departureSec)[0];
-      await finalizeConn(late ?? null, railConn, gateway);
+      if (late) {
+        await finalizeConn(late, railConn, gateway);
+      }
     }
   }
 
   return { connections: pickBest(combined), destinationStation: destination };
 }
 
-/* ─── Reverse: kolej → miasto ──────────────────────────────────────────── */
+/* ─── Reverse: kolej → miasto ───────────────────────────────────────────────── */
 
 async function planReverse(
   options: PlanOptions,
@@ -571,21 +743,27 @@ async function planReverse(
     const city = await planConnections(cityOptions, gtfsStore);
     // Noga miejska musi zaczynać się po przyjeździe pociągu (+ bufor).
     const best = city
-      .filter((c) => c.departureSec >= cityDepart && (!arrivalMode || (c.arrivalSec ?? Infinity) <= (deadline ?? Infinity)))
-      .sort((a, b) => (arrivalMode ? b.departureSec - a.departureSec : (a.arrivalSec ?? 0) - (b.arrivalSec ?? 0)))[0];
+      .filter(
+        (c) =>
+          c.departureSec >= cityDepart &&
+          (!arrivalMode || (c.arrivalSec ?? Infinity) <= (deadline ?? Infinity)),
+      )
+      .sort((a, b) =>
+        arrivalMode ? b.departureSec - a.departureSec : (a.arrivalSec ?? 0) - (b.arrivalSec ?? 0),
+      )[0];
     if (!best) continue;
     cityLegs++;
 
     const conn = combineReverse(railConn, best, options);
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
-    combined.push(conn);
+    combined.push(cleanIntercityConnection(conn));
   }
 
   return { connections: pickBest(combined), originStation };
 }
 
-/* ─── Rail-only: stacja → stacja ───────────────────────────────────────── */
+/* ─── Rail-only: stacja → stacja ───────────────────────────────────────────── */
 
 async function planRailOnly(
   options: PlanOptions,
@@ -600,14 +778,23 @@ async function planRailOnly(
     originStation,
     destination,
   );
-  const rail = await planConnections(railOptions, polskaStore);
+  const rail = await railConnections(railOptions);
 
   const combined: Connection[] = [];
-  const walkSec = Math.round(
-    (distanceMeters(options.fromLat, options.fromLon, originStation.lat, originStation.lon) * WALK_DETOUR_FACTOR) /
-      (options.walkSpeedMps ?? 1.34),
+  const walkDistM = Math.round(
+    distanceMeters(options.fromLat, options.fromLon, originStation.lat, originStation.lon),
   );
-  const walkToStation = walkSec <= MAX_WALK_TO_STATION_SEC;
+  const walkSec = Math.round((walkDistM * WALK_DETOUR_FACTOR) / (options.walkSpeedMps ?? 1.34));
+  const isAtOriginStation =
+    walkDistM <= SAME_POINT_M ||
+    options.fromId === originStation.stopId ||
+    options.fromId === 'stop-pl:' + originStation.stopId ||
+    normalizePolish(options.fromTitle) === normalizePolish(originStation.name);
+  const walkToStation =
+    !isAtOriginStation &&
+    walkDistM > SAME_POINT_M &&
+    walkSec > 0 &&
+    walkSec <= MAX_WALK_TO_STATION_SEC;
 
   for (const railConn of rail) {
     if (!firstTransitLeg(railConn)) continue;
@@ -621,13 +808,17 @@ async function planRailOnly(
     }
     await enrichRailLegs(conn.legs);
     conn.id = stableConnectionId(conn);
-    combined.push(conn);
+    combined.push(cleanIntercityConnection(conn));
   }
 
   return { connections: pickBest(combined), destinationStation: destination, originStation };
 }
 
-/* ─── Następny pociąg (tryb konduktora) ────────────────────────────────── */
+function railConnections(options: PlanOptions): Promise<Connection[]> {
+  return planConnections(options, polskaStore);
+}
+
+/* ─── Następny pociąg (tryb konduktora) ─────────────────────────────────────── */
 
 export interface NextTrain {
   label: string;
@@ -650,9 +841,8 @@ export async function nextNationalTrains(
   try {
     const gtfs = await import('../gtfsDatabase');
     const db = await gtfs.getNationalDb();
-    const after = new Date(afterMs);
-    const dateStr = `${after.getFullYear()}${String(after.getMonth() + 1).padStart(2, '0')}${String(after.getDate()).padStart(2, '0')}`;
-    const services = await gtfs.getNationalActiveServices(after.getDay(), dateStr);
+    const afterWarsaw = warsawNow(new Date(afterMs));
+    const services = await gtfs.getNationalActiveServices(afterWarsaw.weekday, afterWarsaw.dateStr);
     if (services.size === 0) return [];
     const placeholders = [...services].map(() => '?').join(',');
     const rows = await db.getAllAsync<{
@@ -670,15 +860,16 @@ export async function nextNationalTrains(
        LIMIT 60`,
       toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services],
     );
-    const dayStartMs = new Date(after).setHours(0, 0, 0, 0);
     const out: NextTrain[] = [];
     for (const row of rows) {
       // Czas GTFS liczy się od doby serwisowej; odjazdy po północy
       // (24:xx+) mają dep_sec > 86400 i należą do „jutra” zegara.
-      const departAtMs = dayStartMs + row.dep_sec * 1000;
+      const departAtMs = sharedTimeMs(afterWarsaw.isoDate, row.dep_sec);
       if (departAtMs <= afterMs) continue;
       out.push({
-        label: row.train_number ? `${row.category || 'IC'} ${row.train_number}` : row.category || '',
+        label: row.train_number
+          ? `${row.category || 'IC'} ${row.train_number}`
+          : row.category || '',
         departAtMs,
         trainName: row.train_name || undefined,
       });
@@ -690,7 +881,7 @@ export async function nextNationalTrains(
   }
 }
 
-/* ─── Wybór najlepszych wariantów ──────────────────────────────────────── */
+/* ─── Wybór najlepszych wariantów ───────────────────────────────────────────── */
 
 function pickBest(combined: Connection[]): Connection[] {
   const seen = new Set<string>();

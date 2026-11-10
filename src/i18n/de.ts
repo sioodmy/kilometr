@@ -4,6 +4,17 @@ import type { Strings } from './pl';
 import { de as landing } from './landing/de';
 import { de as share } from './share/de';
 
+function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 Min.";
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${rounded} Min.`;
+}
+
 export const de: Strings = {
   landing,
   share,
@@ -48,11 +59,9 @@ export const de: Strings = {
     stayOn: (line: string) => `Bleib in ${line}`,
     changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
     noAlternative:
-
       'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
     conductorTitle: 'Zug verpasst',
-    conductorBody:
-      'Informiere den Schaffner, dass du den Anschluss verpasst. Fernverkehrstickets bleiben gemäß Beförderungsbedingungen gültig.',
+    conductorBody: 'Informiere das Zugpersonal über den geplanten Umstieg',
     nextTrainLabel: 'Nächster Zug',
     nextTrainAt: (time: string) => `fährt ab um ${time}`,
 
@@ -107,7 +116,7 @@ export const de: Strings = {
     now: 'Jetzt',
     today: 'Heute',
     tomorrow: 'Morgen',
-    durMin: (n: number) => `${n} Min.`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `in ${n} Min.`,
     departNow: 'gleich',
     departAgo: (n: number) => `vor ${n} Min.`,
@@ -136,9 +145,23 @@ export const de: Strings = {
     savedTitle: 'Gespeicherte Orte',
     editSavedA11y: 'Gespeicherte Orte bearbeiten',
     editCard: 'Bearbeiten',
+    tabRecent: 'Letzte Verbindungen',
+    tabSaved: 'Deine Routen',
     historyTitle: 'Letzte Orte',
     historyEmptyTitle: 'Keine letzten Orte',
     historyEmptyBody: 'Suche eine Verbindung, sie erscheint hier als Schnellziel.',
+    savedRoutesEmptyTitle: 'Keine gespeicherten Routen',
+    savedRoutesEmptyBody:
+      'Verfolge eine Verbindung oder hänge ein Bahnticket an, dann erscheint sie hier.',
+    routeActive: 'Unterwegs',
+    ticketAttachedA11y: 'Bahnticket gespeichert',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Angeheftete Fahrt nach ${title}${time ? `, ${time}` : ''}. Tippen zum Öffnen.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Zug nach ${title}, Abfahrt ${time}. Tippen zum Öffnen.`,
+    removeRouteA11y: (title: string) => `Verbindung nach ${title} aus deinen Routen entfernen`,
+    pinRouteA11y: (title: string) => `Verbindung nach ${title} zu deinen Routen anpinnen`,
+    unpinRouteA11y: (title: string) => `Verbindung nach ${title} von deinen Routen lösen`,
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
     locationFallback: 'Dein Standort',
@@ -165,8 +188,6 @@ export const de: Strings = {
     unsupportedActionShort: 'Start wählen',
     unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
     unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
-    unsupportedNearestStation: 'Vom nächsten Bahnhof',
-    unsupportedNearestStationA11y: 'Züge vom nächsten Bahnhof zeigen',
     pickStart: 'Startpunkt wählen',
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -452,6 +473,7 @@ export const de: Strings = {
     needDownload:
       'Für diese Stadt liegt noch kein Fahrplan auf dem Telefon. Lade ihn unter „Fahrplan und Karten“.',
     changeAction: 'Ändern',
+    downloadAction: 'Fahrplan herunterladen',
     selectTitle: 'Stadt wählen',
     selectSub: 'Wählen Sie das Verkehrsgebiet für Ihre Routen.',
     searchPlaceholder: 'Stadt oder Betreiber',
@@ -582,7 +604,8 @@ export const de: Strings = {
       `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch aus den offenen Daten der Stadt.`,
     downloadFailFallback: 'Versuch es gleich erneut.',
     railTitle: 'Nationales Bahnfahrplan',
-    railHint: 'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
+    railHint:
+      'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
     railReady: (date: string) => `Heruntergeladen (gültig bis ${date})`,
     railEmpty: 'Nicht heruntergeladen',
     railDownload: 'Herunterladen',
@@ -603,7 +626,7 @@ export const de: Strings = {
         : `Der Fahrplan wurde gerade erst geladen. Ein erneutes volles Laden ist in ${hours} h möglich.`,
     diagTitle: 'Daten-Diagnose',
     diagHint:
-      'Prüft die Fahrplandatenbank auf dem Telefon. Kopiere das Ergebnis, wenn du ein Problem meldest.',
+      'Prüft Fahrplan, Bahn, Offline-Karte und Live-Quellen. Kopiere das Ergebnis, wenn du ein Problem meldest.',
     diagRun: 'Daten prüfen',
     diagRerun: 'Erneut prüfen',
     diagRunning: 'Prüfe…',
@@ -634,10 +657,28 @@ export const de: Strings = {
       days <= 1 ? 'Fahrplan läuft morgen ab' : `Fahrplan läuft in ${days} Tagen ab`,
     diagCalendarServices: (n: number) => `Aktive Dienste heute: ${n}`,
     diagSearch: 'Suche',
-    diagSearchOk: (weighted: number, pois: number) =>
-      `Ranking bereit (${weighted} Haltestellen) • POIs: ${pois}`,
+    diagSearchOk: (weighted: number, pois: number, addresses: number) =>
+      `Ranking bereit (${weighted === 1 ? '1 Haltestelle' : `${weighted} Haltestellen`}) • POIs: ${pois} • Adressen: ${addresses}`,
     diagSearchWeights: 'Vorschlagsranking nicht berechnet',
-    diagSearchPois: 'Keine POI-Punkte. Adressen brauchen Internet.',
+    diagSearchPois: 'Keine POI-Punkte',
+    diagSearchNoAddresses: 'Kein Adressindex. Adresssuche braucht Internet.',
+    diagRail: 'Bundesweite Bahn',
+    diagRailNone: 'Nicht geladen (Verbindungen zwischen Städten brauchen Internet)',
+    diagRailLine: (version: string, to: string | null) =>
+      to ? `Version ${version}, Fahrplan bis ${to}` : `Version ${version}`,
+    diagRailOutside: 'Bahnfahrplan ist abgelaufen',
+    diagRailExpiring: (days: number) =>
+      days <= 1 ? 'Bahnfahrplan läuft morgen ab' : `Bahnfahrplan läuft in ${days} Tagen ab`,
+    diagMap: 'Offline-Karte',
+    diagMapNone: 'Nicht geladen (Karte braucht Internet)',
+    diagMapReady: (mb: string) => `Kachelpaket bereit: ${mb} MB`,
+    diagMapInvalid: 'Kachelpaket beschädigt. Karte neu laden.',
+    diagLive: 'Live-Quellen',
+    diagLiveNone: 'Keine Messungen in dieser Sitzung',
+    diagLiveOkLine: (source: string, at: string) => `${source}: OK (${at})`,
+    diagLiveRecoveredLine: (source: string, at: string) => `${source}: wieder aktiv (${at})`,
+    diagLiveErrLine: (source: string, error: string) => `${source}: Fehler, ${error}`,
+    diagLiveNoAnswer: (source: string) => `${source}: keine Antwort`,
     diagCopy: 'Bericht kopieren',
     diagCopyA11y: 'Diagnosebericht in die Zwischenablage kopieren',
     diagCopied: 'Bericht in die Zwischenablage kopiert',
@@ -647,7 +688,15 @@ export const de: Strings = {
     diagReportCity: 'Stadt',
     diagReportTimetable: 'Fahrplan',
     diagReportImported: 'Geladen',
+    diagReportLastCheck: 'Prüfung',
+    diagReportRemote: 'Verfügbar',
+    diagReportFeeds: 'Feeds',
     diagReportDb: 'Datenbank',
+    diagReportRail: 'Bahn',
+    diagReportMap: 'Karte',
+    diagReportLive: 'Live',
+    diagReportNotDownloaded: 'nicht geladen',
+    diagReportMapInvalid: 'beschädigt',
     diagReportUnknown: 'unbekannt',
     transfersTitle: 'Max. Umstiege',
     transfersHintShort: 'Obergrenze pro Verbindung.',
@@ -1187,7 +1236,7 @@ export const de: Strings = {
     arrivalShort: (time: string) => `bis ${time}`,
   },
   routesFilters: {
-    title: "Filter",
+    title: 'Filter',
     filterButton: 'Filter',
     filterA11y: 'Routenfilter',
     vehiclesSection: 'Verkehrsmittel',
@@ -1224,7 +1273,7 @@ export const de: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, Fahrzeit ${dur} Min., Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
+      `${dep}, Fahrzeit ${formatDuration(dur)}, Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
     walkRoute: 'Fußweg',
   },
   vehiclePos: {
@@ -1244,6 +1293,8 @@ export const de: Strings = {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} Richtung ${dir}. Bahnhofsliste ${expanded ? 'ein' : 'aus'}klappen.`,
     vehicleBetween: (mode: string, from: string, to: string) =>
       `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
@@ -1256,13 +1307,18 @@ export const de: Strings = {
     modeCable: 'Seilbahn',
     modeVehicle: 'Fahrzeug',
     currentLocation: (stop: string) => `Aktueller Standort: ${stop}`,
+    waitingAtTerminus: 'Wartet auf Abfahrt an der Endhaltestelle',
     liveTracking: 'Live-Verfolgung',
     transfer: 'Umstieg',
     transferMinutes: (min: number) => `Umstieg · ~${min} Min.`,
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${formatDuration(mins)} • ${open ? 'ein' : 'aus'}klappen`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'Bahnhof' : 'Bahnhöfe'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
     platformPeron: (code: string) => `Bahnsteig ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Bahnsteig ${code}, Gleis ${track}`,
+    platformTrack: (track: string) => `Gleis ${track}`,
     platformPole: (code: string) => `Mast ${code}`,
     platformBay: (code: string) => `Stand ${code}`,
     platformPst: (code: string) => `PST-Mast ${code}`,
@@ -1327,9 +1383,25 @@ export const de: Strings = {
     startAtStation: 'Züge von diesem Bahnhof zeigen',
   },
 
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Klimaanlage',
+    gniazdka_230V: (_n?: number) => 'Steckdosen',
+    gniazdka_usb: (_n?: number) => 'USB-Anschlüsse',
+    wifi: (_n?: number) => 'WLAN',
+    wagon_restauracyjny: (_n?: number) => 'Speisewagen',
+    bar: (_n?: number) => 'Bar',
+    przewoz_rowerow: (n?: number) => (n ? `Fahrräder (${n})` : 'Fahrradmitnahme'),
+    dostepny_wozkarze: (_n?: number) => 'Rollstuhlgerecht',
+    miejsca_lezace: (_n?: number) => 'Liegewagen',
+    miejsca_sypialne: (_n?: number) => 'Schlafwagen',
+    strefa_ciszy: (_n?: number) => 'Ruhebereich',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Ausstattung: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',
+    disruptionsBadgeA11y: 'Störungen auf der Route',
   },
 
   data: {
@@ -1391,6 +1463,8 @@ export const de: Strings = {
     directionTo: (dir: string) => `Richtung ${dir}`,
     platform: (num: string) => `Gleis ${num}`,
     platformPeron: (num: string) => `Bahnsteig ${num}`,
+    platformPeronTrack: (num: string, track: string) => `Bahnsteig ${num}, Gleis ${track}`,
+    platformTrack: (track: string) => `Gleis ${track}`,
     walkApproach: (min: number) => `~${min} Min. zu Fuß`,
     rideLength: (min: number) => `${min} Min. Fahrt`,
     departAt: (at: string) => `ab ${at}`,
@@ -1401,6 +1475,9 @@ export const de: Strings = {
     transfers: (n: number) => `${n} ${n === 1 ? 'Umstieg' : 'Umstiege'}`,
     newDeparture: (at: string) => `neue Abfahrt ${at}`,
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
+    compensationTitle: 'Erstattung bei Zugverspätung',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Zug ${train} war` : 'Der Zug war'} über ${thresholdMin} Minuten verspätet. Du kannst eine Erstattung von ${percent} % des Fahrpreises beantragen.`,
   },
   ios: {
     departure: 'Abfahrt',
@@ -1488,6 +1565,52 @@ export const de: Strings = {
     channel: 'Angeheftete Verbindung',
     tram: 'Tram',
     bus: 'Bus',
+  },
+  railTickets: {
+    loading: 'Laden…',
+    buyKoleo: 'Fahrkarte in KOLEO kaufen',
+    buyKoleoSub: (from: string, to: string) => `${from} nach ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} nach ${to} · 1 Umstieg`
+        : `${from} nach ${to} · ${transfers} Umstiege`,
+    attachPdf: 'PDF-Fahrkarte anhängen',
+    attachedTitle: 'Zugfahrkarte',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Wagen ${wagon}`);
+      if (seat) parts.push(`Sitzplatz ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Fahrkarte anzeigen',
+    removeTicket: 'Fahrkarte entfernen',
+    removeConfirmTitle: 'Fahrkarte wirklich entfernen?',
+    removeConfirmBody: 'Die PDF-Datei wird aus dem Speicher gelöscht.',
+    fileLabel: (fileName: string) => `Datei: ${fileName}`,
+    importSuccess: 'PDF-Fahrkarte erfolgreich angehängt.',
+    importError: 'PDF-Datei konnte nicht geladen werden.',
+    rejectTooLargeTitle: 'Datei ist zu groß',
+    rejectTooLargeBody:
+      'Die gewählte Datei ist größer als 10 MB. Bahnfahrkarten als PDF sind meist zwischen wenigen Dutzend KB und 2 MB groß.',
+    rejectNotTicketTitle: 'Das sieht nicht nach einer Bahnfahrkarte aus',
+    rejectNotTicketBody:
+      'Das Dokument enthält keinen Kontrollcode und keine Reisedaten. Stelle sicher, dass du die richtige Datei wählst.',
+    rejectWrongTrainTitle: 'Diese Fahrkarte gilt für einen anderen Zug',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Die Fahrkarte gilt für Zug ${ticketTrain}, aber diese Route fährt mit Zug ${connectionTrain}. Wähle die Fahrkarte für die richtige Verbindung.`,
+    rejectWrongDateTitle: 'Fahrkarte für einen anderen Tag',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Die Fahrkarte gilt am ${ticketDate}, aber diese Verbindung fährt am ${connectionDate}.`,
+    deleteTicket: 'Fahrkarte löschen',
+    deleteTicketTitle: 'Diese Fahrkarte löschen?',
+    deleteTicketBody: 'Die PDF-Datei und der Aztec-Code werden dauerhaft aus dem App-Speicher gelöscht.',
+    inspectionNoBarcode: 'Kein Rastercode im PDF gefunden',
+    inspectionBarcodeA11y: 'Aztec-Code für die Fahrkartenkontrolle',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Abschnitt ${current} von ${total} · Tippen zum Wechseln`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Abschnitt ${current} von ${total}. Tippen zum Wechseln.`,
   },
   widgets: {
     journeyTitle: 'Deine Ziele',

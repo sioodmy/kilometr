@@ -25,7 +25,8 @@ import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
-import { RoutingService } from '../../src/services';
+import { RoutingService, subscribeSavedRoutes } from '../../src/services';
+import * as Haptics from 'expo-haptics';
 import { getPlannedConnection } from '../../src/services/api';
 import {
   normalizeConnectionId,
@@ -35,12 +36,11 @@ import { useRailLiveConnections } from '../../src/services/useRailLiveConnection
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
-import { RailTripAlerts } from '../../src/components/RailTripAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
-import { TransferProtectionCard } from '../../src/components/TransferProtectionCard';
+import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
@@ -82,10 +82,18 @@ export default function RouteDetailsScreen() {
     return false;
   }, [trackedTrip, id]);
 
+  const matchesRouteId = useCallback(
+    (candidateId?: string | null) => {
+      if (!candidateId) return false;
+      return candidateId === id || normalizeConnectionId(candidateId) === id;
+    },
+    [id],
+  );
+
   const immediateItem =
-    cachedItem?.id === id
+    matchesRouteId(cachedItem?.id)
       ? cachedItem
-      : alarmItem?.id === id
+      : matchesRouteId(alarmItem?.id)
         ? alarmItem
         : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
@@ -94,7 +102,7 @@ export default function RouteDetailsScreen() {
   const rawItem =
     isTrackedThis && trackedTrip
       ? trackedTrip.connection
-      : loadedItem?.id === id
+      : matchesRouteId(loadedItem?.id)
         ? loadedItem
         : (immediateItem ?? null);
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
@@ -154,12 +162,60 @@ export default function RouteDetailsScreen() {
   const currentAlarm = alarm?.connectionId === id ? alarm : null;
 
   useEffect(() => {
-    if (isTrackedThis && trackedTrip?.connection) {
+    if (isTrackedThis && trackedTrip?.connection && loadedItem?.id !== trackedTrip.connection.id) {
       setItem(trackedTrip.connection);
     }
-  }, [isTrackedThis, trackedTrip?.connection]);
+  }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id]);
 
   const hasTransfers = item != null && hasTransfer(item);
+  const [isSavedRoute, setIsSavedRoute] = useState(false);
+
+  useEffect(() => {
+    if (!item?.id) return;
+    let cancelled = false;
+    const checkSaved = () => {
+      RoutingService.isRouteSaved(item.id)
+        .then((saved) => {
+          if (!cancelled) setIsSavedRoute(saved);
+        })
+        .catch(() => {});
+    };
+    checkSaved();
+    const unsub = subscribeSavedRoutes(checkSaved);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [item?.id]);
+
+  const isPinned = isSavedRoute || isTrackedThis;
+
+  const togglePin = async () => {
+    if (!item || trackingBusy) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (isPinned) {
+      try {
+        await RoutingService.deleteSavedRoute(item.id);
+        setIsSavedRoute(false);
+        if (isTrackedThis) {
+          await stopTracking();
+        }
+      } catch (err) {
+        console.warn("Failed to unpin route:", err);
+      }
+    } else {
+      try {
+        await RoutingService.saveRoute(item);
+        setIsSavedRoute(true);
+        if (!isTrackedThis && areNotificationsSupported()) {
+          void toggleTracking();
+        }
+      } catch (err) {
+        console.warn("Failed to pin route:", err);
+      }
+    }
+  };
+
 
   // Nagłówek przełącza śledzenie, karta włącza ochronę. Monitor trzyma jedną podróż.
   const toggleTracking = async (enableProtection = false) => {
@@ -310,7 +366,7 @@ export default function RouteDetailsScreen() {
   // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
   const dataNote = offline
     ? s.routeDetails.offlineNote
-    : liveStale
+    : liveStale && !item.live
       ? s.routeDetails.noLiveNote
       : null;
 
@@ -370,23 +426,23 @@ export default function RouteDetailsScreen() {
           )}
           {!noLegs && (
             <Pressable
-              onPress={() => void toggleTracking()}
+              onPress={() => void togglePin()}
               disabled={trackingBusy}
               accessibilityRole="button"
-              accessibilityState={{ selected: isTrackedThis }}
+              accessibilityState={{ selected: isPinned }}
               accessibilityLabel={
-                isTrackedThis ? s.routes.stopTrackingTripA11y : s.routes.trackTripA11y
+                isPinned ? s.home.unpinRouteA11y(item.toTitle) : s.home.pinRouteA11y(item.toTitle)
               }
               style={({ pressed }) => [
                 styles.trackBtn,
-                isTrackedThis && styles.trackBtnActive,
+                isPinned && styles.trackBtnActive,
                 pressed && { opacity: 0.7 },
               ]}
               hitSlop={8}
             >
               <Pin
                 size={21}
-                color={isTrackedThis ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                color={isPinned ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
               />
             </Pressable>
           )}
@@ -398,6 +454,7 @@ export default function RouteDetailsScreen() {
           overScrollMode="never"
         >
           <ConnectionSummary item={item} offline={offline} />
+
           {dataNote && (
             <View style={styles.offlineBanner}>
               <CloudOff size={16} color={scheme.onSurfaceVariant} />
@@ -420,27 +477,31 @@ export default function RouteDetailsScreen() {
             </View>
           ) : (
             <View style={styles.detailsContent}>
-              {hasTransfers && (
-                <TransferProtectionCard
-                  state={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
-                  active={isTrackedThis && trackedTrip?.protectionEnabled === true}
-                  busy={trackingBusy}
-                  onPress={() => {
-                    if (isTrackedThis && trackedTrip?.protectionEnabled) {
-                      openTransferProtection();
-                    } else {
-                      void toggleTracking(true);
-                    }
-                  }}
-                />
-              )}
+              <RouteTravelDeck
+                connection={item}
+                hasTransfers={hasTransfers}
+                transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
+                transferActive={isTrackedThis && trackedTrip?.protectionEnabled === true}
+                trackingBusy={trackingBusy}
+                onTransferPress={() => {
+                  if (isTrackedThis && trackedTrip?.protectionEnabled) {
+                    openTransferProtection();
+                  } else {
+                    void toggleTracking(true);
+                  }
+                }}
+              />
               <LegTimeline legs={item.legs} />
               <RouteMapCard
                 connection={item}
-                onOpenMap={() => router.push({ pathname: '/map', params: { id: item.id } })}
+                onOpenMap={(stageId) =>
+                  router.push({
+                    pathname: '/map',
+                    params: stageId ? { id: item.id, stageId } : { id: item.id },
+                  })
+                }
               />
               <ConnectionLineAlerts connection={item} />
-              <RailTripAlerts connection={item} />
             </View>
           )}
 

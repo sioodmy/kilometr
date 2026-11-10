@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
 import { kvGetStrict, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
-import { getCity, cityKey, suggestCityForCoords } from '../cities';
+
+import { getCity, cityKey, suggestCityForCoords, CITIES } from '../cities';
 import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import {
   Connection,
@@ -273,6 +274,7 @@ subscribeActiveCity((id) => {
   if (id === recentCityId) return;
   recentCityId = id;
   recentPlannedConnections.clear();
+  notifySavedRoutesChanged();
 });
 
 function rememberRecent(connection: Connection): void {
@@ -342,6 +344,7 @@ function needsIntercity(query: RouteQuery): boolean {
 
 function toPlanOptions(query: RouteQuery, onProgress?: (partial: Connection[]) => void): PlanOptions {
   return {
+    fromId: query.fromId,
     fromTitle: query.fromTitle,
     fromLat: query.fromLat,
     fromLon: query.fromLon,
@@ -384,6 +387,12 @@ export const RoutingService: IRoutingService = {
       if (needsIntercity(query)) {
         const { connections } = await planIntercity(toPlanOptions(query));
         remember(connections);
+        if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
+          void saveConnections(query, connections);
+          void import('./geometryWarmup')
+            .then((m) => m.warmConnections(connections))
+            .catch(() => {});
+        }
         return connections;
       }
 
@@ -412,8 +421,19 @@ export const RoutingService: IRoutingService = {
     if (found) return { connection: found, source: 'live' };
 
     const allSaved = await getSavedRoutes();
-    const hit = allSaved.find(r => r.id === id)?.connection;
+    const hit = allSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
     if (hit) return { connection: hit, source: 'live' };
+
+    // Szukanie w zapisanych trasach innych miast (np. podróż międzymiastowa lub po zmianie aktywnego miasta)
+    const activeCity = getActiveCityIdSync();
+    for (const city of CITIES) {
+      if (city.id === activeCity) continue;
+      try {
+        const otherSaved = await readSavedRoutes(savedRoutesKey(city.id));
+        const otherHit = otherSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
+        if (otherHit) return { connection: otherHit, source: 'live' };
+      } catch {}
+    }
 
     const cached = await findCachedConnection(id);
     if (cached) {
@@ -430,7 +450,8 @@ export const RoutingService: IRoutingService = {
     return withRoutesLock(async () => {
       try {
         const all = await readSavedRoutes();
-        const existingIdx = all.findIndex((r) => r.id === connection.id);
+        const normId = normalizeConnectionId(connection.id);
+        const existingIdx = all.findIndex((r) => r.id === connection.id || normalizeConnectionId(r.id) === normId);
         const entry: SavedRoute = { id: connection.id, savedAt: Date.now(), connection };
         if (existingIdx >= 0) {
           all[existingIdx] = entry;
@@ -439,6 +460,7 @@ export const RoutingService: IRoutingService = {
         }
         // Zapis musi się udać, inaczej UI nie może pokazać trasy jako zapisanej.
         await kvSetStrict(savedRoutesKey(), JSON.stringify(all));
+        notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
         throw err;
@@ -450,8 +472,10 @@ export const RoutingService: IRoutingService = {
     return withRoutesLock(async () => {
       try {
         const all = await readSavedRoutes();
-        const filtered = all.filter(r => r.id !== id);
+        const normId = normalizeConnectionId(id);
+        const filtered = all.filter(r => r.id !== id && normalizeConnectionId(r.id) !== normId);
         await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
+        notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to delete saved route:', err);
         throw err;
@@ -459,10 +483,15 @@ export const RoutingService: IRoutingService = {
     });
   },
 
+  async getSavedRoutes(key?: string): Promise<SavedRoute[]> {
+    return getSavedRoutes(key);
+  },
+
   async isRouteSaved(id: string): Promise<boolean> {
     try {
       const all = await getSavedRoutes();
-      return all.some(r => r.id === id);
+      const normId = normalizeConnectionId(id);
+      return all.some(r => r.id === id || normalizeConnectionId(r.id) === normId);
     } catch {
       return false;
     }
@@ -489,6 +518,26 @@ export function savedRoutesKey(cityId?: string): string {
 // Odczyt listy zapisanych tras do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
 // żeby save/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+
+const savedRoutesListeners = new Set<() => void>();
+
+export function subscribeSavedRoutes(listener: () => void): () => void {
+  savedRoutesListeners.add(listener);
+  return () => {
+    savedRoutesListeners.delete(listener);
+  };
+}
+
+function notifySavedRoutesChanged(): void {
+  for (const listener of savedRoutesListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[RoutingService] notifySavedRoutesChanged error:', err);
+    }
+  }
+}
+
 export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
   const raw = await kvGetStrict(key ?? savedRoutesKey());
   if (!raw) return [];

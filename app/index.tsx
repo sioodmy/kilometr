@@ -14,9 +14,9 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Bell, Download, History, MapPin, Settings2 } from '../src/components/icons';
+import { Bell, Download, History, MapPin, MapPinned, Settings2 } from '../src/components/icons';
 import { scheme, shape, type } from '../src/theme/tokens';
-import { useStrings } from '../src/i18n';
+import { useStrings, type Strings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import {
@@ -24,14 +24,23 @@ import {
   LocationService,
   RoutingService,
   SearchService,
+  subscribeSavedRoutes,
   recordTripSearch,
   type LocationResult,
 } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
+import { useTrackedTrip, stopTracking } from '../src/services/notifications';
+import {
+  deleteTicketForConnection,
+  getTicketConnectionIds,
+  getTicketForConnection,
+  type AttachedRailTicket,
+} from '../src/services/ticketStorage';
 import {
   boardingDepartureMs,
   refreshConnectionTimes,
 } from '../src/services/routing/connectionTimes';
+import { clockFromMs } from '../src/services/notifications/format';
 import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
@@ -73,6 +82,7 @@ import type {
 import { SavedPlacesRow, SAVED_PLACE_ICONS } from '../src/components/SavedPlacesRow';
 import { getSuggestionIconMeta, type SuggestionIconMeta } from '../src/components/SuggestionRow';
 import { HomeThumbBar } from '../src/components/HomeThumbBar';
+import type { DockChip } from '../src/components/HomeDockChips';
 import {
   LAST_TRIP_ARM_1,
   LAST_TRIP_ARM_2,
@@ -83,11 +93,25 @@ import {
 } from '../src/components/LastTripPull';
 import { SearchSheet } from '../src/components/SearchSheet';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
+import { SavedRoutesList } from '../src/components/SavedRoutesList';
+import { TicketInspectionModal } from '../src/components/TicketInspectionModal';
+import type { SavedRoute } from '../src/types/models';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { CitySelectSheet } from '../src/components/CitySelectSheet';
 import type { CityId } from '../src/cities';
 import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
+
+/** Okno widoczności chipu biletu w docku: odjazd w ciągu 3 h. */
+const TICKET_CHIP_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+/** Etykieta czasu chipu: „za 12 min” do godziny, dalej zegar „14:02”. */
+function countdownLabel(deltaMs: number, s: Strings): string {
+  const min = Math.round(deltaMs / 60000);
+  if (min >= 60) return clockFromMs(Date.now() + deltaMs);
+  if (min <= 1) return s.common.departNow;
+  return s.common.departIn(min);
+}
 
 /** Kopia mapy bez klucza; zwraca tę samą referencję, gdy nic nie znika. */
 function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> {
@@ -108,7 +132,7 @@ type RouteTarget = {
 };
 
 /** Start przekazany jawnie: świeży wybór z arkusza wygrywa ze stanem ekranu. */
-type RouteOrigin = { title: string; lat: number; lon: number; custom: boolean };
+type RouteOrigin = { id?: string; title: string; lat: number; lon: number; custom: boolean };
 
 export default function HomeScreen() {
   const s = useStrings();
@@ -141,6 +165,7 @@ export default function HomeScreen() {
     lat: number;
     lon: number;
     title: string;
+    stopId?: string;
     city?: string | null;
   } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
@@ -374,6 +399,210 @@ export default function HomeScreen() {
     }
   };
 
+
+  const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  // Połączenia z dołączonym biletem: ikona biletu i wyższa pozycja w „Twoich trasach”.
+  const [ticketIds, setTicketIds] = useState<Set<string>>(() => new Set());
+  // Bilet otwarty do kontroli z karty trasy (pełnoekranowy podgląd kodu).
+  const [inspection, setInspection] = useState<{
+    ticket: AttachedRailTicket;
+    connection: Connection;
+  } | null>(null);
+  const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
+
+  const refreshSavedRoutes = useCallback(() => {
+    RoutingService.getSavedRoutes()
+      .then((routes) => {
+        setSavedRoutes(routes);
+      })
+      .catch(() => {});
+  }, []);
+
+  const refreshTicketIds = useCallback(() => {
+    getTicketConnectionIds()
+      .then(setTicketIds)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshSavedRoutes();
+    refreshTicketIds();
+    return subscribeSavedRoutes(refreshSavedRoutes);
+  }, [refreshSavedRoutes, refreshTicketIds, cityId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshSavedRoutes();
+      refreshTicketIds();
+    }, [refreshSavedRoutes, refreshTicketIds]),
+  );
+
+  // Kolejność „Twoich tras”: aktywnie śledzona podróż → trasy z biletem → reszta
+  // historii. Śledzony kurs może nie być zapisany (start śledzenia bez pinezki),
+  // więc wpięcie go na listę syntetycznym wpisem gwarantuje mu pierwsze miejsce.
+  const orderedSavedRoutes = useMemo(() => {
+    const activeConn = trackedTrip?.connection;
+    const list = [...savedRoutes];
+    if (activeConn && !list.some((r) => r.id === activeConn.id)) {
+      list.push({
+        id: activeConn.id,
+        savedAt: trackedTrip?.startedAt ?? Date.now(),
+        connection: activeConn,
+      });
+    }
+    const rank = (r: SavedRoute) =>
+      activeConn && r.id === activeConn.id ? 0 : ticketIds.has(r.id) ? 1 : 2;
+    return list.sort((a, b) => rank(a) - rank(b) || b.savedAt - a.savedAt);
+  }, [savedRoutes, trackedTrip, ticketIds]);
+
+  const handleTabSwitch = useCallback(
+    (tab: 'recent' | 'saved') => {
+      if (tab === homeTab) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setHomeTab(tab);
+    },
+    [homeTab],
+  );
+
+  // Id śledzonego połączenia: wystarczy do warunku usuwania, bez przeładowywania
+  // przy każdym ticku monitora (cały trackedTrip zmienia referencję przy odświeżeniach).
+  const trackedConnId = trackedTrip?.connection.id ?? null;
+
+  const handleRemoveSavedRoute = useCallback(
+    async (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      try {
+        await RoutingService.deleteSavedRoute(route.id);
+        void deleteTicketForConnection(route.id).catch(() => {});
+        refreshTicketIds();
+        // Usuwanie aktywnie śledzonej karty zatrzymuje też monitor: bez tego
+        // wpis wracał na górę listy jako syntetyczna „aktywna podróż”.
+        if (route.id === trackedConnId) {
+          await stopTracking();
+        }
+      } catch (err) {
+        console.warn('Failed to delete saved route:', err);
+      }
+    },
+    [trackedConnId],
+  );
+
+  // Odpięcie aktywnego kursu: zatrzymuje monitor i powiadomienia, trasa zostaje w historii.
+  const handleUnpinSavedRoute = useCallback(
+    async (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (route.id !== trackedConnId) return;
+      try {
+        await RoutingService.saveRoute(route.connection);
+      } catch (err) {
+        console.warn('Failed to ensure route saved before unpin:', err);
+      }
+      void stopTracking().catch((err) => console.warn('Failed to stop tracking:', err));
+    },
+    [trackedConnId],
+  );
+
+  // Otwarcie biletu PDF z karty trasy: kod Aztec na pełnym ekranie do kontroli.
+  const handleOpenSavedTicket = useCallback(
+    async (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      try {
+        const ticket = await getTicketForConnection(route.id, route.connection);
+        if (!ticket) {
+          // Bilet mógł wygasnąć po retencji: odśwież ikony, zamiast pokazywać pusty podgląd.
+          refreshTicketIds();
+          return;
+        }
+        setInspection({ ticket, connection: route.connection });
+      } catch (err) {
+        console.warn('Failed to open saved ticket:', err);
+      }
+    },
+    [refreshTicketIds],
+  );
+
+  const handleSelectSavedRoute = useCallback(
+    (route: SavedRoute) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      router.push({ pathname: '/routes/[id]', params: { id: route.connection.id } });
+    },
+    [router],
+  );
+
+  // Chipy nad search barem: przypięta podróż (śledzony kurs) + pociągi
+  // z biletem odjeżdżające w ciągu 3 h, najbliżej pierwszy. Kurs przypięty
+  // i z biletem to jeden pill: segment biletu doklejamy do chipu podróży.
+  // homeTick (30 s) odświeża odliczanie „za X min”.
+  const dockChips = useMemo<DockChip[]>(() => {
+    const now = Date.now();
+    // Odcinki pojazdowe do LineBadge'ów: pierwsze dwa, dalej chip robi się
+    // zbyt szeroki na szybki skrót.
+    const badgeLegs = (conn: Connection) =>
+      conn.legs.filter((l) => l.mode !== 'walk' && l.line).slice(0, 2);
+
+    let pinnedChip: DockChip | null = null;
+    if (trackedTrip) {
+      const depInSec = trackedProgress?.departInSec ?? null;
+      const time =
+        depInSec != null && depInSec > 0 ? countdownLabel(depInSec * 1000, s) : undefined;
+      pinnedChip = {
+        id: `pinned:${trackedTrip.connection.id}`,
+        badgeLegs: badgeLegs(trackedTrip.connection),
+        title: trackedTrip.toTitle,
+        timeLabel: time,
+        pinned: true,
+        a11yLabel: s.home.dockPinnedA11y(trackedTrip.toTitle, time),
+        onPress: () => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          router.push({ pathname: '/routes/[id]', params: { id: trackedTrip.connection.id } });
+        },
+      };
+    }
+    const tickets: { chip: DockChip; depMs: number }[] = [];
+    for (const route of savedRoutes) {
+      if (!ticketIds.has(route.id)) continue;
+      if (pinnedChip && route.id === trackedTrip?.connection.id) {
+        pinnedChip.ticket = {
+          a11y: s.railTickets.showTicket,
+          onOpen: () => void handleOpenSavedTicket(route),
+        };
+        continue;
+      }
+      const depMs = boardingDepartureMs(route.connection, new Date(now));
+      if (!Number.isFinite(depMs)) continue;
+      const delta = depMs - now;
+      if (delta < 0 || delta > TICKET_CHIP_WINDOW_MS) continue;
+      tickets.push({
+        depMs,
+        chip: {
+          id: `ticket:${route.id}`,
+          badgeLegs: badgeLegs(route.connection),
+          title: route.connection.toTitle,
+          timeLabel: countdownLabel(delta, s),
+          ticket: {
+            a11y: s.railTickets.showTicket,
+            onOpen: () => void handleOpenSavedTicket(route),
+          },
+          a11yLabel: s.home.dockTicketA11y(route.connection.toTitle, clockFromMs(depMs)),
+          onPress: () => handleSelectSavedRoute(route),
+        },
+      });
+    }
+    tickets.sort((a, b) => a.depMs - b.depMs);
+    return [...(pinnedChip ? [pinnedChip] : []), ...tickets.map((t) => t.chip)];
+  }, [
+    trackedTrip,
+    trackedProgress,
+    savedRoutes,
+    ticketIds,
+    homeTick,
+    s,
+    router,
+    handleOpenSavedTicket,
+    handleSelectSavedRoute,
+  ]);
+
   const refreshPlaces = () => {
     const requestedCity = getActiveCityIdSync();
     FavoritesService.list()
@@ -445,7 +674,7 @@ export default function HomeScreen() {
       if (cancelled) return;
       const outside = isOutsideServiceArea(l.lat, l.lon);
       const city = l.city ?? null;
-      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
+      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, stopId: l.stopId, city });
       if (outside) {
         // Poza strefą: GPS zostaje tylko jako informacja do karty,
         // a ranking i trasy liczymy z centrum aktywnego miasta, bo start
@@ -513,7 +742,8 @@ export default function HomeScreen() {
     setCurrentCoords({ lat: d.lat, lon: d.lon });
     setFirstConns({});
     setFirstLegs({});
-  }, [cityId]);
+    refreshSavedRoutes();
+  }, [cityId, refreshSavedRoutes]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
@@ -811,49 +1041,56 @@ export default function HomeScreen() {
     );
   }, [gpsCity, cityGen, s]);
 
-  // Reset startu na GPS: nieudany odczyt zostawia poprzedni start bez zmian,
-  // a fix nie nadpisuje ręcznego wyboru zrobionego w trakcie odczytu.
-  const resetToGps = async () => {
+  // Reset startu na GPS: natychmiast czyści stan w UI do domyślnego/ostatniego GPS,
+  // a świeży fix dociąga się w tle bez blokowania interfejsu.
+  const resetToGps = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const gen = ++startSelGen.current;
+    pendingDestinationRef.current = null;
+    isCustomStartRef.current = false;
+    setIsCustomStart(false);
+
+    const fallbackTitle = gpsLocation?.title ?? defaultLocationForCity(getActiveCityIdSync()).title;
+    const fallbackCoords = gpsLocation
+      ? { lat: gpsLocation.lat, lon: gpsLocation.lon }
+      : (() => {
+          const d = defaultLocationForCity(getActiveCityIdSync());
+          return { lat: d.lat, lon: d.lon };
+        })();
+    const fallbackOrigin = gpsLocation?.stopId || fallbackTitle;
+
+    setLocTitle(fallbackTitle);
+    setCurrentCoords(fallbackCoords);
+    requestSmart(fallbackOrigin, fallbackCoords);
+
     if (gpsUnsupported) {
       blockGpsStart();
       return;
     }
-    const gen = ++startSelGen.current;
-    const customAtStart = isCustomStartRef.current;
-    // Cache tylko gdy start już był GPS: przy ręcznym starcie nie ruszamy
-    // współrzędnych przed potwierdzonym fixem.
-    if (!isCustomStartRef.current && gpsLocation) {
-      setLocTitle(gpsLocation.title);
-      const coords = { lat: gpsLocation.lat, lon: gpsLocation.lon };
-      setCurrentCoords(coords);
-      requestSmart(gpsLocation.title, coords);
-    }
-    try {
-      const l = await LocationService.getCurrentLocation({ force: true });
-      // Ręczny start wybrany w trakcie odczytu unieważnia ten fix.
-      if (gen !== startSelGen.current || isCustomStartRef.current !== customAtStart) return;
-      const outside = isOutsideServiceArea(l.lat, l.lon);
-      const city = (l as { city?: string | null }).city ?? null;
-      setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, city });
-      if (outside) {
-        setGpsUnsupported(true);
-        setGpsCity(city);
-        blockGpsStart();
-        return;
-      }
-      setGpsUnsupported(false);
-      setGpsCity(null);
-      pendingDestinationRef.current = null;
-      isCustomStartRef.current = false;
-      setIsCustomStart(false);
-      setLocTitle(l.title);
-      const coords = { lat: l.lat, lon: l.lon };
-      setCurrentCoords(coords);
-      requestSmart(l.stopId || l.title, coords);
-    } catch (err) {
-      // Błąd zostawia poprzedni start: ikona i współrzędne dalej się zgadzają.
-      console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
-    }
+
+    LocationService.getCurrentLocation({ force: true })
+      .then((l) => {
+        // Ręczny start wybrany w trakcie odczytu unieważnia ten fix.
+        if (gen !== startSelGen.current || isCustomStartRef.current) return;
+        const outside = isOutsideServiceArea(l.lat, l.lon);
+        const city = (l as { city?: string | null }).city ?? null;
+        setGpsLocation({ lat: l.lat, lon: l.lon, title: l.title, stopId: l.stopId, city });
+        if (outside) {
+          setGpsUnsupported(true);
+          setGpsCity(city);
+          blockGpsStart();
+          return;
+        }
+        setGpsUnsupported(false);
+        setGpsCity(null);
+        setLocTitle(l.title);
+        const coords = { lat: l.lat, lon: l.lon };
+        setCurrentCoords(coords);
+        requestSmart(l.stopId || l.title, coords);
+      })
+      .catch((err) => {
+        console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
+      });
   };
 
   const handleStartSelect = async (sel: Suggestion) => {
@@ -869,7 +1106,7 @@ export default function HomeScreen() {
         setQuery('');
         return;
       }
-      await resetToGps();
+      resetToGps();
       if (returnToDestinationAfterStart) {
         setReturnToDestinationAfterStart(false);
         setSheetMode('destination');
@@ -906,7 +1143,7 @@ export default function HomeScreen() {
     // Cel zablokowany wcześniej przez GPS: start już jest ręczny, więc trasa
     // rusza od razu, bez ponownego wpisywania celu.
     if (pending) {
-      goToRoutes(pending, { title: sel.title, lat: sel.lat, lon: sel.lon, custom: true });
+      goToRoutes(pending, { id: sel.id, title: sel.title, lat: sel.lat, lon: sel.lon, custom: true });
     }
   };
 
@@ -989,6 +1226,7 @@ export default function HomeScreen() {
       router.push({
         pathname: '/routes',
         params: {
+          fromId: origin?.id,
           fromTitle,
           fromLat: String(fromLat),
           fromLon: String(fromLon),
@@ -1110,32 +1348,6 @@ export default function HomeScreen() {
     [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
   );
 
-  /** Poza obsługiwanym miastem: pociągi z najbliższej stacji kolejowej. */
-  const [nearestStationBusy, setNearestStationBusy] = useState(false);
-  const handleNearestStation = async (coords: { lat: number; lon: number }) => {
-    if (nearestStationBusy) return;
-    setNearestStationBusy(true);
-    try {
-      const { findNearestNationalStations } = await import('../src/services/gtfsDatabase');
-      const stations = await findNearestNationalStations(coords.lat, coords.lon, 30000, 1);
-      const station = stations[0];
-      if (!station) return;
-      router.push({
-        pathname: '/routes',
-        params: {
-          fromTitle: station.name,
-          fromLat: String(station.lat),
-          fromLon: String(station.lon),
-          fromGps: '0',
-        },
-      });
-    } catch {
-      // bez bazy/stacji: zostajemy na ekranie głównym
-    } finally {
-      setNearestStationBusy(false);
-    }
-  };
-
   const handleCityChange = async (id: CityId) => {
     const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
     if (id === cityId || switchingCity || dataBusy) return;
@@ -1251,6 +1463,7 @@ export default function HomeScreen() {
     () =>
       subscribeBackupApplied(() => {
         refreshPlaces();
+        refreshSavedRoutes();
         // Ranking liczymy tylko przy znanej pozycji: `smartFromOrigin` i tak
         // podpada pod DEFAULT_LOCATION, a „ostatnie miejsca" z innego miasta
         // to kłamstwo.
@@ -1406,10 +1619,6 @@ export default function HomeScreen() {
                   setQuery('');
                   setSheetMode('start');
                 }}
-                onNearestStation={
-                  gpsLocation ? () => void handleNearestStation(gpsLocation) : undefined
-                }
-                nearestStationBusy={nearestStationBusy}
               />
             )}
 
@@ -1451,25 +1660,102 @@ export default function HomeScreen() {
               />
             </View>
 
-            <View style={{ height: 24 }} />
-            {smartOrdered.length === 0 && smartReady ? (
-              <View style={styles.emptyCard}>
-                <View style={styles.emptyIcon}>
-                  <History size={20} color={scheme.onSecondaryContainer} />
+            <View style={{ height: 20 }} />
+
+            {/* 2-tab layout: Ostatnie połączenia / Twoje trasy */}
+            <View style={styles.tabContainer} accessibilityRole="tablist">
+              <Pressable
+                onPress={() => handleTabSwitch('recent')}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: homeTab === 'recent' }}
+                accessibilityLabel={s.home.tabRecent}
+                style={({ pressed }) => [
+                  styles.tabBtn,
+                  homeTab === 'recent' && styles.tabBtnActive,
+                  pressed && styles.tabBtnPressed,
+                ]}
+              >
+                <History
+                  size={16}
+                  color={
+                    homeTab === 'recent' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                  }
+                />
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    homeTab === 'recent' ? styles.tabLabelActive : styles.tabLabelInactive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  {s.home.tabRecent}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleTabSwitch('saved')}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: homeTab === 'saved' }}
+                accessibilityLabel={s.home.tabSaved}
+                style={({ pressed }) => [
+                  styles.tabBtn,
+                  homeTab === 'saved' && styles.tabBtnActive,
+                  pressed && styles.tabBtnPressed,
+                ]}
+              >
+                <MapPinned
+                  size={16}
+                  color={
+                    homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                  }
+                />
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  {s.home.tabSaved}
+                </Text>
+              </Pressable>
+            </View>
+
+            {homeTab === 'recent' ? (
+              smartOrdered.length === 0 && smartReady ? (
+                <View style={styles.emptyCard}>
+                  <View style={styles.emptyIcon}>
+                    <History size={20} color={scheme.onSecondaryContainer} />
+                  </View>
+                  <View style={styles.emptyText}>
+                    <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+                    <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+                  </View>
                 </View>
-                <View style={styles.emptyText}>
-                  <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-                  <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-                </View>
-              </View>
+              ) : (
+                <SmartHistoryList
+                  items={smartOrdered}
+                  departures={liveDepartures}
+                  lineBadges={firstLegs}
+                  onSelect={goToRoutes}
+                  onOpenConnection={goToConnection}
+                  icons={smartIcons}
+                  hideHeader={true}
+                />
+              )
             ) : (
-              <SmartHistoryList
-                items={smartOrdered}
-                departures={liveDepartures}
-                lineBadges={firstLegs}
-                onSelect={goToRoutes}
-                onOpenConnection={goToConnection}
-                icons={smartIcons}
+              <SavedRoutesList
+                routes={orderedSavedRoutes}
+                activeId={trackedConnId}
+                ticketIds={ticketIds}
+                onSelect={handleSelectSavedRoute}
+                onRemove={handleRemoveSavedRoute}
+                onOpenTicket={handleOpenSavedTicket}
+                onUnpin={handleUnpinSavedRoute}
               />
             )}
           </ScrollView>
@@ -1491,8 +1777,9 @@ export default function HomeScreen() {
               setQuery('');
               setSheetMode('start');
             }}
-            onResetStart={() => void resetToGps()}
+            onResetStart={resetToGps}
             gpsUnsupported={gpsUnsupported}
+            chips={dockChips}
           />
         )}
 
@@ -1604,6 +1891,15 @@ export default function HomeScreen() {
             switchingCityId={switchingCityId}
           />
         )}
+
+        {inspection && (
+          <TicketInspectionModal
+            visible
+            ticket={inspection.ticket}
+            connection={inspection.connection}
+            onClose={() => setInspection(null)}
+          />
+        )}
       </View>
     </GestureDetector>
   );
@@ -1661,6 +1957,44 @@ const styles = StyleSheet.create({
   updateText: { flex: 1, gap: 2, minWidth: 0 },
   updateTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600' },
   updateBody: { ...type.labelSmall, color: scheme.onSurfaceVariant },
+  tabContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    padding: 4,
+    marginBottom: 12,
+  },
+  tabBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 60,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: shape.full,
+    gap: 4,
+  },
+  tabBtnActive: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  tabBtnPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
+  },
+  tabLabel: {
+    ...type.labelLarge,
+    letterSpacing: 0.1,
+    flexShrink: 1,
+  },
+  tabLabelActive: {
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
+  tabLabelInactive: {
+    color: scheme.onSurfaceVariant,
+    fontWeight: '500',
+  },
   savedSection: { marginTop: 20 },
   sectionHeader: {
     flexDirection: 'row',
@@ -1688,7 +2022,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     padding: 20,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.extraLarge,
   },
   emptyText: { flex: 1, gap: 6 },

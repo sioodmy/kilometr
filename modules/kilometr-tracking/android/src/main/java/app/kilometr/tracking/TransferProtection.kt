@@ -48,7 +48,13 @@ internal class TransferProtection(
         lastRiskAlert = saved?.optString("alertKey") ?: ""
         rides = network!!.rides(connection!!)
         val legs = connection!!.getJSONArray("legs")
-        require(rides.size == (0 until legs.length()).count { legs.getJSONObject(it).optString("mode") != "walk" })
+        val transitCount = (0 until legs.length()).count {
+          val l = legs.getJSONObject(it)
+          val mode = l.optString("mode")
+          val tId = l.optString("tripId")
+          mode != "walk" && mode != "train" && !tId.startsWith("pl:")
+        }
+        require(rides.size == transitCount)
         val active = saved?.optInt("activeLegIndex", -1) ?: root.optInt("activeLegIndex", -1)
         rideIndex = rides.indexOfFirst { it.legIndex == active }.coerceAtLeast(0)
         publish("waiting", System.currentTimeMillis())

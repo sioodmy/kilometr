@@ -21,6 +21,17 @@ function prepInCity(cityLoc: string): string {
   return startsWithV ? `у ${cityLoc}` : `в ${cityLoc}`;
 }
 
+function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 хв";
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h} год ${m} хв` : `${h} год`;
+  }
+  return `${rounded} хв`;
+}
+
 export const uk: Strings = {
   landing,
   share,
@@ -65,11 +76,9 @@ export const uk: Strings = {
     stayOn: (line: string) => `Залишайтеся в ${line}`,
     changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
     noAlternative:
-
       'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
     conductorTitle: 'Запізнення на потяг',
-    conductorBody:
-      'Повідомте кондуктора, що ви не встигаєте на пересадку. Квиток на потяг далекого сполучення діє за умовами перевізника.',
+    conductorBody: 'Повідомте бригаду провідників про намір пересісти',
     nextTrainLabel: 'Наступний потяг',
     nextTrainAt: (time: string) => `відправляється о ${time}`,
 
@@ -123,7 +132,7 @@ export const uk: Strings = {
     now: 'Зараз',
     today: 'Сьогодні',
     tomorrow: 'Завтра',
-    durMin: (n: number) => `${n} хв`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `за ${n} хв`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
@@ -153,9 +162,23 @@ export const uk: Strings = {
     savedTitle: 'Збережені місця',
     editSavedA11y: 'Редагувати збережені місця',
     editCard: 'Редагувати',
+    tabRecent: 'Останні сполучення',
+    tabSaved: 'Твої маршрути',
     historyTitle: 'Останні місця',
     historyEmptyTitle: 'Немає останніх місць',
     historyEmptyBody: 'Знайди сполучення, і воно з’явиться тут як швидка ціль.',
+    savedRoutesEmptyTitle: 'Немає збережених маршрутів',
+    savedRoutesEmptyBody:
+      'Почни стежити за сполученням або додай залізничний квиток, і він з’явиться тут.',
+    routeActive: 'У дорозі',
+    ticketAttachedA11y: 'Залізничний квиток збережено',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Закріплена поїздка до ${title}${time ? `, ${time}` : ''}. Торкніться, щоб відкрити.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Потяг до ${title}, відправлення ${time}. Торкніться, щоб відкрити.`,
+    removeRouteA11y: (title: string) => `Видалити сполучення до ${title} з твоїх маршрутів`,
+    pinRouteA11y: (title: string) => `Закріпити сполучення до ${title} у твоїх маршрутах`,
+    unpinRouteA11y: (title: string) => `Відкріпити сполучення до ${title} з твоїх маршрутів`,
     openConnA11y: (title: string, label: string) => `Відкрити сполучення до ${title}, ${label}`,
     gpsTitle: 'Моя локація (GPS)',
     locationFallback: 'Твоя локація',
@@ -182,8 +205,6 @@ export const uk: Strings = {
     unsupportedActionShort: 'Вибрати старт',
     unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
-    unsupportedNearestStation: 'З найближчої залізничної станції',
-    unsupportedNearestStationA11y: 'Показати потяги з найближчої залізничної станції',
     pickStart: 'Вибери початок',
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -471,6 +492,7 @@ export const uk: Strings = {
     needDownload:
       'Для цього міста ще немає розкладу на телефоні. Завантаж його в розділі «Розклад і карти».',
     changeAction: 'Змінити',
+    downloadAction: 'Завантажити розклад',
     selectTitle: 'Оберіть місто',
     selectSub: 'Оберіть агломерацію для планування поїздок.',
     searchPlaceholder: 'Місто або перевізник',
@@ -601,7 +623,8 @@ export const uk: Strings = {
       `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
     downloadFailFallback: 'Спробуй за мить.',
     railTitle: 'Залізничний розклад (Польща)',
-    railHint: 'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
+    railHint:
+      'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
     railReady: (date: string) => `Завантажено (дійсний до ${date})`,
     railEmpty: 'Не завантажено',
     railDownload: 'Завантажити',
@@ -621,7 +644,7 @@ export const uk: Strings = {
         : `Розклад нещодавно завантажували. Наступне повне завантаження буде доступне через ${hours} год.`,
     diagTitle: 'Діагностика даних',
     diagHint:
-      'Перевіряє базу розкладу на телефоні. Скопіюй результат, коли повідомляєш про проблему.',
+      'Перевіряє розклад, залізницю, офлайн-мапу і джерела live. Скопіюй результат, коли повідомляєш про проблему.',
     diagRun: 'Перевірити дані',
     diagRerun: 'Перевірити ще раз',
     diagRunning: 'Перевіряю…',
@@ -662,10 +685,28 @@ export const uk: Strings = {
           : `Розклад спливе за ${days} днів`,
     diagCalendarServices: (n: number) => `Активних сервісів сьогодні: ${n}`,
     diagSearch: 'Пошук',
-    diagSearchOk: (weighted: number, pois: number) =>
-      `Рейтинг готовий (${weighted} зупинок) • POI: ${pois}`,
+    diagSearchOk: (weighted: number, pois: number, addresses: number) =>
+      `Рейтинг готовий (${isOne(weighted) ? `${weighted} зупинка` : isFew(weighted) ? `${weighted} зупинки` : `${weighted} зупинок`}) • POI: ${pois} • Адреси: ${addresses}`,
     diagSearchWeights: 'Рейтинг підказок не пораховано',
-    diagSearchPois: 'Немає точок POI. Адреси потребують інтернету.',
+    diagSearchPois: 'Немає точок POI',
+    diagSearchNoAddresses: 'Немає індексу адрес. Пошук адрес потребує інтернету.',
+    diagRail: 'Загальнопольська залізниця',
+    diagRailNone: 'Не завантажено (поїздки між містами потребують інтернету)',
+    diagRailLine: (version: string, to: string | null) =>
+      to ? `Версія ${version}, розклад до ${to}` : `Версія ${version}`,
+    diagRailOutside: 'Розклад залізниці сплив',
+    diagRailExpiring: (days: number) =>
+      days <= 1 ? 'Розклад залізниці спливає завтра' : `Розклад залізниці спливає за ${days} днів`,
+    diagMap: 'Офлайн-мапа',
+    diagMapNone: 'Не завантажено (мапа потребує інтернету)',
+    diagMapReady: (mb: string) => `Пакет тайлів готовий: ${mb} МБ`,
+    diagMapInvalid: 'Пакет тайлів пошкоджено. Завантажте мапу ще раз.',
+    diagLive: 'Джерела live',
+    diagLiveNone: 'Немає вимірювань у цій сесії',
+    diagLiveOkLine: (source: string, at: string) => `${source}: OK (${at})`,
+    diagLiveRecoveredLine: (source: string, at: string) => `${source}: знову працює (${at})`,
+    diagLiveErrLine: (source: string, error: string) => `${source}: помилка, ${error}`,
+    diagLiveNoAnswer: (source: string) => `${source}: немає відповіді`,
     diagCopy: 'Скопіювати звіт',
     diagCopyA11y: 'Скопіювати звіт діагностики в буфер обміну',
     diagCopied: 'Звіт скопійовано в буфер обміну',
@@ -675,7 +716,15 @@ export const uk: Strings = {
     diagReportCity: 'Місто',
     diagReportTimetable: 'Розклад',
     diagReportImported: 'Завантажено',
+    diagReportLastCheck: 'Перевірка',
+    diagReportRemote: 'Доступна',
+    diagReportFeeds: 'Фіди',
     diagReportDb: 'База',
+    diagReportRail: 'Залізниця',
+    diagReportMap: 'Мапа',
+    diagReportLive: 'Live',
+    diagReportNotDownloaded: 'не завантажено',
+    diagReportMapInvalid: 'пошкоджена',
     diagReportUnknown: 'невідомо',
     transfersTitle: 'Макс. пересадок',
     transfersHintShort: 'Верхня межа в одному маршруті.',
@@ -1226,7 +1275,7 @@ export const uk: Strings = {
     arrivalShort: (time: string) => `до ${time}`,
   },
   routesFilters: {
-    title: "Фільтри",
+    title: 'Фільтри',
     filterButton: 'Фільтри',
     filterA11y: 'Фільтри маршрутів',
     vehiclesSection: 'Транспорт',
@@ -1265,7 +1314,7 @@ export const uk: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, час їзди ${dur} хв, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
+      `${dep}, час їзди ${formatDuration(dur)}, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
   },
   vehiclePos: {
@@ -1285,6 +1334,8 @@ export const uk: Strings = {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список станцій.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
@@ -1296,15 +1347,22 @@ export const uk: Strings = {
     modeCable: 'Канатна дорога',
     modeVehicle: 'Транспорт',
     currentLocation: (stop: string) => `Поточне місце: ${stop}`,
+    waitingAtTerminus: 'Очікує відправлення з кінцевої',
     liveTracking: 'Відстеження наживо',
     transfer: 'Пересадка',
     transferMinutes: (min: number) => `Пересадка · ~${min} хв`,
     nearStop: (mode: string, stop: string) => `${mode} поблизу зупинки: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
-      return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
+      return `${stops} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
+    },
+    stationsSummary: (n: number, mins: number, open: boolean) => {
+      const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
+      return `${stations} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     platformPeron: (code: string) => `Платформа ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Платформа ${code}, колія ${track}`,
+    platformTrack: (track: string) => `Колія ${track}`,
     platformPole: (code: string) => `Стовп ${code}`,
     platformBay: (code: string) => `Місце ${code}`,
     platformPst: (code: string) => `PST-стовп ${code}`,
@@ -1365,13 +1423,30 @@ export const uk: Strings = {
     ready: (date: string) => `Залізничний розклад готовий (дійсний до ${date})`,
     noTrainsTitle: 'Немає потягів',
     noTrainsHint: 'Перевірте дату й час або виберіть іншу станцію призначення.',
-    nearestStation: (name: string, dist: string) => `Найближча залізнична станція: ${name} (${dist})`,
+    nearestStation: (name: string, dist: string) =>
+      `Найближча залізнична станція: ${name} (${dist})`,
     startAtStation: 'Показати потяги з цієї станції',
   },
 
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Кондиціонер',
+    gniazdka_230V: (_n?: number) => 'Розетки',
+    gniazdka_usb: (_n?: number) => 'USB-порти',
+    wifi: (_n?: number) => 'Wi-Fi',
+    wagon_restauracyjny: (_n?: number) => 'Вагон-ресторан',
+    bar: (_n?: number) => 'Бар',
+    przewoz_rowerow: (n?: number) => (n ? `Велосипеди (${n})` : 'Перевезення велосипедів'),
+    dostepny_wozkarze: (_n?: number) => 'Доступний для візків',
+    miejsca_lezace: (_n?: number) => 'Місця для лежання',
+    miejsca_sypialne: (_n?: number) => 'Спальні місця',
+    strefa_ciszy: (_n?: number) => 'Тиха зона',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Зручності: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',
+    disruptionsBadgeA11y: 'Ускладнення на маршруті',
   },
 
   data: {
@@ -1433,6 +1508,8 @@ export const uk: Strings = {
     directionTo: (dir: string) => `У напрямку ${dir}`,
     platform: (num: string) => `колія ${num}`,
     platformPeron: (num: string) => `платформа ${num}`,
+    platformPeronTrack: (num: string, track: string) => `платформа ${num}, колія ${track}`,
+    platformTrack: (track: string) => `колія ${track}`,
     walkApproach: (min: number) => `~${min} хв пішки`,
     rideLength: (min: number) => `їзда ${min} хв`,
     departAt: (at: string) => `відправлення о ${at}`,
@@ -1444,6 +1521,9 @@ export const uk: Strings = {
       isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
+    compensationTitle: 'Компенсація за затримку потяга',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Потяг ${train}` : 'Потяг'} запізнився більш ніж на ${thresholdMin} хвилин. Ти можеш подати заявку на повернення ${percent}% вартості квитка.`,
   },
   ios: {
     departure: 'Відправлення',
@@ -1529,6 +1609,52 @@ export const uk: Strings = {
     channel: 'Закріплене сполучення',
     tram: 'Трамвай',
     bus: 'Автобус',
+  },
+  railTickets: {
+    loading: 'Завантаження…',
+    buyKoleo: 'Купити квиток у KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} до ${to} · 1 пересадка`
+        : `${from} до ${to} · ${transfers} пересадки`,
+    attachPdf: 'Додати квиток PDF',
+    attachedTitle: 'Залізничний квиток',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Вагон ${wagon}`);
+      if (seat) parts.push(`Місце ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Показати квиток',
+    removeTicket: 'Видалити квиток',
+    removeConfirmTitle: 'Видалити цей квиток?',
+    removeConfirmBody: 'Файл PDF буде видалено з пам’яті додатка.',
+    fileLabel: (fileName: string) => `Файл: ${fileName}`,
+    importSuccess: 'Квиток PDF успішно додано.',
+    importError: 'Не вдалося завантажити файл PDF.',
+    rejectTooLargeTitle: 'Файл занадто великий',
+    rejectTooLargeBody:
+      'Вибраний файл перевищує 10 МБ. Залізничні квитки в PDF зазвичай мають від кількох десятків КБ до 2 МБ.',
+    rejectNotTicketTitle: 'Це не схоже на залізничний квиток',
+    rejectNotTicketBody:
+      'Документ не містить коду для контролю та даних про залізничну поїздку. Переконайтеся, що вибираєте правильний файл.',
+    rejectWrongTrainTitle: 'Це квиток на інший потяг',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Квиток на потяг ${ticketTrain}, а цей маршрут їде потягом ${connectionTrain}. Виберіть квиток на потрібне з’єднання.`,
+    rejectWrongDateTitle: 'Квиток на інший день',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Квиток діє ${ticketDate}, а це з’єднання їде ${connectionDate}.`,
+    deleteTicket: 'Видалити квиток',
+    deleteTicketTitle: 'Видалити цей квиток?',
+    deleteTicketBody: 'Файл PDF і код Aztec буде остаточно видалено з пам’яті додатка.',
+    inspectionNoBarcode: 'У PDF немає растрового коду',
+    inspectionBarcodeA11y: 'Код Aztec для контролю квитків',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Ділянка ${current} з ${total} · Торкніться, щоб змінити`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Ділянка ${current} з ${total}. Торкніться, щоб змінити.`,
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

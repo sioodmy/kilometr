@@ -1,4 +1,4 @@
-import { secondsToTimeString, timeStringToSeconds } from '../../gtfs/geo';
+import { secondsToTimeString, timeStringToSeconds, warsawNow } from '../../gtfs/geo';
 import { sharedJourneySeconds, sharedTimeMs } from '../../sharing/progress';
 import type { Connection, DelayConfidence, Leg } from '../../types/models';
 import { toAbsoluteMs } from '../notifications/format';
@@ -11,7 +11,7 @@ function alignClock(seconds: number, anchor: number): number {
   return seconds + Math.round((anchor - seconds) / DAY) * DAY;
 }
 
-/** Pierwszy pojazd, bez czasu dojścia. Kotwica zachowuje datę po północy. */
+/** Pierwszy pojazd, bez czasu dojscia. Kotwica zachowuje date po polnocy. */
 export function boardingDepartureSec(connection: Connection): number {
   let cursor = connection.departureSec;
   for (const leg of connection.legs) {
@@ -40,9 +40,9 @@ export function boardingDepartureMs(connection: Connection, now = new Date()): n
 }
 
 /**
- * Przesuwa odjazd, przyjazd i rozkład odcinków o całe doby, żeby plan trzymał
- * się zapisanego absolutnego odjazdu. Po północy `departureSec` 24:xx wskazuje
- * jutro, więc bez tego śledzony kurs skakał o dobę.
+ * Przesuwa odjazd, przyjazd i rozklad odcinkow o cale doby, zeby plan trzymal
+ * sie zapisanego absolutnego odjazdu. Po polnocy `departureSec` 24:xx wskazuje
+ * jutro, wiec bez tego sledzony kurs skakal o dobe.
  */
 export function anchorConnectionToPlan(
   connection: Connection,
@@ -53,8 +53,7 @@ export function anchorConnectionToPlan(
   const shift =
     Math.round((plannedDepartureMs - toAbsoluteMs(connection.departureSec, now)) / DAY_MS) * DAY;
   if (shift === 0) return connection;
-  return {
-    ...connection,
+  return { ...connection,
     departureSec: connection.departureSec + shift,
     arrivalSec: connection.arrivalSec == null ? undefined : connection.arrivalSec + shift,
     legs: connection.legs.map((leg) =>
@@ -71,7 +70,7 @@ export function anchorConnectionToPlan(
   };
 }
 
-/** Starsze plany odzyskują rozkład wyłącznie z zapisanych przystanków GTFS. */
+/** Starsze plany odzyskuja rozklad wylacznie z zapisanych przystankow GTFS. */
 export function scheduledLegTimes(leg: Leg, anchor: number) {
   const departure =
     leg.scheduledDepartureSec ??
@@ -85,7 +84,32 @@ export function scheduledLegTimes(leg: Leg, anchor: number) {
   };
 }
 
-/** Przelicza godziny od rozkładu, więc kolejne odświeżenia nie sumują opóźnień. */
+/**
+ * Czas trwania odcinka w minutach na podstawie godzin odjazdu i przyjazdu.
+ * Obsluguje przejscie przez polnoc oraz fallback do sekund rozkladowych
+ * lub szacunku z liczby przystankow.
+ */
+export function legDurationMin(
+  leg: Pick<Leg, 'departAt' | 'arriveAt'> &
+    Partial<Pick<Leg, 'scheduledDepartureSec' | 'scheduledArrivalSec' | 'stopsCount'>>,
+): number {
+  if (leg.departAt && leg.arriveAt) {
+    const dep = timeStringToSeconds(leg.departAt);
+    let arr = timeStringToSeconds(leg.arriveAt);
+    if (Number.isFinite(dep) && Number.isFinite(arr)) {
+      if (arr < dep) arr += DAY;
+      return Math.max(1, Math.round((arr - dep) / 60));
+    }
+  }
+  if (leg.scheduledDepartureSec != null && leg.scheduledArrivalSec != null) {
+    let diff = leg.scheduledArrivalSec - leg.scheduledDepartureSec;
+    if (diff < 0) diff += DAY;
+    return Math.max(1, Math.round(diff / 60));
+  }
+  return Math.max(1, (leg.stopsCount || 1) * 2);
+}
+
+/** Przelicza godziny od rozkladu, wiec kolejne odswiezenia nie sumuja opoznien. */
 export function refreshConnectionTimes(
   connection: Connection,
   tripDelays: ReadonlyMap<string, number>,
@@ -94,7 +118,7 @@ export function refreshConnectionTimes(
 ): Connection {
   const firstVehicle = connection.legs.find((leg) => leg.mode !== 'walk');
   if (!firstVehicle) return connection;
-  if (connection.departureSec - (firstVehicle.delaySec ?? 0) >= DAY && !connection.serviceDate)
+  if (connection.departureSec - (firstVehicle.delaySec ?? 0) >= DAY + 5 * 3600 && !connection.serviceDate)
     return connection;
   const elapsed = connection.serviceDate
     ? sharedJourneySeconds(connection.serviceDate, now)
@@ -102,7 +126,7 @@ export function refreshConnectionTimes(
   const nowSec =
     elapsed ??
     alignClock(
-      now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds(),
+      warsawNow(now).sec,
       connection.departureSec,
     );
   const sameDay = elapsed == null || Math.abs(elapsed - boardingDepartureSec(connection)) < DAY / 2;

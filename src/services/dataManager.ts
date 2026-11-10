@@ -22,7 +22,7 @@ import {
   readGtfsText,
   unzipGtfs,
 } from './gtfsDownloader';
-import { downloadPrebuiltDb, fetchManifest, getLocalTimetableVersion } from './timetableSync';
+import { downloadPrebuiltDb, fetchManifest } from './timetableSync';
 import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
 import { getActiveCityIdSync } from './cityStore';
 import { kvGet, kvRemove, kvSet } from './storage';
@@ -309,7 +309,7 @@ async function isTimetableExpiring(): Promise<boolean> {
 }
 
 async function refreshTimetableUpdateFromMeta(): Promise<void> {
-  const local = await getLocalTimetableVersion().catch(() => null);
+  const local = await getMeta('timetable_version').catch(() => null);
   const remote = await getMeta('gtfs_remote_version').catch(() => null);
   if (!local || !remote || local === remote) {
     emitTimetableUpdate(null);
@@ -487,21 +487,32 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   const cityId = pinnedCityId;
   const manifest = await fetchManifest(cityId);
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
-  const local = await getLocalTimetableVersion();
+  // Wersja i limit to meta pliku tego miasta, więc czytamy je z jego bazy.
+  const local = await getMeta('timetable_version', cityId);
+  if (getActiveCityIdSync() !== cityId) return 'upToDate';
+  const gate = await getTimetableDownloadGate(cityId);
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const checkedAt = new Date().toISOString();
-  await setMeta('gtfs_remote_version', manifest.version, cityId);
+
+  // Zapis mety tylko przy aktywnej bazie: po zmianie miasta w trakcie
+  // pobierania initDb otwierałby plik nowego miasta, a stary uchwyt jest już
+  // zamknięty. Świeże miasto sprawdzi się samo.
+  const setMetaIfActive = async (key: string, value: string) => {
+    if (getActiveCityIdSync() !== cityId) return;
+    await setMeta(key, value, cityId);
+  };
+
   if (local && local === manifest.version) {
-    await setMeta('gtfs_last_check', checkedAt, cityId);
+    await setMetaIfActive('gtfs_remote_version', manifest.version);
+    await setMetaIfActive('gtfs_last_check', checkedAt);
     emitTimetableUpdate(null);
     return 'upToDate';
   }
 
   // Nowa wersja na serwerze, ale lokalna baza jest: szanujemy limit R2.
-  const gate = await getTimetableDownloadGate();
-  if (getActiveCityIdSync() !== cityId) return 'upToDate';
   if (!gate.allowed && local) {
-    await setMeta('gtfs_last_check', checkedAt, cityId);
+    await setMetaIfActive('gtfs_remote_version', manifest.version);
+    await setMetaIfActive('gtfs_last_check', checkedAt);
     emitTimetableUpdate({ version: manifest.version, checkedAt });
     return 'cooldown';
   }
@@ -517,9 +528,9 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const T = dataTr();
   emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
-  await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
-  await setMeta('gtfs_remote_version', manifest.version, cityId);
-  await markTimetableDownloaded();
+  await setMetaIfActive('gtfs_last_check', new Date().toISOString());
+  await setMetaIfActive('gtfs_remote_version', manifest.version);
+  if (getActiveCityIdSync() === cityId) await markTimetableDownloaded();
   await resetRoutingStore();
   emitTimetableUpdate(null);
   return 'updated';

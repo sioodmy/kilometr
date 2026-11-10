@@ -7,6 +7,7 @@ import type { Connection, Leg } from '../types/models';
 import { LineBadge } from './LineBadge';
 import { DirectionsWalk } from './DirectionsWalk';
 import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionPeek';
+import { RailAlertsChip } from './RailAlertsChip';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 
 import { tr, useStrings } from '../i18n';
@@ -59,7 +60,18 @@ interface JourneyStripData {
   finalWalkMin: number;
 }
 
-function buildJourneyStripData(legs: Leg[], walkMps: number): JourneyStripData {
+function buildJourneyStripData(rawLegs: Leg[], walkMps: number): JourneyStripData {
+  const legs =
+    rawLegs.length > 1
+      ? rawLegs.filter(
+          (leg) =>
+            !(
+              leg.mode === 'walk' &&
+              (leg.walkM ?? 0) <= 0 &&
+              (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+            ),
+        )
+      : rawLegs;
   const transitLegs: Leg[] = [];
   const transitIndices: number[] = [];
 
@@ -300,11 +312,12 @@ export const ConnectionCard = memo(function ConnectionCard({
           <Text style={[styles.departure, { color: departureColor }]}>
             {walkOnly ? s.connection.walkRoute : departureText}
           </Text>
-          <View style={styles.duration}>
-            <Clock3 size={14} color={scheme.onSecondaryContainer} />
-            <Text style={styles.durationText}>
-              {s.common.durMin(item.durationMin)}
-            </Text>
+          <View style={styles.scheduleRight}>
+            <RailAlertsChip connection={item} dimmed={dimmed} />
+            <View style={styles.duration}>
+              <Clock3 size={14} color={scheme.onSecondaryContainer} />
+              <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+            </View>
           </View>
         </View>
 
@@ -360,6 +373,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   pastCard: { backgroundColor: scheme.surfaceContainerLow },
+  scheduleRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   schedule: {
     flexDirection: 'row',
     flexWrap: 'wrap',

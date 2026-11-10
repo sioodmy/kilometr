@@ -8,7 +8,7 @@ export const de: ShareStrings = {
   departure: 'Abfahrt',
   from: 'Von',
   to: 'Nach',
-  duration: (n) => `${n} Min.`,
+  duration: (n) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} Min.`),
   transfers: (n) => (n === 0 ? 'Ohne Umstieg' : n === 1 ? '1 Umstieg' : `${n} Umstiege`),
   walk: 'Zu Fuß',
   walkDistance: (n) => `${n} m zu Fuß`,

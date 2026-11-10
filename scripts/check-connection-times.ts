@@ -1,9 +1,16 @@
+process.env.TZ = 'Europe/Warsaw';
+import { pl } from '../src/i18n/pl';
+import { en } from '../src/i18n/en';
+import { de } from '../src/i18n/de';
+import { uk } from '../src/i18n/uk';
 import assert from 'node:assert/strict';
 import {
   boardingDepartureMs,
   boardingDepartureSec,
+  legDurationMin,
   refreshConnectionTimes,
 } from '../src/services/routing/connectionTimes';
+import { predictDelaySec } from '../src/services/routing/delays';
 import type { Connection } from '../src/types/models';
 
 const now = new Date(2026, 9, 27, 11);
@@ -163,6 +170,16 @@ assert.ok((boardingDepartureMs(nightDelayed, midnight) - midnight.getTime()) / 6
 const tomorrow = { ...connection, departureSec: connection.departureSec + 86400 };
 assert.strictEqual(refreshConnectionTimes(tomorrow, new Map([['tram', 600]]), now), tomorrow);
 
+const directNight: Connection = {
+  ...overnight,
+  departureSec: 86700,
+  arrivalSec: 87600,
+  legs: [overnight.legs[1]],
+};
+const directNightDelayed = refreshConnectionTimes(directNight, new Map([['tram', 300]]), midnight);
+assert.equal(directNightDelayed.live, true);
+assert.equal(directNightDelayed.legs[0].departAt, '00:08');
+
 const legacy: Connection = {
   ...connection,
   legs: [
@@ -193,6 +210,74 @@ assert.equal(
   refreshConnectionTimes(unknown, new Map([['tram', 300]]), now).legs[0].scheduledDepartureSec,
   undefined,
 );
+
+// Czas trwania odcinka (np. pociąg Wrocław - Katowice 6 stacji ~133 min, a nie stopsCount*2 = 12 min)
+assert.equal(
+  legDurationMin({ departAt: '08:15', arriveAt: '10:28', stopsCount: 6 }),
+  133,
+);
+assert.equal(
+  legDurationMin({ departAt: '23:45', arriveAt: '01:15', stopsCount: 4 }),
+  90,
+);
+assert.equal(
+  legDurationMin({ departAt: '', arriveAt: '', scheduledDepartureSec: 36000, scheduledArrivalSec: 39600 }),
+  60,
+);
+assert.equal(
+  legDurationMin({ departAt: '', arriveAt: '', stopsCount: 5 }),
+  10,
+);
+
+// Opóźnienie pociągu nie może wygasać do 0 dla odjazdów za kilkadziesiąt minut (w przeciwieństwie do tramwajów miejskich)
+assert.equal(predictDelaySec(2580, 2700, 'board', 'train'), 2580);
+assert.equal(predictDelaySec(2580, 7200, 'arrive', 'train'), 2580);
+const futureTrainNow = new Date(2026, 9, 27, 9, 15); // 45 min przed odjazdem o 10:00 (36000)
+const trainConnection: Connection = {
+  ...connection,
+  legs: [
+    connection.legs[0],
+    {
+      ...connection.legs[1],
+      id: 'train-ic',
+      mode: 'train',
+      tripId: 'pl:PLK_IC_2026_107625',
+      line: 'IC 8308/9',
+    },
+    connection.legs[2],
+  ],
+};
+const delayedTrain = refreshConnectionTimes(
+  trainConnection,
+  new Map([['pl:PLK_IC_2026_107625', 2580]]),
+  futureTrainNow,
+);
+assert.equal(delayedTrain.live, true);
+assert.equal(delayedTrain.delayMin, 43);
+assert.equal(delayedTrain.legs[1].delaySec, 2580);
+assert.equal(delayedTrain.legs[1].departAt, '10:43');
+
+// Formatowanie czasu podróży (human readable dla >= 60 min)
+assert.equal(pl.common.durMin(25), "25 min");
+assert.equal(pl.common.durMin(59), "59 min");
+assert.equal(pl.common.durMin(60), "1h");
+assert.equal(pl.common.durMin(90), "1h 30m");
+assert.equal(pl.common.durMin(120), "2h");
+assert.equal(pl.common.durMin(125), "2h 5m");
+assert.equal(pl.common.durMin(133), "2h 13m");
+
+assert.equal(en.common.durMin(125), "2h 5m");
+assert.equal(de.common.durMin(125), "2h 5m");
+assert.equal(uk.common.durMin(125), "2 год 5 хв");
+assert.equal(uk.common.durMin(60), "1 год");
+
+assert.equal(pl.share.duration(125), "2h 5m");
+assert.equal(en.share.duration(125), "2h 5m");
+assert.equal(de.share.duration(125), "2h 5m");
+assert.equal(uk.share.duration(125), "2 год 5 хв");
+
+assert.equal(pl.landing.journeyDemo.duration(125), "2h 5m");
+
 console.log(
-  'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ i starsze plany',
+  'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ, pociągi i starsze plany',
 );

@@ -46,6 +46,12 @@ interface RouteMapProps {
   route: MapRoute | null;
   vehicle?: MapVehicle | null;
   selectedLegId?: string | null;
+  /** Wycięty fragment geometrii [lat, lon][] aktywnego etapu (np. odcinek kolejowy). */
+  focusCoords?: [number, number][] | null;
+  /** Zakres indeksów przystanków [startIdx, endIdx] aktywnego etapu w `leg.stops`. */
+  stopRange?: [number, number] | null;
+  /** Ograniczenie maksymalnego przybliżenia przy kadrowaniu aktywnego etapu. */
+  focusMaxZoom?: number | null;
   /**
    * Bazowy URL lokalnego serwera mapy. Gdy podany, kafle, glify i silnik
    * mapy idą z telefonu, więc mapa działa bez internetu.
@@ -142,6 +148,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     route,
     vehicle = null,
     selectedLegId = null,
+    focusCoords = null,
+    stopRange = null,
+    focusMaxZoom = null,
     offlineBase = null,
     padding,
     paddingBottom = 190,
@@ -218,7 +227,14 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     ref,
     () => ({
       setGeometry: (legId, coords, fit = false) =>
-        send({ t: 'geometry', legId, coords: toGeoJson(coords), approx: false, fit, pad: padRef.current }),
+        send({
+          t: 'geometry',
+          legId,
+          coords: toGeoJson(coords),
+          approx: false,
+          fit,
+          pad: padRef.current,
+        }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
       reload: restart,
     }),
@@ -240,9 +256,24 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     send({ t: 'vehicle', vehicle });
   }, [send, vehicle]);
 
+  const lastSelectKey = useRef('');
+  const sendSelect = useCallback(() => {
+    const key = `${selectedLegId ?? ''}:${focusCoords?.length ?? 0}:${focusCoords?.[0]?.[0] ?? ''}:${focusCoords?.[0]?.[1] ?? ''}:${stopRange?.join('-') ?? ''}:${focusMaxZoom ?? ''}:${resolvedPadding}`;
+    if (lastSelectKey.current === key) return;
+    lastSelectKey.current = key;
+    send({
+      t: 'select',
+      legId: selectedLegId,
+      focusCoords: focusCoords && focusCoords.length > 0 ? toGeoJson(focusCoords) : null,
+      stopRange: stopRange ?? null,
+      maxZoom: focusMaxZoom ?? null,
+      pad: padRef.current,
+    });
+  }, [focusCoords, focusMaxZoom, resolvedPadding, selectedLegId, send, stopRange]);
+
   useEffect(() => {
-    send({ t: 'select', legId: selectedLegId, pad: padRef.current });
-  }, [send, selectedLegId, resolvedPadding]);
+    sendSelect();
+  }, [sendSelect]);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -253,6 +284,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         return;
       }
       if (msg.t === 'ready') {
+        if (selectedLegId) {
+          sendSelect();
+        }
         onReady?.();
         return;
       }
@@ -276,7 +310,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         void Linking.openURL(msg.url).catch(() => {});
       }
     },
-    [onError, onLegTap, onReady, onStopTap, onTilesStatus],
+    [onError, onLegTap, onReady, onStopTap, onTilesStatus, selectedLegId, sendSelect],
   );
 
   return (
@@ -316,5 +350,5 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: scheme.surface },
-  web: { flex: 1, backgroundColor: scheme.surface },
+  web: { flex: 1, backgroundColor: 'transparent' },
 });

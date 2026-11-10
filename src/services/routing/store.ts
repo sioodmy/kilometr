@@ -1,5 +1,11 @@
 import { awaitImportSettled, importInProgress } from '../dataManager';
-import { getGtfsDb, getActiveServices, getNationalDb, getNationalActiveServices, isNationalDbSwapPending } from '../gtfsDatabase';
+import {
+  getActiveServices,
+  getNationalActiveServices,
+  isNationalDbSwapPending,
+  openGtfsDbHandle,
+  type GtfsDbHandle,
+} from '../gtfsDatabase';
 import { distanceMeters } from '../../gtfs/geo';
 import {
   BinaryReader,
@@ -63,7 +69,7 @@ interface Pattern {
  */
 export interface GtfsStoreBackend {
   /** Uchwyt bazy (aktywne miasto albo plik kilometr-gtfs-polska.db). */
-  getDb(): Promise<import('expo-sqlite').SQLiteDatabase>;
+  getDb(): Promise<GtfsDbHandle>;
   /** Serwisy aktywne w danym dniu (kalendarz + wyjątki). */
   getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>>;
   /** Czeka, aż bezpiecznie otwierać bazę (import / podmiana pliku). */
@@ -81,7 +87,7 @@ export interface GtfsStoreBackend {
 }
 
 const cityBackend = (): GtfsStoreBackend => ({
-  getDb: getGtfsDb,
+  getDb: () => openGtfsDbHandle(),
   getActiveServices,
   awaitReady: () => (importInProgress ? awaitImportSettled() : Promise.resolve()),
   isImporting: () => importInProgress,
@@ -95,9 +101,10 @@ const cityBackend = (): GtfsStoreBackend => ({
  * (getNationalDb sam czeka, aż bramka puszczona).
  */
 const polskaBackend = (): GtfsStoreBackend => ({
-  getDb: getNationalDb,
+  getDb: () => openGtfsDbHandle('national'),
   getActiveServices: getNationalActiveServices,
-  awaitReady: () => (isNationalDbSwapPending() ? getNationalDb().then(() => undefined) : Promise.resolve()),
+  awaitReady: () =>
+    isNationalDbSwapPending() ? openGtfsDbHandle('national').then(() => undefined) : Promise.resolve(),
   isImporting: () => false,
   cable: false,
   rustStopIndex: false,
@@ -150,7 +157,7 @@ export class LocalGtfsStore {
     this.backend = backend;
   }
 
-  private getDb(): Promise<import('expo-sqlite').SQLiteDatabase> {
+  private getDb(): Promise<GtfsDbHandle> {
     return this.backend.getDb();
   }
 
@@ -661,7 +668,7 @@ export class LocalGtfsStore {
   }
 
   /** Czy baza ma blob wzorca kursu (nowy builder); wynik cache'owany na sesję. */
-  private async hasTripBlobs(db: Awaited<ReturnType<typeof getGtfsDb>>): Promise<boolean> {
+  private async hasTripBlobs(db: GtfsDbHandle): Promise<boolean> {
     if (this.tripBlobSchema === null) {
       try {
         const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(trips)');
@@ -674,7 +681,7 @@ export class LocalGtfsStore {
   }
 
   /** Refy stopów: pozycja stop_id po `ORDER BY stop_id` (tak numeruje builder). */
-  private async getStopRefs(db: Awaited<ReturnType<typeof getGtfsDb>>): Promise<string[]> {
+  private async getStopRefs(db: GtfsDbHandle): Promise<string[]> {
     if (!this.stopRefsCache) {
       const rows = await db.getAllAsync<{ stop_id: string }>('SELECT stop_id FROM stops ORDER BY stop_id');
       this.stopRefsCache = rows.map((r) => r.stop_id);
@@ -688,7 +695,7 @@ export class LocalGtfsStore {
    * inna wersja danych) i wołający liczy po staremu.
    */
   private async loadFootpathsBlob(
-    db: Awaited<ReturnType<typeof getGtfsDb>>,
+    db: GtfsDbHandle,
   ): Promise<boolean> {
     const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
       'SELECT blob FROM footpaths WHERE id = 1',
@@ -733,7 +740,7 @@ export class LocalGtfsStore {
 
   /** Wczytuje stop_times porcjami do mapy kursów (nadpisuje wpisy). */
   private async loadStopTimesChunked(
-    db: Awaited<ReturnType<typeof getGtfsDb>>,
+    db: GtfsDbHandle,
     ids: string[],
   ): Promise<void> {
     const CHUNK = 400;

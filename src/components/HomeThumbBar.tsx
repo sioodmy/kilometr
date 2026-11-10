@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChevronRight, LocateFixed, MapPin, MapPinOff, Search, X } from './icons';
+import { HomeDockChips, type DockChip } from './HomeDockChips';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -12,6 +13,8 @@ interface HomeThumbBarProps {
   onOpenStart: () => void;
   onResetStart: () => void;
   gpsUnsupported?: boolean;
+  /** Skróty nad search barem: przypięta podróż i pociągi z biletem < 3 h. */
+  chips?: DockChip[];
 }
 
 export function HomeThumbBar({
@@ -21,6 +24,7 @@ export function HomeThumbBar({
   onOpenStart,
   onResetStart,
   gpsUnsupported = false,
+  chips = [],
 }: HomeThumbBarProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
@@ -28,6 +32,7 @@ export function HomeThumbBar({
   const OriginIcon = isCustomStart ? MapPin : gpsUnsupported ? MapPinOff : LocateFixed;
   return (
     <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <HomeDockChips chips={chips} />
       <View style={styles.bar}>
         <Pressable
           onPress={onOpenSearch}

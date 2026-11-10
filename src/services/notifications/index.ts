@@ -12,6 +12,10 @@ export {
 export { useNotificationPreferences } from './preferences';
 export { addTripResponseListener, getLastTripResponse, type TripResponse } from './response';
 export {
+  checkTicketCompensation,
+  startTicketCompensationMonitor,
+} from './ticketCompensation';
+export {
   getTrackedTripSync,
   acceptTransferAlternative,
   restoreTrackedTrip,

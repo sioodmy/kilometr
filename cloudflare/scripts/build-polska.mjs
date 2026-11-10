@@ -25,7 +25,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DATA = join(ROOT, 'data');
 const DIST = join(ROOT, 'dist', 'polska');
 const DB_FILE = join(DIST, 'kilometr-gtfs-polska.db');
 const DB_GZ_FILE = join(DIST, 'kilometr-gtfs-polska.db.gz');
@@ -44,7 +45,7 @@ const UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilome
 const PUBLIC_URL = process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app';
 /** Rewizja schematu bazy: podbicie wymusza re-download na telefonach
  *  (wersja z fingerprintu feedu nie zmienia się, dopóki PLK nie ruszy rozkładu). */
-const SCHEMA_REV = 2;
+const SCHEMA_REV = 4;
 
 const FORCE = new Set(process.argv.slice(2)).has('--force');
 
@@ -61,9 +62,14 @@ function parseCsvLine(line) {
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     if (c === '"') {
-      if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q;
-    } else if (c === ',' && !q) { out.push(cur); cur = ''; }
-    else cur += c;
+      if (q && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else q = !q;
+    } else if (c === ',' && !q) {
+      out.push(cur);
+      cur = '';
+    } else cur += c;
   }
   out.push(cur);
   return out;
@@ -73,7 +79,9 @@ function eachRow(content, fn) {
   const nl = content.indexOf('\n');
   let header = content.slice(0, nl === -1 ? undefined : nl);
   if (header.charCodeAt(0) === 0xfeff) header = header.slice(1);
-  const idx = Object.fromEntries(parseCsvLine(header.replace(/\r$/, '')).map((h, i) => [h.trim(), i]));
+  const idx = Object.fromEntries(
+    parseCsvLine(header.replace(/\r$/, '')).map((h, i) => [h.trim(), i]),
+  );
   let pos = nl === -1 ? content.length : nl + 1;
   const len = content.length;
   while (pos < len) {
@@ -89,12 +97,92 @@ function eachRow(content, fn) {
 }
 
 function normalizePolish(s) {
-  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'l').trim();
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/Ł/g, 'l')
+    .trim();
 }
 
 function hmsToSec(hms) {
-  const p = String(hms || '00:00:00').trim().split(':');
+  const p = String(hms || '00:00:00')
+    .trim()
+    .split(':');
   return (Number(p[0]) || 0) * 3600 + (Number(p[1]) || 0) * 60 + (Number(p[2]) || 0);
+}
+
+/* ─── Udogodnienia składu (vagonweb) ──────────────────────────────────── */
+
+/**
+ * Kolejność bitów w trip_amenities.bits. Musi być identyczna z
+ * RAIL_AMENITY_ORDER w src/services/railAmenities.ts oraz z UDOGODNIENIA_UI
+ * w scripts/vagonweb/scrape_vagonweb.py.
+ */
+const AMENITY_ORDER = [
+  'klimatyzacja',
+  'gniazdka_230V',
+  'gniazdka_usb',
+  'wifi',
+  'wagon_restauracyjny',
+  'bar',
+  'przewoz_rowerow',
+  'dostepny_wozkarze',
+  'miejsca_lezace',
+  'miejsca_sypialne',
+  'strefa_ciszy',
+];
+
+/**
+ * Kod przewoźnika vagonweb -> agency_id feedu PLK. Ta sama mapa jest
+ * w scripts/vagonweb/scrape_vagonweb.py (VAGONWEB_AGENCY).
+ */
+const VAGONWEB_AGENCY = {
+  PKPIC: 'IC',
+  PREG: 'PR',
+  RJPL: 'RJ',
+  LEPL: 'LE',
+  SKMWA: 'SKM',
+  KSL: 'KŚ',
+  SKPL: 'SKPL',
+};
+
+function encodeAmenities(keys) {
+  let bits = 0;
+  for (const key of keys || []) {
+    const i = AMENITY_ORDER.indexOf(key);
+    if (i >= 0) bits |= 1 << i;
+  }
+  return bits;
+}
+
+/**
+ * Wczytuje cloudflare/data/rail-amenities.json (wyjście scrapera vagonweb)
+ * i zwraca mapę `agency|numer` -> { bits, numbers }. Brak pliku nie wywraca
+ * buildu: baza powstaje wtedy bez tabeli udogodnień.
+ */
+function readAmenitiesFile() {
+  const file = join(DATA, 'rail-amenities.json');
+  if (!existsSync(file)) {
+    log('brak data/rail-amenities.json - buduję bez udogodnień składu');
+    return null;
+  }
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  const byKey = new Map();
+  for (const entry of raw.pociagi || []) {
+    const agency = VAGONWEB_AGENCY[entry.agency] || entry.agency || '';
+    const number = String(entry.numer || '').trim();
+    if (!agency || !number) continue;
+    const bits = encodeAmenities(entry.udogodnienia);
+    if (!bits) continue;
+    byKey.set(`${agency}|${number}`, {
+      bits,
+      numbers: entry.liczby && Object.keys(entry.liczby).length ? JSON.stringify(entry.liczby) : '',
+    });
+  }
+  log(`udogodnienia: ${byKey.size} pociągów z pliku (${raw.rok ?? '?'})`);
+  return byKey;
 }
 
 /* ─── HTTP ────────────────────────────────────────────────────────────── */
@@ -165,6 +253,7 @@ CREATE TABLE stop_times (
   dep_sec INTEGER NOT NULL,
   seq INTEGER NOT NULL,
   platform TEXT NOT NULL DEFAULT '',
+  track TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (trip_id, seq)
 ) WITHOUT ROWID;
 CREATE TABLE calendar (
@@ -186,6 +275,11 @@ CREATE TABLE calendar_dates (
 );
 CREATE INDEX idx_caldate_date ON calendar_dates (date);
 CREATE TABLE meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+CREATE TABLE trip_amenities (
+  trip_id TEXT PRIMARY KEY NOT NULL,
+  bits INTEGER NOT NULL,
+  numbers TEXT NOT NULL DEFAULT ''
+);
 `;
 
 /* ─── Build ───────────────────────────────────────────────────────────── */
@@ -196,10 +290,17 @@ async function main() {
   // Skip buildu, gdy feed bez zmian i manifest już leży na R2 (jak per-miasto).
   const fingerprint = await headVersion(FEED_URL);
   const todayCompact = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const version = `${todayCompact}-plk${createHash('sha256').update(fingerprint || String(Date.now())).digest('hex').slice(0, 8)}r${SCHEMA_REV}`;
+  const version = `${todayCompact}-plk${createHash('sha256')
+    .update(fingerprint || String(Date.now()))
+    .digest('hex')
+    .slice(0, 8)}r${SCHEMA_REV}`;
   if (!FORCE) {
     try {
-      const remote = await (await fetch(`${PUBLIC_URL}/polska/manifest.json`, { headers: { Accept: 'application/json' } })).json();
+      const remote = await (
+        await fetch(`${PUBLIC_URL}/polska/manifest.json`, {
+          headers: { Accept: 'application/json' },
+        })
+      ).json();
       if (remote?.version === version) {
         log(`feed bez zmian (${version}), skip.`);
         process.exit(2);
@@ -250,13 +351,21 @@ async function main() {
     const type = r[idx.location_type];
     const parent = r[idx.parent_station] || id;
     if (type === '1') {
-      stations.set(id, { name: r[idx.stop_name], lat: Number(r[idx.stop_lat]), lon: Number(r[idx.stop_lon]) });
+      stations.set(id, {
+        name: r[idx.stop_name],
+        lat: Number(r[idx.stop_lat]),
+        lon: Number(r[idx.stop_lon]),
+      });
       parentOf.set(id, id);
     } else {
       parentOf.set(id, parent);
       if (r[idx.platform_code]) platformCode.set(id, r[idx.platform_code]);
       if (!stations.has(parent)) {
-        stations.set(parent, { name: r[idx.stop_name], lat: Number(r[idx.stop_lat]), lon: Number(r[idx.stop_lon]) });
+        stations.set(parent, {
+          name: r[idx.stop_name],
+          lat: Number(r[idx.stop_lat]),
+          lon: Number(r[idx.stop_lon]),
+        });
       }
     }
   });
@@ -312,12 +421,15 @@ async function main() {
       list = [];
       timesByTrip.set(tid, list);
     }
+    const platCode = platformCode.get(stopRaw) || '';
+    const trackFromStop = platCode.match(/t\.\s*(\S+)/i)?.[1] || '';
     list.push({
       seq: Number(r[idx.stop_sequence]) || 0,
       stopId: parent,
       arr,
       dep,
-      platform: r[idx.platform] || platformCode.get(stopRaw) || '',
+      platform: r[idx.platform] || platCode || '',
+      track: (idx.track !== undefined && idx.track >= 0 ? r[idx.track] : '') || trackFromStop || '',
     });
   });
 
@@ -327,14 +439,18 @@ async function main() {
   db.exec(SCHEMA_SQL);
   db.exec('PRAGMA synchronous = OFF;');
 
-  const insStop = db.prepare('INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)');
+  const insStop = db.prepare(
+    'INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES (?, ?, ?, ?, ?, ?)',
+  );
   db.exec('BEGIN');
   for (const [id, s] of stations) {
     insStop.run(`pl:${id}`, '', s.name, s.lat, s.lon, normalizePolish(s.name));
   }
   db.exec('COMMIT');
 
-  const insRoute = db.prepare('INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, 2)');
+  const insRoute = db.prepare(
+    'INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES (?, ?, ?, 2)',
+  );
   db.exec('BEGIN');
   for (const [id, r] of railRoutes) {
     insRoute.run(`pl:${id}`, r.short, r.long);
@@ -358,8 +474,12 @@ async function main() {
       set.add(r[idx.date]);
     }
   });
-  const insCal = db.prepare('INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, 0, 0, 0, 0, 0, 0, 0, ?, ?)');
-  const insCalDate = db.prepare('INSERT OR REPLACE INTO calendar_dates (service_id, date, exc) VALUES (?, ?, 1)');
+  const insCal = db.prepare(
+    'INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES (?, 0, 0, 0, 0, 0, 0, 0, ?, ?)',
+  );
+  const insCalDate = db.prepare(
+    'INSERT OR REPLACE INTO calendar_dates (service_id, date, exc) VALUES (?, ?, 1)',
+  );
   db.exec('BEGIN');
   for (const [sid, dates] of serviceDates) {
     const sorted = [...dates].sort();
@@ -369,8 +489,12 @@ async function main() {
   db.exec('COMMIT');
   log(`serwisy: ${serviceDates.size}`);
 
-  const insTrip = db.prepare('INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape, train_number, train_name, category, agency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  const insTime = db.prepare('INSERT OR REPLACE INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq, platform) VALUES (?, ?, ?, ?, ?, ?)');
+  const insTrip = db.prepare(
+    'INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape, train_number, train_name, category, agency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  const insTime = db.prepare(
+    'INSERT OR REPLACE INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq, platform, track) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  );
   let stopTimesCount = 0;
   db.exec('BEGIN');
   for (const [tid, trip] of trips) {
@@ -378,18 +502,71 @@ async function main() {
     if (!list || list.length < 2) continue;
     list.sort((a, b) => a.seq - b.seq);
     const route = railRoutes.get(trip.routeId);
-    insTrip.run(`pl:${tid}`, `pl:${trip.routeId}`, `pl:${trip.serviceId}`, trip.headsign, trip.dir, `pl:${trip.shapeId}`, trip.num, trip.name, trip.cat, route?.agency ?? '');
+    insTrip.run(
+      `pl:${tid}`,
+      `pl:${trip.routeId}`,
+      `pl:${trip.serviceId}`,
+      trip.headsign,
+      trip.dir,
+      `pl:${trip.shapeId}`,
+      trip.num,
+      trip.name,
+      trip.cat,
+      route?.agency ?? '',
+    );
     for (const row of list) {
-      insTime.run(`pl:${tid}`, `pl:${row.stopId}`, row.arr, row.dep, row.seq, row.platform);
+      insTime.run(
+        `pl:${tid}`,
+        `pl:${row.stopId}`,
+        row.arr,
+        row.dep,
+        row.seq,
+        row.platform,
+        row.track,
+      );
       stopTimesCount++;
     }
   }
   db.exec('COMMIT');
   log(`stop_times: ${stopTimesCount}`);
 
+  // 5b. Udogodnienia składu: dopasowanie do kursów po agency + numerze pociągu.
+  //     Numer w vagonweb bywa złożony ("113/41006/7"), w feedzie PLK jest
+  //     pierwszy człon, więc próbujemy też wariantów (jak trainNumberVariants).
+  const amenities = readAmenitiesFile();
+  if (amenities) {
+    const insAmenity = db.prepare(
+      'INSERT OR REPLACE INTO trip_amenities (trip_id, bits, numbers) VALUES (?, ?, ?)',
+    );
+    let matched = 0;
+    db.exec('BEGIN');
+    for (const [tid, trip] of trips) {
+      const list = timesByTrip.get(tid);
+      if (!list || list.length < 2) continue;
+      const route = railRoutes.get(trip.routeId);
+      const agency = route?.agency ?? '';
+      if (!agency || !trip.num) continue;
+      const variants = new Set([trip.num]);
+      for (const part of String(trip.num).split('/')) {
+        if (part.trim()) variants.add(part.trim());
+      }
+      for (const num of variants) {
+        const hit = amenities.get(`${agency}|${num}`);
+        if (!hit) continue;
+        insAmenity.run(`pl:${tid}`, hit.bits, hit.numbers);
+        matched++;
+        break;
+      }
+    }
+    db.exec('COMMIT');
+    log(`udogodnienia: dopasowano ${matched} kursów`);
+  }
+
   // 6. Wagi stacji (ranking wyszukiwarki: liczba odjazdów).
   db.exec('PRAGMA synchronous = NORMAL;');
-  db.exec('UPDATE stops SET weight = agg.c FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg WHERE agg.stop_id = stops.stop_id');
+  db.exec(
+    'UPDATE stops SET weight = agg.c FROM (SELECT stop_id, COUNT(*) AS c FROM stop_times GROUP BY stop_id) AS agg WHERE agg.stop_id = stops.stop_id',
+  );
 
   // 6b. Geometria torów: shapes.txt feedu PLK (~1.5 m punktów). Jedna krotka
   // na shape_id, punkty spakowane jako pary f32 LE (lat, lon) w kolejności
@@ -450,8 +627,12 @@ async function main() {
   db.exec('ALTER TABLE trips ADD COLUMN dep_blob BLOB');
   {
     const refOf = new Map();
-    db.prepare('SELECT stop_id FROM stops ORDER BY stop_id').all().forEach((r, i) => refOf.set(r.stop_id, i));
-    const upd = db.prepare('UPDATE trips SET seq_blob = ?, arr_blob = ?, dep_blob = ?, start_sec = ?, end_sec = ? WHERE trip_id = ?');
+    db.prepare('SELECT stop_id FROM stops ORDER BY stop_id')
+      .all()
+      .forEach((r, i) => refOf.set(r.stop_id, i));
+    const upd = db.prepare(
+      'UPDATE trips SET seq_blob = ?, arr_blob = ?, dep_blob = ?, start_sec = ?, end_sec = ? WHERE trip_id = ?',
+    );
     let curId = null;
     let seqs = [];
     let arrs = [];
@@ -478,7 +659,9 @@ async function main() {
       maxArr = -Infinity;
     };
     db.exec('BEGIN');
-    for (const r of db.prepare('SELECT trip_id, stop_id, arr_sec, dep_sec FROM stop_times ORDER BY trip_id, seq').iterate()) {
+    for (const r of db
+      .prepare('SELECT trip_id, stop_id, arr_sec, dep_sec FROM stop_times ORDER BY trip_id, seq')
+      .iterate()) {
       if (r.trip_id !== curId) {
         flush();
         curId = r.trip_id;
@@ -511,13 +694,18 @@ async function main() {
       const dLon = ((lon2 - lon1) * Math.PI) / 180;
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return 6371000 * c;
     };
     const stopRows = db.prepare('SELECT stop_id, lat, lon FROM stops ORDER BY rowid').all();
     const refOf = new Map();
-    db.prepare('SELECT stop_id FROM stops ORDER BY stop_id').all().forEach((r, i) => refOf.set(r.stop_id, i));
+    db.prepare('SELECT stop_id FROM stops ORDER BY stop_id')
+      .all()
+      .forEach((r, i) => refOf.set(r.stop_id, i));
     const grid = new Map();
     for (const s of stopRows) {
       const key = `${Math.floor(s.lon / GRID_DEG_LON)},${Math.floor(s.lat / GRID_DEG_LAT)}`;
@@ -545,7 +733,10 @@ async function main() {
               edges.push([
                 refOf.get(s2.stop_id),
                 Math.round(dist),
-                Math.max(MIN_FOOTPATH_SEC, Math.round((dist * WALK_DETOUR_FACTOR) / WALK_SPEED_MPS)),
+                Math.max(
+                  MIN_FOOTPATH_SEC,
+                  Math.round((dist * WALK_DETOUR_FACTOR) / WALK_SPEED_MPS),
+                ),
               ]);
             }
           }
@@ -559,15 +750,22 @@ async function main() {
     for (const [, edges] of parts) words += 2 + edges.length * 3;
     const buf = Buffer.alloc(words * 4);
     let w = 0;
-    buf.writeUInt32LE(0x464f4f54, w); w += 4;
-    buf.writeUInt32LE(stopRows.length, w); w += 4;
+    buf.writeUInt32LE(0x464f4f54, w);
+    w += 4;
+    buf.writeUInt32LE(stopRows.length, w);
+    w += 4;
     for (const [fromRef, edges] of parts) {
-      buf.writeUInt32LE(fromRef, w); w += 4;
-      buf.writeUInt32LE(edges.length, w); w += 4;
+      buf.writeUInt32LE(fromRef, w);
+      w += 4;
+      buf.writeUInt32LE(edges.length, w);
+      w += 4;
       for (const [toRef, dist, dur] of edges) {
-        buf.writeUInt32LE(toRef, w); w += 4;
-        buf.writeUInt32LE(dist, w); w += 4;
-        buf.writeUInt32LE(dur, w); w += 4;
+        buf.writeUInt32LE(toRef, w);
+        w += 4;
+        buf.writeUInt32LE(dist, w);
+        w += 4;
+        buf.writeUInt32LE(dur, w);
+        w += 4;
       }
     }
     db.exec('CREATE TABLE footpaths (id INTEGER PRIMARY KEY, blob BLOB NOT NULL)');
@@ -587,10 +785,17 @@ async function main() {
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
-  if (!vals.includes('ok')) throw new Error('integrity_check NIE przeszedł: ' + JSON.stringify(chk));
-  const guard = db.prepare('SELECT (SELECT COUNT(*) FROM stops) AS s, (SELECT COUNT(*) FROM trips) AS t, (SELECT COUNT(*) FROM stop_times) AS st').get();
+  if (!vals.includes('ok'))
+    throw new Error('integrity_check NIE przeszedł: ' + JSON.stringify(chk));
+  const guard = db
+    .prepare(
+      'SELECT (SELECT COUNT(*) FROM stops) AS s, (SELECT COUNT(*) FROM trips) AS t, (SELECT COUNT(*) FROM stop_times) AS st',
+    )
+    .get();
   if (!guard || guard.s <= 0 || guard.t <= 0 || guard.st <= 0) {
-    throw new Error(`pusta baza (stops=${guard?.s} trips=${guard?.t} times=${guard?.st}): nie publikuję.`);
+    throw new Error(
+      `pusta baza (stops=${guard?.s} trips=${guard?.t} times=${guard?.st}): nie publikuję.`,
+    );
   }
   const stats = {
     stops: guard.s,
@@ -608,7 +813,9 @@ async function main() {
   writeFileSync(DB_GZ_FILE, gzBuf);
   const gzSize = statSync(DB_GZ_FILE).size;
   const gzSha = createHash('sha256').update(gzBuf).digest('hex');
-  log(`  raw: ${(uncompressedSize / 1048576).toFixed(1)} MB -> gz: ${(gzSize / 1048576).toFixed(1)} MB`);
+  log(
+    `  raw: ${(uncompressedSize / 1048576).toFixed(1)} MB -> gz: ${(gzSize / 1048576).toFixed(1)} MB`,
+  );
 
   const manifest = {
     version,
@@ -635,7 +842,12 @@ async function main() {
   log(`manifest: version=${version} gz=${(gzSize / 1048576).toFixed(1)} MB`);
 }
 
-main().catch((err) => {
-  console.error('[polska] build failed:', err);
-  process.exit(1);
-});
+// Eksporty dla testów; uruchomienie buildu tylko przy bezpośrednim wywołaniu.
+export { AMENITY_ORDER, VAGONWEB_AGENCY, encodeAmenities };
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[polska] build failed:', err);
+    process.exit(1);
+  });
+}

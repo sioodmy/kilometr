@@ -18,11 +18,14 @@
  *                                 wymaga nagłówka X-Proxy-Token, cache 120 s -
  *                                 aplikacja tego NA RAZIE nie woła)
  * - GET /api/kd/schedule       → PDP /schedules (cache 1 h, jw.)
+ * - GET /api/rail/delays       → live opóźnienia i perony PKP PLK z mkuran.pl (Edge cache 30s)
  * - GET /health
  *
  * UWAGA: klucz PDP_API_KEY jest sekretem Workera (`wrangler secret put`),
  * nigdy nie trafia do repo ani do aplikacji mobilnej.
  */
+
+import { handleRailDelays } from './railDelays';
 
 export interface Env {
   TIMETABLE_BUCKET: R2Bucket;
@@ -33,7 +36,23 @@ export interface Env {
 }
 
 /** Miasta z buildami w R2. Nowe miasto = dopisz slug + workflow z --city. */
-const CITIES = ['wroclaw', 'krakow', 'gzm', 'warszawa', 'poznan', 'trojmiasto', 'lodz', 'szczecin', 'kielce', 'olsztyn', 'bialystok', 'opole', 'rzeszow', 'lublin', 'radom'] as const;
+const CITIES = [
+  'wroclaw',
+  'krakow',
+  'gzm',
+  'warszawa',
+  'poznan',
+  'trojmiasto',
+  'lodz',
+  'szczecin',
+  'kielce',
+  'olsztyn',
+  'bialystok',
+  'opole',
+  'rzeszow',
+  'lublin',
+  'radom',
+] as const;
 
 /** Dataset ogólnopolski (baza kolejowa), nie miasto: brak map i disruptów. */
 const POLSKA = 'polska' as const;
@@ -108,10 +127,20 @@ export default {
     const url = new URL(req.url);
 
     // HEAD działa jak GET (Runtime sam ucina body) - klient sprawdza rozmiar/ETag.
-    if (req.method !== 'GET' && req.method !== 'HEAD') return json({ error: 'method-not-allowed' }, 405);
+    if (req.method !== 'GET' && req.method !== 'HEAD')
+      return json({ error: 'method-not-allowed' }, 405);
 
     if (url.pathname === '/health') {
-      return json({ ok: true, service: 'kilometr-timetable', ts: new Date().toISOString(), cities: [...CITIES] });
+      return json({
+        ok: true,
+        service: 'kilometr-timetable',
+        ts: new Date().toISOString(),
+        cities: [...CITIES],
+      });
+    }
+
+    if (url.pathname === '/api/rail/delays') {
+      return handleRailDelays(req, ctx);
     }
 
     // Ścieżki per-miasto: /{miasto}/manifest.json, /{miasto}/disruptions.json, /{miasto}/stop-hints.json, /{miasto}/pois.json.gz, /{miasto}/db/..., /maps/{miasto}-tiles.ktp
@@ -125,7 +154,12 @@ export default {
         return serveDisruptions(env, disruptionsKeyFor(city));
       }
       if (rest === '/stop-hints.json') {
-        return serveObject(env, stopHintsKeyFor(city), 'application/json; charset=utf-8', 'stop-hints');
+        return serveObject(
+          env,
+          stopHintsKeyFor(city),
+          'application/json; charset=utf-8',
+          'stop-hints',
+        );
       }
       if (rest === dbPathFor(city)) {
         return serveDb(req, env, dbKeyFor(city));
@@ -138,12 +172,22 @@ export default {
       }
     }
     const mapMatch = /^\/maps\/([a-z]+)-tiles\.ktp$/.exec(url.pathname);
-    if (mapMatch && (CITIES as readonly string[]).includes(mapMatch[1])) {
-      return serveObject(env, mapPackKeyFor(mapMatch[1]), 'application/octet-stream', 'map-tiles.yml');
+    if (mapMatch && (CITIES as readonly string[]).includes(mapMatch[1] as (typeof CITIES)[number])) {
+      return serveObject(
+        env,
+        mapPackKeyFor(mapMatch[1]),
+        'application/octet-stream',
+        'map-tiles.yml',
+      );
     }
 
     if (url.pathname === '/api/kd/departures' || url.pathname === '/api/kd/schedule') {
-      return proxyPdp(req, env, ctx, url.pathname === '/api/kd/departures' ? 'operations' : 'schedules');
+      return proxyPdp(
+        req,
+        env,
+        ctx,
+        url.pathname === '/api/kd/departures' ? 'operations' : 'schedules',
+      );
     }
 
     return json({ error: 'not-found' }, 404);
@@ -154,7 +198,10 @@ async function serveManifest(env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
-      { error: 'not-built-yet', hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).' },
+      {
+        error: 'not-built-yet',
+        hint: 'Build jeszcze nie wystartował. Odpal workflow timetable.yml (workflow_dispatch).',
+      },
       404,
     );
   }
@@ -187,7 +234,10 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
   const head = await env.TIMETABLE_BUCKET.head(key);
   if (!head) {
     return json(
-      { error: 'not-built-yet', hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.' },
+      {
+        error: 'not-built-yet',
+        hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.',
+      },
       404,
     );
   }
@@ -207,7 +257,10 @@ async function serveDb(req: Request, env: Env, key: string): Promise<Response> {
     : await env.TIMETABLE_BUCKET.get(key);
   if (!obj) {
     return json(
-      { error: 'not-built-yet', hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.' },
+      {
+        error: 'not-built-yet',
+        hint: 'Baza SQLite jeszcze nie istnieje w R2. Odpal timetable.yml.',
+      },
       404,
     );
   }
@@ -273,7 +326,10 @@ async function proxyPdp(
   const proxyToken = env.PDP_PROXY_TOKEN;
   if (!proxyToken) {
     return json(
-      { error: 'pdp-proxy-disabled', hint: 'Ustaw PDP_PROXY_TOKEN w Workerze, żeby włączyć proxy.' },
+      {
+        error: 'pdp-proxy-disabled',
+        hint: 'Ustaw PDP_PROXY_TOKEN w Workerze, żeby włączyć proxy.',
+      },
       503,
     );
   }
@@ -283,7 +339,10 @@ async function proxyPdp(
 
   const key = env.PDP_API_KEY;
   if (!key) {
-    return json({ error: 'pdp-not-configured', hint: 'Klucz PDP_API_KEY nie jest ustawiony w Workerze.' }, 503);
+    return json(
+      { error: 'pdp-not-configured', hint: 'Klucz PDP_API_KEY nie jest ustawiony w Workerze.' },
+      503,
+    );
   }
 
   const inUrl = new URL(req.url);

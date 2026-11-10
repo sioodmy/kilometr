@@ -4,6 +4,17 @@ import type { Strings } from './pl';
 import { en as landing } from './landing/en';
 import { en as share } from './share/en';
 
+function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 min";
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${rounded} min`;
+}
+
 export const en: Strings = {
   landing,
   share,
@@ -49,8 +60,7 @@ export const en: Strings = {
     changedBody: (line: string, stop: string) => `Transfer to ${line} at ${stop}.`,
     noAlternative: 'No other route is available right now. We will check again shortly.',
     conductorTitle: 'Missed your train',
-    conductorBody:
-      "Tell the conductor you are missing your connection. Long-distance tickets stay valid according to the operator's terms.",
+    conductorBody: 'Tell the train crew you plan to change trains',
     nextTrainLabel: 'Next train',
     nextTrainAt: (time: string) => `departs at ${time}`,
 
@@ -104,7 +114,7 @@ export const en: Strings = {
     now: 'Now',
     today: 'Today',
     tomorrow: 'Tomorrow',
-    durMin: (n: number) => `${n} min`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `in ${n} min`,
     departNow: 'due',
     departAgo: (n: number) => `${n} min ago`,
@@ -133,9 +143,22 @@ export const en: Strings = {
     savedTitle: 'Saved places',
     editSavedA11y: 'Edit saved places',
     editCard: 'Edit',
+    tabRecent: 'Recent connections',
+    tabSaved: 'Your routes',
     historyTitle: 'Recent places',
     historyEmptyTitle: 'No recent places',
     historyEmptyBody: 'Search a connection and it will show up here as a quick destination.',
+    savedRoutesEmptyTitle: 'No saved routes',
+    savedRoutesEmptyBody: 'Track a connection or attach a rail ticket, and it lands here.',
+    routeActive: 'En route',
+    ticketAttachedA11y: 'Rail ticket saved',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Pinned trip to ${title}${time ? `, ${time}` : ''}. Tap to open.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Train to ${title}, departs ${time}. Tap to open.`,
+    removeRouteA11y: (title: string) => `Remove connection to ${title} from your routes`,
+    pinRouteA11y: (title: string) => `Pin connection to ${title} to your routes`,
+    unpinRouteA11y: (title: string) => `Unpin connection to ${title} from your routes`,
     openConnA11y: (title: string, label: string) => `Open connection to ${title}, ${label}`,
     gpsTitle: 'My location (GPS)',
     locationFallback: 'Your location',
@@ -162,8 +185,6 @@ export const en: Strings = {
     unsupportedActionShort: 'Pick start',
     unsupportedSwitchCity: (city: string) => `Switch to ${city}`,
     unsupportedSwitchCityA11y: (city: string) => `Switch city to ${city}`,
-    unsupportedNearestStation: 'From the nearest railway station',
-    unsupportedNearestStationA11y: 'Show trains from the nearest railway station',
     pickStart: 'Pick a start point',
     gpsBlockedTitle: 'GPS start unavailable',
     gpsBlockedBody: (city: string, supported: string) =>
@@ -451,6 +472,7 @@ export const en: Strings = {
     needDownload:
       'This city has no timetable on the phone yet. Download it under Timetable and maps.',
     changeAction: 'Change',
+    downloadAction: 'Download timetable',
     selectTitle: 'Select city',
     selectSub: 'Choose the transit area you want to travel in.',
     searchPlaceholder: 'City or operator',
@@ -577,7 +599,8 @@ export const en: Strings = {
       `${reason}. The app fetches a ready database from the Kilometr server, or the classic way from the city’s open data.`,
     downloadFailFallback: 'Try again in a moment.',
     railTitle: 'National rail timetable',
-    railHint: 'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
+    railHint:
+      'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
     railReady: (date: string) => `Downloaded (valid until ${date})`,
     railEmpty: 'Not downloaded',
     railDownload: 'Download',
@@ -597,7 +620,7 @@ export const en: Strings = {
         : `The timetable was downloaded recently. Another full download will be available in ${hours} h.`,
     diagTitle: 'Data diagnostics',
     diagHint:
-      'Checks the timetable database on the phone. Copy the result when reporting a problem.',
+      'Checks the timetable, rail, offline map and live sources. Copy the result when reporting a problem.',
     diagRun: 'Check data',
     diagRerun: 'Check again',
     diagRunning: 'Checking…',
@@ -628,10 +651,28 @@ export const en: Strings = {
       days <= 1 ? 'Timetable expires tomorrow' : `Timetable expires in ${days} days`,
     diagCalendarServices: (n: number) => `Active services today: ${n}`,
     diagSearch: 'Search',
-    diagSearchOk: (weighted: number, pois: number) =>
-      `Ranking ready (${weighted} stops) • POIs: ${pois}`,
+    diagSearchOk: (weighted: number, pois: number, addresses: number) =>
+      `Ranking ready (${weighted === 1 ? '1 stop' : `${weighted} stops`}) • POIs: ${pois} • Addresses: ${addresses}`,
     diagSearchWeights: 'Suggestion ranking not computed',
-    diagSearchPois: 'No POI points. Addresses need internet.',
+    diagSearchPois: 'No POI points',
+    diagSearchNoAddresses: 'No address index. Address search needs internet.',
+    diagRail: 'National rail',
+    diagRailNone: 'Not downloaded (journeys between cities need internet)',
+    diagRailLine: (version: string, to: string | null) =>
+      to ? `Version ${version}, timetable to ${to}` : `Version ${version}`,
+    diagRailOutside: 'Rail timetable has expired',
+    diagRailExpiring: (days: number) =>
+      days <= 1 ? 'Rail timetable expires tomorrow' : `Rail timetable expires in ${days} days`,
+    diagMap: 'Offline map',
+    diagMapNone: 'Not downloaded (map needs internet)',
+    diagMapReady: (mb: string) => `Tile pack ready: ${mb} MB`,
+    diagMapInvalid: 'Tile pack damaged. Download the map again.',
+    diagLive: 'Live sources',
+    diagLiveNone: 'No measurements in this session',
+    diagLiveOkLine: (source: string, at: string) => `${source}: OK (${at})`,
+    diagLiveRecoveredLine: (source: string, at: string) => `${source}: working again (${at})`,
+    diagLiveErrLine: (source: string, error: string) => `${source}: error, ${error}`,
+    diagLiveNoAnswer: (source: string) => `${source}: no response`,
     diagCopy: 'Copy report',
     diagCopyA11y: 'Copy diagnostics report to clipboard',
     diagCopied: 'Report copied to clipboard',
@@ -641,7 +682,15 @@ export const en: Strings = {
     diagReportCity: 'City',
     diagReportTimetable: 'Timetable',
     diagReportImported: 'Downloaded',
+    diagReportLastCheck: 'Checked',
+    diagReportRemote: 'Available',
+    diagReportFeeds: 'Feeds',
     diagReportDb: 'Database',
+    diagReportRail: 'Rail',
+    diagReportMap: 'Map',
+    diagReportLive: 'Live',
+    diagReportNotDownloaded: 'not downloaded',
+    diagReportMapInvalid: 'damaged',
     diagReportUnknown: 'unknown',
     transfersTitle: 'Max transfers',
     transfersHintShort: 'Upper limit on one route.',
@@ -1174,7 +1223,7 @@ export const en: Strings = {
     arrivalShort: (time: string) => `by ${time}`,
   },
   routesFilters: {
-    title: "Filters",
+    title: 'Filters',
     filterButton: 'Filters',
     filterA11y: 'Route filters',
     vehiclesSection: 'Transit mode',
@@ -1211,7 +1260,7 @@ export const en: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, ride time ${dur} min, departure ${depAt}, arrival ${arrAt}, ${via}${lines ? `, lines ${lines}` : ''}`,
+      `${dep}, ride time ${formatDuration(dur)}, departure ${depAt}, arrival ${arrAt}, ${via}${lines ? `, lines ${lines}` : ''}`,
     walkRoute: 'walking route',
   },
   vehiclePos: {
@@ -1231,6 +1280,8 @@ export const en: Strings = {
     noData: 'No route data',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the station list.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} between ${from} and ${to}`,
     fromPrefix: 'from ',
     toPrefix: 'to ',
@@ -1242,13 +1293,18 @@ export const en: Strings = {
     modeCable: 'Cable car',
     modeVehicle: 'Vehicle',
     currentLocation: (stop: string) => `Current location: ${stop}`,
+    waitingAtTerminus: 'Waiting to leave the terminus',
     liveTracking: 'Live tracking',
     transfer: 'Transfer',
     transferMinutes: (min: number) => `Transfer · ~${min} min`,
     nearStop: (mode: string, stop: string) => `${mode} near stop: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
+      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${formatDuration(mins)} • ${open ? 'collapse' : 'expand'} stops`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'station' : 'stations'} • ~${formatDuration(mins)} • ${open ? 'collapse' : 'expand'} stations`,
     platformPeron: (code: string) => `Platform ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Platform ${code}, track ${track}`,
+    platformTrack: (track: string) => `Track ${track}`,
     platformPole: (code: string) => `Pole ${code}`,
     platformBay: (code: string) => `Bay ${code}`,
     platformPst: (code: string) => `PST pole ${code}`,
@@ -1311,9 +1367,25 @@ export const en: Strings = {
     startAtStation: 'Show trains from this station',
   },
 
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Air conditioning',
+    gniazdka_230V: (_n?: number) => 'Power sockets',
+    gniazdka_usb: (_n?: number) => 'USB ports',
+    wifi: (_n?: number) => 'Wi-Fi',
+    wagon_restauracyjny: (_n?: number) => 'Dining car',
+    bar: (_n?: number) => 'Bar',
+    przewoz_rowerow: (n?: number) => (n ? `Bikes (${n})` : 'Bike carriage'),
+    dostepny_wozkarze: (_n?: number) => 'Wheelchair accessible',
+    miejsca_lezace: (_n?: number) => 'Couchettes',
+    miejsca_sypialne: (_n?: number) => 'Sleepers',
+    strefa_ciszy: (_n?: number) => 'Quiet zone',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Onboard: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',
+    disruptionsBadgeA11y: 'Disruptions on route',
   },
 
   data: {
@@ -1375,6 +1447,8 @@ export const en: Strings = {
     directionTo: (dir: string) => `Towards ${dir}`,
     platform: (num: string) => `platform ${num}`,
     platformPeron: (num: string) => `platform ${num}`,
+    platformPeronTrack: (num: string, track: string) => `platform ${num}, track ${track}`,
+    platformTrack: (track: string) => `track ${track}`,
     walkApproach: (min: number) => `~${min} min walk`,
     rideLength: (min: number) => `${min} min ride`,
     departAt: (at: string) => `departs ${at}`,
@@ -1385,6 +1459,9 @@ export const en: Strings = {
     transfers: (n: number) => `${n} ${n === 1 ? 'change' : 'changes'}`,
     newDeparture: (at: string) => `new departure ${at}`,
     delayTitle: (line: string, eta: string) => `Delayed • ${line} • ${eta}`,
+    compensationTitle: 'Train delay compensation',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Train ${train}` : 'The train'} was more than ${thresholdMin} minutes late. You can claim a ${percent}% refund of the ticket price.`,
   },
   ios: {
     departure: 'Departure',
@@ -1467,6 +1544,52 @@ export const en: Strings = {
     channel: 'Pinned connection',
     tram: 'Tram',
     bus: 'Bus',
+  },
+  railTickets: {
+    loading: 'Loading…',
+    buyKoleo: 'Buy ticket in KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} to ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} to ${to} · 1 transfer`
+        : `${from} to ${to} · ${transfers} transfers`,
+    attachPdf: 'Attach PDF ticket',
+    attachedTitle: 'Train ticket',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Carriage ${wagon}`);
+      if (seat) parts.push(`Seat ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Show ticket',
+    removeTicket: 'Remove ticket',
+    removeConfirmTitle: 'Remove this ticket?',
+    removeConfirmBody: 'The PDF file will be removed from local storage.',
+    fileLabel: (fileName: string) => `File: ${fileName}`,
+    importSuccess: 'PDF ticket attached successfully.',
+    importError: 'Could not load the PDF file.',
+    rejectTooLargeTitle: 'File is too large',
+    rejectTooLargeBody:
+      'The selected file exceeds 10 MB. Rail tickets in PDF are usually between a few dozen KB and 2 MB.',
+    rejectNotTicketTitle: 'This does not look like a rail ticket',
+    rejectNotTicketBody:
+      'The document has no inspection code and no rail travel details. Make sure you pick the right file.',
+    rejectWrongTrainTitle: 'This ticket is for a different train',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `The ticket is for train ${ticketTrain}, but this route uses train ${connectionTrain}. Pick a ticket for the right connection.`,
+    rejectWrongDateTitle: 'Ticket for a different day',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `The ticket is valid on ${ticketDate}, but this connection runs on ${connectionDate}.`,
+    deleteTicket: 'Delete ticket',
+    deleteTicketTitle: 'Delete this ticket?',
+    deleteTicketBody: 'The PDF file and the Aztec code will be permanently removed from the app storage.',
+    inspectionNoBarcode: 'No raster code found in the PDF',
+    inspectionBarcodeA11y: 'Aztec code for ticket inspection',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Leg ${current} of ${total} · Tap to switch`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Leg ${current} of ${total}. Tap to switch.`,
   },
   widgets: {
     journeyTitle: 'Your destinations',

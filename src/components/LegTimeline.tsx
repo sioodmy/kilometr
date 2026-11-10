@@ -10,14 +10,11 @@ import {
   TrainFront,
   TramFront,
 } from './icons';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
+import { RailAmenities } from './RailAmenities';
 import { LiveSensors } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
@@ -39,11 +36,12 @@ import { pl } from '../i18n/pl';
 import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
-import { scheduledLegTimes } from '../services/routing/connectionTimes';
+import { legDurationMin, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
-import { railDirectionLabel } from '../services/railIdentity';
+import { isTrainLeg, railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
+import { suggestCityForCoords } from '../cities';
 import { isFallbackOrigin } from '../config';
 
 // Środek transportu w dopełniaczu („tramwajem między A a B”). Osobna gałąź na
@@ -67,67 +65,7 @@ function genericModeGen(t: Strings, mode: Leg['mode']): string {
   return t.routes.vehicleBusGen;
 }
 
-// ─── Etykieta odjazdu: peron / słupek / stanowisko w języku użytkownika ────
-function formatPlatformLabel(
-  t: Strings,
-  code?: string | null,
-  mode?: Leg['mode'],
-  stopName?: string | null,
-): string | null {
-  let trimmed = (code || '').trim();
-  if (!trimmed && stopName) {
-    const m = stopName.trim().match(/\s(\d{2})$/);
-    if (m) {
-      trimmed = m[1];
-    }
-  }
-  if (!trimmed) return null;
-
-  if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  // Węzły GZM: np. 2469011-00103 -> Stanowisko 3
-  const gzmMatch = trimmed.match(/-(\d{3})(\d{2})([a-z]?)$/i);
-  if (gzmMatch) {
-    return t.leg.platformBay(`${parseInt(gzmMatch[2], 10)}`);
-  }
-
-  // Zespoły / Kraków: np. 103-05 -> Słupek 05 (lub Peron 1/2 dla tramwaju)
-  const krkMatch = trimmed.match(/^\d{1,4}-(\d{2})$/);
-  if (krkMatch) {
-    const poleNum = krkMatch[1];
-    const n = parseInt(poleNum, 10);
-    if (mode === 'tram' && (n === 1 || n === 2)) {
-      return t.leg.platformPeron(poleNum);
-    }
-    return t.leg.platformPole(poleNum);
-  }
-
-  // Pociąg / metro
-  if (mode === 'train' || mode === 'subway') {
-    return t.leg.platformPeron(trimmed);
-  }
-
-  // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
-  if (/^\d{1,2}$/.test(trimmed)) {
-    const n = parseInt(trimmed, 10);
-    if (n >= 41 && n <= 49) {
-      return t.leg.platformPst(trimmed);
-    }
-    if (trimmed.startsWith('0') || n >= 10) {
-      return t.leg.platformPole(trimmed);
-    }
-    return t.leg.platformPeron(trimmed);
-  }
-
-  // 5-cyfrowy kod słupka (np. Wrocław 20820)
-  if (/^\d{5}$/.test(trimmed)) {
-    return t.leg.platformPole(trimmed);
-  }
-
-  return t.leg.platformPeron(trimmed);
-}
+import { formatPlatformLabel } from '../services/platformLabel';
 
 // ─── Modułowy cache: brak flickeru przy zwijaniu/rozwijaniu ───────────────────
 // Limit wpisów, żeby przeglądanie setek kursów w jednej sesji nie zjadało
@@ -450,6 +388,10 @@ const TransitLegCard = memo(function TransitLegCard({
     if (physicalStops.length === segmentStops.length) return leg.stopsCount;
     return Math.max(0, physicalStops.length - 1);
   }, [leg]);
+  const durationMin = useMemo(
+    () => legDurationMin({ ...leg, stopsCount }),
+    [leg.departAt, leg.arriveAt, leg.scheduledDepartureSec, leg.scheduledArrivalSec, stopsCount],
+  );
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
@@ -460,18 +402,32 @@ const TransitLegCard = memo(function TransitLegCard({
   const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
   const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
 
-  const activeCityId = useMemo(() => getActiveCityIdSync(), []);
-  const resolvedHint = useStopHint(activeCityId, leg.platformCode, leg.fromStopId, leg.fromStop);
-  const stopHint = leg.stopHint ?? resolvedHint;
+  const isTrain = isTrainLeg(leg);
+  const legCityId = useMemo(() => {
+    if (isTrain) return null;
+    if (leg.fromLat != null && leg.fromLon != null) {
+      const detected = suggestCityForCoords(leg.fromLat, leg.fromLon);
+      if (detected) return detected.id;
+    }
+    return getActiveCityIdSync();
+  }, [isTrain, leg.fromLat, leg.fromLon]);
+  const resolvedHint = useStopHint(
+    isTrain ? '' : (legCityId ?? ''),
+    leg.platformCode,
+    leg.fromStopId,
+    leg.fromStop,
+    leg.mode,
+  );
+  const stopHint = isTrain ? null : (leg.stopHint ?? resolvedHint);
   const departurePlatform = useMemo(
-    () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop),
-    [t, leg.platformCode, leg.mode, leg.fromStop],
+    () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
+    [t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],
   );
   // Wskazówki w bazie są tylko po polsku, więc prefiks słupka też musi być polski.
   // Inaczej angielski UI dokleja "Pole 10001" do polskiego zdania.
   const hintPlatform = useMemo(
-    () => formatPlatformLabel(pl, leg.platformCode, leg.mode, leg.fromStop),
-    [leg.platformCode, leg.mode, leg.fromStop],
+    () => formatPlatformLabel(pl, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
+    [leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],
   );
 
   const cacheKey = leg.tripId || leg.id;
@@ -595,6 +551,18 @@ const TransitLegCard = memo(function TransitLegCard({
     return findNearestStopOnRoute(stops, vehicle);
   }, [stops, vehicle, allowLive, leg.live]);
 
+  // Pojazd stoi na pętli przed wyjazdem (początek lub koniec kursu). Pociągi
+  // pomijamy: ich "obecna lokacja" to stacja, nie pętla.
+  const waitingAtTerminus = useMemo(() => {
+    if (!nearestStop || leg.mode === 'train') return false;
+    if (stops.length < 2) return false;
+    const idx = stops.findIndex((stop) => stop.stopId === nearestStop.stopId);
+    if (idx !== 0 && idx !== stops.length - 1) return false;
+    const departSec = timeStringToSeconds(leg.departAt);
+    const minutesToDeparture = (departSec - nowSecOfDay() + 86400) % 86400;
+    return minutesToDeparture > 0 && minutesToDeparture <= 20;
+  }, [nearestStop, stops, leg.mode, leg.departAt]);
+
   const liveNearLabel = useMemo(() => {
     if (!nearestStop) return null;
     const modeName = genericModeNom(t, leg.mode);
@@ -632,7 +600,9 @@ const TransitLegCard = memo(function TransitLegCard({
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={[
-          t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
+          leg.mode === 'train'
+            ? t.leg.expandStationsA11y(leg.line ?? '', leg.direction ?? '', expanded)
+            : t.leg.expandA11y(leg.line ?? '', leg.direction ?? '', expanded),
           notice,
         ]
           .filter(Boolean)
@@ -657,7 +627,7 @@ const TransitLegCard = memo(function TransitLegCard({
           <View style={s.stopHintContainer}>
             <MapPin size={13} color={scheme.primary} style={s.stopHintIcon} />
             <Text style={s.cardStopHint}>
-              {!/^(słupek|peron|stanowisko)\b/i.test(stopHint) && hintPlatform ? (
+              {!/^(słupek|peron|stanowisko|tor)\b/i.test(stopHint) && hintPlatform ? (
                 <Text style={s.hintPlatformBold}>{hintPlatform} • </Text>
               ) : null}
               {stopHint}
@@ -670,6 +640,15 @@ const TransitLegCard = memo(function TransitLegCard({
 
         {/* 4. Środek: linia, kierunek, sensors live + na czas, rozwijana lista, podsumowanie */}
         <View style={s.cardMiddleSection}>
+          {isTrain ? (
+            <RailAmenities
+              tripId={leg.tripId}
+              agency={leg.railAgency}
+              trainNumber={leg.trainNumber}
+              line={leg.line}
+              trainName={leg.trainName}
+            />
+          ) : null}
           <View style={s.cardTop}>
             <View style={s.badgeWrap} onLayout={(e) => setBadgeWidth(e.nativeEvent.layout.width)}>
               <LineBadge leg={leg} />
@@ -692,11 +671,13 @@ const TransitLegCard = memo(function TransitLegCard({
               <View style={s.liveTextCol}>
                 {leg.live ? (
                   <Text style={s.liveLocationLabel} numberOfLines={1}>
-                    {nearestStop
-                      ? t.leg.currentLocation(nearestStop.name)
-                      : leg.liveNextStop
-                        ? t.leg.currentLocation(leg.liveNextStop)
-                        : liveNearLabel || t.leg.liveTracking}
+                    {waitingAtTerminus
+                      ? t.leg.waitingAtTerminus
+                      : nearestStop
+                        ? t.leg.currentLocation(nearestStop.name)
+                        : leg.liveNextStop
+                          ? t.leg.currentLocation(leg.liveNextStop)
+                          : liveNearLabel || t.leg.liveTracking}
                   </Text>
                 ) : null}
 
@@ -721,9 +702,7 @@ const TransitLegCard = memo(function TransitLegCard({
                   <Text style={s.meta}>{notice}</Text>
                 ) : null}
 
-                {leg.live && liveTimestamp ? (
-                  <LiveDataAge timestamp={liveTimestamp} />
-                ) : null}
+                {leg.live && liveTimestamp ? <LiveDataAge timestamp={liveTimestamp} /> : null}
               </View>
             </View>
           ) : null}
@@ -762,10 +741,13 @@ const TransitLegCard = memo(function TransitLegCard({
             </Animated.View>
           )}
 
-          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas */}
+          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas.
+              Kolej zatrzymuje się na stacjach, nie na przystankach. */}
           <View style={s.stopsSummaryWrap}>
             <Text style={s.stopsSummaryLabel}>
-              {t.leg.stopsSummary(stopsCount, stopsCount * 2, expanded)}
+              {leg.mode === 'train'
+                ? t.leg.stationsSummary(stopsCount, durationMin, expanded)
+                : t.leg.stopsSummary(stopsCount, durationMin, expanded)}
             </Text>
           </View>
         </View>
@@ -824,16 +806,31 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
     [],
   );
 
+  const displayLegs = useMemo(
+    () =>
+      legs.length > 1
+        ? legs.filter(
+            (leg) =>
+              !(
+                leg.mode === 'walk' &&
+                (leg.walkM ?? 0) <= 0 &&
+                (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+              ),
+          )
+        : legs,
+    [legs],
+  );
+
   return (
     <View style={s.list}>
-      {legs.map((leg, i) => {
+      {displayLegs.map((leg, i) => {
         if (leg.mode === 'walk') {
           const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
             normalizeName(leg.fromStop) === normalizeName(leg.toStop) ||
             leg.fromStop.trim().toLowerCase() === leg.toStop.trim().toLowerCase();
-          const prevLeg = legs[i - 1];
-          const nextLeg = legs[i + 1];
+          const prevLeg = displayLegs[i - 1];
+          const nextLeg = displayLegs[i + 1];
           const isTransferWalk =
             prevLeg != null &&
             prevLeg.mode !== 'walk' &&
@@ -968,7 +965,7 @@ const s = StyleSheet.create({
   stopHintContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(92, 219, 190, 0.08)',
+    backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.small,
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -976,7 +973,7 @@ const s = StyleSheet.create({
     marginTop: 4,
     marginBottom: 3,
     borderWidth: 1,
-    borderColor: 'rgba(92, 219, 190, 0.18)',
+    borderColor: scheme.outlineVariant,
     alignSelf: 'flex-start',
   },
   stopHintIcon: {
@@ -1064,11 +1061,10 @@ const s = StyleSheet.create({
     fontSize: 12.5,
   },
   stopTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
     flex: 1,
-    flexWrap: 'wrap',
   },
   platformBadge: {
     paddingHorizontal: 6,

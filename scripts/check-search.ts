@@ -210,13 +210,13 @@ async function main(): Promise<void> {
   {
     const s = toSuggestion({
       place_id: 4,
-      display_name: '1, Różana, Krzyki, Wrocław, województwo dolnośląskie, 50-001, Polska',
+      display_name: '1, Przykładowa, Krzyki, Wrocław, województwo dolnośląskie, 50-001, Polska',
       lat: '51.1079',
       lon: '17.0385',
       class: 'place',
       type: 'house',
       address: {
-        road: 'Różana',
+        road: 'Przykładowa',
         house_number: '1',
         suburb: 'Krzyki',
         city: 'Wrocław',

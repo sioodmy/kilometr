@@ -114,7 +114,7 @@ export const de: Strings = {
     mock: 'Beispielfahrt. Die Zeiten folgen deiner Geräteuhr.',
     route: previewRoute,
     departIn: (n) => `in ${n} Min.`,
-    duration: (n) => `${n} Min.`,
+    duration: (n) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} Min.`),
     transfers: (n) => (n === 0 ? 'direkt' : n === 1 ? '1 Umstieg' : `${n} Umstiege`),
     fromPrefix: 'ab ',
     toPrefix: 'bis ',
