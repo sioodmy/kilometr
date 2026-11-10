@@ -1148,6 +1148,7 @@ export const uk: Strings = {
     editAction: 'Редагувати',
     editA11y: (name: string) => `Редагувати місце: ${name}`,
     removeA11y: (name: string) => `Видалити місце: ${name}`,
+    reorderA11y: (name: string) => `Змінити порядок місця: ${name}`,
     clearAnchorA11y: 'Видалити призначену зупинку',
     manageTitle: 'Збережені місця',
     manageSub: 'Керуй своїми швидкими цілями',

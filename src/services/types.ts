@@ -96,4 +96,6 @@ export interface IFavoritesService {
     }>
   ): Promise<SavedPlace | null>;
   deletePlace(id: string): Promise<boolean>;
+  /** Nadpisuje kolejność miejsc aktywnego miasta; false przy niezgodności id z listą. */
+  reorderPlaces(orderedIds: string[]): Promise<boolean>;
 }

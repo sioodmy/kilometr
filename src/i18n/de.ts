@@ -1108,6 +1108,7 @@ export const de: Strings = {
     editAction: 'Bearbeiten',
     editA11y: (name: string) => `Ort bearbeiten: ${name}`,
     removeA11y: (name: string) => `Ort löschen: ${name}`,
+    reorderA11y: (name: string) => `Reihenfolge ändern: ${name}`,
     clearAnchorA11y: 'Zugewiesene Haltestelle entfernen',
     manageTitle: 'Gespeicherte Orte',
     manageSub: 'Deine Schnellziele verwalten',

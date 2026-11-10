@@ -1427,6 +1427,17 @@ export default function HomeScreen() {
     requestSmart(originStopRef.current, currentCoords);
   };
 
+  // Kolejność z zarządzania miejscami zapisujemy od razu; refreshPlaces
+  // zsynchronizuje prop z tym samym porządkiem (smart ranking jej nie używa).
+  const handleReorderPlaces = async (orderedIds: string[]) => {
+    try {
+      await FavoritesService.reorderPlaces(orderedIds);
+    } catch (err) {
+      console.warn('[handleReorderPlaces error]', err);
+    }
+    refreshPlaces();
+  };
+
   // Ostatnie połączenie świeże po powrocie (pull może odpalić nową trasę).
   // Wyszukanie trasy (tu albo na ekranie tras) dopisuje historię: wtedy
   // przeliczamy też „Ostatnie miejsca", inaczej nowy cel pojawiłby się
@@ -1856,6 +1867,9 @@ export default function HomeScreen() {
               setAddPlaceOpen(true);
             }}
             onDeletePlace={handleDeletePlace}
+            onReorderPlaces={(ids) => {
+              void handleReorderPlaces(ids);
+            }}
             onAddNew={() => {
               setManageSheetOpen(false);
               setEditingPlace(null);

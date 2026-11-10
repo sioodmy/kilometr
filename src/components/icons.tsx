@@ -82,6 +82,7 @@ export const Footprints = icon('directions-walk');
 export const Fuel = icon('local-gas-station');
 export const Gamepad2 = icon('sports-esports');
 export const GraduationCap = icon('school');
+export const GripVertical = icon('drag-handle');
 export const Heart = icon('favorite');
 export const History = icon('history');
 export const Home = icon('home');
