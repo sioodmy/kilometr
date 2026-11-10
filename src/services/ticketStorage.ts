@@ -643,7 +643,11 @@ export async function importTicketPdf(
     const summary = getTrainLegSummary(connection);
     if (summary) {
       if (!metadata.trainNumber && summary.trainNumber) {
-        metadata.trainNumber = summary.trainNumber;
+        // summary.trainNumber jest bez prefiksu przewoźnika ("6130"), a bilet
+        // i pill pokazują "IC 6130".
+        metadata.trainNumber = summary.agency
+          ? `${summary.agency} ${summary.trainNumber}`
+          : summary.trainNumber;
       }
       if (!metadata.fromStation) {
         metadata.fromStation = summary.fromStation;
