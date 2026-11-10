@@ -1096,6 +1096,7 @@ export const en: Strings = {
     editAction: 'Edit',
     editA11y: (name: string) => `Edit place: ${name}`,
     removeA11y: (name: string) => `Remove place: ${name}`,
+    reorderA11y: (name: string) => `Reorder place: ${name}`,
     clearAnchorA11y: 'Remove assigned stop',
     manageTitle: 'Saved places',
     manageSub: 'Manage your quick trip destinations',

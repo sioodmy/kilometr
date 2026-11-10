@@ -756,6 +756,36 @@ export const FavoritesService: IFavoritesService = {
       return true;
     });
   },
+
+  /** Nadpisuje kolejność miejsc aktywnego miasta; false przy niezgodności id z listą. */
+  async reorderPlaces(orderedIds: string[]): Promise<boolean> {
+    return withPlacesLock(async () => {
+      let places: SavedPlace[];
+      try {
+        await ensurePlacesMigrated();
+        places = await readPlaces();
+      } catch (err) {
+        console.warn('[FavoritesService] reorderPlaces read failed:', err);
+        return false;
+      }
+      if (orderedIds.length !== places.length) return false;
+      const byId = new Map(places.map((p) => [p.id, p]));
+      const reordered: SavedPlace[] = [];
+      for (const id of orderedIds) {
+        const place = byId.get(id);
+        if (!place) return false;
+        byId.delete(id);
+        reordered.push(place);
+      }
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(reordered));
+      } catch (err) {
+        console.warn('[FavoritesService] reorderPlaces write failed:', err);
+        throw err;
+      }
+      return true;
+    });
+  },
 };
 
 export interface NearestStop {

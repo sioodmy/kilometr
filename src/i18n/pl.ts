@@ -1131,6 +1131,7 @@ export const pl = {
     editAction: 'Edytuj',
     editA11y: (name: string) => `Edytuj miejsce: ${name}`,
     removeA11y: (name: string) => `Usuń miejsce: ${name}`,
+    reorderA11y: (name: string) => `Zmień kolejność miejsca: ${name}`,
     clearAnchorA11y: 'Usuń przypisany przystanek',
     manageTitle: 'Zapisane miejsca',
     manageSub: 'Zarządzaj swoimi szybkimi celami podróży',
