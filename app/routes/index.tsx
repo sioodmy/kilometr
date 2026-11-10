@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   Pressable,
   RefreshControl,
@@ -965,6 +966,22 @@ export default function RoutesScreen() {
 
   const hasActiveFilters = modeFilter !== 'all' || transfersFilter !== 'all' || liveOnly;
   const isCustomTime = targetTimeSec !== undefined || arrivalMode;
+
+  // Wstecz z ręcznie ustawionym czasem wraca do ekranu głównego: użytkownik
+  // przyszedł tu z konkretnego punktu startu i nie chce zostać na liście
+  // przefiltrowanej na inną godzinę.
+  const isCustomTimeRef = useRef(isCustomTime);
+  isCustomTimeRef.current = isCustomTime;
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!isCustomTimeRef.current) return false;
+        router.dismissTo('/');
+        return true;
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
 
   const timeDisplayLabel = useMemo(() => {
     if (targetTimeSec === undefined) {
