@@ -50,7 +50,7 @@ export interface TicketIndexEntry {
 }
 
 /** Dlaczego bilet nie został dołączony; UI pokazuje dla tego dialog M3. */
-export type TicketRejectionReason = 'tooLarge' | 'notTicket' | 'wrongTrain' | 'wrongDate';
+type TicketRejectionReason = 'tooLarge' | 'notTicket' | 'wrongTrain' | 'wrongDate';
 
 export interface TicketImportRejected {
   status: 'rejected';
