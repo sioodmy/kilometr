@@ -4,7 +4,9 @@ import type { ShareStrings } from '../i18n/share/pl';
 import type { Connection, LegMode } from '../types/models';
 import { decodePath, encodePath } from './geometry';
 
-const SHARE_BASE_URL = 'https://kilometr.app/trip/';
+// Bez ukośnika na końcu: Play Console sprawdza dokładnie ten prefiks, a GitHub Pages
+// przekierowuje /trip na /trip/ zanim przeglądarka zdąży oddać link aplikacji.
+const SHARE_BASE_URL = 'https://kilometr.app/trip';
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const modes: readonly string[] = ['walk', 'tram', 'bus', 'train', 'cable', 'trolleybus', 'subway'];
 const maxEncodedLength = 8192;

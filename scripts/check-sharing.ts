@@ -84,7 +84,7 @@ assert.equal(
 const url = new URL(buildShareUrl(journey, 'uk'));
 assert.equal(url.origin, 'https://kilometr.app');
 assert.equal(url.search, '');
-assert.equal(url.pathname, '/trip/');
+assert.equal(url.pathname, '/trip');
 assert.equal(new URLSearchParams(url.hash.slice(1)).get('lang'), 'uk');
 assert.ok(url.href.length < 1000);
 for (const s of [pl, en, de, uk]) {
