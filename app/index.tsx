@@ -45,16 +45,12 @@ import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
-  type TimetableUpdate,
   checkTimetableForUpdates,
   getDataStatus,
-  getTimetableUpdate,
   importGtfsFromNetwork,
   refreshDataStatus,
   subscribeDataStatus,
-  subscribeTimetableUpdate,
 } from '../src/services/dataManager';
-import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
 import { subscribeBackupApplied } from '../src/services/backup';
 import {
@@ -248,11 +244,6 @@ export default function HomeScreen() {
   const sheetWasOpenRef = useRef(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
-  const [timetableUpdate, setTimetableUpdate] = useState<TimetableUpdate | null>(() =>
-    getTimetableUpdate(),
-  );
-  const [updateBusy, setUpdateBusy] = useState(false);
-  const [updateNote, setUpdateNote] = useState<string | null>(null);
 
   // Szybki skrót pull-to-refresh do ostatniego połączenia: pełna obsługa
   // gestem, zero klikalnych elementów. pullOption żyje w shared value (UI thread),
@@ -397,38 +388,6 @@ export default function HomeScreen() {
       clearInterval(timer);
     };
   }, []);
-
-  useEffect(
-    () =>
-      subscribeTimetableUpdate((update) => {
-        setTimetableUpdate(update);
-        if (!update) setUpdateNote(null);
-      }),
-    [],
-  );
-
-  /** Baner aktualizacji: pełne pobranie tylko po kliknięciu, nie w tle. */
-  const handleTimetableUpdate = async () => {
-    if (updateBusy) return;
-    setUpdateBusy(true);
-    setUpdateNote(null);
-    try {
-      const result = await importGtfsFromNetwork();
-      if (result === 'cooldown') {
-        const gate = await getTimetableDownloadGate();
-        const hours = gate.allowed ? 1 : remainingHours(gate.retryAfterMs);
-        setUpdateNote(s.settings.downloadCooldown(hours));
-      } else if (result === 'keptLocal') {
-        setUpdateNote(s.settings.downloadKeptLocal);
-      }
-    } catch (e) {
-      // Status błędu trafia do dataStatus, a ekran pokazuje kartę błędu.
-      console.warn('Timetable update failed:', e);
-    } finally {
-      setUpdateBusy(false);
-    }
-  };
-
 
   const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
@@ -1642,49 +1601,6 @@ export default function HomeScreen() {
               {s.home.title}
             </Text>
 
-            {timetableUpdate && dataStatus.state === 'ready' && (
-              <Pressable
-                style={({ pressed }) => [styles.updateCard, pressed && styles.updateCardPressed]}
-                onPress={() => void handleTimetableUpdate()}
-                disabled={updateBusy}
-                accessibilityRole="button"
-                accessibilityLabel={s.home.timetableUpdateA11y}
-                accessibilityState={{ busy: updateBusy, disabled: updateBusy }}
-              >
-                <View style={styles.updateText}>
-                  <Text style={styles.updateTitle}>{s.home.timetableUpdateTitle}</Text>
-                  <Text style={styles.updateBody} accessibilityLiveRegion="polite">
-                    {updateNote ?? s.home.timetableUpdateBody}
-                  </Text>
-                </View>
-                {updateBusy ? (
-                  <ActivityIndicator size="small" color={scheme.primary} />
-                ) : updateNote ? null : (
-                  <Download size={20} color={scheme.primary} />
-                )}
-              </Pressable>
-            )}
-
-            {dataStatus.state === 'downloading' && (
-              <View style={styles.importCard}>
-                <ActivityIndicator size="small" color={scheme.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.importTitle}>{s.home.importingTitle(cityGen)}</Text>
-                  <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
-                </View>
-              </View>
-            )}
-
-            {dataStatus.state === 'importing' && (
-              <View style={styles.importCard}>
-                <ActivityIndicator size="small" color={scheme.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.importTitle}>{dataStatus.step}</Text>
-                  <Text style={styles.importSub}>{Math.round(dataStatus.progress * 100)}%</Text>
-                </View>
-              </View>
-            )}
-
             {dataStatus.state === 'error' && (
               <Pressable
                 style={styles.importCardError}
@@ -1856,6 +1772,11 @@ export default function HomeScreen() {
             onResetStart={resetToGps}
             gpsUnsupported={gpsUnsupported}
             chips={dockChips}
+            downloadProgress={
+              dataStatus.state === 'downloading' || dataStatus.state === 'importing'
+                ? dataStatus.progress
+                : null
+            }
           />
         )}
 
@@ -2023,20 +1944,6 @@ const styles = StyleSheet.create({
   },
   alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
   headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
-  updateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-    padding: 14,
-    minHeight: 64,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.medium,
-  },
-  updateCardPressed: { backgroundColor: scheme.surfaceContainerHighest },
-  updateText: { flex: 1, gap: 2, minWidth: 0 },
-  updateTitle: { ...type.bodyMedium, color: scheme.onSurface, fontWeight: '600' },
-  updateBody: { ...type.labelSmall, color: scheme.onSurfaceVariant },
   tabContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2116,25 +2023,6 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
   emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  importCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.medium,
-  },
-  importTitle: {
-    ...type.bodyMedium,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  importSub: {
-    ...type.labelSmall,
-    color: scheme.primary,
-    fontWeight: '700',
-  },
   importCardError: {
     marginTop: 12,
     padding: 12,
