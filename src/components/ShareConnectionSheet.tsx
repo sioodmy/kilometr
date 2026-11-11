@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
-  Linking,
   Platform,
   Pressable,
   Share,
@@ -12,7 +11,7 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, Copy, ImageUp, Link, MessageCircle, X } from './icons';
+import { Check, Copy, Download, ImageUp, Link, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
 import { captureRef } from 'react-native-view-shot';
 import { scheme, shape, type } from '../theme/tokens';
@@ -91,7 +90,7 @@ export function ShareConnectionSheet({
     return () => back.remove();
   }, []);
 
-  async function run(action: () => Promise<unknown>, sms = false) {
+  async function run(action: () => Promise<unknown>, saving = false) {
     if (busyRef.current || !available) return;
     busyRef.current = true;
     setBusy(true);
@@ -99,7 +98,7 @@ export function ShareConnectionSheet({
     try {
       await action();
     } catch {
-      setError(sms ? s.smsError : s.error);
+      setError(saving ? s.saveError : s.error);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -117,6 +116,25 @@ export function ShareConnectionSheet({
       filename: 'kilometr',
       useInternalStorage: true,
       failOnCancel: false,
+    });
+  }
+
+  /** Zapisuje kartę jako PNG przez systemowy wybór miejsca (SAF na Androidzie, pliki na iOS). */
+  async function downloadCard() {
+    if (Platform.OS === 'web') {
+      await Share.share({ message });
+      return;
+    }
+    const data = await captureRef(card, { format: 'png', result: 'base64' });
+    const FileSystem = await import('expo-file-system/legacy');
+    const path = `${FileSystem.cacheDirectory ?? ''}kilometr-karta.png`;
+    await FileSystem.writeAsStringAsync(path, data, { encoding: FileSystem.EncodingType.Base64 });
+    const Sharing = await import('expo-sharing');
+    if (!(await Sharing.isAvailableAsync())) throw new Error('sharing unavailable');
+    await Sharing.shareAsync(path, {
+      mimeType: 'image/png',
+      dialogTitle: s.download,
+      UTI: 'public.png',
     });
   }
 
@@ -205,15 +223,7 @@ export function ShareConnectionSheet({
           </Pressable>
           <View style={styles.actions}>
             <Pressable
-              onPress={() =>
-                void run(
-                  () =>
-                    Linking.openURL(
-                      `sms:${Platform.OS === 'ios' ? '&' : '?'}body=${encodeURIComponent(message)}`,
-                    ),
-                  true,
-                )
-              }
+              onPress={() => void run(downloadCard, true)}
               disabled={busy || !available}
               accessibilityRole="button"
               accessibilityState={{ disabled: busy || !available }}
@@ -223,8 +233,8 @@ export function ShareConnectionSheet({
                 (busy || !available) && styles.disabled,
               ]}
             >
-              <MessageCircle size={22} color={scheme.onSecondaryContainer} />
-              <Text style={styles.actionText}>{s.sms}</Text>
+              <Download size={22} color={scheme.onSecondaryContainer} />
+              <Text style={styles.actionText}>{s.download}</Text>
             </Pressable>
             <Pressable
               onPress={() =>
