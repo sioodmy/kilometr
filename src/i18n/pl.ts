@@ -1347,7 +1347,7 @@ export const pl = {
     stationsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'} • ~${formatDuration(mins)} • ${open ? 'zwiń' : 'rozwiń'} stacje`,
     platformPeron: (code: string) => `Peron ${code}`,
-    platformPeronTrack: (code: string, track: string) => `Peron ${code}, tor ${track}`,
+    platformPeronTrack: (code: string, track: string) => `Peron ${code}, Tor ${track}`,
     platformTrack: (track: string) => `Tor ${track}`,
     platformPole: (code: string) => `Słupek ${code}`,
     platformBay: (code: string) => `Stanowisko ${code}`,

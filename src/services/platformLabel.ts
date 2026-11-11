@@ -23,11 +23,7 @@ export function formatPlatformLabel(
 
   if (/^(peron|słupek|słup|stanowisko)\b/i.test(trimmed)) {
     if (trimmedTrack && !trimmed.toLowerCase().includes('tor')) {
-      const trackPart = t.leg.platformTrack(trimmedTrack);
-      const formattedTrack = trackPart.startsWith('Gleis')
-        ? trackPart
-        : trackPart.charAt(0).toLowerCase() + trackPart.slice(1);
-      return `${trimmed}, ${formattedTrack}`;
+      return `${trimmed}, ${t.leg.platformTrack(trimmedTrack)}`;
     }
     return trimmed;
   }
