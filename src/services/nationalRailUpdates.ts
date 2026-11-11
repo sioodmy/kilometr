@@ -587,6 +587,13 @@ export async function fetchNationalRailUpdates(
       }
     }
 
+    // Sam przyjazd tez jest realtime: bez odjazdu z przystanku wsiadania
+    // nie gubimy prognozy na stacje docelowa.
+    if (arrivalDelaySec != null) {
+      if (!hasRealtimeDelay) delaySec = arrivalDelaySec;
+      hasRealtimeDelay = true;
+    }
+
     result.set(leg.tripId, {
       tripId: leg.tripId,
       delaySec,

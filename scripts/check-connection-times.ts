@@ -257,6 +257,22 @@ assert.equal(delayedTrain.delayMin, 43);
 assert.equal(delayedTrain.legs[1].delaySec, 2580);
 assert.equal(delayedTrain.legs[1].departAt, '10:43');
 
+// Opoznienie rosnie po drodze: odjazd +3 min, przyjazd +26 min. Godzina
+// przyjazdu i wskaznik opoznienia musza brac prognoze z konca trasy.
+const arrivalDelayedTrain = refreshConnectionTimes(
+  trainConnection,
+  new Map([['pl:PLK_IC_2026_107625', 180]]),
+  futureTrainNow,
+  new Map(),
+  new Map([['pl:PLK_IC_2026_107625', 1560]]),
+);
+assert.equal(arrivalDelayedTrain.legs[1].delaySec, 180);
+assert.equal(arrivalDelayedTrain.legs[1].departAt, '10:03');
+assert.equal(arrivalDelayedTrain.legs[1].arrivalDelaySec, 1560);
+assert.equal(arrivalDelayedTrain.legs[1].arriveAt, '10:46');
+assert.equal(arrivalDelayedTrain.arriveAt, '10:51');
+assert.equal(arrivalDelayedTrain.delayMin, 26);
+
 // Formatowanie czasu podróży (human readable dla >= 60 min)
 assert.equal(pl.common.durMin(25), "25 min");
 assert.equal(pl.common.durMin(59), "59 min");

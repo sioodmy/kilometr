@@ -172,7 +172,7 @@ class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
-  private nationalTripDelays = new Map<string, { delaySec: number; updatedAt: number }>();
+  private nationalTripDelays = new Map<string, { delaySec: number; arrivalDelaySec?: number; updatedAt: number }>();
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
@@ -334,7 +334,15 @@ class LiveTracker {
           changed = true;
         }
         this.tripDelays.set(tripId, clamped);
-        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
+        const arrivalDelaySec =
+          update.arrivalDelaySec == null
+            ? undefined
+            : Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.arrivalDelaySec));
+        this.nationalTripDelays.set(tripId, {
+          delaySec: clamped,
+          arrivalDelaySec,
+          updatedAt: nowMs,
+        });
       }
       // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
       // tak samo jak KD (matchedTripId === leg.tripId).
@@ -466,6 +474,22 @@ class LiveTracker {
     for (const [tripId, entry] of this.nationalTripDelays) {
       if (now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
         out.set(tripId, entry.delaySec);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Prognozy przyjazdu na stacje koncowe z feedu PKP. Osobno od
+   * `getTripDelays`, bo opoznienie rosnie po drodze i przyjazd ma inna
+   * wartosc niz odjazd ze stacji poczatkowej.
+   */
+  getTripArrivalDelays(): Map<string, number> {
+    const now = Date.now();
+    const out = new Map<string, number>();
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (entry.arrivalDelaySec != null && now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(tripId, entry.arrivalDelaySec);
       }
     }
     return out;

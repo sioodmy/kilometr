@@ -35,6 +35,7 @@ export function ConnectionSummary({
   const stacked = ((availableWidth ?? width - 32) - 44) / fontScale < 280;
   const boarding = item.legs.filter((leg) => leg.mode !== 'walk');
   const firstVehicle = boarding[0];
+  const lastVehicle = boarding[boarding.length - 1];
   const departureSec = boardingDepartureSec(item);
   const departure = firstVehicle ? secondsToTimeString(departureSec) : item.departAt;
   const scheduled = firstVehicle
@@ -42,6 +43,13 @@ export function ConnectionSummary({
     : undefined;
   const departureDelay =
     firstVehicle?.live && !offline ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
+  // Przyjazd ma osobne opoznienie: pociag zbiera je po drodze, wiec koncowa
+  // godzina nie moze zostac na wartosci ze stacji poczatkowej.
+  const arrivalDelaySec =
+    lastVehicle?.live && !offline ? (lastVehicle.arrivalDelaySec ?? lastVehicle.delaySec ?? 0) : 0;
+  const arrivalDelay = Math.round(arrivalDelaySec / 60);
+  const scheduledArrival =
+    item.arrivalSec != null ? item.arrivalSec - arrivalDelaySec : undefined;
   const Direction = stacked ? ArrowDown : ArrowRight;
 
   const targetY = insets.top + 64;
@@ -110,6 +118,20 @@ export function ConnectionSummary({
         <View style={styles.endpoint}>
           <Text style={styles.label}>{s.routeDetails.arrival}</Text>
           <RollingTime value={item.arriveAt} style={styles.time} />
+          {arrivalDelay !== 0 && arrivalDelay !== departureDelay && scheduledArrival != null && (
+            <View style={styles.delayDetails} accessibilityLiveRegion="polite">
+              <Text style={styles.label}>
+                {s.routeDetails.scheduledTime(secondsToTimeString(scheduledArrival))}
+              </Text>
+              <Text
+                style={[styles.status, { color: arrivalDelay > 0 ? scheme.error : scheme.warning }]}
+              >
+                {arrivalDelay > 0
+                  ? s.routeDetails.late(arrivalDelay)
+                  : s.routeDetails.early(-arrivalDelay)}
+              </Text>
+            </View>
+          )}
           <Text style={styles.place}>{item.toTitle}</Text>
         </View>
       </View>

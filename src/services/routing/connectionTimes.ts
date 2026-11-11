@@ -109,12 +109,17 @@ export function legDurationMin(
   return Math.max(1, (leg.stopsCount || 1) * 2);
 }
 
-/** Przelicza godziny od rozkladu, wiec kolejne odswiezenia nie sumuja opoznien. */
+/**
+ * Przelicza godziny od rozkladu, wiec kolejne odswiezenia nie sumuja opoznien.
+ * `arrivalDelays` niesie prognoze przyjazdu na stacje docelowa (feed PKP),
+ * osobno od opoznienia odjazdu, bo pociag zbiera je po drodze.
+ */
 export function refreshConnectionTimes(
   connection: Connection,
   tripDelays: ReadonlyMap<string, number>,
   now = new Date(),
   confidence: ReadonlyMap<string, DelayConfidence> = new Map(),
+  arrivalDelays: ReadonlyMap<string, number> = new Map(),
 ): Connection {
   const firstVehicle = connection.legs.find((leg) => leg.mode !== 'walk');
   if (!firstVehicle) return connection;
@@ -148,6 +153,9 @@ export function refreshConnectionTimes(
     const times = scheduledLegTimes(leg, oldDeparture);
     const measured = sameDay && leg.tripId ? tripDelays.get(leg.tripId) : undefined;
     const hasDelay = measured != null && Number.isFinite(measured);
+    const measuredArrival =
+      sameDay && leg.tripId ? (arrivalDelays.get(leg.tripId) ?? measured) : undefined;
+    const hasArrivalDelay = measuredArrival != null && Number.isFinite(measuredArrival);
     const delayConfidence = sameDay ? (confidence.get(leg.tripId ?? '') ?? (hasDelay ? 'live' : 'scheduled')) : 'scheduled';
     const live = hasDelay && delayConfidence === 'live';
     const delaySec =
@@ -157,13 +165,20 @@ export function refreshConnectionTimes(
           ? measured
           : 0;
     const arrivalDelaySec =
-      hasDelay && times.arrival != null
-        ? predictDelaySec(measured, times.arrival - (nowSec - measured), 'arrive', leg.mode)
-        : hasDelay
-          ? measured
+      hasArrivalDelay && times.arrival != null
+        ? predictDelaySec(
+            measuredArrival,
+            times.arrival - (nowSec - measuredArrival),
+            'arrive',
+            leg.mode,
+          )
+        : hasArrivalDelay
+          ? measuredArrival
           : 0;
     const delayMin = Math.round(delaySec / 60);
     if (Math.abs(delayMin) > Math.abs(maxDelayMin)) maxDelayMin = delayMin;
+    const arrivalDelayMin = Math.round(arrivalDelaySec / 60);
+    if (Math.abs(arrivalDelayMin) > Math.abs(maxDelayMin)) maxDelayMin = arrivalDelayMin;
     const oldDelay = leg.delaySec ?? (times.departure == null ? 0 : oldDeparture - times.departure);
     const oldArrivalDelay =
       leg.arrivalDelaySec ?? (times.arrival == null ? 0 : oldArrival - times.arrival);
