@@ -903,12 +903,37 @@ export async function getTimetableEndDate(): Promise<string | null> {
   return [cal?.d, cd?.d].filter((v): v is string => !!v).sort()[0] ?? null;
 }
 
-/** Czasy kursu posortowane po stop_sequence (do list rozwijanych + RAPTOR-a). */
-export async function getTripStopTimes(tripId: string): Promise<
-  { stop_id: string; arr_sec: number; dep_sec: number; seq: number }[]
-> {
-  const db = await liveHandle();
-  return db.getAllAsync('SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC', tripId);
+interface TripStopTimeRow {
+  stop_id: string;
+  arr_sec: number;
+  dep_sec: number;
+  seq: number;
+  /** Nazwa stacji ze słownika; null, gdy stop_id nie ma wpisu w stops. */
+  name: string | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+/**
+ * Czasy kursu posortowane po stop_sequence z nazwami stacji (do list
+ * rozwijanych + RAPTOR-a). Nazwy czytamy w tym samym zapytaniu, bo ekran
+ * szczegółów zapisanej trasy działa po restarcie apki, zanim magazyn
+ * routingu zdąży załadować tabelę stops.
+ * `national` wybiera bazę kolejową zamiast bazy aktywnego miasta.
+ */
+export async function getTripStopTimes(
+  tripId: string,
+  national = false,
+): Promise<TripStopTimeRow[]> {
+  const db = national ? dbHandle(await getNationalDb()) : await liveHandle();
+  return db.getAllAsync<TripStopTimeRow>(
+    `SELECT st.stop_id, st.arr_sec, st.dep_sec, st.seq, s.name, s.lat, s.lon
+       FROM stop_times st
+       LEFT JOIN stops s ON s.stop_id = st.stop_id
+      WHERE st.trip_id = ?
+      ORDER BY st.seq ASC`,
+    tripId,
+  );
 }
 
 /**

@@ -61,39 +61,23 @@ export async function buildTripStops(tripId: string, store: LocalGtfsStore = tri
       };
     });
   if (mem && mem.length > 0) return toLegStops(mem);
-  // Kurs spoza aktywnego wycinka (np. rozwinięcie starszego połączenia):
-  // dociągnij z SQLite zamiast zwracać pustkę.
+  // Kurs spoza aktywnego wycinka (np. rozwinięcie zapisanej trasy po
+  // restarcie apki): dociągnij z SQLite, ale nazwy stacji czytaj w tym samym
+  // zapytaniu. Magazyn routingu bywa jeszcze niezaładowany i wtedy
+  // podmiana stop_id na nazwę kończyła się „pl:60103” na liście.
   try {
-    if (store === polskaStore) {
-      const { getNationalDb } = await import('../gtfsDatabase');
-      const db = await getNationalDb();
-      const rows = await db.getAllAsync<{ stop_id: string; arr_sec: number; dep_sec: number; seq: number }>(
-        'SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC',
-        tripId,
-      );
-      if (rows.length > 0) {
-        return toLegStops(
-          rows.map((r) => ({
-            stop_id: r.stop_id,
-            arrival_sec: r.arr_sec,
-            departure_sec: r.dep_sec,
-            stop_sequence: r.seq,
-          })),
-        );
-      }
-    } else {
-      const { getTripStopTimes } = await import('../gtfsDatabase');
-      const rows = await getTripStopTimes(tripId);
-      if (rows.length > 0) {
-        return toLegStops(
-          rows.map((r) => ({
-            stop_id: r.stop_id,
-            arrival_sec: r.arr_sec,
-            departure_sec: r.dep_sec,
-            stop_sequence: r.seq,
-          })),
-        );
-      }
+    const { getTripStopTimes } = await import('../gtfsDatabase');
+    const rows = await getTripStopTimes(tripId, store === polskaStore);
+    if (rows.length > 0) {
+      return rows.map((r) => ({
+        stopId: r.stop_id,
+        name: r.name || r.stop_id,
+        lat: r.lat ?? undefined,
+        lon: r.lon ?? undefined,
+        seq: r.seq,
+        arriveSec: r.arr_sec,
+        departSec: r.dep_sec,
+      }));
     }
   } catch {
     // ignoruj - fallback niżej
