@@ -334,6 +334,8 @@ async function refresh(): Promise<void> {
     const current = tracked ?? before;
     const tripDelays =
       liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripDelays() : new Map();
+    const tripArrivalDelays =
+      liveTracker.getLiveState() === 'fresh' ? liveTracker.getTripArrivalDelays() : new Map();
     if (current.sharedJourney) {
       const journey = decodeSharedConnection(current.sharedJourney);
       if (!journey) {
@@ -346,7 +348,9 @@ async function refresh(): Promise<void> {
       };
     } else {
       // Zawsze na bieżąco nanosimy aktualne opóźnienia i live-status na śledzone połączenie:
-      const updated = applyLiveDelays([current.connection], tripDelays)[0] ?? current.connection;
+      const updated =
+        applyLiveDelays([current.connection], tripDelays, tripArrivalDelays)[0] ??
+        current.connection;
       tracked = { ...current, connection: updated };
 
       const hasTransfers = current.connection.legs.filter((l) => l.mode !== 'walk').length > 1;
@@ -391,8 +395,10 @@ async function refresh(): Promise<void> {
     publishOnboardEstimate(onboardEstimate);
     if (onboardEstimate?.delaySec != null && base.leg?.tripId) {
       const withGps = new Map(tripDelays);
+      const withGpsArrival = new Map(tripArrivalDelays);
       withGps.set(base.leg.tripId, Math.round(onboardEstimate.delaySec));
-      const updated = applyLiveDelays([conn], withGps)[0] ?? conn;
+      withGpsArrival.set(base.leg.tripId, Math.round(onboardEstimate.delaySec));
+      const updated = applyLiveDelays([conn], withGps, withGpsArrival)[0] ?? conn;
       if (updated !== conn) {
         conn = updated;
         tracked = { ...trip, connection: updated };

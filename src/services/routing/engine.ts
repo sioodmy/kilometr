@@ -531,14 +531,18 @@ function mapJourneysToConnections(
 }
 
 /** Odświeża godziny i flagi live. Niezmienione połączenia zachowują referencje. */
-export function applyLiveDelays(connections: Connection[], tripDelays: Map<string, number>): Connection[] {
+export function applyLiveDelays(
+  connections: Connection[],
+  tripDelays: Map<string, number>,
+  arrivalDelays: ReadonlyMap<string, number> = new Map(),
+): Connection[] {
   const snapshot = tripDelays.size > 0 ? liveTracker.getRoutingSnapshot() : emptyRoutingSnapshot();
   const delays = new Map([...snapshot.delays, ...tripDelays]);
   const confidence = new Map(snapshot.confidence);
   for (const tripId of tripDelays.keys()) {
     confidence.set(tripId, 'live');
   }
-  const updated = connections.map((connection) => refreshConnectionTimes(connection, delays, new Date(), confidence));
+  const updated = connections.map((connection) => refreshConnectionTimes(connection, delays, new Date(), confidence, arrivalDelays));
   return updated.every((connection, index) => connection === connections[index]) ? connections : updated;
 }
 

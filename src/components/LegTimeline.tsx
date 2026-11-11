@@ -379,9 +379,16 @@ const TransitLegCard = memo(function TransitLegCard({
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
-  const scheduledDeparture = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt)).departure;
+  const scheduled = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt));
+  const scheduledDeparture = scheduled.departure;
   const delayMin =
     leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
+  // Osobno przyjazd: opoznienie rosnie w trasie, a stacja docelowa ma wlasna
+  // prognoze z feedu PKP.
+  const arrivalDelayMin =
+    leg.live || leg.delayConfidence === 'estimated'
+      ? Math.round((leg.arrivalDelaySec ?? leg.delaySec ?? 0) / 60)
+      : 0;
   const notice = reliabilityNotice([leg], t);
   const stopsCount = useMemo(() => {
     const stops = leg.intermediateStops;
@@ -781,7 +788,24 @@ const TransitLegCard = memo(function TransitLegCard({
         {/* 6. Przystanek docelowy (bez prefixu "do:") + godzina przyjazdu po prawej */}
         <View style={s.cardEndRow}>
           <Text style={s.cardStopName}>{leg.toStop}</Text>
-          <Text style={s.cardTime}>{leg.arriveAt}</Text>
+          <View style={s.arrivalTimes}>
+            <Text style={s.cardTime}>{leg.arriveAt}</Text>
+            {arrivalDelayMin !== 0 && arrivalDelayMin !== delayMin && (
+              <Text
+                style={[
+                  s.delayLabel,
+                  { color: arrivalDelayMin > 0 ? scheme.error : scheme.warning },
+                ]}
+                numberOfLines={1}
+              >
+                {leg.delayConfidence === 'estimated'
+                  ? t.routeDetails.estimatedDelay(arrivalDelayMin)
+                  : arrivalDelayMin > 0
+                    ? t.routeDetails.late(arrivalDelayMin)
+                    : t.routeDetails.early(-arrivalDelayMin)}
+              </Text>
+            )}
+          </View>
         </View>
       </Pressable>
     </View>
@@ -968,6 +992,11 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  arrivalTimes: {
+    alignItems: 'flex-end',
+    gap: 2,
+    flexShrink: 1,
   },
   cardStopName: {
     fontSize: 22,
