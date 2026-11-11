@@ -8,7 +8,7 @@ import { uk } from '../src/i18n/uk';
 
 test('formatPlatformLabel formats platform and track correctly for trains in Polish', () => {
   // Obie wartości: peron i tor
-  assert.equal(formatPlatformLabel(pl, '1', 'train', undefined, '2'), 'Peron 1, tor 2');
+  assert.equal(formatPlatformLabel(pl, '1', 'train', undefined, '2'), 'Peron 1, Tor 2');
 
   // Tylko peron
   assert.equal(formatPlatformLabel(pl, '3', 'train', undefined, undefined), 'Peron 3');
@@ -17,7 +17,7 @@ test('formatPlatformLabel formats platform and track correctly for trains in Pol
   assert.equal(formatPlatformLabel(pl, undefined, 'train', undefined, '4'), 'Tor 4');
 
   // Gotowy prefiks w kodzie peronu + tor
-  assert.equal(formatPlatformLabel(pl, 'Peron 2', 'train', undefined, '105'), 'Peron 2, tor 105');
+  assert.equal(formatPlatformLabel(pl, 'Peron 2', 'train', undefined, '105'), 'Peron 2, Tor 105');
 
   // Gotowy prefiks w kodzie peronu zawierający już tor
   assert.equal(formatPlatformLabel(pl, 'Peron 1 tor 2', 'train', undefined, '2'), 'Peron 1 tor 2');
