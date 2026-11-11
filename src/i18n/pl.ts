@@ -186,19 +186,10 @@ export const pl = {
     saveFailBody: 'Nie udało się zapisać miejsca. Spróbuj ponownie.',
     searchPlaceholderTo: 'Dokąd jedziesz?',
     searchPlaceholderFrom: 'Skąd wyruszasz?',
-    unsupportedTitle: 'Nieobsługiwane miasto',
-    unsupportedTitleOther: 'Inne miasto w aplikacji',
-    unsupportedBody: (city: string, supported: string) =>
-      `Twoja lokalizacja GPS wskazuje na ${city}. Aktualnie obsługujemy tylko: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Jesteś ${prepInCity(city)}, a aplikacja jest ustawiona na ${active}. Zmień miasto w Ustawieniach.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Twoja lokalizacja GPS jest poza obsługiwanym obszarem. Aktualnie obsługujemy tylko: ${supported}.`,
     unsupportedAction: 'Wybierz punkt startowy',
-    unsupportedActionShort: 'Wybierz start',
-    unsupportedSwitchCity: (city: string) => `Zmień na ${city}`,
-    unsupportedSwitchCityA11y: (city: string) => `Zmień miasto na ${city}`,
     pickStart: 'Wybierz punkt startowy',
+    outsideAreaShort: 'Jesteś poza obsługiwanym obszarem',
+    downloadCityTimetableA11y: (gen: string) => `Pobierz rozkład ${gen}`,
     gpsBlockedTitle: 'Start z GPS niedostępny',
     gpsBlockedBody: (city: string, supported: string) =>
       `Jesteś poza strefą ${supported} (${city}), więc trasy z GPS nie zadziałają. Wybierz punkt startowy manualnie.`,

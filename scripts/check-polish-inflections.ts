@@ -6,7 +6,6 @@
  * Sprawdza:
  * - Wymianę przyimka „w” na „we” przed „Wrocławiu” i grupami spółgłoskowymi (Issue #319)
  * - Miejscownik (locative) i dopełniacz (genitive) wszystkich 15 obsługiwanych miast
- * - Kartę nieobsługiwanego miasta (UnsupportedCityCard: locative zamiast mianownika)
  * - Zgodność gramatyczną czasownika w pustym stanie aktualności (Warszawa/Łódź - opublikowała, Kielce - opublikowały)
  * - Wymianę przyimka „в” na „у” w języku ukraińskim przed „Вроцлаві” / „Варшаві”
  */
@@ -131,50 +130,6 @@ describe('Przyimki w/we w języku polskim (w Krakowie vs we Wrocławiu)');
   );
 }
 
-describe('UnsupportedCityCard komunikat o innym mieście (odmiana)');
-{
-  expect(
-    'unsupportedBodyOther: we Wrocławiu',
-    pl.home.unsupportedBodyOther(pl.city.loc('wroclaw'), pl.city.name('krakow')),
-    'Jesteś we Wrocławiu, a aplikacja jest ustawiona na Kraków. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w Krakowie',
-    pl.home.unsupportedBodyOther(pl.city.loc('krakow'), pl.city.name('wroclaw')),
-    'Jesteś w Krakowie, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w Warszawie',
-    pl.home.unsupportedBodyOther(pl.city.loc('warszawa'), pl.city.name('wroclaw')),
-    'Jesteś w Warszawie, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w GZM',
-    pl.home.unsupportedBodyOther(pl.city.loc('gzm'), pl.city.name('wroclaw')),
-    'Jesteś w GZM, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w Trójmieście',
-    pl.home.unsupportedBodyOther(pl.city.loc('trojmiasto'), pl.city.name('wroclaw')),
-    'Jesteś w Trójmieście, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedSwitchCity: Zmień na Warszawę',
-    pl.home.unsupportedSwitchCity(pl.city.acc('warszawa')),
-    'Zmień na Warszawę',
-  );
-  expect(
-    'unsupportedSwitchCity: Zmień na Wrocław',
-    pl.home.unsupportedSwitchCity(pl.city.acc('wroclaw')),
-    'Zmień na Wrocław',
-  );
-  expect(
-    'unsupportedSwitchCity: Zmień na GZM',
-    pl.home.unsupportedSwitchCity(pl.city.acc('gzm')),
-    'Zmień na GZM',
-  );
-}
-
 describe('Zgodność rodzaju gramatycznego w aktualnościach (emptyBody)');
 {
   expect(
@@ -240,16 +195,6 @@ describe('Przyimki у/в w języku ukraińskim');
     'search searching: в Кракові',
     uk.search.searching(uk.city.loc('krakow')),
     'Шукаю в Кракові…',
-  );
-  expect(
-    'unsupportedBodyOther: у Вроцлаві',
-    uk.home.unsupportedBodyOther(uk.city.loc('wroclaw'), uk.city.name('krakow')),
-    'Ти у Вроцлаві, а застосунок налаштовано на Краків. Зміни місто в налаштуваннях.',
-  );
-  expect(
-    'unsupportedBodyOther: в Кракові',
-    uk.home.unsupportedBodyOther(uk.city.loc('krakow'), uk.city.name('wroclaw')),
-    'Ти в Кракові, а застосунок налаштовано на Вроцлав. Зміни місто в налаштуваннях.',
   );
 }
 

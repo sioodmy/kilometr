@@ -173,19 +173,10 @@ export const en: Strings = {
     saveFailBody: 'Could not save the place. Try again.',
     searchPlaceholderTo: 'Where are you going?',
     searchPlaceholderFrom: 'Where are you starting from?',
-    unsupportedTitle: 'Unsupported city',
-    unsupportedTitleOther: 'Different city in the app',
-    unsupportedBody: (city: string, supported: string) =>
-      `Your GPS location points to ${city}. We currently serve only: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `You are in ${city}, but the app is set to ${active}. Change the city in Settings.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Your GPS location is outside the supported area. We currently serve only: ${supported}.`,
     unsupportedAction: 'Pick a start point',
-    unsupportedActionShort: 'Pick start',
-    unsupportedSwitchCity: (city: string) => `Switch to ${city}`,
-    unsupportedSwitchCityA11y: (city: string) => `Switch city to ${city}`,
     pickStart: 'Pick a start point',
+    outsideAreaShort: 'You are outside the supported area',
+    downloadCityTimetableA11y: (gen: string) => `Download the ${gen} timetable`,
     gpsBlockedTitle: 'GPS start unavailable',
     gpsBlockedBody: (city: string, supported: string) =>
       `You are outside the ${supported} area (${city}), so GPS routes will not work. Pick a start point manually.`,

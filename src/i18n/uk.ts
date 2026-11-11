@@ -193,19 +193,10 @@ export const uk: Strings = {
     saveFailBody: 'Не вдалося зберегти місце. Спробуй знову.',
     searchPlaceholderTo: 'Куди їдеш?',
     searchPlaceholderFrom: 'Звідки вирушаєш?',
-    unsupportedTitle: 'Місто не підтримується',
-    unsupportedTitleOther: 'Інше місто в застосунку',
-    unsupportedBody: (city: string, supported: string) =>
-      `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Ти ${prepInCity(city)}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedAction: 'Вибрати початок',
-    unsupportedActionShort: 'Вибрати старт',
-    unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
-    unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
     pickStart: 'Вибери початок',
+    outsideAreaShort: 'Ти поза підтримуваною територією',
+    downloadCityTimetableA11y: (gen: string) => `Завантажити розклад ${gen}`,
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
       `Ти поза зоною ${supported} (${city}), тож маршрути з GPS не працюватимуть. Вибери початок вручну.`,
