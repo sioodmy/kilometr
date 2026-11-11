@@ -193,19 +193,10 @@ export const uk: Strings = {
     saveFailBody: 'Не вдалося зберегти місце. Спробуй знову.',
     searchPlaceholderTo: 'Куди їдеш?',
     searchPlaceholderFrom: 'Звідки вирушаєш?',
-    unsupportedTitle: 'Місто не підтримується',
-    unsupportedTitleOther: 'Інше місто в застосунку',
-    unsupportedBody: (city: string, supported: string) =>
-      `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Ти ${prepInCity(city)}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedAction: 'Вибрати початок',
-    unsupportedActionShort: 'Вибрати старт',
-    unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
-    unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
     pickStart: 'Вибери початок',
+    outsideAreaShort: 'Ти поза підтримуваною територією',
+    downloadCityTimetableA11y: (gen: string) => `Завантажити розклад ${gen}`,
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
       `Ти поза зоною ${supported} (${city}), тож маршрути з GPS не працюватимуть. Вибери початок вручну.`,
@@ -1142,7 +1133,6 @@ export const uk: Strings = {
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
-    gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
   },
   places: {
     editAction: 'Редагувати',

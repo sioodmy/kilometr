@@ -1555,7 +1555,6 @@ export default function RoutesScreen() {
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
-          notice={sheetFor === 'from' && gpsOutside ? s.search.gpsOutsideNotice : undefined}
           onQuery={setQuery}
           onSelect={handleSuggestionSelect}
           onClose={() => {

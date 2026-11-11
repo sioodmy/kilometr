@@ -342,6 +342,28 @@ export async function hasNationalDb(): Promise<boolean> {
   }
 }
 
+/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times). */
+export async function hasCityDb(cityId: string): Promise<boolean> {
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const main = `${base.replace(/\/+$/, '')}/SQLite/${gtfsDbName(cityId)}`;
+      const info = await FileSystem.getInfoAsync(main);
+      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) return false;
+    }
+    const db = await getGtfsDbByName(gtfsDbName(cityId));
+    const row = await db.getFirstAsync<{ s: number; t: number; st: number }>(
+      `SELECT EXISTS(SELECT 1 FROM stops) AS s,
+              EXISTS(SELECT 1 FROM trips) AS t,
+              EXISTS(SELECT 1 FROM stop_times) AS st`,
+    );
+    return (row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Wyszukiwarka stacji kolejowych: SQL LIKE zawęża kandydatów (~3k stacji),
  * ranking robi fuzzyMatch jak w searchStops. Waga = liczba odjazdów,

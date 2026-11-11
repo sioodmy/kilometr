@@ -176,19 +176,10 @@ export const de: Strings = {
     saveFailBody: 'Ort konnte nicht gespeichert werden. Versuch es erneut.',
     searchPlaceholderTo: 'Wohin fährst du?',
     searchPlaceholderFrom: 'Wo startest du?',
-    unsupportedTitle: 'Nicht unterstützte Stadt',
-    unsupportedTitleOther: 'Andere Stadt in der App',
-    unsupportedBody: (city: string, supported: string) =>
-      `Dein GPS-Standort zeigt auf ${city}. Aktuell bedienen wir nur: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Du bist in ${city}, die App ist aber auf ${active} eingestellt. Stadt in den Einstellungen wechseln.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Dein GPS-Standort liegt außerhalb des unterstützten Gebiets. Aktuell bedienen wir nur: ${supported}.`,
     unsupportedAction: 'Startpunkt wählen',
-    unsupportedActionShort: 'Start wählen',
-    unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
-    unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
     pickStart: 'Startpunkt wählen',
+    outsideAreaShort: 'Du bist außerhalb des unterstützten Gebiets',
+    downloadCityTimetableA11y: (gen: string) => `Fahrplan für ${gen} herunterladen`,
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>
       `Du bist außerhalb von ${supported} (${city}), GPS-Routen funktionieren daher nicht. Wähle den Start manuell.`,
@@ -1102,7 +1093,6 @@ export const de: Strings = {
     noResultsHint: (id: string) =>
       `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : id === 'kielce' ? '„sienkiewicza“, „rynek“, „kadzielnia“, „herby“' : id === 'olsztyn' ? '„stare miasto“, „dworzec“, „jaroty“, „barczewo“' : id === 'bialystok' ? '„rynek kościuszki“, „lipowa“, „branicki“, „opera“' : id === 'opole' ? '„rynek“, „ozimska“, „solaris“, „dworzec“' : id === 'rzeszow' ? '„rynek“, „dworzec“, „rejtana“, „3 maja“' : id === 'lublin' ? '„krakowskie“, „zamek“, „felicity“, „świdnik“' : id === 'radom' ? '„żeromskiego“, „południe“, „gołębiów“, „idalin“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
-    gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',
   },
   places: {
     editAction: 'Bearbeiten',

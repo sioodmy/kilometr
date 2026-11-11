@@ -99,8 +99,8 @@ import type { SavedRoute } from '../src/types/models';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { CitySelectSheet } from '../src/components/CitySelectSheet';
-import type { CityId } from '../src/cities';
-import { UnsupportedCityCard } from '../src/components/UnsupportedCityCard';
+import { suggestCityForCoords, type CityId } from '../src/cities';
+import { hasCityDb } from '../src/services/gtfsDatabase';
 
 /** Okno widoczności chipu biletu w docku: odjazd w ciągu 3 h. */
 const TICKET_CHIP_WINDOW_MS = 3 * 60 * 60 * 1000;
@@ -179,6 +179,21 @@ export default function HomeScreen() {
   // start trzeba wybrać ręcznie. Miasto z reverse-geocode do komunikatu.
   const [gpsUnsupported, setGpsUnsupported] = useState(false);
   const [gpsCity, setGpsCity] = useState<string | null>(null);
+  // Miasto z GPS (strefa) i stan jego bazy: przycisk pobrania w lewym górnym rogu.
+  const gpsSuggestedCity = useMemo(
+    () => (gpsLocation ? suggestCityForCoords(gpsLocation.lat, gpsLocation.lon) : null),
+    [gpsLocation],
+  );
+  const gpsOtherCityId =
+    gpsUnsupported && gpsSuggestedCity && gpsSuggestedCity.id !== cityId
+      ? gpsSuggestedCity.id
+      : null;
+  const gpsOutsideAll = gpsUnsupported && gpsLocation != null && gpsSuggestedCity == null;
+  const [gpsCityReady, setGpsCityReady] = useState<{ id: CityId; ok: boolean } | null>(null);
+  const gpsDownloadCityId =
+    gpsOtherCityId && gpsCityReady?.id === gpsOtherCityId && !gpsCityReady.ok
+      ? gpsOtherCityId
+      : null;
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [manageSheetOpen, setManageSheetOpen] = useState(false);
   const [citySheetOpen, setCitySheetOpen] = useState(false);
@@ -274,6 +289,21 @@ export default function HomeScreen() {
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
   }, []);
+
+  // Baza miasta, w którym jest GPS: decyduje, czy przełączyć od razu,
+  // czy pokazać przycisk pobrania.
+  useEffect(() => {
+    if (!gpsOtherCityId) return;
+    let cancelled = false;
+    hasCityDb(gpsOtherCityId)
+      .then((ok) => {
+        if (!cancelled) setGpsCityReady({ id: gpsOtherCityId, ok });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [gpsOtherCityId]);
 
   // Ekran montuje się pod onboardingiem i wraca na wierzch po jego
   // ukończeniu: dociągamy prawdziwy fix. refineLocation nie pyta o zgodę
@@ -1372,6 +1402,31 @@ export default function HomeScreen() {
     }
   };
 
+  // Miasto z GPS ma już bazę: przełączamy od razu. Ref blokuje powrót sporu,
+  // gdy użytkownik ręcznie wróci do starego miasta, stojąc w nowym.
+  const gpsAutoSwitchRef = useRef<CityId | null>(null);
+  useEffect(() => {
+    if (!gpsOtherCityId || gpsCityReady?.id !== gpsOtherCityId || !gpsCityReady.ok) return;
+    if (gpsAutoSwitchRef.current === gpsOtherCityId) return;
+    if (switchingCity || dataStatus.state === 'downloading' || dataStatus.state === 'importing') {
+      return;
+    }
+    gpsAutoSwitchRef.current = gpsOtherCityId;
+    void handleCityChange(gpsOtherCityId);
+  }, [gpsOtherCityId, gpsCityReady, switchingCity, dataStatus.state, handleCityChange]);
+
+  // Przycisk w nagłówku: przełącz na miasto z GPS i od razu pobierz jego rozkład.
+  const handleGpsCityDownload = async (id: CityId) => {
+    if (id === cityId || switchingCity) return;
+    if (dataStatus.state === 'downloading' || dataStatus.state === 'importing') return;
+    await handleCityChange(id);
+    if (getActiveCityIdSync() !== id) return;
+    const st = getDataStatus();
+    if (st.state === 'empty' || st.state === 'error') {
+      void importGtfsFromNetwork().catch((e) => console.warn('City timetable download failed:', e));
+    }
+  };
+
   const handleSavePlace = async (placeData: {
     id?: string;
     name: string;
@@ -1515,17 +1570,43 @@ export default function HomeScreen() {
               />
             )}
             <View style={styles.topBar}>
-              <Pressable
-                style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
-                onPress={() => setCitySheetOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
-                accessibilityHint={s.city.settingsHint}
-                hitSlop={8}
-              >
-                <MapPin size={16} color={scheme.primary} />
-                <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
-              </Pressable>
+              <View style={styles.cityContextWrap}>
+                {gpsDownloadCityId ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
+                    onPress={() => void handleGpsCityDownload(gpsDownloadCityId)}
+                    disabled={switchingCityId === gpsDownloadCityId}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.home.downloadCityTimetableA11y(
+                      s.city.gen(gpsDownloadCityId),
+                    )}
+                    accessibilityState={{ busy: switchingCityId === gpsDownloadCityId }}
+                    hitSlop={8}
+                  >
+                    {switchingCityId === gpsDownloadCityId ? (
+                      <ActivityIndicator size="small" color={scheme.primary} />
+                    ) : (
+                      <Download size={16} color={scheme.primary} />
+                    )}
+                    <Text style={styles.cityName}>{s.city.name(gpsDownloadCityId)}</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
+                    onPress={() => setCitySheetOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+                    accessibilityHint={s.city.settingsHint}
+                    hitSlop={8}
+                  >
+                    <MapPin size={16} color={scheme.primary} />
+                    <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
+                  </Pressable>
+                )}
+                {gpsOutsideAll && (
+                  <Text style={styles.outsideArea}>{s.home.outsideAreaShort}</Text>
+                )}
+              </View>
               <View style={styles.topActions}>
                 <Pressable
                   style={styles.iconBtn}
@@ -1615,22 +1696,6 @@ export default function HomeScreen() {
                   {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
                 </Text>
               </Pressable>
-            )}
-
-            {gpsUnsupported && (
-              <UnsupportedCityCard
-                city={gpsCity}
-                coords={gpsLocation}
-                activeCity={s.city.name(cityId)}
-                activeCityId={cityId}
-                switchingCityId={switchingCityId}
-                onSwitchCity={(newCityId) => void handleCityChange(newCityId)}
-                onPickStart={() => {
-                  setReturnToDestinationAfterStart(false);
-                  setQuery('');
-                  setSheetMode('start');
-                }}
-              />
             )}
 
             <View style={styles.savedSection}>
@@ -1807,7 +1872,6 @@ export default function HomeScreen() {
             }
             originTitle={sheetMode === 'destination' ? locTitle : undefined}
             closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
-            notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
             onChangeOrigin={
               sheetMode === 'destination'
                 ? () => {
@@ -1924,15 +1988,17 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   body: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, flexGrow: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
+  cityContextWrap: { flex: 1, minWidth: 0, justifyContent: 'center' },
   cityContext: {
-    flex: 1,
-    minWidth: 0,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
   },
   cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
+  outsideArea: { ...type.bodySmall, color: scheme.warning, marginTop: -2 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   iconBtn: {
     width: 48,
