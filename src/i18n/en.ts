@@ -1081,7 +1081,6 @@ export const en: Strings = {
     noResultsHint: (id: string) =>
       `Try: ${id === 'krakow' ? '“rynek”, “grodzka”, “wawel”, “balice”' : id === 'gzm' ? '“katowice”, “gliwice”, “rynek”, “tychy”' : id === 'warszawa' ? '“metro”, “młociny”, “centralny”, “śródmieście”' : id === 'poznan' ? '“rynek”, “garbary”, “rondo”, “malta”' : id === 'trojmiasto' ? '“oliwa”, “wrzeszcz”, “orłowo”, “przymorze”' : id === 'lodz' ? '“piotrkowska”, “manufaktura”, “fabryczna”, “kaliska”' : id === 'szczecin' ? '“brama portowa”, “dąbie”, “police”, “pogodno”' : id === 'kielce' ? '“sienkiewicza”, “rynek”, “kadzielnia”, “herby”' : id === 'olsztyn' ? '“stare miasto”, “dworzec”, “jaroty”, “barczewo”' : id === 'bialystok' ? '“rynek kościuszki”, “lipowa”, “branicki”, “opera”' : id === 'opole' ? '“rynek”, “ozimska”, “solaris”, “dworzec”' : id === 'rzeszow' ? '“rynek”, “dworzec”, “rejtana”, “3 maja”' : id === 'lublin' ? '“krakowskie”, “zamek”, “felicity”, “świdnik”' : id === 'radom' ? '“żeromskiego”, “południe”, “gołębiów”, “idalin”' : '“arkady”, “biskupin”, “zoo”, “swojczycka”'}. Works without Polish characters and with typos too.`,
     noResultsFor: (q: string) => `Nothing matches “${q}”`,
-    gpsOutsideNotice: 'GPS is outside the city, pick a point manually.',
   },
   places: {
     editAction: 'Edit',

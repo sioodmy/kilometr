@@ -1872,7 +1872,6 @@ export default function HomeScreen() {
             }
             originTitle={sheetMode === 'destination' ? locTitle : undefined}
             closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
-            notice={sheetMode === 'start' && gpsUnsupported ? s.search.gpsOutsideNotice : undefined}
             onChangeOrigin={
               sheetMode === 'destination'
                 ? () => {

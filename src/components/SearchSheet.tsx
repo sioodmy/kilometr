@@ -12,7 +12,7 @@ import Animated, {
   useReducedMotion,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, LocateFixed, MapPinOff, Search, X } from './icons';
+import { ArrowLeft, ChevronRight, LocateFixed, Search, X } from './icons';
 import type { TextInput } from 'react-native-gesture-handler';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -56,7 +56,6 @@ export function SearchSheet({
   originTitle,
   onChangeOrigin,
   closeOnSelect = true,
-  notice,
 }: {
   open?: boolean;
   query: string;
@@ -73,8 +72,6 @@ export function SearchSheet({
   originTitle?: string;
   onChangeOrigin?: () => void;
   closeOnSelect?: boolean;
-  /** Informacyjny pasek nad listą (np. „GPS poza obsługiwanym miastem"). */
-  notice?: string;
 }) {
   const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
@@ -394,12 +391,6 @@ export function SearchSheet({
           maxToRenderPerBatch={8}
           ListHeaderComponent={
             <View style={{ gap: 6 }}>
-              {notice ? (
-                <View style={styles.notice}>
-                  <MapPinOff size={15} color={scheme.onWarningContainer} />
-                  <Text style={styles.noticeText}>{notice}</Text>
-                </View>
-              ) : null}
               {!trimmed && savedQuick.length > 0 && (
                 <View style={styles.quickRow}>
                   {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
@@ -606,22 +597,5 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  notice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 16,
-    marginTop: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.warningContainer,
-  },
-  noticeText: {
-    ...type.labelMedium,
-    color: scheme.onWarningContainer,
-    fontWeight: '600',
-    flex: 1,
   },
 });

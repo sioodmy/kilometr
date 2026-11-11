@@ -1133,7 +1133,6 @@ export const uk: Strings = {
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
-    gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
   },
   places: {
     editAction: 'Редагувати',
