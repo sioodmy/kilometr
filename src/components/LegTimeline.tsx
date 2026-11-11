@@ -31,6 +31,7 @@ import {
   positionToRank,
   type LiveStopPosition,
 } from '../services/vehiclePosition';
+import { ensureTrainTrack, type TrainTrack } from '../services/trainTrack';
 import { useStrings, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { motion } from '../theme/motion';
@@ -211,6 +212,7 @@ function LegStopsList({
   vehicle,
   loading,
   active,
+  track,
 }: {
   leg: Leg;
   accent: string;
@@ -220,6 +222,7 @@ function LegStopsList({
   vehicle: TrackedVehicle | null;
   loading: boolean;
   active: boolean;
+  track: TrainTrack | null;
 }) {
   const t = useStrings();
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
@@ -253,6 +256,7 @@ function LegStopsList({
       now,
       rankRef.current,
       rankSourceRef.current,
+      track,
     );
     if (pos) {
       // Pomiar live zastępuje ranking, estymata tylko go przesuwa do przodu.
@@ -263,7 +267,7 @@ function LegStopsList({
       rankSourceRef.current = pos.source;
     }
     return pos;
-  }, [active, stops, leg, vehicle, userLocation, now, allowLive]);
+  }, [active, stops, leg, vehicle, userLocation, now, allowLive, track]);
 
   if (loading) {
     return (
@@ -492,6 +496,24 @@ const TransitLegCard = memo(function TransitLegCard({
       mounted = false;
     };
   }, [cacheKey, leg]);
+
+  // Oś toru do markera między stacjami: bez niej pozycję prowadzi szacunek
+  // z rozkładu (trainTrack.ts). Cache w serwisie trzyma jedną geometrię
+  // na kurs, więc kolejne ticki live nie ruszają stanu.
+  const [track, setTrack] = useState<TrainTrack | null>(null);
+  useEffect(() => {
+    if (!hasOpened || !isTrain) return;
+    let mounted = true;
+    void ensureTrainTrack(leg, stops, findUserSegment(stops, leg)).then(
+      (t) => {
+        if (mounted) setTrack((prev) => (prev === t ? prev : t));
+      },
+      () => {},
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [hasOpened, isTrain, leg, stops]);
 
   // Śledzenie pojazdu live dopasowanego do tego kursu
   useEffect(() => {
@@ -736,6 +758,7 @@ const TransitLegCard = memo(function TransitLegCard({
                   vehicle={vehicle}
                   loading={loading}
                   active={expanded}
+                  track={track}
                 />
               </View>
             </Animated.View>
