@@ -15,6 +15,7 @@ export const de: Strings = {
     label: 'Hauptnavigation',
   },
   language: 'Sprache der Website',
+  sendSms: 'SMS senden',
   hero: {
     eyebrow: 'Kilometr für Android',
     title: 'Dein',
