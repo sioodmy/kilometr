@@ -100,7 +100,6 @@ export const MapPin = icon('place');
 export const MapPinOff = icon('location-off');
 export const MapPinned = icon('map');
 export const Maximize2 = icon('fullscreen');
-export const MessageCircle = icon('chat-bubble-outline');
 export const Minus = icon('remove');
 export const Mountain = icon('terrain');
 export const Music = icon('music-note');
