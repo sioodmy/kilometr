@@ -8,6 +8,7 @@ import {
   TRAIN_STATION_RADIUS_M,
   withinTrainLegWindow,
 } from './vehiclePosition';
+import { matchOnTrack, TRAIN_TRACK_CORRIDOR_M, type TrainTrack } from './trainTrack';
 
 // Opóźnienie pociągu z GPS telefonu pasażera.
 //
@@ -32,9 +33,9 @@ export interface OnboardFix {
 
 export interface OnboardEstimate {
   legId: string;
-  /** Opóźnienie zmierzone na ostatniej zaliczonej stacji (sekundy). */
+  /** Opóźnienie z ostatniego przejazdu stacji albo interpolowane z osi toru (sekundy). */
   delaySec: number | null;
-  /** Kiedy zmierzono opóźnienie (przejazd stacji), w ms. */
+  /** Kiedy zmierzono opóźnienie (przejazd stacji albo pomiar między nimi), w ms. */
   measuredAtMs: number;
   fix: OnboardFix;
 }
@@ -68,9 +69,28 @@ function stationSchedSec(stops: LegStop[], leg: Leg, index: number, windowStart:
   return clock.crossesMidnight && raw < clock.from ? raw + 86400 : raw;
 }
 
+/** Plan krawędzi odcinka (odjazd/ przyjazd stacji) w sekundach doby. */
+function gapEdgeSec(
+  stops: LegStop[],
+  leg: Leg,
+  index: number,
+  use: 'depart' | 'arrive',
+): number | null {
+  const stop = stops[index];
+  const clock = legClock(leg);
+  if (!stop || !clock) return null;
+  const raw = use === 'depart' ? (stop.departSec ?? stop.arriveSec) : (stop.arriveSec ?? stop.departSec);
+  if (raw == null) return null;
+  return clock.crossesMidnight && raw < clock.from ? raw + 86400 : raw;
+}
+
 /**
  * Estymator zaliczonych stacji. Czasy przejazdów żyją przez całą nogę
  * podróży; reset następuje przy zmianie odcinka albo końcu śledzenia.
+ *
+ * `track` (oś toru z trainTrack.ts) pozwala liczyć opóźnienie także
+ * między stacjami: bez niego zamierało na wartości z ostatniego
+ * przejazdu stacji, a pociąg potrafi zgubić kwadrans na jednym odcinku.
  */
 export class OnboardEstimator {
   private legId: string | null = null;
@@ -82,7 +102,13 @@ export class OnboardEstimator {
     this.crossings.clear();
   }
 
-  observe(leg: Leg, stops: LegStop[], fix: OnboardFix, nowMs: number): OnboardEstimate | null {
+  observe(
+    leg: Leg,
+    stops: LegStop[],
+    fix: OnboardFix,
+    nowMs: number,
+    track: TrainTrack | null = null,
+  ): OnboardEstimate | null {
     if (leg.id !== this.legId) {
       this.legId = leg.id;
       this.crossings.clear();
@@ -126,6 +152,33 @@ export class OnboardEstimator {
       if (sched != null) {
         delaySec = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, cross - sched));
         measuredAtMs = crossMs;
+      }
+    }
+
+    // Między stacjami opóźnienie interpolujemy z osi toru: pomiar mówi,
+    // w którym miejscu odcinka jest pociąg, plan mówi, kiedy powinien tam
+    // być. Przy samej stacji (okno 350 m) interpolacja milczy: przejazd
+    // mierzy opóźnienie przyjazdu, a interpolacja liczyłaby czas od
+    // planowego odjazdu, więc na peronie zaniżała lub ujemniła wynik.
+    // Szum cofający pomiar przed ostatnio zaliczoną stację odrzucamy,
+    // pociąg nie cofa się w trasie.
+    const match =
+      station == null && track
+        ? matchOnTrack(track, window, fix.lat, fix.lon, TRAIN_TRACK_CORRIDOR_M)
+        : null;
+    if (match && (lastCrossed < 0 || match.gap >= lastCrossed)) {
+      const dep = gapEdgeSec(stops, leg, match.gap, 'depart');
+      const arr = gapEdgeSec(stops, leg, match.gap + 1, 'arrive');
+      if (dep != null && arr != null && arr > dep) {
+        const cross = shiftedSecOfDay(fix.timestamp, leg);
+        // Okno wiarygodności jak dla przejazdów stacji; odcinek wsiadania
+        // liczy się dopiero od planowego odjazdu.
+        const from = match.gap === window.start ? dep : dep - EARLY_LIMIT_SEC;
+        if (cross >= from && cross <= arr + LATE_LIMIT_SEC) {
+          const expected = dep + match.progress * (arr - dep);
+          delaySec = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, cross - expected));
+          measuredAtMs = fix.timestamp;
+        }
       }
     }
 

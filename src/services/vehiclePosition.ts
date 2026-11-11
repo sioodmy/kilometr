@@ -5,6 +5,7 @@ import type { Leg, LegStop, VehiclePosition } from '../types/models';
 import { bearingDegrees, distanceMeters, projectPointToPolyline } from '../gtfs/geo';
 import type { CurrentLocation } from './currentLocation';
 import { isFareBoundary } from '../gtfs/fareBoundary';
+import { matchOnTrack, TRAIN_TRACK_CORRIDOR_M, type TrainTrack } from './trainTrack';
 
 // Czysta logika „gdzie jest pojazd”. Wydzielona z komponentu LegTimeline,
 // bo zależy jej zarówno oś czasu na ekranie, jak i silnik powiadomień –
@@ -307,8 +308,9 @@ function ridingDeviceGap(
   window: LegWindow,
   location: CurrentLocation | null,
   now: number,
+  track: TrainTrack | null,
 ): DeviceRide | null {
-  if (leg.mode === 'train') return ridingTrainGap(stops, leg, window, location, now);
+  if (leg.mode === 'train') return ridingTrainGap(stops, leg, window, location, now, track);
   if (!location || location.accuracy == null || location.accuracy > 25) return null;
   if (window.end <= window.start) return null;
   const age = now - location.timestamp;
@@ -335,8 +337,10 @@ function ridingDeviceGap(
 }
 
 /**
- * Pociąg z GPS telefonu: dopasowanie tylko przy stacjach, gdzie pomiar jest
- * jednoznaczny. Między stacjami nie zwracamy nic - pozycję prowadzi szacunek
+ * Pociąg z GPS telefonu: dopasowanie przy stacjach, gdzie pomiar jest
+ * jednoznaczny, a między nimi po osi toru z bazy (trainTrack.ts) - prosta
+ * między słupkami nie ma z przebiegiem toru nic wspólnego. Bez geometrii
+ * między stacjami nie zwracamy nic, więc pozycję prowadzi szacunek
  * z rozkładu, a monotoniczny ranking nie pozwoli mu cofnąć się przed stację,
  * którą pasażer już zaliczył. Okno nogi ma luz na opóźnienie: pociąg
  * spóźniony o kwadrans wciąż jest naszą nogą.
@@ -347,6 +351,7 @@ function ridingTrainGap(
   window: LegWindow,
   location: CurrentLocation | null,
   now: number,
+  track: TrainTrack | null,
 ): DeviceRide | null {
   if (!location || location.accuracy == null || location.accuracy > 50) return null;
   const age = now - location.timestamp;
@@ -361,8 +366,18 @@ function ridingTrainGap(
     location.lon,
     TRAIN_STATION_RADIUS_M,
   );
-  if (!station) return null;
-  return { gap: Math.min(window.end - 1, Math.max(window.start, station.index - 1)), atStopIndex: station.index };
+  if (station) {
+    return { gap: Math.min(window.end - 1, Math.max(window.start, station.index - 1)), atStopIndex: station.index };
+  }
+  const match = track
+    ? matchOnTrack(track, window, location.lat, location.lon, TRAIN_TRACK_CORRIDOR_M)
+    : null;
+  // Kierunek liczymy z azymutu trafionego odcinka osi, nie z prostej między
+  // stacjami: na łuku toru prosta potrafi odjechać o więcej niż tolerancja.
+  if (match && headingAlongRoute(location.heading, location.speed, match.heading)) {
+    return { gap: match.gap, atStopIndex: null };
+  }
+  return null;
 }
 
 /** Okno nogi z luzem: 5 min przed odjazdem i 45 min po planowanym przyjeździe. */
@@ -393,9 +408,10 @@ function computeRawVehiclePosition(
   vehicle: VehiclePosition | null,
   location: CurrentLocation | null,
   now: number,
+  track: TrainTrack | null,
 ): RawVehicleState | null {
   // 1. GPS telefonu pasażera jadącego pojazdem
-  const riding = ridingDeviceGap(stops, leg, window, location, now);
+  const riding = ridingDeviceGap(stops, leg, window, location, now, track);
   if (riding != null && location != null) {
     if (riding.atStopIndex != null) {
       return { stopIndex: riding.atStopIndex, phase: 'at_stop', source: 'device' };
@@ -599,6 +615,10 @@ function rankToLivePosition(
  * `prevSource` mówi, skąd wziął się poprzedni ranking: świeży pomiar live
  * zawsze prostuje szacunek zegarowy. Po pauzie w tle estymata potrafi
  * wystrzelić na koniec trasy i zablokować powrót markera na zawsze.
+ *
+ * `track` to zakotwiczona w stacjach oś toru (trainTrack.ts) dla nóg
+ * kolejowych: dzięki niej pomiar między stacjami mówi, na którym odcinku
+ * jedzie pociąg, zamiast zostawiać marker szacunkowi z rozkładu.
  */
 export function locateLiveStopPosition(
   stops: LegStop[],
@@ -608,6 +628,7 @@ export function locateLiveStopPosition(
   now = Date.now(),
   prevRank?: number,
   prevSource?: LiveStopPosition['source'],
+  track: TrainTrack | null = null,
 ): LiveStopPosition | null {
   if (
     stops.length < 2 ||
@@ -617,7 +638,7 @@ export function locateLiveStopPosition(
   }
 
   const window = findUserSegment(stops, leg);
-  const raw = computeRawVehiclePosition(stops, leg, window, vehicle, location, now);
+  const raw = computeRawVehiclePosition(stops, leg, window, vehicle, location, now, track);
 
   let rawRank = -1;
   if (raw != null && raw.stopIndex >= 0) {
@@ -674,6 +695,13 @@ export function locateLiveStopPosition(
   };
 }
 
+/** Kierunek jazdy musi zgadzać się z azymutem trasy, o ile GPS w ogóle go podaje. */
+function headingAlongRoute(heading: number | null, speed: number | null, routeHeading: number): boolean {
+  if (heading == null || speed == null || speed < 3.5) return true;
+  const difference = Math.abs(((heading - routeHeading + 540) % 360) - 180);
+  return difference <= 65;
+}
+
 /** Kierunek jazdy musi zgadzać się z odcinkiem, o ile GPS w ogóle go podaje. */
 function headingMatchesRoute(
   stops: LegStop[],
@@ -685,9 +713,7 @@ function headingMatchesRoute(
   const from = stops[gap];
   const to = stops[gap + 1];
   if (from.lat == null || from.lon == null || to.lat == null || to.lon == null) return true;
-  const routeHeading = bearingDegrees(from.lat, from.lon, to.lat, to.lon);
-  const difference = Math.abs(((heading - routeHeading + 540) % 360) - 180);
-  return difference <= 65;
+  return headingAlongRoute(heading, speed, bearingDegrees(from.lat, from.lon, to.lat, to.lon));
 }
 
 /** Gdzie jest pojazd: GPS (current/next stop lub coords) albo estymacja czasowa. */

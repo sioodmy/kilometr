@@ -13,7 +13,7 @@ import {
   type OnboardEstimate,
   type OnboardFix,
 } from '../onboardGps';
-import type { Connection, VehiclePosition } from '../../types/models';
+import type { Connection, Leg, LegStop, VehiclePosition } from '../../types/models';
 import {
   buildRoutesLink,
   departureTs,
@@ -22,7 +22,8 @@ import {
   type WidgetPinned,
 } from '../widgetSnapshot';
 import { clockFromMs, nearestDepartureMs, toAbsoluteMs } from './format';
-import { nowSecOfDay } from '../vehiclePosition';
+import { findUserSegment, nowSecOfDay } from '../vehiclePosition';
+import { ensureTrainTrack, trainTrackKey, type TrainTrack } from '../trainTrack';
 import {
   getNotificationPreferencesSync,
   loadNotificationPreferences,
@@ -177,6 +178,8 @@ function releaseOnboardFixes(): void {
   locationWatchRelease?.();
   locationWatchRelease = null;
   onboard.reset();
+  onboardTrack = null;
+  onboardTrackKey = null;
   publishOnboardEstimate(null);
 }
 
@@ -190,6 +193,28 @@ function latestOnboardFix(): OnboardFix | null {
   return nativeFix ?? fix;
 }
 
+// Oś toru bieżącej nogi: dociągana raz na nogę, między stacjami z niej
+// interpolujemy opóźnienie (onboardGps) zamiast zamrażać je na ostatniej stacji.
+let onboardTrack: TrainTrack | null = null;
+let onboardTrackKey: string | null = null;
+
+function onboardTrackFor(leg: Leg, stops: LegStop[]): TrainTrack | null {
+  const window = findUserSegment(stops, leg);
+  const key = trainTrackKey(leg, stops, window);
+  if (key === onboardTrackKey) return onboardTrack;
+  onboardTrackKey = key;
+  onboardTrack = null;
+  if (key != null) {
+    void ensureTrainTrack(leg, stops, window).then(
+      (track) => {
+        if (onboardTrackKey === key) onboardTrack = track;
+      },
+      () => {},
+    );
+  }
+  return null;
+}
+
 /**
  * Estymacja z GPS na bieżącej nodze kolejowej. Zwraca null poza jazdą
  * (dojście pieszo, oczekiwanie, przesiadka) albo przy nieświeższym pomiarze.
@@ -198,7 +223,8 @@ function observeOnboard(p: TripProgress): OnboardEstimate | null {
   if (p.phase !== 'riding' || !p.leg || p.leg.mode !== 'train') return null;
   const fix = latestOnboardFix();
   if (!fix) return null;
-  return onboard.observe(p.leg, onboardStops(p.leg), fix, Date.now());
+  const stops = onboardStops(p.leg);
+  return onboard.observe(p.leg, stops, fix, Date.now(), onboardTrackFor(p.leg, stops));
 }
 
 /** Pojazd syntetyczny z GPS telefonu: pasażer wygrywa z feedem, bo jedzie tym pociągiem. */
