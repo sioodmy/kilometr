@@ -29,7 +29,7 @@ import {
   sharedLegStops,
 } from '../../../src/sharing/progress';
 import { getLineColors } from '../../../src/services/lineIdentity';
-import { useShareStrings, useWebLocale } from '../i18n';
+import { useShareStrings, useStrings, useWebLocale } from '../i18n';
 import { loadSharedStops } from '../sharedTimetable';
 import './sharedJourney.css';
 
@@ -104,6 +104,7 @@ function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]
 
 export default function SharedJourney({ hash }: { hash: string }) {
   const s = useShareStrings();
+  const { sendSms } = useStrings();
   const locale = useWebLocale();
   const journey = useMemo(
     () => decodeSharedConnection(new URLSearchParams(hash.slice(1)).get('trip') || ''),
@@ -295,7 +296,7 @@ export default function SharedJourney({ hash }: { hash: string }) {
             </button>
             <a className="journey-sms journey-button-tonal" href={smsUrl}>
               <MessageCircle size={20} aria-hidden="true" />
-              {s.sms}
+              {sendSms}
             </a>
           </div>
           {shareError && (

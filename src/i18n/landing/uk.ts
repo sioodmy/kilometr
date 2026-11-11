@@ -15,6 +15,7 @@ export const uk: Strings = {
     label: 'Головна навігація',
   },
   language: 'Мова сайту',
+  sendSms: 'Надіслати SMS',
   hero: {
     eyebrow: 'Kilometr для Android',
     title: 'Твій',
