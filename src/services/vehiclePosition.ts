@@ -13,6 +13,8 @@ import { isFareBoundary } from '../gtfs/fareBoundary';
 
 const COMBINING_MARKS = /[\u0300-\u036f]/g;
 const STOP_PROXIMITY_METERS = 65;
+/** Promień, w którym uznajemy telefon za stojący przy stacji kolejowej. */
+export const TRAIN_STATION_RADIUS_M = 350;
 
 export function normalizeName(s: string): string {
   return (s || '')
@@ -37,7 +39,7 @@ interface LegClock {
 }
 
 /** Okno nogi w sekundach; koniec po północy dostaje +86400. */
-function legClock(leg: Leg): LegClock | null {
+export function legClock(leg: Leg): LegClock | null {
   const from = parseHMtoSec(leg.departAt);
   const to = parseHMtoSec(leg.arriveAt);
   if (from == null || to == null) return null;
@@ -272,6 +274,28 @@ function estimateGap(leg: Leg, window: LegWindow, now: number): number | null {
 }
 
 /**
+ * Najbliższa stacja naszego odcinka w zadanym promieniu. Pociągi dopasowujemy
+ * po stacjach, nie po liniach między nimi: między stacjami są kilometry toru,
+ * a prosta między słupkami nie ma z przebiegiem toru nic wspólnego.
+ */
+export function nearestStationIndex(
+  stops: LegStop[],
+  window: { start: number; end: number },
+  lat: number,
+  lon: number,
+  maxDistanceM: number,
+): { index: number; distanceM: number } | null {
+  let best: { index: number; distanceM: number } | null = null;
+  for (let i = window.start; i <= window.end; i++) {
+    const stop = stops[i];
+    if (!stop || stop.lat == null || stop.lon == null) continue;
+    const d = distanceMeters(lat, lon, stop.lat, stop.lon);
+    if (d <= maxDistanceM && (!best || d < best.distanceM)) best = { index: i, distanceM: d };
+  }
+  return best;
+}
+
+/**
  * Czy telefon pasażera już jedzie tym pojazdem: pomiar dokładny i świeży,
  * prędkość jazdy, pozycja w korytarzu naszego odcinka i kierunek zgodny
  * z trasą. Okno czasu ma zapas na opóźnienie, żeby pasażer w spóźnionym
@@ -283,7 +307,8 @@ function ridingDeviceGap(
   window: LegWindow,
   location: CurrentLocation | null,
   now: number,
-): number | null {
+): DeviceRide | null {
+  if (leg.mode === 'train') return ridingTrainGap(stops, leg, window, location, now);
   if (!location || location.accuracy == null || location.accuracy > 25) return null;
   if (window.end <= window.start) return null;
   const age = now - location.timestamp;
@@ -306,7 +331,53 @@ function ridingDeviceGap(
   // dla współrzędnych pojazdu z API.
   if (projection.distanceM > 120) return null;
   if (!headingMatchesRoute(stops, projection.gap, location.heading, location.speed)) return null;
-  return projection.gap;
+  return { gap: projection.gap, atStopIndex: null };
+}
+
+/**
+ * Pociąg z GPS telefonu: dopasowanie tylko przy stacjach, gdzie pomiar jest
+ * jednoznaczny. Między stacjami nie zwracamy nic - pozycję prowadzi szacunek
+ * z rozkładu, a monotoniczny ranking nie pozwoli mu cofnąć się przed stację,
+ * którą pasażer już zaliczył. Okno nogi ma luz na opóźnienie: pociąg
+ * spóźniony o kwadrans wciąż jest naszą nogą.
+ */
+function ridingTrainGap(
+  stops: LegStop[],
+  leg: Leg,
+  window: LegWindow,
+  location: CurrentLocation | null,
+  now: number,
+): DeviceRide | null {
+  if (!location || location.accuracy == null || location.accuracy > 50) return null;
+  const age = now - location.timestamp;
+  if (age < 0 || age > 30_000) return null;
+  if (location.speed != null && location.speed > 60) return null;
+  if (!withinTrainLegWindow(leg, now)) return null;
+
+  const station = nearestStationIndex(
+    stops,
+    window,
+    location.lat,
+    location.lon,
+    TRAIN_STATION_RADIUS_M,
+  );
+  if (!station) return null;
+  return { gap: Math.min(window.end - 1, Math.max(window.start, station.index - 1)), atStopIndex: station.index };
+}
+
+/** Okno nogi z luzem: 5 min przed odjazdem i 45 min po planowanym przyjeździe. */
+export function withinTrainLegWindow(leg: Leg, now: number): boolean {
+  const clock = legClock(leg);
+  if (!clock) return false;
+  let current = nowSecOfDay(new Date(now));
+  if (clock.crossesMidnight && current < clock.from - 3600) current += 86400;
+  return current >= clock.from - 300 && current <= clock.to + 2700;
+}
+
+interface DeviceRide {
+  gap: number;
+  /** Pociąg stoi przy stacji o tym indeksie (dopasowanie po promieniu stacji). */
+  atStopIndex: number | null;
 }
 
 interface RawVehicleState {
@@ -326,23 +397,26 @@ function computeRawVehiclePosition(
   // 1. GPS telefonu pasażera jadącego pojazdem
   const riding = ridingDeviceGap(stops, leg, window, location, now);
   if (riding != null && location != null) {
-    const fromStop = stops[riding];
-    const toStop = stops[riding + 1];
+    if (riding.atStopIndex != null) {
+      return { stopIndex: riding.atStopIndex, phase: 'at_stop', source: 'device' };
+    }
+    const fromStop = stops[riding.gap];
+    const toStop = stops[riding.gap + 1];
     if (
       fromStop?.lat != null &&
       fromStop?.lon != null &&
       distanceMeters(location.lat, location.lon, fromStop.lat, fromStop.lon) <= STOP_PROXIMITY_METERS
     ) {
-      return { stopIndex: riding, phase: 'at_stop', source: 'device' };
+      return { stopIndex: riding.gap, phase: 'at_stop', source: 'device' };
     }
     if (
       toStop?.lat != null &&
       toStop?.lon != null &&
       distanceMeters(location.lat, location.lon, toStop.lat, toStop.lon) <= STOP_PROXIMITY_METERS
     ) {
-      return { stopIndex: riding + 1, phase: 'at_stop', source: 'device' };
+      return { stopIndex: riding.gap + 1, phase: 'at_stop', source: 'device' };
     }
-    return { stopIndex: riding, phase: 'departed', source: 'device' };
+    return { stopIndex: riding.gap, phase: 'departed', source: 'device' };
   }
 
   // 2. Pozycja pojazdu z API (MPK / zbiorkom)
@@ -537,7 +611,7 @@ export function locateLiveStopPosition(
 ): LiveStopPosition | null {
   if (
     stops.length < 2 ||
-    (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway')
+    (leg.mode !== 'tram' && leg.mode !== 'bus' && leg.mode !== 'subway' && leg.mode !== 'train')
   ) {
     return null;
   }

@@ -5,6 +5,14 @@ import { getActiveCitySync } from '../cityStore';
 import { RoutingService, rememberPlannedConnection } from '../api';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
+import { acquireCurrentLocation, getCurrentLocationSnapshot } from '../currentLocation';
+import {
+  OnboardEstimator,
+  onboardStops,
+  publishOnboardEstimate,
+  type OnboardEstimate,
+  type OnboardFix,
+} from '../onboardGps';
 import type { Connection, VehiclePosition } from '../../types/models';
 import {
   buildRoutesLink,
@@ -139,6 +147,75 @@ function vehicleForTrip(p: TripProgress): VehiclePosition | null {
   return rows.find((v) => v.matchedTripId === tripId) ?? null;
 }
 
+// ─── GPS pasażera ───────────────────────────────────────────────────────────
+
+const onboard = new OnboardEstimator();
+/** Miejscowe na pomiarach z natywnego serwisu (Android, także w tle). */
+let nativeFix: OnboardFix | null = null;
+let nativeFixSub: (() => void) | null = null;
+/** Watch expo-location dla platform bez natywnych eventów (iOS, Expo Go). */
+let locationWatchRelease: (() => void) | null = null;
+
+function subscribeOnboardFixes(): void {
+  nativeFix = null;
+  const native = getTrackingNative();
+  if (native?.subscribeTripLocation) {
+    nativeFixSub =
+      native.subscribeTripLocation((fix) => {
+        nativeFix = fix;
+      }) ?? null;
+  }
+  // Bez natywnych eventów (iOS, Expo Go) watch expo-location to jedyne
+  // źródło pomiarów; na Androidzie wystarczą eventy z serwisu.
+  if (!nativeFixSub) locationWatchRelease = acquireCurrentLocation(false);
+}
+
+function releaseOnboardFixes(): void {
+  nativeFixSub?.();
+  nativeFixSub = null;
+  nativeFix = null;
+  locationWatchRelease?.();
+  locationWatchRelease = null;
+  onboard.reset();
+  publishOnboardEstimate(null);
+}
+
+/** Najświeższy pomiar: natywny event albo watch expo-location. */
+function latestOnboardFix(): OnboardFix | null {
+  const watched = getCurrentLocationSnapshot().location;
+  const fix = watched
+    ? { lat: watched.lat, lon: watched.lon, accuracy: watched.accuracy, speed: watched.speed, heading: watched.heading, timestamp: watched.timestamp }
+    : null;
+  if (nativeFix && fix) return nativeFix.timestamp >= fix.timestamp ? nativeFix : fix;
+  return nativeFix ?? fix;
+}
+
+/**
+ * Estymacja z GPS na bieżącej nodze kolejowej. Zwraca null poza jazdą
+ * (dojście pieszo, oczekiwanie, przesiadka) albo przy nieświeższym pomiarze.
+ */
+function observeOnboard(p: TripProgress): OnboardEstimate | null {
+  if (p.phase !== 'riding' || !p.leg || p.leg.mode !== 'train') return null;
+  const fix = latestOnboardFix();
+  if (!fix) return null;
+  return onboard.observe(p.leg, onboardStops(p.leg), fix, Date.now());
+}
+
+/** Pojazd syntetyczny z GPS telefonu: pasażer wygrywa z feedem, bo jedzie tym pociągiem. */
+function onboardVehicle(estimate: OnboardEstimate | null, leg: TripProgress['leg']): VehiclePosition | null {
+  if (!estimate || !leg || estimate.legId !== leg.id || !leg.tripId) return null;
+  if (Date.now() - estimate.fix.timestamp > 60_000) return null;
+  return {
+    vehicleId: 'onboard',
+    line: leg.line ?? '',
+    lat: estimate.fix.lat,
+    lon: estimate.fix.lon,
+    delaySec: estimate.delaySec,
+    matchedTripId: leg.tripId,
+    updatedAt: estimate.fix.timestamp,
+  };
+}
+
 // ─── Odświeżenie ─────────────────────────────────────────────────────────────
 
 /**
@@ -263,7 +340,7 @@ async function refresh(): Promise<void> {
     }
 
     if (run !== generation) return;
-    const trip = tracked;
+    let trip = tracked;
     if (!trip) return;
 
     // Użytkownik wyłączył wszystkie powiadomienia - nie ma po co dalej
@@ -276,13 +353,32 @@ async function refresh(): Promise<void> {
       return;
     }
 
-    const conn = trip.connection;
+    let conn = trip.connection;
 
     const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
-    const base = computeTripProgress(conn, { walkSpeedMps });
+    let base = computeTripProgress(conn, { walkSpeedMps });
+
+    // GPS pasażera: feed PKP potrafi pokazać pociąg na stacji początkowej
+    // długie minuty po odjeździe, a telefon zawsze wie, gdzie jesteśmy.
+    // Opóźnienie z przejazdu stacji wchodzi do planu jak opóźnienie z feedu.
+    const onboardEstimate = observeOnboard(base);
+    publishOnboardEstimate(onboardEstimate);
+    if (onboardEstimate?.delaySec != null && base.leg?.tripId) {
+      const withGps = new Map(tripDelays);
+      withGps.set(base.leg.tripId, Math.round(onboardEstimate.delaySec));
+      const updated = applyLiveDelays([conn], withGps)[0] ?? conn;
+      if (updated !== conn) {
+        conn = updated;
+        tracked = { ...trip, connection: updated };
+        trip = tracked;
+        base = computeTripProgress(updated, { walkSpeedMps });
+      }
+    }
+
+    const gpsVehicle = onboardVehicle(onboardEstimate, base.leg);
     const vehicle = trip.sharedJourney
       ? sharedVehicle(conn, liveTracker.snapshot())?.vehicle
-      : vehicleForTrip(base);
+      : (gpsVehicle ?? vehicleForTrip(base));
     // Drugi przelot z pojazdem: GPS potrafi wskazać przystanek dokładniej
     // niż interpolacja po czasie, a wynik różni się w tym, ile zostało.
     const p = vehicle ? computeTripProgress(conn, { vehicle, walkSpeedMps }) : base;
@@ -420,6 +516,8 @@ async function startTrackingNow(trip: TrackedTrip): Promise<void> {
   // Live Tracker musi odpytywać także w tle, bo powiadomienia o przesunięciach
   // (Live Update) potrzebują świeżych pozycji pojazdów.
   liveTracker.pin(true);
+  // GPS pasażera w trasie (opóźnienie z przejazdu stacji) - patrz observeOnboard.
+  subscribeOnboardFixes();
   if (run !== generation || !tracked || !progress) return;
   await presentTrip(tracked, progress, getNotificationPreferencesSync());
   if (run !== generation) {
@@ -607,6 +705,7 @@ async function stopTrackingNow(): Promise<void> {
     ticker = null;
   }
   liveTracker.pin(false);
+  releaseOnboardFixes();
   notify();
   // Zapis KV kasujemy od razu, przed długim sprzątaniem: restart w jego
   // trakcie nie może wskrzesić podróży, którą użytkownik zakończył. Nowy
@@ -685,6 +784,7 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     // a bez ostatniego opóźnienia ten sam alert o spóźnieniu dzwoni drugi raz.
     lastDelayMin = parsed.connection.delayMin;
     liveTracker.pin(true);
+    subscribeOnboardFixes();
     await loadNotificationPreferences();
     progress = computeTripProgress(connection, {
       walkSpeedMps: profileWalkSpeedMps(getSettingsSync().walkPace),

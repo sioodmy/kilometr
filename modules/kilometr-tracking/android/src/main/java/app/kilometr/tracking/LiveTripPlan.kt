@@ -40,6 +40,8 @@ internal data class LiveTripPlan(
   val states: List<LiveState>,
   val alightAlertsEnabled: Boolean,
   val transferProtectionEnabled: Boolean = false,
+  /** GPS pasażera w trasie: serwis trzyma subskrypcję lokalizacji i raportuje pomiary do JS. */
+  val gpsOnboardEnabled: Boolean = false,
   val protectedLegIndex: Int? = null,
   val transferAlertsEnabled: Boolean = true,
 ) {
@@ -282,6 +284,7 @@ internal data class LiveTripPlan(
         states = states,
         alightAlertsEnabled = root.optBoolean("alightAlertsEnabled", true),
         transferProtectionEnabled = root.optBoolean("transferProtectionEnabled", false),
+        gpsOnboardEnabled = root.optBoolean("gpsOnboardEnabled", false),
         transferAlertsEnabled = root.optBoolean("transferAlertsEnabled", true),
       )
     }

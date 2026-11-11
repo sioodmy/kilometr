@@ -68,6 +68,7 @@
     "setup": "npm --prefix server run setup",
     "phone": "bash scripts/launch-phone.sh",
     "check:notifications": "tsx scripts/check-notifications.ts",
+    "check:onboard-gps": "tsx scripts/check-onboard-gps.ts",
     "check:transfers": "tsx --require ./scripts/stub-expo.cjs scripts/check-transfer-protection.ts",
     "check:connection-times": "tsx scripts/check-connection-times.ts",
     "check:alarm": "tsx scripts/check-departure-alarm.ts",
