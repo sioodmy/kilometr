@@ -17,8 +17,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   Activity,
+  ArrowUpDown,
   BusFront,
   CableCar,
+  Check,
   Layers,
   TrainFront,
   TramFront,
@@ -68,13 +70,14 @@ export function RouteFilterSheet({
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
-  // Kompaktowa, precyzyjnie wyliczona wysokość gwarantuje, że cały arkusz
-  // (wraz z przyciskiem "Gotowe") mieści się w widoku ekranu bez ucinania
-  // na żadnym urządzeniu i nie wypycha footera poza dolną krawędź.
-  const HANDLE_HEIGHT = 24;
+  // Arkusz ma oddychać: sekcje, chipy i przycisk "Gotowe" dostają więcej
+  // przestrzeni niż w starym kompaktowym układzie, a przy powiększonej
+  // czcionce wysokość rośnie razem z treścią. Gdy zabraknie miejsca,
+  // środkowa część przewija się, footer zostaje na dole.
+  const HANDLE_HEIGHT = 28;
   const maxAvailable = windowHeight - insets.top - insets.bottom - 16;
-  const baseContentHeight = 390 + Math.max(0, fontScale - 1) * 180;
-  const sheetHeight = Math.min(maxAvailable, Math.max(340, baseContentHeight));
+  const baseContentHeight = 470 + Math.max(0, fontScale - 1) * 200;
+  const sheetHeight = Math.min(maxAvailable, Math.max(380, baseContentHeight));
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
 
   useEffect(() => {
@@ -151,17 +154,17 @@ export function RouteFilterSheet({
   const renderModeIcon = (mode: LegMode, color: string) => {
     switch (mode) {
       case 'tram':
-        return <TramFront size={16} color={color} />;
+        return <TramFront size={18} color={color} />;
       case 'bus':
       case 'trolleybus':
-        return <BusFront size={16} color={color} />;
+        return <BusFront size={18} color={color} />;
       case 'train':
       case 'subway':
-        return <TrainFront size={16} color={color} />;
+        return <TrainFront size={18} color={color} />;
       case 'cable':
-        return <CableCar size={16} color={color} />;
+        return <CableCar size={18} color={color} />;
       default:
-        return <Layers size={16} color={color} />;
+        return <Layers size={18} color={color} />;
     }
   };
 
@@ -224,7 +227,7 @@ export function RouteFilterSheet({
               accessibilityLabel={s.routesFilters.closeA11y}
               hitSlop={8}
             >
-              <X size={20} color={scheme.onSurfaceVariant} />
+              <X size={22} color={scheme.onSurfaceVariant} />
             </Pressable>
           </View>
         </View>
@@ -237,13 +240,18 @@ export function RouteFilterSheet({
           overScrollMode="never"
         >
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{s.routesFilters.vehiclesSection}</Text>
+            <View style={styles.sectionHead}>
+              <View style={styles.sectionIcon}>
+                <Layers size={18} color={scheme.onPrimaryContainer} />
+              </View>
+              <Text style={styles.sectionTitle}>{s.routesFilters.vehiclesSection}</Text>
+            </View>
             <View style={styles.pillsWrap}>
               <ModeChip
                 label={s.routesFilters.allVehicles}
                 icon={
                   <Layers
-                    size={16}
+                    size={18}
                     color={
                       selectedMode === 'all' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
                     }
@@ -271,7 +279,12 @@ export function RouteFilterSheet({
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{s.routesFilters.transfersSection}</Text>
+            <View style={styles.sectionHead}>
+              <View style={styles.sectionIcon}>
+                <ArrowUpDown size={18} color={scheme.onPrimaryContainer} />
+              </View>
+              <Text style={styles.sectionTitle}>{s.routesFilters.transfersSection}</Text>
+            </View>
             <TransfersSegment
               options={transferOptions}
               activeKey={transfersFilter}
@@ -280,7 +293,12 @@ export function RouteFilterSheet({
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{s.routesFilters.liveSection}</Text>
+            <View style={styles.sectionHead}>
+              <View style={styles.sectionIcon}>
+                <Activity size={18} color={scheme.onPrimaryContainer} />
+              </View>
+              <Text style={styles.sectionTitle}>{s.routesFilters.liveSection}</Text>
+            </View>
             <LiveToggle
               title={s.routesFilters.liveOnly}
               subtitle={s.routesFilters.liveOnlyHint}
@@ -328,6 +346,7 @@ function ModeChip({
       <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
         {label}
       </Text>
+      {active && <Check size={16} color={scheme.onSecondaryContainer} />}
     </Pressable>
   );
 }
@@ -350,10 +369,10 @@ function TransfersSegment({
     progress.value = reduceMotion ? activeIndex : withSpring(activeIndex, springConfig);
   }, [activeIndex, progress, reduceMotion]);
 
-  // Szerokość zewnętrzna minus 2px border i 4px padding wewnętrznego.
+  // Szerokość zewnętrzna minus 2px border i 8px paddingu wewnętrznego.
   const indicatorStyle = useAnimatedStyle(() => {
     const w =
-      containerWidth.value > 0 ? (containerWidth.value - 6) / Math.max(1, options.length) : 0;
+      containerWidth.value > 0 ? (containerWidth.value - 10) / Math.max(1, options.length) : 0;
     return {
       width: w,
       transform: [{ translateX: progress.value * w }],
@@ -418,7 +437,7 @@ function LiveToggle({
   }));
 
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: activeSV.value * 16 }],
+    transform: [{ translateX: activeSV.value * 22 }],
     backgroundColor: interpolateColor(activeSV.value, [0, 1], [scheme.outline, scheme.onPrimary]),
   }));
 
@@ -432,7 +451,7 @@ function LiveToggle({
       <Animated.View style={[styles.liveCard, containerStyle]}>
         <View style={styles.liveCardLeft}>
           <View style={[styles.liveIconCircle, active && styles.liveIconCircleActive]}>
-            <Activity size={16} color={active ? scheme.primary : scheme.onSurfaceVariant} />
+            <Activity size={20} color={active ? scheme.primary : scheme.onSurfaceVariant} />
           </View>
           <View style={styles.liveCardTexts}>
             <Text
@@ -441,7 +460,7 @@ function LiveToggle({
             >
               {title}
             </Text>
-            <Text style={styles.liveCardSub} numberOfLines={1}>
+            <Text style={styles.liveCardSub} numberOfLines={2}>
               {subtitle}
             </Text>
           </View>
@@ -456,7 +475,7 @@ function LiveToggle({
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: scheme.surfaceContainer,
+    backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
   },
@@ -465,67 +484,64 @@ const styles = StyleSheet.create({
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
-    width: 32,
+    width: 36,
     height: 4,
     borderRadius: 2,
-    marginTop: 8,
+    marginTop: 10,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: scheme.outlineVariant,
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
   },
   headerTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flexShrink: 1,
   },
   title: {
-    ...type.titleMedium,
-    fontSize: 18,
+    ...type.titleLarge,
     color: scheme.onSurface,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   countBadge: {
-    minWidth: 20,
-    height: 20,
+    minWidth: 24,
+    height: 24,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
   },
   countBadgeText: {
-    ...type.labelSmall,
-    fontSize: 11,
+    ...type.labelMedium,
     color: scheme.onSecondaryContainer,
     fontWeight: '700',
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   resetBtn: {
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: shape.small,
+    borderRadius: shape.full,
   },
   resetText: {
-    ...type.labelMedium,
+    ...type.labelLarge,
     color: scheme.primary,
     fontWeight: '600',
   },
   closeBtn: {
-    width: 32,
-    height: 32,
+    width: 48,
+    height: 48,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
@@ -535,20 +551,33 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.lg,
   },
   section: {
-    marginBottom: 12,
+    gap: spacing.sm,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sectionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
-    ...type.labelSmall,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: scheme.onSurfaceVariant,
-    marginBottom: 6,
-    fontWeight: '700',
+    ...type.titleSmall,
+    fontSize: 15,
+    color: scheme.onSurface,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   pillsWrap: {
     flexDirection: 'row',
@@ -558,61 +587,60 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainerHigh,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
-    minHeight: 44,
+    minHeight: 48,
   },
   chipActive: {
     backgroundColor: scheme.secondaryContainer,
     borderColor: scheme.secondaryContainer,
   },
   chipText: {
-    ...type.labelMedium,
-    fontSize: 13,
+    ...type.labelLarge,
     color: scheme.onSurface,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   chipTextActive: {
     color: scheme.onSecondaryContainer,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   segmentContainer: {
     flexDirection: 'row',
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    padding: 2,
+    padding: 4,
     borderWidth: 1,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
   segmentIndicator: {
     position: 'absolute',
-    top: 2,
-    left: 2,
-    bottom: 2,
+    top: 4,
+    left: 4,
+    bottom: 4,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     zIndex: 0,
   },
   segmentBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.full,
-    minHeight: 44,
+    minHeight: 48,
     zIndex: 1,
   },
   segmentText: {
-    ...type.labelSmall,
-    fontSize: 12,
+    ...type.labelLarge,
     color: scheme.onSurfaceVariant,
     fontWeight: '600',
+    textAlign: 'center',
   },
   segmentTextActive: {
     color: scheme.onSecondaryContainer,
@@ -622,24 +650,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: shape.medium,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: shape.large,
     borderWidth: 1,
-    minHeight: 48,
+    minHeight: 72,
+    gap: 12,
   },
   liveCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 4,
   },
   liveIconCircle: {
-    width: 28,
-    height: 28,
+    width: 40,
+    height: 40,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerHighest,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -648,11 +677,11 @@ const styles = StyleSheet.create({
   },
   liveCardTexts: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
   liveCardTitle: {
-    ...type.labelLarge,
-    fontSize: 13,
+    ...type.titleSmall,
+    fontSize: 15,
     color: scheme.onSurface,
     fontWeight: '600',
   },
@@ -661,15 +690,15 @@ const styles = StyleSheet.create({
   },
   liveCardSub: {
     ...type.bodySmall,
-    fontSize: 11,
     color: scheme.onSurfaceVariant,
+    lineHeight: 17,
   },
   switchTrack: {
-    width: 38,
-    height: 22,
-    borderRadius: 11,
+    width: 54,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: scheme.surfaceContainerHighest,
-    padding: 2,
+    padding: 3,
     justifyContent: 'center',
     overflow: 'hidden',
   },
@@ -677,23 +706,23 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
   },
   switchThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
   },
   pressed: {
     opacity: 0.8,
   },
   footer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
-    backgroundColor: scheme.surfaceContainer,
+    backgroundColor: scheme.surfaceContainerLow,
   },
   doneBtn: {
-    minHeight: 46,
+    minHeight: 56,
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
     alignItems: 'center',
@@ -704,8 +733,8 @@ const styles = StyleSheet.create({
   },
   doneText: {
     ...type.labelLarge,
+    fontSize: 16,
     color: scheme.onPrimary,
-    fontWeight: '700',
-    fontSize: 15,
+    fontWeight: '600',
   },
 });
