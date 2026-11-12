@@ -51,6 +51,24 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
     rzeszow: 'Rzeszowie',
     lublin: 'Lublinie',
     radom: 'Radomiu',
+    bydgoszcz: 'Bydgoszczy',
+    torun: 'Toruniu',
+    elblag: 'Elblągu',
+    gorzow: 'Gorzowie Wielkopolskim',
+    czestochowa: 'Częstochowie',
+    zielonagora: 'Zielonej Górze',
+    rybnik: 'Rybniku',
+    slupsk: 'Słupsku',
+    walbrzych: 'Wałbrzychu',
+    kalisz: 'Kaliszu',
+    siedlce: 'Siedlcach',
+    lomza: 'Łomży',
+    krosno: 'Krośnie',
+    jaslo: 'Jaśle',
+    olkusz: 'Olkuszu',
+    chrzanow: 'Chrzanowie',
+    bochnia: 'Bochni',
+    ilawa: 'Iławie',
   };
 
   const expectedGen: Record<CityId, string> = {
@@ -69,6 +87,24 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
     rzeszow: 'Rzeszowa',
     lublin: 'Lublina',
     radom: 'Radomia',
+    bydgoszcz: 'Bydgoszczy',
+    torun: 'Torunia',
+    elblag: 'Elbląga',
+    gorzow: 'Gorzowa Wielkopolskiego',
+    czestochowa: 'Częstochowy',
+    zielonagora: 'Zielonej Góry',
+    rybnik: 'Rybnika',
+    slupsk: 'Słupska',
+    walbrzych: 'Wałbrzycha',
+    kalisz: 'Kalisza',
+    siedlce: 'Siedlec',
+    lomza: 'Łomży',
+    krosno: 'Krosna',
+    jaslo: 'Jasła',
+    olkusz: 'Olkusza',
+    chrzanow: 'Chrzanowa',
+    bochnia: 'Bochni',
+    ilawa: 'Iławy',
   };
 
   const expectedAcc: Record<CityId, string> = {
@@ -87,6 +123,24 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
     rzeszow: 'Rzeszów',
     lublin: 'Lublin',
     radom: 'Radom',
+    bydgoszcz: 'Bydgoszcz',
+    torun: 'Toruń',
+    elblag: 'Elbląg',
+    gorzow: 'Gorzów Wielkopolski',
+    czestochowa: 'Częstochowę',
+    zielonagora: 'Zieloną Górę',
+    rybnik: 'Rybnik',
+    slupsk: 'Słupsk',
+    walbrzych: 'Wałbrzych',
+    kalisz: 'Kalisz',
+    siedlce: 'Siedlce',
+    lomza: 'Łomżę',
+    krosno: 'Krosno',
+    jaslo: 'Jasło',
+    olkusz: 'Olkusz',
+    chrzanow: 'Chrzanów',
+    bochnia: 'Bochnię',
+    ilawa: 'Iławę',
   };
 
   for (const c of CITIES) {
@@ -161,6 +215,36 @@ describe('Zgodność rodzaju gramatycznego w aktualnościach (emptyBody)');
     'Kielce (niemęskoosobowy l. mnoga)',
     pl.news.emptyBody('Kielce'),
     'Kielce nie opublikowały teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Bydgoszcz (r. żeński)',
+    pl.news.emptyBody('Bydgoszcz'),
+    'Bydgoszcz nie opublikowała teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Częstochowa (r. żeński)',
+    pl.news.emptyBody('Częstochowa'),
+    'Częstochowa nie opublikowała teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Siedlce (niemęskoosobowy l. mnoga)',
+    pl.news.emptyBody('Siedlce'),
+    'Siedlce nie opublikowały teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Krosno (r. nijaki)',
+    pl.news.emptyBody('Krosno'),
+    'Krosno nie opublikowało teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Bydgoszcz po ukraińsku (r. męski)',
+    uk.news.emptyBody('Бидгощ'),
+    'Бидгощ зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.',
+  );
+  expect(
+    'Ченстохова po ukraińsku (r. żeński)',
+    uk.news.emptyBody('Ченстохова'),
+    'Ченстохова зараз не опублікувала жодних ускладнень. Потягни вниз, щоб перевірити знову.',
   );
 }
 

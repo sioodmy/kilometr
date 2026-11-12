@@ -132,7 +132,7 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   // Wejherowo (~28 km od Sopotu) to najdalszy punkt aglomeracji...
   expect('Wejherowo w Trójmieście', suggestCityForCoords(54.6036, 18.2317)?.id, 'trojmiasto');
   // ...a Słupsk (~70 km) już poza nią.
-  expect('Słupsk poza Trójmiastem', suggestCityForCoords(54.4647, 17.0286)?.id ?? null, null);
+  expect('Słupsk to własne miasto (od 2026)', suggestCityForCoords(54.4647, 17.0286)?.id ?? null, 'slupsk');
   expect('Piotrkowska w Łodzi', suggestCityForCoords(51.7592, 19.455)?.id, 'lodz');
   expect('Manufaktura w Łodzi', suggestCityForCoords(51.7813, 19.4448)?.id, 'lodz');
   // Zgierz (~25 km) to najdalszy punkt aglomeracji...
@@ -192,9 +192,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'piętnaście miast',
+    'trzydzieści trzy miasta',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow,lublin,radom',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow,lublin,radom,bydgoszcz,torun,elblag,gorzow,czestochowa,zielonagora,rybnik,slupsk,walbrzych,kalisz,siedlce,lomza,krosno,jaslo,olkusz,chrzanow,bochnia,ilawa',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -364,6 +364,41 @@ describe('Wpis Lublina');
   expect('bez bezpośredniego bus_position', lub.features.directBusPosition, false);
 }
 
+
+describe('Wpisy miast dodanych w 2026');
+{
+  // live=true: zbiorkom ma endpoint; live=false: polling wyłączony (features.live).
+  const expected: Record<string, { db: string; pack: string; live: boolean }> = {
+    bydgoszcz: { db: 'kilometr-gtfs-bydgoszcz.db', pack: 'bydgoszcz-tiles.ktp', live: false },
+    torun: { db: 'kilometr-gtfs-torun.db', pack: 'torun-tiles.ktp', live: true },
+    elblag: { db: 'kilometr-gtfs-elblag.db', pack: 'elblag-tiles.ktp', live: true },
+    gorzow: { db: 'kilometr-gtfs-gorzow.db', pack: 'gorzow-tiles.ktp', live: true },
+    czestochowa: { db: 'kilometr-gtfs-czestochowa.db', pack: 'czestochowa-tiles.ktp', live: true },
+    zielonagora: { db: 'kilometr-gtfs-zielonagora.db', pack: 'zielonagora-tiles.ktp', live: false },
+    rybnik: { db: 'kilometr-gtfs-rybnik.db', pack: 'rybnik-tiles.ktp', live: true },
+    slupsk: { db: 'kilometr-gtfs-slupsk.db', pack: 'slupsk-tiles.ktp', live: true },
+    walbrzych: { db: 'kilometr-gtfs-walbrzych.db', pack: 'walbrzych-tiles.ktp', live: true },
+    kalisz: { db: 'kilometr-gtfs-kalisz.db', pack: 'kalisz-tiles.ktp', live: true },
+    siedlce: { db: 'kilometr-gtfs-siedlce.db', pack: 'siedlce-tiles.ktp', live: true },
+    lomza: { db: 'kilometr-gtfs-lomza.db', pack: 'lomza-tiles.ktp', live: false },
+    krosno: { db: 'kilometr-gtfs-krosno.db', pack: 'krosno-tiles.ktp', live: true },
+    jaslo: { db: 'kilometr-gtfs-jaslo.db', pack: 'jaslo-tiles.ktp', live: false },
+    olkusz: { db: 'kilometr-gtfs-olkusz.db', pack: 'olkusz-tiles.ktp', live: false },
+    chrzanow: { db: 'kilometr-gtfs-chrzanow.db', pack: 'chrzanow-tiles.ktp', live: false },
+    bochnia: { db: 'kilometr-gtfs-bochnia.db', pack: 'bochnia-tiles.ktp', live: false },
+    ilawa: { db: 'kilometr-gtfs-ilawa.db', pack: 'ilawa-tiles.ktp', live: false },
+  };
+  for (const [id, e] of Object.entries(expected)) {
+    const c = getCity(id);
+    expect(`${id}: osobna baza`, c.dbFile, e.db);
+    expect(`${id}: osobny pakiet kafli`, c.tilePack, e.pack);
+    expect(`${id}: kafle w z14`, c.tileMaxZoom, 14);
+    expect(`${id}: feed live`, c.features.live, e.live);
+    expect(`${id}: bez feedu komunikatów`, c.features.news, false);
+    expect(`${id}: bez kolei regionalnej`, c.features.regionalRail, false);
+    expect(`${id}: bez bezpośredniego bus_position`, c.features.directBusPosition, false);
+  }
+}
 
 describe("Strefy obsługi i mniejsze miejscowości (GZM i aglomeracje)");
 {
