@@ -133,6 +133,12 @@ const withAndroidSigning = (config) =>
     return mod;
   });
 
+// ANDROID_DEV_DEBUGGABLE=1 (dev podglądy z Azure) robi z release build
+// debugowalny APK: android:debuggable=true, więc da się podpiąć debugger
+// i zobaczyć pełny stack z logcatu. R8 zostaje wyłączony, żeby nazwy klas
+// w crash logu były czytelne.
+const DEV_DEBUGGABLE = process.env.ANDROID_DEV_DEBUGGABLE === '1';
+
 // Release bez R8 nie przechodzi progu Google Play (min. 25% zaciemniania,
 // shrinkingu i optymalizacji DEX). Szablon Expo SDK 57 ma R8 wyłączony,
 // więc włączamy go w gradle.properties razem z usuwaniem nieużywanych zasobów.
@@ -145,9 +151,28 @@ const withReleaseMinify = (config) =>
       if (existing) existing.value = value;
       else config.modResults.push({ type: 'property', key, value });
     };
-    setProperty('android.enableMinifyInReleaseBuilds', 'true');
-    setProperty('android.enableShrinkResourcesInReleaseBuilds', 'true');
+    setProperty('android.enableMinifyInReleaseBuilds', DEV_DEBUGGABLE ? 'false' : 'true');
+    setProperty('android.enableShrinkResourcesInReleaseBuilds', DEV_DEBUGGABLE ? 'false' : 'true');
     return config;
+  });
+
+// `debuggable true` w buildType release. Bloków `release {` jest dwa
+// (signingConfigs i buildTypes), więc szukamy dopiero za `buildTypes`.
+const withDevDebuggable = (config) =>
+  withAppBuildGradle(config, (mod) => {
+    if (!DEV_DEBUGGABLE) return mod;
+    const gradle = mod.modResults.contents;
+    const buildTypes = gradle.indexOf('buildTypes');
+    const release = buildTypes < 0 ? -1 : gradle.indexOf('release {', buildTypes);
+    if (release < 0) {
+      throw new Error(
+        'Nie ustawię debuggable: wygenerowany android/app/build.gradle bez bloku buildTypes.release.',
+      );
+    }
+    const insertAt = release + 'release {'.length;
+    mod.modResults.contents =
+      gradle.slice(0, insertAt) + '\n            debuggable true' + gradle.slice(insertAt);
+    return mod;
   });
 
 // Preset optymalizujący (a nie tylko obfuzkujący) kod. Bez niego R8 dostaje
@@ -208,18 +233,20 @@ module.exports = ({ config }) => {
   return withReleaseMinify(
     withOptimizePreset(
       withProguardRules(
-        withAndroidSigning({
-          ...expo,
-          version,
-          ios: {
-            ...(expo.ios || {}),
-            buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
-          },
-          android: {
-            ...(expo.android || {}),
-            versionCode: versionCodeFromVersion(version),
-          },
-        }),
+        withAndroidSigning(
+          withDevDebuggable({
+            ...expo,
+            version,
+            ios: {
+              ...(expo.ios || {}),
+              buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
+            },
+            android: {
+              ...(expo.android || {}),
+              versionCode: versionCodeFromVersion(version),
+            },
+          }),
+        ),
       ),
     ),
   );

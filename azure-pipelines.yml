@@ -178,7 +178,14 @@ jobs:
           SIGNING_REQUIRED=""
           if [ "$CHANNEL" = "prod" ]; then SIGNING_REQUIRED="1"; fi
           echo "##vso[task.setvariable variable=signing_required]$SIGNING_REQUIRED"
-          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE build=$BUILD_NUMBER"
+
+          # Dev podglądy mają być debugowalne (debuggable, bez R8), żeby crash
+          # z telefonu dało się rozłożyć na czytelny stack. Wydania zostają
+          # zminifikowane pod Play.
+          DEV_DEBUGGABLE=""
+          if [ "$MODE" != "release" ]; then DEV_DEBUGGABLE="1"; fi
+          echo "##vso[task.setvariable variable=dev_debuggable]$DEV_DEBUGGABLE"
+          echo "Resolved: mode=$MODE channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE build=$BUILD_NUMBER debuggable=${DEV_DEBUGGABLE:-0}"
         displayName: Resolve mode, channel, tag, version and asset name
 
       # Ten sam klucz upload co AAB. Prod bez kompletu sekretów nie rusza
@@ -266,6 +273,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: $(ANDROID_KEYSTORE_PASSWORD)
           ANDROID_KEYSTORE_ALIAS: $(ANDROID_KEYSTORE_ALIAS)
           ANDROID_SIGNING_REQUIRED: $(signing_required)
+          ANDROID_DEV_DEBUGGABLE: $(dev_debuggable)
 
       - task: Cache@2
         displayName: Cache Gradle
@@ -311,6 +319,7 @@ jobs:
           # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
           APP_VERSION: $(tag)
           BUILD_NUMBER: $(build_number)
+          ANDROID_DEV_DEBUGGABLE: $(dev_debuggable)
           ANDROID_KEYSTORE_PASSWORD: $(ANDROID_KEYSTORE_PASSWORD)
           ANDROID_KEYSTORE_ALIAS: $(ANDROID_KEYSTORE_ALIAS)
           ANDROID_KEYSTORE_KEY_PASSWORD: $(ANDROID_KEYSTORE_KEY_PASSWORD)
@@ -355,6 +364,13 @@ jobs:
           APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
           AAPT="${ANDROID_SDK_ROOT}/build-tools/$(ANDROID_BUILD_TOOLS)/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
+          if [ "$(dev_debuggable)" = "1" ]; then
+            if ! printf '%s\n' "$BADGING" | grep -q '^application-debuggable'; then
+              echo "##vso[task.logissue type=error]Dev build nie ma android:debuggable=true w manifeście; crashy nie da się debugować."
+              exit 1
+            fi
+            echo "Manifest: debuggable=true (debugger i pełny stack z logcatu działają)"
+          fi
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
           APK_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")"
           EXPECTED_CODE="$(APP_VERSION="$(tag)" BUILD_NUMBER="$(build_number)" node -e "process.stdout.write(String(require('./app.config.js')({}).android.versionCode))")"
@@ -389,6 +405,17 @@ jobs:
           mkdir -p "$(Build.ArtifactStagingDirectory)/apk-dist"
           cp "$APK" "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name)"
           (cd "$(Build.ArtifactStagingDirectory)/apk-dist" && sha256sum "$(apk_name)" > "$(apk_name).sha256")
+
+          # Dev build: dokładamy mapę Hermesa. Bez niej stack trace z telefonu
+          # to "index.android.bundle:1:234567" i nic z niego nie wynika.
+          if [ "$(dev_debuggable)" = "1" ]; then
+            MAP=android/app/build/generated/sourcemaps/react/release/index.android.bundle.map
+            if [ ! -f "$MAP" ]; then
+              echo "##vso[task.logissue type=error]Brak source mapy Hermesa ($MAP); crashy z JS nie da się zsynchronizować z kodem."
+              exit 1
+            fi
+            cp "$MAP" "$(Build.ArtifactStagingDirectory)/apk-dist/$(apk_name).map"
+          fi
 
           # Kontrakt landingu: przycisk bierze app-release.apk z release "latest".
           if [ "$(channel)" = "prod" ]; then
@@ -455,6 +482,9 @@ jobs:
             "${DIST}/$(apk_name)#$(apk_name)"
             "${DIST}/$(apk_name).sha256#$(apk_name).sha256"
           )
+          if [ "$(dev_debuggable)" = "1" ]; then
+            ASSETS+=("${DIST}/$(apk_name).map#$(apk_name).map")
+          fi
           if [ "$(channel)" = "prod" ]; then
             ASSETS+=(
               "${DIST}/app-release.apk#app-release.apk"
@@ -500,6 +530,7 @@ jobs:
           REPO="$(Build.Repository.Name)"
           RUN_URL="$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)"
           DOWNLOAD="https://github.com/${REPO}/releases/download/$(tag)/$(apk_name)"
+          MAP_DOWNLOAD="https://github.com/${REPO}/releases/download/$(tag)/$(apk_name).map"
           MARKER="<!-- dev-preview-apk-comment -->"
 
           BODY="$(printf '%s\n' \
@@ -510,7 +541,9 @@ jobs:
             "" \
             "- Wersja: \`$(tag)\`" \
             "- Architektura: \`$(arch)\`" \
+            "- Debugowalny build (debuggable, bez R8)" \
             "- [Pobierz APK](${DOWNLOAD}) (bez logowania)" \
+            "- Crash z JS: [source map](${MAP_DOWNLOAD}) i \`npx metro-symbolicate $(apk_name).map < stack.txt\`" \
             "- [Szczegóły builda w Azure](${RUN_URL})")"
 
           COMMENT_ID="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" | head -n 1 || true)"
