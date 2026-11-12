@@ -83,10 +83,55 @@ export interface DisruptionImpactedLine {
   details: string;
 }
 
+/** Okno czasowe w ciągu doby ("11:45" do "13:00"), tylko z treści komunikatu. */
+export interface DisruptionHours {
+  from: string;
+  to: string;
+}
+
+/**
+ * Zmiana pojedynczej linii. Jeden komunikat może opisywać wiele linii
+ * z różnymi zmianami (jedna zawieszona, inna na objazdach).
+ */
+export interface LineChange {
+  line: string;
+  direction: string | null;
+  change:
+    | 'cancelled'
+    | 'detour'
+    | 'shortened'
+    | 'stops_skipped'
+    | 'schedule_change'
+    | 'frequency_change'
+    | 'route_restored'
+    | 'other';
+  /** Zmieniony fragment trasy w kolejności jazdy z tekstu; null gdy tekst nie podaje kolejności. */
+  via: string[] | null;
+  omitted_stops: string[];
+  temporary_stops: string[];
+  replacement_line: string | null;
+  hours: DisruptionHours[];
+  details: string;
+}
+
+/** Linia uruchamiana czasowo (mecz, święta, komunikacja zastępcza), spoza stałego rozkładu. */
+export interface TemporaryLine {
+  line: string;
+  /** Pełna trasa linii w kolejności jazdy z tekstu. */
+  via: string[];
+  frequency_min: number | null;
+  days: string[];
+  hours: DisruptionHours[];
+  serves: string[];
+  details: string;
+}
+
 export interface DisruptionStop {
   name: string;
   action: string;
   lines: string[];
+  /** Gdy action=replaced_by: przystanek obsługiwany zamiast tego. */
+  replaced_by?: string | null;
   details: string;
 }
 
@@ -109,6 +154,10 @@ export interface DisruptionAlert {
   valid_from: string;
   valid_to: string | null;
   all_lines: string[];
+  /** Rozbicie per-linia (nowy format). Stare alerts w cache R2 mogą go nie mieć. */
+  line_changes?: LineChange[];
+  /** Linie specjalne uruchamiane czasowo (nowy format). */
+  temporary_lines?: TemporaryLine[];
   impacted_lines: DisruptionImpactedLine[];
   stops: DisruptionStop[];
 }

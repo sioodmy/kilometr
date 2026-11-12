@@ -121,6 +121,8 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
 
   const rawLines = new Set<string>();
   for (const l of alert.all_lines ?? []) if (l) rawLines.add(l);
+  for (const lc of alert.line_changes ?? []) if (lc.line) rawLines.add(lc.line);
+  for (const tl of alert.temporary_lines ?? []) if (tl.line) rawLines.add(tl.line);
   for (const imp of alert.impacted_lines ?? []) if (imp.line) rawLines.add(imp.line);
 
   const lines: GroundedLine[] = [];
@@ -130,10 +132,21 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   }
 
   const rawStops = new Set<string>();
-  for (const st of alert.stops ?? []) if (st.name) rawStops.add(st.name);
+  for (const st of alert.stops ?? []) {
+    if (st.name) rawStops.add(st.name);
+    if (st.replaced_by) rawStops.add(st.replaced_by);
+  }
+  for (const lc of alert.line_changes ?? []) {
+    for (const n of lc.via ?? []) if (n) rawStops.add(n);
+    for (const n of lc.omitted_stops ?? []) if (n) rawStops.add(n);
+    for (const n of lc.temporary_stops ?? []) if (n) rawStops.add(n);
+  }
   for (const imp of alert.impacted_lines ?? []) {
     for (const n of imp.omitted_stops ?? []) if (n) rawStops.add(n);
     for (const n of imp.temporary_stops ?? []) if (n) rawStops.add(n);
+  }
+  for (const tl of alert.temporary_lines ?? []) {
+    for (const n of tl.via ?? []) if (n) rawStops.add(n);
   }
 
   const stops: GroundedStop[] = [];
