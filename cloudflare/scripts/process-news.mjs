@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { findUnknownNames } from './news-validate.mjs';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../..');
@@ -21,6 +22,11 @@ const SUPPORTED_CITIES = [
   'olsztyn',
   'opole',
   'rzeszow',
+  'szczecin',
+  'kielce',
+  'bialystok',
+  'lublin',
+  'radom',
   'polska',
 ];
 
@@ -34,6 +40,11 @@ const CITY_NAMES = {
   olsztyn: 'Olsztyn',
   opole: 'Opole',
   rzeszow: 'Rzeszów',
+  szczecin: 'Szczecin',
+  kielce: 'Kielce',
+  bialystok: 'Białystok',
+  lublin: 'Lublin',
+  radom: 'Radom',
   polska: 'Polska (Kolej)',
 };
 
@@ -156,6 +167,54 @@ async function fetchFullArticleText(url) {
         text = text.slice(startIdx);
       }
       return cleanHtml(text.replace(/<li[^>]*>/gi, '\n• '));
+    }
+
+    // Strony nowych miast mają własne kontenery treści; ogólny chain
+    // wyciągałby nawigację albo panel boczny z innymi komunikatami.
+    if (/mpk\.lodz\.pl/i.test(url)) {
+      // wholemessage.jsp: treść w div#dWrkspc.
+      const m = html.split(/id="dWrkspc"/i)[1]?.split(/<\/div>\s*<\/div>\s*<\/div>/i)[0] ?? '';
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/ztm\.kielce\.pl/i.test(url)) {
+      const m = (html.split(/com-content-article__body/i)[1] ?? '')
+        .split(/rp-sidebarright/i)[0]
+        .replace(/<div class="rozklad_jazdy_aticle"[\s\S]*$/i, ' ');
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/zditm\.szczecin\.pl/i.test(url)) {
+      const m = (html.split(/id="pageContent"/i)[1]?.split(/<\/main>/i)[0] ?? '')
+        .split(/Więcej wiadomości/i)[0]
+        .split(/wiadomosci\.szczecin\.eu/i)[0]
+        .split(/<div class="offcanvas/i)[0];
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/mzdik\.pl/i.test(url)) {
+      // Sekcja komunikatu; aside z listą innych komunikatów leży poza nią.
+      const section = (html.split(/<section aria-labelledby="section-heading">/i)[1]?.split(/<\/section>/i)[0] ?? '').replace(
+        /<header\b[\s\S]*?<\/header>/i,
+        ' ',
+      );
+      const cleaned = cleanHtml(section);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/zdtm\.lublin\.eu/i.test(url)) {
+      const m = (html.split(/class="main-center-panel[^>]*>/i)[1]?.split(/main-right-panel/i)[0] ?? '')
+        .replace(/<ol class="breadcrumb"[\s\S]*?<\/ol>/gi, ' ')
+        .replace(/<h2 class="text-header"[\s\S]*?<\/h2>/i, ' ');
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/komunikacja\.bialystok\.pl/i.test(url)) {
+      const m =
+        html
+          .split(/component-content-wysiwyg/i)[1]
+          ?.split(/Cms_Attachment|Cms_Gallery|<footer/i)[0] ?? '';
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
     }
 
     const cleaned = cleanHtml(rawFragment);
@@ -513,7 +572,216 @@ function parseRssItems(xml, limit) {
   return items;
 }
 
+function isoFromDatetime(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function isoFromPolishDate(text) {
+  const m = String(text ?? '').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  const d = new Date(
+    Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 8), Number(m[5] ?? 0)),
+  );
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// ZTM Kielce: lista Joomla, karty com-content-category-blog__item.
+export function parseKielceList(html, limit) {
+  const cards = html.split(/com-content-category-blog__item(?!s)/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const linkRe = /<a href="(\/aktualnosci\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let href = '';
+    let title = '';
+    let m;
+    while ((m = linkRe.exec(card)) !== null) {
+      const text = cleanHtml(m[2]).replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      href = m[1].trim();
+      title = text;
+      break;
+    }
+    if (!href || !title) continue;
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const afterMeta = card.split(/<\/dl>/i)[1] ?? card;
+    const lead = cleanHtml((afterMeta.match(/<p>([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(href).digest('hex').slice(0, 16),
+      title,
+      link: `https://ztm.kielce.pl${href}`,
+      pubDate: isoFromDatetime(datetime),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// ZDiTM Szczecin: karty div.card z linkiem stretched-link.
+export function parseSzczecinList(html, limit) {
+  const cards = html.split(/<div class="card shadow img-hover/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const m = card.match(
+      /<a href="(https:\/\/www\.zditm\.szczecin\.pl\/pl\/pasazer\/informacje\/[^"]+)"[^>]*class="stretched-link"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!m) continue;
+    const link = m[1].trim();
+    if (/\/archiwum\/?$/.test(link)) continue;
+    const title = cleanHtml(m[2]).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const lead = cleanHtml((card.match(/<p class="card-text[^"]*">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate: isoFromDatetime(datetime),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// MZDiK Radom: karty article.section__article, link względny komunikaty/*.
+export function parseRadomList(html, limit) {
+  const cards = html.split(/<article class="section__article"/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const linkM = card.match(
+      /<h3[^>]*class="article__header"[^>]*>[\s\S]*?<a href="(komunikaty\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!linkM) continue;
+    const href = linkM[1].trim();
+    const title = cleanHtml(linkM[2]).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    const lead = cleanHtml((card.match(/<div class="article__info">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(href).digest('hex').slice(0, 16),
+      title,
+      link: `https://mzdik.pl/${href}`,
+      pubDate: isoFromPolishDate(title),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// BKM Białystok: li.news__item, pełny tytuł w atrybucie title.
+export function parseBialystokList(html, limit) {
+  const blocks = html.match(/<li class="news__item">[\s\S]*?<\/li>/gi) ?? [];
+  const items = [];
+  for (const block of blocks.slice(0, limit)) {
+    const linkM = block.match(/<a class="news__title" href="([^"]+)"[^>]*title="([^"]*)"/i);
+    if (!linkM) continue;
+    const href = linkM[1].trim();
+    const link = href.startsWith('http') ? href : `https://komunikacja.bialystok.pl${href}`;
+    const title = cleanHtml(linkM[2]).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    const dateRaw = (block.match(/<div class="news__date">([^<]*)/i) ?? [])[1] ?? '';
+    const lead = cleanHtml((block.match(/<div class="news__lead">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate: isoFromPolishDate(dateRaw.trim()),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// ZDiTM Lublin: article.news z grupą dnia; karty bez daty dziedziczą poprzednią.
+export function parseLublinList(html, limit) {
+  const cards = html.split(/<article class="news">/i).slice(1);
+  const items = [];
+  let lastDate = null;
+  for (const card of cards) {
+    const dateRaw = (card.match(/<div class="data nowosc[\s\S]*?<h4>([^<]+)<\/h4>/i) ?? [])[1] ?? '';
+    const parsedDate = isoFromDatetime(dateRaw.trim());
+    if (parsedDate) lastDate = parsedDate;
+    const tinies = card.split(/<article class="tiny/i).slice(1);
+    const blocks = tinies.length > 0 ? tinies : [card];
+    for (const tiny of blocks) {
+      if (items.length >= limit) break;
+      const linkM = tiny.match(
+        /<a href="(\/pl\/aktualnosci\/[^"]+\.html)"[^>]*>(?:(?!<\/a>)[\s\S])*?Zobacz więcej/i,
+      );
+      if (!linkM) continue;
+      const href = linkM[1].trim();
+      const title = cleanHtml((tiny.match(/<h3 class="inline">([\s\S]*?)<\/h3>/i) ?? [])[1] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!title) continue;
+      const lead = cleanHtml((tiny.match(/<p[\s>][\s\S]*?<\/p>/i) ?? [])[0] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 600);
+      items.push({
+        id: crypto.createHash('sha256').update(href).digest('hex').slice(0, 16),
+        title,
+        link: `https://www.zdtm.lublin.eu${href}`,
+        pubDate: lastDate,
+        content: lead,
+      });
+    }
+  }
+  return items.slice(0, limit);
+}
+
 const FEED_TIMEOUT_MS = 15000;
+
+// Łódź ma w RSS generyczne tytuły ("Planowane zmiany w rozkładach jazdy").
+// Tytuł karty bierzemy wtedy z początku treści, żeby LLM i cache miały
+// czym odróżnić komunikaty.
+const GENERIC_LODZ_TITLE = /^(planowane|aktualne) zmiany w rozkładach jazdy$/i;
+
+export function lodzReadableTitle(item) {
+  if (GENERIC_LODZ_TITLE.test(String(item.title ?? '').trim()) && item.content) {
+    const text = String(item.content).replace(/\s+/g, ' ').trim().slice(0, 140);
+    return { ...item, title: text || item.title };
+  }
+  return item;
+}
+
+// MPK Łódź serwuje RSS w ISO-8859-2, a fetch.text() dekoduje wszystko jako
+// UTF-8 (krzaki zamiast ogonków). TextDecoder, a gdy silnik go nie zna,
+// własna tablica Latin-2.
+export const LATIN2_HIGH =
+  '\u00a0Ą˘Ł¤ĽŚ§¨ŠŞŤŹ\u00adŽŻ°ą˛ł´ľśˇ¸šşťź˝žżŔÁÂĂÄĹĆÇČÉĘËĚÍÎĎĐŃŇÓÔŐÖ×ŘŮÚŰÜÝŢßŕáâăäĺćçčéęëěíîďđńňóôőö÷řůúűüýţ˙';
+
+export function decodeLatin2(buf) {
+  try {
+    return new TextDecoder('iso-8859-2').decode(buf);
+  } catch {
+    const bytes = new Uint8Array(buf);
+    let out = '';
+    for (const byte of bytes) {
+      out += byte < 0x80 ? String.fromCharCode(byte) : (LATIN2_HIGH[byte - 0xa0] ?? '');
+    }
+    return out;
+  }
+}
+
+// Łódź: XML w Latin-2, więc czytamy ArrayBuffer i dekodujemy sami.
+async function fetchFeedLatin2(url, label, headers) {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${label}`);
+  return decodeLatin2(await res.arrayBuffer());
+}
 
 // Pobiera feed z limitem czasu. XML/JSON musi wrócić jako dane, nie jako strona
 // HTML, bo serwery potrafią oddać 200 z komunikatem błędu zamiast treści.
@@ -584,8 +852,60 @@ async function fetchCityFeed(city, limit) {
       return parseRssItems(text, limit);
     }
     case 'lodz': {
-      const text = await fetchFeed('https://mpk.lodz.pl/rozklady/rss/rozklady.jsp', 'Lodz MPK', browserHeaders, 'xml');
-      return parseRssItems(text, limit);
+      // Dwa kanały MPK Łódź (zmiany w rozkładach + utrudnienia), oba
+      // w ISO-8859-2. Kanały się dublują: ten sam link = jeden komunikat.
+      const [rozklady, utrudnienia] = await Promise.allSettled([
+        fetchFeedLatin2('https://mpk.lodz.pl/rozklady/rss/rozklady.jsp', 'Lodz MPK rozklady', browserHeaders),
+        fetchFeedLatin2('https://mpk.lodz.pl/showrss.action?c=1211', 'Lodz MPK utrudnienia', browserHeaders),
+      ]);
+      const all = [
+        ...(rozklady.status === 'fulfilled' ? parseRssItems(rozklady.value, limit) : []),
+        ...(utrudnienia.status === 'fulfilled' ? parseRssItems(utrudnienia.value, limit) : []),
+      ];
+      if (all.length === 0) {
+        const reason =
+          rozklady.status === 'rejected' ? rozklady.reason : utrudnienia.status === 'rejected' ? utrudnienia.reason : null;
+        throw reason instanceof Error ? reason : new Error('Lodz MPK: puste kanaly');
+      }
+      const seen = new Set();
+      return all
+        .filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        })
+        .map(lodzReadableTitle)
+        .slice(0, limit);
+    }
+    case 'szczecin': {
+      const html = await fetchFeed(
+        'https://www.zditm.szczecin.pl/pl/pasazer/informacje',
+        'ZDiTM Szczecin',
+        browserHeaders,
+        'html',
+      );
+      return parseSzczecinList(html, limit);
+    }
+    case 'kielce': {
+      const html = await fetchFeed('https://ztm.kielce.pl/aktualnosci.html', 'ZTM Kielce', browserHeaders, 'html');
+      return parseKielceList(html, limit);
+    }
+    case 'bialystok': {
+      const html = await fetchFeed(
+        'https://komunikacja.bialystok.pl/pl/informacje/wiadomosci/komunikaty/',
+        'BKM Bialystok',
+        browserHeaders,
+        'html',
+      );
+      return parseBialystokList(html, limit);
+    }
+    case 'lublin': {
+      const html = await fetchFeed('https://www.zdtm.lublin.eu/pl/aktualnosci', 'ZDiTM Lublin', browserHeaders, 'html');
+      return parseLublinList(html, limit);
+    }
+    case 'radom': {
+      const html = await fetchFeed('https://mzdik.pl/komunikaty', 'MZDiK Radom', browserHeaders, 'html');
+      return parseRadomList(html, limit);
     }
     case 'olsztyn': {
       const text = await fetchFeed('https://zdzit.olsztyn.eu/feed/', 'Olsztyn ZDZiT', browserHeaders, 'xml');
@@ -1127,7 +1447,9 @@ async function main() {
   console.log(`\nZakończono. Łącznie aktywnych/niedawnych alertów: ${totalAccepted}`);
 }
 
-main().catch((err) => {
-  console.error('Błąd krytyczny:', err);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('Błąd krytyczny:', err);
+    process.exit(1);
+  });
+}

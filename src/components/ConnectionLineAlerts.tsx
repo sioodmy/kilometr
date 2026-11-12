@@ -13,6 +13,7 @@ import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
 import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
+import { groundDisruption, type GroundedDisruption } from '../services/disruptionGrounding';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 import {
   alertsForConnection,
@@ -112,10 +113,12 @@ function cleanHeaderTimeframe(raw?: string | null): string {
 const AlertSubCard = memo(function AlertSubCard({
   item,
   lineSet,
+  grounded,
   onPress,
 }: {
   item: MpkNewsItem;
   lineSet: Set<string>;
+  grounded?: GroundedDisruption;
   onPress: () => void;
 }) {
   const s = useStrings();
@@ -157,24 +160,25 @@ const AlertSubCard = memo(function AlertSubCard({
     return null;
   }, [item.disruption?.impacted_lines, lineSet]);
 
-  // Znajdź pomijane przystanki
+  // Znajdź pomijane przystanki; nazwy z LLM podmieniamy na kanoniczne z GTFS.
   const omittedStops = useMemo(() => {
     if (!item.disruption?.impacted_lines) return [];
+    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
     const set = new Set<string>();
     for (const imp of item.disruption.impacted_lines) {
       if ((!imp.line || lineSet.has(imp.line)) && Array.isArray(imp.omitted_stops)) {
-        for (const st of imp.omitted_stops) set.add(st);
+        for (const st of imp.omitted_stops) set.add(canonical.get(st) ?? st);
       }
     }
     if (set.size === 0) {
       for (const imp of item.disruption.impacted_lines) {
         if (Array.isArray(imp.omitted_stops)) {
-          for (const st of imp.omitted_stops) set.add(st);
+          for (const st of imp.omitted_stops) set.add(canonical.get(st) ?? st);
         }
       }
     }
     return [...set];
-  }, [item.disruption?.impacted_lines, lineSet]);
+  }, [item.disruption?.impacted_lines, lineSet, grounded]);
 
   const press = useSharedValue(0);
   const animatedCardStyle = useAnimatedStyle(() => ({
@@ -447,6 +451,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
   const [status, setStatus] = useState<Status>(() => (getCachedNews() ? 'ready' : 'loading'));
   const [attempt, setAttempt] = useState(0);
+  const [grounded, setGrounded] = useState<Map<string, GroundedDisruption>>(new Map());
 
   const routeLines = useMemo(() => {
     if (propLines && propLines.length > 0) {
@@ -460,6 +465,54 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return new Set(routeLines.map((l) => l.trim().toUpperCase()));
   }, [routeLines]);
   const lineKey = [...lineSet].sort().join(',');
+
+  // stop_id wszystkich przystanków na trasie połączenia (do dopasowania po GTFS).
+  const routeStopIds = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return set;
+    for (const leg of connection.legs ?? []) {
+      if (leg.fromStopId && leg.fromStopId !== 'origin' && leg.fromStopId !== 'destination') {
+        set.add(leg.fromStopId);
+      }
+      if (leg.toStopId && leg.toStopId !== 'origin' && leg.toStopId !== 'destination') {
+        set.add(leg.toStopId);
+      }
+      for (const s of leg.intermediateStops ?? []) if (s.stopId) set.add(s.stopId);
+    }
+    return set;
+  }, [connection]);
+
+  // route_id nóg tranzytowych połączenia (do dopasowania alertu po GTFS).
+  const routeIdSet = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return set;
+    for (const leg of connection.legs ?? []) {
+      if (leg.routeId) set.add(leg.routeId);
+    }
+    return set;
+  }, [connection]);
+
+  // Uziemienie komunikatów w GTFS: linie -> route_id, przystanki -> stop_id.
+  useEffect(() => {
+    const items = news.filter((n) => n.disruption);
+    if (items.length === 0) {
+      setGrounded(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const map = new Map<string, GroundedDisruption>();
+      for (const item of items) {
+        const g = await groundDisruption(item.disruption!);
+        if (cancelled) return;
+        map.set(item.id, g);
+      }
+      if (!cancelled) setGrounded(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [news]);
 
   // 1. Ładowanie komunikatów miejskich
   useEffect(() => {
@@ -530,9 +583,17 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   }, [connection?.id, trainAlertKey]);
 
   const matchedMpk = useMemo(() => {
-    if (lineSet.size === 0) return [];
-    return news.filter((item) => alertTouchesRoute(item, lineSet));
-  }, [news, lineSet]);
+    if (lineSet.size === 0 && routeStopIds.size === 0 && routeIdSet.size === 0) return [];
+    return news.filter((item) => {
+      if (lineSet.size > 0 && alertTouchesRoute(item, lineSet)) return true;
+      const g = grounded.get(item.id);
+      if (g) {
+        if (routeStopIds.size > 0 && g.stopIds.some((id) => routeStopIds.has(id))) return true;
+        if (routeIdSet.size > 0 && g.routeIds.some((id) => routeIdSet.has(id))) return true;
+      }
+      return false;
+    });
+  }, [news, lineSet, grounded, routeStopIds, routeIdSet]);
 
   const flatTrainAlerts = useMemo(() => {
     return trainAlerts.flatMap(({ leg, alerts }) => alerts.map((alert) => ({ leg, alert })));
@@ -646,6 +707,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
             key={item.id}
             item={item}
             lineSet={lineSet}
+            grounded={grounded.get(item.id)}
             onPress={() => openMpkItem(item)}
           />
         ))}

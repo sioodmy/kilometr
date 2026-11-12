@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { findUnknownNames } from './news-validate.mjs';
+import {
+  decodeLatin2,
+  lodzReadableTitle,
+  parseBialystokList,
+  parseKielceList,
+  parseLublinList,
+  parseRadomList,
+  parseSzczecinList,
+} from './process-news.mjs';
 
 const JUNK_TITLE_RE =
   /\b(przetarg|zamówieni[ae]|rekrutacj|oferta pracy|zatrudnimy|aukcj[ae]|składnik[oó]w majątkowych|rzeczy znalezionych|konkurs plastyczn|życzenia|wesołych świąt|facebook|instagram|tiktok|polub nas)\b/i;
@@ -137,4 +146,94 @@ test('cleanHtml usuwa znaczniki i dekoduje polskie encje html', () => {
   assert.match(cleaned, /Krzyków/);
   assert.ok(!cleaned.includes('<p>'));
   assert.ok(!cleaned.includes('<ul>'));
+});
+
+test('dekoduje łódzki RSS z ISO-8859-2', () => {
+  const bytes = Uint8Array.from([0xa3, 0xf3, 0x64, 0xbc]);
+  assert.equal(decodeLatin2(bytes.buffer), 'Łódź');
+});
+
+test('Łódź: generyczny tytuł zastępuje początkiem treści', () => {
+  const item = {
+    title: 'Planowane zmiany w rozkładach jazdy',
+    content: 'W nocy z 12 na 13 listopada linia 6 pojedzie objazdem.',
+  };
+  assert.match(lodzReadableTitle(item).title, /^W nocy z 12 na 13 listopada/);
+});
+
+test('parsuje listę ZTM Kielce', () => {
+  const html = `
+    <div class="com-content-category-blog__item">
+      <dl><dd>meta</dd></dl>
+      <h2><a href="/aktualnosci/123-remont.html">Remont torowiska</a></h2>
+      <time datetime="2026-11-10T09:00:00+01:00"></time>
+      <p>Linia 1 pojedzie objazdem.</p>
+    </div>`;
+  const items = parseKielceList(html, 6);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'Remont torowiska');
+  assert.equal(items[0].link, 'https://ztm.kielce.pl/aktualnosci/123-remont.html');
+  assert.match(items[0].content, /Linia 1 pojedzie objazdem/);
+});
+
+test('parsuje listę ZDiTM Szczecin', () => {
+  const html = `
+    <div class="card shadow img-hover">
+      <a href="https://www.zditm.szczecin.pl/pl/pasazer/informacje/123-remont" class="stretched-link">Remont ulicy</a>
+      <time datetime="2026-11-10T09:00:00+01:00"></time>
+      <p class="card-text mt-3">Utrudnienia dla linii 1 i 2.</p>
+    </div>`;
+  const items = parseSzczecinList(html, 6);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'Remont ulicy');
+  assert.match(items[0].content, /linii 1 i 2/);
+});
+
+test('parsuje listę MZDiK Radom', () => {
+  const html = `
+    <article class="section__article">
+      <h3 class="article__header"><a href="komunikaty/123-remont">Remont od dnia 6.10.2026</a></h3>
+      <div class="article__info">Linia 1 pojedzie objazdem.</div>
+    </article>`;
+  const items = parseRadomList(html, 6);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].link, 'https://mzdik.pl/komunikaty/123-remont');
+  assert.match(items[0].pubDate, /^2026-10-06/);
+});
+
+test('parsuje listę BKM Białystok', () => {
+  const html = `
+    <li class="news__item">
+      <div class="news__date">14.10.2026 09:53</div>
+      <h2><a class="news__title" href="/pl/informacje/wiadomosci/komunikaty/123" title="Zmiana trasy linii 10">Zmiana trasy linii 10</a></h2>
+    </li>`;
+  const items = parseBialystokList(html, 6);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'Zmiana trasy linii 10');
+  assert.equal(items[0].link, 'https://komunikacja.bialystok.pl/pl/informacje/wiadomosci/komunikaty/123');
+  assert.match(items[0].pubDate, /^2026-10-14/);
+});
+
+test('parsuje listę ZDiTM Lublin i dziedziczy datę grupy', () => {
+  const html = `
+    <article class="news">
+      <div class="data nowosc"><h4>2026-10-15 11:48</h4></div>
+      <article class="tiny">
+        <h3 class="inline">Remont na al. Solidarności</h3>
+        <p>Linia 1 pojedzie objazdem.</p>
+        <a href="/pl/aktualnosci/123-remont.html">Zobacz więcej</a>
+      </article>
+    </article>
+    <article class="news">
+      <article class="tiny">
+        <h3 class="inline">Druga zmiana</h3>
+        <p>Linia 2 pojedzie objazdem.</p>
+        <a href="/pl/aktualnosci/124-zmiana.html">Zobacz więcej</a>
+      </article>
+    </article>`;
+  const items = parseLublinList(html, 6);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, 'Remont na al. Solidarności');
+  assert.ok(items[0].pubDate);
+  assert.equal(items[1].pubDate, items[0].pubDate);
 });
