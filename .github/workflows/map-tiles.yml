@@ -24,7 +24,7 @@ on:
         required: true
         default: 'wroclaw'
         type: choice
-        options: [wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom]
+        options: [wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom, bydgoszcz, torun, elblag, gorzow, czestochowa, zielonagora, rybnik, slupsk, walbrzych, kalisz, siedlce, lomza, krosno, jaslo, olkusz, chrzanow, bochnia, ilawa]
 
 permissions:
   contents: read

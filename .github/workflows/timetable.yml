@@ -5,7 +5,7 @@
 # poznan (GTFS ZTM + KW ze statycznych feedów), trojmiasto (GTFS ZTM Gdańsk
 # + ZKM Gdynia + SKM ze statycznych feedów), lodz (GTFS ZDiT + ŁKA
 # ze statycznych feedów), szczecin (GTFS ZDiTM ze statycznego feedu,
-# bez kolei), kielce (GTFS ZTM ze statycznego feedu, bez kolei), olsztyn (GTFS ZDZiT z mirrora, bez kolei), bialystok (GTFS BKM ze statycznego feedu, bez kolei), opole (GTFS MZK ze statycznego feedu, bez kolei), rzeszow (GTFS ZTM ze statycznego feedu, bez kolei), lublin (GTFS ZDiTM ze statycznego feedu, bez kolei) oraz radom (GTFS MZDiK z mkuran.pl ze statycznego feedu, bez kolei).
+# bez kolei), kielce (GTFS ZTM ze statycznego feedu, bez kolei), olsztyn (GTFS ZDZiT z mirrora, bez kolei), bialystok (GTFS BKM ze statycznego feedu, bez kolei), opole (GTFS MZK ze statycznego feedu, bez kolei), rzeszow (GTFS ZTM ze statycznego feedu, bez kolei), lublin (GTFS ZDiTM ze statycznego feedu, bez kolei), radom (GTFS MZDiK z mkuran.pl ze statycznego feedu, bez kolei) oraz 18 miast z 2026 (bydgoszcz, torun, elblag, gorzow, czestochowa, zielonagora, rybnik, slupsk, walbrzych, kalisz, siedlce, lomza, krosno, jaslo, olkusz, chrzanow, bochnia, ilawa - statyczne feedy mkuran.pl/ODT/kasznia.net, bez PDP i bez kolei; kalisz merdżuje 3 feedy prefiksami).
 # Klucze R2: {miasto}/manifest.json + {miasto}/db/kilometr-gtfs.db.gz (gzip).
 # Brak legacy rootu (manifest.json, db/...) i wsparcia starych APK: pakiet
 # zmienił id na app.kilometr, a stare buildy nie umiały czytać bazy .gz,
@@ -38,7 +38,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom, polska]
+        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom, bydgoszcz, torun, elblag, gorzow, czestochowa, zielonagora, rybnik, slupsk, walbrzych, kalisz, siedlce, lomza, krosno, jaslo, olkusz, chrzanow, bochnia, ilawa, polska]
 
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom", "polska"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom", "bydgoszcz", "torun", "elblag", "gorzow", "czestochowa", "zielonagora", "rybnik", "slupsk", "walbrzych", "kalisz", "siedlce", "lomza", "krosno", "jaslo", "olkusz", "chrzanow", "bochnia", "ilawa", "polska"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4

@@ -134,7 +134,69 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : CITY_ARG === 'opole' ? 'opole' : CITY_ARG === 'rzeszow' ? 'rzeszow' : CITY_ARG === 'lublin' ? 'lublin' : CITY_ARG === 'radom' ? 'radom' : 'wroclaw';
+/**
+ * Miasta dodane w 2026: pojedyncze statyczne feedy GTFS (bez PDP, bez kolei).
+ * Tabela zamiast gałęzi per miasto, bo 16 kopii skipu/manifestu to setki
+ * linii powtórzenia; `key` to klucz w manifest.sources (skip po fingerprint).
+ * Wszystkie źródła zwracają Last-Modified/ETag (zweryfikowane), więc
+ * fingerprint i skip idą wprost na źródło (wzorzec Radom). Licencje:
+ * mkuran.pl to CC0 1.0, ODT (data/api.odt.org.pl) to otwarte dane
+ * samorządowe, kasznia.net udostępnia zrzuty publicznie.
+ */
+const NEW_CITY_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+const NEW_CITY_FEEDS = {
+  bydgoszcz: { key: 'zdmikp', label: 'ZDMiKP', url: 'https://mkuran.pl/gtfs/bydgoszcz.zip' },
+  torun: { key: 'mzk', label: 'MZK', url: 'https://mkuran.pl/gtfs/torun.zip' },
+  elblag: { key: 'zkm', label: 'ZKM', url: 'https://mkuran.pl/gtfs/elblag.zip' },
+  gorzow: { key: 'mzk', label: 'MZK', url: 'https://mkuran.pl/gtfs/gorzow_wlkp.zip' },
+  czestochowa: { key: 'mpk', label: 'MPK', url: 'https://data.odt.org.pl/gtfs/czestochowa-gtfs.zip' },
+  zielonagora: { key: 'mzk', label: 'MZK', url: 'https://data.odt.org.pl/gtfs/zielona-gora-gtfs.zip' },
+  rybnik: { key: 'km', label: 'KM', url: 'https://data.odt.org.pl/gtfs/rybnik-gtfs.zip' },
+  slupsk: { key: 'zim', label: 'ZIM', url: 'https://data.odt.org.pl/gtfs/slupsk-gtfs.zip' },
+  // Feed 20 „SKA” to nadzbiór feedu 19 (MUZK): te same linie MZUK plus 10,
+  // 15 i 20 do gmin powiatu wałbrzyskiego. Same autobusy (route_type 3),
+  // mimo nazwy w ODT nie ma tu kolei.
+  walbrzych: { key: 'mzuk', label: 'MZUK', url: 'https://api.odt.org.pl/feed/20/SKA.zip' },
+  siedlce: { key: 'mpk', label: 'MPK', url: 'https://ftp.mpk.siedlce.pl/GTFS-ST/GTFS.zip' },
+  lomza: { key: 'mpk', label: 'MPK', url: 'https://mpklomza.pl/dane-otwarte/GTFS-static.zip' },
+  krosno: { key: 'mks', label: 'MKS', url: 'https://mks.ekrosno.pl/GTFS-ST/GTFS.zip' },
+  jaslo: { key: 'mks', label: 'MKS', url: 'https://data.odt.org.pl/gtfs/jaslo-gtfs.zip' },
+  olkusz: { key: 'zkgkm', label: 'ZKGKM', url: 'https://data.odt.org.pl/gtfs/olkusz-gtfs.zip' },
+  chrzanow: { key: 'zkkm', label: 'ZKKM', url: 'https://data.odt.org.pl/gtfs/zkkm-gtfs.zip' },
+  bochnia: { key: 'rpk', label: 'RPK', url: 'https://api.odt.org.pl/feed/21/GTFS_RPKBochnia.zip' },
+  ilawa: { key: 'zkm', label: 'ZKM', url: 'https://api.odt.org.pl/feed/30/gtfs-ILAWA.zip' },
+};
+
+/**
+ * Kalisz: trzy feedy kasznia.net merdżowane prefiksami (wzorzec Kraków).
+ * Miasto (KLA) idzie ostatnie, bo 111 przystanków miejskich ma wspólne
+ * stop_id z feedem „others” (SDIP Kalisz) i REPLACE zostawia czyste nazwy
+ * bez prefiksu „Kalisz, ”. Reszta id z prefiksem KAL:{K,O,P}.
+ */
+const KALISZ_FEEDS = [
+  { label: 'Others', url: 'https://gtfs.kasznia.net/static/kalisz-others.zip', prefix: 'O' },
+  { label: 'PKS', url: 'https://gtfs.kasznia.net/static/kalisz-pks.zip', prefix: 'P' },
+  { label: 'KLA', url: 'https://gtfs.kasznia.net/static/kalisz.zip', prefix: 'K' },
+];
+
+const CITY =
+  CITY_ARG === 'krakow' ? 'krakow'
+  : CITY_ARG === 'gzm' ? 'gzm'
+  : CITY_ARG === 'warszawa' ? 'warszawa'
+  : CITY_ARG === 'poznan' ? 'poznan'
+  : CITY_ARG === 'trojmiasto' ? 'trojmiasto'
+  : CITY_ARG === 'lodz' ? 'lodz'
+  : CITY_ARG === 'szczecin' ? 'szczecin'
+  : CITY_ARG === 'kielce' ? 'kielce'
+  : CITY_ARG === 'olsztyn' ? 'olsztyn'
+  : CITY_ARG === 'bialystok' ? 'bialystok'
+  : CITY_ARG === 'opole' ? 'opole'
+  : CITY_ARG === 'rzeszow' ? 'rzeszow'
+  : CITY_ARG === 'lublin' ? 'lublin'
+  : CITY_ARG === 'radom' ? 'radom'
+  : CITY_ARG === 'kalisz' ? 'kalisz'
+  : NEW_CITY_FEEDS[CITY_ARG] ? CITY_ARG
+  : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -2169,6 +2231,8 @@ async function main() {
   let rzeszowFingerprint = '';
   let lublinFingerprint = '';
   let radomFingerprint = '';
+  let newCityFingerprint = '';
+  let kaliszFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -2240,6 +2304,22 @@ async function main() {
     gtfsSources = [{ label: 'MZDiK', url: RADOM_GTFS_URL, prefix: '', headers: RADOM_UA }];
     radomFingerprint = await headVersion(RADOM_GTFS_URL, RADOM_UA);
     log('MZDiK:', radomFingerprint || '?');
+  } else if (NEW_CITY_FEEDS[CITY]) {
+    const f = NEW_CITY_FEEDS[CITY];
+    gtfsSources = [{ label: f.label, url: f.url, prefix: '', headers: NEW_CITY_UA }];
+    newCityFingerprint = await headVersion(f.url, NEW_CITY_UA);
+    log(`${f.label}: ${newCityFingerprint || '?'}`);
+  } else if (CITY === 'kalisz') {
+    for (const f of KALISZ_FEEDS) {
+      gtfsSources.push({ label: f.label, url: f.url, prefix: `KAL:${f.prefix}`, headers: NEW_CITY_UA });
+    }
+    const versions = [];
+    for (const s of gtfsSources) {
+      s.version = await headVersion(s.url, s.headers);
+      versions.push(`${s.label}=${s.version || '?'}`);
+    }
+    kaliszFingerprint = versions.join('|');
+    log('Kalisz:', kaliszFingerprint);
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -2294,6 +2374,8 @@ async function main() {
   const lublinVersionReliable = CITY !== 'lublin' || !!lublinFingerprint;
 
   const radomVersionReliable = CITY !== 'radom' || !!radomFingerprint;
+  const newCityVersionReliable = !NEW_CITY_FEEDS[CITY] || !!newCityFingerprint;
+  const kaliszVersionReliable = CITY !== 'kalisz' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
 
 
   if (!FORCE && remote?.sources && remote.dbSchema === ADDRESSES_DB_SCHEMA && addressSnapshotIsFresh(remote.addresses)) {
@@ -2482,6 +2564,24 @@ async function main() {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
       } else {
         log('brak zmian (MZDiK), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
+    if (NEW_CITY_FEEDS[CITY] && remote.sources[NEW_CITY_FEEDS[CITY].key]?.fingerprint === newCityFingerprint && newCityFingerprint) {
+      if (!newCityVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log(`brak zmian (${NEW_CITY_FEEDS[CITY].label}), skip buildu.`);
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
+    if (CITY === 'kalisz' && remote.sources.kalisz?.fingerprint === kaliszFingerprint && kaliszFingerprint) {
+      if (!kaliszVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (KLA + Others + PKS), skip buildu.');
         rmSync(work, { recursive: true, force: true });
         process.exit(2);
       }
@@ -4115,7 +4215,11 @@ async function main() {
               ? `${todayCompact()}-lublin${createHash('sha256').update(`${lublinFingerprint}`).digest('hex').slice(0, 8)}`
             : CITY === 'radom'
               ? `${todayCompact()}-radom${createHash('sha256').update(`${radomFingerprint}`).digest('hex').slice(0, 8)}`
-            : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
+            : CITY === 'kalisz'
+              ? `${todayCompact()}-kalisz${createHash('sha256').update(`${kaliszFingerprint}`).digest('hex').slice(0, 8)}`
+            : NEW_CITY_FEEDS[CITY]
+              ? `${todayCompact()}-${CITY}${createHash('sha256').update(`${newCityFingerprint}`).digest('hex').slice(0, 8)}`
+              : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const version = `${transitVersion}-addr${addressMetadata?.fingerprint.slice(0, 8) ?? 'none'}-poi${poiMetadata?.fingerprint.slice(0, 8) ?? 'none'}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
@@ -4123,7 +4227,7 @@ async function main() {
   meta.run('gtfs_source', 'network');
   meta.run('address_snapshot', JSON.stringify(addressMetadata));
   meta.run('poi_snapshot', JSON.stringify(poiMetadata));
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : CITY === 'kalisz' ? { kalisz: kaliszFingerprint } : NEW_CITY_FEEDS[CITY] ? { [NEW_CITY_FEEDS[CITY].key]: newCityFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -4316,6 +4420,24 @@ async function main() {
           mzdik: {
             kind: 'gtfs-zip', url: RADOM_GTFS_URL, mirror: RADOM_GTFS_MIRROR,
             fingerprint: radomFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : NEW_CITY_FEEDS[CITY]
+      ? {
+          [NEW_CITY_FEEDS[CITY].key]: {
+            kind: 'gtfs-zip', url: NEW_CITY_FEEDS[CITY].url,
+            fingerprint: newCityFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : CITY === 'kalisz'
+      ? {
+          kalisz: {
+            kind: 'gtfs-zip', urls: KALISZ_FEEDS.map((f) => f.url),
+            fingerprint: kaliszFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
