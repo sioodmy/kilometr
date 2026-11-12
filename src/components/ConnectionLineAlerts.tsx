@@ -13,6 +13,7 @@ import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
 import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
+import { groundDisruption, type GroundedDisruption } from '../services/disruptionGrounding';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 import {
   alertsForConnection,
@@ -56,7 +57,8 @@ function getTransitActionLabel(solutionText: string, s: ReturnType<typeof useStr
 
 /**
  * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
- * Bierzemy ze struktury AI disruption.all_lines, impacted_lines oraz item.lines.
+ * Bierzemy ze struktury AI disruption.all_lines, line_changes, temporary_lines
+ * oraz item.lines (fallback scraperowy).
  */
 function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
@@ -72,6 +74,12 @@ function getDisruptionLines(item: MpkNewsItem): string[] {
 
   if (item.disruption?.all_lines) {
     for (const l of item.disruption.all_lines) add(l);
+  }
+  if (item.disruption?.line_changes) {
+    for (const lc of item.disruption.line_changes) add(lc.line);
+  }
+  if (item.disruption?.temporary_lines) {
+    for (const tl of item.disruption.temporary_lines) add(tl.line);
   }
   if (item.disruption?.impacted_lines) {
     for (const imp of item.disruption.impacted_lines) add(imp.line);
@@ -112,10 +120,12 @@ function cleanHeaderTimeframe(raw?: string | null): string {
 const AlertSubCard = memo(function AlertSubCard({
   item,
   lineSet,
+  grounded,
   onPress,
 }: {
   item: MpkNewsItem;
   lineSet: Set<string>;
+  grounded?: GroundedDisruption;
   onPress: () => void;
 }) {
   const s = useStrings();
@@ -143,38 +153,77 @@ const AlertSubCard = memo(function AlertSubCard({
     return [...matched, ...others];
   }, [item, lineSet]);
 
+  // Zmiany per-linia: nowy format line_changes, fallback do starego impacted_lines.
+  const changes = useMemo(() => {
+    const d = item.disruption;
+    if (d?.line_changes) return d.line_changes;
+    return (d?.impacted_lines ?? []).map((imp) => ({
+      line: imp.line,
+      omitted_stops: imp.omitted_stops ?? [],
+      replacement_line: imp.replacement_line ?? null,
+    }));
+  }, [item.disruption]);
+
   // Znajdź ew. komunikację zastępczą dla linii z tego połączenia
   const replacementLine = useMemo(() => {
-    if (!item.disruption?.impacted_lines) return null;
-    for (const imp of item.disruption.impacted_lines) {
+    if (changes.length === 0) return null;
+    for (const imp of changes) {
       if ((!imp.line || lineSet.has(imp.line)) && imp.replacement_line) {
         return imp.replacement_line;
       }
     }
-    for (const imp of item.disruption.impacted_lines) {
+    for (const imp of changes) {
       if (imp.replacement_line) return imp.replacement_line;
     }
     return null;
-  }, [item.disruption?.impacted_lines, lineSet]);
+  }, [changes, lineSet]);
 
-  // Znajdź pomijane przystanki
+  // Znajdź pomijane przystanki; nazwy z LLM podmieniamy na kanoniczne z GTFS.
   const omittedStops = useMemo(() => {
-    if (!item.disruption?.impacted_lines) return [];
+    if (changes.length === 0) return [];
+    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
     const set = new Set<string>();
-    for (const imp of item.disruption.impacted_lines) {
+    for (const imp of changes) {
       if ((!imp.line || lineSet.has(imp.line)) && Array.isArray(imp.omitted_stops)) {
-        for (const st of imp.omitted_stops) set.add(st);
+        for (const st of imp.omitted_stops) set.add(canonical.get(st) ?? st);
       }
     }
     if (set.size === 0) {
-      for (const imp of item.disruption.impacted_lines) {
+      for (const imp of changes) {
         if (Array.isArray(imp.omitted_stops)) {
-          for (const st of imp.omitted_stops) set.add(st);
+          for (const st of imp.omitted_stops) set.add(canonical.get(st) ?? st);
         }
       }
     }
     return [...set];
-  }, [item.disruption?.impacted_lines, lineSet]);
+  }, [changes, lineSet, grounded]);
+
+  // Wiersze zmian per-linia: zawieszenie, objazd, linia specjalna.
+  const lineChangeRows = useMemo(() => {
+    const d = item.disruption;
+    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
+    const rows: Array<{ key: string; kind: 'cancelled' | 'detour' | 'special'; text: string }> = [];
+    const touched = (line: string) => lineSet.size === 0 || lineSet.has(line.trim().toUpperCase());
+    for (const lc of d?.line_changes ?? []) {
+      if (!touched(lc.line)) continue;
+      const hours =
+        lc.hours && lc.hours.length > 0 ? ` (${lc.hours.map((h) => `${h.from}-${h.to}`).join(', ')})` : '';
+      if (lc.change === 'cancelled') {
+        rows.push({ key: `c:${lc.line}`, kind: 'cancelled', text: `${s.news.lineSuspended(lc.line)}${hours}` });
+      } else if (lc.change === 'detour' && lc.via && lc.via.length > 0) {
+        const via = lc.via.map((v) => canonical.get(v) ?? v).join(' → ');
+        rows.push({ key: `d:${lc.line}`, kind: 'detour', text: `${s.news.lineDetour(lc.line)}: ${via}${hours}` });
+      }
+    }
+    for (const tl of d?.temporary_lines ?? []) {
+      if (tl.via && tl.via.length > 0) {
+        const via = tl.via.map((v) => canonical.get(v) ?? v).join(' → ');
+        const freq = tl.frequency_min ? `, ${s.news.everyNMin(tl.frequency_min)}` : '';
+        rows.push({ key: `t:${tl.line}`, kind: 'special', text: `${s.news.specialLine(tl.line)}: ${via}${freq}` });
+      }
+    }
+    return rows;
+  }, [item.disruption, lineSet, grounded, s]);
 
   const press = useSharedValue(0);
   const animatedCardStyle = useAnimatedStyle(() => ({
@@ -293,6 +342,18 @@ const AlertSubCard = memo(function AlertSubCard({
           </Text>
         </View>
       ) : null}
+
+      {/* 8. Zmiany per-linia: zawieszenie, objazd, linia specjalna */}
+      {lineChangeRows.map((row) => (
+        <View key={row.key} style={styles.changeRow}>
+          {row.kind === 'cancelled' ? (
+            <RouteOff size={13} color={scheme.error} />
+          ) : (
+            <BusFront size={13} color={scheme.primary} />
+          )}
+          <Text style={styles.changeText}>{row.text}</Text>
+        </View>
+      ))}
     </AnimatedPressable>
   );
 });
@@ -447,6 +508,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
   const [status, setStatus] = useState<Status>(() => (getCachedNews() ? 'ready' : 'loading'));
   const [attempt, setAttempt] = useState(0);
+  const [grounded, setGrounded] = useState<Map<string, GroundedDisruption>>(new Map());
 
   const routeLines = useMemo(() => {
     if (propLines && propLines.length > 0) {
@@ -460,6 +522,54 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return new Set(routeLines.map((l) => l.trim().toUpperCase()));
   }, [routeLines]);
   const lineKey = [...lineSet].sort().join(',');
+
+  // stop_id wszystkich przystanków na trasie połączenia (do dopasowania po GTFS).
+  const routeStopIds = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return set;
+    for (const leg of connection.legs ?? []) {
+      if (leg.fromStopId && leg.fromStopId !== 'origin' && leg.fromStopId !== 'destination') {
+        set.add(leg.fromStopId);
+      }
+      if (leg.toStopId && leg.toStopId !== 'origin' && leg.toStopId !== 'destination') {
+        set.add(leg.toStopId);
+      }
+      for (const s of leg.intermediateStops ?? []) if (s.stopId) set.add(s.stopId);
+    }
+    return set;
+  }, [connection]);
+
+  // route_id nóg tranzytowych połączenia (do dopasowania alertu po GTFS).
+  const routeIdSet = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return set;
+    for (const leg of connection.legs ?? []) {
+      if (leg.routeId) set.add(leg.routeId);
+    }
+    return set;
+  }, [connection]);
+
+  // Uziemienie komunikatów w GTFS: linie -> route_id, przystanki -> stop_id.
+  useEffect(() => {
+    const items = news.filter((n) => n.disruption);
+    if (items.length === 0) {
+      setGrounded(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const map = new Map<string, GroundedDisruption>();
+      for (const item of items) {
+        const g = await groundDisruption(item.disruption!);
+        if (cancelled) return;
+        map.set(item.id, g);
+      }
+      if (!cancelled) setGrounded(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [news]);
 
   // 1. Ładowanie komunikatów miejskich
   useEffect(() => {
@@ -530,9 +640,17 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   }, [connection?.id, trainAlertKey]);
 
   const matchedMpk = useMemo(() => {
-    if (lineSet.size === 0) return [];
-    return news.filter((item) => alertTouchesRoute(item, lineSet));
-  }, [news, lineSet]);
+    if (lineSet.size === 0 && routeStopIds.size === 0 && routeIdSet.size === 0) return [];
+    return news.filter((item) => {
+      if (lineSet.size > 0 && alertTouchesRoute(item, lineSet)) return true;
+      const g = grounded.get(item.id);
+      if (g) {
+        if (routeStopIds.size > 0 && g.stopIds.some((id) => routeStopIds.has(id))) return true;
+        if (routeIdSet.size > 0 && g.routeIds.some((id) => routeIdSet.has(id))) return true;
+      }
+      return false;
+    });
+  }, [news, lineSet, grounded, routeStopIds, routeIdSet]);
 
   const flatTrainAlerts = useMemo(() => {
     return trainAlerts.flatMap(({ leg, alerts }) => alerts.map((alert) => ({ leg, alert })));
@@ -646,6 +764,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
             key={item.id}
             item={item}
             lineSet={lineSet}
+            grounded={grounded.get(item.id)}
             onPress={() => openMpkItem(item)}
           />
         ))}
@@ -925,6 +1044,18 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     flex: 1,
+  },
+  changeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  changeText: {
+    ...type.bodySmall,
+    color: scheme.onSurface,
+    flex: 1,
+    lineHeight: 17,
   },
 
   // Dolny przycisk

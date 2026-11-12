@@ -120,6 +120,29 @@ describe('Ticketing Service', () => {
     assert.ok(url?.includes('koleo.pl/rozklad-pkp/wroclaw-glowny/legnica/15-11-2026_14:25/all/all'));
   });
 
+  it('summary trainNumber nie powiela prefiksu przewoźnika', () => {
+    const icLeg = {
+      mode: 'train',
+      line: 'IC 6130',
+      trainNumber: 'IC 6130',
+      railAgency: 'IC',
+      fromStop: 'Wrocław Główny',
+      toStop: 'Warszawa Centralna',
+      departAt: '07:33',
+      arriveAt: '11:48',
+    };
+    const summary = getTrainLegSummary({
+      id: 'conn-ic',
+      departAt: '07:33',
+      arriveAt: '11:48',
+      legs: [icLeg],
+      transfers: 0,
+      serviceDate: '2026-11-11',
+    } as unknown as Connection);
+
+    assert.equal(summary?.trainNumber, '6130');
+  });
+
   it('builds multi-train transfer KOLEO URL accurately', () => {
     const multiTrain = {
       id: 'conn-3',

@@ -91,8 +91,22 @@ export function getTrainLegSummary(connection: Connection): TrainLegSummary | nu
     toStation: lastTrain.toStop,
     departureTime: firstTrain.departAt || connection.departAt,
     agency: firstTrain.railAgency,
-    trainNumber: firstTrain.trainNumber || firstTrain.line,
+    trainNumber: trainNumberLabel(firstTrain),
   };
+}
+
+/**
+ * Etykieta numeru pociągu bez podwójnego prefiksu. Bilet PKP IC trzyma numer
+ * jako "IC 6130", a odcinek z feedu ma railAgency "IC", więc sklejenie dawałoby
+ * "IC IC 6130".
+ */
+function trainNumberLabel(leg: Leg): string | undefined {
+  const number = leg.trainNumber || leg.line;
+  if (!number) return undefined;
+  const agency = leg.railAgency?.trim();
+  if (!agency) return number;
+  const prefix = `${agency} `;
+  return number.toUpperCase().startsWith(prefix.toUpperCase()) ? number.slice(prefix.length) : number;
 }
 
 /**

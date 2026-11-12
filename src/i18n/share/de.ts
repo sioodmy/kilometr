@@ -25,13 +25,12 @@ export const de: ShareStrings = {
   cardLabel: (from, to, at) => `Verbindung von ${from} nach ${to}, Ankunft um ${at}`,
   imageAndLink: 'Karte und Link teilen',
   linkOnly: 'Link teilen',
-  sms: 'SMS senden',
+  download: 'Karte herunterladen',
   copy: 'Link kopieren',
   copied: 'Link kopiert',
   preparing: 'Karte wird vorbereitet…',
   error: 'Teilen fehlgeschlagen. Versuche es erneut oder kopiere den Link.',
-  smsError:
-    'SMS konnte nicht geöffnet werden. Kopiere den Link und füge ihn in eine Nachricht ein.',
+  saveError: 'Karte konnte nicht gespeichert werden. Versuche es erneut.',
   close: 'Schließen',
   message: (from, to, departure, arrival, lines) =>
     `Ich fahre von ${from} nach ${to}${lines ? ` (${lines})` : ''}. Abfahrt ${departure}, Ankunft um ${arrival}.`,

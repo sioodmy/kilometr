@@ -130,6 +130,7 @@ export async function presentTrip(
     const json = Platform.OS === 'ios' ? buildIOSLiveActivity(p, trip, tr()) : buildLivePlanJson(p, trip.connection, trip, tr(), {
       alightAlertsEnabled: prefs.trackingEnabled,
       transferAlertsEnabled: prefs.disruptionAlertsEnabled,
+      gpsOnboardEnabled: prefs.trackingEnabled,
     });
     if (await native.startTrip(json)) {
       await dismissFallback();

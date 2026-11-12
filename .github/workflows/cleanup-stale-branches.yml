@@ -1,0 +1,95 @@
+name: Cleanup stale branches
+
+# Usuwa branche, ktore nie maja otwartego PR-a i nie dostaly commita od
+# MAX_AGE_DAYS dni. Branche chronione (main, dev, nightly, prod) sa zawsze
+# pomijane, niezaleznie od ustawien. Reczny run domyslnie nic nie usuwa.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Tylko pokaz kandydatow, nic nie usuwaj"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: cleanup-stale-branches
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MAX_AGE_DAYS: "3"
+      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+    steps:
+      - name: Delete stale branches
+        run: |
+          set -euo pipefail
+
+          repo="$GITHUB_REPOSITORY"
+          protected="main dev nightly prod"
+          default_branch=$(gh api "repos/$repo" --jq .default_branch)
+          protected="$protected $default_branch"
+
+          now=$(date -u +%s)
+          cutoff=$((now - MAX_AGE_DAYS * 86400))
+
+          # Branche z otwartym PR-em (tylko z tego repo, nie z forkow) oraz
+          # branche bazowe otwartych PR-ow (stackowane PR-y).
+          open_prs=$(gh pr list --repo "$repo" --state open --limit 1000 \
+            --json headRefName,baseRefName,isCrossRepository \
+            --jq '.[] | if .isCrossRepository then .baseRefName else .headRefName, .baseRefName end')
+
+          deleted_log="$RUNNER_TEMP/deleted-branches.txt"
+          : > "$deleted_log"
+
+          gh api "repos/$repo/branches" --paginate \
+            --jq '.[] | [.name, .commit.commit.committer.date] | @tsv' |
+          while IFS=$'\t' read -r branch last_commit; do
+            [ -n "$branch" ] || continue
+
+            if [[ " $protected " == *" $branch "* ]]; then
+              continue
+            fi
+
+            if grep -Fxq "$branch" <<<"$open_prs"; then
+              continue
+            fi
+
+            if ! commit_ts=$(date -u -d "$last_commit" +%s 2>/dev/null); then
+              echo "::warning title=Skip::$branch nie da sie odczytac daty commita ($last_commit)"
+              continue
+            fi
+
+            if [ "$commit_ts" -gt "$cutoff" ]; then
+              continue
+            fi
+
+            age_days=$(( (now - commit_ts) / 86400 ))
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::notice title=Dry run::usunalbym $branch (ostatni commit $age_days dni temu)"
+              continue
+            fi
+
+            if gh api -X DELETE "repos/$repo/git/refs/heads/$branch" 2>/dev/null; then
+              echo "::notice title=Deleted::usunieto $branch (ostatni commit $age_days dni temu)"
+              echo "$branch" >> "$deleted_log"
+            else
+              echo "::warning title=Failed::nie udalo sie usunac $branch (ochrona brancha?)"
+            fi
+          done
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: nic nie usunieto." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Usunieto $(wc -l < "$deleted_log") branch(y)." >> "$GITHUB_STEP_SUMMARY"
+            sed 's/^/- /' "$deleted_log" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -847,6 +847,18 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
 }
 
 /**
+ * Oś toru nogi kolejowej do dopasowania GPS (trainTrack.ts): geometria
+ * z nogi (podróż współdzielona) albo wycinek shape'u PLK z bazy ogólnopolskiej.
+ */
+export async function loadTrainTrackShape(leg: Leg, signal?: AbortSignal): Promise<Coord[] | null> {
+  if (leg.mode !== 'train') return null;
+  if (leg.geometry && leg.geometry.length > 1) return leg.geometry;
+  const mapLeg = legToMapLeg(leg);
+  if (mapLeg.stops.length < 2) return null;
+  return nationalRailShape(mapLeg, signal);
+}
+
+/**
  * Uzupełnia geometrię nóg po kolei. Nogi piesze liczy lokalnie w Rust,
  * kolejowe liczy po torach, a autobusowe dociąga z OSRM.
  */

@@ -169,6 +169,8 @@ export function projectPointToPolyline(
   closestLon: number;
   segmentIndex: number;
   fractionAlongShape: number;
+  /** Azymut trafionego odcinka (0 = północ); 0 dla polyline bez długości. */
+  segmentHeading: number;
 } {
   if (polyline.length === 0) {
     return {
@@ -177,6 +179,7 @@ export function projectPointToPolyline(
       closestLon: lon,
       segmentIndex: -1,
       fractionAlongShape: 0,
+      segmentHeading: 0,
     };
   }
 
@@ -188,6 +191,7 @@ export function projectPointToPolyline(
       closestLon: polyline[0].lon,
       segmentIndex: 0,
       fractionAlongShape: 0,
+      segmentHeading: 0,
     };
   }
 
@@ -195,6 +199,7 @@ export function projectPointToPolyline(
   let bestLat = polyline[0].lat;
   let bestLon = polyline[0].lon;
   let bestSegment = 0;
+  let bestHeading = 0;
   let cumulativeDistanceBeforeBest = 0;
   let totalPolylineDistance = 0;
 
@@ -230,6 +235,7 @@ export function projectPointToPolyline(
       bestLat = projLat;
       bestLon = projLon;
       bestSegment = i;
+      bestHeading = bearingDegrees(p1.lat, p1.lon, p2.lat, p2.lon);
       cumulativeDistanceBeforeBest = runningDistance + t * segmentLengths[i];
     }
 
@@ -244,5 +250,6 @@ export function projectPointToPolyline(
     closestLon: bestLon,
     segmentIndex: bestSegment,
     fractionAlongShape,
+    segmentHeading: bestHeading,
   };
 }

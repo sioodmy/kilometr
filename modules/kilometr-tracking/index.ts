@@ -25,6 +25,18 @@ interface KilometrTrackingNativeModule {
   configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
   getTransferProtectionState?(): Promise<string | null>;
   supportsTransferDecisions?(): boolean;
+  /** Auto-generowane przez Expo dla Events("onTripLocation"). */
+  addListener?(event: 'onTripLocation', cb: (fix: OnboardLocationFix) => void): { remove: () => void };
+}
+
+/** Surowy pomiar GPS z natywnego serwisu; te same pola co OnboardFix w onboardGps. */
+export interface OnboardLocationFix {
+  lat: number;
+  lon: number;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  timestamp: number;
 }
 
 const native = requireOptionalNativeModule<KilometrTrackingNativeModule>('KilometrTracking');
@@ -69,4 +81,9 @@ export default {
   supportsTransferDecisions: () => native?.supportsTransferDecisions?.() === true,
   configureTransferProtection: (tripId: string, path: string) => native?.configureTransferProtection?.(tripId, path) ?? Promise.resolve(false),
   getTransferProtectionState: () => native?.getTransferProtectionState?.() ?? Promise.resolve(null),
+  /** Subskrypcja pomiarów GPS z serwisu; null, gdy moduł ich nie wystawia (iOS). */
+  subscribeTripLocation: (cb: (fix: OnboardLocationFix) => void): (() => void) | null => {
+    const sub = native?.addListener?.('onTripLocation', cb);
+    return sub ? () => sub.remove() : null;
+  },
 };

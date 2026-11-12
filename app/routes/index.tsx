@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   Pressable,
   RefreshControl,
@@ -282,7 +283,9 @@ export default function RoutesScreen() {
   const lastLiveOk = useRef(0);
   useEffect(() => {
     const check = () => {
-      setLiveStale(liveTracker.getLiveState() !== 'fresh');
+      // Miasto bez feedu live nie może pokazywać chipa „brak danych”:
+      // to nie awaria, tylko nieistniejące źródło (features.live).
+      setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
@@ -966,6 +969,22 @@ export default function RoutesScreen() {
   const hasActiveFilters = modeFilter !== 'all' || transfersFilter !== 'all' || liveOnly;
   const isCustomTime = targetTimeSec !== undefined || arrivalMode;
 
+  // Wstecz z ręcznie ustawionym czasem wraca do ekranu głównego: użytkownik
+  // przyszedł tu z konkretnego punktu startu i nie chce zostać na liście
+  // przefiltrowanej na inną godzinę.
+  const isCustomTimeRef = useRef(isCustomTime);
+  isCustomTimeRef.current = isCustomTime;
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!isCustomTimeRef.current) return false;
+        router.dismissTo('/');
+        return true;
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
+
   const timeDisplayLabel = useMemo(() => {
     if (targetTimeSec === undefined) {
       return s.routes.now;
@@ -1070,9 +1089,12 @@ export default function RoutesScreen() {
   const handleOpenFrom = useCallback(() => setSheetFor('from'), []);
   const handleOpenTo = useCallback(() => setSheetFor('to'), []);
 
+  // Klucz tylko przy realnej zmianie kotwicy: bez niego pole originu
+  // odtwarzało animację wejścia przy każdym wyszukaniu trasy.
+  const anchorKey = activeAnchor ? `anchor:${activeAnchor.placeId}` : 'gps';
   const routeHeader = useMemo(
     () => (
-      <View style={headerStyle}>
+      <View style={headerStyle} key={anchorKey}>
         <RouteEndpoints
           from={fromTitle}
           to={toTitle}
@@ -1163,6 +1185,7 @@ export default function RoutesScreen() {
       timeDisplayLabel,
       arrivalMode,
       headerStyle,
+      anchorKey,
     ],
   );
 
@@ -1534,7 +1557,6 @@ export default function RoutesScreen() {
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
-          notice={sheetFor === 'from' && gpsOutside ? s.search.gpsOutsideNotice : undefined}
           onQuery={setQuery}
           onSelect={handleSuggestionSelect}
           onClose={() => {

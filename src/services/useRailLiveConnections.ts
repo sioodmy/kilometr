@@ -150,6 +150,7 @@ export function useRailLiveConnections(
     if (railData.size === 0 && !national && nationalUpdates.size === 0)
       return applyLiveDelays(enriched, tripDelays);
     const delays = new Map(tripDelays);
+    const arrivalDelays = new Map<string, number>();
     const now = Date.now();
     for (const connection of enriched) {
       for (const leg of connection.legs) {
@@ -172,9 +173,12 @@ export function useRailLiveConnections(
           now - update.fetchedAt <= 12 * 3600 * 1000
         ) {
           delays.set(leg.tripId, update.delaySec);
+          if (update.arrivalDelaySec != null) {
+            arrivalDelays.set(leg.tripId, update.arrivalDelaySec);
+          }
         }
       }
     }
-    return applyLiveDelays(enriched, delays);
+    return applyLiveDelays(enriched, delays, arrivalDelays);
   }, [enriched, railData, national, nationalUpdates, tripDelays]);
 }

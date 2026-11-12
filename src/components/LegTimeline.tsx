@@ -31,6 +31,7 @@ import {
   positionToRank,
   type LiveStopPosition,
 } from '../services/vehiclePosition';
+import { ensureTrainTrack, type TrainTrack } from '../services/trainTrack';
 import { useStrings, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { motion } from '../theme/motion';
@@ -211,6 +212,7 @@ function LegStopsList({
   vehicle,
   loading,
   active,
+  track,
 }: {
   leg: Leg;
   accent: string;
@@ -220,6 +222,7 @@ function LegStopsList({
   vehicle: TrackedVehicle | null;
   loading: boolean;
   active: boolean;
+  track: TrainTrack | null;
 }) {
   const t = useStrings();
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
@@ -253,6 +256,7 @@ function LegStopsList({
       now,
       rankRef.current,
       rankSourceRef.current,
+      track,
     );
     if (pos) {
       // Pomiar live zastępuje ranking, estymata tylko go przesuwa do przodu.
@@ -263,7 +267,7 @@ function LegStopsList({
       rankSourceRef.current = pos.source;
     }
     return pos;
-  }, [active, stops, leg, vehicle, userLocation, now, allowLive]);
+  }, [active, stops, leg, vehicle, userLocation, now, allowLive, track]);
 
   if (loading) {
     return (
@@ -375,9 +379,16 @@ const TransitLegCard = memo(function TransitLegCard({
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
   const { bg: accent } = getLineColors(leg.line, leg.mode);
-  const scheduledDeparture = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt)).departure;
+  const scheduled = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt));
+  const scheduledDeparture = scheduled.departure;
   const delayMin =
     leg.live || leg.delayConfidence === 'estimated' ? Math.round((leg.delaySec ?? 0) / 60) : 0;
+  // Osobno przyjazd: opoznienie rosnie w trasie, a stacja docelowa ma wlasna
+  // prognoze z feedu PKP.
+  const arrivalDelayMin =
+    leg.live || leg.delayConfidence === 'estimated'
+      ? Math.round((leg.arrivalDelaySec ?? leg.delaySec ?? 0) / 60)
+      : 0;
   const notice = reliabilityNotice([leg], t);
   const stopsCount = useMemo(() => {
     const stops = leg.intermediateStops;
@@ -492,6 +503,24 @@ const TransitLegCard = memo(function TransitLegCard({
       mounted = false;
     };
   }, [cacheKey, leg]);
+
+  // Oś toru do markera między stacjami: bez niej pozycję prowadzi szacunek
+  // z rozkładu (trainTrack.ts). Cache w serwisie trzyma jedną geometrię
+  // na kurs, więc kolejne ticki live nie ruszają stanu.
+  const [track, setTrack] = useState<TrainTrack | null>(null);
+  useEffect(() => {
+    if (!hasOpened || !isTrain) return;
+    let mounted = true;
+    void ensureTrainTrack(leg, stops, findUserSegment(stops, leg)).then(
+      (t) => {
+        if (mounted) setTrack((prev) => (prev === t ? prev : t));
+      },
+      () => {},
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [hasOpened, isTrain, leg, stops]);
 
   // Śledzenie pojazdu live dopasowanego do tego kursu
   useEffect(() => {
@@ -736,6 +765,7 @@ const TransitLegCard = memo(function TransitLegCard({
                   vehicle={vehicle}
                   loading={loading}
                   active={expanded}
+                  track={track}
                 />
               </View>
             </Animated.View>
@@ -758,7 +788,24 @@ const TransitLegCard = memo(function TransitLegCard({
         {/* 6. Przystanek docelowy (bez prefixu "do:") + godzina przyjazdu po prawej */}
         <View style={s.cardEndRow}>
           <Text style={s.cardStopName}>{leg.toStop}</Text>
-          <Text style={s.cardTime}>{leg.arriveAt}</Text>
+          <View style={s.arrivalTimes}>
+            <Text style={s.cardTime}>{leg.arriveAt}</Text>
+            {arrivalDelayMin !== 0 && arrivalDelayMin !== delayMin && (
+              <Text
+                style={[
+                  s.delayLabel,
+                  { color: arrivalDelayMin > 0 ? scheme.error : scheme.warning },
+                ]}
+                numberOfLines={1}
+              >
+                {leg.delayConfidence === 'estimated'
+                  ? t.routeDetails.estimatedDelay(arrivalDelayMin)
+                  : arrivalDelayMin > 0
+                    ? t.routeDetails.late(arrivalDelayMin)
+                    : t.routeDetails.early(-arrivalDelayMin)}
+              </Text>
+            )}
+          </View>
         </View>
       </Pressable>
     </View>
@@ -945,6 +992,11 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  arrivalTimes: {
+    alignItems: 'flex-end',
+    gap: 2,
+    flexShrink: 1,
   },
   cardStopName: {
     fontSize: 22,

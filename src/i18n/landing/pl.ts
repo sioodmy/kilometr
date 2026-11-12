@@ -14,6 +14,7 @@ export const pl = {
     label: 'Nawigacja główna',
   },
   language: 'Język strony',
+  sendSms: 'Wyślij SMS',
   hero: {
     eyebrow: 'Kilometr na Androida',
     title: 'Twój',

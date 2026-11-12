@@ -112,7 +112,8 @@ const stubs: Record<string, unknown> = {
   '../settings': { getSettingsSync: () => ({}), profileWalkSpeedMps: () => 1.3 },
   '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered.push(value); } },
   '../liveTracker': { liveTracker: { snapshot: () => [], pin: () => {}, start: () => {}, stop: () => {},
-    getLiveState: () => 'fresh', getTripDelays: () => new Map([['t1', 300]]) } },
+    getLiveState: () => 'fresh', getTripDelays: () => new Map([['t1', 300]]),
+    getTripArrivalDelays: () => new Map() } },
   '../../cities': { inCityBounds: () => true },
   '../cityStore': { getActiveCitySync: () => ({}) },
   '../widgetSnapshot': {

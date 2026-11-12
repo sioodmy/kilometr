@@ -264,6 +264,8 @@ export interface BuildPlanOptions {
   stopAfterMs?: number;
   alightAlertsEnabled?: boolean;
   transferAlertsEnabled?: boolean;
+  /** GPS pasażera w trasie: serwis raportuje pomiary do JS (opóźnienie z przejazdów stacji). */
+  gpsOnboardEnabled?: boolean;
 }
 
 export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
@@ -345,6 +347,7 @@ export function buildLivePlan(
     segments: buildSegments(timeline, startAtMs, endAtMs),
     states: buildStates(p, conn, s),
     alightAlertsEnabled: !trip.sharedJourney && (options.alightAlertsEnabled ?? true),
+    gpsOnboardEnabled: !trip.sharedJourney && (options.gpsOnboardEnabled ?? true),
     transferProtectionEnabled: trip.protectionEnabled ?? false,
     transferAlertsEnabled: !trip.sharedJourney && (options.transferAlertsEnabled ?? true),
     copy: buildPhaseCopy(p, conn, s),

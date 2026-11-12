@@ -33,6 +33,7 @@ import {
   fetchZbLodzRails,
   fetchZbLodzRows,
   fetchZbLublinRows,
+  fetchZbNewCityRows,
   fetchZbOlsztynRows,
   fetchZbOpoleRows,
   fetchZbPoznanRails,
@@ -45,6 +46,7 @@ import {
   fetchZbWarsawRails,
   fetchZbWarsawRows,
   fetchZbWroclawRows,
+  isNewLiveCity,
   matchZbKd,
   type ZbKdVehicle,
 } from './zbiorkom';
@@ -172,7 +174,7 @@ class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
-  private nationalTripDelays = new Map<string, { delaySec: number; updatedAt: number }>();
+  private nationalTripDelays = new Map<string, { delaySec: number; arrivalDelaySec?: number; updatedAt: number }>();
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
@@ -218,6 +220,15 @@ class LiveTracker {
     // Dane przestają być „na żywo” dopiero po GIVE_UP_MS bez sukcesu. Jeden
     // przeterminowany poll nie znaczy, że feed umarł.
     return Date.now() - this.lastOk < GIVE_UP_MS ? 'fresh' : 'stale';
+  }
+
+  /**
+   * Czy aktywnemu miastu da się w ogóle pobrać pozycje (features.live).
+   * Miasta bez endpointu w zbiorkom nie mogą pokazywać chipa „brak danych
+   * live”: to nie awaria, tylko nieistniejące źródło.
+   */
+  supportsLive(): boolean {
+    return getCity(safeCityId()).features.live;
   }
 
   /**
@@ -334,7 +345,15 @@ class LiveTracker {
           changed = true;
         }
         this.tripDelays.set(tripId, clamped);
-        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
+        const arrivalDelaySec =
+          update.arrivalDelaySec == null
+            ? undefined
+            : Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.arrivalDelaySec));
+        this.nationalTripDelays.set(tripId, {
+          delaySec: clamped,
+          arrivalDelaySec,
+          updatedAt: nowMs,
+        });
       }
       // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
       // tak samo jak KD (matchedTripId === leg.tripId).
@@ -471,6 +490,22 @@ class LiveTracker {
     return out;
   }
 
+  /**
+   * Prognozy przyjazdu na stacje koncowe z feedu PKP. Osobno od
+   * `getTripDelays`, bo opoznienie rosnie po drodze i przyjazd ma inna
+   * wartosc niz odjazd ze stacji poczatkowej.
+   */
+  getTripArrivalDelays(): Map<string, number> {
+    const now = Date.now();
+    const out = new Map<string, number>();
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (entry.arrivalDelaySec != null && now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(tripId, entry.arrivalDelaySec);
+      }
+    }
+    return out;
+  }
+
   private latestDayIndex: DayIndex | null = null;
   private sampleHistory = new Map<string, { lat: number; lon: number; since: number }>();
   /** Merge wczorajszego wycinka nocnego, cache per para indeksów (jak w planerze). */
@@ -601,6 +636,13 @@ class LiveTracker {
     this.pollStartedAt = now;
     const cityAtStart = safeCityId();
     try {
+      // Miasto bez feedu pozycji (features.live): zbiorkom nie ma tu
+      // endpointu, więc poll miejski byłby wiecznym „brakiem danych”.
+      // Kolej ogólnopolska (podgląd pociągów w podróży) działa dalej.
+      if (!getCity(cityAtStart).features.live) {
+        await this.pollNational();
+        return;
+      }
       const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
       // Użytkownik zmienił miasto w trakcie pobierania (do 10 s na zapytanie).
       // Odpowiedź dotyczy poprzedniego miasta: nie wolno jej dopasowywać do
@@ -789,6 +831,7 @@ class LiveTracker {
       else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
       else if (id === 'lublin') rows = await fetchZbLublinRows();
       else if (id === 'radom') rows = await fetchZbRadomRows();
+      else if (isNewLiveCity(id)) rows = await fetchZbNewCityRows(id);
       else rows = await fetchZbWroclawRows();
       this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);
       return rows;

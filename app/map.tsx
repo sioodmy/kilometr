@@ -46,6 +46,7 @@ import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
 import { useStrings } from '../src/i18n';
 import { useTrackedTrip } from '../src/services/notifications';
+import { getOnboardEstimate } from '../src/services/onboardGps';
 import { normalizeConnectionId } from '../src/services/routing/connectionIdentity';
 import { isFallbackOrigin } from '../src/config';
 
@@ -284,6 +285,31 @@ export default function RouteMapScreen() {
         shownVehicleRef.current = null;
         return;
       }
+      // GPS pasażera wygrywa z feedem: gdy jedziemy tym pociągiem, nasz
+      // telefon mówi prawdę o pozycji, a feed PKP potrafi być nieświeży
+      // (pociąg „stoi" na stacji początkowej godzinę po odjeździe).
+      const onboard = getOnboardEstimate();
+      if (trackedConnection && onboard && Date.now() - onboard.fix.timestamp <= 60_000) {
+        const leg = legs.find((l) => l.id === onboard.legId);
+        if (leg) {
+          const { bg } = getLineColors(leg.line, leg.mode);
+          const vehMode = inferTransitMode(leg.mode, leg.line);
+          setVehicle({
+            vehicleId: 'onboard',
+            legId: leg.id,
+            line: leg.line || '',
+            mode: vehMode === 'walk' ? 'bus' : vehMode,
+            color: mapLineColor(bg),
+            lat: onboard.fix.lat,
+            lon: onboard.fix.lon,
+            heading: onboard.fix.heading ?? 0,
+            delaySec: onboard.delaySec ?? 0,
+            updatedAt: onboard.fix.timestamp,
+          });
+          shownVehicleRef.current = 'onboard';
+          return;
+        }
+      }
       const ordered = [...legs].sort((a, b) => {
         const run = (l: MapLeg) => (isLegRunning(l, sec) ? 0 : 1);
         return run(a) - run(b);
@@ -338,7 +364,7 @@ export default function RouteMapScreen() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [item, route]);
+  }, [item, route, trackedConnection]);
 
   // ─── Akcje ────────────────────────────────────────────────────
   const handleSelectStage = useCallback(

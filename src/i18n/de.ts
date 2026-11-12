@@ -15,6 +15,219 @@ function formatDuration(mins: number): string {
   return `${rounded} Min.`;
 }
 
+// Per-city strings als Records (gleiche Struktur wie pl.ts). Deutsch hält
+// die polnischen Stadtnamen in allen Fällen, wie die bisherige Kette.
+const CITY_NAME_DE: Record<string, string> = {
+  wroclaw: 'Wrocław',
+  krakow: 'Kraków',
+  gzm: 'GZM',
+  warszawa: 'Warszawa',
+  poznan: 'Poznań',
+  trojmiasto: 'Trójmiasto',
+  lodz: 'Łódź',
+  szczecin: 'Szczecin',
+  kielce: 'Kielce',
+  olsztyn: 'Olsztyn',
+  bialystok: 'Białystok',
+  opole: 'Opole',
+  rzeszow: 'Rzeszów',
+  lublin: 'Lublin',
+  radom: 'Radom',
+  bydgoszcz: 'Bydgoszcz',
+  torun: 'Toruń',
+  elblag: 'Elbląg',
+  gorzow: 'Gorzów Wielkopolski',
+  czestochowa: 'Częstochowa',
+  zielonagora: 'Zielona Góra',
+  rybnik: 'Rybnik',
+  slupsk: 'Słupsk',
+  walbrzych: 'Wałbrzych',
+  kalisz: 'Kalisz',
+  siedlce: 'Siedlce',
+  lomza: 'Łomża',
+  krosno: 'Krosno',
+  jaslo: 'Jasło',
+  olkusz: 'Olkusz',
+  chrzanow: 'Chrzanów',
+  bochnia: 'Bochnia',
+  ilawa: 'Iława',
+};
+const CITY_FEEDS_DE: Record<string, string> = {
+  wroclaw: 'MPK und Koleje Dolnośląskie',
+  krakow: 'ZTP und Koleje Małopolskie',
+  gzm: 'ZTM, Koleje Śląskie, POLREGIO und PKP Intercity',
+  warszawa: 'WTP, SKA, Koleje Mazowieckie und WKD',
+  poznan: 'ZTM und Koleje Wielkopolskie',
+  trojmiasto: 'ZTM Gdańsk, ZKM Gdynia und SKM',
+  lodz: 'MPK und Łódzka Kolej Aglomeracyjna',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Kielce',
+  olsztyn: 'ZDZiT Olsztyn',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Opole',
+  rzeszow: 'ZTM Rzeszów',
+  lublin: 'ZDiTM Lublin',
+  radom: 'MZDiK Radom',
+  bydgoszcz: 'ZDMiKP Bydgoszcz',
+  torun: 'MZK Toruń',
+  elblag: 'ZKM Elbląg',
+  gorzow: 'MZK Gorzów',
+  czestochowa: 'MPK Częstochowa',
+  zielonagora: 'MZK Zielona Góra',
+  rybnik: 'KM Rybnik',
+  slupsk: 'ZIM Słupsk',
+  walbrzych: 'MZUK Wałbrzych',
+  kalisz: 'KLA, PKS Kalisz und Agglomerationsverkehrsunternehmen',
+  siedlce: 'MPK Siedlce',
+  lomza: 'MPK Łomża',
+  krosno: 'MKS Krosno',
+  jaslo: 'MKS Jasło',
+  olkusz: 'ZKGKM Olkusz',
+  chrzanow: 'ZKKM Chrzanów',
+  bochnia: 'RPK Bochnia',
+  ilawa: 'ZKM Iława',
+};
+const CITY_NEWS_DE: Record<string, string> = {
+  wroclaw: 'MPK Wrocław • wroclaw.pl',
+  krakow: 'ZTP Kraków',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Warszawa',
+  poznan: 'ZTM Poznań',
+  trojmiasto: 'ZTM Gdańsk',
+  lodz: 'MPK Łódź',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Kielce',
+  olsztyn: 'ZDZiT Olsztyn',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Opole',
+  rzeszow: 'ZTM Rzeszów',
+  lublin: 'ZDiTM Lublin',
+  radom: 'MZDiK Radom',
+  bydgoszcz: 'ZDMiKP Bydgoszcz',
+  torun: 'MZK Toruń',
+  elblag: 'ZKM Elbląg',
+  gorzow: 'MZK Gorzów',
+  czestochowa: 'MPK Częstochowa',
+  zielonagora: 'MZK Zielona Góra',
+  rybnik: 'KM Rybnik',
+  slupsk: 'ZIM Słupsk',
+  walbrzych: 'MZUK Wałbrzych',
+  kalisz: 'KLA Kalisz',
+  siedlce: 'MPK Siedlce',
+  lomza: 'MPK Łomża',
+  krosno: 'MKS Krosno',
+  jaslo: 'MKS Jasło',
+  olkusz: 'ZKGKM Olkusz',
+  chrzanow: 'ZKKM Chrzanów',
+  bochnia: 'RPK Bochnia',
+  ilawa: 'ZKM Iława',
+};
+const CITY_OPERATOR_DE: Record<string, string> = {
+  wroclaw: 'MPK Wrocław',
+  krakow: 'ZTP Kraków',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Warszawa',
+  poznan: 'ZTM Poznań',
+  trojmiasto: 'ZTM Gdańsk',
+  lodz: 'MPK Łódź',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Kielce',
+  olsztyn: 'ZDZiT Olsztyn',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Opole',
+  rzeszow: 'ZTM Rzeszów',
+  lublin: 'ZDiTM Lublin',
+  radom: 'MZDiK Radom',
+  bydgoszcz: 'ZDMiKP Bydgoszcz',
+  torun: 'MZK Toruń',
+  elblag: 'ZKM Elbląg',
+  gorzow: 'MZK Gorzów',
+  czestochowa: 'MPK Częstochowa',
+  zielonagora: 'MZK Zielona Góra',
+  rybnik: 'KM Rybnik',
+  slupsk: 'ZIM Słupsk',
+  walbrzych: 'MZUK Wałbrzych',
+  kalisz: 'KLA Kalisz',
+  siedlce: 'MPK Siedlce',
+  lomza: 'MPK Łomża',
+  krosno: 'MKS Krosno',
+  jaslo: 'MKS Jasło',
+  olkusz: 'ZKGKM Olkusz',
+  chrzanow: 'ZKKM Chrzanów',
+  bochnia: 'RPK Bochnia',
+  ilawa: 'ZKM Iława',
+};
+const CITY_OPERATOR_SHORT_DE: Record<string, string> = {
+  wroclaw: 'MPK',
+  krakow: 'ZTP',
+  gzm: 'ZTM',
+  warszawa: 'WTP',
+  poznan: 'ZTM',
+  trojmiasto: 'ZTM / ZKM',
+  lodz: 'MPK',
+  szczecin: 'ZDiTM',
+  kielce: 'ZTM',
+  olsztyn: 'ZDZiT',
+  bialystok: 'BKM',
+  opole: 'MZK',
+  rzeszow: 'ZTM',
+  lublin: 'ZDiTM',
+  radom: 'MZDiK',
+  bydgoszcz: 'ZDMiKP',
+  torun: 'MZK',
+  elblag: 'ZKM',
+  gorzow: 'MZK',
+  czestochowa: 'MPK',
+  zielonagora: 'MZK',
+  rybnik: 'KM',
+  slupsk: 'ZIM',
+  walbrzych: 'MZUK',
+  kalisz: 'KLA',
+  siedlce: 'MPK',
+  lomza: 'MPK',
+  krosno: 'MKS',
+  jaslo: 'MKS',
+  olkusz: 'ZKGKM',
+  chrzanow: 'ZKKM',
+  bochnia: 'RPK',
+  ilawa: 'ZKM',
+};
+const CITY_PORTAL_DE: Record<string, string> = {
+  wroclaw: 'wroclaw.pl',
+  krakow: 'ztp.krakow.pl',
+  gzm: 'metropoliaztm.pl',
+  warszawa: 'wtp.waw.pl',
+  poznan: 'ztm.poznan.pl',
+  trojmiasto: 'ztm.gda.pl',
+  lodz: 'mpk.lodz.pl',
+  szczecin: 'zditm.szczecin.pl',
+  kielce: 'ztm.kielce.pl',
+  olsztyn: 'zdzit.olsztyn.eu',
+  bialystok: 'komunikacja.bialystok.pl',
+  opole: 'mzkopole.pl',
+  rzeszow: 'ztm.erzeszow.pl',
+  lublin: 'zdtm.lublin.eu',
+  radom: 'mzdik.pl',
+  bydgoszcz: 'zdmikp.bydgoszcz.pl',
+  torun: 'mzk-torun.pl',
+  elblag: 'zkm.elblag.com.pl',
+  gorzow: 'mzk-gorzow.com.pl',
+  czestochowa: 'mpk.czest.pl',
+  zielonagora: 'mzk.zgora.pl',
+  rybnik: 'km.rybnik.pl',
+  slupsk: 'zimslupsk.com',
+  walbrzych: 'mzuk.com.pl',
+  kalisz: 'gtfs.kasznia.net',
+  siedlce: 'mpk.siedlce.pl',
+  lomza: 'mpklomza.pl',
+  krosno: 'mks-krosno.pl',
+  jaslo: 'e-podroznik.pl',
+  olkusz: 'zkgkm-olkusz.pl',
+  chrzanow: 'zkkm.pl',
+  bochnia: 'rpk-bochnia.pl',
+  ilawa: 'zkm.ilawa.pl',
+};
+
 export const de: Strings = {
   landing,
   share,
@@ -166,29 +379,17 @@ export const de: Strings = {
     gpsTitle: 'Mein Standort (GPS)',
     locationFallback: 'Dein Standort',
     gpsAddressHome: 'Aktuelle Geräteposition',
-    importingTitle: (gen: string) => `Fahrplan für ${gen} wird geladen…`,
     importErrorTitle: 'Fehler beim Laden des Fahrplans',
     importErrorRetry: 'Tippen zum Wiederholen.',
-    timetableUpdateTitle: 'Ein neuerer Fahrplan ist verfügbar',
-    timetableUpdateBody: 'Lade ihn, damit der Planer aktuelle Linien und Zeiten hat.',
-    timetableUpdateA11y: 'Neueren Fahrplan herunterladen',
+    updatingTimetable: 'Fahrplan wird aktualisiert',
     saveFailTitle: 'Keine Datenbankverbindung',
     saveFailBody: 'Ort konnte nicht gespeichert werden. Versuch es erneut.',
     searchPlaceholderTo: 'Wohin fährst du?',
     searchPlaceholderFrom: 'Wo startest du?',
-    unsupportedTitle: 'Nicht unterstützte Stadt',
-    unsupportedTitleOther: 'Andere Stadt in der App',
-    unsupportedBody: (city: string, supported: string) =>
-      `Dein GPS-Standort zeigt auf ${city}. Aktuell bedienen wir nur: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Du bist in ${city}, die App ist aber auf ${active} eingestellt. Stadt in den Einstellungen wechseln.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Dein GPS-Standort liegt außerhalb des unterstützten Gebiets. Aktuell bedienen wir nur: ${supported}.`,
     unsupportedAction: 'Startpunkt wählen',
-    unsupportedActionShort: 'Start wählen',
-    unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
-    unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
     pickStart: 'Startpunkt wählen',
+    outsideAreaShort: 'Du bist außerhalb des unterstützten Gebiets',
+    downloadCityTimetableA11y: (gen: string) => `Fahrplan für ${gen} herunterladen`,
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>
       `Du bist außerhalb von ${supported} (${city}), GPS-Routen funktionieren daher nicht. Wähle den Start manuell.`,
@@ -199,274 +400,18 @@ export const de: Strings = {
     section: 'Stadt',
     settingsHint:
       'Fahrplan, Offline-Karte und Meldungen folgen der Stadt. Die Daten der anderen Stadt bleiben auf dem Telefon.',
-    name: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : id === 'radom'
-                                  ? 'Radom'
-                                  : 'Wrocław',
-    gen: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : id === 'radom'
-                                  ? 'Radom'
-                                  : 'Wrocław',
-    acc: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : id === 'radom'
-                                  ? 'Radom'
-                                  : 'Wrocław',
-    loc: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : 'Wrocław',
-    feeds: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP und Koleje Małopolskie'
-        : id === 'gzm'
-          ? 'ZTM, Koleje Śląskie, POLREGIO und PKP Intercity'
-          : id === 'warszawa'
-            ? 'WTP, SKA, Koleje Mazowieckie und WKD'
-            : id === 'poznan'
-              ? 'ZTM und Koleje Wielkopolskie'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk, ZKM Gdynia und SKM'
-                : id === 'lodz'
-                  ? 'MPK und Łódzka Kolej Aglomeracyjna'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Kielce'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Olsztyn'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Opole'
-                            : id === 'rzeszow'
-                              ? 'ZTM Rzeszów'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK und Koleje Dolnośląskie',
-    newsSources: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Kraków'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Warszawa'
-            : id === 'poznan'
-              ? 'ZTM Poznań'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk'
-                : id === 'lodz'
-                  ? 'MPK Łódź'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Kielce'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Olsztyn'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Opole'
-                            : id === 'rzeszow'
-                              ? 'ZTM Rzeszów'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK Wrocław • wroclaw.pl',
-    operator: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Kraków'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Warszawa'
-            : id === 'poznan'
-              ? 'ZTM Poznań'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk'
-                : id === 'lodz'
-                  ? 'MPK Łódź'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Kielce'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Olsztyn'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Opole'
-                            : id === 'rzeszow'
-                              ? 'ZTM Rzeszów'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK Wrocław',
+    name: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    gen: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    acc: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    loc: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    feeds: (id: string): string => CITY_FEEDS_DE[id] ?? CITY_FEEDS_DE.wroclaw,
+    newsSources: (id: string): string => CITY_NEWS_DE[id] ?? CITY_NEWS_DE.wroclaw,
+    operator: (id: string): string => CITY_OPERATOR_DE[id] ?? CITY_OPERATOR_DE.wroclaw,
     operatorShort: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP'
-        : id === 'gzm'
-          ? 'ZTM'
-          : id === 'warszawa'
-            ? 'WTP'
-            : id === 'poznan'
-              ? 'ZTM'
-              : id === 'trojmiasto'
-                ? 'ZTM / ZKM'
-                : id === 'szczecin'
-                  ? 'ZDiTM'
-                  : id === 'kielce'
-                    ? 'ZTM'
-                    : id === 'olsztyn'
-                      ? 'ZDZiT'
-                      : id === 'bialystok'
-                        ? 'BKM'
-                        : id === 'opole'
-                          ? 'MZK'
-                          : id === 'rzeszow'
-                            ? 'ZTM'
-                            : id === 'lublin'
-                              ? 'ZDiTM'
-                              : id === 'radom'
-                                ? 'MZDiK'
-                                : 'MPK',
-    portal: (id: string): string =>
-      id === 'krakow'
-        ? 'ztp.krakow.pl'
-        : id === 'gzm'
-          ? 'metropoliaztm.pl'
-          : id === 'warszawa'
-            ? 'wtp.waw.pl'
-            : id === 'poznan'
-              ? 'ztm.poznan.pl'
-              : id === 'trojmiasto'
-                ? 'ztm.gda.pl'
-                : id === 'lodz'
-                  ? 'mpk.lodz.pl'
-                  : id === 'szczecin'
-                    ? 'zditm.szczecin.pl'
-                    : id === 'kielce'
-                      ? 'ztm.kielce.pl'
-                      : id === 'olsztyn'
-                        ? 'zdzit.olsztyn.eu'
-                        : id === 'bialystok'
-                          ? 'komunikacja.bialystok.pl'
-                          : id === 'opole'
-                            ? 'mzkopole.pl'
-                            : id === 'rzeszow'
-                              ? 'ztm.erzeszow.pl'
-                              : id === 'lublin'
-                                ? 'zdtm.lublin.eu'
-                                : id === 'radom'
-                                  ? 'mzdik.pl'
-                                  : 'wroclaw.pl',
+      CITY_OPERATOR_SHORT_DE[id] ?? CITY_OPERATOR_SHORT_DE.wroclaw,
+    portal: (id: string): string => CITY_PORTAL_DE[id] ?? CITY_PORTAL_DE.wroclaw,
     supportedList:
-      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom, Bydgoszcz, Toruń, Elbląg, Gorzów Wielkopolski, Częstochowa, Zielona Góra, Rybnik, Słupsk, Wałbrzych, Kalisz, Siedlce, Łomża, Krosno, Jasło, Olkusz, Chrzanów, Bochnia, Iława',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
@@ -933,6 +878,10 @@ export const de: Strings = {
     urgentChip: 'Störung',
     plannedChip: 'Fahrplanänderung',
     omittedStopsPrefix: 'Ohne Halt:',
+    lineSuspended: (line: string) => `Linie ${line} eingestellt`,
+    lineDetour: (line: string) => `Umleitung der Linie ${line}`,
+    specialLine: (line: string) => `Sonderlinie ${line}`,
+    everyNMin: (n: number) => `alle ${n} Min.`,
   },
   newsSvc: {
     justNow: 'gerade eben',
@@ -1102,12 +1051,12 @@ export const de: Strings = {
     noResultsHint: (id: string) =>
       `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : id === 'kielce' ? '„sienkiewicza“, „rynek“, „kadzielnia“, „herby“' : id === 'olsztyn' ? '„stare miasto“, „dworzec“, „jaroty“, „barczewo“' : id === 'bialystok' ? '„rynek kościuszki“, „lipowa“, „branicki“, „opera“' : id === 'opole' ? '„rynek“, „ozimska“, „solaris“, „dworzec“' : id === 'rzeszow' ? '„rynek“, „dworzec“, „rejtana“, „3 maja“' : id === 'lublin' ? '„krakowskie“, „zamek“, „felicity“, „świdnik“' : id === 'radom' ? '„żeromskiego“, „południe“, „gołębiów“, „idalin“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
-    gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',
   },
   places: {
     editAction: 'Bearbeiten',
     editA11y: (name: string) => `Ort bearbeiten: ${name}`,
     removeA11y: (name: string) => `Ort löschen: ${name}`,
+    reorderA11y: (name: string) => `Reihenfolge ändern: ${name}`,
     clearAnchorA11y: 'Zugewiesene Haltestelle entfernen',
     manageTitle: 'Gespeicherte Orte',
     manageSub: 'Deine Schnellziele verwalten',
@@ -1224,7 +1173,7 @@ export const de: Strings = {
     dayTomorrow: 'Morgen',
     hourLabel: 'Stunde',
     minuteLabel: 'Minute',
-    pastWarning: 'Die gewählte Zeit ist bereits vergangen',
+    pastWarning: 'Die gewählte Zeit ist bereits vergangen. Ergebnisse starten dort und können veraltet sein.',
     switchTomorrow: 'Auf morgen umstellen',
   },
   routesBar: {

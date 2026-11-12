@@ -98,7 +98,9 @@ export default function RouteDetailsScreen() {
         : getPlannedConnection(String(id));
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
   const [offline, setOffline] = useState(false);
-  const [liveStale, setLiveStale] = useState(() => liveTracker.getLiveState() !== 'fresh');
+  const [liveStale, setLiveStale] = useState(
+    () => liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh',
+  );
   const rawItem =
     isTrackedThis && trackedTrip
       ? trackedTrip.connection
@@ -112,7 +114,8 @@ export default function RouteDetailsScreen() {
   const lastLiveOk = useRef(0);
   useEffect(() => {
     const check = () => {
-      setLiveStale(liveTracker.getLiveState() !== 'fresh');
+      // Miasto bez feedu live nie pokazuje „braku danych” (features.live).
+      setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;

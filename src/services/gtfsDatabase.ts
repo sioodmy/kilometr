@@ -342,6 +342,28 @@ export async function hasNationalDb(): Promise<boolean> {
   }
 }
 
+/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times). */
+export async function hasCityDb(cityId: string): Promise<boolean> {
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const main = `${base.replace(/\/+$/, '')}/SQLite/${gtfsDbName(cityId)}`;
+      const info = await FileSystem.getInfoAsync(main);
+      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) return false;
+    }
+    const db = await getGtfsDbByName(gtfsDbName(cityId));
+    const row = await db.getFirstAsync<{ s: number; t: number; st: number }>(
+      `SELECT EXISTS(SELECT 1 FROM stops) AS s,
+              EXISTS(SELECT 1 FROM trips) AS t,
+              EXISTS(SELECT 1 FROM stop_times) AS st`,
+    );
+    return (row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Wyszukiwarka stacji kolejowych: SQL LIKE zawęża kandydatów (~3k stacji),
  * ranking robi fuzzyMatch jak w searchStops. Waga = liczba odjazdów,
@@ -903,12 +925,37 @@ export async function getTimetableEndDate(): Promise<string | null> {
   return [cal?.d, cd?.d].filter((v): v is string => !!v).sort()[0] ?? null;
 }
 
-/** Czasy kursu posortowane po stop_sequence (do list rozwijanych + RAPTOR-a). */
-export async function getTripStopTimes(tripId: string): Promise<
-  { stop_id: string; arr_sec: number; dep_sec: number; seq: number }[]
-> {
-  const db = await liveHandle();
-  return db.getAllAsync('SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC', tripId);
+interface TripStopTimeRow {
+  stop_id: string;
+  arr_sec: number;
+  dep_sec: number;
+  seq: number;
+  /** Nazwa stacji ze słownika; null, gdy stop_id nie ma wpisu w stops. */
+  name: string | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+/**
+ * Czasy kursu posortowane po stop_sequence z nazwami stacji (do list
+ * rozwijanych + RAPTOR-a). Nazwy czytamy w tym samym zapytaniu, bo ekran
+ * szczegółów zapisanej trasy działa po restarcie apki, zanim magazyn
+ * routingu zdąży załadować tabelę stops.
+ * `national` wybiera bazę kolejową zamiast bazy aktywnego miasta.
+ */
+export async function getTripStopTimes(
+  tripId: string,
+  national = false,
+): Promise<TripStopTimeRow[]> {
+  const db = national ? dbHandle(await getNationalDb()) : await liveHandle();
+  return db.getAllAsync<TripStopTimeRow>(
+    `SELECT st.stop_id, st.arr_sec, st.dep_sec, st.seq, s.name, s.lat, s.lon
+       FROM stop_times st
+       LEFT JOIN stops s ON s.stop_id = st.stop_id
+      WHERE st.trip_id = ?
+      ORDER BY st.seq ASC`,
+    tripId,
+  );
 }
 
 /**

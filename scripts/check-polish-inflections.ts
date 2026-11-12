@@ -6,7 +6,6 @@
  * Sprawdza:
  * - Wymianę przyimka „w” na „we” przed „Wrocławiu” i grupami spółgłoskowymi (Issue #319)
  * - Miejscownik (locative) i dopełniacz (genitive) wszystkich 15 obsługiwanych miast
- * - Kartę nieobsługiwanego miasta (UnsupportedCityCard: locative zamiast mianownika)
  * - Zgodność gramatyczną czasownika w pustym stanie aktualności (Warszawa/Łódź - opublikowała, Kielce - opublikowały)
  * - Wymianę przyimka „в” na „у” w języku ukraińskim przed „Вроцлаві” / „Варшаві”
  */
@@ -52,6 +51,24 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
     rzeszow: 'Rzeszowie',
     lublin: 'Lublinie',
     radom: 'Radomiu',
+    bydgoszcz: 'Bydgoszczy',
+    torun: 'Toruniu',
+    elblag: 'Elblągu',
+    gorzow: 'Gorzowie Wielkopolskim',
+    czestochowa: 'Częstochowie',
+    zielonagora: 'Zielonej Górze',
+    rybnik: 'Rybniku',
+    slupsk: 'Słupsku',
+    walbrzych: 'Wałbrzychu',
+    kalisz: 'Kaliszu',
+    siedlce: 'Siedlcach',
+    lomza: 'Łomży',
+    krosno: 'Krośnie',
+    jaslo: 'Jaśle',
+    olkusz: 'Olkuszu',
+    chrzanow: 'Chrzanowie',
+    bochnia: 'Bochni',
+    ilawa: 'Iławie',
   };
 
   const expectedGen: Record<CityId, string> = {
@@ -70,6 +87,24 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
     rzeszow: 'Rzeszowa',
     lublin: 'Lublina',
     radom: 'Radomia',
+    bydgoszcz: 'Bydgoszczy',
+    torun: 'Torunia',
+    elblag: 'Elbląga',
+    gorzow: 'Gorzowa Wielkopolskiego',
+    czestochowa: 'Częstochowy',
+    zielonagora: 'Zielonej Góry',
+    rybnik: 'Rybnika',
+    slupsk: 'Słupska',
+    walbrzych: 'Wałbrzycha',
+    kalisz: 'Kalisza',
+    siedlce: 'Siedlec',
+    lomza: 'Łomży',
+    krosno: 'Krosna',
+    jaslo: 'Jasła',
+    olkusz: 'Olkusza',
+    chrzanow: 'Chrzanowa',
+    bochnia: 'Bochni',
+    ilawa: 'Iławy',
   };
 
   const expectedAcc: Record<CityId, string> = {
@@ -88,6 +123,24 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
     rzeszow: 'Rzeszów',
     lublin: 'Lublin',
     radom: 'Radom',
+    bydgoszcz: 'Bydgoszcz',
+    torun: 'Toruń',
+    elblag: 'Elbląg',
+    gorzow: 'Gorzów Wielkopolski',
+    czestochowa: 'Częstochowę',
+    zielonagora: 'Zieloną Górę',
+    rybnik: 'Rybnik',
+    slupsk: 'Słupsk',
+    walbrzych: 'Wałbrzych',
+    kalisz: 'Kalisz',
+    siedlce: 'Siedlce',
+    lomza: 'Łomżę',
+    krosno: 'Krosno',
+    jaslo: 'Jasło',
+    olkusz: 'Olkusz',
+    chrzanow: 'Chrzanów',
+    bochnia: 'Bochnię',
+    ilawa: 'Iławę',
   };
 
   for (const c of CITIES) {
@@ -131,50 +184,6 @@ describe('Przyimki w/we w języku polskim (w Krakowie vs we Wrocławiu)');
   );
 }
 
-describe('UnsupportedCityCard komunikat o innym mieście (odmiana)');
-{
-  expect(
-    'unsupportedBodyOther: we Wrocławiu',
-    pl.home.unsupportedBodyOther(pl.city.loc('wroclaw'), pl.city.name('krakow')),
-    'Jesteś we Wrocławiu, a aplikacja jest ustawiona na Kraków. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w Krakowie',
-    pl.home.unsupportedBodyOther(pl.city.loc('krakow'), pl.city.name('wroclaw')),
-    'Jesteś w Krakowie, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w Warszawie',
-    pl.home.unsupportedBodyOther(pl.city.loc('warszawa'), pl.city.name('wroclaw')),
-    'Jesteś w Warszawie, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w GZM',
-    pl.home.unsupportedBodyOther(pl.city.loc('gzm'), pl.city.name('wroclaw')),
-    'Jesteś w GZM, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedBodyOther: w Trójmieście',
-    pl.home.unsupportedBodyOther(pl.city.loc('trojmiasto'), pl.city.name('wroclaw')),
-    'Jesteś w Trójmieście, a aplikacja jest ustawiona na Wrocław. Zmień miasto w Ustawieniach.',
-  );
-  expect(
-    'unsupportedSwitchCity: Zmień na Warszawę',
-    pl.home.unsupportedSwitchCity(pl.city.acc('warszawa')),
-    'Zmień na Warszawę',
-  );
-  expect(
-    'unsupportedSwitchCity: Zmień na Wrocław',
-    pl.home.unsupportedSwitchCity(pl.city.acc('wroclaw')),
-    'Zmień na Wrocław',
-  );
-  expect(
-    'unsupportedSwitchCity: Zmień na GZM',
-    pl.home.unsupportedSwitchCity(pl.city.acc('gzm')),
-    'Zmień na GZM',
-  );
-}
-
 describe('Zgodność rodzaju gramatycznego w aktualnościach (emptyBody)');
 {
   expect(
@@ -206,6 +215,36 @@ describe('Zgodność rodzaju gramatycznego w aktualnościach (emptyBody)');
     'Kielce (niemęskoosobowy l. mnoga)',
     pl.news.emptyBody('Kielce'),
     'Kielce nie opublikowały teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Bydgoszcz (r. żeński)',
+    pl.news.emptyBody('Bydgoszcz'),
+    'Bydgoszcz nie opublikowała teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Częstochowa (r. żeński)',
+    pl.news.emptyBody('Częstochowa'),
+    'Częstochowa nie opublikowała teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Siedlce (niemęskoosobowy l. mnoga)',
+    pl.news.emptyBody('Siedlce'),
+    'Siedlce nie opublikowały teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Krosno (r. nijaki)',
+    pl.news.emptyBody('Krosno'),
+    'Krosno nie opublikowało teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.',
+  );
+  expect(
+    'Bydgoszcz po ukraińsku (r. męski)',
+    uk.news.emptyBody('Бидгощ'),
+    'Бидгощ зараз не опублікував жодних ускладнень. Потягни вниз, щоб перевірити знову.',
+  );
+  expect(
+    'Ченстохова po ukraińsku (r. żeński)',
+    uk.news.emptyBody('Ченстохова'),
+    'Ченстохова зараз не опублікувала жодних ускладнень. Потягни вниз, щоб перевірити знову.',
   );
 }
 
@@ -240,16 +279,6 @@ describe('Przyimki у/в w języku ukraińskim');
     'search searching: в Кракові',
     uk.search.searching(uk.city.loc('krakow')),
     'Шукаю в Кракові…',
-  );
-  expect(
-    'unsupportedBodyOther: у Вроцлаві',
-    uk.home.unsupportedBodyOther(uk.city.loc('wroclaw'), uk.city.name('krakow')),
-    'Ти у Вроцлаві, а застосунок налаштовано на Краків. Зміни місто в налаштуваннях.',
-  );
-  expect(
-    'unsupportedBodyOther: в Кракові',
-    uk.home.unsupportedBodyOther(uk.city.loc('krakow'), uk.city.name('wroclaw')),
-    'Ти в Кракові, а застосунок налаштовано на Вроцлав. Зміни місто в налаштуваннях.',
   );
 }
 

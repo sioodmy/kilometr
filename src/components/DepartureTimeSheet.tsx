@@ -577,20 +577,12 @@ export function DepartureTimeSheet({
           )}
           <Pressable
             onPress={handleConfirm}
-            disabled={isPast}
             accessibilityRole="button"
-            accessibilityState={{ disabled: isPast }}
             accessibilityLabel={s.timeSheet.confirmAction}
             accessibilityHint={selection}
-            style={({ pressed }) => [
-              styles.confirmBtn,
-              isPast && styles.confirmBtnDisabled,
-              pressed && !isPast && { opacity: 0.85 },
-            ]}
+            style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
           >
-            <Text style={[styles.confirmText, isPast && styles.confirmTextDisabled]}>
-              {s.timeSheet.confirmAction}
-            </Text>
+            <Text style={styles.confirmText}>{s.timeSheet.confirmAction}</Text>
           </Pressable>
         </View>
       </View>
@@ -802,17 +794,10 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
     borderRadius: shape.large,
   },
-  confirmBtnDisabled: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    opacity: 0.6,
-  },
   confirmText: {
     ...type.labelLarge,
     fontWeight: '600',
     color: scheme.onPrimary,
     textAlign: 'center',
-  },
-  confirmTextDisabled: {
-    color: scheme.onSurfaceVariant,
   },
 });
