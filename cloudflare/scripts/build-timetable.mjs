@@ -25,7 +25,7 @@
  *   feedu PLK (polish_trains.zip, tylko kursy dotykające Warszawy), WKD
  *   z własnego feedu (wkd.zip). Bez PDP i bez klucza.
  * Poznań:
- *   ZTM Poznań (mirror cdn.zbiorkom.live/gtfs/poznan.zip; upstream to
+ *   ZTM Poznań (GTFS z api.zbiorkom.live; upstream to
  *   oficjalny permalink www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile,
  *   ale nie zwraca Last-Modified/ETag, więc skip buildu nie wykryłby zmian)
  *   + Koleje Wielkopolskie z własnego publicznego GTFS (pkp-kw.zip, linie
@@ -38,7 +38,7 @@
   *   + SKM z własnego publicznego GTFS (numer pociągu w trip_short_name,
   *   tylko kursy dotykające aglomeracji). Bez PDP i bez klucza.
  * Łódź:
- *   ZDiT Łódź (mirror cdn.zbiorkom.live/gtfs/lodz.zip: tramwaje + autobusy
+ *   ZDiT Łódź (GTFS z api.zbiorkom.live: tramwaje + autobusy
  *   + linie zastępcze Z/R i nocne N, statyczny zrzut jak Poznań)
  *   + Łódzka Kolej Aglomeracyjna z własnego publicznego GTFS (pkp-lka.zip,
  *   linie Ł/ŁP/ŁS + ZKA jako route_type 3). Bez PDP i bez klucza.
@@ -55,48 +55,48 @@
  *   do skipu buildu). Kolej nie ma publicznego GTFS, więc miasto jedzie
  *   bez sekcji kolejowej. Bez PDP i bez klucza.
  * Olsztyn:
- *   ZDZiT Olsztyn (mirror cdn.zbiorkom.live/gtfs/olsztyn.zip: tramwaje 1–5
+ *   ZDZiT Olsztyn (GTFS z api.zbiorkom.live: tramwaje 1–5
  *   + autobusy + nocne N01/N02, statyczny zrzut, tylko calendar_dates).
  *   Oficjalna strona zdzit.olsztyn.eu/gtfs to WordPress z ręcznie
- *   wrzucanymi archiwami, więc źródłem jest mirror: zwraca poprawne
- *   Last-Modified/ETag i skip buildu działa wprost. Kolei nie ma wcale
+ *   wrzucanymi archiwami, więc źródłem jest API zbiorkom.live: zwraca
+ *   poprawne Last-Modified/ETag i skip buildu działa wprost. Kolei nie ma wcale
  *   (region nie ma publicznego GTFS kolejowego), więc miasto jedzie bez
  *   sekcji kolejowej. Bez PDP i bez klucza.
  * Białystok:
- *   BKM Białystok (mirror cdn.zbiorkom.live/gtfs/bialystok.zip: autobusy
+ *   BKM Białystok (GTFS z api.zbiorkom.live: autobusy
  *   1–30, 100+, J/J1–J6 i nocne N1–N6, statyczny zrzut z poprawnymi
  *   Last-Modified/ETag do skipu buildu; upstream to oficjalny permalink
  *   komunikacja.bialystok.pl/cms/File/download/gtfs/google_transit.zip,
  *   ale nie zwraca Last-Modified ani ETag, więc fingerprint i pobieranie
- *   idą z mirroru jak w Poznaniu i Łodzi). Kolej regionalna (POLREGIO)
+ *   idą z API zbiorkom.live jak w Poznaniu i Łodzi). Kolej regionalna (POLREGIO)
  *   nie ma publicznego GTFS, więc miasto jedzie bez sekcji kolejowej.
  *   Bez PDP i bez klucza.
  * Opole:
- *   MZK Opole z mirroru cdn.zbiorkom.live (autobusy dzienne 1–80 + nocne
+ *   MZK Opole z API zbiorkom.live (autobusy dzienne 1–80 + nocne
  *   N1–N2 i szkolne SZ1–SZ20, statyczny zrzut jak Poznań; bez calendar.txt,
  *   tylko calendar_dates, więc idzie generyczną ścieżką). Kolei brak
  *   (żaden publiczny GTFS nie kryje Opola), więc miasto jedzie bez sekcji
  *   kolejowej. Bez PDP i bez klucza.
  * Rzeszów:
- *   ZTM Rzeszów (mirror cdn.zbiorkom.live/gtfs/rzeszow.zip; upstream to
- *   mkuran.pl/gtfs/rzeszow.zip, ale mirror jest świeższy i odświeżany
- *   codziennie ok. 01:45 UTC z poprawnymi nagłówkami do skipu buildu):
+ *   ZTM Rzeszów (GTFS z api.zbiorkom.live; upstream to
+ *   mkuran.pl/gtfs/rzeszow.zip, ale API zbiorkom.live jest świeższe
+ *   (odświeżane codziennie) i zwraca poprawne nagłówki do skipu buildu):
  *   autobusy 0A/0B + 1–62 + nocne N1–N3 + PT, statyczny zrzut jak Poznań
  *   (tylko calendar_dates.txt, bez calendar.txt). Kolej nie ma publicznego
  *   GTFS ani feedu live w bboxie, więc miasto jedzie bez sekcji kolejowej.
  *   Bez PDP i bez klucza.
  * Lublin:
- *   ZDiTM Lublin z mirroru cdn.zbiorkom.live/gtfs/lublin.zip (autobusy
+ *   ZDiTM Lublin z API zbiorkom.live (autobusy
  *   2–85 + trolejbusy 150–162 z route_type 11 + nocne N1–N3, miejskie
  *   301–303, 912/917/922 i 950, statyczny zrzut jak Łódź: Last-Modified/
- *   ETag z mirroru, odświeżany codziennie ok. 01:45 UTC, licencja CC0 1.0).
+ *   ETag z API, odświeżane codziennie, licencja CC0 1.0).
  *   Kolej (POLREGIO/IC przez Lublin) nie ma publicznego GTFS w zakresie
  *   budowy, więc miasto jedzie bez sekcji kolejowej. Bez PDP i bez klucza.
  * Radom:
  *   MZDiK Radom z feedu mkuran.pl/gtfs/radom.zip (autobusy 1–27 + nocne
  *   N1–N3, licencja CC0 1.0; serwer zwraca poprawne Last-Modified/ETag,
- *   więc fingerprint i skip buildu działają wprost na źródle; mirror
- *   cdn.zbiorkom.live/gtfs/radom.zip w manifeście). Feed to eksport
+ *   więc fingerprint i skip buildu działają wprost na źródle; feed
+ *   api.zbiorkom.live/radom/gtfs/default w manifeście). Feed to eksport
  *   dzienny: trip_id niosą datę, kalendarz siedzi wyłącznie
  *   w calendar_dates.txt, więc import jest zwarty (kursy grupowane po
  *   sygnaturze czasów jak Warszawa). Kolei nie ma wcale. Bez PDP i bez klucza.
@@ -321,14 +321,22 @@ const WKD_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@ki
 const WAW_ENVELOPE = { minLat: 51.95, maxLat: 52.45, minLon: 20.75, maxLon: 21.35 };
 
 /**
+ * Skompilowane feedy z API zbiorkom.live v6. Każde miasto ma osobny
+ * endpoint {miasto}/gtfs/{agencja}, a serwer zwraca Last-Modified z czasu
+ * kompilacji, więc fingerprint i skip buildu działają wprost. To następca
+ * wyłączonego mirroru cdn.zbiorkom.live/gtfs/*.zip.
+ */
+const ZBIORKOM_GTFS = 'https://api.zbiorkom.live/api6-open';
+
+/**
  * Poznań: statyczny zrzut ZTM (tramwaje + autobusy + linie podmiejskie).
  * Upstream to oficjalny permalink ZTM, ale serwer nie zwraca Last-Modified
  * ani ETag (a nazwa pliku z oknem ważności jest dopiero w nagłówku
  * Content-Disposition po pobraniu całości), więc fingerprint i pobieranie
- * idą z mirroru cdn.zbiorkom.live (ten sam zrzut, odświeżany codziennie
- * ok. 01:45 UTC, z poprawnymi nagłówkami do skipu buildu).
+ * idą z API zbiorkom.live (ten sam zrzut, odświeżany codziennie, z poprawnymi
+ * nagłówkami do skipu buildu).
  */
-const POZNAN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/poznan.zip';
+const POZNAN_GTFS_URL = `${ZBIORKOM_GTFS}/poznan/gtfs/default`;
 const POZNAN_GTFS_UPSTREAM = 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile';
 const POZNAN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
@@ -339,42 +347,43 @@ const POZNAN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev
  * aglomeracji (ten sam wzorzec co KM w Warszawie), ale z pełną geometrią
  * (da się jechać za miasto). Numer pociągu siedzi w trip_short_name.
  */
-const KW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-kw.zip';
+const KW_GTFS_URL = `${ZBIORKOM_GTFS}/pkp/gtfs/KW`;
 const KW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia aglomeracji: kurs KW łapiemy, gdy ma choć jeden postój w środku. */
 const POZ_ENVELOPE = { minLat: 52.1, maxLat: 52.65, minLon: 16.5, maxLon: 17.4 };
 
 /**
- * Trójmiasto: oba feedy miejskie idą z mirroru cdn.zbiorkom.live (ten sam
- * wzorzec co Poznań: mirror ma poprawne Last-Modified/ETag do skipu buildu,
- * upstreamy niekoniecznie). Gdańsk to eksport dzienny (trip_id z datą,
- * tylko calendar_dates), Gdynia to statyczny zrzut.
+ * Trójmiasto: oba feedy miejskie idą z API zbiorkom.live (ten sam wzorzec
+ * co Poznań: poprawne Last-Modified/ETag do skipu buildu, upstreamy
+ * niekoniecznie). Gdańsk to eksport dzienny (trip_id z datą, tylko
+ * calendar_dates), Gdynia to statyczny zrzut.
  */
-const TRICITY_GDA_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/tricity-gdansk.zip';
+const TRICITY_GDA_GTFS_URL = `${ZBIORKOM_GTFS}/tricity/gtfs/default`;
 const TRICITY_GDA_GTFS_UPSTREAM = 'https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/30e783e4-2bec-4a7d-bb22-ee3e3b26ca96/download/gtfsgoogle.zip';
-const TRICITY_GDY_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/tricity-gdynia.zip';
+const TRICITY_GDY_GTFS_URL = `${ZBIORKOM_GTFS}/tricity/gtfs/GDYNIA`;
 const TRICITY_GDY_GTFS_UPSTREAM = 'http://api.zdiz.gdynia.pl/pt/gtfs.zip';
 const TRICITY_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
- * SKM Trójmiasto: własny publiczny GTFS (wszystkie kursy to SKM,
+ * SKM Trójmiasto: oficjalny GTFS od PKP SKM (wszystkie kursy to SKM,
  * route_type 2; numer pociągu siedzi w trip_short_name, np. "59606").
+ * Serwer zwraca Last-Modified/ETag, więc skip buildu działa wprost.
  * Feed sięga Słupska, więc do bazy trafiają tylko kursy dotykające
  * obwiedni aglomeracji (ten sam wzorzec co KM/KW), ale z pełną geometrią.
  */
-const SKMT_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-skmt.zip';
-const SKMT_GTFS_UPSTREAM = 'https://bip.skm.pkp.pl/otwarte-dane';
+const SKMT_GTFS_URL = 'https://www.skm.pkp.pl/gtfs-mi-kpd.zip';
+const SKMT_GTFS_UPSTREAM = 'https://bip.skm.pkp.pl/c60/rozklad-jazdy';
 const SKMT_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia Trójmiasta z zapasem: kurs SKM łapiemy, gdy ma postój w środku. */
 const TRI_ENVELOPE = { minLat: 54.05, maxLat: 54.7, minLon: 18.1, maxLon: 19.05 };
 
 /**
  * Łódź: statyczny zrzut ZDiT (tramwaje + autobusy + linie zastępcze Z/R,
- * nocne N i podmiejskie). Ten sam wzorzec co Poznań: mirror
- * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
- * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
+ * nocne N i podmiejskie). Ten sam wzorzec co Poznań: API zbiorkom.live
+ * z poprawnymi nagłówkami do skipu buildu (Last-Modified/ETag, odświeżane
+ * codziennie).
  */
-const LODZ_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/lodz.zip';
+const LODZ_GTFS_URL = `${ZBIORKOM_GTFS}/lodz/gtfs/default`;
 const LODZ_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
@@ -385,7 +394,7 @@ const LODZ_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@k
  * geometrią (da się jechać za miasto). Numer pociągu to pierwszy token
  * trip_short_name przed "/" (np. "11572" z "11572/3").
  */
-const LKA_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-lka.zip';
+const LKA_GTFS_URL = `${ZBIORKOM_GTFS}/pkp/gtfs/LKA`;
 const LKA_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia aglomeracji: kurs ŁKA łapiemy, gdy ma choć jeden postój w środku. */
 const LODZ_ENVELOPE = { minLat: 51.5, maxLat: 52.0, minLon: 19.0, maxLon: 19.9 };
@@ -408,12 +417,12 @@ const KIELCE_GTFS_URL = 'https://mkuran.pl/gtfs/kielce.zip';
 const KIELCE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
- * Olsztyn: mirror ZDZiT (tramwaje 1–5 + autobusy + nocne N01/N02). Oficjalna
+ * Olsztyn: feed ZDZiT (tramwaje 1–5 + autobusy + nocne N01/N02). Oficjalna
  * strona ZDZiT to WordPress z ręcznie wrzucanymi archiwami bez stabilnego
- * permalinka, a mirror zwraca poprawne Last-Modified/ETag, więc skip buildu
- * działa wprost (ten sam powód co przy Poznaniu i Łodzi).
+ * permalinka, a API zbiorkom.live zwraca poprawne Last-Modified/ETag, więc
+ * skip buildu działa wprost (ten sam powód co przy Poznaniu i Łodzi).
  */
-const OLSZTYN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/olsztyn.zip';
+const OLSZTYN_GTFS_URL = `${ZBIORKOM_GTFS}/olsztyn/gtfs/default`;
 const OLSZTYN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
@@ -421,43 +430,40 @@ const OLSZTYN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: de
  * Upstream to oficjalny permalink BKM, ale serwer nie zwraca Last-Modified
  * ani ETag (a nazwa pliku z datą modyfikacji jest dopiero w nagłówku
  * Content-Disposition po pobraniu całości), więc fingerprint i pobieranie
- * idą z mirroru cdn.zbiorkom.live (ten sam wzorzec co Poznań i Łódź:
- * ten sam zrzut, odświeżany codziennie ok. 01:45 UTC, z poprawnymi
- * nagłówkami do skipu buildu).
+ * idą z API zbiorkom.live (ten sam wzorzec co Poznań i Łódź: ten sam zrzut,
+ * odświeżany codziennie, z poprawnymi nagłówkami do skipu buildu).
  */
-const BIALYSTOK_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/bialystok.zip';
+const BIALYSTOK_GTFS_URL = `${ZBIORKOM_GTFS}/bialystok/gtfs/default`;
 const BIALYSTOK_GTFS_UPSTREAM = 'http://komunikacja.bialystok.pl/cms/File/download/gtfs/google_transit.zip';
 const BIALYSTOK_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Opole: statyczny zrzut MZK (autobusy dzienne + nocne N1–N2 i szkolne
- * SZ1–SZ20, sama route_type 3). Ten sam wzorzec co Poznań i Łódź: mirror
- * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
- * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
+ * SZ1–SZ20, sama route_type 3). Ten sam wzorzec co Poznań i Łódź:
+ * API zbiorkom.live z poprawnymi nagłówkami do skipu buildu
+ * (Last-Modified/ETag, odświeżane codziennie).
  */
-const OPOLE_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/opole.zip';
+const OPOLE_GTFS_URL = `${ZBIORKOM_GTFS}/opole/gtfs/default`;
 const OPOLE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Rzeszów: statyczny zrzut ZTM (autobusy + nocne N1–N3 + PT).
- * Upstream to mkuran.pl/gtfs/rzeszow.zip, ale mirror cdn.zbiorkom.live
- * jest świeższy (odświeżany codziennie ok. 01:45 UTC) i zwraca poprawne
- * Last-Modified/ETag, więc fingerprint i pobieranie idą z mirroru
- * (ten sam wzorzec co Poznań i Łódź).
+ * Upstream to mkuran.pl/gtfs/rzeszow.zip, ale API zbiorkom.live jest
+ * świeższe (odświeżane codziennie) i zwraca poprawne Last-Modified/ETag,
+ * więc fingerprint i pobieranie idą z API (ten sam wzorzec co Poznań i Łódź).
  */
-const RZESZOW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/rzeszow.zip';
+const RZESZOW_GTFS_URL = `${ZBIORKOM_GTFS}/rzeszow/gtfs/default`;
 const RZESZOW_GTFS_UPSTREAM = 'https://mkuran.pl/gtfs/rzeszow.zip';
 const RZESZOW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Lublin: statyczny zrzut ZDiTM (autobusy + trolejbusy 150–162 jako
- * route_type 11 + nocne N1–N3). Ten sam wzorzec co Łódź: mirror
- * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
- * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
- * Oryginał mkuran.pl/gtfs/lublin.zip trzymamy w komentarzu jako awaryjne
- * źródło (ten sam plik, licencja CC0 1.0).
+ * route_type 11 + nocne N1–N3). Ten sam wzorzec co Łódź: API zbiorkom.live
+ * z poprawnymi nagłówkami do skipu buildu (Last-Modified/ETag, odświeżane
+ * codziennie). Oryginał mkuran.pl/gtfs/lublin.zip trzymamy w komentarzu
+ * jako awaryjne źródło (ten sam plik, licencja CC0 1.0).
  */
-const LUBLIN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/lublin.zip';
+const LUBLIN_GTFS_URL = `${ZBIORKOM_GTFS}/lublin/gtfs/default`;
 const LUBLIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 
@@ -465,11 +471,11 @@ const LUBLIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev
  * Radom: feed MZDiK (mkuran.pl/gtfs/radom.zip: autobusy 1–27 + nocne N1–N3,
  * licencja CC0 1.0). Autor feedu zwraca poprawne Last-Modified/ETag, więc
  * fingerprint i skip buildu idą wprost na źródle (jak Szczecin). Mirror
- * cdn.zbiorkom.live/gtfs/radom.zip trafia tylko do manifestu jako źródło
- * zapasowe, gdyby mkuran.pl kiedyś przestał odpowiadać.
+ * z API zbiorkom.live trafia tylko do manifestu jako źródło zapasowe,
+ * gdyby mkuran.pl kiedyś przestał odpowiadać.
  */
 const RADOM_GTFS_URL = 'https://mkuran.pl/gtfs/radom.zip';
-const RADOM_GTFS_MIRROR = 'https://cdn.zbiorkom.live/gtfs/radom.zip';
+const RADOM_GTFS_MIRROR = `${ZBIORKOM_GTFS}/radom/gtfs/default`;
 const RADOM_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 
