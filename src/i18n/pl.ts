@@ -945,6 +945,10 @@ export const pl = {
     urgentChip: 'Utrudnienie',
     plannedChip: 'Zmiana trasy',
     omittedStopsPrefix: 'Omija:',
+    lineSuspended: (line: string) => `Linia ${line} zawieszona`,
+    lineDetour: (line: string) => `Objazd linii ${line}`,
+    specialLine: (line: string) => `Linia specjalna ${line}`,
+    everyNMin: (n: number) => `co ${n} min`,
   },
   newsSvc: {
     justNow: 'przed chwilą',

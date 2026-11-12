@@ -49,7 +49,7 @@ const CITY_NAMES = {
 };
 
 // Podbij przy każdej zmianie promptu: hash cache zależy od tej wersji.
-const PROMPT_VERSION = '2026-10-29.1';
+const PROMPT_VERSION = '2026-11-12.1';
 
 function loadLocalEnv() {
   if (!fs.existsSync(ENV_PATH)) return;
@@ -1000,22 +1000,44 @@ ODPOWIADAJ WYŁĄCZNIE CZYSTYM OBIEKTEM JSON O PONIŻSZEJ STRUKTURZE:
   "valid_from": string, // Data i czas ISO 8601 od kiedy zmiana obowiązuje (np. "2026-10-31T00:00:00Z"). Jeśli brak, użyj daty publikacji
   "valid_to": string | null, // Data i czas ISO 8601 końca utrudnień lub null ("do odwołania", na stałe lub nieznany)
   "all_lines": string[], // Numery/symbole wszystkich linii zbiorkomu, których dotyczy zmiana (np. ["3", "5"]). Pusta tablica [] jeśli irrelevant
-  "impacted_lines": [ // Rozbicie per-linia z topologią zmian
+  "line_changes": [ // Rozbicie per-linia. JEDEN KOMUNIKAT MOŻE OPISYWAĆ WIELE LINII Z RÓŻNYMI ZMIANAMI: jedna linia zawieszona, inna na objazdach, jeszcze inna na stałej trasie. Każda linia to osobny wpis z własnym "change".
     {
-      "line": string, // np. "3"
-      "direction": string | null, // Docelowy kierunek problemu w mianowniku, np. "Księże Małe", "Oporów", lub "both"
-      "impact_type": "detour" | "shortened" | "cancelled" | "route_restored" | "shuttle_bus" | "schedule_change" | "special_service",
+      "line": string, // np. "3", "Z-15", "E-2"
+      "direction": string | null, // Docelowy kierunek problemu w mianowniku, np. "Księże Małe", "Oporów", lub "both", lub null gdy nieznany
+      "change": "cancelled" | "detour" | "shortened" | "stops_skipped" | "schedule_change" | "frequency_change" | "route_restored" | "other",
+      // cancelled: linia w ogóle nie kursuje (w oknie czasowym)
+      // detour: trasa czasowo zmieniona, fragment nowej trasy w "via"
+      // shortened: trasa skrócona (odpada część trasy)
+      // stops_skipped: linia jedzie swoją trasą, ale pomija wybrane przystanki
+      // schedule_change: zmiany godzin odjazdów bez zmiany trasy
+      // frequency_change: zmiana częstotliwości kursowania
+      // route_restored: powrót na stałą trasę po utrudnieniu
+      // other: zmiana, która nie pasuje do powyższych (opisz w details)
+      "via": string[] | null, // ZMIENIONY FRAGMENT TRASY W KOLEJNOŚCI JAZDY. Tylko gdy tekst wymienia punkty trasy po kolei (np. "pojedzie przez Dietla, Starowiślną do Poczty Głównej" -> ["Dietla", "Starowiślna", "Poczta Główna"]). Wielokropek w tekście ("Nowy Bieżanów – … – Krakowska") oznacza niezmieniony środek: podaj TYLKO wymieniony fragment od pierwszego do ostatniego wymienionego punktu. null gdy tekst nie podaje kolejności.
       "omitted_stops": string[], // Przystanki omijane przez tę linię (w mianowniku, np. ["Plac Zgody", "Krakowska"])
       "temporary_stops": string[], // Przystanki tymczasowe lub dodatkowe (w mianowniku)
       "replacement_line": string | null, // Linia zastępcza jeśli uruchomiono (np. "Za-tramwaj 703" lub "autobus 705")
-      "details": string // 1 zdanie o zmianie trasy tej konkretnej linii
+      "hours": { "from": string, "to": string }[], // Okna czasowe w ciągu doby, tylko z tekstu (np. "w godz. 11:45-13:00" -> [{"from":"11:45","to":"13:00"}]). Pusta tablica [] gdy zmiana obowiązuje całą dobę.
+      "details": string // 1 zdanie o zmianie tej konkretnej linii
+    }
+  ],
+  "temporary_lines": [ // NOWE linie uruchamiane czasowo (mecz, święta, komunikacja zastępcza), których nie ma w stałym rozkładzie. TYLKO gdy tekst opisuje linię z własną trasą.
+    {
+      "line": string, // np. "C1", "Z-15", "704"
+      "via": string[], // PEŁNA trasa linii w kolejności jazdy z tekstu (np. ["Pleszów", "Klasztorna", "Rynek"]). Bez pełnej listy z tekstu nie twórz wpisu.
+      "frequency_min": number | null, // Interwał w minutach TYLKO gdy tekst podaje go liczbowo ("co 10 minut"). null gdy brak.
+      "days": string[], // Konkretne daty kursowania ISO "YYYY-MM-DD" tylko z tekstu. Pusta tablica [] gdy linia kursuje w całym okresie valid_from..valid_to.
+      "hours": { "from": string, "to": string }[], // Okna czasowe w ciągu doby jak wyżej, [] gdy cała doba.
+      "serves": string[], // Numery linii, które ta linia wspomaga/zastępuje, gdy tekst to podaje. [] gdy brak.
+      "details": string // 1 zdanie o linii (np. "Dodatkowa linia na mecz, kursuje co 10 minut.")
     }
   ],
   "stops": [ // Lista przystanków, których obsługa uległa zmianie
     {
       "name": string, // ZAWSZE W MIANOWNIKU: "Plac Bema" (nie: "Placu Bema"), "Księże Małe" (nie: "Księża Małego")
-      "action": "omitted" | "relocated" | "temporary" | "restored" | "board_opposite",
+      "action": "omitted" | "relocated" | "temporary" | "restored" | "board_opposite" | "replaced_by",
       "lines": string[], // Linie, których dotyczy ta zmiana przystankowa
+      "replaced_by": string | null, // Gdy action=replaced_by: przystanek obsługiwany zamiast tego (w mianowniku, z tekstu)
       "details": string // Konkretna wskazówka (np. "Słupek przeniesiony 50m za skrzyżowanie", "Przystanek zawieszony")
     }
   ]
@@ -1026,16 +1048,24 @@ ZASADY ANTY-SLOP I JAKOŚCI DANYCH:
 2. MIANOWNIK DLA PRZYSTANKÓW: Polskie nazwy przystanków zawsze sprowadzaj do formy bazowej: "Galeria Dominikańska", "Rondo Reagana", "Dworzec Główny", "Piecowice - pętla".
 3. LINIE TO WYŁĄCZNIE ZBIORKOM: Nigdy nie dodawaj numerów dróg krajowych (np. DK94, AOW, A8), numerów ustaw, numerów peronów ani roczników.
 4. JEŚLI SPAM LUB BEZ WPŁYWU NA ZBIORKOM:
-   Ustaw is_transit_alert: false, severity: "info", all_lines: [], impacted_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
+   Ustaw is_transit_alert: false, severity: "info", all_lines: [], line_changes: [], temporary_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
 5. KOPIUJ, NIE TWÓRZ: nazwy ulic, placów, dzielnic, osiedli, mostów i przystanków przepisujesz znak w znak z treści. Zero odmiany, zero "poprawiania", zero tłumaczenia. Jeśli treść ma "Krzyki", pisz "Krzyki". Jeśli "Włochy", pisz "Włochy". Nigdy "Krzków", "Włochów".
 6. ZERO NOWEJ GEOGRAFII: nie dodawaj miejsc, których nie ma w treści. Nie zgaduj dzielnicy z nazwy ulicy. Brak nazwy w treści oznacza brak nazwy w odpowiedzi.
 7. FORMA Z TREŚCI: używaj dokładnie tej formy nazwy, która występuje w komunikacie. Jeśli treść ma "Krzykach", pisz "Krzykach". Nie twórz własnych form fleksyjnych. Żeby zdanie brzmiało naturalnie, użyj konstrukcji "w dzielnicy Krzyki", "w rejonie ul. Krakowskiej", "na trasie do Włoch".
 8. MIASTO: komunikat dotyczy wyłącznie miasta podanego w zadaniu. Nie używaj dzielnic ani miejsc z innych miast.
-9. SAMOKONTROLA: przed odpowiedzią sprawdź każdą nazwę własną w headline, glance.problem, glance.solution i stops. Musi występować w treści źródłowej. Jeśli nie występuje, usuń ją albo przepisz dokładnie z treści.
+9. SAMOKONTROLA: przed odpowiedzią sprawdź każdą nazwę własną w headline, glance.problem, glance.solution, line_changes i stops. Musi występować w treści źródłowej. Jeśli nie występuje, usuń ją albo przepisz dokładnie z treści.
+10. JEDEN KOMUNIKAT, WIELE ZMIAN: gdy tekst wymienia linie zawieszone, linie na objazdach i linie bez zmian, zapisz w line_changes wyłącznie linie ze zmianami (cancelled, detour, shortened, stops_skipped, schedule_change, frequency_change). Linie "bez zmian" pomijasz; wystarczą w glance.problem.
+11. NIGDY NIE DOPISUJ FAKTÓW: nie wymyślaj linii, przystanków, godzin, dat ani częstotliwości, których nie ma w tekście. Aplikacja będzie na tych danych liczyć trasy, więc każdy zmyślony przystanek w via to błędne połączenie. Gdy tekst nie podaje kolejności trasy, via = null.
+12. GODZINY I DATY TYLKO Z TEKSTU: hours wpisuj wyłącznie z konkretnych godzin w treści. Gdy tekst podaje tylko "wieczorem" albo "w nocy", zostaw hours: [] i wpisz zakres w details lub glance.timeframe.
 
 PRZYKŁADY POPRAWNEJ FORMY NAZW:
 - Treść: "utrudnienia w rejonie Krzyki" -> "Utrudnienia w dzielnicy Krzyki" (nie "Krzków").
-- Treść: "objazd przez Włochy" -> "Objazd przez Włochy" (nie "Włochów").`;
+- Treść: "objazd przez Włochy" -> "Objazd przez Włochy" (nie "Włochów").
+PRZYKŁADY ROZBICIA NA LINIE:
+- Treść: "linie 2, 4, 6 są zawieszone; linia 13 kursuje po trasie czasowo zmienionej: Nowy Bieżanów P+R – … – Krakowska – Dietla – Starowiślna – Poczta Główna" ->
+  line_changes: [{"line":"2","change":"cancelled",...}, {"line":"4","change":"cancelled",...}, {"line":"6","change":"cancelled",...}, {"line":"13","change":"detour","via":["Krakowska","Dietla","Starowiślna","Poczta Główna"],...}]
+- Treść: "uruchomiona zostanie dodatkowa linia C1 kursująca co 10 minut na trasie Pleszów - Rynek - Plac Centralny" ->
+  temporary_lines: [{"line":"C1","via":["Pleszów","Rynek","Plac Centralny"],"frequency_min":10,...}]`;
 
 function buildPrompt(item, city, correction = []) {
   const cityName = CITY_NAMES[city] || city;
@@ -1272,6 +1302,8 @@ async function processCity(city, limit, cache) {
 
     if (DRY_RUN) {
       console.log(`    [DRY-RUN] Nowy komunikat (hash: ${contentHash}). Gotowy do analizy.`);
+      const preview = (item.fullContent || item.content || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      console.log(`      TREŚĆ: ${preview}`);
       continue;
     }
 

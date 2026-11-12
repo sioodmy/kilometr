@@ -962,6 +962,10 @@ export const uk: Strings = {
     urgentChip: 'Ускладнення',
     plannedChip: 'Зміна маршруту',
     omittedStopsPrefix: 'Пропускає:',
+    lineSuspended: (line: string) => `Лінію ${line} призупинено`,
+    lineDetour: (line: string) => `Об'їзд лінії ${line}`,
+    specialLine: (line: string) => `Спеціальна лінія ${line}`,
+    everyNMin: (n: number) => `кожні ${n} хв`,
   },
   newsSvc: {
     justNow: 'щойно',

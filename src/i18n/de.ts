@@ -921,6 +921,10 @@ export const de: Strings = {
     urgentChip: 'Störung',
     plannedChip: 'Fahrplanänderung',
     omittedStopsPrefix: 'Ohne Halt:',
+    lineSuspended: (line: string) => `Linie ${line} eingestellt`,
+    lineDetour: (line: string) => `Umleitung der Linie ${line}`,
+    specialLine: (line: string) => `Sonderlinie ${line}`,
+    everyNMin: (n: number) => `alle ${n} Min.`,
   },
   newsSvc: {
     justNow: 'gerade eben',

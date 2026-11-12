@@ -121,3 +121,47 @@ test('pusty grounding, gdy linia i przystanek spoza GTFS', async () => {
   assert.equal(g.routeIds.length, 0);
   assert.equal(g.stopIds.length, 0);
 });
+
+test('zbiera linie i przystanki z line_changes i temporary_lines', async () => {
+  const g = await groundDisruption(
+    alert({
+      line_changes: [
+        {
+          line: '5',
+          direction: null,
+          change: 'detour',
+          via: ['Galeria Dominikańska', 'Plac Bema'],
+          omitted_stops: [],
+          temporary_stops: [],
+          replacement_line: null,
+          hours: [],
+          details: '',
+        },
+        {
+          line: '3',
+          direction: 'both',
+          change: 'cancelled',
+          via: null,
+          omitted_stops: [],
+          temporary_stops: [],
+          replacement_line: null,
+          hours: [{ from: '11:45', to: '13:00' }],
+          details: '',
+        },
+      ],
+      temporary_lines: [
+        {
+          line: 'C1',
+          via: ['Księże Małe', 'Galeria Dominikańska'],
+          frequency_min: 10,
+          days: [],
+          hours: [],
+          serves: [],
+          details: '',
+        },
+      ],
+    }),
+  );
+  assert.deepEqual([...g.routeIds].sort(), ['r3', 'r5']);
+  assert.deepEqual([...g.stopIds].sort(), ['s1', 's2', 's3']);
+});
