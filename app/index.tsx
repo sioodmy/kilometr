@@ -95,7 +95,7 @@ import type { SavedRoute } from '../src/types/models';
 import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
 import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
 import { CitySelectSheet } from '../src/components/CitySelectSheet';
-import { suggestCityForCoords, type CityId } from '../src/cities';
+import { getCity, suggestCityForCoords, type CityId } from '../src/cities';
 import { hasCityDb } from '../src/services/gtfsDatabase';
 
 /** Okno widoczności chipu biletu w docku: odjazd w ciągu 3 h. */
@@ -320,6 +320,9 @@ export default function HomeScreen() {
   useEffect(() => {
     let cancelled = false;
     setNewsAlert(false);
+    // Miasto bez źródła komunikatów (features.news) nie odpytuje R2/feedów:
+    // nie ma tam czego pokazać, a dzwonek jest ukryty.
+    if (!getCity(cityId).features.news) return;
     const checkNews = async () => {
       try {
         const { fetchCityNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
@@ -344,6 +347,8 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      // Dzwonek jest ukryty w miastach bez źródła komunikatów.
+      if (!getCity(cityId).features.news) return;
       const verify = async () => {
         try {
           const { getCachedNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
@@ -358,7 +363,7 @@ export default function HomeScreen() {
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [cityId]),
   );
 
   // Status danych: przy starcie, powrocie na foreground i co 30 s.
@@ -1567,26 +1572,28 @@ export default function HomeScreen() {
                 )}
               </View>
               <View style={styles.topActions}>
-                <Pressable
-                  style={styles.iconBtn}
-                  hitSlop={10}
-                  onPress={() => {
-                    setNewsAlert(false);
-                    void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
-                      markNewsSeen(),
-                    );
-                    router.push('/news');
-                  }}
-                  accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
-                  accessibilityRole="button"
-                >
-                  <Bell size={20} color={scheme.onSurfaceVariant} />
-                  {newsAlert && (
-                    <View style={styles.alertBadge}>
-                      <Text style={styles.alertMark}>!</Text>
-                    </View>
-                  )}
-                </Pressable>
+                {getCity(cityId).features.news && (
+                  <Pressable
+                    style={styles.iconBtn}
+                    hitSlop={10}
+                    onPress={() => {
+                      setNewsAlert(false);
+                      void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
+                        markNewsSeen(),
+                      );
+                      router.push('/news');
+                    }}
+                    accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                    accessibilityRole="button"
+                  >
+                    <Bell size={20} color={scheme.onSurfaceVariant} />
+                    {newsAlert && (
+                      <View style={styles.alertBadge}>
+                        <Text style={styles.alertMark}>!</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                )}
                 <Pressable
                   style={styles.iconBtn}
                   onPress={() => router.push('/settings')}

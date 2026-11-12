@@ -2562,7 +2562,11 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   if (city.id === 'rzeszow') return fetchRzeszowNews(signal, city.id);
   if (city.id === 'lublin') return fetchLublinNews(signal, city.id);
   if (city.id === 'radom') return fetchRadomNews(signal, city.id);
-  return fetchMpkNews(signal);
+  if (city.id === 'wroclaw') return fetchMpkNews(signal);
+  // Miasta dodane w 2026 nie mają własnych źródeł komunikatów. Pusta lista
+  // zamiast scrapera Wrocławia: cudze komunikaty w Bydgoszczy to zmyślone
+  // dane, a UI i tak ma stan „brak komunikatów”.
+  return [];
 }
 
 /**

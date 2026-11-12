@@ -3,9 +3,12 @@
 //   dla Wrocławia, `KML` dla Krakowa, `KS` dla GZM, `KM` i `WKD` dla Warszawy,
 //   `KW` i `PR` dla Poznania, `SKMT` dla Trójmiasta, `LKA` dla Łodzi),
 // - miasto `wroclaw` / `krakow` / `gzm` / `warsaw` / `poznan` / `tricity`
-//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow` / `lublin` / `radom`:
-//   główne źródło pozycji i opóźnień (feed podaje `delay` wprost).
-//   Bezpośredni POST bus_position MPK zostaje tylko jako awaria Wrocławia.
+//   / `lodz` / `szczecin` / `kielce` / `olsztyn` / `bialystok` / `opole` / `rzeszow` / `lublin` / `radom`
+//   oraz miasta z 2026 (elblag, torun, czestochowa, gorzow, rybnik, slupsk,
+//   walbrzych, kalisz, siedlce, krosno): główne źródło pozycji i opóźnień
+//   (feed podaje `delay` wprost). Miasta bez endpointu (bydgoszcz, zielona
+//   góra, łomża, jasło, olkusz, chrzanów, bochnia, iława) mają features.live=false
+//   i nie są odpytywane wcale.
 //
 // Endpointy: GET /api6-open/{city}/positions/{bbox}[?agencies=..].
 // Odpowiedź: { positions: [...] }, czasy w ms (epoch), współrzędne [lon, lat].
@@ -280,6 +283,45 @@ export async function fetchZbRadomRows(): Promise<RawVehicleRow[] | null> {
   const { getCity } = await import('../cities');
   const rad = getCity('radom');
   const positions = await fetchPositions(rad.zbiorkomSlug, undefined, rad.zbiorkomBbox);
+  if (positions === null) return null;
+  return toRawRows(positions);
+}
+
+/**
+ * Miasta dodane w 2026 z feedem live (zbiorkom.live): Elbląg, Toruń,
+ * Częstochowa, Gorzów, Rybnik, Słupsk, Wałbrzych, Kalisz, Siedlce, Krosno.
+ * Wszystkie jadą pod agencją `default` poza Rybnikiem, gdzie filtr odcina
+ * agencję JASTRZEBIE (linie ZKM Jastrzębie-Zdrój nie są w GTFS KM Rybnik,
+ * więc ich pojazdy wisiałyby na mapie jako kropki bez rozkładu, jak
+ * WSCHODEXPRESS w Białymstoku). Slug i bbox z cities.ts.
+ */
+const NEW_LIVE_AGENCIES: Record<string, string | undefined> = {
+  elblag: undefined,
+  torun: undefined,
+  czestochowa: undefined,
+  gorzow: undefined,
+  rybnik: 'default',
+  slupsk: undefined,
+  walbrzych: undefined,
+  kalisz: undefined,
+  siedlce: undefined,
+  krosno: undefined,
+};
+
+/** Czy miasto ma nowy feed live (dyspozyt w liveTracker.fetchZbCity). */
+export function isNewLiveCity(id: string): boolean {
+  return id in NEW_LIVE_AGENCIES;
+}
+
+export async function fetchZbNewCityRows(id: string): Promise<RawVehicleRow[] | null> {
+  if (!isNewLiveCity(id)) return null;
+  const { getCity } = await import('../cities');
+  const city = getCity(id);
+  const positions = await fetchPositions(
+    city.zbiorkomSlug,
+    NEW_LIVE_AGENCIES[id],
+    city.zbiorkomBbox,
+  );
   if (positions === null) return null;
   return toRawRows(positions);
 }
