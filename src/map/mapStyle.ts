@@ -48,9 +48,9 @@ const motif = () => ({
   placeSmall: colors.faint,
   walk: scheme.onSurfaceVariant,
   stopMid: scheme.onSurface,
-  // POI celowo ciszej niż nazwy ulic: to podpowiedź otoczenia, nie główny
-  // składnik mapy.
-  poi: colors.faint,
+  // POI celowo ciszej niż nazwy ulic, ale nadal czytelnie na ciemnym tle
+  // (kontrast tekstu w mapie ma sens tylko wtedy, gdy da się go przeczytać).
+  poi: scheme.outline,
 });
 
 const C = MAP_COLORS;
@@ -326,54 +326,212 @@ function baseLayers() {
 }
 
 /**
- * Etykiety POI (miejsca punktowe z OSM): bez ikon (glify są w paczce offline,
- * sprite ikon nie), konsekwentnie ciche i drobne. Filtr rangi (1 = najważniejszy)
- * plus dwa progi zoomu (istotne od z15, reszta dopiero od z17) trzymają gęstość
- * niską, a domyślne kolizje etykiet sprawiają, że POI ustępuje miejsca nazwom
- * ulic i miejscowości. Warstwy wchodzą do stylu PRZED warstwami trasy, więc
- * trasa i przystanki zawsze rysują się na nich.
+ * Ikona POI: kolorowa tarcza z białym glifem kategorii, jak w Apple Maps.
+ * Obrazki rysuje runtime WebView (canvas), więc działają też offline i nie
+ * wymagają sprite'u z sieci. Kształty są w siatce 24x24.
+ */
+export const POI_ICON_SPECS = [
+  {
+    name: 'poi-food',
+    color: '#C97A32',
+    glyph: 'M7 4v5M5 4v3.5a2 2 0 0 0 4 0V4M7 9v11M16.5 4c-1.8 2.3-1.8 5.4 0 7.6V20',
+  },
+  {
+    name: 'poi-shop',
+    color: '#4C8FD6',
+    glyph: 'M5 8h14l1 12H4L5 8zM9 8V6a3 3 0 0 1 6 0v2',
+  },
+  {
+    name: 'poi-medical',
+    color: '#D75B52',
+    glyph: 'M10 4.5h4v5.5h5.5v4H14V19.5h-4V14H4.5v-4H10V4.5z',
+    fill: true,
+  },
+  {
+    name: 'poi-education',
+    color: '#7B6FD0',
+    glyph:
+      'M12 6.5C10.4 5 8.3 4.4 5 4.4v13.2c3.3 0 5.4.6 7 2.1 1.6-1.5 3.7-2.1 7-2.1V4.4c-3.3 0-5.4.6-7 2.1zM12 6.5v13.2',
+  },
+  {
+    name: 'poi-culture',
+    color: '#BE79B4',
+    glyph:
+      'M12 4.2l2.4 4.8 5.3.8-3.8 3.7.9 5.3-4.8-2.5-4.8 2.5.9-5.3-3.8-3.7 5.3-.8L12 4.2z',
+    fill: true,
+  },
+  {
+    name: 'poi-nature',
+    color: '#3B8A60',
+    glyph: 'M12 4l5 6h-3l4 5h-4v4h-4v-4H6l4-5H7l5-6z',
+    fill: true,
+  },
+  {
+    name: 'poi-sport',
+    color: '#2E8F89',
+    glyph:
+      'M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM5.4 9.6c4.2 2 9 2 13.2 0M5.4 14.4c4.2-2 9-2 13.2 0',
+  },
+  {
+    name: 'poi-hotel',
+    color: '#A97F5E',
+    glyph: 'M4 18V7M4 13h16v5M8 13v-3h5a3 3 0 0 1 3 3M7 18v1.5M20 18v1.5',
+  },
+  {
+    name: 'poi-fuel',
+    color: '#7C8784',
+    glyph: 'M6 20V5h8v15M5 20h10M9 8h3v4H9zM14 9h3l2 2v6a1.5 1.5 0 0 0 3 0v-8l-2-2',
+  },
+  {
+    name: 'poi-transit',
+    color: '#5C86E0',
+    glyph:
+      'M8 4h8a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zM5 11h14M9 8h.1M15 8h.1M8 20l1.5-3M16 20l-1.5-3',
+  },
+  {
+    name: 'poi-worship',
+    color: '#94784A',
+    glyph: 'M12 3v6M9 6h6M12 9l-6 6v5h12v-5l-6-6zM10 20v-4h4v4',
+  },
+  {
+    name: 'poi-civic',
+    color: '#6A8FA8',
+    glyph: 'M3 9l9-5 9 5M4.5 9h15M6.5 19h11M8 9v10M12 9v10M16 9v10M5 21h14',
+  },
+  {
+    name: 'poi-default',
+    color: '#7C8784',
+    glyph: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+    fill: true,
+  },
+] as const;
+
+/** Kategoria OSM -> nazwa obrazka ikony. */
+const poiIconImage = [
+  'match',
+  ['get', 'class'],
+  ['fast_food', 'cafe', 'restaurant', 'bar', 'beer', 'ice_cream'],
+  'poi-food',
+  ['shop', 'grocery', 'clothing_store', 'alcohol_shop', 'music', 'laundry'],
+  'poi-shop',
+  ['hospital', 'pharmacy', 'clinic', 'doctors', 'dentist', 'veterinary'],
+  'poi-medical',
+  ['school', 'college', 'library'],
+  'poi-education',
+  [
+    'museum',
+    'attraction',
+    'art_gallery',
+    'viewpoint',
+    'castle',
+    'zoo',
+    'cinema',
+    'theatre',
+    'monument',
+    'memorial',
+    'theme_park',
+    'water_park',
+    'aquarium',
+  ],
+  'poi-culture',
+  ['park', 'garden', 'playground', 'dog_park', 'campsite', 'cemetery'],
+  'poi-nature',
+  ['stadium', 'sports_centre', 'swimming', 'fitness_centre', 'golf', 'beach'],
+  'poi-sport',
+  ['lodging'],
+  'poi-hotel',
+  ['fuel'],
+  'poi-fuel',
+  ['airport', 'harbor', 'car', 'parking'],
+  'poi-transit',
+  ['place_of_worship'],
+  'poi-worship',
+  [
+    'town_hall',
+    'post',
+    'bank',
+    'atm',
+    'police',
+    'fire_station',
+    'courthouse',
+    'embassy',
+    'government',
+  ],
+  'poi-civic',
+  'poi-default',
+] as never;
+
+/**
+ * Warstwy POI (miejsca punktowe z OSM): kolorowa ikona kategorii plus etykieta.
+ * Ikony pokazują się od z14, etykiety dopiero od z16 (najważniejsze POI
+ * wcześniej), więc przy oddalaniu mapa pokazuje orientacyjne punkty, a nie
+ * ścianę tekstu. Kolizje i sortowanie po randze (1 = najważniejszy) sprawiają,
+ * że gęste obszary same się rozrzedzają. Warstwy wchodzą do stylu PRZED
+ * warstwami trasy, więc trasa i przystanki zawsze rysują się na nich.
  */
 function buildPoiLayers() {
-  const layout = {
-    'text-font': ['Noto Sans Regular'],
-    'text-max-width': 7,
-    'text-padding': 4,
-  };
-  const paint = labelPaint(motif().poi, 1.1);
-  const size = ['interpolate', ['linear'], ['zoom'], 15, 9.5, 19, 11.5];
   // Klasy transportowe pomijamy: przystanki trasy opisuje sama aplikacja,
-  // ich dublowanie tylko gęści mapę.
+  // ich dublowanie tylko gęści mapę. Biura to szum bez wartości dla podróży.
   const notTransit = [
     '!',
-    ['match', ['get', 'class'], ['airport', 'bus', 'rail', 'subway', 'station'], true, false],
+    ['match', ['get', 'class'], ['bus', 'rail', 'railway', 'subway', 'station', 'entrance', 'aerialway', 'office'], true, false],
   ] as never;
   const isPoint = ['==', ['geometry-type'], 'Point'] as never;
+  const rankSort = ['coalesce', ['get', 'rank'], 99];
+  // Najważniejsze POI mają nazwę już od z14, reszta dopiero od z16.
+  const nameAtZoom = [
+    'step',
+    ['zoom'],
+    ['case', ['<=', ['get', 'rank'], 2], nameField, ''],
+    16,
+    nameField,
+  ] as never;
+  const layout = {
+    'icon-image': poiIconImage,
+    'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.62, 17, 0.8, 20, 0.95],
+    'icon-padding': 3,
+    'icon-allow-overlap': false,
+    'text-field': nameAtZoom,
+    'text-font': ['Noto Sans Regular'],
+    'text-size': ['interpolate', ['linear'], ['zoom'], 15, 9.5, 19, 11.5],
+    'text-max-width': 7,
+    'text-padding': 2,
+    'text-variable-anchor': ['right', 'left', 'top', 'bottom'],
+    'text-radial-offset': 1.25,
+    'text-justify': 'auto',
+    'text-optional': true,
+    'symbol-sort-key': rankSort,
+  };
+  const paint = labelPaint(motif().poi, 1.2);
   return [
     {
       id: 'poi-istotne',
       type: 'symbol' as const,
       source: 'openmaptiles',
       'source-layer': 'poi',
-      minzoom: 15,
-      filter: ['all', isPoint, ['<=', ['get', 'rank'], 3], notTransit] as never,
+      minzoom: 14,
+      filter: ['all', isPoint, ['<=', ['get', 'rank'], 4], notTransit] as never,
       paint,
-      layout: { 'text-field': nameField, 'text-size': size, ...layout },
+      layout,
     },
     {
       id: 'poi-drobiazgi',
       type: 'symbol' as const,
       source: 'openmaptiles',
       'source-layer': 'poi',
-      minzoom: 17,
+      minzoom: 16,
       filter: [
         'all',
         isPoint,
         ['<=', ['get', 'rank'], 9],
-        ['>', ['get', 'rank'], 3],
+        ['>', ['get', 'rank'], 4],
         notTransit,
       ] as never,
       paint,
-      layout: { 'text-field': nameField, 'text-size': size, ...layout },
+      layout: {
+        ...layout,
+        'text-field': ['step', ['zoom'], '', 17, nameField] as never,
+      },
     },
   ];
 }
