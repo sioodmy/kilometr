@@ -1251,7 +1251,7 @@ export const uk: Strings = {
     dayTomorrow: 'Завтра',
     hourLabel: 'година',
     minuteLabel: 'хвилина',
-    pastWarning: 'Обраний час вже минув',
+    pastWarning: 'Обраний час вже минув. Пошук іде від нього, результати можуть бути неактуальними.',
     switchTomorrow: 'Перемкнути на завтра',
   },
   routesBar: {

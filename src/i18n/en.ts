@@ -1199,7 +1199,7 @@ export const en: Strings = {
     dayTomorrow: 'Tomorrow',
     hourLabel: 'hour',
     minuteLabel: 'minute',
-    pastWarning: 'The selected time has already passed',
+    pastWarning: 'The selected time has already passed. Results start from it and may be outdated.',
     switchTomorrow: 'Switch to tomorrow',
   },
   routesBar: {
