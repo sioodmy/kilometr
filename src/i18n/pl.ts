@@ -1234,7 +1234,7 @@ export const pl = {
     dayTomorrow: 'Jutro',
     hourLabel: 'godzina',
     minuteLabel: 'minuta',
-    pastWarning: 'Wybrana godzina już minęła',
+    pastWarning: 'Wybrana godzina już minęła. Szukamy od niej wstecz, wyniki mogą być nieaktualne.',
     switchTomorrow: 'Przełącz na jutro',
   },
   routesBar: {

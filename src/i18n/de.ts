@@ -1212,7 +1212,7 @@ export const de: Strings = {
     dayTomorrow: 'Morgen',
     hourLabel: 'Stunde',
     minuteLabel: 'Minute',
-    pastWarning: 'Die gewählte Zeit ist bereits vergangen',
+    pastWarning: 'Die gewählte Zeit ist bereits vergangen. Ergebnisse starten dort und können veraltet sein.',
     switchTomorrow: 'Auf morgen umstellen',
   },
   routesBar: {
