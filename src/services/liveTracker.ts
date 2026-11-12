@@ -33,6 +33,7 @@ import {
   fetchZbLodzRails,
   fetchZbLodzRows,
   fetchZbLublinRows,
+  fetchZbNewCityRows,
   fetchZbOlsztynRows,
   fetchZbOpoleRows,
   fetchZbPoznanRails,
@@ -45,6 +46,7 @@ import {
   fetchZbWarsawRails,
   fetchZbWarsawRows,
   fetchZbWroclawRows,
+  isNewLiveCity,
   matchZbKd,
   type ZbKdVehicle,
 } from './zbiorkom';
@@ -218,6 +220,15 @@ class LiveTracker {
     // Dane przestają być „na żywo” dopiero po GIVE_UP_MS bez sukcesu. Jeden
     // przeterminowany poll nie znaczy, że feed umarł.
     return Date.now() - this.lastOk < GIVE_UP_MS ? 'fresh' : 'stale';
+  }
+
+  /**
+   * Czy aktywnemu miastu da się w ogóle pobrać pozycje (features.live).
+   * Miasta bez endpointu w zbiorkom nie mogą pokazywać chipa „brak danych
+   * live”: to nie awaria, tylko nieistniejące źródło.
+   */
+  supportsLive(): boolean {
+    return getCity(safeCityId()).features.live;
   }
 
   /**
@@ -625,6 +636,13 @@ class LiveTracker {
     this.pollStartedAt = now;
     const cityAtStart = safeCityId();
     try {
+      // Miasto bez feedu pozycji (features.live): zbiorkom nie ma tu
+      // endpointu, więc poll miejski byłby wiecznym „brakiem danych”.
+      // Kolej ogólnopolska (podgląd pociągów w podróży) działa dalej.
+      if (!getCity(cityAtStart).features.live) {
+        await this.pollNational();
+        return;
+      }
       const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
       // Użytkownik zmienił miasto w trakcie pobierania (do 10 s na zapytanie).
       // Odpowiedź dotyczy poprzedniego miasta: nie wolno jej dopasowywać do
@@ -813,6 +831,7 @@ class LiveTracker {
       else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
       else if (id === 'lublin') rows = await fetchZbLublinRows();
       else if (id === 'radom') rows = await fetchZbRadomRows();
+      else if (isNewLiveCity(id)) rows = await fetchZbNewCityRows(id);
       else rows = await fetchZbWroclawRows();
       this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);
       return rows;

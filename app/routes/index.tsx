@@ -283,7 +283,9 @@ export default function RoutesScreen() {
   const lastLiveOk = useRef(0);
   useEffect(() => {
     const check = () => {
-      setLiveStale(liveTracker.getLiveState() !== 'fresh');
+      // Miasto bez feedu live nie może pokazywać chipa „brak danych”:
+      // to nie awaria, tylko nieistniejące źródło (features.live).
+      setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
