@@ -260,11 +260,42 @@ export function inferTransitMode(
   // niżej (ten sam powód co wyjątek GZM).
   if (cityId === 'radom') return 'bus';
 
+  // Miasta dodane w 2026 bez tramwajów: cała sieć to autobusy (route_type 3
+  // w feedach), więc heurystyka niskich numerów (1-33) nie ma tu zastosowania.
+  if (BUS_ONLY_NO_TRAM.has(cityId || '')) return 'bus';
+
   if (!isNaN(num) && num >= 1 && num <= 33 && cityId !== 'gzm') {
     return 'tram';
   }
   return 'bus';
 }
+
+/**
+ * Miasta, w których niski numer linii nigdy nie jest tramwajem (same
+ * autobusy w GTFS). Używane też przez routing/network.ts do wyłączania
+ * zgadywania trybu po numerze, więc jedno źródło prawdy.
+ */
+export const BUS_ONLY_NO_TRAM = new Set([
+  'kielce',
+  'bialystok',
+  'opole',
+  'rzeszow',
+  'lublin',
+  'radom',
+  'zielonagora',
+  'rybnik',
+  'slupsk',
+  'walbrzych',
+  'kalisz',
+  'siedlce',
+  'lomza',
+  'krosno',
+  'jaslo',
+  'olkusz',
+  'chrzanow',
+  'bochnia',
+  'ilawa',
+]);
 
 /**
  * Pociągi bez przypisanego przewoźnika lub KD mają stały bursztyn z motywu

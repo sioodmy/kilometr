@@ -2,6 +2,7 @@ import { clearRaptorNetworks } from '../../../modules/kilometr-raptor';
 import type { DayIndex, LocalGtfsStore } from './store';
 import { getActiveCityIdSync } from '../cityStore';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
+import { BUS_ONLY_NO_TRAM } from '../lineIdentity';
 
 export type TransitKind = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway';
 
@@ -40,9 +41,11 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
   if (isNaN(lineNum) || lineNum < 1 || lineNum > 33) return false;
   try {
     const id = getActiveCityIdSync();
-    // Miasta bez tramwajów (Kielce, Białystok, Opole, Rzeszów, Lublin, Radom) oraz z własną numeracją (GZM, Trójmiasto)
-    // nie powinny zgadywać tramwaju po niskim numerze linii.
-    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'kielce' && id !== 'bialystok' && id !== 'opole' && id !== 'rzeszow' && id !== 'lublin' && id !== 'radom';
+    // Miasta bez tramwajów (Kielce, Białystok, Opole, Rzeszów, Lublin, Radom
+    // i miasta z 2026: patrz BUS_ONLY_NO_TRAM w lineIdentity) oraz z własną
+    // numeracją (GZM, Trójmiasto) nie powinny zgadywać tramwaju po niskim
+    // numerze linii.
+    return id !== 'gzm' && id !== 'trojmiasto' && !BUS_ONLY_NO_TRAM.has(id);
   } catch {
     return true;
   }

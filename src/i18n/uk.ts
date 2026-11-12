@@ -32,6 +32,324 @@ function formatDuration(mins: number): string {
   return `${rounded} хв`;
 }
 
+// Рядки для міст як рекорди (та сама структура, що pl.ts). Українські
+// відмінки як у попередньому ланцюжку; без ключа = Вроцлав.
+const CITY_NAME_UK: Record<string, string> = {
+  wroclaw: 'Вроцлав',
+  krakow: 'Краків',
+  gzm: 'GZM',
+  warszawa: 'Варшава',
+  poznan: 'Познань',
+  trojmiasto: 'Труймясто',
+  lodz: 'Лодзь',
+  szczecin: 'Щецин',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштин',
+  bialystok: 'Білосток',
+  opole: 'Ополе',
+  rzeszow: 'Ряшів',
+  lublin: 'Люблін',
+  radom: 'Радом',
+  bydgoszcz: 'Бидгощ',
+  torun: 'Торунь',
+  elblag: 'Ельблонг',
+  gorzow: 'Ґожув Великопольський',
+  czestochowa: 'Ченстохова',
+  zielonagora: 'Зелена Гура',
+  rybnik: 'Рибник',
+  slupsk: 'Слупськ',
+  walbrzych: 'Валбжих',
+  kalisz: 'Каліш',
+  siedlce: 'Седльце',
+  lomza: 'Ломжа',
+  krosno: 'Кросно',
+  jaslo: 'Ясло',
+  olkusz: 'Олькуш',
+  chrzanow: 'Хшанув',
+  bochnia: 'Бохня',
+  ilawa: 'Ілава',
+};
+const CITY_GEN_UK: Record<string, string> = {
+  wroclaw: 'Вроцлава',
+  krakow: 'Кракова',
+  gzm: 'GZM',
+  warszawa: 'Варшави',
+  poznan: 'Познані',
+  trojmiasto: 'Труймяста',
+  lodz: 'Лодзі',
+  szczecin: 'Щецина',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштина',
+  bialystok: 'Білостока',
+  opole: 'Ополя',
+  rzeszow: 'Ряшева',
+  lublin: 'Любліна',
+  radom: 'Радома',
+  bydgoszcz: 'Бидгоща',
+  torun: 'Торуня',
+  elblag: 'Ельблонга',
+  gorzow: 'Ґожува Великопольського',
+  czestochowa: 'Ченстохови',
+  zielonagora: 'Зеленої Гури',
+  rybnik: 'Рибника',
+  slupsk: 'Слупська',
+  walbrzych: 'Валбжиха',
+  kalisz: 'Каліша',
+  siedlce: 'Седльце',
+  lomza: 'Ломжі',
+  krosno: 'Кросна',
+  jaslo: 'Ясла',
+  olkusz: 'Олькуша',
+  chrzanow: 'Хшанува',
+  bochnia: 'Бохні',
+  ilawa: 'Ілави',
+};
+const CITY_LOC_UK: Record<string, string> = {
+  wroclaw: 'Вроцлаві',
+  krakow: 'Кракові',
+  gzm: 'GZM',
+  warszawa: 'Варшаві',
+  poznan: 'Познані',
+  trojmiasto: 'Труймясті',
+  lodz: 'Лодзі',
+  szczecin: 'Щецині',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштині',
+  bialystok: 'Білостоці',
+  opole: 'Ополі',
+  rzeszow: 'Ряшеві',
+  lublin: 'Любліні',
+  radom: 'Радомі',
+  bydgoszcz: 'Бидгощі',
+  torun: 'Торуні',
+  elblag: 'Ельблонзі',
+  gorzow: 'Ґожуві Великопольському',
+  czestochowa: 'Ченстохові',
+  zielonagora: 'Зеленій Гурі',
+  rybnik: 'Рибнику',
+  slupsk: 'Слупську',
+  walbrzych: 'Валбжиху',
+  kalisz: 'Каліші',
+  siedlce: 'Седльцях',
+  lomza: 'Ломжі',
+  krosno: 'Кросні',
+  jaslo: 'Яслі',
+  olkusz: 'Олькуші',
+  chrzanow: 'Хшануві',
+  bochnia: 'Бохні',
+  ilawa: 'Ілаві',
+};
+const CITY_ACC_UK: Record<string, string> = {
+  wroclaw: 'Вроцлав',
+  krakow: 'Краків',
+  gzm: 'GZM',
+  warszawa: 'Варшаву',
+  poznan: 'Познань',
+  trojmiasto: 'Труймясто',
+  lodz: 'Лодзь',
+  szczecin: 'Щецин',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштин',
+  bialystok: 'Білосток',
+  opole: 'Ополе',
+  rzeszow: 'Ряшів',
+  lublin: 'Люблін',
+  radom: 'Радом',
+  bydgoszcz: 'Бидгощ',
+  torun: 'Торунь',
+  elblag: 'Ельблонг',
+  gorzow: 'Ґожув Великопольський',
+  czestochowa: 'Ченстохову',
+  zielonagora: 'Зелену Гуру',
+  rybnik: 'Рибник',
+  slupsk: 'Слупськ',
+  walbrzych: 'Валбжих',
+  kalisz: 'Каліш',
+  siedlce: 'Седльце',
+  lomza: 'Ломжу',
+  krosno: 'Кросно',
+  jaslo: 'Ясло',
+  olkusz: 'Олькуш',
+  chrzanow: 'Хшанув',
+  bochnia: 'Бохню',
+  ilawa: 'Ілаву',
+};
+const CITY_FEEDS_UK: Record<string, string> = {
+  wroclaw: 'MPK і Koleje Dolnośląskie',
+  krakow: 'ZTP і Koleje Małopolskie',
+  gzm: 'ZTM, Koleje Śląskie, POLREGIO і PKP Intercity',
+  warszawa: 'WTP, SKA, Koleje Mazowieckie і WKD',
+  poznan: 'ZTM і Koleje Wielkopolskie',
+  trojmiasto: 'ZTM Gdańsk, ZKM Gdynia і SKM',
+  lodz: 'MPK і Лодзька агломераційна залізниця',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Кельце',
+  olsztyn: 'ZDZiT Ольштин',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Ополе',
+  rzeszow: 'ZTM Ряшів',
+  lublin: 'ZDiTM Люблін',
+  radom: 'MZDiK Радом',
+  bydgoszcz: 'ZDMiKP Бидгощ',
+  torun: 'MZK Торунь',
+  elblag: 'ZKM Ельблонг',
+  gorzow: 'MZK Ґожув',
+  czestochowa: 'MPK Ченстохова',
+  zielonagora: 'MZK Зелена Гура',
+  rybnik: 'KM Рибник',
+  slupsk: 'ZIM Слупськ',
+  walbrzych: 'MZUK Валбжих',
+  kalisz: 'KLA, PKS Каліш і перевізники агломерації',
+  siedlce: 'MPK Седльце',
+  lomza: 'MPK Ломжа',
+  krosno: 'MKS Кросно',
+  jaslo: 'MKS Ясло',
+  olkusz: 'ZKGKM Олькуш',
+  chrzanow: 'ZKKM Хшанув',
+  bochnia: 'RPK Бохня',
+  ilawa: 'ZKM Ілава',
+};
+const CITY_NEWS_UK: Record<string, string> = {
+  wroclaw: 'MPK Вроцлав • wroclaw.pl',
+  krakow: 'ZTP Краків',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Варшава',
+  poznan: 'ZTM Познань',
+  trojmiasto: 'ZTM Ґданськ',
+  lodz: 'MPK Лодзь',
+  szczecin: 'ZDiTM Щецин',
+  kielce: 'ZTM Кельце',
+  olsztyn: 'ZDZiT Ольштин',
+  bialystok: 'BKM Білосток',
+  opole: 'MZK Ополе',
+  rzeszow: 'ZTM Ряшів',
+  lublin: 'ZDiTM Люблін',
+  radom: 'MZDiK Радом',
+  bydgoszcz: 'ZDMiKP Бидгощ',
+  torun: 'MZK Торунь',
+  elblag: 'ZKM Ельблонг',
+  gorzow: 'MZK Ґожув',
+  czestochowa: 'MPK Ченстохова',
+  zielonagora: 'MZK Зелена Гура',
+  rybnik: 'KM Рибник',
+  slupsk: 'ZIM Слупськ',
+  walbrzych: 'MZUK Валбжих',
+  kalisz: 'KLA Каліш',
+  siedlce: 'MPK Седльце',
+  lomza: 'MPK Ломжа',
+  krosno: 'MKS Кросно',
+  jaslo: 'MKS Ясло',
+  olkusz: 'ZKGKM Олькуш',
+  chrzanow: 'ZKKM Хшанув',
+  bochnia: 'RPK Бохня',
+  ilawa: 'ZKM Ілава',
+};
+const CITY_OPERATOR_UK: Record<string, string> = {
+  wroclaw: 'MPK Вроцлав',
+  krakow: 'ZTP Краків',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Варшава',
+  poznan: 'ZTM Познань',
+  trojmiasto: 'ZTM Ґданськ',
+  lodz: 'MPK Лодзь',
+  szczecin: 'ZDiTM Щецин',
+  kielce: 'ZTM Кельце',
+  olsztyn: 'ZDZiT Ольштин',
+  bialystok: 'BKM Білосток',
+  opole: 'MZK Ополе',
+  rzeszow: 'ZTM Ряшів',
+  lublin: 'ZDiTM Люблін',
+  radom: 'MZDiK Радом',
+  bydgoszcz: 'ZDMiKP Бидгощ',
+  torun: 'MZK Торунь',
+  elblag: 'ZKM Ельблонг',
+  gorzow: 'MZK Ґожув',
+  czestochowa: 'MPK Ченстохова',
+  zielonagora: 'MZK Зелена Гура',
+  rybnik: 'KM Рибник',
+  slupsk: 'ZIM Слупськ',
+  walbrzych: 'MZUK Валбжих',
+  kalisz: 'KLA Каліш',
+  siedlce: 'MPK Седльце',
+  lomza: 'MPK Ломжа',
+  krosno: 'MKS Кросно',
+  jaslo: 'MKS Ясло',
+  olkusz: 'ZKGKM Олькуш',
+  chrzanow: 'ZKKM Хшанув',
+  bochnia: 'RPK Бохня',
+  ilawa: 'ZKM Ілава',
+};
+const CITY_OPERATOR_SHORT_UK: Record<string, string> = {
+  wroclaw: 'MPK',
+  krakow: 'ZTP',
+  gzm: 'ZTM',
+  warszawa: 'WTP',
+  poznan: 'ZTM',
+  trojmiasto: 'ZTM / ZKM',
+  lodz: 'MPK',
+  szczecin: 'ZDiTM',
+  kielce: 'ZTM',
+  olsztyn: 'ZDZiT',
+  bialystok: 'BKM',
+  opole: 'MZK',
+  rzeszow: 'ZTM',
+  lublin: 'ZDiTM',
+  radom: 'MZDiK',
+  bydgoszcz: 'ZDMiKP',
+  torun: 'MZK',
+  elblag: 'ZKM',
+  gorzow: 'MZK',
+  czestochowa: 'MPK',
+  zielonagora: 'MZK',
+  rybnik: 'KM',
+  slupsk: 'ZIM',
+  walbrzych: 'MZUK',
+  kalisz: 'KLA',
+  siedlce: 'MPK',
+  lomza: 'MPK',
+  krosno: 'MKS',
+  jaslo: 'MKS',
+  olkusz: 'ZKGKM',
+  chrzanow: 'ZKKM',
+  bochnia: 'RPK',
+  ilawa: 'ZKM',
+};
+const CITY_PORTAL_UK: Record<string, string> = {
+  wroclaw: 'wroclaw.pl',
+  krakow: 'ztp.krakow.pl',
+  gzm: 'metropoliaztm.pl',
+  warszawa: 'wtp.waw.pl',
+  poznan: 'ztm.poznan.pl',
+  trojmiasto: 'ztm.gda.pl',
+  lodz: 'mpk.lodz.pl',
+  szczecin: 'zditm.szczecin.pl',
+  kielce: 'ztm.kielce.pl',
+  olsztyn: 'zdzit.olsztyn.eu',
+  bialystok: 'komunikacja.bialystok.pl',
+  opole: 'mzkopole.pl',
+  rzeszow: 'ztm.erzeszow.pl',
+  lublin: 'zdtm.lublin.eu',
+  radom: 'mzdik.pl',
+  bydgoszcz: 'zdmikp.bydgoszcz.pl',
+  torun: 'mzk-torun.pl',
+  elblag: 'zkm.elblag.com.pl',
+  gorzow: 'mzk-gorzow.com.pl',
+  czestochowa: 'mpk.czest.pl',
+  zielonagora: 'mzk.zgora.pl',
+  rybnik: 'km.rybnik.pl',
+  slupsk: 'zimslupsk.com',
+  walbrzych: 'mzuk.com.pl',
+  kalisz: 'gtfs.kasznia.net',
+  siedlce: 'mpk.siedlce.pl',
+  lomza: 'mpklomza.pl',
+  krosno: 'mks-krosno.pl',
+  jaslo: 'e-podroznik.pl',
+  olkusz: 'zkgkm-olkusz.pl',
+  chrzanow: 'zkkm.pl',
+  bochnia: 'rpk-bochnia.pl',
+  ilawa: 'zkm.ilawa.pl',
+};
+
 export const uk: Strings = {
   landing,
   share,
@@ -204,276 +522,18 @@ export const uk: Strings = {
     section: 'Місто',
     settingsHint:
       'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
-    name: (id: string): string =>
-      id === 'krakow'
-        ? 'Краків'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Варшава'
-            : id === 'poznan'
-              ? 'Познань'
-              : id === 'trojmiasto'
-                ? 'Труймясто'
-                : id === 'lodz'
-                  ? 'Лодзь'
-                  : id === 'szczecin'
-                    ? 'Щецин'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштин'
-                        : id === 'bialystok'
-                          ? 'Білосток'
-                          : id === 'opole'
-                            ? 'Ополе'
-                            : id === 'rzeszow'
-                              ? 'Ряшів'
-                              : id === 'lublin'
-                                ? 'Люблін'
-                                : id === 'radom'
-                                  ? 'Радом'
-                                  : 'Вроцлав',
-    gen: (id: string): string =>
-      id === 'krakow'
-        ? 'Кракова'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Варшави'
-            : id === 'poznan'
-              ? 'Познані'
-              : id === 'trojmiasto'
-                ? 'Труймяста'
-                : id === 'lodz'
-                  ? 'Лодзі'
-                  : id === 'szczecin'
-                    ? 'Щецина'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштина'
-                        : id === 'bialystok'
-                          ? 'Білостока'
-                          : id === 'opole'
-                            ? 'Ополя'
-                            : id === 'rzeszow'
-                              ? 'Ряшева'
-                              : id === 'lublin'
-                                ? 'Любліна'
-                                : id === 'radom'
-                                  ? 'Радома'
-                                  : 'Вроцлава',
-    loc: (id: string): string =>
-      id === 'krakow'
-        ? 'Кракові'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Варшаві'
-            : id === 'poznan'
-              ? 'Познані'
-              : id === 'trojmiasto'
-                ? 'Труймясті'
-                : id === 'lodz'
-                  ? 'Лодзі'
-                  : id === 'szczecin'
-                    ? 'Щецині'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштині'
-                        : id === 'bialystok'
-                          ? 'Білостоці'
-                          : id === 'opole'
-                            ? 'Ополі'
-                            : id === 'rzeszow'
-                              ? 'Ряшеві'
-                              : id === 'lublin'
-                                ? 'Любліні'
-                                : id === 'radom'
-                                  ? 'Радомі'
-                                  : 'Вроцлаві',
-    acc: (id: string): string =>
-      id === 'warszawa'
-        ? 'Варшаву'
-        : id === 'krakow'
-          ? 'Краків'
-          : id === 'gzm'
-            ? 'GZM'
-            : id === 'poznan'
-              ? 'Познань'
-              : id === 'trojmiasto'
-                ? 'Труймясто'
-                : id === 'lodz'
-                  ? 'Лодзь'
-                  : id === 'szczecin'
-                    ? 'Щецин'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштин'
-                        : id === 'bialystok'
-                          ? 'Білосток'
-                          : id === 'opole'
-                            ? 'Ополе'
-                            : id === 'rzeszow'
-                              ? 'Ряшів'
-                              : id === 'lublin'
-                                ? 'Люблін'
-                                : id === 'radom'
-                                  ? 'Радом'
-                                  : 'Вроцлав',
-    feeds: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP і Koleje Małopolskie'
-        : id === 'gzm'
-          ? 'ZTM, Koleje Śląskie, POLREGIO і PKP Intercity'
-          : id === 'warszawa'
-            ? 'WTP, SKA, Koleje Mazowieckie і WKD'
-            : id === 'poznan'
-              ? 'ZTM і Koleje Wielkopolskie'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk, ZKM Gdynia і SKM'
-                : id === 'lodz'
-                  ? 'MPK і Лодзька агломераційна залізниця'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Кельце'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Ольштин'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Ополе'
-                            : id === 'rzeszow'
-                              ? 'ZTM Ряшів'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK і Koleje Dolnośląskie',
-    newsSources: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Краків'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Варшава'
-            : id === 'poznan'
-              ? 'ZTM Познань'
-              : id === 'trojmiasto'
-                ? 'ZTM Ґданськ'
-                : id === 'lodz'
-                  ? 'MPK Лодзь'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Щецин'
-                    : id === 'kielce'
-                      ? 'ZTM Кельце'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Ольштин'
-                        : id === 'bialystok'
-                          ? 'BKM Білосток'
-                          : id === 'opole'
-                            ? 'MZK Ополе'
-                            : id === 'rzeszow'
-                              ? 'ZTM Ряшів'
-                              : id === 'lublin'
-                                ? 'ZDiTM Люблін'
-                                : id === 'radom'
-                                  ? 'MZDiK Радом'
-                                  : 'MPK Вроцлав • wroclaw.pl',
-    operator: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Краків'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Варшава'
-            : id === 'poznan'
-              ? 'ZTM Познань'
-              : id === 'trojmiasto'
-                ? 'ZTM Ґданськ'
-                : id === 'lodz'
-                  ? 'MPK Лодзь'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Щецин'
-                    : id === 'kielce'
-                      ? 'ZTM Кельце'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Ольштин'
-                        : id === 'bialystok'
-                          ? 'BKM Білосток'
-                          : id === 'opole'
-                            ? 'MZK Ополе'
-                            : id === 'rzeszow'
-                              ? 'ZTM Ряшів'
-                              : id === 'lublin'
-                                ? 'ZDiTM Люблін'
-                                : id === 'radom'
-                                  ? 'MZDiK Радом'
-                                  : 'MPK Вроцлав',
+    name: (id: string): string => CITY_NAME_UK[id] ?? CITY_NAME_UK.wroclaw,
+    gen: (id: string): string => CITY_GEN_UK[id] ?? CITY_GEN_UK.wroclaw,
+    loc: (id: string): string => CITY_LOC_UK[id] ?? CITY_LOC_UK.wroclaw,
+    acc: (id: string): string => CITY_ACC_UK[id] ?? CITY_ACC_UK.wroclaw,
+    feeds: (id: string): string => CITY_FEEDS_UK[id] ?? CITY_FEEDS_UK.wroclaw,
+    newsSources: (id: string): string => CITY_NEWS_UK[id] ?? CITY_NEWS_UK.wroclaw,
+    operator: (id: string): string => CITY_OPERATOR_UK[id] ?? CITY_OPERATOR_UK.wroclaw,
     operatorShort: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP'
-        : id === 'gzm'
-          ? 'ZTM'
-          : id === 'warszawa'
-            ? 'WTP'
-            : id === 'poznan'
-              ? 'ZTM'
-              : id === 'trojmiasto'
-                ? 'ZTM / ZKM'
-                : id === 'szczecin'
-                  ? 'ZDiTM'
-                  : id === 'kielce'
-                    ? 'ZTM'
-                    : id === 'olsztyn'
-                      ? 'ZDZiT'
-                      : id === 'bialystok'
-                        ? 'BKM'
-                        : id === 'opole'
-                          ? 'MZK'
-                          : id === 'rzeszow'
-                            ? 'ZTM'
-                            : id === 'lublin'
-                              ? 'ZDiTM'
-                              : id === 'radom'
-                                ? 'MZDiK'
-                                : 'MPK',
-    portal: (id: string): string =>
-      id === 'krakow'
-        ? 'ztp.krakow.pl'
-        : id === 'gzm'
-          ? 'metropoliaztm.pl'
-          : id === 'warszawa'
-            ? 'wtp.waw.pl'
-            : id === 'poznan'
-              ? 'ztm.poznan.pl'
-              : id === 'trojmiasto'
-                ? 'ztm.gda.pl'
-                : id === 'lodz'
-                  ? 'mpk.lodz.pl'
-                  : id === 'szczecin'
-                    ? 'zditm.szczecin.pl'
-                    : id === 'kielce'
-                      ? 'ztm.kielce.pl'
-                      : id === 'olsztyn'
-                        ? 'zdzit.olsztyn.eu'
-                        : id === 'bialystok'
-                          ? 'komunikacja.bialystok.pl'
-                          : id === 'opole'
-                            ? 'mzkopole.pl'
-                            : id === 'rzeszow'
-                              ? 'ztm.erzeszow.pl'
-                              : id === 'lublin'
-                                ? 'zdtm.lublin.eu'
-                                : id === 'radom'
-                                  ? 'mzdik.pl'
-                                  : 'wroclaw.pl',
+      CITY_OPERATOR_SHORT_UK[id] ?? CITY_OPERATOR_SHORT_UK.wroclaw,
+    portal: (id: string): string => CITY_PORTAL_UK[id] ?? CITY_PORTAL_UK.wroclaw,
     supportedList:
-      'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Lublin',
+      'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Люблін, Радом, Бидгощ, Торунь, Ельблонг, Ґожув Великопольський, Ченстохова, Зелена Гура, Рибник, Слупськ, Валбжих, Каліш, Седльце, Ломжа, Кросно, Ясло, Олькуш, Хшанув, Бохня, Ілава',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
@@ -929,14 +989,25 @@ export const uk: Strings = {
     noConnection: 'Немає з’єднання',
     emptyTitle: 'Немає повідомлень',
     emptyBody: (name: string) => {
-      const verb =
-        name === 'Варшава' || name === 'Лодзь'
-          ? 'опублікувала'
-          : name === 'Труймясто'
-            ? 'опублікувало'
-            : name === 'Кельце'
-              ? 'опублікували'
-              : 'опублікував';
+      // Рід: жіночий (Варшава, Лодзь, Ченстохова, Зелена Гура, Ломжа, Бохня,
+      // Ілава), середній (Труймясто, Кросно, Ясло, Седльце) та множина (Кельце).
+      const feminine = [
+        'Варшава',
+        'Лодзь',
+        'Ченстохова',
+        'Зелена Гура',
+        'Ломжа',
+        'Бохня',
+        'Ілава',
+      ].includes(name);
+      const neuter = ['Труймясто', 'Кросно', 'Ясло', 'Седльце'].includes(name);
+      const verb = feminine
+        ? 'опублікувала'
+        : neuter
+          ? 'опублікувало'
+          : name === 'Кельце'
+            ? 'опублікували'
+            : 'опублікував';
       return `${name} зараз не ${verb} жодних ускладнень. Потягни вниз, щоб перевірити знову.`;
     },
     sectionChanges: 'Зміни на лініях',
