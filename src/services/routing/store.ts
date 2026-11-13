@@ -239,6 +239,7 @@ export class LocalGtfsStore {
     console.log(`[LocalGtfsStore] Initializing (${this.backend.cable ? 'miasto' : 'polska'})...`);
     if (this.backend.isImporting()) return;
     await this.backend.awaitReady();
+    const generation = this.generation;
     const db = await this.getDb();
 
     // 1. Load stops
@@ -284,6 +285,13 @@ export class LocalGtfsStore {
     // 5. Przesiadki na pociągi (tabela z prebuilt; brak = baza bez KD)
     await this.loadInterchanges().catch(() => {});
 
+    if (generation !== this.generation) {
+      // reset() w trakcie ładowania (podmiana pliku / import): w mapach mogą
+      // siedzieć dane z dwóch baz naraz. Czyścimy i zostawiamy isLoaded=false,
+      // żeby następne load() przeczytało już nowy rozkład.
+      this.reset();
+      return;
+    }
     this.isLoaded = true;
     console.log(`[LocalGtfsStore] Loaded ${this.stops.size} stops, ${this.routes.size} routes.`);
   }
