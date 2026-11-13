@@ -1,7 +1,7 @@
-import { DayIndex, gtfsStore } from './store';
+import { DayIndex, gtfsStore, polskaStore, LocalGtfsStore } from './store';
 import { DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
 import { AllowedTransferModes, Connection, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
-import { distanceMeters, secondsToTimeString } from '../../gtfs/geo';
+import { distanceMeters, secondsToTimeString, shiftWarsawDate, warsawNow } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { MAX_DELAY_SEC } from '../liveQuality';
 import { emptyRoutingSnapshot, type RoutingSnapshot } from './reliability';
@@ -16,7 +16,7 @@ import { predictDelaySec } from './delays';
 const WALK_SPEED_MPS = 1.34;
 const WALK_DETOUR_FACTOR = 1.15;
 /** Poniżej tego dystansu start i cel to praktycznie ten sam punkt (spacer, nie przejazd). */
-const SAME_POINT_M = 40;
+export const SAME_POINT_M = 40;
 /** Do ilu sekund spaceru wolno wycinać warianty z przesiadką wolniejsze od marszu. */
 const WALK_BEATS_TRANSIT_MAX_SEC = 15 * 60;
 /**
@@ -43,12 +43,13 @@ function mergedOvernight(today: DayIndex, other: DayIndex, prefix = 'y_', offset
   return hit;
 }
 
-/** Pełna sekwencja przystanków kursu (cała linia) z GTFS stop_times + stops. */
-export async function buildTripStops(tripId: string): Promise<LegStop[]> {
-  const mem = gtfsStore.stopTimes.get(tripId);
+/** Pełna sekwencja przystanków kursu (cała linia) z GTFS stop_times + stops.
+ * Kursy `pl:` (kolej ogólnopolska) czyta z magazynu polskaStore. */
+export async function buildTripStops(tripId: string, store: LocalGtfsStore = tripId.startsWith('pl:') ? polskaStore : gtfsStore): Promise<LegStop[]> {
+  const mem = store.stopTimes.get(tripId);
   const toLegStops = (times: { stop_id: string; arrival_sec: number; departure_sec: number; stop_sequence: number }[]) =>
     times.map((t) => {
-      const s = gtfsStore.stops.get(t.stop_id);
+      const s = store.stops.get(t.stop_id);
       return {
         stopId: t.stop_id,
         name: s?.stop_name || t.stop_id,
@@ -60,20 +61,23 @@ export async function buildTripStops(tripId: string): Promise<LegStop[]> {
       };
     });
   if (mem && mem.length > 0) return toLegStops(mem);
-  // Kurs spoza aktywnego wycinka (np. rozwinięcie starszego połączenia):
-  // dociągnij z SQLite zamiast zwracać pustkę.
+  // Kurs spoza aktywnego wycinka (np. rozwinięcie zapisanej trasy po
+  // restarcie apki): dociągnij z SQLite, ale nazwy stacji czytaj w tym samym
+  // zapytaniu. Magazyn routingu bywa jeszcze niezaładowany i wtedy
+  // podmiana stop_id na nazwę kończyła się „pl:60103” na liście.
   try {
     const { getTripStopTimes } = await import('../gtfsDatabase');
-    const rows = await getTripStopTimes(tripId);
+    const rows = await getTripStopTimes(tripId, store === polskaStore);
     if (rows.length > 0) {
-      return toLegStops(
-        rows.map((r) => ({
-          stop_id: r.stop_id,
-          arrival_sec: r.arr_sec,
-          departure_sec: r.dep_sec,
-          stop_sequence: r.seq,
-        })),
-      );
+      return rows.map((r) => ({
+        stopId: r.stop_id,
+        name: r.name || r.stop_id,
+        lat: r.lat ?? undefined,
+        lon: r.lon ?? undefined,
+        seq: r.seq,
+        arriveSec: r.arr_sec,
+        departSec: r.dep_sec,
+      }));
     }
   } catch {
     // ignoruj - fallback niżej
@@ -99,24 +103,32 @@ interface SearchSlices {
  * TEN SAM kod, żeby rozgrzany indeks był dokładnie tym, na który wyszukiwanie
  * zaraz wpadnie (w tym nocny merge przed 07:00).
  */
-export async function buildSearchSlices(rawTargetSec: number, arrivalMode = false): Promise<SearchSlices> {
+export async function buildSearchSlices(
+  rawTargetSec: number,
+  arrivalMode = false,
+  store: LocalGtfsStore = gtfsStore,
+  horizonSec = 10800,
+): Promise<SearchSlices> {
   const now = new Date();
+  const nowWarsaw = warsawNow(now);
   // departureTimeSec / arriveBySec mogą wskazywać jutro (DepartureTimeSheet
   // dodaje +86400). RAPTOR jeździ po porze dnia, a offset dokładamy do wyników.
   const dayOffsetSec = Math.floor(rawTargetSec / 86400) * 86400;
   let departureSec = rawTargetSec % 86400;
   if (departureSec < 0) departureSec += 86400;
-  const targetDate = new Date(now);
-  targetDate.setDate(targetDate.getDate() + Math.round(dayOffsetSec / 86400));
-  const weekday = targetDate.getDay();
-  const dateStr = toDateStr(targetDate);
+  const dayShift = Math.round(dayOffsetSec / 86400);
+  const targetWarsaw = dayShift === 0 ? nowWarsaw : shiftWarsawDate(nowWarsaw, dayShift);
+  const weekday = targetWarsaw.weekday;
+  const dateStr = targetWarsaw.dateStr;
   // Wycinek horyzontu zamiast pełnej doby: okna RAPTOR-a sięgają +3600 s,
-  // a przesiadkowe nogi jeszcze dalej - bierzemy zapas do +3 h.
+  // a przesiadkowe nogi jeszcze dalej, bierzemy zapas do +3 h.
   // Przyjazd obejmuje też wyjście przed północą poprzedniego dnia.
-  const searchStartSec = arrivalMode ? departureSec - 10800 : departureSec;
+  // Kolej (store=polskaStore) dostaje szerszy horyzont: pociągi jeżdżą
+  // rzadziej niż tramwaje i pierwszy sensowny odjazd bywa poza +3 h.
+  const searchStartSec = arrivalMode ? departureSec - horizonSec : departureSec;
   const dayIndex = arrivalMode
-    ? await gtfsStore.getDayIndexSlice(weekday, dateStr, searchStartSec - MAX_DELAY_SEC, departureSec + 600)
-    : await gtfsStore.getDayIndexSlice(weekday, dateStr, departureSec - MAX_DELAY_SEC, departureSec + 10800);
+    ? await store.getDayIndexSlice(weekday, dateStr, searchStartSec - MAX_DELAY_SEC, departureSec + 600)
+    : await store.getDayIndexSlice(weekday, dateStr, departureSec - MAX_DELAY_SEC, departureSec + horizonSec);
 
   // Nocny indeks ZUNIFIKOWANY (mergeDayIndexes): po północy kursy 24:xx+
   // należą do wczorajszego dnia serwisowego, ale nogi z obu dni muszą łączyć
@@ -124,27 +136,25 @@ export async function buildSearchSlices(rawTargetSec: number, arrivalMode = fals
   let searchIndex = dayIndex;
   let patternOffsets: Map<string, number> | undefined;
   if (searchStartSec < 7 * 3600) {
-    const yDate = new Date(targetDate);
-    yDate.setDate(yDate.getDate() - 1);
-    const overnightIdx = await gtfsStore.getDayIndexSlice(
-      yDate.getDay(),
-      toDateStr(yDate),
+    const yWarsaw = shiftWarsawDate(targetWarsaw, -1);
+    const overnightIdx = await store.getDayIndexSlice(
+      yWarsaw.weekday,
+      yWarsaw.dateStr,
       86400 + Math.min(-7200, searchStartSec - MAX_DELAY_SEC),
-      86400 + (arrivalMode ? departureSec + 600 : departureSec + 10800),
+      86400 + (arrivalMode ? departureSec + 600 : departureSec + horizonSec),
     );
     const merged = mergedOvernight(dayIndex, overnightIdx);
     searchIndex = merged.index;
     patternOffsets = merged.offsets;
-  } else if (!arrivalMode && departureSec + 10800 > 86400) {
+  } else if (!arrivalMode && departureSec + horizonSec > 86400) {
     // Lustro nocnego merge'a: wieczorem horyzont sięga po północy, a część
     // feedów (np. GZM) zapisuje kursy 00:xx w jutrzejszym dniu serwisowym.
-    const tDate = new Date(targetDate);
-    tDate.setDate(tDate.getDate() + 1);
-    const tomorrowIdx = await gtfsStore.getDayIndexSlice(
-      tDate.getDay(),
-      toDateStr(tDate),
+    const tWarsaw = shiftWarsawDate(targetWarsaw, 1);
+    const tomorrowIdx = await store.getDayIndexSlice(
+      tWarsaw.weekday,
+      tWarsaw.dateStr,
       0,
-      departureSec + 10800 - 86400,
+      departureSec + horizonSec - 86400,
     );
     const merged = mergedOvernight(dayIndex, tomorrowIdx, 't_', 86400);
     searchIndex = merged.index;
@@ -162,7 +172,7 @@ export async function warmupRouting(): Promise<void> {
   try {
     await gtfsStore.load();
     const now = new Date();
-    const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const currentSec = warsawNow(now).sec;
     const slices = await buildSearchSlices(currentSec);
     await warmupRaptorNet(gtfsStore, slices.searchIndex, slices.patternOffsets);
   } catch (err) {
@@ -184,12 +194,13 @@ export function buildLegStops(
   delaySec?: number,
   nowSec?: number,
   mode?: LegMode,
+  store: LocalGtfsStore = tripId.startsWith('pl:') ? polskaStore : gtfsStore,
 ): LegStop[] {
   // Legi pochodzą z aktywnego wycinka, więc kurs jest w pamięci (sync, bez IO).
-  const times = gtfsStore.stopTimes.get(tripId);
+  const times = store.stopTimes.get(tripId);
   if (!times || times.length === 0) return [];
   const allStops: LegStop[] = times.map((t) => {
-    const s = gtfsStore.stops.get(t.stop_id);
+    const s = store.stops.get(t.stop_id);
     return {
       stopId: t.stop_id,
       name: s?.stop_name || t.stop_id,
@@ -245,6 +256,7 @@ export function buildLegStops(
 }
 
 export interface PlanOptions {
+  fromId?: string;
   fromTitle: string;
   fromLat: number;
   fromLon: number;
@@ -290,21 +302,28 @@ export interface PlanOptions {
    * bieżąco ("po kolei"), zamiast trzymać pełny spinner do samego końca.
    */
   onProgress?: (partial: Connection[]) => void;
+  /**
+   * Jak daleko w przód szukać wsiadania (sekundy). Default 10800 (3 h).
+   * Kolej ogólnopolska podaje 6 h: pociągi dalekobieżne jeżdżą rzadko.
+   * Steruje też szerokością wycinka (buildSearchSlices) i okien RAPTOR-a.
+   */
+  searchAheadSec?: number;
+  /**
+   * Jawne przystanki startowe (omijają szukanie po współrzędnych).
+   * Intercity: stacje kolejowe bramowe miasta, patrz routing/intercity.ts.
+   */
+  originStopIds?: string[];
+  /** Jawne przystanki docelowe (omijają szukanie po współrzędnych). */
+  destinationStopIds?: string[];
 }
 
-/** Formatuj datę do YYYYMMDD (dla calendar_dates.txt). */
-function toDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
 
 interface MapCtx {
   currentSec: number;
   dayOffsetSec: number;
   tripDelays: Map<string, number>;
   confidence: RoutingSnapshot['confidence'];
+  serviceDate?: string;
 }
 
 /** Stosuje wagi RAPTOR-a także na liście: czas, marsz i przesiadki.
@@ -364,6 +383,7 @@ function mapJourneysToConnections(
   journeys: RawJourney[],
   options: PlanOptions,
   ctx: MapCtx,
+  store: LocalGtfsStore = gtfsStore,
 ): Connection[] {
   const connections: Connection[] = [];
 
@@ -403,8 +423,8 @@ function mapJourneysToConnections(
       const fromName =
         seg.fromStopId === 'origin' ? options.fromTitle : seg.fromStopName;
 
-      const fromStopObj = gtfsStore.stops.get(seg.fromStopId);
-      const toStopObj = gtfsStore.stops.get(seg.toStopId);
+      const fromStopObj = store.stops.get(seg.fromStopId);
+      const toStopObj = store.stops.get(seg.toStopId);
 
       const fromLat = seg.fromStopId === 'origin' ? options.fromLat : fromStopObj?.stop_lat;
       const fromLon = seg.fromStopId === 'origin' ? options.fromLon : fromStopObj?.stop_lon;
@@ -425,6 +445,7 @@ function mapJourneysToConnections(
               tripDelaySec,
               ctx.currentSec,
               seg.mode,
+              store,
             )
           : undefined;
 
@@ -499,6 +520,7 @@ function mapJourneysToConnections(
       live: overallLive,
       legs: mergedLegs,
       interchange,
+      serviceDate: ctx.serviceDate,
     });
   }
 
@@ -509,10 +531,18 @@ function mapJourneysToConnections(
 }
 
 /** Odświeża godziny i flagi live. Niezmienione połączenia zachowują referencje. */
-export function applyLiveDelays(connections: Connection[], tripDelays: Map<string, number>): Connection[] {
+export function applyLiveDelays(
+  connections: Connection[],
+  tripDelays: Map<string, number>,
+  arrivalDelays: ReadonlyMap<string, number> = new Map(),
+): Connection[] {
   const snapshot = tripDelays.size > 0 ? liveTracker.getRoutingSnapshot() : emptyRoutingSnapshot();
-  const delays = new Map([...tripDelays, ...snapshot.delays]);
-  const updated = connections.map((connection) => refreshConnectionTimes(connection, delays, new Date(), snapshot.confidence));
+  const delays = new Map([...snapshot.delays, ...tripDelays]);
+  const confidence = new Map(snapshot.confidence);
+  for (const tripId of tripDelays.keys()) {
+    confidence.set(tripId, 'live');
+  }
+  const updated = connections.map((connection) => refreshConnectionTimes(connection, delays, new Date(), confidence, arrivalDelays));
   return updated.every((connection, index) => connection === connections[index]) ? connections : updated;
 }
 
@@ -529,8 +559,9 @@ export function resolveCandidateOrigins(
   maxWalkM: number,
   userWalkSpeed: number,
   anchor?: { stopId?: string; lat?: number; lon?: number },
+  store: LocalGtfsStore = gtfsStore,
 ): Array<{ stopId: string; walkM: number; walkSec: number }> {
-  const originNearby = gtfsStore.findNearestStops(fromLat, fromLon, maxWalkM, MAX_ACCESS_STOPS);
+  const originNearby = store.findNearestStops(fromLat, fromLon, maxWalkM, MAX_ACCESS_STOPS);
   const origins = originNearby.map((n) => {
     const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
     return {
@@ -546,11 +577,11 @@ export function resolveCandidateOrigins(
   ) {
     let anchorStop: { stop_id: string; stop_lat: number; stop_lon: number } | undefined;
     if (anchor?.stopId) {
-      const byId = gtfsStore.stops.get(anchor.stopId);
+      const byId = store.stops.get(anchor.stopId);
       if (byId && !isFareBoundary(byId.stop_name ?? '')) anchorStop = { stop_id: byId.stop_id, stop_lat: byId.stop_lat, stop_lon: byId.stop_lon };
     }
     if (!anchorStop && anchor?.lat !== undefined && anchor?.lon !== undefined) {
-      const near = gtfsStore.findNearestStops(anchor.lat, anchor.lon, 400, 1);
+      const near = store.findNearestStops(anchor.lat, anchor.lon, 400, 1);
       if (near.length > 0) {
         anchorStop = { stop_id: near[0].stop.stop_id, stop_lat: near[0].stop.stop_lat, stop_lon: near[0].stop.stop_lon };
       }
@@ -603,6 +634,7 @@ function buildWalkOnlyConnection(
   walkArrSec: number,
   walkSec: number,
   currentSec: number,
+  serviceDate?: string,
 ): Connection {
   const walkInMin = Math.max(0, Math.round((walkDepSec - currentSec) / 60));
   return {
@@ -618,6 +650,7 @@ function buildWalkOnlyConnection(
     transfers: 0,
     delayMin: 0,
     live: false,
+    serviceDate,
     legs: [
       {
         id: 'walk-only-l1',
@@ -640,11 +673,15 @@ function buildWalkOnlyConnection(
   };
 }
 
-export async function planConnections(options: PlanOptions): Promise<Connection[]> {
-  await gtfsStore.load();
+export async function planConnections(
+  options: PlanOptions,
+  store: LocalGtfsStore = gtfsStore,
+): Promise<Connection[]> {
+  await store.load();
 
   const now = new Date();
-  const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const nowWarsaw = warsawNow(now);
+  const currentSec = nowWarsaw.sec;
 
   // Wycinek dnia (+ nocny merge) przez SHARED buildSearchSlices: rozgrzewka
   // uruchamiana tym samym kodem, co samo wyszukiwanie.
@@ -654,8 +691,13 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     -86400 * 2,
     Math.round(arrivalMode ? arrivalTarget : (options.departureTimeSec ?? currentSec)),
   );
-  const slices = await buildSearchSlices(rawTarget, arrivalMode);
+  // Horyzont wypychania: tramwaje jeżdżą często (3 h), kolej rzadko (6 h,
+  // pierwszy pociąg do celu bywa poza standardowym zapasem).
+  const horizonSec = options.searchAheadSec ?? 10800;
+  const slices = await buildSearchSlices(rawTarget, arrivalMode, store, horizonSec);
   const { departureSec, dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
+  const dayShift = Math.round(dayOffsetSec / 86400);
+  const targetWarsaw = dayShift === 0 ? nowWarsaw : shiftWarsawDate(nowWarsaw, dayShift);
   // Przyjazd na jutro: kurs może wyjechać jeszcze dziś wieczorem, więc dolna
   // granica to „teraz” w zegarze dnia docelowego, a nie start okna przyjazdu.
   const earliestDepartureSec = arrivalMode && rawTarget >= currentSec
@@ -685,32 +727,40 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const walkArrSec = arrivalMode ? rawTarget : departureSec + dayOffsetSec + directWalkSec;
   const walkDepSec = walkArrSec - directWalkSec;
   if (directM <= SAME_POINT_M) {
-    return [buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec)];
+    return [buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec, targetWarsaw.isoDate)];
   }
 
-  // 1. Resolve candidate boarding stops near origin.
-  const origins = resolveCandidateOrigins(
-    options.fromLat,
-    options.fromLon,
-    maxWalkM,
-    userWalkSpeed,
-    {
-      stopId: options.anchorStopId,
-      lat: options.anchorStopLat,
-      lon: options.anchorStopLon,
-    },
-  );
+  // 1. Resolve candidate boarding stops near origin. Jawne id (intercity:
+  // stacje kolejowe z magazynu polska) pomijają szukanie po współrzędnych.
+  const origins = options.originStopIds?.length
+    ? options.originStopIds.map((stopId) => ({ stopId, walkM: 0, walkSec: 0 }))
+    : resolveCandidateOrigins(
+        options.fromLat,
+        options.fromLon,
+        maxWalkM,
+        userWalkSpeed,
+        {
+          stopId: options.anchorStopId,
+          lat: options.anchorStopLat,
+          lon: options.anchorStopLon,
+        },
+        store,
+      );
 
   // 2. Resolve candidate alighting stops near destination
-  const destNearby = gtfsStore.findNearestStops(options.toLat, options.toLon, maxWalkM, MAX_ACCESS_STOPS);
-  const destinations = destNearby.map((n) => {
-    const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
-    return {
-      stopId: n.stop.stop_id,
-      walkM: n.distanceM,
-      walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
-    };
-  });
+  const destinations = options.destinationStopIds?.length
+    ? options.destinationStopIds.map((stopId) => ({ stopId, walkM: 0, walkSec: 0 }))
+    : (() => {
+        const destNearby = store.findNearestStops(options.toLat, options.toLon, maxWalkM, MAX_ACCESS_STOPS);
+        return destNearby.map((n) => {
+          const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
+          return {
+            stopId: n.stop.stop_id,
+            walkM: n.distanceM,
+            walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
+          };
+        });
+      })();
 
   if (!origins.length || !destinations.length) {
     return [];
@@ -724,13 +774,29 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const tripDelays = snapshot.delays;
   const uncertaintyPenalty = new Map([...snapshot.transferBuffers.keys()].map(id => [id, 120]));
   const rawJourneys: RawJourney[] = [];
-  // Przyjazdy: ostatnia godzina przed celem. Odjazdy: dwa okna do przodu.
+  // Przyjazdy: ostatnia godzina przed celem. Odjazdy: dwa okna do przodu
+  // (a przy szerszym horyzoncie kolejowym dokładamy kolejne, żeby pociągi
+  // rzadkie jak IC nie zniknęły poza pierwszymi 45 minutami).
   const timeWindows: [number, number][] = arrivalMode
     ? [[0, 3600]]
-    : [
-        [0, 900],
-        [900, 2700],
-      ];
+    : horizonSec <= 2700
+      ? [
+          [0, 900],
+          [900, 2700],
+        ]
+      : (() => {
+          const windows: [number, number][] = [
+            [0, 900],
+            [900, 2700],
+            [2700, 7200],
+          ];
+          let from = 7200;
+          while (from < horizonSec) {
+            windows.push([from, Math.min(from + 7200, horizonSec)]);
+            from += 7200;
+          }
+          return windows;
+        })();
 
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
@@ -753,7 +819,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
       if (modes === 'all') return true;
       return transit.every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus'));
     });
-  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence };
+  const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence, serviceDate: targetWarsaw.isoDate };
   const sortPartial = (list: Connection[]) =>
     sortConnectionsByCost(list, userWalkSpeed, arrivalMode ? rawTarget : undefined, cost);
   const select = (list: RawJourney[]) =>
@@ -768,10 +834,11 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   // pierwszy kurs danego wzorca na tym przystanku). Wszystko ponad +2 h od
   // startu wyszukiwania to nie propozycja dla użytkownika - odrzucamy od razu,
   // żeby takie kursy nie psuły listy wariantów (też częściowej w onProgress).
-  const MAX_BOARD_AHEAD_SEC = 7200;
+  // Kolej (searchAheadSec) sięga dalej: pociągi dalekobieżne jeżdżą rzadko.
+  const MAX_BOARD_AHEAD_SEC = Math.max(7200, horizonSec);
 
   for (const [offsetSec, windowSec] of timeWindows) {
-    const batch = await runRaptorAsync(gtfsStore, origins, destinations, (arrivalMode ? departureSec : searchStartSec) + offsetSec, {
+    const batch = await runRaptorAsync(store, origins, destinations, (arrivalMode ? departureSec : searchStartSec) + offsetSec, {
       maxTransfers,
       minTransferSec,
       trainsEnabled,
@@ -803,7 +870,7 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
     // żeby FlatList zdążyła się przemalować między oknami.
     if (options.onProgress && rawJourneys.length > 0) {
       const partial = sortPartial(
-        mapJourneysToConnections(select(rawJourneys), options, mapCtx),
+        mapJourneysToConnections(select(rawJourneys), options, mapCtx, store),
       );
       if (partial.length > 0) {
         options.onProgress(partial);
@@ -817,14 +884,14 @@ export async function planConnections(options: PlanOptions): Promise<Connection[
   const filtered = select(rawJourneys);
 
   // 4. Map into Connection model
-  const connections = mapJourneysToConnections(filtered, options, mapCtx);
+  const connections = mapJourneysToConnections(filtered, options, mapCtx, store);
 
   // Opcja "na piechotę" dla bliskich celów (jak w Jakdojade) - jeśli prosto
   // jest w zasięgu spaceru z ustawień, dokładamy ją do listy.
   const canStartWalk = !arrivalMode || walkDepSec >= earliestDepartureSec + dayOffsetSec;
   const walkAdded = directM > 0 && directM <= maxWalkM && canStartWalk;
   if (walkAdded) {
-    connections.push(buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec));
+    connections.push(buildWalkOnlyConnection(options, directM, walkDepSec, walkArrSec, directWalkSec, currentSec, targetWarsaw.isoDate));
   }
 
   // Marsz bije przesiadki: gdy pieszo docierasz równie szybko jak wariantem

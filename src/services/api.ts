@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
 import { kvGetStrict, kvSetStrict } from './storage';
 import { defaultLocationForCity } from '../config';
-import { getCity, cityKey, suggestCityForCoords } from '../cities';
+
+import { getCity, cityKey, suggestCityForCoords, CITIES } from '../cities';
 import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import {
   Connection,
@@ -19,7 +20,9 @@ import {
   findCachedConnection,
 } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
-import { planConnections, buildTripStops } from './routing/engine';
+import { planConnections, buildTripStops, type PlanOptions } from './routing/engine';
+import { planIntercity } from './routing/intercity';
+import { isOutsideServiceArea } from './serviceArea';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
 import { distanceMeters } from '../gtfs/geo';
@@ -271,6 +274,7 @@ subscribeActiveCity((id) => {
   if (id === recentCityId) return;
   recentCityId = id;
   recentPlannedConnections.clear();
+  notifySavedRoutesChanged();
 });
 
 function rememberRecent(connection: Connection): void {
@@ -298,6 +302,21 @@ export function rememberPlannedConnection(connection: Connection): void {
   rememberRecent(connection);
 }
 
+/**
+ * Czy zapytanie trasy wymaga planera między miastami (noga kolejowa z bazy
+ * `polska`). Używane przez UI do karty pobrania rozkładu kolejowego.
+ */
+export function isIntercityRouteQuery(query: {
+  fromLat: number;
+  fromLon: number;
+  toLat: number;
+  toLon: number;
+  toId?: string;
+  trainsEnabled?: boolean;
+}): boolean {
+  return needsIntercity(query as RouteQuery);
+}
+
 // Serializuje read-modify-write zapisanych tras: dwa równoległe zapisy nie mogą
 // zgubić jednego wpisu (każdy czyta-i-zapisuje całą listę).
 let routesLock: Promise<unknown> = Promise.resolve();
@@ -307,42 +326,79 @@ function withRoutesLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * Czy podróż wymaga planera między miastami (noga kolejowa z bazy `polska`):
+ * cel to ogólnopolska stacja kolejowa albo punkt/stacja poza strefą miasta,
+ * albo zaczynamy poza strefą (dojazd "z najbliższej stacji"). Stacja w
+ * granicach aktywnego miasta zostaje na zwykłym wyszukiwaniu (KD siedzi
+ * w bazie miasta i dojazd tramwajem liczy ten sam silnik).
+ */
+function needsIntercity(query: RouteQuery): boolean {
+  // Wyłączone pociągi w ustawieniach = nie planujemy kolei między miastami.
+  if (query.trainsEnabled === false) return false;
+  const destOutside = isOutsideServiceArea(query.toLat, query.toLon);
+  if (query.toId?.startsWith('stop-pl:')) return destOutside;
+  const originOutside = isOutsideServiceArea(query.fromLat, query.fromLon);
+  return destOutside || originOutside;
+}
+
+function toPlanOptions(query: RouteQuery, onProgress?: (partial: Connection[]) => void): PlanOptions {
+  return {
+    fromId: query.fromId,
+    fromTitle: query.fromTitle,
+    fromLat: query.fromLat,
+    fromLon: query.fromLon,
+    toTitle: query.toTitle,
+    toLat: query.toLat,
+    toLon: query.toLon,
+    toId: query.toId,
+    departureTimeSec: query.departureTimeSec,
+    arriveBySec: query.arriveBySec,
+    maxTransfers: query.maxTransfers,
+    modes: query.modes,
+    minTransferSec: query.minTransferSec,
+    trainsEnabled: query.trainsEnabled,
+    cableEnabled: query.cableEnabled,
+    allowedTransferModes: query.allowedTransferModes,
+    trainMinTransferSec: query.trainMinTransferSec,
+    maxWalkM: query.maxWalkM,
+    walkSpeedMps: query.walkSpeedMps,
+    anchorStopId: query.anchorStopId,
+    anchorStopLat: query.anchorStopLat,
+    anchorStopLon: query.anchorStopLon,
+    onProgress,
+  };
+}
+
 export const RoutingService: IRoutingService = {
   async getConnections(query: RouteQuery, onProgress?: (partial: Connection[]) => void): Promise<Connection[]> {
     try {
-      const connections = await planConnections({
-        fromTitle: query.fromTitle,
-        fromLat: query.fromLat,
-        fromLon: query.fromLon,
-        toTitle: query.toTitle,
-        toLat: query.toLat,
-        toLon: query.toLon,
-        toId: query.toId,
-        departureTimeSec: query.departureTimeSec,
-        arriveBySec: query.arriveBySec,
-        maxTransfers: query.maxTransfers,
-        modes: query.modes,
-        minTransferSec: query.minTransferSec,
-        trainsEnabled: query.trainsEnabled,
-        cableEnabled: query.cableEnabled,
-        allowedTransferModes: query.allowedTransferModes,
-        trainMinTransferSec: query.trainMinTransferSec,
-        maxWalkM: query.maxWalkM,
-        walkSpeedMps: query.walkSpeedMps,
-        anchorStopId: query.anchorStopId,
-        anchorStopLat: query.anchorStopLat,
-        anchorStopLon: query.anchorStopLon,
-        // Progres dokładamy też do podręcznego cache, żeby ekran detalu
-        // działał nawet jeśli użytkownik tapnie wiersz w trakcie liczenia.
-        onProgress: onProgress
-          ? (partial) => {
-              for (const c of partial) rememberRecent(c);
-              onProgress(partial);
-            }
-          : undefined,
-      });
+      const remember = (list: Connection[]) => {
+        for (const c of list) rememberRecent(c);
+      };
+      const progress = onProgress
+        ? (partial: Connection[]) => {
+            remember(partial);
+            onProgress(partial);
+          }
+        : undefined;
 
-      for (const c of connections) rememberRecent(c);
+      // Podróże między miastami: noga miejska + pociąg z bazy `polska`.
+      if (needsIntercity(query)) {
+        const { connections } = await planIntercity(toPlanOptions(query));
+        remember(connections);
+        if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
+          void saveConnections(query, connections);
+          void import('./geometryWarmup')
+            .then((m) => m.warmConnections(connections))
+            .catch(() => {});
+        }
+        return connections;
+      }
+
+      const connections = await planConnections(toPlanOptions(query, progress));
+
+      remember(connections);
 
       if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
         void saveConnections(query, connections);
@@ -365,8 +421,19 @@ export const RoutingService: IRoutingService = {
     if (found) return { connection: found, source: 'live' };
 
     const allSaved = await getSavedRoutes();
-    const hit = allSaved.find(r => r.id === id)?.connection;
+    const hit = allSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
     if (hit) return { connection: hit, source: 'live' };
+
+    // Szukanie w zapisanych trasach innych miast (np. podróż międzymiastowa lub po zmianie aktywnego miasta)
+    const activeCity = getActiveCityIdSync();
+    for (const city of CITIES) {
+      if (city.id === activeCity) continue;
+      try {
+        const otherSaved = await readSavedRoutes(savedRoutesKey(city.id));
+        const otherHit = otherSaved.find(r => r.id === id || normalizeConnectionId(r.id) === id)?.connection;
+        if (otherHit) return { connection: otherHit, source: 'live' };
+      } catch {}
+    }
 
     const cached = await findCachedConnection(id);
     if (cached) {
@@ -383,7 +450,8 @@ export const RoutingService: IRoutingService = {
     return withRoutesLock(async () => {
       try {
         const all = await readSavedRoutes();
-        const existingIdx = all.findIndex((r) => r.id === connection.id);
+        const normId = normalizeConnectionId(connection.id);
+        const existingIdx = all.findIndex((r) => r.id === connection.id || normalizeConnectionId(r.id) === normId);
         const entry: SavedRoute = { id: connection.id, savedAt: Date.now(), connection };
         if (existingIdx >= 0) {
           all[existingIdx] = entry;
@@ -392,6 +460,7 @@ export const RoutingService: IRoutingService = {
         }
         // Zapis musi się udać, inaczej UI nie może pokazać trasy jako zapisanej.
         await kvSetStrict(savedRoutesKey(), JSON.stringify(all));
+        notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
         throw err;
@@ -403,8 +472,10 @@ export const RoutingService: IRoutingService = {
     return withRoutesLock(async () => {
       try {
         const all = await readSavedRoutes();
-        const filtered = all.filter(r => r.id !== id);
+        const normId = normalizeConnectionId(id);
+        const filtered = all.filter(r => r.id !== id && normalizeConnectionId(r.id) !== normId);
         await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
+        notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to delete saved route:', err);
         throw err;
@@ -412,10 +483,15 @@ export const RoutingService: IRoutingService = {
     });
   },
 
+  async getSavedRoutes(key?: string): Promise<SavedRoute[]> {
+    return getSavedRoutes(key);
+  },
+
   async isRouteSaved(id: string): Promise<boolean> {
     try {
       const all = await getSavedRoutes();
-      return all.some(r => r.id === id);
+      const normId = normalizeConnectionId(id);
+      return all.some(r => r.id === id || normalizeConnectionId(r.id) === normId);
     } catch {
       return false;
     }
@@ -442,6 +518,26 @@ export function savedRoutesKey(cityId?: string): string {
 // Odczyt listy zapisanych tras do modyfikacji: błąd odczytu lub uszkodzony JSON RZUCA,
 // żeby save/delete nie nadpisały prawdziwych danych pustą listą.
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
+
+const savedRoutesListeners = new Set<() => void>();
+
+export function subscribeSavedRoutes(listener: () => void): () => void {
+  savedRoutesListeners.add(listener);
+  return () => {
+    savedRoutesListeners.delete(listener);
+  };
+}
+
+function notifySavedRoutesChanged(): void {
+  for (const listener of savedRoutesListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[RoutingService] notifySavedRoutesChanged error:', err);
+    }
+  }
+}
+
 export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
   const raw = await kvGetStrict(key ?? savedRoutesKey());
   if (!raw) return [];
@@ -655,6 +751,36 @@ export const FavoritesService: IFavoritesService = {
         await kvSetStrict(placesKey(), JSON.stringify(filtered));
       } catch (err) {
         console.warn('[FavoritesService] deletePlace write failed:', err);
+        throw err;
+      }
+      return true;
+    });
+  },
+
+  /** Nadpisuje kolejność miejsc aktywnego miasta; false przy niezgodności id z listą. */
+  async reorderPlaces(orderedIds: string[]): Promise<boolean> {
+    return withPlacesLock(async () => {
+      let places: SavedPlace[];
+      try {
+        await ensurePlacesMigrated();
+        places = await readPlaces();
+      } catch (err) {
+        console.warn('[FavoritesService] reorderPlaces read failed:', err);
+        return false;
+      }
+      if (orderedIds.length !== places.length) return false;
+      const byId = new Map(places.map((p) => [p.id, p]));
+      const reordered: SavedPlace[] = [];
+      for (const id of orderedIds) {
+        const place = byId.get(id);
+        if (!place) return false;
+        byId.delete(id);
+        reordered.push(place);
+      }
+      try {
+        await kvSetStrict(placesKey(), JSON.stringify(reordered));
+      } catch (err) {
+        console.warn('[FavoritesService] reorderPlaces write failed:', err);
         throw err;
       }
       return true;

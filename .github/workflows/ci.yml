@@ -291,6 +291,9 @@ jobs:
       - name: Run logic tests (News parser)
         run: nix develop .#ci -c npm run check:news
 
+      - name: Run logic tests (National rail & delays)
+        run: nix develop .#ci -c npm run check:rail-delays
+
   verify-subprojects:
     name: Lint & Typecheck Subprojects
     runs-on: ubuntu-latest

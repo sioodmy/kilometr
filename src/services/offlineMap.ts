@@ -125,6 +125,14 @@ export async function hasOfflineMap(cityId?: string): Promise<boolean> {
   return (await getOfflineMapState(cityId)) === 'ready';
 }
 
+/** Stan i rozmiar pakietu kafli miasta (diagnostyka): missing/ready/invalid + bajty. */
+export async function getOfflineMapInfo(
+  cityId?: string,
+): Promise<{ state: OfflineMapState; bytes: number }> {
+  const { state, size } = await inspectTilePack(`${mapsUri()}${tilePackName(cityId)}`);
+  return { state, bytes: state === 'missing' ? 0 : size };
+}
+
 /** Pakiety pozostałych miast na dysku; do listy z osobnym usuwaniem w Ustawieniach. */
 export async function listDownloadedMaps(activeCityId?: string): Promise<DownloadedMap[]> {
   const activeId = getCity(activeCityId ?? getActiveCityIdSync()).id;

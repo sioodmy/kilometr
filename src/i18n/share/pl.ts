@@ -6,7 +6,7 @@ export const pl = {
   departure: 'Wyjazd',
   from: 'Skąd',
   to: 'Dokąd',
-  duration: (n: number) => `${n} min`,
+  duration: (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
   transfers: (n: number) =>
     n === 0
       ? 'Bez przesiadek'
@@ -31,12 +31,12 @@ export const pl = {
     `Połączenie z ${from} do ${to}, na miejscu o ${at}`,
   imageAndLink: 'Udostępnij kartę i link',
   linkOnly: 'Udostępnij link',
-  sms: 'Wyślij SMS',
+  download: 'Pobierz kartę',
   copy: 'Kopiuj link',
   copied: 'Link skopiowany',
   preparing: 'Przygotowuję kartę…',
   error: 'Nie udało się udostępnić. Spróbuj ponownie lub skopiuj link.',
-  smsError: 'Nie udało się otworzyć SMS-a. Skopiuj link i wklej go do wiadomości.',
+  saveError: 'Nie udało się zapisać karty. Spróbuj ponownie.',
   close: 'Zamknij',
   message: (from: string, to: string, departure: string, arrival: string, lines: string) =>
     `Jadę z ${from} do ${to}${lines ? ` (${lines})` : ''}. Wyjazd ${departure}, na miejscu o ${arrival}.`,

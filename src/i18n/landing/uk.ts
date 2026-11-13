@@ -15,6 +15,7 @@ export const uk: Strings = {
     label: 'Головна навігація',
   },
   language: 'Мова сайту',
+  sendSms: 'Надіслати SMS',
   hero: {
     eyebrow: 'Kilometr для Android',
     title: 'Твій',
@@ -114,7 +115,7 @@ export const uk: Strings = {
     mock: 'Приклад подорожі. Час за годинником твого пристрою.',
     route: previewRoute,
     departIn: (n) => `за ${n} хв`,
-    duration: (n) => `${n} хв`,
+    duration: (n) => (n >= 60 ? `${Math.floor(n / 60)} год${n % 60 > 0 ? ` ${n % 60} хв` : ''}` : `${n} хв`),
     transfers: (n) =>
       n <= 0
         ? 'прямо'

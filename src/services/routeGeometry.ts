@@ -29,7 +29,6 @@ import { putCacheRecord, selectEvictions, type GeometryCacheRecord } from './geo
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 import { isFareBoundary } from '../gtfs/fareBoundary';
-
 const CACHE_KEY = 'kilometr.map_geometry.v3';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
@@ -130,7 +129,8 @@ function legStops(leg: Leg): MapStop[] {
 function legToMapLeg(leg: Leg): MapLeg {
   const { bg } = getLineColors(leg.line, leg.mode);
   const stops = legStops(leg);
-  return { id: leg.id,
+  return {
+    id: leg.id,
     geometry: leg.geometry,
     mode: leg.mode,
     line: leg.line,
@@ -145,6 +145,7 @@ function legToMapLeg(leg: Leg): MapLeg {
     live: leg.live,
     tripId: leg.tripId,
     platformCode: leg.platformCode,
+    trackCode: leg.trackCode,
     stops,
     approx: !leg.geometry,
   };
@@ -156,7 +157,19 @@ function legWaypoints(leg: MapLeg): Coord[] {
 }
 
 export function buildMapRoute(connection: Connection): MapRoute {
-  const legs = connection.legs.map(legToMapLeg);
+  const hasMultipleLegs = connection.legs.length > 1;
+  const filteredLegs = hasMultipleLegs
+    ? connection.legs.filter(
+        (leg) =>
+          !(
+            leg.mode === 'walk' &&
+            (leg.walkM ?? 0) <= 0 &&
+            (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
+          ),
+      )
+    : connection.legs;
+  const effectiveLegs = filteredLegs.length > 0 ? filteredLegs : connection.legs;
+  const legs = effectiveLegs.map(legToMapLeg);
   const geometry = legs.some((l) => l.approx) ? 'approx' : 'osrm';
   return {
     id: connection.id,
@@ -281,14 +294,18 @@ export async function pinRouteGeometry(route: MapRoute): Promise<void> {
  * Używamy tego dla tras z ostatnich wyszukiwań oraz dla otwieranej trasy.
  * Zwraca liczbę nóg, których geometrię udało się pobrać.
  */
-export async function warmRouteGeometry(
-  route: MapRoute,
-  signal?: AbortSignal,
-): Promise<number> {
+export async function warmRouteGeometry(route: MapRoute, signal?: AbortSignal): Promise<number> {
   let warmed = 0;
   for (const leg of route.legs) {
     if (signal?.aborted) break;
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
+    // Shape'y PLK nie przechodzą przez cache kv (są w bazie), więc nie ma
+    // czego przypinać - pinowałby się klucz, którego cache nigdy nie zobaczy.
+    if (leg.mode === 'train' && leg.tripId?.startsWith('pl:')) {
+      const result = await fetchLegGeometry(leg, signal).catch(() => null);
+      if (result && result.coords.length > 1) warmed++;
+      continue;
+    }
     const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (!result || result.coords.length < 2) continue;
     const profile = legProfile(leg);
@@ -546,6 +563,14 @@ async function fetchLegGeometry(
   signal?: AbortSignal,
 ): Promise<{ coords: Coord[]; fromCache: boolean } | null> {
   if (isApproxOnlyLeg(leg)) return null;
+  // Pociągi ogólnopolskie i regionalne mają geometrię torów w bazie `polska` (shapes PLK):
+  // router po kafelkach obejmuje tylko pakiet miasta, a OSRM nie jeździ po
+  // torach. Zwracamy wycinek shape'u bezpośrednio w osi właściwego toru.
+  if (leg.mode === 'train') {
+    const coords = await nationalRailShape(leg, signal);
+    if (coords && coords.length > 1) return { coords, fromCache: true };
+    if (leg.tripId?.startsWith('pl:')) return null;
+  }
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
   );
@@ -581,6 +606,258 @@ export function straightGeometry(leg: MapLeg): Coord[] {
   return legWaypoints(leg);
 }
 
+// ─── Geometria torów z bazy ogólnopolskiej (shapes PLK) ─────────────────────
+
+/** Cache shape'ów w pamięci: unpack raz, tnie każde otwarcie mapy od nowa. */
+const shapeCache = new Map<string, Coord[] | null>();
+const SHAPE_CACHE_MAX = 24;
+
+async function loadShape(shapeId: string): Promise<Coord[] | null> {
+  if (shapeCache.has(shapeId)) return shapeCache.get(shapeId) ?? null;
+  try {
+    const { getNationalDb } = await import('./gtfsDatabase');
+    const db = await getNationalDb();
+    const row = await db.getFirstAsync<{ pts: Uint8Array | ArrayBuffer }>(
+      'SELECT pts FROM shapes WHERE shape_id = ?',
+      shapeId,
+    );
+    const raw = row?.pts;
+    if (!raw || (raw instanceof Uint8Array ? raw.byteLength : raw.byteLength) < 16) {
+      shapeCache.set(shapeId, null);
+      return null;
+    }
+    const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const n = Math.floor(bytes.byteLength / 8);
+    const coords: Coord[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      coords[i] = [view.getFloat32(i * 8, true), view.getFloat32(i * 8 + 4, true)];
+    }
+    shapeCache.set(shapeId, coords);
+    if (shapeCache.size > SHAPE_CACHE_MAX) {
+      const oldest = shapeCache.keys().next().value;
+      if (oldest !== undefined && oldest !== shapeId) shapeCache.delete(oldest);
+    }
+    return coords;
+  } catch {
+    shapeCache.set(shapeId, null);
+    return null;
+  }
+}
+
+/** Uproszczenie Douglas-Peuckerem (iteracyjnie, tolerancja w metrach). */
+function simplifyPolyline(pts: Coord[], toleranceM: number): Coord[] {
+  if (pts.length < 3) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1;
+  keep[pts.length - 1] = 1;
+  const stack: Array<[number, number]> = [[0, pts.length - 1]];
+  const tolSq = toleranceM * toleranceM;
+  while (stack.length > 0) {
+    const [start, end] = stack.pop()!;
+    if (end - start < 2) continue;
+    const a = pts[start];
+    const b = pts[end];
+    let maxD = -1;
+    let maxI = -1;
+    for (let i = start + 1; i < end; i++) {
+      const d = distanceToSegment(pts[i], a, b);
+      if (d > maxD) {
+        maxD = d;
+        maxI = i;
+      }
+    }
+    if (maxD * maxD > tolSq && maxI > 0) {
+      keep[maxI] = 1;
+      stack.push([start, maxI], [maxI, end]);
+    }
+  }
+  const out: Coord[] = [];
+  for (let i = 0; i < pts.length; i++) if (keep[i]) out.push(pts[i]);
+  return out;
+}
+
+/**
+ * Wycinek torów dla nogi kolejowej z bazy `polska`: shape kursu cięty
+ * między stacją wsiadania a wysiadania bezpośrednio w osi toru.
+ * Nie doklejamy sztucznie współrzędnych budynku stacji (żeby linia nie
+ * uciekała z torów w budynek dworca) i stosujemy minimalną tolerancję (2 m),
+ * dzięki czemu geometria zachowuje łuki, rozjazdy i właściwy tor.
+ */
+async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coord[] | null> {
+  const stops = leg.stops;
+  if (!stops || stops.length < 2) return null;
+  const board = stops[0];
+  const alight = stops[stops.length - 1];
+  if (!board || !alight) return null;
+
+  try {
+    const { getNationalDb } = await import('./gtfsDatabase');
+    const db = await getNationalDb();
+
+    let shapeId: string | null = null;
+
+    // 1. Sprawdź tripId z nogi (jeśli jest).
+    if (leg.tripId) {
+      const cleanTripId = leg.tripId.replace(/^pl:/, '');
+      const trip = await db.getFirstAsync<{ shape: string }>(
+        'SELECT shape FROM trips WHERE trip_id = ? OR trip_id = ? LIMIT 1',
+        leg.tripId,
+        'pl:' + cleanTripId,
+      );
+      if (trip?.shape) {
+        shapeId = trip.shape.replace(/^pl:/, '');
+      }
+    }
+
+    // 2. Jeśli brak shapeId, a mamy numer pociągu w leg.line:
+    if (!shapeId && leg.line) {
+      const numMatch = leg.line.match(/\b(\d{3,6}(?:\/\d+)?)\b/);
+      if (numMatch) {
+        const trip = await db.getFirstAsync<{ shape: string }>(
+          'SELECT shape FROM trips WHERE (train_number = ? OR train_number LIKE ?) AND shape != "" LIMIT 1',
+          numMatch[1],
+          numMatch[1] + '/%',
+        );
+        if (trip?.shape) {
+          shapeId = trip.shape.replace(/^pl:/, '');
+        }
+      }
+    }
+
+    // 3. Jeśli nadal brak shapeId, znajdź kurs łączący stację początkową i końcową:
+    if (!shapeId) {
+      let boardStopRow = await db.getFirstAsync<{ stop_id: string }>(
+        'SELECT stop_id FROM stops WHERE name = ? LIMIT 1',
+        board.name,
+      );
+      if (!boardStopRow) {
+        boardStopRow = await db.getFirstAsync<{ stop_id: string }>(
+          'SELECT stop_id FROM stops WHERE abs(lat - ?) < 0.02 AND abs(lon - ?) < 0.03 ORDER BY ((lat - ?)*(lat - ?) + (lon - ?)*(lon - ?)*0.36) LIMIT 1',
+          board.lat,
+          board.lon,
+          board.lat,
+          board.lon,
+        );
+      }
+
+      let alightStopRow = await db.getFirstAsync<{ stop_id: string }>(
+        'SELECT stop_id FROM stops WHERE name = ? LIMIT 1',
+        alight.name,
+      );
+      if (!alightStopRow) {
+        alightStopRow = await db.getFirstAsync<{ stop_id: string }>(
+          'SELECT stop_id FROM stops WHERE abs(lat - ?) < 0.02 AND abs(lon - ?) < 0.03 ORDER BY ((lat - ?)*(lat - ?) + (lon - ?)*(lon - ?)*0.36) LIMIT 1',
+          alight.lat,
+          alight.lon,
+          alight.lat,
+          alight.lon,
+        );
+      }
+
+      if (boardStopRow && alightStopRow) {
+        const trip = await db.getFirstAsync<{ shape: string }>(
+          `SELECT t.shape
+           FROM stop_times st1
+           JOIN stop_times st2 ON st1.trip_id = st2.trip_id
+           JOIN trips t ON t.trip_id = st1.trip_id
+           WHERE st1.stop_id = ? AND st2.stop_id = ? AND st1.seq < st2.seq AND t.shape != ''
+           LIMIT 1`,
+          boardStopRow.stop_id,
+          alightStopRow.stop_id,
+        );
+        if (trip?.shape) {
+          shapeId = trip.shape.replace(/^pl:/, '');
+        }
+      }
+    }
+
+    if (!shapeId) return null;
+    if (signal?.aborted) return null;
+
+    const shape = await loadShape(shapeId);
+    if (!shape || shape.length < 2) return null;
+
+    // Najbliższy punkt shape'u do stacji wsiadania.
+    let boardIdx = -1;
+    let boardDist = Infinity;
+    for (let i = 0; i < shape.length; i++) {
+      const d = distanceM(shape[i], [board.lat, board.lon]);
+      if (d < boardDist) {
+        boardDist = d;
+        boardIdx = i;
+      }
+    }
+    if (boardIdx < 0 || boardDist > 2500) return null;
+
+    // Sekwencja stacji pośrednich, by odnaleźć właściwy punkt końcowy za nimi.
+    let searchStart = boardIdx;
+    if (stops.length > 2) {
+      for (let s = 1; s < stops.length - 1; s++) {
+        const st = stops[s];
+        let midIdx = -1;
+        let midDist = Infinity;
+        for (let i = searchStart; i < shape.length; i++) {
+          const d = distanceM(shape[i], [st.lat, st.lon]);
+          if (d < midDist) {
+            midDist = d;
+            midIdx = i;
+          }
+        }
+        if (midIdx >= searchStart && midDist < 2500) {
+          searchStart = midIdx;
+        }
+      }
+    }
+
+    // Najbliższy punkt shape'u do stacji wysiadania (za stacjami pośrednimi/wsiadaniem).
+    let alightIdx = -1;
+    let alightDist = Infinity;
+    for (let i = searchStart + 1; i < shape.length; i++) {
+      const d = distanceM(shape[i], [alight.lat, alight.lon]);
+      if (d < alightDist) {
+        alightDist = d;
+        alightIdx = i;
+      }
+    }
+    if (alightIdx < 0 || alightIdx <= boardIdx || alightDist > 2500) return null;
+
+    const slice = shape.slice(boardIdx, alightIdx + 1);
+    if (slice.length < 2) return null;
+
+    // Usuwamy ewentualne sąsiadujące duplikaty.
+    const clean: Coord[] = [];
+    for (const p of slice) {
+      if (
+        clean.length === 0 ||
+        clean[clean.length - 1][0] !== p[0] ||
+        clean[clean.length - 1][1] !== p[1]
+      ) {
+        clean.push(p);
+      }
+    }
+    if (clean.length < 2) return null;
+
+    // Tolerancja 2 m zachowuje dokładny przebieg toru i rozjazdów,
+    // eliminując jedynie zbędne punkty współliniowe na prostych odcinkach.
+    return simplifyPolyline(clean, 2);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Oś toru nogi kolejowej do dopasowania GPS (trainTrack.ts): geometria
+ * z nogi (podróż współdzielona) albo wycinek shape'u PLK z bazy ogólnopolskiej.
+ */
+export async function loadTrainTrackShape(leg: Leg, signal?: AbortSignal): Promise<Coord[] | null> {
+  if (leg.mode !== 'train') return null;
+  if (leg.geometry && leg.geometry.length > 1) return leg.geometry;
+  const mapLeg = legToMapLeg(leg);
+  if (mapLeg.stops.length < 2) return null;
+  return nationalRailShape(mapLeg, signal);
+}
+
 /**
  * Uzupełnia geometrię nóg po kolei. Nogi piesze liczy lokalnie w Rust,
  * kolejowe liczy po torach, a autobusowe dociąga z OSRM.
@@ -592,12 +869,16 @@ export async function resolveGeometry(
 ): Promise<void> {
   for (const leg of route.legs) {
     if (signal?.aborted) return;
-    if (leg.geometry) { onLeg(leg.id, leg.geometry); continue; }
+    if (leg.geometry) {
+      onLeg(leg.id, leg.geometry);
+      continue;
+    }
     if (leg.stops.length < 2 || isApproxOnlyLeg(leg)) continue;
     const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (result && result.coords.length > 1) onLeg(leg.id, result.coords);
-    if (leg.mode !== 'walk') {
+    // Pauza chroni publiczny OSRM; lokalne shape'y PLK jej nie potrzebują.
+    if (leg.mode !== 'walk' && leg.mode !== 'train') {
       await new Promise((r) => setTimeout(r, 350));
     }
   }
@@ -634,11 +915,7 @@ export interface Projection {
  * strzałka pojazdu, kursor joysticka i dopasowanie live korzystają z tego
  * samego rachunku, więc nic się nie rozjeżdża.
  */
-export function projectRoutePoint(
-  coords: Coord[],
-  lat: number,
-  lon: number,
-): Projection | null {
+export function projectRoutePoint(coords: Coord[], lat: number, lon: number): Projection | null {
   if (!coords || coords.length === 0) return null;
   const toRad = (d: number) => (d * Math.PI) / 180;
   if (coords.length === 1) {
@@ -685,7 +962,8 @@ export function projectRoutePoint(
       const phi2 = toRad(lat2);
       const dLambda = toRad(lon2 - lon1);
       const y2 = Math.sin(dLambda) * Math.cos(phi2);
-      const x2 = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+      const x2 =
+        Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
       bestHeading = (Math.atan2(y2, x2) * 180) / Math.PI;
     }
   }

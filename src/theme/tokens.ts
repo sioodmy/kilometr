@@ -259,6 +259,13 @@ export const shape = {
   large: 16,
   extraLarge: 28,
   full: 999,
+  // Corner aliases for consistent design system usage
+  cornerExtraSmall: 4,
+  cornerSmall: 8,
+  cornerMedium: 12,
+  cornerLarge: 16,
+  cornerExtraLarge: 28,
+  cornerFull: 999,
 } as const;
 
 export const spacing = { xs: 6, sm: 10, md: 14, lg: 18, xl: 24, xxl: 32 } as const;

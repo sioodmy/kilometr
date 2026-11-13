@@ -15,6 +15,7 @@ export const en: Strings = {
     label: 'Main navigation',
   },
   language: 'Website language',
+  sendSms: 'Send SMS',
   hero: {
     eyebrow: 'Kilometr for Android',
     title: 'Your',
@@ -114,7 +115,7 @@ export const en: Strings = {
     mock: 'Example journey. Times follow your device clock.',
     route: previewRoute,
     departIn: (n) => `in ${n} min`,
-    duration: (n) => `${n} min`,
+    duration: (n) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
     transfers: (n) => (n === 0 ? 'direct' : n === 1 ? '1 transfer' : `${n} transfers`),
     fromPrefix: 'from ',
     toPrefix: 'to ',

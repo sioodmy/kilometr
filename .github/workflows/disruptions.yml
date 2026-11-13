@@ -18,7 +18,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow]
+        options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom, polska]
 
 permissions:
   contents: read
@@ -56,11 +56,12 @@ jobs:
         run: |
           CITY="${{ inputs.city }}"
           if [ -z "$CITY" ]; then
-            CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa}"
+            CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom}"
           fi
           node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=6
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          PDP_API_KEY: ${{ secrets.PDP_API_KEY }}
 
       - name: Upload disruptions.json do Cloudflare R2
         run: |

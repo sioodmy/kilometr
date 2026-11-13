@@ -1,5 +1,5 @@
-// Czyste funkcje geo - bez zależności natywnych, działają w Hermes.
-// Port server/src/gtfs/geo.ts (bez zmian logiki).
+// Czyste funkcje geo: bez zaleznosci natywnych, dzialaja w Hermes.
+// Port server/src/gtfs/geo.ts.
 
 const EARTH_RADIUS_METERS = 6371000;
 
@@ -11,7 +11,7 @@ function toDegrees(rad: number): number {
   return (rad * 180) / Math.PI;
 }
 
-/** Haversine: dystans w metrach między dwoma punktami lat/lon. */
+/** Haversine: dystans w metrach miedzy dwoma punktami lat/lon. */
 export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const dLat = toRadians(lat2 - lat1);
   const dLon = toRadians(lon2 - lon1);
@@ -23,8 +23,8 @@ export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
 }
 
 /**
- * Tanie przybliżenie equirect dla krótkich odcinków (geometria trasy, manewry).
- * Dla dystansów rzędu kilometrów użyj `distanceMeters`.
+ * Tanie przyblizenie equirect dla krotkich odcinkow (geometria trasy, manewry).
+ * Dla dystansow rzedu kilometrow uzyj `distanceMeters`.
  */
 export function shortDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const dLat = (lat2 - lat1) * 111320;
@@ -32,7 +32,7 @@ export function shortDistanceMeters(lat1: number, lon1: number, lat2: number, lo
   return Math.sqrt(dLat * dLat + dLon * dLon);
 }
 
-/** Początkowy azymut w stopniach (0..360) z punktu 1 do 2. */
+/** Poczatkowy azymut w stopniach (0..360) z punktu 1 do 2. */
 export function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const phi1 = toRadians(lat1);
   const phi2 = toRadians(lat2);
@@ -43,18 +43,18 @@ export function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: n
   return (toDegrees(theta) + 360) % 360;
 }
 
-/** Normalizacja polskich znaków: minuskuły + bez diakrytyków. */
+/** Normalizacja polskich znakow: minuskuly i bez diakrytykow. */
 export function normalizePolish(str: string): string {
   return str
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/ł/g, 'l')
     .replace(/Ł/g, 'l')
     .trim();
 }
 
-/** Parsuje "HH:MM:SS" lub "HH:MM" na sekundy od północy (obsługuje >24h w GTFS). */
+/** Parsuje "HH:MM:SS" lub "HH:MM" na sekundy od polnocy (obsluguje >24h w GTFS). */
 export function timeStringToSeconds(timeStr: string): number {
   const parts = timeStr.trim().split(':');
   const h = Number(parts[0]) || 0;
@@ -63,7 +63,7 @@ export function timeStringToSeconds(timeStr: string): number {
   return h * 3600 + m * 60 + s;
 }
 
-/** Formatuje sekundy od północy do "HH:MM". */
+/** Formatuje sekundy od polnocy do "HH:MM". */
 export function secondsToTimeString(totalSec: number): string {
   let sec = totalSec % 86400;
   if (sec < 0) sec += 86400;
@@ -72,7 +72,93 @@ export function secondsToTimeString(totalSec: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** Rzutuje punkt na polyline {lat, lon} - do dopasowania GPS do kształtu kursu. */
+export interface WarsawDateTime {
+  /** Sekundy od polnocy w strefie Europe/Warsaw. */
+  sec: number;
+  /** 0 = niedziela, 1 = poniedzialek, ..., 6 = sobota. */
+  weekday: number;
+  year: number;
+  /** 1..12 */
+  month: number;
+  /** 1..31 */
+  day: number;
+  /** YYYYMMDD do zapytan w bazach GTFS. */
+  dateStr: string;
+  /** YYYY-MM-DD w formacie ISO. */
+  isoDate: string;
+}
+
+const WARSAW_TZ = 'Europe/Warsaw';
+const WARSAW_PARTS_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: WARSAW_TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  weekday: 'short',
+  hourCycle: 'h23',
+});
+
+const WARSAW_WEEKDAYS: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+/**
+ * Zwraca biezacy lub podany czas w strefie Europe/Warsaw.
+ * Rozklad jazdy w Polsce dziala scisle wedlug czasu warszawskiego.
+ */
+export function warsawNow(date: Date = new Date()): WarsawDateTime {
+  const parts = WARSAW_PARTS_FMT.formatToParts(date);
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  let weekday = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p.type === 'year') year = Number(p.value);
+    else if (p.type === 'month') month = Number(p.value);
+    else if (p.type === 'day') day = Number(p.value);
+    else if (p.type === 'hour') hour = Number(p.value) % 24;
+    else if (p.type === 'minute') minute = Number(p.value);
+    else if (p.type === 'second') second = Number(p.value);
+    else if (p.type === 'weekday') weekday = WARSAW_WEEKDAYS[p.value] ?? 0;
+  }
+  const dateStr = `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+  const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return {
+    sec: hour * 3600 + minute * 60 + second,
+    weekday,
+    year,
+    month,
+    day,
+    dateStr,
+    isoDate,
+  };
+}
+
+/**
+ * Przesuwa date o wskazana liczbe dni w strefie Europe/Warsaw.
+ */
+export function shiftWarsawDate(
+  base: { year: number; month: number; day: number },
+  dayShift: number,
+): WarsawDateTime {
+  const d = new Date(Date.UTC(base.year, base.month - 1, base.day + dayShift, 12, 0, 0));
+  return warsawNow(d);
+}
+
+/** Rzutuje punkt na polyline {lat, lon} do dopasowania GPS do ksztaltu kursu. */
 export function projectPointToPolyline(
   lat: number,
   lon: number,
@@ -83,6 +169,8 @@ export function projectPointToPolyline(
   closestLon: number;
   segmentIndex: number;
   fractionAlongShape: number;
+  /** Azymut trafionego odcinka (0 = północ); 0 dla polyline bez długości. */
+  segmentHeading: number;
 } {
   if (polyline.length === 0) {
     return {
@@ -91,6 +179,7 @@ export function projectPointToPolyline(
       closestLon: lon,
       segmentIndex: -1,
       fractionAlongShape: 0,
+      segmentHeading: 0,
     };
   }
 
@@ -102,6 +191,7 @@ export function projectPointToPolyline(
       closestLon: polyline[0].lon,
       segmentIndex: 0,
       fractionAlongShape: 0,
+      segmentHeading: 0,
     };
   }
 
@@ -109,6 +199,7 @@ export function projectPointToPolyline(
   let bestLat = polyline[0].lat;
   let bestLon = polyline[0].lon;
   let bestSegment = 0;
+  let bestHeading = 0;
   let cumulativeDistanceBeforeBest = 0;
   let totalPolylineDistance = 0;
 
@@ -144,6 +235,7 @@ export function projectPointToPolyline(
       bestLat = projLat;
       bestLon = projLon;
       bestSegment = i;
+      bestHeading = bearingDegrees(p1.lat, p1.lon, p2.lat, p2.lon);
       cumulativeDistanceBeforeBest = runningDistance + t * segmentLengths[i];
     }
 
@@ -158,5 +250,6 @@ export function projectPointToPolyline(
     closestLon: bestLon,
     segmentIndex: bestSegment,
     fractionAlongShape,
+    segmentHeading: bestHeading,
   };
 }

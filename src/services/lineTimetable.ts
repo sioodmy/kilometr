@@ -1,5 +1,5 @@
 import type { LegMode } from '../types/models';
-import { getGtfsDb } from './gtfsDatabase';
+import { openGtfsDbHandle } from './gtfsDatabase';
 
 export interface TransitLine {
   routeId: string;
@@ -47,7 +47,7 @@ function toLine(row: RouteRow): TransitLine {
 export async function searchTransitLines(query: string): Promise<TransitLine[]> {
   const q = query.trim();
   if (!q || q.length > 16) return [];
-  const db = await getGtfsDb();
+  const db = await openGtfsDbHandle();
   const rows = await db.getAllAsync<RouteRow>(
     'SELECT route_id, short, long_name, type FROM routes WHERE short = ? COLLATE NOCASE ORDER BY type, route_id',
     q,
@@ -199,7 +199,7 @@ export async function loadLineTimetable(
   line: TransitLine | null;
   patterns: LinePattern[];
 }> {
-  const db = await getGtfsDb();
+  const db = await openGtfsDbHandle();
   const route = await db.getFirstAsync<RouteRow>(
     'SELECT route_id, short, long_name, type FROM routes WHERE route_id = ?',
     routeId,

@@ -13,9 +13,9 @@ import { SearchService } from '../src/services/searchService';
 async function main() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`CREATE TABLE addresses (
-    osm_id TEXT PRIMARY KEY, street TEXT, house TEXT, locality TEXT, lat REAL, lon REAL
+    osm_id TEXT PRIMARY KEY, street TEXT, house TEXT, locality TEXT, lat REAL, lon REAL, stop_m INTEGER, stop_w INTEGER
   )`);
-  const insert = sqlite.prepare('INSERT INTO addresses VALUES (?, ?, ?, ?, ?, ?)');
+  const insert = sqlite.prepare('INSERT INTO addresses VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   sqlite.exec('BEGIN');
   for (let street = 0; street < 2000; street++) {
     const suffix = String.fromCharCode(
@@ -31,6 +31,8 @@ async function main() {
         'Wrocław',
         51.1,
         17.0,
+        200,
+        1000,
       );
     }
   }
@@ -40,15 +42,24 @@ async function main() {
     ['node/3', '120'],
     ['node/4', '14/2'],
   ]) {
-    insert.run(id, 'Grunwaldzka', house, 'Wrocław', house === '12A' ? 51.13 : 51.11, 17.05);
+    insert.run(id, 'Grunwaldzka', house, 'Wrocław', house === '12A' ? 51.13 : 51.11, 17.05, 200, 1000);
   }
+  // Ta sama ulica w trzech miejscowościach: dwie w mieście (remis po kacie,
+  // o kolejności rozstrzyga waga połączeń), wieś bez przystanków.
+  insert.run('node/5', 'Przykładowa', '1', 'Krzyki', 51.15, 17.05, 300, 200);
+  insert.run('node/6', 'Przykładowa', '1', 'Wrocław', 51.11, 17.05, 300, 5000);
+  insert.run('node/7', 'Przykładowa', '1', 'Radomierzyce', 51.05, 17.05, 9000, 0);
   sqlite.exec('COMMIT');
 
   let addressReads = 0;
+  const ADDRESS_COLUMNS = ['osm_id', 'street', 'house', 'locality', 'lat', 'lon', 'stop_m', 'stop_w'];
   async function attachDatabase(waitForPois?: Promise<void>) {
     const db = await getGtfsDb();
     Object.assign(db, {
       getAllAsync: async (sql: string, ...params: (string | number)[]) => {
+        if (sql.startsWith('PRAGMA table_info')) {
+          return ADDRESS_COLUMNS.map((name) => ({ name }));
+        }
         if (!sql.includes('FROM addresses')) {
           if (sql.includes('FROM pois')) await waitForPois;
           return [];
@@ -96,6 +107,20 @@ async function main() {
     assert.equal(nearStreet.id, farStreet.id);
     assert.notEqual(nearStreet.lat, farStreet.lat);
     assert.equal((await searchAddresses('12 grunwaldzka wroclaw'))[0].title, 'Grunwaldzka 12');
+    // Wieś bez przystanków w rozkładzie spada pod miasto, nawet gdy user
+    // stoi w tej wsi (kara za dystans do przystanku, nie od usera).
+    // Dwa miejskie trafienia w remisie (bez GPS) rozstrzyga waga połączeń:
+    // Wrocław (5000 odjazdów w promieniu spacerowym) przed Krzykami (200),
+    // zamiast alfabetycznej kolejności miejscowości.
+    assert.deepEqual(
+      (await searchAddresses('Przykładowa 1')).map((hit) => hit.address),
+      ['Wrocław', 'Krzyki', 'Radomierzyce'],
+    );
+    assert.deepEqual(
+      (await searchAddresses('Przykładowa 1', 51.05, 17.05)).map((hit) => hit.address),
+      ['Wrocław', 'Krzyki', 'Radomierzyce'],
+    );
+    assert.equal((await searchAddresses('Przykładowa 1'))[0].stopM, 300);
     const exactStarted = performance.now();
     const results = await SearchService.search('Grunwaldzka 12', undefined, 'addresses');
     const exactElapsed = performance.now() - exactStarted;
@@ -107,6 +132,13 @@ async function main() {
     assert.ok(exactElapsed < 200, `dokładny adres bez czekania na fuzzy: ${exactElapsed} ms`);
     assert.ok(typoElapsed >= 200, `literówka czeka na pauzę w pisaniu: ${typoElapsed} ms`);
     assert.deepEqual(await SearchService.search('Grunwaldzka 13', undefined, 'addresses'), []);
+    // Finalny ranking (frecency) też musi trzymać karę za brak przystanku
+    // i tie-break po wadze połączeń.
+    const przykladowaService = await SearchService.search('Przykładowa 1', undefined, 'przykladowa');
+    assert.deepEqual(
+      przykladowaService.map((hit) => hit.address),
+      ['Wrocław', 'Krzyki', 'Radomierzyce'],
+    );
     assert.equal(remoteCalls, 0);
     assert.equal(addressReads, readsAfterLoad);
 

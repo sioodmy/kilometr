@@ -8,7 +8,7 @@ export const uk: ShareStrings = {
   departure: 'Відправлення',
   from: 'Звідки',
   to: 'Куди',
-  duration: (n) => `${n} хв`,
+  duration: (n) => (n >= 60 ? `${Math.floor(n / 60)} год${n % 60 > 0 ? ` ${n % 60} хв` : ''}` : `${n} хв`),
   transfers: (n) => {
     if (n === 0) return 'Без пересадок';
     const last = n % 10;
@@ -34,12 +34,12 @@ export const uk: ShareStrings = {
   cardLabel: (from, to, at) => `Поїздка з ${from} до ${to}, прибуття о ${at}`,
   imageAndLink: 'Поділитися карткою та посиланням',
   linkOnly: 'Поділитися посиланням',
-  sms: 'Надіслати SMS',
+  download: 'Завантажити картку',
   copy: 'Копіювати посилання',
   copied: 'Посилання скопійовано',
   preparing: 'Готуємо картку…',
   error: 'Не вдалося поділитися. Спробуй ще раз або скопіюй посилання.',
-  smsError: 'Не вдалося відкрити SMS. Скопіюй посилання та встав його в повідомлення.',
+  saveError: 'Не вдалося зберегти картку. Спробуй ще раз.',
   close: 'Закрити',
   message: (from, to, departure, arrival, lines) =>
     `Їду з ${from} до ${to}${lines ? ` (${lines})` : ''}. Відправлення ${departure}, прибуття о ${arrival}.`,

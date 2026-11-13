@@ -15,13 +15,13 @@ export type DelayUse = 'board' | 'arrive';
  * Prognozowane opóźnienie (sekundy) na przystanku, do którego pojazd ma
  * jeszcze `aheadSec` sekund jazdy według rozkładu. `aheadSec <= 0` znaczy,
  * że pojazd już tam był: zwracamy pomiar bez zmian.
- * Autobusy i trolejbusy zachowują dodatnie opóźnienie na całym kursie.
+ * Autobusy, trolejbusy i pociągi zachowują dodatnie opóźnienie na całym kursie.
  */
 export function predictDelaySec(measuredSec: number, aheadSec: number, use: DelayUse, mode?: LegMode): number {
   if (measuredSec === 0) return 0;
   const ahead = Math.max(0, aheadSec);
   if (measuredSec > 0) {
-    if (mode === 'bus' || mode === 'trolleybus') return measuredSec;
+    if (mode === 'bus' || mode === 'trolleybus' || mode === 'train') return measuredSec;
     const hl = use === 'board' ? BOARD_LATE_HALF_LIFE_SEC : ARRIVE_LATE_HALF_LIFE_SEC;
     return Math.round(measuredSec * Math.pow(0.5, ahead / hl));
   }

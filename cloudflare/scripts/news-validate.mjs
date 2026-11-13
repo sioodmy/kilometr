@@ -72,11 +72,21 @@ export function findUnknownNames(analysis, sourceText) {
     if (!source.includes(stem(value))) unknown.add(value);
   };
 
-  for (const stop of analysis.stops || []) checkStop(stop.name);
-  for (const line of analysis.impacted_lines || []) {
-    checkStop(line.direction);
-    for (const stop of line.omitted_stops || []) checkStop(stop);
-    for (const stop of line.temporary_stops || []) checkStop(stop);
+  for (const stop of analysis.stops || []) {
+    checkStop(stop.name);
+    checkStop(stop.replaced_by);
+  }
+  const checkLineChange = (lc) => {
+    checkStop(lc.direction);
+    for (const v of lc.via || []) checkStop(v);
+    for (const stop of lc.omitted_stops || []) checkStop(stop);
+    for (const stop of lc.temporary_stops || []) checkStop(stop);
+  };
+  for (const line of analysis.line_changes || []) checkLineChange(line);
+  // Kompatybilność ze starym polem: analyzed przed 2026-11 używały impacted_lines.
+  for (const line of analysis.impacted_lines || []) checkLineChange(line);
+  for (const t of analysis.temporary_lines || []) {
+    for (const v of t.via || []) checkStop(v);
   }
 
   return [...unknown];

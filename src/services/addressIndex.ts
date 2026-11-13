@@ -6,7 +6,7 @@ import {
 } from '../../modules/kilometr-raptor';
 import type { Suggestion } from '../types/models';
 import { getActiveCityIdSync } from './cityStore';
-import { getGtfsDb } from './gtfsDatabase';
+import { openGtfsDbHandle, type GtfsDbHandle } from './gtfsDatabase';
 
 interface AddressRow {
   rowid: number;
@@ -16,9 +16,25 @@ interface AddressRow {
   locality: string;
   lat: number;
   lon: number;
+  stop_m?: number | null;
+  stop_w?: number | null;
 }
 
-type Database = Awaited<ReturnType<typeof getGtfsDb>>;
+/** u32::MAX w Rust: brak kolumny stop_m (stara baza) → kara wyłączona. */
+const STOP_M_UNKNOWN = 4294967295;
+
+/** Opcjonalne kolumny adresów; stop_m/stop_w tylko w bazach z nowego buildu. */
+async function addressColumns(db: Database): Promise<{ stopCol: string; weightCol: string }> {
+  try {
+    const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(addresses)');
+    const has = (name: string) => cols.some((col) => col.name === name);
+    return { stopCol: has('stop_m') ? ', stop_m' : '', weightCol: has('stop_w') ? ', stop_w' : '' };
+  } catch {
+    return { stopCol: '', weightCol: '' };
+  }
+}
+
+type Database = GtfsDbHandle;
 let readyDb: Database | null = null;
 let readyCityId: string | null = null;
 let addressCount = 0;
@@ -37,7 +53,7 @@ function accepted(writer: BinaryWriter): boolean {
 /** Ładuje paczki do Rust raz po otwarciu bazy miasta, bez kopii katalogu w JS. */
 export async function warmupAddressIndex(): Promise<boolean> {
   const cityId = getActiveCityIdSync();
-  const db = await getGtfsDb();
+  const db = await openGtfsDbHandle();
   if (cityId !== getActiveCityIdSync()) return false;
   if (readyDb === db) return true;
   if (loading?.db === db) return loading.promise;
@@ -47,24 +63,36 @@ export async function warmupAddressIndex(): Promise<boolean> {
   const current = () => token === generation && cityId === getActiveCityIdSync();
   const promise = (async () => {
     if (!accepted(new BinaryWriter().u8Val(0))) return false;
+    const { stopCol, weightCol } = await addressColumns(db);
+    if (!current()) return false;
     let after = 0;
     let count = 0;
     while (current()) {
       const rows = await db.getAllAsync<AddressRow>(
-        'SELECT rowid, osm_id, street, house, locality, lat, lon FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000',
+        `SELECT rowid, osm_id, street, house, locality, lat, lon${stopCol}${weightCol} FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000`,
         after,
       );
-      if (!current() || db !== (await getGtfsDb()) || !current()) return false;
+      if (!current() || db !== (await openGtfsDbHandle()) || !current()) return false;
       if (!rows.length) break;
       const writer = new BinaryWriter(200_000).u8Val(1).u32(rows.length);
       for (const row of rows) {
+        const stopM =
+          stopCol && row.stop_m != null && Number.isFinite(row.stop_m)
+            ? Math.max(0, Math.min(65_535, Math.round(row.stop_m)))
+            : STOP_M_UNKNOWN;
+        const stopW =
+          weightCol && row.stop_w != null && Number.isFinite(row.stop_w)
+            ? Math.max(0, Math.min(4294967295, Math.round(row.stop_w)))
+            : 0;
         writer
           .str(row.osm_id)
           .str(row.street)
           .str(row.house)
           .str(row.locality)
           .f64(row.lat)
-          .f64(row.lon);
+          .f64(row.lon)
+          .u32(stopM)
+          .u32(stopW);
       }
       if (!accepted(writer)) return false;
       after = rows[rows.length - 1].rowid;
@@ -112,14 +140,18 @@ export async function searchAddresses(
     const id = reader.str();
     const title = reader.str();
     const locality = reader.str();
+    const lat = reader.f64();
+    const lon = reader.f64();
+    const stopM = reader.u32();
     suggestions.push({
       id: `osm-${id}`,
       title,
       address: locality,
       aliases: locality ? [`${title} ${locality}`] : undefined,
       kind: 'address',
-      lat: reader.f64(),
-      lon: reader.f64(),
+      lat,
+      lon,
+      stopM: stopM === STOP_M_UNKNOWN ? undefined : stopM,
     });
   }
   return suggestions;

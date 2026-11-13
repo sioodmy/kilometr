@@ -21,6 +21,335 @@ function prepInCity(cityLoc: string): string {
   return startsWithV ? `у ${cityLoc}` : `в ${cityLoc}`;
 }
 
+function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 хв";
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h} год ${m} хв` : `${h} год`;
+  }
+  return `${rounded} хв`;
+}
+
+// Рядки для міст як рекорди (та сама структура, що pl.ts). Українські
+// відмінки як у попередньому ланцюжку; без ключа = Вроцлав.
+const CITY_NAME_UK: Record<string, string> = {
+  wroclaw: 'Вроцлав',
+  krakow: 'Краків',
+  gzm: 'GZM',
+  warszawa: 'Варшава',
+  poznan: 'Познань',
+  trojmiasto: 'Труймясто',
+  lodz: 'Лодзь',
+  szczecin: 'Щецин',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштин',
+  bialystok: 'Білосток',
+  opole: 'Ополе',
+  rzeszow: 'Ряшів',
+  lublin: 'Люблін',
+  radom: 'Радом',
+  bydgoszcz: 'Бидгощ',
+  torun: 'Торунь',
+  elblag: 'Ельблонг',
+  gorzow: 'Ґожув Великопольський',
+  czestochowa: 'Ченстохова',
+  zielonagora: 'Зелена Гура',
+  rybnik: 'Рибник',
+  slupsk: 'Слупськ',
+  walbrzych: 'Валбжих',
+  kalisz: 'Каліш',
+  siedlce: 'Седльце',
+  lomza: 'Ломжа',
+  krosno: 'Кросно',
+  jaslo: 'Ясло',
+  olkusz: 'Олькуш',
+  chrzanow: 'Хшанув',
+  bochnia: 'Бохня',
+  ilawa: 'Ілава',
+};
+const CITY_GEN_UK: Record<string, string> = {
+  wroclaw: 'Вроцлава',
+  krakow: 'Кракова',
+  gzm: 'GZM',
+  warszawa: 'Варшави',
+  poznan: 'Познані',
+  trojmiasto: 'Труймяста',
+  lodz: 'Лодзі',
+  szczecin: 'Щецина',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштина',
+  bialystok: 'Білостока',
+  opole: 'Ополя',
+  rzeszow: 'Ряшева',
+  lublin: 'Любліна',
+  radom: 'Радома',
+  bydgoszcz: 'Бидгоща',
+  torun: 'Торуня',
+  elblag: 'Ельблонга',
+  gorzow: 'Ґожува Великопольського',
+  czestochowa: 'Ченстохови',
+  zielonagora: 'Зеленої Гури',
+  rybnik: 'Рибника',
+  slupsk: 'Слупська',
+  walbrzych: 'Валбжиха',
+  kalisz: 'Каліша',
+  siedlce: 'Седльце',
+  lomza: 'Ломжі',
+  krosno: 'Кросна',
+  jaslo: 'Ясла',
+  olkusz: 'Олькуша',
+  chrzanow: 'Хшанува',
+  bochnia: 'Бохні',
+  ilawa: 'Ілави',
+};
+const CITY_LOC_UK: Record<string, string> = {
+  wroclaw: 'Вроцлаві',
+  krakow: 'Кракові',
+  gzm: 'GZM',
+  warszawa: 'Варшаві',
+  poznan: 'Познані',
+  trojmiasto: 'Труймясті',
+  lodz: 'Лодзі',
+  szczecin: 'Щецині',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштині',
+  bialystok: 'Білостоці',
+  opole: 'Ополі',
+  rzeszow: 'Ряшеві',
+  lublin: 'Любліні',
+  radom: 'Радомі',
+  bydgoszcz: 'Бидгощі',
+  torun: 'Торуні',
+  elblag: 'Ельблонзі',
+  gorzow: 'Ґожуві Великопольському',
+  czestochowa: 'Ченстохові',
+  zielonagora: 'Зеленій Гурі',
+  rybnik: 'Рибнику',
+  slupsk: 'Слупську',
+  walbrzych: 'Валбжиху',
+  kalisz: 'Каліші',
+  siedlce: 'Седльцях',
+  lomza: 'Ломжі',
+  krosno: 'Кросні',
+  jaslo: 'Яслі',
+  olkusz: 'Олькуші',
+  chrzanow: 'Хшануві',
+  bochnia: 'Бохні',
+  ilawa: 'Ілаві',
+};
+const CITY_ACC_UK: Record<string, string> = {
+  wroclaw: 'Вроцлав',
+  krakow: 'Краків',
+  gzm: 'GZM',
+  warszawa: 'Варшаву',
+  poznan: 'Познань',
+  trojmiasto: 'Труймясто',
+  lodz: 'Лодзь',
+  szczecin: 'Щецин',
+  kielce: 'Кельце',
+  olsztyn: 'Ольштин',
+  bialystok: 'Білосток',
+  opole: 'Ополе',
+  rzeszow: 'Ряшів',
+  lublin: 'Люблін',
+  radom: 'Радом',
+  bydgoszcz: 'Бидгощ',
+  torun: 'Торунь',
+  elblag: 'Ельблонг',
+  gorzow: 'Ґожув Великопольський',
+  czestochowa: 'Ченстохову',
+  zielonagora: 'Зелену Гуру',
+  rybnik: 'Рибник',
+  slupsk: 'Слупськ',
+  walbrzych: 'Валбжих',
+  kalisz: 'Каліш',
+  siedlce: 'Седльце',
+  lomza: 'Ломжу',
+  krosno: 'Кросно',
+  jaslo: 'Ясло',
+  olkusz: 'Олькуш',
+  chrzanow: 'Хшанув',
+  bochnia: 'Бохню',
+  ilawa: 'Ілаву',
+};
+const CITY_FEEDS_UK: Record<string, string> = {
+  wroclaw: 'MPK і Koleje Dolnośląskie',
+  krakow: 'ZTP і Koleje Małopolskie',
+  gzm: 'ZTM, Koleje Śląskie, POLREGIO і PKP Intercity',
+  warszawa: 'WTP, SKA, Koleje Mazowieckie і WKD',
+  poznan: 'ZTM і Koleje Wielkopolskie',
+  trojmiasto: 'ZTM Gdańsk, ZKM Gdynia і SKM',
+  lodz: 'MPK і Лодзька агломераційна залізниця',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Кельце',
+  olsztyn: 'ZDZiT Ольштин',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Ополе',
+  rzeszow: 'ZTM Ряшів',
+  lublin: 'ZDiTM Люблін',
+  radom: 'MZDiK Радом',
+  bydgoszcz: 'ZDMiKP Бидгощ',
+  torun: 'MZK Торунь',
+  elblag: 'ZKM Ельблонг',
+  gorzow: 'MZK Ґожув',
+  czestochowa: 'MPK Ченстохова',
+  zielonagora: 'MZK Зелена Гура',
+  rybnik: 'KM Рибник',
+  slupsk: 'ZIM Слупськ',
+  walbrzych: 'MZUK Валбжих',
+  kalisz: 'KLA, PKS Каліш і перевізники агломерації',
+  siedlce: 'MPK Седльце',
+  lomza: 'MPK Ломжа',
+  krosno: 'MKS Кросно',
+  jaslo: 'MKS Ясло',
+  olkusz: 'ZKGKM Олькуш',
+  chrzanow: 'ZKKM Хшанув',
+  bochnia: 'RPK Бохня',
+  ilawa: 'ZKM Ілава',
+};
+const CITY_NEWS_UK: Record<string, string> = {
+  wroclaw: 'MPK Вроцлав • wroclaw.pl',
+  krakow: 'ZTP Краків',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Варшава',
+  poznan: 'ZTM Познань',
+  trojmiasto: 'ZTM Ґданськ',
+  lodz: 'MPK Лодзь',
+  szczecin: 'ZDiTM Щецин',
+  kielce: 'ZTM Кельце',
+  olsztyn: 'ZDZiT Ольштин',
+  bialystok: 'BKM Білосток',
+  opole: 'MZK Ополе',
+  rzeszow: 'ZTM Ряшів',
+  lublin: 'ZDiTM Люблін',
+  radom: 'MZDiK Радом',
+  bydgoszcz: 'ZDMiKP Бидгощ',
+  torun: 'MZK Торунь',
+  elblag: 'ZKM Ельблонг',
+  gorzow: 'MZK Ґожув',
+  czestochowa: 'MPK Ченстохова',
+  zielonagora: 'MZK Зелена Гура',
+  rybnik: 'KM Рибник',
+  slupsk: 'ZIM Слупськ',
+  walbrzych: 'MZUK Валбжих',
+  kalisz: 'KLA Каліш',
+  siedlce: 'MPK Седльце',
+  lomza: 'MPK Ломжа',
+  krosno: 'MKS Кросно',
+  jaslo: 'MKS Ясло',
+  olkusz: 'ZKGKM Олькуш',
+  chrzanow: 'ZKKM Хшанув',
+  bochnia: 'RPK Бохня',
+  ilawa: 'ZKM Ілава',
+};
+const CITY_OPERATOR_UK: Record<string, string> = {
+  wroclaw: 'MPK Вроцлав',
+  krakow: 'ZTP Краків',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Варшава',
+  poznan: 'ZTM Познань',
+  trojmiasto: 'ZTM Ґданськ',
+  lodz: 'MPK Лодзь',
+  szczecin: 'ZDiTM Щецин',
+  kielce: 'ZTM Кельце',
+  olsztyn: 'ZDZiT Ольштин',
+  bialystok: 'BKM Білосток',
+  opole: 'MZK Ополе',
+  rzeszow: 'ZTM Ряшів',
+  lublin: 'ZDiTM Люблін',
+  radom: 'MZDiK Радом',
+  bydgoszcz: 'ZDMiKP Бидгощ',
+  torun: 'MZK Торунь',
+  elblag: 'ZKM Ельблонг',
+  gorzow: 'MZK Ґожув',
+  czestochowa: 'MPK Ченстохова',
+  zielonagora: 'MZK Зелена Гура',
+  rybnik: 'KM Рибник',
+  slupsk: 'ZIM Слупськ',
+  walbrzych: 'MZUK Валбжих',
+  kalisz: 'KLA Каліш',
+  siedlce: 'MPK Седльце',
+  lomza: 'MPK Ломжа',
+  krosno: 'MKS Кросно',
+  jaslo: 'MKS Ясло',
+  olkusz: 'ZKGKM Олькуш',
+  chrzanow: 'ZKKM Хшанув',
+  bochnia: 'RPK Бохня',
+  ilawa: 'ZKM Ілава',
+};
+const CITY_OPERATOR_SHORT_UK: Record<string, string> = {
+  wroclaw: 'MPK',
+  krakow: 'ZTP',
+  gzm: 'ZTM',
+  warszawa: 'WTP',
+  poznan: 'ZTM',
+  trojmiasto: 'ZTM / ZKM',
+  lodz: 'MPK',
+  szczecin: 'ZDiTM',
+  kielce: 'ZTM',
+  olsztyn: 'ZDZiT',
+  bialystok: 'BKM',
+  opole: 'MZK',
+  rzeszow: 'ZTM',
+  lublin: 'ZDiTM',
+  radom: 'MZDiK',
+  bydgoszcz: 'ZDMiKP',
+  torun: 'MZK',
+  elblag: 'ZKM',
+  gorzow: 'MZK',
+  czestochowa: 'MPK',
+  zielonagora: 'MZK',
+  rybnik: 'KM',
+  slupsk: 'ZIM',
+  walbrzych: 'MZUK',
+  kalisz: 'KLA',
+  siedlce: 'MPK',
+  lomza: 'MPK',
+  krosno: 'MKS',
+  jaslo: 'MKS',
+  olkusz: 'ZKGKM',
+  chrzanow: 'ZKKM',
+  bochnia: 'RPK',
+  ilawa: 'ZKM',
+};
+const CITY_PORTAL_UK: Record<string, string> = {
+  wroclaw: 'wroclaw.pl',
+  krakow: 'ztp.krakow.pl',
+  gzm: 'metropoliaztm.pl',
+  warszawa: 'wtp.waw.pl',
+  poznan: 'ztm.poznan.pl',
+  trojmiasto: 'ztm.gda.pl',
+  lodz: 'mpk.lodz.pl',
+  szczecin: 'zditm.szczecin.pl',
+  kielce: 'ztm.kielce.pl',
+  olsztyn: 'zdzit.olsztyn.eu',
+  bialystok: 'komunikacja.bialystok.pl',
+  opole: 'mzkopole.pl',
+  rzeszow: 'ztm.erzeszow.pl',
+  lublin: 'zdtm.lublin.eu',
+  radom: 'mzdik.pl',
+  bydgoszcz: 'zdmikp.bydgoszcz.pl',
+  torun: 'mzk-torun.pl',
+  elblag: 'zkm.elblag.com.pl',
+  gorzow: 'mzk-gorzow.com.pl',
+  czestochowa: 'mpk.czest.pl',
+  zielonagora: 'mzk.zgora.pl',
+  rybnik: 'km.rybnik.pl',
+  slupsk: 'zimslupsk.com',
+  walbrzych: 'mzuk.com.pl',
+  kalisz: 'gtfs.kasznia.net',
+  siedlce: 'mpk.siedlce.pl',
+  lomza: 'mpklomza.pl',
+  krosno: 'mks-krosno.pl',
+  jaslo: 'e-podroznik.pl',
+  olkusz: 'zkgkm-olkusz.pl',
+  chrzanow: 'zkkm.pl',
+  bochnia: 'rpk-bochnia.pl',
+  ilawa: 'zkm.ilawa.pl',
+};
+
 export const uk: Strings = {
   landing,
   share,
@@ -66,6 +395,11 @@ export const uk: Strings = {
     changedBody: (line: string, stop: string) => `Пересядьте на ${line} на зупинці ${stop}.`,
     noAlternative:
       'Доступної альтернативи не знайдено. Поточна пересадка може не вдатися. Перевіримо ще раз.',
+    conductorTitle: 'Запізнення на потяг',
+    conductorBody: 'Повідомте бригаду провідників про намір пересісти',
+    nextTrainLabel: 'Наступний потяг',
+    nextTrainAt: (time: string) => `відправляється о ${time}`,
+
     unavailable: 'Не можемо оцінити пересадку',
     unavailableBody:
       'Очікуємо точне місцеположення на маршруті. Поточний план залишається видимим.',
@@ -116,7 +450,7 @@ export const uk: Strings = {
     now: 'Зараз',
     today: 'Сьогодні',
     tomorrow: 'Завтра',
-    durMin: (n: number) => `${n} хв`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `за ${n} хв`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
@@ -146,36 +480,38 @@ export const uk: Strings = {
     savedTitle: 'Збережені місця',
     editSavedA11y: 'Редагувати збережені місця',
     editCard: 'Редагувати',
+    tabRecent: 'Останні сполучення',
+    tabSaved: 'Твої маршрути',
     historyTitle: 'Останні місця',
     historyEmptyTitle: 'Немає останніх місць',
     historyEmptyBody: 'Знайди сполучення, і воно з’явиться тут як швидка ціль.',
+    savedRoutesEmptyTitle: 'Немає збережених маршрутів',
+    savedRoutesEmptyBody:
+      'Почни стежити за сполученням або додай залізничний квиток, і він з’явиться тут.',
+    routeActive: 'У дорозі',
+    ticketAttachedA11y: 'Залізничний квиток збережено',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Закріплена поїздка до ${title}${time ? `, ${time}` : ''}. Торкніться, щоб відкрити.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Потяг до ${title}, відправлення ${time}. Торкніться, щоб відкрити.`,
+    removeRouteA11y: (title: string) => `Видалити сполучення до ${title} з твоїх маршрутів`,
+    pinRouteA11y: (title: string) => `Закріпити сполучення до ${title} у твоїх маршрутах`,
+    unpinRouteA11y: (title: string) => `Відкріпити сполучення до ${title} з твоїх маршрутів`,
     openConnA11y: (title: string, label: string) => `Відкрити сполучення до ${title}, ${label}`,
     gpsTitle: 'Моя локація (GPS)',
     locationFallback: 'Твоя локація',
     gpsAddressHome: 'Поточна позиція пристрою',
-    importingTitle: (gen: string) => `Завантаження розкладу ${gen}…`,
     importErrorTitle: 'Помилка завантаження розкладу',
     importErrorRetry: 'Натисни, щоб спробувати знову.',
-    timetableUpdateTitle: 'Є новіша версія розкладу',
-    timetableUpdateBody: 'Завантаж її, щоб планер мав актуальні маршрути й час.',
-    timetableUpdateA11y: 'Завантажити новішу версію розкладу',
+    updatingTimetable: 'Оновлюю розклад',
     saveFailTitle: 'Немає з’єднання з базою',
     saveFailBody: 'Не вдалося зберегти місце. Спробуй знову.',
     searchPlaceholderTo: 'Куди їдеш?',
     searchPlaceholderFrom: 'Звідки вирушаєш?',
-    unsupportedTitle: 'Місто не підтримується',
-    unsupportedTitleOther: 'Інше місто в застосунку',
-    unsupportedBody: (city: string, supported: string) =>
-      `Твоя GPS-локація вказує на ${city}. Наразі обслуговуємо лише: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Ти ${prepInCity(city)}, а застосунок налаштовано на ${active}. Зміни місто в налаштуваннях.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Твоя GPS-локація поза зоною обслуговування. Наразі обслуговуємо лише: ${supported}.`,
     unsupportedAction: 'Вибрати початок',
-    unsupportedActionShort: 'Вибрати старт',
-    unsupportedSwitchCity: (city: string) => `Перейти на ${city}`,
-    unsupportedSwitchCityA11y: (city: string) => `Змінити місто на ${city}`,
     pickStart: 'Вибери початок',
+    outsideAreaShort: 'Ти поза підтримуваною територією',
+    downloadCityTimetableA11y: (gen: string) => `Завантажити розклад ${gen}`,
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
       `Ти поза зоною ${supported} (${city}), тож маршрути з GPS не працюватимуть. Вибери початок вручну.`,
@@ -186,282 +522,25 @@ export const uk: Strings = {
     section: 'Місто',
     settingsHint:
       'Розклад, мапа офлайн і новини йдуть за містом. Дані іншого міста залишаються на телефоні.',
-    name: (id: string): string =>
-      id === 'krakow'
-        ? 'Краків'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Варшава'
-            : id === 'poznan'
-              ? 'Познань'
-              : id === 'trojmiasto'
-                ? 'Труймясто'
-                : id === 'lodz'
-                  ? 'Лодзь'
-                  : id === 'szczecin'
-                    ? 'Щецин'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштин'
-                        : id === 'bialystok'
-                          ? 'Білосток'
-                          : id === 'opole'
-                            ? 'Ополе'
-                            : id === 'rzeszow'
-                              ? 'Ряшів'
-                              : id === 'lublin'
-                                ? 'Люблін'
-                                : id === 'radom'
-                                  ? 'Радом'
-                                  : 'Вроцлав',
-    gen: (id: string): string =>
-      id === 'krakow'
-        ? 'Кракова'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Варшави'
-            : id === 'poznan'
-              ? 'Познані'
-              : id === 'trojmiasto'
-                ? 'Труймяста'
-                : id === 'lodz'
-                  ? 'Лодзі'
-                  : id === 'szczecin'
-                    ? 'Щецина'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштина'
-                        : id === 'bialystok'
-                          ? 'Білостока'
-                          : id === 'opole'
-                            ? 'Ополя'
-                            : id === 'rzeszow'
-                              ? 'Ряшева'
-                              : id === 'lublin'
-                                ? 'Любліна'
-                                : id === 'radom'
-                                  ? 'Радома'
-                                  : 'Вроцлава',
-    loc: (id: string): string =>
-      id === 'krakow'
-        ? 'Кракові'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Варшаві'
-            : id === 'poznan'
-              ? 'Познані'
-              : id === 'trojmiasto'
-                ? 'Труймясті'
-                : id === 'lodz'
-                  ? 'Лодзі'
-                  : id === 'szczecin'
-                    ? 'Щецині'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштині'
-                        : id === 'bialystok'
-                          ? 'Білостоці'
-                          : id === 'opole'
-                            ? 'Ополі'
-                            : id === 'rzeszow'
-                              ? 'Ряшеві'
-                              : id === 'lublin'
-                                ? 'Любліні'
-                                : id === 'radom'
-                                  ? 'Радомі'
-                                  : 'Вроцлаві',
-    acc: (id: string): string =>
-      id === 'warszawa'
-        ? 'Варшаву'
-        : id === 'krakow'
-          ? 'Краків'
-          : id === 'gzm'
-            ? 'GZM'
-            : id === 'poznan'
-              ? 'Познань'
-              : id === 'trojmiasto'
-                ? 'Труймясто'
-                : id === 'lodz'
-                  ? 'Лодзь'
-                  : id === 'szczecin'
-                    ? 'Щецин'
-                    : id === 'kielce'
-                      ? 'Кельце'
-                      : id === 'olsztyn'
-                        ? 'Ольштин'
-                        : id === 'bialystok'
-                          ? 'Білосток'
-                          : id === 'opole'
-                            ? 'Ополе'
-                            : id === 'rzeszow'
-                              ? 'Ряшів'
-                              : id === 'lublin'
-                                ? 'Люблін'
-                                : id === 'radom'
-                                  ? 'Радом'
-                                  : 'Вроцлав',
-    feeds: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP і Koleje Małopolskie'
-        : id === 'gzm'
-          ? 'ZTM, Koleje Śląskie, POLREGIO і PKP Intercity'
-          : id === 'warszawa'
-            ? 'WTP, SKA, Koleje Mazowieckie і WKD'
-            : id === 'poznan'
-              ? 'ZTM і Koleje Wielkopolskie'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk, ZKM Gdynia і SKM'
-                : id === 'lodz'
-                  ? 'MPK і Лодзька агломераційна залізниця'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Кельце'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Ольштин'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Ополе'
-                            : id === 'rzeszow'
-                              ? 'ZTM Ряшів'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK і Koleje Dolnośląskie',
-    newsSources: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Краків'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Варшава'
-            : id === 'poznan'
-              ? 'ZTM Познань'
-              : id === 'trojmiasto'
-                ? 'ZTM Ґданськ'
-                : id === 'lodz'
-                  ? 'MPK Лодзь'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Щецин'
-                    : id === 'kielce'
-                      ? 'ZTM Кельце'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Ольштин'
-                        : id === 'bialystok'
-                          ? 'BKM Білосток'
-                          : id === 'opole'
-                            ? 'MZK Ополе'
-                            : id === 'rzeszow'
-                              ? 'ZTM Ряшів'
-                              : id === 'lublin'
-                                ? 'ZDiTM Люблін'
-                                : id === 'radom'
-                                  ? 'MZDiK Радом'
-                                  : 'MPK Вроцлав • wroclaw.pl',
-    operator: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Краків'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Варшава'
-            : id === 'poznan'
-              ? 'ZTM Познань'
-              : id === 'trojmiasto'
-                ? 'ZTM Ґданськ'
-                : id === 'lodz'
-                  ? 'MPK Лодзь'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Щецин'
-                    : id === 'kielce'
-                      ? 'ZTM Кельце'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Ольштин'
-                        : id === 'bialystok'
-                          ? 'BKM Білосток'
-                          : id === 'opole'
-                            ? 'MZK Ополе'
-                            : id === 'rzeszow'
-                              ? 'ZTM Ряшів'
-                              : id === 'lublin'
-                                ? 'ZDiTM Люблін'
-                                : id === 'radom'
-                                  ? 'MZDiK Радом'
-                                  : 'MPK Вроцлав',
+    name: (id: string): string => CITY_NAME_UK[id] ?? CITY_NAME_UK.wroclaw,
+    gen: (id: string): string => CITY_GEN_UK[id] ?? CITY_GEN_UK.wroclaw,
+    loc: (id: string): string => CITY_LOC_UK[id] ?? CITY_LOC_UK.wroclaw,
+    acc: (id: string): string => CITY_ACC_UK[id] ?? CITY_ACC_UK.wroclaw,
+    feeds: (id: string): string => CITY_FEEDS_UK[id] ?? CITY_FEEDS_UK.wroclaw,
+    newsSources: (id: string): string => CITY_NEWS_UK[id] ?? CITY_NEWS_UK.wroclaw,
+    operator: (id: string): string => CITY_OPERATOR_UK[id] ?? CITY_OPERATOR_UK.wroclaw,
     operatorShort: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP'
-        : id === 'gzm'
-          ? 'ZTM'
-          : id === 'warszawa'
-            ? 'WTP'
-            : id === 'poznan'
-              ? 'ZTM'
-              : id === 'trojmiasto'
-                ? 'ZTM / ZKM'
-                : id === 'szczecin'
-                  ? 'ZDiTM'
-                  : id === 'kielce'
-                    ? 'ZTM'
-                    : id === 'olsztyn'
-                      ? 'ZDZiT'
-                      : id === 'bialystok'
-                        ? 'BKM'
-                        : id === 'opole'
-                          ? 'MZK'
-                          : id === 'rzeszow'
-                            ? 'ZTM'
-                            : id === 'lublin'
-                              ? 'ZDiTM'
-                              : id === 'radom'
-                                ? 'MZDiK'
-                                : 'MPK',
-    portal: (id: string): string =>
-      id === 'krakow'
-        ? 'ztp.krakow.pl'
-        : id === 'gzm'
-          ? 'metropoliaztm.pl'
-          : id === 'warszawa'
-            ? 'wtp.waw.pl'
-            : id === 'poznan'
-              ? 'ztm.poznan.pl'
-              : id === 'trojmiasto'
-                ? 'ztm.gda.pl'
-                : id === 'lodz'
-                  ? 'mpk.lodz.pl'
-                  : id === 'szczecin'
-                    ? 'zditm.szczecin.pl'
-                    : id === 'kielce'
-                      ? 'ztm.kielce.pl'
-                      : id === 'olsztyn'
-                        ? 'zdzit.olsztyn.eu'
-                        : id === 'bialystok'
-                          ? 'komunikacja.bialystok.pl'
-                          : id === 'opole'
-                            ? 'mzkopole.pl'
-                            : id === 'rzeszow'
-                              ? 'ztm.erzeszow.pl'
-                              : id === 'lublin'
-                                ? 'zdtm.lublin.eu'
-                                : id === 'radom'
-                                  ? 'mzdik.pl'
-                                  : 'wroclaw.pl',
+      CITY_OPERATOR_SHORT_UK[id] ?? CITY_OPERATOR_SHORT_UK.wroclaw,
+    portal: (id: string): string => CITY_PORTAL_UK[id] ?? CITY_PORTAL_UK.wroclaw,
     supportedList:
-      'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Lublin',
+      'Вроцлав, Краків, GZM, Варшава, Познань, Труймясто, Лодзь, Щецин, Кельце, Ольштин, Білосток, Ополе, Ряшів, Люблін, Радом, Бидгощ, Торунь, Ельблонг, Ґожув Великопольський, Ченстохова, Зелена Гура, Рибник, Слупськ, Валбжих, Каліш, Седльце, Ломжа, Кросно, Ясло, Олькуш, Хшанув, Бохня, Ілава',
     changed: (name: string) => `Перемкнуто на: ${name}.`,
     switching: 'Перемикаю місто…',
     blockedByDownload: 'Триває завантаження розкладу. Місто можна змінити після цього.',
     needDownload:
       'Для цього міста ще немає розкладу на телефоні. Завантаж його в розділі «Розклад і карти».',
     changeAction: 'Змінити',
+    downloadAction: 'Завантажити розклад',
     selectTitle: 'Оберіть місто',
     selectSub: 'Оберіть агломерацію для планування поїздок.',
     searchPlaceholder: 'Місто або перевізник',
@@ -591,6 +670,19 @@ export const uk: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. Застосунок бере готову базу із сервера Kilometr або класично з відкритих даних міста.`,
     downloadFailFallback: 'Спробуй за мить.',
+    railTitle: 'Залізничний розклад (Польща)',
+    railHint:
+      'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
+    railReady: (date: string) => `Завантажено (дійсний до ${date})`,
+    railEmpty: 'Не завантажено',
+    railDownload: 'Завантажити',
+    railCheck: 'Перевірити оновлення',
+    railDelete: 'Видалити з телефона',
+    railDeleteTitle: 'Видалити залізничний розклад?',
+    railDeleteBody: 'Планування подорожей між містами перестане працювати офлайн.',
+    railDeleteConfirm: 'Видалити',
+    railCancel: 'Скасувати',
+
     downloadDone: 'Розклад оновлено.',
     downloadUpToDate: 'Розклад уже актуальний.',
     downloadKeptLocal: 'Не вдалося завантажити нову версію. Залишаємо ту, що вже є на телефоні.',
@@ -600,7 +692,7 @@ export const uk: Strings = {
         : `Розклад нещодавно завантажували. Наступне повне завантаження буде доступне через ${hours} год.`,
     diagTitle: 'Діагностика даних',
     diagHint:
-      'Перевіряє базу розкладу на телефоні. Скопіюй результат, коли повідомляєш про проблему.',
+      'Перевіряє розклад, залізницю, офлайн-мапу і джерела live. Скопіюй результат, коли повідомляєш про проблему.',
     diagRun: 'Перевірити дані',
     diagRerun: 'Перевірити ще раз',
     diagRunning: 'Перевіряю…',
@@ -641,10 +733,28 @@ export const uk: Strings = {
           : `Розклад спливе за ${days} днів`,
     diagCalendarServices: (n: number) => `Активних сервісів сьогодні: ${n}`,
     diagSearch: 'Пошук',
-    diagSearchOk: (weighted: number, pois: number) =>
-      `Рейтинг готовий (${weighted} зупинок) • POI: ${pois}`,
+    diagSearchOk: (weighted: number, pois: number, addresses: number) =>
+      `Рейтинг готовий (${isOne(weighted) ? `${weighted} зупинка` : isFew(weighted) ? `${weighted} зупинки` : `${weighted} зупинок`}) • POI: ${pois} • Адреси: ${addresses}`,
     diagSearchWeights: 'Рейтинг підказок не пораховано',
-    diagSearchPois: 'Немає точок POI. Адреси потребують інтернету.',
+    diagSearchPois: 'Немає точок POI',
+    diagSearchNoAddresses: 'Немає індексу адрес. Пошук адрес потребує інтернету.',
+    diagRail: 'Загальнопольська залізниця',
+    diagRailNone: 'Не завантажено (поїздки між містами потребують інтернету)',
+    diagRailLine: (version: string, to: string | null) =>
+      to ? `Версія ${version}, розклад до ${to}` : `Версія ${version}`,
+    diagRailOutside: 'Розклад залізниці сплив',
+    diagRailExpiring: (days: number) =>
+      days <= 1 ? 'Розклад залізниці спливає завтра' : `Розклад залізниці спливає за ${days} днів`,
+    diagMap: 'Офлайн-мапа',
+    diagMapNone: 'Не завантажено (мапа потребує інтернету)',
+    diagMapReady: (mb: string) => `Пакет тайлів готовий: ${mb} МБ`,
+    diagMapInvalid: 'Пакет тайлів пошкоджено. Завантажте мапу ще раз.',
+    diagLive: 'Джерела live',
+    diagLiveNone: 'Немає вимірювань у цій сесії',
+    diagLiveOkLine: (source: string, at: string) => `${source}: OK (${at})`,
+    diagLiveRecoveredLine: (source: string, at: string) => `${source}: знову працює (${at})`,
+    diagLiveErrLine: (source: string, error: string) => `${source}: помилка, ${error}`,
+    diagLiveNoAnswer: (source: string) => `${source}: немає відповіді`,
     diagCopy: 'Скопіювати звіт',
     diagCopyA11y: 'Скопіювати звіт діагностики в буфер обміну',
     diagCopied: 'Звіт скопійовано в буфер обміну',
@@ -654,7 +764,15 @@ export const uk: Strings = {
     diagReportCity: 'Місто',
     diagReportTimetable: 'Розклад',
     diagReportImported: 'Завантажено',
+    diagReportLastCheck: 'Перевірка',
+    diagReportRemote: 'Доступна',
+    diagReportFeeds: 'Фіди',
     diagReportDb: 'База',
+    diagReportRail: 'Залізниця',
+    diagReportMap: 'Мапа',
+    diagReportLive: 'Live',
+    diagReportNotDownloaded: 'не завантажено',
+    diagReportMapInvalid: 'пошкоджена',
     diagReportUnknown: 'невідомо',
     transfersTitle: 'Макс. пересадок',
     transfersHintShort: 'Верхня межа в одному маршруті.',
@@ -871,14 +989,25 @@ export const uk: Strings = {
     noConnection: 'Немає з’єднання',
     emptyTitle: 'Немає повідомлень',
     emptyBody: (name: string) => {
-      const verb =
-        name === 'Варшава' || name === 'Лодзь'
-          ? 'опублікувала'
-          : name === 'Труймясто'
-            ? 'опублікувало'
-            : name === 'Кельце'
-              ? 'опублікували'
-              : 'опублікував';
+      // Рід: жіночий (Варшава, Лодзь, Ченстохова, Зелена Гура, Ломжа, Бохня,
+      // Ілава), середній (Труймясто, Кросно, Ясло, Седльце) та множина (Кельце).
+      const feminine = [
+        'Варшава',
+        'Лодзь',
+        'Ченстохова',
+        'Зелена Гура',
+        'Ломжа',
+        'Бохня',
+        'Ілава',
+      ].includes(name);
+      const neuter = ['Труймясто', 'Кросно', 'Ясло', 'Седльце'].includes(name);
+      const verb = feminine
+        ? 'опублікувала'
+        : neuter
+          ? 'опублікувало'
+          : name === 'Кельце'
+            ? 'опублікували'
+            : 'опублікував';
       return `${name} зараз не ${verb} жодних ускладнень. Потягни вниз, щоб перевірити знову.`;
     },
     sectionChanges: 'Зміни на лініях',
@@ -904,6 +1033,10 @@ export const uk: Strings = {
     urgentChip: 'Ускладнення',
     plannedChip: 'Зміна маршруту',
     omittedStopsPrefix: 'Пропускає:',
+    lineSuspended: (line: string) => `Лінію ${line} призупинено`,
+    lineDetour: (line: string) => `Об'їзд лінії ${line}`,
+    specialLine: (line: string) => `Спеціальна лінія ${line}`,
+    everyNMin: (n: number) => `кожні ${n} хв`,
   },
   newsSvc: {
     justNow: 'щойно',
@@ -1072,12 +1205,12 @@ export const uk: Strings = {
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
-    gpsOutsideNotice: 'GPS поза містом, вибери точку вручну.',
   },
   places: {
     editAction: 'Редагувати',
     editA11y: (name: string) => `Редагувати місце: ${name}`,
     removeA11y: (name: string) => `Видалити місце: ${name}`,
+    reorderA11y: (name: string) => `Змінити порядок місця: ${name}`,
     clearAnchorA11y: 'Видалити призначену зупинку',
     manageTitle: 'Збережені місця',
     manageSub: 'Керуй своїми швидкими цілями',
@@ -1193,7 +1326,7 @@ export const uk: Strings = {
     dayTomorrow: 'Завтра',
     hourLabel: 'година',
     minuteLabel: 'хвилина',
-    pastWarning: 'Обраний час вже минув',
+    pastWarning: 'Обраний час вже минув. Пошук іде від нього, результати можуть бути неактуальними.',
     switchTomorrow: 'Перемкнути на завтра',
   },
   routesBar: {
@@ -1205,7 +1338,7 @@ export const uk: Strings = {
     arrivalShort: (time: string) => `до ${time}`,
   },
   routesFilters: {
-    title: "Фільтри",
+    title: 'Фільтри',
     filterButton: 'Фільтри',
     filterA11y: 'Фільтри маршрутів',
     vehiclesSection: 'Транспорт',
@@ -1244,7 +1377,7 @@ export const uk: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, час їзди ${dur} хв, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
+      `${dep}, час їзди ${formatDuration(dur)}, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
   },
   vehiclePos: {
@@ -1264,6 +1397,8 @@ export const uk: Strings = {
     noData: 'Немає даних про маршрут',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список зупинок.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} напрямок ${dir}. ${expanded ? 'Згорнути' : 'Розгорнути'} список станцій.`,
     vehicleBetween: (mode: string, from: string, to: string) => `${mode} між ${from} та ${to}`,
     fromPrefix: 'з ',
     toPrefix: 'до ',
@@ -1275,15 +1410,22 @@ export const uk: Strings = {
     modeCable: 'Канатна дорога',
     modeVehicle: 'Транспорт',
     currentLocation: (stop: string) => `Поточне місце: ${stop}`,
+    waitingAtTerminus: 'Очікує відправлення з кінцевої',
     liveTracking: 'Відстеження наживо',
     transfer: 'Пересадка',
     transferMinutes: (min: number) => `Пересадка · ~${min} хв`,
     nearStop: (mode: string, stop: string) => `${mode} поблизу зупинки: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) => {
       const stops = isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`;
-      return `${stops} • ~${mins} хв • ${open ? 'згорнути' : 'розгорнути'}`;
+      return `${stops} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
+    },
+    stationsSummary: (n: number, mins: number, open: boolean) => {
+      const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
+      return `${stations} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
     platformPeron: (code: string) => `Платформа ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Платформа ${code}, колія ${track}`,
+    platformTrack: (track: string) => `Колія ${track}`,
     platformPole: (code: string) => `Стовп ${code}`,
     platformBay: (code: string) => `Місце ${code}`,
     platformPst: (code: string) => `PST-стовп ${code}`,
@@ -1332,6 +1474,44 @@ export const uk: Strings = {
   suggestion: {
     stopFallback: 'Зупинка',
   },
+  intercity: {
+    stationAddress: 'Залізнична станція',
+    downloadTitle: 'Залізничний розклад (Польща)',
+    downloadBody:
+      'Завантажте загальнопольський розклад потягів, щоб планувати подорожі між містами: IC, EIC, PolRegio, KM та інші перевізники.',
+    downloadCta: 'Завантажити розклад',
+    downloadSize: (mb: string) => `бл. ${mb} МБ`,
+    downloading: 'Завантаження залізничного розкладу…',
+    downloadFailed: 'Не вдалося завантажити залізничний розклад. Спробуйте пізніше.',
+    ready: (date: string) => `Залізничний розклад готовий (дійсний до ${date})`,
+    noTrainsTitle: 'Немає потягів',
+    noTrainsHint: 'Перевірте дату й час або виберіть іншу станцію призначення.',
+    nearestStation: (name: string, dist: string) =>
+      `Найближча залізнична станція: ${name} (${dist})`,
+    startAtStation: 'Показати потяги з цієї станції',
+  },
+
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Кондиціонер',
+    gniazdka_230V: (_n?: number) => 'Розетки',
+    gniazdka_usb: (_n?: number) => 'USB-порти',
+    wifi: (_n?: number) => 'Wi-Fi',
+    wagon_restauracyjny: (_n?: number) => 'Вагон-ресторан',
+    bar: (_n?: number) => 'Бар',
+    przewoz_rowerow: (n?: number) => (n ? `Велосипеди (${n})` : 'Перевезення велосипедів'),
+    dostepny_wozkarze: (_n?: number) => 'Доступний для візків',
+    miejsca_lezace: (_n?: number) => 'Місця для лежання',
+    miejsca_sypialne: (_n?: number) => 'Спальні місця',
+    strefa_ciszy: (_n?: number) => 'Тиха зона',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Зручності: ${list}`,
+  },
+  railAlerts: {
+    cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
+    fallbackLine: 'Потяг',
+    disruptionsBadgeA11y: 'Ускладнення на маршруті',
+  },
+
   data: {
     stepUnpack: 'Розпакування…',
     stepStops: 'Зупинки…',
@@ -1391,6 +1571,8 @@ export const uk: Strings = {
     directionTo: (dir: string) => `У напрямку ${dir}`,
     platform: (num: string) => `колія ${num}`,
     platformPeron: (num: string) => `платформа ${num}`,
+    platformPeronTrack: (num: string, track: string) => `платформа ${num}, колія ${track}`,
+    platformTrack: (track: string) => `колія ${track}`,
     walkApproach: (min: number) => `~${min} хв пішки`,
     rideLength: (min: number) => `їзда ${min} хв`,
     departAt: (at: string) => `відправлення о ${at}`,
@@ -1402,6 +1584,9 @@ export const uk: Strings = {
       isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
     delayTitle: (line: string, eta: string) => `Затримка • ${line} • ${eta}`,
+    compensationTitle: 'Компенсація за затримку потяга',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Потяг ${train}` : 'Потяг'} запізнився більш ніж на ${thresholdMin} хвилин. Ти можеш подати заявку на повернення ${percent}% вартості квитка.`,
   },
   ios: {
     departure: 'Відправлення',
@@ -1487,6 +1672,52 @@ export const uk: Strings = {
     channel: 'Закріплене сполучення',
     tram: 'Трамвай',
     bus: 'Автобус',
+  },
+  railTickets: {
+    loading: 'Завантаження…',
+    buyKoleo: 'Купити квиток у KOLEO',
+    buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} до ${to} · 1 пересадка`
+        : `${from} до ${to} · ${transfers} пересадки`,
+    attachPdf: 'Додати квиток PDF',
+    attachedTitle: 'Залізничний квиток',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Вагон ${wagon}`);
+      if (seat) parts.push(`Місце ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Показати квиток',
+    removeTicket: 'Видалити квиток',
+    removeConfirmTitle: 'Видалити цей квиток?',
+    removeConfirmBody: 'Файл PDF буде видалено з пам’яті додатка.',
+    fileLabel: (fileName: string) => `Файл: ${fileName}`,
+    importSuccess: 'Квиток PDF успішно додано.',
+    importError: 'Не вдалося завантажити файл PDF.',
+    rejectTooLargeTitle: 'Файл занадто великий',
+    rejectTooLargeBody:
+      'Вибраний файл перевищує 10 МБ. Залізничні квитки в PDF зазвичай мають від кількох десятків КБ до 2 МБ.',
+    rejectNotTicketTitle: 'Це не схоже на залізничний квиток',
+    rejectNotTicketBody:
+      'Документ не містить коду для контролю та даних про залізничну поїздку. Переконайтеся, що вибираєте правильний файл.',
+    rejectWrongTrainTitle: 'Це квиток на інший потяг',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Квиток на потяг ${ticketTrain}, а цей маршрут їде потягом ${connectionTrain}. Виберіть квиток на потрібне з’єднання.`,
+    rejectWrongDateTitle: 'Квиток на інший день',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Квиток діє ${ticketDate}, а це з’єднання їде ${connectionDate}.`,
+    deleteTicket: 'Видалити квиток',
+    deleteTicketTitle: 'Видалити цей квиток?',
+    deleteTicketBody: 'Файл PDF і код Aztec буде остаточно видалено з пам’яті додатка.',
+    inspectionNoBarcode: 'У PDF немає растрового коду',
+    inspectionBarcodeA11y: 'Код Aztec для контролю квитків',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Ділянка ${current} з ${total} · Торкніться, щоб змінити`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Ділянка ${current} з ${total}. Торкніться, щоб змінити.`,
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

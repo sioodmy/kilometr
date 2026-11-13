@@ -20,7 +20,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
-import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
+import { distanceMeters, projectPointToPolyline, shiftWarsawDate, warsawNow } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
 import {
   fetchZbBialystokRows,
@@ -33,6 +33,7 @@ import {
   fetchZbLodzRails,
   fetchZbLodzRows,
   fetchZbLublinRows,
+  fetchZbNewCityRows,
   fetchZbOlsztynRows,
   fetchZbOpoleRows,
   fetchZbPoznanRails,
@@ -45,10 +46,13 @@ import {
   fetchZbWarsawRails,
   fetchZbWarsawRows,
   fetchZbWroclawRows,
+  isNewLiveCity,
   matchZbKd,
   type ZbKdVehicle,
 } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
+import { fetchNationalRailLive, type NationalLiveLeg } from './nationalRailLive';
+import { fetchNationalRailUpdates } from './nationalRailUpdates';
 import {
   MAX_DELAY_SEC,
   MAX_SAMPLE_AGE_MS,
@@ -165,17 +169,12 @@ interface PatternPolylineNode {
   schedulePos: number;
 }
 
-function toDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-}
 
 class LiveTracker {
   private byId = new Map<string, TrackedVehicle>();
   private byLine = new Map<string, TrackedVehicle[]>();
   private tripDelays = new Map<string, number>();
+  private nationalTripDelays = new Map<string, { delaySec: number; arrivalDelaySec?: number; updatedAt: number }>();
   /** Kiedy ostatni raz przyszły dane (albo odtwarzamy je z dysku). 0 = jeszcze nigdy. */
   private lastOk = 0;
   private inFlight = false;
@@ -224,6 +223,15 @@ class LiveTracker {
   }
 
   /**
+   * Czy aktywnemu miastu da się w ogóle pobrać pozycje (features.live).
+   * Miasta bez endpointu w zbiorkom nie mogą pokazywać chipa „brak danych
+   * live”: to nie awaria, tylko nieistniejące źródło.
+   */
+  supportsLive(): boolean {
+    return getCity(safeCityId()).features.live;
+  }
+
+  /**
    * Znacznik ostatniej udanej dostawy danych (0 = nigdy). UI porównuje go
    * między tickami: zmiana = przyszły nowe opóźnienia, można przerysować.
    */
@@ -240,6 +248,7 @@ class LiveTracker {
     this.byId.clear();
     this.byLine.clear();
     this.tripDelays.clear();
+    this.nationalTripDelays.clear();
     this.liveScheduleKey = null;
     this.latestDayIndex = null;
     this.sampleHistory.clear();
@@ -281,6 +290,102 @@ class LiveTracker {
     this.start();
     if (this.pinned > 0 || AppState.currentState === 'active') {
       this.armTimer(true);
+    }
+  }
+
+  /**
+   * Pociągi ogólnopolskie (`pl:...`): pozycje z zbiorkomu dopasowane po
+   * numerze i nazwach stacji. Wołane przy każdym pollu z nogami kolejowymi,
+   * które ekran właśnie pokazuje (`setNationalWatch`). Bez tego ogólnopolska
+   * baza nie miała żadnego live: KD ma własny feed per miasto, a PLK nie.
+   */
+  private nationalWatch: NationalLiveLeg[] = [];
+  private nationalInFlight = false;
+
+  /** Ekran zgłasza nogi kolejowe, dla których chce live (bbox + numery). */
+  setNationalWatch(legs: NationalLiveLeg[]): void {
+    const next = legs.slice(0, 12);
+    if (
+      this.nationalWatch.length === next.length &&
+      this.nationalWatch.every(
+        (l, i) =>
+          l.tripId === next[i]?.tripId &&
+          l.trainNumber === next[i]?.trainNumber &&
+          l.line === next[i]?.line,
+      )
+    ) {
+      return;
+    }
+    this.nationalWatch = next;
+    if (next.length > 0) void this.pollNational();
+  }
+
+  private async pollNational(): Promise<void> {
+    if (this.nationalInFlight || this.nationalWatch.length === 0) return;
+    this.nationalInFlight = true;
+    try {
+      const [live, updates] = await Promise.all([
+        fetchNationalRailLive(this.nationalWatch),
+        fetchNationalRailUpdates(this.nationalWatch).catch(() => new Map()),
+      ]);
+      const nowMs = Date.now();
+      let changed = false;
+      for (const [tripId, delaySec] of live.delays) {
+        const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, delaySec));
+        if (this.tripDelays.get(tripId) !== clamped) {
+          changed = true;
+        }
+        this.tripDelays.set(tripId, clamped);
+        this.nationalTripDelays.set(tripId, { delaySec: clamped, updatedAt: nowMs });
+      }
+      for (const [tripId, update] of updates) {
+        if (update.hasRealtimeDelay === false) continue;
+        const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec));
+        if (this.tripDelays.get(tripId) !== clamped) {
+          changed = true;
+        }
+        this.tripDelays.set(tripId, clamped);
+        const arrivalDelaySec =
+          update.arrivalDelaySec == null
+            ? undefined
+            : Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.arrivalDelaySec));
+        this.nationalTripDelays.set(tripId, {
+          delaySec: clamped,
+          arrivalDelaySec,
+          updatedAt: nowMs,
+        });
+      }
+      // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować
+      // tak samo jak KD (matchedTripId === leg.tripId).
+      for (const [tripId, pos] of live.positions) {
+        const vehicleId = `PL:${tripId}`;
+        const prev = this.byId.get(vehicleId);
+        const leg = this.nationalWatch.find((l) => l.tripId === tripId);
+        const delay = this.tripDelays.get(tripId) ?? null;
+        if (!prev || prev.lat !== pos.lat || prev.lon !== pos.lon || prev.delaySec !== delay) {
+          changed = true;
+        }
+        this.byId.set(vehicleId, {
+          vehicleId,
+          line: leg?.line ?? 'PKP',
+          lat: pos.lat,
+          lon: pos.lon,
+          type: 'train',
+          delaySec: delay,
+          matchedTripId: tripId,
+          currentStopName: leg?.fromStop,
+          nextStopName: leg?.toStop,
+          updatedAt: pos.updatedAt,
+        });
+      }
+      if (changed) {
+        this.lastOk = Date.now();
+        this.notify();
+      }
+    } catch {
+      // live kolei nie może wywrócić polla miasta
+    } finally {
+      this.nationalInFlight = false;
     }
   }
 
@@ -371,13 +476,34 @@ class LiveTracker {
    */
   getTripDelays(): Map<string, number> {
     const now = Date.now();
-    return new Map(
-      this.snapshot()
-        .filter(
-          (v) => v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS,
-        )
-        .map((v) => [v.matchedTripId!, v.delaySec!]),
-    );
+    const out = new Map<string, number>();
+    for (const v of this.snapshot()) {
+      if (v.matchedTripId && v.delaySec != null && now - v.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(v.matchedTripId, v.delaySec);
+      }
+    }
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(tripId, entry.delaySec);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Prognozy przyjazdu na stacje koncowe z feedu PKP. Osobno od
+   * `getTripDelays`, bo opoznienie rosnie po drodze i przyjazd ma inna
+   * wartosc niz odjazd ze stacji poczatkowej.
+   */
+  getTripArrivalDelays(): Map<string, number> {
+    const now = Date.now();
+    const out = new Map<string, number>();
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (entry.arrivalDelaySec != null && now - entry.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        out.set(tripId, entry.arrivalDelaySec);
+      }
+    }
+    return out;
   }
 
   private latestDayIndex: DayIndex | null = null;
@@ -396,18 +522,18 @@ class LiveTracker {
     now: Date,
     nowSec: number,
   ): Promise<{ dayIndex: DayIndex; offsets?: Map<string, number> }> {
+    const nowWarsaw = warsawNow(now);
     const dayIndex = await gtfsStore.getDayIndexSlice(
-      now.getDay(),
-      toDateStr(now),
+      nowWarsaw.weekday,
+      nowWarsaw.dateStr,
       nowSec - WINDOW_SEC,
       nowSec + 3600,
     );
     if (nowSec >= 7 * 3600) return { dayIndex };
-    const prev = new Date(now);
-    prev.setDate(prev.getDate() - 1);
+    const prevWarsaw = shiftWarsawDate(nowWarsaw, -1);
     const overnight = await gtfsStore.getDayIndexSlice(
-      prev.getDay(),
-      toDateStr(prev),
+      prevWarsaw.weekday,
+      prevWarsaw.dateStr,
       86400 + nowSec - WINDOW_SEC,
       86400 + nowSec + 3600,
     );
@@ -510,6 +636,13 @@ class LiveTracker {
     this.pollStartedAt = now;
     const cityAtStart = safeCityId();
     try {
+      // Miasto bez feedu pozycji (features.live): zbiorkom nie ma tu
+      // endpointu, więc poll miejski byłby wiecznym „brakiem danych”.
+      // Kolej ogólnopolska (podgląd pociągów w podróży) działa dalej.
+      if (!getCity(cityAtStart).features.live) {
+        await this.pollNational();
+        return;
+      }
       const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
       // Użytkownik zmienił miasto w trakcie pobierania (do 10 s na zapytanie).
       // Odpowiedź dotyczy poprzedniego miasta: nie wolno jej dopasowywać do
@@ -539,6 +672,8 @@ class LiveTracker {
         ok = true;
         if (!rows || rows.length === 0) void this.persistSnapshot([], rails, cityAtStart);
       }
+      // Pociągi ogólnopolskie: osobno od feedu miasta, tylko gdy ekran je pokazuje.
+      await this.pollNational();
       if (ok && safeCityId() === cityAtStart) {
         this.lastOk = Date.now();
         this.notify();
@@ -630,7 +765,7 @@ class LiveTracker {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
       const now = new Date();
-      const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      const nowSec = warsawNow(now).sec;
       const { dayIndex, offsets } = await this.liveDayIndex(now, nowSec);
 
       const patternPolylines = new Map<string, PatternPolylineNode[]>();
@@ -696,6 +831,7 @@ class LiveTracker {
       else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
       else if (id === 'lublin') rows = await fetchZbLublinRows();
       else if (id === 'radom') rows = await fetchZbRadomRows();
+      else if (isNewLiveCity(id)) rows = await fetchZbNewCityRows(id);
       else rows = await fetchZbWroclawRows();
       this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);
       return rows;
@@ -841,7 +977,7 @@ class LiveTracker {
       throw new Error(`gtfs load failed: ${String(err)}`);
     }
     const now = new Date();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const nowSec = warsawNow(now).sec;
     let dayIndex: DayIndex;
     let offsets: Map<string, number> | undefined;
     try {
@@ -1329,7 +1465,7 @@ class LiveTracker {
       throw new Error(`gtfs load failed: ${String(err)}`);
     }
     const now = new Date();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const nowSec = warsawNow(now).sec;
     let dayIndex: DayIndex;
     let offsets: Map<string, number> | undefined;
     try {
@@ -1387,6 +1523,13 @@ class LiveTracker {
       byId.set(id, kept);
       if (kept.matchedTripId && kept.delaySec !== null)
         delays.set(kept.matchedTripId, kept.delaySec);
+    }
+    for (const [tripId, entry] of this.nationalTripDelays) {
+      if (nowMs - entry.updatedAt > 300000) {
+        this.nationalTripDelays.delete(tripId);
+        continue;
+      }
+      delays.set(tripId, entry.delaySec);
     }
     const newByLine = new Map<string, TrackedVehicle[]>();
     for (const tracked of byId.values()) {

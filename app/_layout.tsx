@@ -10,7 +10,6 @@ import {
   usePathname,
   useGlobalSearchParams,
 } from 'expo-router';
-import BootSplash from 'react-native-bootsplash';
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -25,15 +24,27 @@ import { hasSeenOnboarding } from '../src/services/onboarding';
 import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import { migrateFromSqliteKv } from '../src/services/kvMigration';
 import { refreshDepartureAlarm } from '../src/services/departureAlarm';
+import { cleanupExpiredTickets } from '../src/services/ticketStorage';
 import {
   addTripResponseListener,
   getLastTripResponse,
   restoreTrackedTrip,
   setupNotifications,
+  startTicketCompensationMonitor,
   startTrackedTripListener,
   stopTracking,
   type TripResponse,
 } from '../src/services/notifications';
+
+let BootSplash: { hide: (options?: { fade?: boolean }) => Promise<boolean> } = {
+  hide: async () => false,
+};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  BootSplash = require('react-native-bootsplash').default;
+} catch {
+  // W Expo Go brak natywnego TurboModule RNBootSplash.
+}
 
 LogBox.ignoreAllLogs(true);
 
@@ -93,6 +104,7 @@ export default function RootLayout() {
       await initLocale();
       await loadNotificationPreferences();
       await refreshDepartureAlarm();
+      void cleanupExpiredTickets();
       try {
         const seen = await hasSeenOnboarding();
         if (isMounted) setNeedsOnboarding(!seen);
@@ -105,6 +117,7 @@ export default function RootLayout() {
       .then(async () => {
         await setupNotifications();
         await restoreTrackedTrip();
+        startTicketCompensationMonitor();
       })
       .catch((err) => console.warn('[RootLayout] init:', err))
       .finally(() => {
@@ -166,14 +179,14 @@ export default function RootLayout() {
               screenOptions={{
                 headerShown: false,
                 contentStyle: { backgroundColor: scheme.surface },
-                // Jednolite, szybkie przejścia między ekranami (iOS + Android).
+                // Jednolite, szybkie przejścia między ekranami Material 3 Expressive (iOS + Android).
                 // animationMatchesGesture synchronizuje animację z gestem wstecz.
                 animation: reduceMotion
                   ? 'none'
                   : Platform.OS === 'android'
                     ? 'fade_from_bottom'
                     : 'slide_from_right',
-                animationDuration: 300,
+                animationDuration: 200,
                 animationMatchesGesture: true,
                 gestureEnabled: true,
                 gestureDirection: 'horizontal',
@@ -186,7 +199,7 @@ export default function RootLayout() {
                 name="routes"
                 options={{
                   headerShown: false,
-                  animation: reduceMotion ? "none" : "fade",
+                  animation: reduceMotion ? 'none' : 'fade',
                   animationDuration: 240,
                 }}
               />
@@ -199,11 +212,15 @@ export default function RootLayout() {
               <Stack.Screen
                 name="news"
                 options={{
-                  presentation: 'modal',
-                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
-                  animationDuration: 300,
+                  presentation: 'card',
+                  animation: reduceMotion
+                    ? 'none'
+                    : Platform.OS === 'android'
+                      ? 'fade_from_bottom'
+                      : 'slide_from_right',
+                  animationDuration: 200,
                   animationMatchesGesture: true,
-                  gestureDirection: 'vertical',
+                  gestureDirection: 'horizontal',
                 }}
               />
               <Stack.Screen
@@ -215,17 +232,23 @@ export default function RootLayout() {
                     : Platform.OS === 'android'
                       ? 'fade_from_bottom'
                       : 'slide_from_right',
-                  animationDuration: 300,
+                  animationDuration: 200,
+                  animationMatchesGesture: true,
+                  gestureDirection: 'horizontal',
                 }}
               />
               <Stack.Screen
                 name="settings"
                 options={{
-                  presentation: 'modal',
-                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
-                  animationDuration: 300,
+                  presentation: 'card',
+                  animation: reduceMotion
+                    ? 'none'
+                    : Platform.OS === 'android'
+                      ? 'fade_from_bottom'
+                      : 'slide_from_right',
+                  animationDuration: 200,
                   animationMatchesGesture: true,
-                  gestureDirection: 'vertical',
+                  gestureDirection: 'horizontal',
                 }}
               />
             </Stack>

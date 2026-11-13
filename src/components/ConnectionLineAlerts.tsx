@@ -11,31 +11,40 @@ import { BusFront, ChevronRight, CircleCheck, Clock3, RouteOff, TriangleAlert } 
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
-import type { Connection } from '../types/models';
+import type { Connection, Leg } from '../types/models';
 import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
+import { groundDisruption, type GroundedDisruption } from '../services/disruptionGrounding';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
+import {
+  alertsForConnection,
+  type TrainAlertItem,
+  type TrainAlerts,
+} from '../services/railTripAlerts';
 
-const MAX_ROWS = 3;
+const MAX_ROWS = 4;
 
 type Status = 'loading' | 'error' | 'ready';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-function getTransitActionLabel(item: MpkNewsItem, s: ReturnType<typeof useStrings>): string {
-  const solutionText = (item.disruption?.glance?.solution || '').toLowerCase();
+function getTransitActionLabel(solutionText: string, s: ReturnType<typeof useStrings>): string {
+  const lower = solutionText.toLowerCase();
   const hasReplacement =
-    solutionText.includes('zastępcz') ||
-    solutionText.includes('za tramwaj') ||
-    solutionText.includes('za autobus') ||
-    solutionText.includes('replacement') ||
-    solutionText.includes('ersatz');
+    lower.includes('zastępcz') ||
+    lower.includes('za tramwaj') ||
+    lower.includes('za autobus') ||
+    lower.includes('za pociąg') ||
+    lower.includes('zka') ||
+    lower.includes('replacement') ||
+    lower.includes('ersatz');
   const hasDetour =
-    solutionText.includes('objazd') ||
-    solutionText.includes('objazdem') ||
-    solutionText.includes('objazdy') ||
-    solutionText.includes('zmienion') ||
-    solutionText.includes('detour') ||
-    solutionText.includes('umleitung');
+    lower.includes('objazd') ||
+    lower.includes('objazdem') ||
+    lower.includes('objazdy') ||
+    lower.includes('zmienion') ||
+    lower.includes('okrężn') ||
+    lower.includes('detour') ||
+    lower.includes('umleitung');
 
   if (hasReplacement && hasDetour) {
     return s.news.detourAndReplacement;
@@ -48,15 +57,16 @@ function getTransitActionLabel(item: MpkNewsItem, s: ReturnType<typeof useString
 
 /**
  * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
- * Bierzemy ze struktury AI disruption.all_lines, impacted_lines oraz item.lines.
+ * Bierzemy ze struktury AI disruption.all_lines, line_changes, temporary_lines
+ * oraz item.lines (fallback scraperowy).
  */
 function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
-  const add = (raw?: string | null) => {
-    if (!raw) return;
-    const clean = raw.trim().toUpperCase();
+  const add = (raw?: string | number | null) => {
+    if (raw == null) return;
+    const clean = String(raw).trim().toUpperCase();
     if (!clean || seen.has(clean)) return;
     seen.add(clean);
     result.push(clean);
@@ -64,6 +74,12 @@ function getDisruptionLines(item: MpkNewsItem): string[] {
 
   if (item.disruption?.all_lines) {
     for (const l of item.disruption.all_lines) add(l);
+  }
+  if (item.disruption?.line_changes) {
+    for (const lc of item.disruption.line_changes) add(lc.line);
+  }
+  if (item.disruption?.temporary_lines) {
+    for (const tl of item.disruption.temporary_lines) add(tl.line);
   }
   if (item.disruption?.impacted_lines) {
     for (const imp of item.disruption.impacted_lines) add(imp.line);
@@ -78,7 +94,7 @@ function getDisruptionLines(item: MpkNewsItem): string[] {
 /**
  * Sprawdza, czy utrudnienie dotyczy linii z bieżącego połączenia.
  */
-function alertTouchesRoute(item: MpkNewsItem, lineSet: Set<string>): boolean {
+export function alertTouchesRoute(item: MpkNewsItem, lineSet: Set<string>): boolean {
   if (lineSet.size === 0) return false;
   const alertLines = getDisruptionLines(item);
   if (alertLines.length > 0) {
@@ -99,21 +115,17 @@ function cleanHeaderTimeframe(raw?: string | null): string {
 }
 
 /**
- * Karta pojedynczego utrudnienia w stylu Material 3 Expressive:
- * - Asymetryczne lub zaokrąglone narożniki kontenera
- * - Dedykowany tonalny boks na objazd / rozwiązanie (AI glance solution)
- * - Tonalny status chip (ruch przywrócony / pilne utrudnienie / planowana zmiana)
- * - Stały, ujednolicony wiersz linii, których zmiana dotyczy (zaraz pod nagłówkiem)
- * - Wyróżnienie linii z bieżącego połączenia oraz komunikacji zastępczej
- * - Reaktywna animacja naciśnięcia ze sprężystością (spring)
+ * Karta pojedynczego utrudnienia miejskiego (autobus/tramwaj) w stylu Material 3 Expressive.
  */
 const AlertSubCard = memo(function AlertSubCard({
   item,
   lineSet,
+  grounded,
   onPress,
 }: {
   item: MpkNewsItem;
   lineSet: Set<string>;
+  grounded?: GroundedDisruption;
   onPress: () => void;
 }) {
   const s = useStrings();
@@ -141,38 +153,77 @@ const AlertSubCard = memo(function AlertSubCard({
     return [...matched, ...others];
   }, [item, lineSet]);
 
+  // Zmiany per-linia: nowy format line_changes, fallback do starego impacted_lines.
+  const changes = useMemo(() => {
+    const d = item.disruption;
+    if (d?.line_changes) return d.line_changes;
+    return (d?.impacted_lines ?? []).map((imp) => ({
+      line: imp.line,
+      omitted_stops: imp.omitted_stops ?? [],
+      replacement_line: imp.replacement_line ?? null,
+    }));
+  }, [item.disruption]);
+
   // Znajdź ew. komunikację zastępczą dla linii z tego połączenia
   const replacementLine = useMemo(() => {
-    if (!item.disruption?.impacted_lines) return null;
-    for (const imp of item.disruption.impacted_lines) {
+    if (changes.length === 0) return null;
+    for (const imp of changes) {
       if ((!imp.line || lineSet.has(imp.line)) && imp.replacement_line) {
         return imp.replacement_line;
       }
     }
-    for (const imp of item.disruption.impacted_lines) {
+    for (const imp of changes) {
       if (imp.replacement_line) return imp.replacement_line;
     }
     return null;
-  }, [item.disruption?.impacted_lines, lineSet]);
+  }, [changes, lineSet]);
 
-  // Znajdź pomijane przystanki
+  // Znajdź pomijane przystanki; nazwy z LLM podmieniamy na kanoniczne z GTFS.
   const omittedStops = useMemo(() => {
-    if (!item.disruption?.impacted_lines) return [];
+    if (changes.length === 0) return [];
+    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
     const set = new Set<string>();
-    for (const imp of item.disruption.impacted_lines) {
-      if ((!imp.line || lineSet.has(imp.line)) && imp.omitted_stops) {
-        for (const st of imp.omitted_stops) set.add(st);
+    for (const imp of changes) {
+      if ((!imp.line || lineSet.has(imp.line)) && Array.isArray(imp.omitted_stops)) {
+        for (const st of imp.omitted_stops) set.add(canonical.get(st) ?? st);
       }
     }
     if (set.size === 0) {
-      for (const imp of item.disruption.impacted_lines) {
-        if (imp.omitted_stops) {
-          for (const st of imp.omitted_stops) set.add(st);
+      for (const imp of changes) {
+        if (Array.isArray(imp.omitted_stops)) {
+          for (const st of imp.omitted_stops) set.add(canonical.get(st) ?? st);
         }
       }
     }
     return [...set];
-  }, [item.disruption?.impacted_lines, lineSet]);
+  }, [changes, lineSet, grounded]);
+
+  // Wiersze zmian per-linia: zawieszenie, objazd, linia specjalna.
+  const lineChangeRows = useMemo(() => {
+    const d = item.disruption;
+    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
+    const rows: Array<{ key: string; kind: 'cancelled' | 'detour' | 'special'; text: string }> = [];
+    const touched = (line: string) => lineSet.size === 0 || lineSet.has(line.trim().toUpperCase());
+    for (const lc of d?.line_changes ?? []) {
+      if (!touched(lc.line)) continue;
+      const hours =
+        lc.hours && lc.hours.length > 0 ? ` (${lc.hours.map((h) => `${h.from}-${h.to}`).join(', ')})` : '';
+      if (lc.change === 'cancelled') {
+        rows.push({ key: `c:${lc.line}`, kind: 'cancelled', text: `${s.news.lineSuspended(lc.line)}${hours}` });
+      } else if (lc.change === 'detour' && lc.via && lc.via.length > 0) {
+        const via = lc.via.map((v) => canonical.get(v) ?? v).join(' → ');
+        rows.push({ key: `d:${lc.line}`, kind: 'detour', text: `${s.news.lineDetour(lc.line)}: ${via}${hours}` });
+      }
+    }
+    for (const tl of d?.temporary_lines ?? []) {
+      if (tl.via && tl.via.length > 0) {
+        const via = tl.via.map((v) => canonical.get(v) ?? v).join(' → ');
+        const freq = tl.frequency_min ? `, ${s.news.everyNMin(tl.frequency_min)}` : '';
+        rows.push({ key: `t:${tl.line}`, kind: 'special', text: `${s.news.specialLine(tl.line)}: ${via}${freq}` });
+      }
+    }
+    return rows;
+  }, [item.disruption, lineSet, grounded, s]);
 
   const press = useSharedValue(0);
   const animatedCardStyle = useAnimatedStyle(() => ({
@@ -187,14 +238,16 @@ const AlertSubCard = memo(function AlertSubCard({
     });
   };
 
+  const canOpen = Boolean(item.link);
+
   return (
     <AnimatedPressable
-      onPress={onPress}
-      onPressIn={() => setPress(1)}
-      onPressOut={() => setPress(0)}
-      accessibilityRole="button"
+      onPress={canOpen ? onPress : undefined}
+      onPressIn={() => canOpen && setPress(1)}
+      onPressOut={() => canOpen && setPress(0)}
+      accessibilityRole={canOpen ? 'button' : 'alert'}
       accessibilityLabel={`${headline}. ${solution ?? ''}`}
-      android_ripple={{ color: scheme.outlineVariant }}
+      android_ripple={canOpen ? { color: scheme.outlineVariant } : undefined}
       style={[
         styles.alertCard,
         isUrgent
@@ -232,7 +285,7 @@ const AlertSubCard = memo(function AlertSubCard({
               {timeframe}
             </Text>
           ) : null}
-          <ChevronRight size={16} color={scheme.onSurfaceVariant} />
+          {canOpen && <ChevronRight size={16} color={scheme.onSurfaceVariant} />}
         </View>
       </View>
 
@@ -250,8 +303,8 @@ const AlertSubCard = memo(function AlertSubCard({
         {headline}
       </Text>
 
-      {/* 4. Kontekst problemu (Smart AI Glance Problem), jeśli wnosi coś poza samym nagłówkiem */}
-      {problem && problem.trim() !== headline.trim() ? (
+      {/* 4. Kontekst problemu (Smart AI Glance Problem) */}
+      {problem && (!headline || problem.trim() !== headline.trim()) ? (
         <Text style={styles.problemText}>{problem}</Text>
       ) : null}
 
@@ -263,7 +316,7 @@ const AlertSubCard = memo(function AlertSubCard({
             <Text
               style={[styles.solutionLabel, { color: isUrgent ? scheme.warning : scheme.primary }]}
             >
-              {getTransitActionLabel(item, s)}
+              {getTransitActionLabel(solution, s)}
             </Text>
           </View>
           <Text style={styles.solutionText}>{solution}</Text>
@@ -289,11 +342,159 @@ const AlertSubCard = memo(function AlertSubCard({
           </Text>
         </View>
       ) : null}
+
+      {/* 8. Zmiany per-linia: zawieszenie, objazd, linia specjalna */}
+      {lineChangeRows.map((row) => (
+        <View key={row.key} style={styles.changeRow}>
+          {row.kind === 'cancelled' ? (
+            <RouteOff size={13} color={scheme.error} />
+          ) : (
+            <BusFront size={13} color={scheme.primary} />
+          )}
+          <Text style={styles.changeText}>{row.text}</Text>
+        </View>
+      ))}
     </AnimatedPressable>
   );
 });
 
-// Brak pasujących komunikatów to brak karty: trasa bez utrudnień nie dostaje pustego bloku.
+/**
+ * Karta pojedynczego utrudnienia kolejowego (PKP PLK / PKP Intercity / zbiorkom)
+ * w spójnym stylu M3 Expressive z LineBadge pociągu, relacją i rozwiązaniem.
+ */
+const TrainAlertSubCard = memo(function TrainAlertSubCard({
+  leg,
+  alert,
+  onPress,
+}: {
+  leg: Leg;
+  alert: TrainAlertItem;
+  onPress?: () => void;
+}) {
+  const s = useStrings();
+  const isResolved = Boolean(alert.isResolved);
+  const isUrgent = Boolean((alert.isUrgent ?? true) && !isResolved);
+  const headline = alert.title;
+  const problem = alert.description;
+  const solution = alert.solution;
+  const timeframe = alert.timeframe;
+
+  const press = useSharedValue(0);
+  const animatedCardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - press.value * 0.015 }],
+  }));
+
+  const setPress = (val: number) => {
+    press.value = withSpring(val, {
+      damping: 22,
+      stiffness: 400,
+      reduceMotion: ReduceMotion.System,
+    });
+  };
+
+  const trainDetail = useMemo(() => {
+    const parts: string[] = [];
+    if (leg.trainName) {
+      parts.push(`"${leg.trainName}"`);
+    }
+    const route = leg.direction || (leg.toStop ? `kier. ${leg.toStop}` : null);
+    if (route) {
+      parts.push(route);
+    }
+    return parts.join(' · ');
+  }, [leg.trainName, leg.direction, leg.toStop]);
+
+  const canOpen = Boolean(alert.link && onPress);
+
+  return (
+    <AnimatedPressable
+      onPress={canOpen ? onPress : undefined}
+      onPressIn={() => canOpen && setPress(1)}
+      onPressOut={() => canOpen && setPress(0)}
+      accessibilityRole={canOpen ? 'button' : 'alert'}
+      accessibilityLabel={`${s.railAlerts.cardA11y(leg.line ?? leg.trainNumber ?? 'Pociąg')}. ${headline}. ${problem ?? ''}`}
+      android_ripple={canOpen ? { color: scheme.outlineVariant } : undefined}
+      style={[
+        styles.alertCard,
+        isUrgent
+          ? styles.alertCardUrgent
+          : isResolved
+            ? styles.alertCardResolved
+            : styles.alertCardNormal,
+        animatedCardStyle,
+      ]}
+    >
+      {/* 1. Pasek statusu i terminu */}
+      <View style={styles.alertHeaderRow}>
+        <View style={styles.statusChip}>
+          {isResolved ? (
+            <View style={styles.resolvedBadge}>
+              <CircleCheck size={12} color={scheme.onPrimaryContainer} />
+              <Text style={styles.resolvedBadgeText}>{s.news.resolved}</Text>
+            </View>
+          ) : isUrgent ? (
+            <View style={styles.urgentBadge}>
+              <TriangleAlert size={12} color={scheme.onWarningContainer} />
+              <Text style={styles.urgentBadgeText}>{s.news.urgentChip}</Text>
+            </View>
+          ) : (
+            <View style={styles.infoBadge}>
+              <Clock3 size={12} color={scheme.onSecondaryContainer} />
+              <Text style={styles.infoBadgeText}>{s.news.plannedChip}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.alertHeaderRight}>
+          {timeframe ? (
+            <Text style={styles.timeframeText} numberOfLines={1} ellipsizeMode="tail">
+              {timeframe}
+            </Text>
+          ) : null}
+          {canOpen && <ChevronRight size={16} color={scheme.onSurfaceVariant} />}
+        </View>
+      </View>
+
+      {/* 2. Ujednolicony placement linii kolejowej: LineBadge pociągu + relacja / nazwa handlowa */}
+      <View style={styles.linesRow}>
+        <LineBadge mode="train" leg={leg} line={leg.line ?? leg.trainNumber} compact active />
+        {trainDetail ? (
+          <View style={styles.trainNameChip}>
+            <Text style={styles.trainNameText} numberOfLines={1} ellipsizeMode="tail">
+              {trainDetail}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* 3. Nagłówek utrudnienia */}
+      <Text style={[styles.headlineText, isResolved && styles.headlineResolved]} numberOfLines={2}>
+        {headline}
+      </Text>
+
+      {/* 4. Kontekst problemu */}
+      {problem && (!headline || problem.trim() !== headline.trim()) ? (
+        <Text style={styles.problemText}>{problem}</Text>
+      ) : null}
+
+      {/* 5. Rozwiązanie / objazd / honorowanie biletów */}
+      {solution ? (
+        <View style={styles.solutionBox}>
+          <View style={styles.solutionHeader}>
+            <BusFront size={14} color={isUrgent ? scheme.warning : scheme.primary} />
+            <Text
+              style={[styles.solutionLabel, { color: isUrgent ? scheme.warning : scheme.primary }]}
+            >
+              {getTransitActionLabel(solution, s)}
+            </Text>
+          </View>
+          <Text style={styles.solutionText}>{solution}</Text>
+        </View>
+      ) : null}
+    </AnimatedPressable>
+  );
+});
+
 export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   connection,
   lines: propLines,
@@ -304,8 +505,10 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   const s = useStrings();
   const router = useRouter();
   const [news, setNews] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
+  const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
   const [status, setStatus] = useState<Status>(() => (getCachedNews() ? 'ready' : 'loading'));
   const [attempt, setAttempt] = useState(0);
+  const [grounded, setGrounded] = useState<Map<string, GroundedDisruption>>(new Map());
 
   const routeLines = useMemo(() => {
     if (propLines && propLines.length > 0) {
@@ -318,10 +521,57 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   const lineSet = useMemo(() => {
     return new Set(routeLines.map((l) => l.trim().toUpperCase()));
   }, [routeLines]);
-  // Połączenie dostaje nowy obiekt przy każdej paczce live: pobieramy tylko,
-  // gdy zmienią się same linie.
   const lineKey = [...lineSet].sort().join(',');
 
+  // stop_id wszystkich przystanków na trasie połączenia (do dopasowania po GTFS).
+  const routeStopIds = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return set;
+    for (const leg of connection.legs ?? []) {
+      if (leg.fromStopId && leg.fromStopId !== 'origin' && leg.fromStopId !== 'destination') {
+        set.add(leg.fromStopId);
+      }
+      if (leg.toStopId && leg.toStopId !== 'origin' && leg.toStopId !== 'destination') {
+        set.add(leg.toStopId);
+      }
+      for (const s of leg.intermediateStops ?? []) if (s.stopId) set.add(s.stopId);
+    }
+    return set;
+  }, [connection]);
+
+  // route_id nóg tranzytowych połączenia (do dopasowania alertu po GTFS).
+  const routeIdSet = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return set;
+    for (const leg of connection.legs ?? []) {
+      if (leg.routeId) set.add(leg.routeId);
+    }
+    return set;
+  }, [connection]);
+
+  // Uziemienie komunikatów w GTFS: linie -> route_id, przystanki -> stop_id.
+  useEffect(() => {
+    const items = news.filter((n) => n.disruption);
+    if (items.length === 0) {
+      setGrounded(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const map = new Map<string, GroundedDisruption>();
+      for (const item of items) {
+        const g = await groundDisruption(item.disruption!);
+        if (cancelled) return;
+        map.set(item.id, g);
+      }
+      if (!cancelled) setGrounded(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [news]);
+
+  // 1. Ładowanie komunikatów miejskich
   useEffect(() => {
     if (lineKey === '') {
       setStatus('ready');
@@ -361,47 +611,88 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     };
   }, [lineKey, attempt]);
 
-  const matched = useMemo(() => {
-    if (lineSet.size === 0) return [];
-    return news.filter((item) => alertTouchesRoute(item, lineSet));
-  }, [news, lineSet]);
-
-  if (lineSet.size === 0) return null;
-
-  if (status === 'loading') {
-    return (
-      <View style={styles.stateContainer}>
-        <ActivityIndicator size="small" color={scheme.primary} />
-        <Text style={styles.stateText}>{s.routeDetails.lineAlertsLoading}</Text>
-      </View>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <View style={styles.stateContainer}>
-        <Text style={styles.stateText}>{s.routeDetails.lineAlertsError}</Text>
-        <Pressable
-          onPress={() => {
-            setStatus('loading');
-            setAttempt((n) => n + 1);
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
-        >
-          <Text style={styles.retryBtnText}>{s.common.retry}</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  if (matched.length === 0) return null;
-
-  const hasUrgent = matched.some(
-    (item) => (item.disruption?.is_emergency || item.urgent) && !item.disruption?.is_resolved,
+  const trainAlertKey = useMemo(
+    () =>
+      connection?.legs
+        ?.filter((leg) => leg.mode === 'train' || leg.tripId?.startsWith('pl:') || leg.trainNumber)
+        .map((leg) => `${leg.tripId ?? ''}:${leg.trainNumber ?? ''}:${leg.line ?? ''}`)
+        .join(';') ?? '',
+    [connection?.legs],
   );
 
-  const openItem = (item: MpkNewsItem) => {
+  // 2. Ładowanie alertów kolejowych dla bieżącego połączenia
+  useEffect(() => {
+    if (!connection || !trainAlertKey) {
+      setTrainAlerts([]);
+      return;
+    }
+
+    let alive = true;
+    void alertsForConnection(connection).then((res) => {
+      if (alive) {
+        setTrainAlerts(res);
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [connection?.id, trainAlertKey]);
+
+  const matchedMpk = useMemo(() => {
+    if (lineSet.size === 0 && routeStopIds.size === 0 && routeIdSet.size === 0) return [];
+    return news.filter((item) => {
+      if (lineSet.size > 0 && alertTouchesRoute(item, lineSet)) return true;
+      const g = grounded.get(item.id);
+      if (g) {
+        if (routeStopIds.size > 0 && g.stopIds.some((id) => routeStopIds.has(id))) return true;
+        if (routeIdSet.size > 0 && g.routeIds.some((id) => routeIdSet.has(id))) return true;
+      }
+      return false;
+    });
+  }, [news, lineSet, grounded, routeStopIds, routeIdSet]);
+
+  const flatTrainAlerts = useMemo(() => {
+    return trainAlerts.flatMap(({ leg, alerts }) => alerts.map((alert) => ({ leg, alert })));
+  }, [trainAlerts]);
+
+  const totalCount = matchedMpk.length + flatTrainAlerts.length;
+
+  if (totalCount === 0) {
+    if (status === 'loading' && lineSet.size > 0) {
+      return (
+        <View style={styles.stateContainer}>
+          <ActivityIndicator size="small" color={scheme.primary} />
+          <Text style={styles.stateText}>{s.routeDetails.lineAlertsLoading}</Text>
+        </View>
+      );
+    }
+    if (status === 'error' && lineSet.size > 0) {
+      return (
+        <View style={styles.stateContainer}>
+          <Text style={styles.stateText}>{s.routeDetails.lineAlertsError}</Text>
+          <Pressable
+            onPress={() => {
+              setStatus('loading');
+              setAttempt((n) => n + 1);
+            }}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.retryBtnText}>{s.common.retry}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return null;
+  }
+
+  const hasUrgent =
+    matchedMpk.some(
+      (item) => (item.disruption?.is_emergency || item.urgent) && !item.disruption?.is_resolved,
+    ) || flatTrainAlerts.some(({ alert }) => alert.isUrgent && !alert.isResolved);
+
+  const openMpkItem = (item: MpkNewsItem) => {
     if (!item.link) return;
     const alertLines = getDisruptionLines(item);
     router.push({
@@ -416,7 +707,23 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     });
   };
 
-  const shown = matched.slice(0, MAX_ROWS);
+  const openTrainAlert = (leg: Leg, alert: TrainAlertItem) => {
+    if (!alert.link) return;
+    router.push({
+      pathname: '/article',
+      params: {
+        url: alert.link,
+        title: alert.title,
+        source: alert.source || leg.railAgency || 'Kolej',
+        meta: alert.timeframe || leg.departAt || '',
+        lines: leg.line || leg.trainNumber || '',
+      },
+    });
+  };
+
+  const shownTrain = flatTrainAlerts.slice(0, MAX_ROWS);
+  const remainingSlots = Math.max(0, MAX_ROWS - shownTrain.length);
+  const shownMpk = matchedMpk.slice(0, remainingSlots);
 
   return (
     <View style={styles.container}>
@@ -438,18 +745,27 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         </View>
 
         <View style={styles.counterPill}>
-          <Text style={styles.counterText}>{s.routeDetails.lineAlertsCount(matched.length)}</Text>
+          <Text style={styles.counterText}>{s.routeDetails.lineAlertsCount(totalCount)}</Text>
         </View>
       </View>
 
-      {/* Lista kart utrudnień */}
+      {/* Lista kart utrudnień (kolejowych i miejskich) */}
       <View style={styles.cardsList}>
-        {shown.map((item) => (
+        {shownTrain.map(({ leg, alert }, idx) => (
+          <TrainAlertSubCard
+            key={`${leg.tripId ?? leg.id}-${alert.id ?? idx}-${alert.title}`}
+            leg={leg}
+            alert={alert}
+            onPress={alert.link ? () => openTrainAlert(leg, alert) : undefined}
+          />
+        ))}
+        {shownMpk.map((item) => (
           <AlertSubCard
             key={item.id}
             item={item}
             lineSet={lineSet}
-            onPress={() => openItem(item)}
+            grounded={grounded.get(item.id)}
+            onPress={() => openMpkItem(item)}
           />
         ))}
       </View>
@@ -647,6 +963,17 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 2,
   },
+  trainNameChip: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderRadius: shape.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: '80%',
+  },
+  trainNameText: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+  },
 
   // Teksty w karcie
   headlineText: {
@@ -718,6 +1045,18 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     flex: 1,
   },
+  changeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  changeText: {
+    ...type.bodySmall,
+    color: scheme.onSurface,
+    flex: 1,
+    lineHeight: 17,
+  },
 
   // Dolny przycisk
   allNewsBtn: {
@@ -728,11 +1067,12 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
+    paddingVertical: 10,
     paddingHorizontal: 16,
   },
   allNewsBtnText: {
-    ...type.labelLarge,
-    fontWeight: '700',
+    ...type.labelMedium,
+    fontWeight: '600',
     color: scheme.primary,
   },
 });
