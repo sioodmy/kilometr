@@ -9,7 +9,7 @@
  * fundament) - chronimy czystą logikę na zamrożonych próbkach z realnych
  * źródeł (wpisy z mzkopole.pl/category/aktualnosci/feed/ z 2026-10-15,
  * struktura podstrony aktualności z tego samego dnia, linie i typy
- * z GTFS MZK z cdn.zbiorkom.live/gtfs/opole.zip).
+ * z GTFS MZK z api.zbiorkom.live/opole/gtfs/default).
  */
 
 import { getCity } from '../src/cities';

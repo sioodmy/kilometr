@@ -858,7 +858,7 @@ export async function nextNationalTrains(
          ${toStopId ? 'AND EXISTS (SELECT 1 FROM stop_times d WHERE d.trip_id = st.trip_id AND d.stop_id = ? AND d.seq > st.seq)' : ''}
        ORDER BY st.dep_sec
        LIMIT 60`,
-      toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services],
+      ...(toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services]),
     );
     const out: NextTrain[] = [];
     for (const row of rows) {
