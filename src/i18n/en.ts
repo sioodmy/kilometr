@@ -544,7 +544,9 @@ export const en: Strings = {
     railTitle: 'National rail timetable',
     railHint:
       'Trains of all operators for planning journeys between cities: IC, EIC, PolRegio, KM and more.',
-    railReady: (date: string) => `Downloaded (valid until ${date})`,
+    railReady: (date: string) =>
+      date ? `Downloaded (valid until ${date})` : 'Downloaded',
+    railChecking: 'Checking for updates…',
     railEmpty: 'Not downloaded',
     railDownload: 'Download',
     railCheck: 'Check for updates',
@@ -1039,6 +1041,7 @@ export const en: Strings = {
     scheduledTime: (time: string) => `Scheduled ${time}`,
     estimatedDelay: (n: number) => `About +${n} min, estimated from other buses`,
     untrackedVehicle: 'No current position. Delays are possible.',
+    cancelledTrain: 'Train cancelled',
     uncertainTransfer: 'Short transfer. This bus has no confirmed delay.',
     arrival: 'Arrival',
     origin: 'From',
@@ -1377,6 +1380,15 @@ export const en: Strings = {
     cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',
     disruptionsBadgeA11y: 'Disruptions on route',
+    cancelledTitle: 'Service cancelled',
+    cancelledBody: (train: string) =>
+      `Train ${train} was cancelled by the infrastructure manager or operator on this section.`,
+    cancelledSolution: 'Pick another connection or check the operator replacement service.',
+    detourTitle: 'Route changed (detour)',
+    detourBody: 'The train is taking a diversion.',
+    detourSolution: 'Travel time and intermediate stations may change.',
+    departAt: (time: string) => `Departure: ${time}`,
+    liveLabel: 'Live',
   },
 
   data: {

@@ -551,7 +551,9 @@ export const de: Strings = {
     railTitle: 'Nationales Bahnfahrplan',
     railHint:
       'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
-    railReady: (date: string) => `Heruntergeladen (gültig bis ${date})`,
+    railReady: (date: string) =>
+      date ? `Heruntergeladen (gültig bis ${date})` : 'Heruntergeladen',
+    railChecking: 'Suche nach Updates…',
     railEmpty: 'Nicht heruntergeladen',
     railDownload: 'Herunterladen',
     railCheck: 'Nach Updates suchen',
@@ -1053,6 +1055,7 @@ export const de: Strings = {
     scheduledTime: (time: string) => `Planmäßig ${time}`,
     estimatedDelay: (n: number) => `Etwa +${n} Min., aus anderen Bussen geschätzt`,
     untrackedVehicle: 'Keine aktuelle Position. Verspätung möglich.',
+    cancelledTrain: 'Zug ausgefallen',
     uncertainTransfer: 'Wenig Zeit zum Umsteigen. Die Verspätung dieses Busses ist ungewiss.',
     arrival: 'Ankunft',
     origin: 'Von',
@@ -1396,6 +1399,15 @@ export const de: Strings = {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',
     disruptionsBadgeA11y: 'Störungen auf der Route',
+    cancelledTitle: 'Zug ausgefallen',
+    cancelledBody: (train: string) =>
+      `Zug ${train} wurde vom Betreiber oder Infrastrukturbetreiber auf diesem Abschnitt ausgefallen.`,
+    cancelledSolution: 'Wähle eine andere Verbindung oder prüfe den Ersatzverkehr.',
+    detourTitle: 'Umleitung',
+    detourBody: 'Der Zug fährt eine Umleitung.',
+    detourSolution: 'Fahrzeit und Zwischenbahnhöfe können sich ändern.',
+    departAt: (time: string) => `Abfahrt: ${time}`,
+    liveLabel: 'Live',
   },
 
   data: {

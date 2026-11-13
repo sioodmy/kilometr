@@ -72,6 +72,10 @@ interface ApiResponse {
 
 const CACHE_TTL_MS = 20_000;
 const MAX_TRAIN_DELAY_SEC = 4 * 3600;
+/** Opóźnienie starsze niż to nie jest już „live” (UI / liveTracker). */
+export const RAIL_UPDATE_FRESH_MS = 5 * 60_000;
+/** Jak długo trzymamy wpisy na dysku (offline podgląd, nie live). */
+const PERSISTED_UPDATE_MAX_AGE_MS = 2 * 3600_000;
 
 let cachedApi: {
   at: number;
@@ -98,6 +102,24 @@ export function resetNationalRailUpdatesCache(): void {
   storageLoadPromise = null;
 }
 
+function pruneStaleUpdates(
+  updates: Record<string, NationalRailLegUpdate>,
+  now = Date.now(),
+): Record<string, NationalRailLegUpdate> {
+  const next: Record<string, NationalRailLegUpdate> = {};
+  for (const [key, upd] of Object.entries(updates)) {
+    if (!upd || typeof upd.fetchedAt !== 'number') continue;
+    if (now - upd.fetchedAt > PERSISTED_UPDATE_MAX_AGE_MS) continue;
+    next[key] = upd;
+  }
+  return next;
+}
+
+/** Czy update nadaje się jeszcze jako live (nie wczorajszy blob z dysku). */
+export function isRailUpdateFresh(update: Pick<NationalRailLegUpdate, 'fetchedAt'>, now = Date.now()): boolean {
+  return typeof update.fetchedAt === 'number' && now - update.fetchedAt <= RAIL_UPDATE_FRESH_MS;
+}
+
 async function getPersistedRailCache(): Promise<PersistedRailCache | null> {
   if (memoryRailCache) return memoryRailCache;
   if (storageLoadPromise) return storageLoadPromise;
@@ -107,7 +129,16 @@ async function getPersistedRailCache(): Promise<PersistedRailCache | null> {
       if (!raw) return null;
       const parsed = JSON.parse(raw) as PersistedRailCache;
       if (!parsed || typeof parsed.savedAt !== 'number') return null;
-      if (Date.now() - parsed.savedAt > PERSISTENT_CACHE_TTL_MS) return null;
+      const now = Date.now();
+      parsed.updates = pruneStaleUpdates(parsed.updates ?? {}, now);
+      // Expiry po najstarszym świeżym wpisie / odpowiedzi, nie po każdym zapisie.
+      const newestUpdate = Math.max(
+        0,
+        ...Object.values(parsed.updates).map((u) => u.fetchedAt || 0),
+        ...Object.values(parsed.apiResponses ?? {}).map((e) => e.fetchedAt || 0),
+      );
+      const anchor = newestUpdate > 0 ? newestUpdate : parsed.savedAt;
+      if (now - anchor > PERSISTENT_CACHE_TTL_MS) return null;
       memoryRailCache = parsed;
       return parsed;
     } catch {
@@ -130,8 +161,10 @@ async function savePersistedRailCache(
     updates: {},
   };
   const now = Date.now();
-  current.savedAt = now;
-  current.apiResponses[requestUrl] = { fetchedAt: now, data: apiData };
+  current.apiResponses[requestUrl] = {
+    fetchedAt: apiData.fetchedAt ?? now,
+    data: apiData,
+  };
   for (const [key, upd] of newUpdates) {
     current.updates[key] = upd;
     const plkId = toPlkTripId(key);
@@ -140,6 +173,8 @@ async function savePersistedRailCache(
       current.updates[plkId] = upd;
     }
   }
+  current.updates = pruneStaleUpdates(current.updates, now);
+  current.savedAt = now;
   memoryRailCache = current;
   try {
     await kvSet(RAIL_UPDATES_STORAGE_KEY, JSON.stringify(current));
@@ -434,6 +469,7 @@ export async function fetchNationalRailUpdates(
       // Czas z dysku, nie „teraz”: inaczej stary cache wygląda na świeży feed.
       cacheFetchedAt = diskEntry?.fetchedAt;
     } else if (disk?.updates) {
+      const now = Date.now();
       const fallbackMap = new Map<string, NationalRailLegUpdate>();
       for (const leg of plLegs) {
         if (!leg.tripId) continue;
@@ -443,7 +479,8 @@ export async function fetchNationalRailUpdates(
           disk.updates[leg.tripId] ??
           (canonicalKey ? disk.updates[canonicalKey] : undefined) ??
           (plkId ? disk.updates[plkId] : undefined);
-        if (hit) fallbackMap.set(leg.tripId, hit);
+        // Z dysku tylko świeże: wczorajsze opóźnienie nie wraca jako live.
+        if (hit && isRailUpdateFresh(hit, now)) fallbackMap.set(leg.tripId, hit);
       }
       return fallbackMap;
     } else {
@@ -617,6 +654,7 @@ export async function fetchNationalRailUpdates(
     void savePersistedRailCache(requestUrl, data, result);
   } else if (isFromCache) {
     const disk = await getPersistedRailCache();
+    const now = Date.now();
     if (disk?.updates) {
       for (const leg of plLegs) {
         if (!leg.tripId || result.has(leg.tripId)) continue;
@@ -626,9 +664,15 @@ export async function fetchNationalRailUpdates(
           disk.updates[leg.tripId] ??
           (canonicalKey ? disk.updates[canonicalKey] : undefined) ??
           (plkId ? disk.updates[plkId] : undefined);
-        if (hit) result.set(leg.tripId, hit);
+        if (hit && isRailUpdateFresh(hit, now)) result.set(leg.tripId, hit);
       }
     }
+  }
+
+  // Odetnij przeterminowane wpisy zanim wyjdą do UI / liveTracker.
+  const pruneAt = Date.now();
+  for (const [tripId, upd] of result) {
+    if (!isRailUpdateFresh(upd, pruneAt)) result.delete(tripId);
   }
 
   return result;

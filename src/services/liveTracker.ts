@@ -52,7 +52,7 @@ import {
 } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
 import { fetchNationalRailLive, type NationalLiveLeg } from './nationalRailLive';
-import { fetchNationalRailUpdates } from './nationalRailUpdates';
+import { fetchNationalRailUpdates, RAIL_UPDATE_FRESH_MS } from './nationalRailUpdates';
 import {
   MAX_DELAY_SEC,
   MAX_SAMPLE_AGE_MS,
@@ -340,6 +340,8 @@ class LiveTracker {
       }
       for (const [tripId, update] of updates) {
         if (update.hasRealtimeDelay === false) continue;
+        // fetchedAt z feedu/dysku: nie udawaj „teraz” dla wczorajszego cache.
+        if (nowMs - update.fetchedAt > RAIL_UPDATE_FRESH_MS) continue;
         const clamped = Math.max(-MAX_DELAY_SEC, Math.min(MAX_DELAY_SEC, update.delaySec));
         if (this.tripDelays.get(tripId) !== clamped) {
           changed = true;
@@ -352,7 +354,7 @@ class LiveTracker {
         this.nationalTripDelays.set(tripId, {
           delaySec: clamped,
           arrivalDelaySec,
-          updatedAt: nowMs,
+          updatedAt: update.fetchedAt,
         });
       }
       // Pozycje wchodzą do byId pod tripId, żeby ekran mógł je dopasować

@@ -30,6 +30,7 @@ export interface ZbRailDeparture {
   delaySec: number;
   platform?: string;
   live: boolean;
+  cancelled?: boolean;
   fetchedAt: number;
 }
 
@@ -144,6 +145,7 @@ function parseDeparture(value: unknown, fetchedAt: number): ZbRailDeparture | nu
     delaySec: Math.round(delayMs / 1000),
     platform,
     live: !isCancelled && (isRealtime || delayMs !== 0),
+    cancelled: isCancelled,
     fetchedAt,
   };
 }

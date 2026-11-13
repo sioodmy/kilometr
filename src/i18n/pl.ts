@@ -670,7 +670,9 @@ export const pl = {
     railTitle: 'Rozkład kolejowy (Polska)',
     railHint:
       'Pociągi wszystkich przewoźników do planowania podróży między miastami: IC, EIC, PolRegio, KM i inni.',
-    railReady: (date: string) => `Pobrany (ważny do ${date})`,
+    railReady: (date: string) =>
+      date ? `Pobrany (ważny do ${date})` : 'Pobrany',
+    railChecking: 'Sprawdzanie aktualizacji…',
     railEmpty: 'Niepobrany',
     railDownload: 'Pobierz',
     railCheck: 'Sprawdź aktualizacje',
@@ -1196,6 +1198,7 @@ export const pl = {
     scheduledTime: (time: string) => `Planowo ${time}`,
     estimatedDelay: (n: number) => `Około +${n} min, szacunek z innych autobusów`,
     untrackedVehicle: 'Brak aktualnej pozycji. Możliwe opóźnienie.',
+    cancelledTrain: 'Pociąg odwołany',
     uncertainTransfer: 'Mało czasu na przesiadkę. Opóźnienie tego autobusu jest niepewne.',
     arrival: 'Na miejscu',
     origin: 'Skąd',
@@ -1543,6 +1546,15 @@ export const pl = {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
     fallbackLine: 'Pociąg',
     disruptionsBadgeA11y: 'Utrudnienia na trasie',
+    cancelledTitle: 'Kurs odwołany',
+    cancelledBody: (train: string) =>
+      `Pociąg ${train} został odwołany przez zarządcę lub przewoźnika na wybranym odcinku trasy.`,
+    cancelledSolution: 'Wybierz inne połączenie lub sprawdź komunikację zastępczą przewoźnika.',
+    detourTitle: 'Trasa zmieniona (objazd)',
+    detourBody: 'Pociąg jedzie drogą okrężną.',
+    detourSolution: 'Czas przejazdu i lista stacji pośrednich mogą ulec zmianie.',
+    departAt: (time: string) => `Odjazd: ${time}`,
+    liveLabel: 'Na żywo',
   },
   data: {
     stepUnpack: 'Rozpakowywanie…',

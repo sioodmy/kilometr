@@ -195,6 +195,8 @@ export interface Leg {
   railColor?: string;
   trainNumber?: string;
   trainName?: string;
+  /** Odwołany przez PLK / tablicę odjazdów (kolej). */
+  cancelled?: boolean;
   /** GTFS trip_id kursu - klucz do /trips/:id/stops i matchowania pojazdu */
   tripId?: string;
   routeId?: string;

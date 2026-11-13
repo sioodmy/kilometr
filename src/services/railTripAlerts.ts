@@ -3,6 +3,7 @@
 // bez analizy AI i bez pośrednictwa R2.
 // Współdzielone między kartą połączenia (kompaktowy chip) a ekranem szczegółów trasy.
 
+import { tr } from '../i18n';
 import type { Connection, Leg } from '../types/models';
 import {
   fetchZbVehicleAlerts,
@@ -94,14 +95,19 @@ function cleanPkpTitle(raw: string): string {
 
 function extractTrainNumbersFromText(text: string): string[] {
   const out = new Set<string>();
-  const years = new Set(['2024', '2025', '2026', '2027', '2028']);
-  const re = /\b(?:IC|TLK|EIC|EIP|EC|EN|PR|KM|KŚ|KW|KD|ŁKA)?\s*(?:nr\s*)?(\d{2,6}(?:\/\d{1,2})?)\b/gi;
+  const year = new Date().getFullYear();
+  const years = new Set(
+    [year - 1, year, year + 1, year + 2].map((y) => String(y)),
+  );
+  // Wymagaj kategorii albo „nr” przed cyframi: inaczej 703 200 200 / kwoty
+  // stają się „numerami pociągów”.
+  const re =
+    /(?:(?:IC|TLK|EIC|EIP|EC|EN|ICN|MP|PR|KM|KŚ|KW|KD|ŁKA|LKA)\s+|nr\s+)(\d{2,6}(?:\/\d{1,2})?)\b/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const token = m[1];
     const base = token.split('/')[0] ?? '';
     if (years.has(base)) continue;
-    // Dwucyfrowe numery akceptujemy wyłącznie z prefiksem międzynarodowym (np. EIC nr 41)
     if (base.length < 3 && !/\b(?:EIC|EC|EN|IC)\s+nr\s+\d{2}\b/i.test(m[0])) continue;
     for (const v of trainNumberVariants(token)) out.add(v);
   }
@@ -116,7 +122,12 @@ function extractHonoredAgencies(text: string): string[] {
   if (lower.includes('mazowieck') || /\bkm\b/.test(lower)) agencies.push('KM');
   if (lower.includes('polregio')) agencies.push('PR');
   if (lower.includes('dolnośląsk') || /\bkd\b/.test(lower)) agencies.push('KD');
-  if (lower.includes('śląsk') || /\bkś\b/.test(lower)) agencies.push('KS');
+  if (
+    (lower.includes('śląsk') && !lower.includes('dolnośląsk')) ||
+    /\bkś\b/.test(lower)
+  ) {
+    agencies.push('KS');
+  }
   if (lower.includes('wielkopolsk') || /\bkw\b/.test(lower)) agencies.push('KW');
   if (lower.includes('małopolsk') || /\bkmł\b/.test(lower)) agencies.push('KML');
   if (lower.includes('łódzk') || /\błka\b/.test(lower)) agencies.push('LKA');
@@ -312,27 +323,29 @@ export async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
     const alerts: TrainAlertItem[] = [];
 
     // 1. Status odwołania / objazdu z PKP PLK updates
+    const s = tr();
     try {
       const updates = await fetchNationalRailUpdates([leg]);
       const update = leg.tripId ? updates.get(leg.tripId) : undefined;
+      const trainLabel = leg.trainNumber ?? leg.line ?? s.railAlerts.fallbackLine;
       if (update?.cancelled) {
         alerts.push({
           id: `${leg.tripId ?? leg.id}-cancelled`,
-          title: 'Kurs odwołany',
-          description: `Pociąg ${leg.trainNumber ?? leg.line ?? ''} został odwołany przez zarządcę lub przewoźnika na wybranym odcinku trasy.`,
-          solution: 'Wybierz inne połączenie lub sprawdź komunikację zastępczą przewoźnika.',
+          title: s.railAlerts.cancelledTitle,
+          description: s.railAlerts.cancelledBody(trainLabel),
+          solution: s.railAlerts.cancelledSolution,
           isUrgent: true,
-          timeframe: leg.departAt ? `Odjazd: ${leg.departAt}` : undefined,
+          timeframe: leg.departAt ? s.railAlerts.departAt(leg.departAt) : undefined,
         });
       }
       if (update?.detour) {
         alerts.push({
           id: `${leg.tripId ?? leg.id}-detour`,
-          title: 'Trasa zmieniona (objazd)',
-          description: 'Pociąg jedzie drogą okrężną.',
-          solution: 'Czas przejazdu i lista stacji pośrednich mogą ulec zmianie.',
+          title: s.railAlerts.detourTitle,
+          description: s.railAlerts.detourBody,
+          solution: s.railAlerts.detourSolution,
           isUrgent: true,
-          timeframe: leg.departAt ? `Odjazd: ${leg.departAt}` : undefined,
+          timeframe: leg.departAt ? s.railAlerts.departAt(leg.departAt) : undefined,
         });
       }
     } catch {
@@ -376,9 +389,11 @@ export async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
 
     // 3. Komunikaty kursu ze strumienia zbiorkomu
     if (candidates.length > 0) {
+      const liveLabel = tr().railAlerts.liveLabel;
       for (const vehicle of candidates) {
         try {
           const zbAlerts = await fetchZbVehicleAlerts(vehicle);
+          let addedFromVehicle = 0;
           for (const a of zbAlerts) {
             if (!alerts.some((existing) => existing.title === a.title)) {
               alerts.push({
@@ -386,21 +401,23 @@ export async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
                 title: a.title,
                 description: a.description,
                 isUrgent: true,
-                timeframe: 'Live',
+                timeframe: liveLabel,
                 link: a.url,
               });
+              addedFromVehicle++;
             }
           }
-          if (alerts.length > 0) break;
+          // break dopiero gdy ten kandydat coś dorzucił, nie gdy wcześniej były PLK
+          if (addedFromVehicle > 0) break;
         } catch {
           // Następny kandydat
         }
       }
     }
 
-    if (alerts.length === 0 && hit && hit.alerts.length > 0) {
-      return hit.alerts;
-    }
+    // Pusty wynik z udanego fetcha nadpisuje cache: rozwiązane utrudnienie znika.
+    // Stary wynik zostaje wyłącznie gdy cała ścieżka padła (alerts i tak puste,
+    // a hit pochodzi sprzed TTL; wtedy i tak zwrócilibyśmy hit na starcie).
     results.set(cacheKey, { at: Date.now(), alerts });
     return alerts;
   })().finally(() => {

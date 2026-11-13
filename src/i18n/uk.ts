@@ -673,7 +673,9 @@ export const uk: Strings = {
     railTitle: 'Залізничний розклад (Польща)',
     railHint:
       'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
-    railReady: (date: string) => `Завантажено (дійсний до ${date})`,
+    railReady: (date: string) =>
+      date ? `Завантажено (дійсний до ${date})` : 'Завантажено',
+    railChecking: 'Перевірка оновлень…',
     railEmpty: 'Не завантажено',
     railDownload: 'Завантажити',
     railCheck: 'Перевірити оновлення',
@@ -1206,6 +1208,7 @@ export const uk: Strings = {
     scheduledTime: (time: string) => `За розкладом ${time}`,
     estimatedDelay: (n: number) => `Близько +${n} хв, оцінка за іншими автобусами`,
     untrackedVehicle: 'Немає актуальної позиції. Можливе запізнення.',
+    cancelledTrain: 'Потяг скасовано',
     uncertainTransfer: 'Мало часу на пересадку. Запізнення цього автобуса не підтверджено.',
     arrival: 'Прибуття',
     origin: 'Звідки',
@@ -1554,6 +1557,15 @@ export const uk: Strings = {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',
     disruptionsBadgeA11y: 'Ускладнення на маршруті',
+    cancelledTitle: 'Рейс скасовано',
+    cancelledBody: (train: string) =>
+      `Потяг ${train} скасовано оператором або управителем інфраструктури на цій ділянці.`,
+    cancelledSolution: 'Оберіть інше сполучення або перевірте заміну перевізника.',
+    detourTitle: 'Змінений маршрут (об’їзд)',
+    detourBody: 'Потяг їде об’їздом.',
+    detourSolution: 'Час у дорозі та проміжні станції можуть змінитися.',
+    departAt: (time: string) => `Відправлення: ${time}`,
+    liveLabel: 'Наживо',
   },
 
   data: {
