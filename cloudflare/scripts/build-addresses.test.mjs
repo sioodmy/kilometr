@@ -8,8 +8,6 @@ import { test } from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 // Backoff na testy: zero czekania między seriami luster.
-process.env.ADDRESS_RETRY_WAIT_MS = '1,1';
-
 import {
   ADDRESS_SCHEMA_VERSION,
   addressesFromElements,

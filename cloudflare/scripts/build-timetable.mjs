@@ -621,16 +621,43 @@ function isoDaysFromNow(offset) {
 
 /* ─── HTTP ────────────────────────────────────────────────────────────── */
 
-async function fetchJson(url, headers = {}, timeoutMs = 30000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { headers, signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} @ ${url}`);
-    return await res.json();
-  } finally {
-    clearTimeout(t);
+/** Dokleja adres i powód z `cause` (np. ENOTFOUND), żeby log mówił co padło. */
+function describeFetchError(error, url) {
+  if (String(error?.message || '').includes(url)) return error;
+  const cause = error?.cause?.code || error?.cause?.message;
+  const detail = cause ? `${error.message} (${cause})` : String(error?.message || error);
+  const wrapped = new Error(`${detail} @ ${url}`);
+  wrapped.name = error?.name || 'Error';
+  return wrapped;
+}
+
+/**
+ * JSON z sieci. `attempts > 1` ponawia tylko błędy przejściowe (sieć,
+ * 5xx, 429, zły JSON), bo 4xx i tak nie naprawi się same.
+ */
+async function fetchJson(url, headers = {}, timeoutMs = 30000, attempts = 1) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { headers, signal: ctrl.signal });
+      if (!res.ok) {
+        const error = new Error(`HTTP ${res.status} ${res.statusText} @ ${url}`);
+        error.retryable = res.status === 429 || res.status >= 500;
+        throw error;
+      }
+      return await res.json();
+    } catch (error) {
+      lastError = describeFetchError(error, url);
+      if (attempt >= attempts || error.retryable === false) throw lastError;
+      warn(`${lastError.message}; ponawiam (${attempt}/${attempts})`);
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    } finally {
+      clearTimeout(t);
+    }
   }
+  throw lastError;
 }
 
 async function fetchBuffer(url, headers = {}, timeoutMs = 120000) {
@@ -822,7 +849,9 @@ async function discoverMpk() {
  * występuje w kilku eksportach z innym zakresem dat.
  */
 async function discoverGzmExports() {
-  const pkg = await fetchJson(GZM_CKAN_PACKAGE, { Accept: 'application/json', ...GZM_UA }, 30000);
+  // CKAN bywa chwilowo niedostępny z runnerów (fetch failed, 5xx), a to
+  // jedyne źródło URL-i eksportów. Bez retry cały build GZM pada.
+  const pkg = await fetchJson(GZM_CKAN_PACKAGE, { Accept: 'application/json', ...GZM_UA }, 30000, 3);
   const resources = Array.isArray(pkg?.result?.resources) ? pkg.result.resources : [];
   const zips = resources
     .filter((r) => (r.format || '').toUpperCase() === 'ZIP' || /\.zip$/i.test(r.name || ''))
@@ -2654,15 +2683,15 @@ async function main() {
   if (addressSnapshot) log(`Adresy OSM: ${addressSnapshot.count}, snapshot ${addressSnapshot.builtAt}`);
 
   // loadPoiSnapshot sam odgrzewa snapshot z R2, gdy Overpass padnie.
-  // Wyjątek oznacza brak jakiegokolwiek indeksu: wtedy nie publikujemy
-  // pustych POI, jeśli poprzedni manifest je miał.
+  // Gdy nie ma żadnego indeksu (Overpass leży, snapshotu brak w R2),
+  // publikujemy rozkład bez POI: to dodatek do wyszukiwarki, nie powód
+  // do blokowania codziennego rozkładu. Kolejny build dołoży indeks.
   const poiSnapshot = await loadPoiSnapshot(
     CITY,
     join(ROOT, 'dist', 'poi-cache'),
     fetch,
     PUBLIC_URL,
   ).catch((error) => {
-    if (remote?.pois?.count) throw error;
     warn(`POI OSM niedostępne: ${error.message}. Publikuję rozkład bez indeksu POI.`);
     return null;
   });
