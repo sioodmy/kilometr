@@ -381,9 +381,11 @@ const TRI_ENVELOPE = { minLat: 54.05, maxLat: 54.7, minLon: 18.1, maxLon: 19.05 
  * Łódź: statyczny zrzut ZDiT (tramwaje + autobusy + linie zastępcze Z/R,
  * nocne N i podmiejskie). Ten sam wzorzec co Poznań: API zbiorkom.live
  * z poprawnymi nagłówkami do skipu buildu (Last-Modified/ETag, odświeżane
- * codziennie).
+ * codziennie). Gdy mirror padnie, pobieranie idzie z oficjalnego archiwum
+ * UMŁ (stały URL, plik podmieniany w miejscu).
  */
 const LODZ_GTFS_URL = `${ZBIORKOM_GTFS}/lodz/gtfs/default`;
+const LODZ_GTFS_UPSTREAM = 'https://otwarte.miasto.lodz.pl/wp-content/uploads/2025/06/GTFS.zip';
 const LODZ_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
@@ -460,10 +462,11 @@ const RZESZOW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: de
  * Lublin: statyczny zrzut ZDiTM (autobusy + trolejbusy 150–162 jako
  * route_type 11 + nocne N1–N3). Ten sam wzorzec co Łódź: API zbiorkom.live
  * z poprawnymi nagłówkami do skipu buildu (Last-Modified/ETag, odświeżane
- * codziennie). Oryginał mkuran.pl/gtfs/lublin.zip trzymamy w komentarzu
- * jako awaryjne źródło (ten sam plik, licencja CC0 1.0).
+ * codziennie). Gdy mirror padnie, pobieranie idzie z mkuran.pl/gtfs/lublin.zip
+ * (ten sam plik, licencja CC0 1.0).
  */
 const LUBLIN_GTFS_URL = `${ZBIORKOM_GTFS}/lublin/gtfs/default`;
+const LUBLIN_GTFS_UPSTREAM = 'https://mkuran.pl/gtfs/lublin.zip';
 const LUBLIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 
@@ -640,6 +643,28 @@ async function fetchBuffer(url, headers = {}, timeoutMs = 120000) {
   } finally {
     clearTimeout(t);
   }
+}
+
+/**
+ * Pobranie feedu z fallbackiem: najpierw mirror zbiorkom.live, a gdy padnie
+ * (sieć, 5xx, 404), oficjalny upstream. Zwraca też URL, z którego faktycznie
+ * poszło pobranie, żeby manifest mówił prawdę.
+ */
+async function fetchFeed(src, timeoutMs = 180000) {
+  try {
+    return { buf: await fetchBuffer(src.url, src.headers, timeoutMs), url: src.url };
+  } catch (error) {
+    if (!src.fallback) throw error;
+    warn(`${src.label}: mirror nie odpowiada (${error.message}), próbuję upstream ${src.fallback}`);
+    return { buf: await fetchBuffer(src.fallback, src.headers, timeoutMs), url: src.fallback };
+  }
+}
+
+/** Fingerprint z mirrora, a gdy mirror milczy, z upstreamu (może być pusty). */
+async function headVersionWithFallback(url, fallback, headers = {}) {
+  const version = await headVersion(url, headers);
+  if (version || !fallback) return version;
+  return headVersion(fallback, headers);
 }
 
 /** Tani fingerprint feedu (do skipu buildu): Last-Modified albo ETag. */
@@ -2258,26 +2283,26 @@ async function main() {
     wkdVersion = await headVersion(WKD_GTFS_URL, WKD_UA);
     log('WTP:', wawFingerprint || '?', '| KM:', kmVersion || '?', '| WKD:', wkdVersion || '?');
   } else if (CITY === 'poznan') {
-    gtfsSources = [{ label: 'ZTM', url: POZNAN_GTFS_URL, prefix: '', headers: POZNAN_UA }];
-    poznanFingerprint = await headVersion(POZNAN_GTFS_URL, POZNAN_UA);
+    gtfsSources = [{ label: 'ZTM', url: POZNAN_GTFS_URL, fallback: POZNAN_GTFS_UPSTREAM, prefix: '', headers: POZNAN_UA }];
+    poznanFingerprint = await headVersionWithFallback(POZNAN_GTFS_URL, POZNAN_GTFS_UPSTREAM, POZNAN_UA);
     kwVersion = await headVersion(KW_GTFS_URL, KW_UA);
     log('ZTM:', poznanFingerprint || '?', '| KW:', kwVersion || '?', '| upstream:', POZNAN_GTFS_UPSTREAM);
   } else if (CITY === 'trojmiasto') {
     // Dwa feedy miejskie mergujemy prefiksami GDA/GDY (ten sam wzorzec co
     // feedy ZTP Krakowa): id są dziś rozłączne, ale formaty ewoluują.
     gtfsSources = [
-      { label: 'ZTM-Gdansk', url: TRICITY_GDA_GTFS_URL, prefix: 'GDA', headers: TRICITY_UA },
-      { label: 'ZKM-Gdynia', url: TRICITY_GDY_GTFS_URL, prefix: 'GDY', headers: TRICITY_UA },
+      { label: 'ZTM-Gdansk', url: TRICITY_GDA_GTFS_URL, fallback: TRICITY_GDA_GTFS_UPSTREAM, prefix: 'GDA', headers: TRICITY_UA },
+      { label: 'ZKM-Gdynia', url: TRICITY_GDY_GTFS_URL, fallback: TRICITY_GDY_GTFS_UPSTREAM, prefix: 'GDY', headers: TRICITY_UA },
     ];
-    gdaFingerprint = await headVersion(TRICITY_GDA_GTFS_URL, TRICITY_UA);
-    gdyFingerprint = await headVersion(TRICITY_GDY_GTFS_URL, TRICITY_UA);
+    gdaFingerprint = await headVersionWithFallback(TRICITY_GDA_GTFS_URL, TRICITY_GDA_GTFS_UPSTREAM, TRICITY_UA);
+    gdyFingerprint = await headVersionWithFallback(TRICITY_GDY_GTFS_URL, TRICITY_GDY_GTFS_UPSTREAM, TRICITY_UA);
     skmtVersion = await headVersion(SKMT_GTFS_URL, SKMT_UA);
     log('GDA:', gdaFingerprint || '?', '| GDY:', gdyFingerprint || '?', '| SKMT:', skmtVersion || '?');
   } else if (CITY === 'lodz') {
-    gtfsSources = [{ label: 'ZDiT', url: LODZ_GTFS_URL, prefix: '', headers: LODZ_UA }];
-    lodzFingerprint = await headVersion(LODZ_GTFS_URL, LODZ_UA);
+    gtfsSources = [{ label: 'ZDiT', url: LODZ_GTFS_URL, fallback: LODZ_GTFS_UPSTREAM, prefix: '', headers: LODZ_UA }];
+    lodzFingerprint = await headVersionWithFallback(LODZ_GTFS_URL, LODZ_GTFS_UPSTREAM, LODZ_UA);
     lkaVersion = await headVersion(LKA_GTFS_URL, LKA_UA);
-    log('ZDiT:', lodzFingerprint || '?', '| ŁKA:', lkaVersion || '?');
+    log('ZDiT:', lodzFingerprint || '?', '| ŁKA:', lkaVersion || '?', '| upstream:', LODZ_GTFS_UPSTREAM);
   } else if (CITY === 'szczecin') {
     gtfsSources = [{ label: 'ZDiTM', url: SZCZECIN_GTFS_URL, prefix: '', headers: SZCZECIN_UA }];
     szczecinFingerprint = await headVersion(SZCZECIN_GTFS_URL, SZCZECIN_UA);
@@ -2291,21 +2316,21 @@ async function main() {
     olsztynFingerprint = await headVersion(OLSZTYN_GTFS_URL, OLSZTYN_UA);
     log('ZDZiT:', olsztynFingerprint || '?');
   } else if (CITY === 'bialystok') {
-    gtfsSources = [{ label: 'BKM', url: BIALYSTOK_GTFS_URL, prefix: '', headers: BIALYSTOK_UA }];
-    bialystokFingerprint = await headVersion(BIALYSTOK_GTFS_URL, BIALYSTOK_UA);
+    gtfsSources = [{ label: 'BKM', url: BIALYSTOK_GTFS_URL, fallback: BIALYSTOK_GTFS_UPSTREAM, prefix: '', headers: BIALYSTOK_UA }];
+    bialystokFingerprint = await headVersionWithFallback(BIALYSTOK_GTFS_URL, BIALYSTOK_GTFS_UPSTREAM, BIALYSTOK_UA);
     log('BKM:', bialystokFingerprint || '?', '| upstream:', BIALYSTOK_GTFS_UPSTREAM);
   } else if (CITY === 'opole') {
     gtfsSources = [{ label: 'MZK', url: OPOLE_GTFS_URL, prefix: '', headers: OPOLE_UA }];
     opoleFingerprint = await headVersion(OPOLE_GTFS_URL, OPOLE_UA);
     log('MZK:', opoleFingerprint || '?');
   } else if (CITY === 'rzeszow') {
-    gtfsSources = [{ label: 'ZTM', url: RZESZOW_GTFS_URL, prefix: '', headers: RZESZOW_UA }];
-    rzeszowFingerprint = await headVersion(RZESZOW_GTFS_URL, RZESZOW_UA);
+    gtfsSources = [{ label: 'ZTM', url: RZESZOW_GTFS_URL, fallback: RZESZOW_GTFS_UPSTREAM, prefix: '', headers: RZESZOW_UA }];
+    rzeszowFingerprint = await headVersionWithFallback(RZESZOW_GTFS_URL, RZESZOW_GTFS_UPSTREAM, RZESZOW_UA);
     log('ZTM:', rzeszowFingerprint || '?', '| upstream:', RZESZOW_GTFS_UPSTREAM);
   } else if (CITY === 'lublin') {
-    gtfsSources = [{ label: 'ZDiTM', url: LUBLIN_GTFS_URL, prefix: '', headers: LUBLIN_UA }];
-    lublinFingerprint = await headVersion(LUBLIN_GTFS_URL, LUBLIN_UA);
-    log('ZDiTM:', lublinFingerprint || '?');
+    gtfsSources = [{ label: 'ZDiTM', url: LUBLIN_GTFS_URL, fallback: LUBLIN_GTFS_UPSTREAM, prefix: '', headers: LUBLIN_UA }];
+    lublinFingerprint = await headVersionWithFallback(LUBLIN_GTFS_URL, LUBLIN_GTFS_UPSTREAM, LUBLIN_UA);
+    log('ZDiTM:', lublinFingerprint || '?', '| upstream:', LUBLIN_GTFS_UPSTREAM);
   } else if (CITY === 'radom') {
     gtfsSources = [{ label: 'MZDiK', url: RADOM_GTFS_URL, prefix: '', headers: RADOM_UA }];
     radomFingerprint = await headVersion(RADOM_GTFS_URL, RADOM_UA);
@@ -2651,9 +2676,9 @@ async function main() {
   for (const [i, src] of gtfsSources.entries()) {
     const zipPath = join(work, `gtfs-${i}.zip`);
     log(`pobieranie ZIP ${src.label}…`);
-    const zipBuf = await fetchBuffer(src.url, src.headers, 180000);
-    writeFileSync(zipPath, zipBuf);
-    log(`ZIP ${src.label}:`, (zipBuf.length / 1048576).toFixed(1), 'MB');
+    const feed = await fetchFeed(src);
+    writeFileSync(zipPath, feed.buf);
+    log(`ZIP ${src.label}:`, (feed.buf.length / 1048576).toFixed(1), 'MB', feed.url === src.url ? '' : `(fallback ${feed.url})`);
     const txtDir = join(work, `gtfs-${i}`);
     mkdirSync(txtDir, { recursive: true });
     // Niezerowy exit tolerujemy (np. brak opcjonalnego calendar.txt w feedzie:
@@ -4349,7 +4374,7 @@ async function main() {
       : CITY === 'lodz'
       ? {
           mpk: {
-            kind: 'gtfs-zip', url: LODZ_GTFS_URL,
+            kind: 'gtfs-zip', url: LODZ_GTFS_URL, upstream: LODZ_GTFS_UPSTREAM,
             fingerprint: lodzFingerprint,
             stops: counts.stops - counts.lkaStations,
             routes: counts.routes - counts.lkaRoutes,
@@ -4415,7 +4440,7 @@ async function main() {
       : CITY === 'lublin'
       ? {
           zditm: {
-            kind: 'gtfs-zip', url: LUBLIN_GTFS_URL,
+            kind: 'gtfs-zip', url: LUBLIN_GTFS_URL, upstream: LUBLIN_GTFS_UPSTREAM,
             fingerprint: lublinFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
