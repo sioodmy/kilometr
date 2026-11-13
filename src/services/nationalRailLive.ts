@@ -48,6 +48,7 @@ export interface ZbStopDeparture {
 export interface ZbVehicleAlert {
   title: string;
   description: string;
+  url?: string;
 }
 
 /** Krotka stacji z /api6-open/pkp/stops: [id, city, name, code, [lon,lat], ...]. */
@@ -558,13 +559,16 @@ function parseAlerts(raw: unknown): ZbVehicleAlert[] {
     if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
     const title = entry[0].trim();
     const description = typeof entry[1] === 'string' ? entry[1].trim() : '';
+    const url = typeof entry[2] === 'string' && /^https?:\/\//i.test(entry[2].trim()) ? entry[2].trim() : undefined;
     if (!title) continue;
     // Zbiorkom dokleja komunikaty operatora do KAŻDEGO kursu (przedsprzedaż,
     // cenniki, prace serwisowe w kanałach sprzedaży). Zostają realne
-    // utrudnienia w ruchu: objazdy, odwołania, ograniczenia prędkości.
+    // utrudnienia w ruchu i wzajemne honorowanie biletów.
     const haystack = `${title} ${description}`.toLowerCase();
-    if (ALERT_NOISE.some((needle) => haystack.includes(needle))) continue;
-    out.push({ title, description });
+    if (!haystack.includes('honorowan') && ALERT_NOISE.some((needle) => haystack.includes(needle))) {
+      continue;
+    }
+    out.push({ title, description, url });
   }
   return out;
 }
