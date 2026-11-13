@@ -142,7 +142,9 @@
     "check:rail-shape": "tsx --require ./scripts/stub-expo.cjs scripts/check-rail-shape.ts",
     "check:ticketing": "tsx --require ./scripts/stub-expo.cjs --test test/ticketing.test.ts",
     "phone:transfer": "bash scripts/preview-transfer.sh",
-    "preview:transfer": "bash scripts/preview-transfer.sh"
+    "preview:transfer": "bash scripts/preview-transfer.sh",
+    "video:prepare": "tsx --require ./scripts/stub-expo.cjs video/scripts/prepare.ts",
+    "video:render": "tsx video/scripts/render.ts"
   },
   "private": true,
   "expo": {
