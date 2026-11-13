@@ -4,29 +4,18 @@ import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { getCity } from '../../src/cities.ts';
 import { classifyPoi, buildPoiAddress } from '../../src/services/poiClassify.ts';
+import { envNumber, fetchOverpassElements, overpassMirrors } from './overpass.mjs';
 
 export const POI_SCHEMA_VERSION = 1;
 const MAX_AGE_MS = 7 * 86400000;
 
-const OVERPASS_MIRRORS = [
-  process.env.POI_OVERPASS_URL || 'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-];
+const OVERPASS_MIRRORS = overpassMirrors(process.env.POI_OVERPASS_URL);
+const OVERPASS_TIMEOUT_MS = envNumber('POI_OVERPASS_TIMEOUT_MS', 75_000);
+const OVERPASS_HEDGE_MS = envNumber('POI_HEDGE_MS', 10_000);
 
 const TILE_DEG = 0.35;
 const MIN_TILE_DEG = 0.08;
 const OVERPASS_BUDGET_MS = 10 * 60_000;
-const MIRROR_ROUNDS = 2;
-
-const retryWaitMs = (round) => {
-  const waits = (process.env.POI_RETRY_WAIT_MS || '3000')
-    .split(',')
-    .map((v) => Number(v.trim()))
-    .filter((v) => Number.isFinite(v) && v >= 0);
-  return waits[round] ?? waits.at(-1) ?? 3000;
-};
 
 export const POI_OVERPASS_FILTERS = [
   'nwr["shop"~"^(supermarket|mall|department_store)$"]',
@@ -198,32 +187,21 @@ export async function loadPoiSnapshot(cityId, cacheDir, fetcher = fetch, snapsho
       const bbox = [south, west, north, east].join(',');
       const filters = POI_OVERPASS_FILTERS.map((f) => `${f}(${bbox});`).join('\n  ');
       const query = `[out:json][timeout:60];(\n  ${filters}\n);\nout center tags;`;
-      const request = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'KilometrPoiBuild/1.0 (https://github.com/sioodmy/kilometr)',
-        },
-        body: new URLSearchParams({ data: query }),
-        signal: AbortSignal.timeout(90_000),
-      };
       let lastError = null;
-      for (let round = 0; round < MIRROR_ROUNDS; round++) {
-        for (const url of OVERPASS_MIRRORS) {
-          if (Date.now() > deadline) throw new Error('Overpass: przekroczony budżet czasu');
-          try {
-            const response = await fetcher(url, request);
-            if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
-            const json = await response.json();
-            if (json.remark || !Array.isArray(json.elements)) {
-              throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
-            }
-            return poisFromElements(json.elements, bounds);
-          } catch (error) {
-            lastError = error;
-          }
-        }
-        if (round < MIRROR_ROUNDS - 1) await new Promise((r) => setTimeout(r, retryWaitMs(round)));
+      try {
+        const elements = await fetchOverpassElements({
+          query,
+          fetcher,
+          mirrors: OVERPASS_MIRRORS,
+          userAgent: 'KilometrPoiBuild/1.0 (https://github.com/sioodmy/kilometr)',
+          timeoutMs: OVERPASS_TIMEOUT_MS,
+          hedgeMs: OVERPASS_HEDGE_MS,
+          deadline,
+        });
+        return poisFromElements(elements, bounds);
+      } catch (error) {
+        if (error?.code === 'OVERPASS_BUDGET') throw error;
+        lastError = error;
       }
 
       const latSpan = north - south;

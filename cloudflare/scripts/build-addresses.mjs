@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { getCity } from '../../src/cities.ts';
+import { envNumber, fetchOverpassElements, overpassMirrors } from './overpass.mjs';
 
 export const ADDRESS_SCHEMA_VERSION = 1;
 
@@ -15,19 +16,16 @@ export const ADDRESS_SCHEMA_VERSION = 1;
 export const ADDRESSES_DB_SCHEMA = 3;
 const MAX_AGE_MS = 7 * 86400000;
 /**
- * Kolejno próbowane instancje Overpassa; pierwszy wpis można nadpisać
- * przez ADDRESS_OVERPASS_URL. Kilka kolejnych dni 502/504 z głównego
- * serwera kończyło się firmowaniem bazy bez indeksu adresów, więc
- * pojedyncza padnięta instancja nie ubija już snapshotu. mail.ru to
- * ostatni przystanek (własny mirror planety, wolniejszy albo z dziurami
- * w importach, więc zaufany tylko gdy wyczerpie się wszystko powyżej).
+ * Instancje Overpassa: pierwszy wpis można nadpisać przez ADDRESS_OVERPASS_URL.
+ * Kilka kolejnych dni 502/504 z głównego serwera kończyło się firmowaniem
+ * bazy bez indeksu adresów, więc pojedyncza padnięta instancja nie ubija
+ * snapshotu. mail.ru to ostatni przystanek (własny mirror planety, wolniejszy
+ * albo z dziurami w importach, więc zaufany tylko gdy wyczerpie się wszystko
+ * powyżej).
  */
-const OVERPASS_MIRRORS = [
-  process.env.ADDRESS_OVERPASS_URL || 'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-];
+const OVERPASS_MIRRORS = overpassMirrors(process.env.ADDRESS_OVERPASS_URL);
+const OVERPASS_TIMEOUT_MS = envNumber('ADDRESS_OVERPASS_TIMEOUT_MS', 120_000);
+const OVERPASS_HEDGE_MS = envNumber('ADDRESS_HEDGE_MS', 15_000);
 /**
  * Rozdzielczość kafli Overpassa: start 0.25°, przy padniętym kaflu schodzimy
  * połówkami do MIN_TILE_DEG (GZM to 41 gmin, więc nie schodzimy w nieskończoność).
@@ -36,15 +34,6 @@ const TILE_DEG = 0.25;
 const MIN_TILE_DEG = 0.06;
 /** Sufit czasu na Overpass w jednym buildzie: po nim wolimy R2/cache niż wisieć. */
 const OVERPASS_BUDGET_MS = 20 * 60_000;
-/** Dwie rundy po lusterkach z pauzą między nimi; potem podział kafelka. */
-const MIRROR_ROUNDS = 2;
-const retryWaitMs = (round) => {
-  const waits = (process.env.ADDRESS_RETRY_WAIT_MS || '5000')
-    .split(',')
-    .map((v) => Number(v.trim()))
-    .filter((v) => Number.isFinite(v) && v >= 0);
-  return waits[round] ?? waits.at(-1) ?? 5000;
-};
 
 export function addressSnapshotIsFresh(snapshot, now = Date.now()) {
   const age = now - Date.parse(snapshot?.builtAt);
@@ -185,35 +174,25 @@ export async function loadAddressSnapshot(cityId, cacheDir, fetcher = fetch, sna
     const bounds = city.bounds;
     const deadline = Date.now() + OVERPASS_BUDGET_MS;
     const rows = [];
-    /** Kafelek z ratunkiem: lustra → pauza → lustra → podział na ćwiartki. */
+    /** Kafelek z ratunkiem: lustra równolegle (hedge) → podział na ćwiartki. */
     const fetchTile = async (south, west, north, east) => {
       const bbox = [south, west, north, east].join(',');
       const query = `[out:json][timeout:90];(nwr["addr:housenumber"]["addr:street"](${bbox});nwr["addr:housenumber"]["addr:place"](${bbox}););out center qt;`;
-      const request = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'KilometrAddressBuild/1.0 (https://github.com/sioodmy/kilometr)',
-        },
-        body: new URLSearchParams({ data: query }),
-        signal: AbortSignal.timeout(120_000),
-      };
       let lastError = null;
-      for (let round = 0; round < MIRROR_ROUNDS; round++) {
-        for (const url of OVERPASS_MIRRORS) {
-          if (Date.now() > deadline) throw new Error('Overpass: przekroczony budżet czasu');
-          try {
-            const response = await fetcher(url, request);
-            if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
-            const json = await response.json();
-            if (json.remark || !Array.isArray(json.elements))
-              throw new Error(`Niepełna odpowiedź Overpass: ${json.remark || 'brak elements'}`);
-            return addressesFromElements(json.elements, bounds);
-          } catch (error) {
-            lastError = error;
-          }
-        }
-        if (round < MIRROR_ROUNDS - 1) await new Promise((r) => setTimeout(r, retryWaitMs(round)));
+      try {
+        const elements = await fetchOverpassElements({
+          query,
+          fetcher,
+          mirrors: OVERPASS_MIRRORS,
+          userAgent: 'KilometrAddressBuild/1.0 (https://github.com/sioodmy/kilometr)',
+          timeoutMs: OVERPASS_TIMEOUT_MS,
+          hedgeMs: OVERPASS_HEDGE_MS,
+          deadline,
+        });
+        return addressesFromElements(elements, bounds);
+      } catch (error) {
+        if (error?.code === 'OVERPASS_BUDGET') throw error;
+        lastError = error;
       }
       // Za duże zapytanie zwykle umiera na limitach serwera: tniemy na ćwiartki,
       // aż dojdzie do MIN_TILE_DEG (GZM ma 225 kafli 0.1°, więc bez przesady).
