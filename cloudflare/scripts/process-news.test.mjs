@@ -242,23 +242,19 @@ test('parsuje listę ZDiTM Lublin i dziedziczy datę grupy', () => {
   assert.equal(items[1].pubDate, items[0].pubDate);
 });
 
-test('resolveLlmPlan buduje hybrydę deepseek-flash + gemini-3.8-flash gdy oba klucze są dostępne', () => {
-  const plan = resolveLlmPlan('auto', null, {
-    DEEPSEEK_API_KEY: 'sk-ds',
-    GEMINI_API_KEY: 'gm-key',
-  });
-  assert.equal(plan.mode, 'auto-hybrid');
-  assert.equal(plan.primary.provider, 'deepseek');
-  assert.equal(plan.primary.model, 'deepseek-flash');
-  assert.equal(plan.secondary.provider, 'gemini');
-  assert.equal(plan.secondary.model, 'gemini-3.8-flash');
+test('resolveLlmPlan ustawia deepseek-flash i adaptacyjny effort (low/high)', () => {
+  const plan = resolveLlmPlan(null, { DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(plan.model, 'deepseek-flash');
+  assert.equal(plan.apiKey, 'sk-ds');
+  assert.equal(plan.fastEffort, 'low');
+  assert.equal(plan.deepEffort, 'high');
 });
 
-test('resolveLlmPlan mapuje aliasy deepseekv4.1flash i gemini 3.8flash', () => {
-  const ds = resolveLlmPlan('deepseekv4.1flash', null, { DEEPSEEK_API_KEY: 'sk-ds' });
-  assert.equal(ds.primary.model, 'deepseek-flash');
-  const gm = resolveLlmPlan('gemini 3.8flash', null, { GEMINI_API_KEY: 'gm-key' });
-  assert.equal(gm.primary.model, 'gemini-3.8-flash');
+test('resolveLlmPlan mapuje aliasy deepseekv4.1flash i deepseek-v4-pro', () => {
+  const ds = resolveLlmPlan('deepseekv4.1flash', { DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(ds.model, 'deepseek-flash');
+  const pro = resolveLlmPlan('deepseek-v4-pro', { DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(pro.model, 'deepseek-v4-pro');
 });
 
 test('enrichAlertWithGtfs wylicza omijane przystanki między from_stop i to_stop oraz współrzędne', () => {

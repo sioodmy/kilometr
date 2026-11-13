@@ -1,5 +1,5 @@
 # Cykliczna agregacja i topologiczna analiza komunikatów transportowych
-# (kaskada DeepSeek V4.1 Flash + Gemini 3.8 Flash z bazą GTFS) → Cloudflare R2.
+# (DeepSeek V4.1 Flash z kontekstem topologii GTFS) → Cloudflare R2.
 #
 # Działa co 20 minut lub na żądanie (workflow_dispatch).
 # Pobiera feedy miejskie, dociąga topologię GTFS miasta z R2, filtruje spam,
@@ -20,12 +20,6 @@ on:
         default: ''
         type: choice
         options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom]
-      provider:
-        description: 'Silnik AI (auto = hybryda DeepSeek V4.1 Flash + Gemini 3.8 Flash)'
-        required: false
-        default: 'auto'
-        type: choice
-        options: ['auto', 'deepseek-flash', 'gemini-3.8-flash']
 
 permissions:
   contents: read
@@ -59,20 +53,15 @@ jobs:
           restore-keys: |
             disruptions-news-cache-
 
-      - name: Przetwarzanie komunikatów (DeepSeek V4.1 Flash + Gemini 3.8 Flash + GTFS)
+      - name: Przetwarzanie komunikatów (DeepSeek V4.1 Flash + GTFS)
         run: |
           CITY="${{ inputs.city }}"
           if [ -z "$CITY" ]; then
             CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom}"
           fi
-          PROVIDER="${{ inputs.provider }}"
-          if [ -z "$PROVIDER" ]; then
-            PROVIDER="auto"
-          fi
-          node cloudflare/scripts/process-news.mjs --city="$CITY" --provider="$PROVIDER" --limit=10
+          node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=10
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TIMETABLE_PUBLIC_URL: ${{ vars.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app' }}
 
       - name: Upload disruptions.json do Cloudflare R2

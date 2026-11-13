@@ -82,133 +82,40 @@ function getArg(prefix, fallback = null) {
 }
 
 /**
- * Rozpoznaje aliasy modeli (DeepSeek V4.1 Flash -> deepseek-flash,
- * Gemini 3.8 Flash -> gemini-3.8-flash) oraz buduje plan kaskady AI:
- * primary (szybki triage i proste komunikaty) + secondary (eskalacja
- * dla gęstej topologii wieloliniowej, korekty nazw GTFS i failover API).
+ * Rozpoznaje aliasy modelu DeepSeek (DeepSeek V4.1 Flash -> deepseek-flash)
+ * i ustawia adaptacyjne poziomy reasoning_effort: low dla prostych komunikatów
+ * oraz high dla wieloetapowych objazdów i korekty nazw GTFS.
  */
-export function resolveLlmPlan(providerRaw, modelRaw, env = process.env, explicitKey = null) {
-  const raw = String(providerRaw || env.LLM_PROVIDER || 'auto').trim().toLowerCase();
-  const explicitModel = modelRaw || env.LLM_MODEL || '';
-  const deepseekKey = explicitKey || env.DEEPSEEK_API_KEY || '';
-  const geminiKey = explicitKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
+export function resolveLlmPlan(modelRaw, env = process.env, explicitKey = null) {
+  const spec = String(modelRaw || env.LLM_MODEL || 'deepseek-flash').trim().toLowerCase();
+  const apiKey = explicitKey || env.DEEPSEEK_API_KEY || '';
 
-  const normalizeSpec = (spec, fallbackProvider) => {
-    const s = String(spec || '').trim().toLowerCase();
-    if (
-      s === 'deepseek' ||
-      s === 'deepseek-flash' ||
-      s === 'deepseek-v4.1-flash' ||
-      s === 'deepseekv4.1flash' ||
-      s === 'deepseek-v41-flash-1017'
-    ) {
-      return { provider: 'deepseek', model: 'deepseek-flash' };
-    }
-    if (s === 'deepseek-chat' || s === 'deepseek-v4-pro') {
-      return { provider: 'deepseek', model: s };
-    }
-    if (
-      s === 'gemini' ||
-      s === 'gemini-3.8-flash' ||
-      s === 'gemini3.8flash' ||
-      s === 'gemini 3.8flash'
-    ) {
-      return { provider: 'gemini', model: 'gemini-3.8-flash' };
-    }
-    if (s.startsWith('gemini-')) {
-      return { provider: 'gemini', model: s };
-    }
-    if (fallbackProvider === 'gemini') {
-      return { provider: 'gemini', model: 'gemini-3.8-flash' };
-    }
-    return { provider: 'deepseek', model: 'deepseek-flash' };
-  };
-
-  if (raw === 'auto') {
-    if (deepseekKey && geminiKey) {
-      return {
-        mode: 'auto-hybrid',
-        primary: {
-          provider: 'deepseek',
-          model: 'deepseek-flash',
-          apiKey: deepseekKey,
-          effort: 'low',
-        },
-        secondary: {
-          provider: 'gemini',
-          model: 'gemini-3.8-flash',
-          apiKey: geminiKey,
-          effort: 'medium',
-        },
-      };
-    }
-    if (geminiKey && !deepseekKey) {
-      return {
-        mode: 'auto-gemini',
-        primary: {
-          provider: 'gemini',
-          model: 'gemini-3.8-flash',
-          apiKey: geminiKey,
-          effort: 'low',
-        },
-        secondary: {
-          provider: 'gemini',
-          model: 'gemini-3.8-flash',
-          apiKey: geminiKey,
-          effort: 'high',
-        },
-      };
-    }
-    return {
-      mode: 'auto-deepseek',
-      primary: {
-        provider: 'deepseek',
-        model: 'deepseek-flash',
-        apiKey: deepseekKey,
-        effort: 'low',
-      },
-      secondary: {
-        provider: 'deepseek',
-        model: 'deepseek-flash',
-        apiKey: deepseekKey,
-        effort: 'high',
-      },
-    };
+  let model = 'deepseek-flash';
+  if (spec === 'deepseek-chat' || spec === 'deepseek-v4-pro') {
+    model = spec;
+  } else if (
+    spec === '' ||
+    spec === 'auto' ||
+    spec === 'deepseek' ||
+    spec === 'deepseek-flash' ||
+    spec === 'deepseek-v4.1-flash' ||
+    spec === 'deepseekv4.1flash' ||
+    spec === 'deepseek-v41-flash-1017'
+  ) {
+    model = 'deepseek-flash';
   }
 
-  const base = normalizeSpec(explicitModel || raw, raw.includes('gemini') ? 'gemini' : 'deepseek');
-  const mainKey = base.provider === 'gemini' ? geminiKey : deepseekKey;
-  const backupKey = base.provider === 'gemini' ? deepseekKey : geminiKey;
-  const secondary = backupKey
-    ? {
-        provider: base.provider === 'gemini' ? 'deepseek' : 'gemini',
-        model: base.provider === 'gemini' ? 'deepseek-flash' : 'gemini-3.8-flash',
-        apiKey: backupKey,
-        effort: 'high',
-      }
-    : {
-        provider: base.provider,
-        model: base.model,
-        apiKey: mainKey,
-        effort: 'high',
-      };
-
   return {
-    mode: `${base.provider}:${base.model}`,
-    primary: {
-      provider: base.provider,
-      model: base.model,
-      apiKey: mainKey,
-      effort: 'medium',
-    },
-    secondary,
+    model,
+    apiKey,
+    fastEffort: 'low',
+    deepEffort: 'high',
   };
 }
 
 const CITY_ARG = getArg('--city=', 'wroclaw').toLowerCase();
 const LIMIT = parseInt(getArg('--limit=', '8'), 10) || 8;
 const LLM_PLAN = resolveLlmPlan(
-  getArg('--provider=', null),
   getArg('--model=', null),
   process.env,
   getArg('--key=', null),
@@ -1048,9 +955,8 @@ Używaj tych dokładnych nazw przystanków w polach stops, omitted_stops, via, f
 }
 
 /**
- * Heurystyka złożoności komunikatu: decyduje, czy w trybie kaskadowym (auto)
- * od razu skierować komunikat do Gemini 3.8 Flash (zamiast lekkiego DeepSeek V4.1 Flash)
- * albo zweryfikować wynik drugim modelem.
+ * Heurystyka złożoności komunikatu: decyduje, czy DeepSeek V4.1 Flash
+ * powinien analizować komunikat z reasoning_effort: 'high' zamiast 'low'.
  */
 export function isComplexDisruptionText(title, content, matchedLinesCount = 0) {
   const full = `${title || ''}\n${content || ''}`;
@@ -1311,107 +1217,14 @@ async function callDeepSeek(
     const parsed = JSON.parse(rawContent);
     return {
       parsed,
-      modelUsed: `deepseek:${resolvedModel}`,
+      modelUsed: `${resolvedModel}(${effort})`,
       usage: json.usage || null,
       durationMs,
     };
   }
 }
 
-async function callGemini(
-  item,
-  city,
-  apiKey,
-  model,
-  gtfsPromptBlock = '',
-  correction = [],
-  effort = 'medium',
-  maxRetries = 3,
-) {
-  const prompt = buildPrompt(item, city, gtfsPromptBlock, correction);
-  const resolvedModel = model || 'gemini-3.8-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent`;
-
-  const isGemini3 = /^gemini-3(\.|$|-)/.test(resolvedModel);
-  const generationConfig = {
-    responseMimeType: 'application/json',
-  };
-  if (isGemini3) {
-    const level = effort === 'low' || effort === 'medium' || effort === 'high' ? effort : 'medium';
-    generationConfig.thinkingConfig = { thinkingLevel: level };
-  } else {
-    generationConfig.temperature = 0.1;
-  }
-
-  const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-    generationConfig,
-  };
-
-  let attempt = 0;
-  while (attempt <= maxRetries) {
-    attempt++;
-    const start = Date.now();
-    let res;
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify(body),
-      });
-    } catch (netErr) {
-      if (attempt <= maxRetries) {
-        const delay = attempt * 2000;
-        await sleep(delay);
-        continue;
-      }
-      throw netErr;
-    }
-
-    const durationMs = Date.now() - start;
-    if (res.status === 503 || res.status === 429) {
-      if (attempt <= maxRetries) {
-        const delay = attempt * 2500;
-        await sleep(delay);
-        continue;
-      }
-    }
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Gemini API error (${res.status}): ${errorText}`);
-    }
-
-    const json = await res.json();
-    const parts = json.candidates?.[0]?.content?.parts || [];
-    const textPart = parts.find((p) => typeof p.text === 'string' && !p.thought) || parts[0];
-    const rawText = textPart?.text;
-    if (!rawText) throw new Error('Brak odpowiedzi od Gemini');
-
-    return {
-      parsed: JSON.parse(rawText),
-      modelUsed: `gemini:${resolvedModel}`,
-      usage: json.usageMetadata || null,
-      durationMs,
-    };
-  }
-}
-
-async function invokeModelTarget(target, item, city, gtfsPromptBlock = '', correction = []) {
-  if (!target?.apiKey) {
-    throw new Error(`Brak klucza API dla ${target?.provider || 'LLM'}`);
-  }
-  if (target.provider === 'gemini') {
-    return callGemini(item, city, target.apiKey, target.model, gtfsPromptBlock, correction, target.effort);
-  }
-  return callDeepSeek(item, city, target.apiKey, target.model, gtfsPromptBlock, correction, target.effort);
-}
-
-async function analyzeWithCascade(item, city, gtfsCtx) {
+async function analyzeWithDeepSeek(item, city, gtfsCtx) {
   const sourceText = `${item.title}\n${item.fullContent || item.content || ''}`;
   const complex = isComplexDisruptionText(
     item.title,
@@ -1419,43 +1232,33 @@ async function analyzeWithCascade(item, city, gtfsCtx) {
     gtfsCtx.matchedLines.length,
   );
 
-  // Przy bardzo złożonych wieloetapowych objazdach w trybie hybrydowym od razu bierzemy
-  // model secondary (Gemini 3.8 Flash), żeby uniknąć podwójnego wywołania.
-  const firstTarget =
-    complex && LLM_PLAN.mode === 'auto-hybrid' && LLM_PLAN.secondary?.apiKey
-      ? LLM_PLAN.secondary
-      : LLM_PLAN.primary;
-  const fallbackTarget =
-    firstTarget === LLM_PLAN.secondary ? LLM_PLAN.primary : LLM_PLAN.secondary;
+  const initialEffort = complex ? LLM_PLAN.deepEffort : LLM_PLAN.fastEffort;
+  let result = await callDeepSeek(
+    item,
+    city,
+    LLM_PLAN.apiKey,
+    LLM_PLAN.model,
+    gtfsCtx.promptBlock,
+    [],
+    initialEffort,
+  );
 
-  let result;
-  try {
-    result = await invokeModelTarget(firstTarget, item, city, gtfsCtx.promptBlock);
-  } catch (primaryErr) {
-    if (fallbackTarget?.apiKey && fallbackTarget !== firstTarget) {
-      console.warn(
-        `    [!] ${firstTarget.provider}:${firstTarget.model} zawiódł (${primaryErr.message}). Przełączam na ${fallbackTarget.provider}:${fallbackTarget.model}...`,
-      );
-      result = await invokeModelTarget(fallbackTarget, item, city, gtfsCtx.promptBlock);
-    } else {
-      throw primaryErr;
-    }
-  }
-
-  // Jeśli pierwszy szybki przebieg zgubił strukturę line_changes dla złożonego komunikatu,
-  // eskalujemy do modelu wyższego rzędu (Gemini 3.8 Flash / high effort).
-  if (
-    needsEscalationAfterPrimary(result.parsed, sourceText) &&
-    LLM_PLAN.secondary?.apiKey &&
-    firstTarget !== LLM_PLAN.secondary
-  ) {
-    console.log(
-      `    [~] Eskalacja złożonej topologii do ${LLM_PLAN.secondary.provider}:${LLM_PLAN.secondary.model}...`,
-    );
+  // Jeśli szybki przebieg (low) zgubił rozbicie line_changes na wielu liniach,
+  // ponawiamy z głębokim rozumowaniem (high).
+  if (initialEffort !== LLM_PLAN.deepEffort && needsEscalationAfterPrimary(result.parsed, sourceText)) {
+    console.log(`    [~] Eskalacja złożonej topologii do ${LLM_PLAN.model} (effort: ${LLM_PLAN.deepEffort})...`);
     try {
-      result = await invokeModelTarget(LLM_PLAN.secondary, item, city, gtfsCtx.promptBlock);
+      result = await callDeepSeek(
+        item,
+        city,
+        LLM_PLAN.apiKey,
+        LLM_PLAN.model,
+        gtfsCtx.promptBlock,
+        [],
+        LLM_PLAN.deepEffort,
+      );
     } catch (escErr) {
-      console.warn(`    [!] Eskalacja nieudana (${escErr.message}), zostaję przy wyniku primary.`);
+      console.warn(`    [!] Eskalacja nieudana (${escErr.message}), zostaję przy pierwszym wyniku.`);
     }
   }
 
@@ -1464,11 +1267,16 @@ async function analyzeWithCascade(item, city, gtfsCtx) {
   if (analysis.is_transit_alert !== false) {
     const unknown = findUnknownNames(analysis, sourceText, gtfsCtx.allowedStops);
     if (unknown.length > 0) {
-      const repairTarget = LLM_PLAN.secondary?.apiKey ? LLM_PLAN.secondary : firstTarget;
-      console.log(
-        `    [!] Nazwy poza treścią/GTFS: ${unknown.join(', ')}. Korekta przez ${repairTarget.provider}:${repairTarget.model}...`,
+      console.log(`    [!] Nazwy poza treścią/GTFS: ${unknown.join(', ')}. Korekta (${LLM_PLAN.model} high)...`);
+      result = await callDeepSeek(
+        item,
+        city,
+        LLM_PLAN.apiKey,
+        LLM_PLAN.model,
+        gtfsCtx.promptBlock,
+        unknown,
+        LLM_PLAN.deepEffort,
       );
-      result = await invokeModelTarget(repairTarget, item, city, gtfsCtx.promptBlock, unknown);
       analysis = sanitizeAnalysisText(result.parsed);
       const still = findUnknownNames(analysis, sourceText, gtfsCtx.allowedStops);
       if (still.length > 0) {
@@ -1600,7 +1408,7 @@ async function processCity(city, limit, cache) {
         ...buildGtfsPromptContext(item, gtfsIndex),
         gtfsIndex,
       };
-      const outcome = await analyzeWithCascade(item, city, gtfsCtx);
+      const outcome = await analyzeWithDeepSeek(item, city, gtfsCtx);
       if (outcome.rejectedReason) {
         console.log(`    [ODRZUCONY]: ${outcome.rejectedReason}`);
         continue;
@@ -1670,7 +1478,7 @@ async function processCity(city, limit, cache) {
 async function main() {
   console.log(`=== Kilometr: Agregator i Silnik Topologii Utrudnień ===`);
   console.log(
-    `Tryb AI: ${LLM_PLAN.mode} | Primary: ${LLM_PLAN.primary.provider}:${LLM_PLAN.primary.model} | Secondary: ${LLM_PLAN.secondary.provider}:${LLM_PLAN.secondary.model} | Limit: ${LIMIT}`,
+    `Model: ${LLM_PLAN.model} (adaptacyjny effort: ${LLM_PLAN.fastEffort}/${LLM_PLAN.deepEffort}) | Limit: ${LIMIT}`,
   );
 
   const cache = loadCache();
@@ -1692,9 +1500,8 @@ async function main() {
   }
   console.log(`Miasta: ${targetCities.join(', ')}`);
 
-  const hasAnyKey = Boolean(LLM_PLAN.primary.apiKey || LLM_PLAN.secondary.apiKey);
-  if (!hasAnyKey && !DRY_RUN) {
-    console.error(`\n[!] Brak klucza API (DEEPSEEK_API_KEY lub GEMINI_API_KEY) dla trybu: ${LLM_PLAN.mode}.`);
+  if (!LLM_PLAN.apiKey && !DRY_RUN) {
+    console.error(`\n[!] Brak klucza DEEPSEEK_API_KEY.`);
     process.exit(1);
   }
 
