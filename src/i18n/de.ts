@@ -1570,6 +1570,20 @@ export const de: Strings = {
         : `${from} nach ${to} · ${transfers} Umstiege`,
     attachPdf: 'PDF-Fahrkarte anhängen',
     attachedTitle: 'Zugfahrkarte',
+    ticketFallback: 'Fahrkarte',
+    buyOrAdd: 'Kaufen / Hinzufügen',
+    showShort: 'Anzeigen',
+    trainLabel: (number: string) => `Zug ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `W. ${wagon}`,
+    seatShort: (seat: string) => `Pl. ${seat}`,
+    inspectCode: 'Kontrollcode',
+    koleoOpenFailTitle: 'KOLEO lässt sich nicht öffnen',
+    koleoOpenFailBody:
+      'Die KOLEO-App oder Website konnte nicht gestartet werden. Prüfe deine Internetverbindung.',
+    koleoDesc: 'Offizielle Tarife für PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Extrahiert den Aztec-Code für die Kontrolle',
+    deckSheetTitle: 'Zugfahrkarte',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Wagen ${wagon}`);
@@ -1605,6 +1619,14 @@ export const de: Strings = {
       `Abschnitt ${current} von ${total} · Tippen zum Wechseln`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Abschnitt ${current} von ${total}. Tippen zum Wechseln.`,
+  },
+  travelDeck: {
+    protection: 'Schutz',
+    protectionEnable: 'Einschalten',
+    protectionAtRisk: 'Gefährdet',
+    protectionWatching: 'Aktiv',
+    protectionSlack: (n: number) => `+${n} Min. Reserve`,
+    transferAlert: 'Umstieg!',
   },
   widgets: {
     journeyTitle: 'Deine Ziele',

@@ -241,7 +241,9 @@ function interchangeLabel(legs: Leg[], transfers: number): string | undefined {
     ),
   );
   if (via.length === 0) return undefined;
-  return via.length === 1 ? `Przesiadka: ${via[0]}` : `Przesiadki: ${via.join(' • ')}`;
+  // Same nazwy stacji bez prefiksu PL: ConnectionCard i powiadomienia
+  // i tak budują etykietę lokalnie / zdejmują "Przesiadka:".
+  return via.join(' • ');
 }
 
 /** Skleja nogę miejską z pociągiem (forward). Ostatni spacer nogi miejskiej

@@ -2446,6 +2446,25 @@ function activeCityId(): CityId {
 
 let cachedNewsItems: MpkNewsItem[] | null = null;
 let cachedNewsCity: string | null = null;
+const newsCacheListeners = new Set<() => void>();
+
+/** Powiadom karty (np. RailAlertsChip), gdy cache komunikatów się zmieni. */
+export function subscribeNewsCache(listener: () => void): () => void {
+  newsCacheListeners.add(listener);
+  return () => {
+    newsCacheListeners.delete(listener);
+  };
+}
+
+function notifyNewsCacheListeners(): void {
+  for (const listener of newsCacheListeners) {
+    try {
+      listener();
+    } catch {
+      // listener UI nie może rozwalić fetcha newsów
+    }
+  }
+}
 let inMemoryLastSeenDate: string | null = null;
 let inMemoryLastSeenTs: number | null = null;
 let inMemorySeenCity: string | null = null;
@@ -2632,6 +2651,7 @@ export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsIt
     if (!Array.isArray(items) || items.length === 0) return null;
     cachedNewsItems = items;
     cachedNewsCity = city.id;
+    notifyNewsCacheListeners();
     return items;
   } catch {
     return null;
@@ -2646,6 +2666,7 @@ async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNe
   cachedNewsItems = items;
   cachedNewsCity = cityId;
   void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
+  notifyNewsCacheListeners();
   return items;
 }
 

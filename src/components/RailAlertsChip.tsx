@@ -7,7 +7,7 @@ import { scheme, shape } from "../theme/tokens";
 import type { Connection } from "../types/models";
 import { alertsForConnection, type TrainAlerts } from "../services/railTripAlerts";
 import { linesFromConnections } from "../services/recentRouteLines";
-import { getCachedNews } from "../services/mpkNews";
+import { getCachedNews, subscribeNewsCache } from "../services/mpkNews";
 import { alertTouchesRoute } from "./ConnectionLineAlerts";
 
 /**
@@ -24,6 +24,7 @@ export function RailAlertsChip({
 }) {
   const s = useStrings();
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
+  const [newsTick, setNewsTick] = useState(0);
 
   const hasTrain = useMemo(
     () =>
@@ -34,6 +35,7 @@ export function RailAlertsChip({
   );
 
   useEffect(() => {
+    setTrainAlerts([]);
     if (!hasTrain) return;
     let alive = true;
     void alertsForConnection(connection).then((alerts) => {
@@ -43,6 +45,8 @@ export function RailAlertsChip({
       alive = false;
     };
   }, [connection, hasTrain]);
+
+  useEffect(() => subscribeNewsCache(() => setNewsTick((n) => n + 1)), []);
 
   const hasTrainDisruptions = useMemo(
     () => trainAlerts.some((ta) => ta.alerts.length > 0),
@@ -59,7 +63,8 @@ export function RailAlertsChip({
     if (lineSet.size === 0) return [];
     const cached = getCachedNews() ?? [];
     return cached.filter((item) => alertTouchesRoute(item, lineSet));
-  }, [lineSet]);
+    // newsTick: odśwież gdy rememberNews / loadNewsCache podmieni cache
+  }, [lineSet, newsTick]);
 
   const hasCityDisruptions = cityDisruptions.length > 0;
 

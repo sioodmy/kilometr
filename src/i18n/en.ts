@@ -1546,6 +1546,20 @@ export const en: Strings = {
         : `${from} to ${to} · ${transfers} transfers`,
     attachPdf: 'Attach PDF ticket',
     attachedTitle: 'Train ticket',
+    ticketFallback: 'Ticket',
+    buyOrAdd: 'Buy / Add',
+    showShort: 'Show',
+    trainLabel: (number: string) => `Train ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `car ${wagon}`,
+    seatShort: (seat: string) => `seat ${seat}`,
+    inspectCode: 'Inspection code',
+    koleoOpenFailTitle: 'Cannot open KOLEO',
+    koleoOpenFailBody:
+      'Could not open the KOLEO app or website. Check your internet connection.',
+    koleoDesc: 'Official fares for PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Pulls the Aztec code for inspection',
+    deckSheetTitle: 'Train ticket',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Carriage ${wagon}`);
@@ -1581,6 +1595,14 @@ export const en: Strings = {
       `Leg ${current} of ${total} · Tap to switch`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Leg ${current} of ${total}. Tap to switch.`,
+  },
+  travelDeck: {
+    protection: 'Guard',
+    protectionEnable: 'Enable',
+    protectionAtRisk: 'At risk',
+    protectionWatching: 'Watching',
+    protectionSlack: (n: number) => `+${n} min spare`,
+    transferAlert: 'Transfer!',
   },
   widgets: {
     journeyTitle: 'Your destinations',

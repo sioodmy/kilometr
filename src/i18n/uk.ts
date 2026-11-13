@@ -1721,12 +1721,31 @@ export const uk: Strings = {
     loading: 'Завантаження…',
     buyKoleo: 'Купити квиток у KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
-    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
-      transfers === 1
-        ? `${from} до ${to} · 1 пересадка`
-        : `${from} до ${to} · ${transfers} пересадки`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) => {
+      const transfersLabel =
+        transfers === 1
+          ? '1 пересадка'
+          : isFew(transfers)
+            ? `${transfers} пересадки`
+            : `${transfers} пересадок`;
+      return `${from} до ${to} · ${transfersLabel}`;
+    },
     attachPdf: 'Додати квиток PDF',
     attachedTitle: 'Залізничний квиток',
+    ticketFallback: 'Квиток',
+    buyOrAdd: 'Купити / Додати',
+    showShort: 'Показати',
+    trainLabel: (number: string) => `Потяг ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `в. ${wagon}`,
+    seatShort: (seat: string) => `м. ${seat}`,
+    inspectCode: 'Код для контролю',
+    koleoOpenFailTitle: 'Не вдалося відкрити KOLEO',
+    koleoOpenFailBody:
+      'Не вдалося запустити додаток або сайт KOLEO. Перевірте з’єднання з інтернетом.',
+    koleoDesc: 'Офіційні тарифи PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Автоматично витягує код Aztec для контролю',
+    deckSheetTitle: 'Залізничний квиток',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Вагон ${wagon}`);
@@ -1762,6 +1781,14 @@ export const uk: Strings = {
       `Ділянка ${current} з ${total} · Торкніться, щоб змінити`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Ділянка ${current} з ${total}. Торкніться, щоб змінити.`,
+  },
+  travelDeck: {
+    protection: 'Захист',
+    protectionEnable: 'Увімкнути',
+    protectionAtRisk: 'Під загрозою',
+    protectionWatching: 'Стежить',
+    protectionSlack: (n: number) => `+${n} хв запасу`,
+    transferAlert: 'Пересадка!',
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

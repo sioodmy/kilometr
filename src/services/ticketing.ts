@@ -1,5 +1,6 @@
 import { Linking } from 'react-native';
 import type { Connection, Leg } from '../types/models';
+import { warsawNow } from '../gtfs/geo';
 import { isTrainLeg } from './railIdentity';
 
 function expandPolishStationAbbreviations(str: string): string {
@@ -100,13 +101,22 @@ export function getTrainLegSummary(connection: Connection): TrainLegSummary | nu
  * jako "IC 6130", a odcinek z feedu ma railAgency "IC", więc sklejenie dawałoby
  * "IC IC 6130".
  */
-function trainNumberLabel(leg: Leg): string | undefined {
+export function trainNumberLabel(leg: Pick<Leg, 'trainNumber' | 'line' | 'railAgency'>): string | undefined {
   const number = leg.trainNumber || leg.line;
   if (!number) return undefined;
   const agency = leg.railAgency?.trim();
   if (!agency) return number;
   const prefix = `${agency} `;
   return number.toUpperCase().startsWith(prefix.toUpperCase()) ? number.slice(prefix.length) : number;
+}
+
+/** Numer bez powtórzonego prefiksu agency (do UI: "IC" + "IC 6130" → "6130"). */
+export function stripAgencyPrefix(number: string, agency?: string | null): string {
+  if (!agency) return number;
+  const prefix = `${agency.trim()} `;
+  return number.toUpperCase().startsWith(prefix.toUpperCase())
+    ? number.slice(prefix.length)
+    : number;
 }
 
 /**
@@ -128,27 +138,37 @@ export function buildKoleoUrl(connection: Connection): string | null {
   const toSlug = slugifyStation(summary.toStation);
   if (!fromSlug || !toSlug) return null;
 
-  const dateObj = new Date();
+  // Data i godzina w Europe/Warsaw: lokalny Date psuje KOLEO poza PL / przy DST.
+  const pad = (n: number) => String(n).padStart(2, '0');
+  let y: number;
+  let m: number;
+  let d: number;
   if (connection.serviceDate) {
-    const [y, m, d] = connection.serviceDate.split('-').map(Number);
-    if (y && m && d) dateObj.setFullYear(y, m - 1, d);
+    const parts = connection.serviceDate.split('-').map(Number);
+    y = parts[0];
+    m = parts[1];
+    d = parts[2];
+  } else {
+    const w = warsawNow();
+    y = w.year;
+    m = w.month;
+    d = w.day;
   }
 
+  let hh = 0;
+  let mm = 0;
   const depTime = summary.departureTime || connection.departAt;
   if (depTime) {
-    const [hh, mm] = depTime.split(':').map(Number);
-    if (!isNaN(hh) && !isNaN(mm)) {
-      dateObj.setHours(hh, mm, 0, 0);
+    const [h, min] = depTime.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(min)) {
+      hh = h;
+      mm = min;
     }
   }
 
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const d = pad(dateObj.getDate());
-  const m = pad(dateObj.getMonth() + 1);
-  const y = dateObj.getFullYear();
-  const time = `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
-
-  return `https://koleo.pl/rozklad-pkp/${fromSlug}/${toSlug}/${d}-${m}-${y}_${time}/all/all`;
+  if (!y || !m || !d) return null;
+  const time = `${pad(hh)}:${pad(mm)}`;
+  return `https://koleo.pl/rozklad-pkp/${fromSlug}/${toSlug}/${pad(d)}-${pad(m)}-${y}_${time}/all/all`;
 }
 
 /**

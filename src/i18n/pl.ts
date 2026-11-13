@@ -1723,12 +1723,31 @@ export const pl = {
     loading: 'Wczytywanie…',
     buyKoleo: 'Kup bilet w KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} do ${to}`,
-    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
-      transfers === 1
-        ? `${from} do ${to} · 1 przesiadka`
-        : `${from} do ${to} · ${transfers} przesiadki`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) => {
+      const transfersLabel =
+        transfers === 1
+          ? '1 przesiadka'
+          : isFew(transfers)
+            ? `${transfers} przesiadki`
+            : `${transfers} przesiadek`;
+      return `${from} do ${to} · ${transfersLabel}`;
+    },
     attachPdf: 'Dołącz bilet PDF',
     attachedTitle: 'Bilet kolejowy',
+    ticketFallback: 'Bilet',
+    buyOrAdd: 'Kup / Dodaj',
+    showShort: 'Pokaż',
+    trainLabel: (number: string) => `Pociąg ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `w. ${wagon}`,
+    seatShort: (seat: string) => `m. ${seat}`,
+    inspectCode: 'Kod do kontroli',
+    koleoOpenFailTitle: 'Nie można otworzyć KOLEO',
+    koleoOpenFailBody:
+      'Nie udało się uruchomić aplikacji ani strony KOLEO. Sprawdź połączenie z internetem.',
+    koleoDesc: 'Oficjalne taryfy PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Automatycznie wyciąga kod Aztec do kontroli',
+    deckSheetTitle: 'Bilet kolejowy',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Wagon ${wagon}`);
@@ -1764,6 +1783,14 @@ export const pl = {
       `Odcinek ${current} z ${total} · Dotknij, aby zmienić`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Odcinek ${current} z ${total}. Dotknij, aby zmienić.`,
+  },
+  travelDeck: {
+    protection: 'Ochrona',
+    protectionEnable: 'Włącz',
+    protectionAtRisk: 'Zagrożona',
+    protectionWatching: 'Czuwa',
+    protectionSlack: (n: number) => `+${n} min zapasu`,
+    transferAlert: 'Przesiadka!',
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',
