@@ -673,7 +673,9 @@ export const uk: Strings = {
     railTitle: 'Залізничний розклад (Польща)',
     railHint:
       'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
-    railReady: (date: string) => `Завантажено (дійсний до ${date})`,
+    railReady: (date: string) =>
+      date ? `Завантажено (дійсний до ${date})` : 'Завантажено',
+    railChecking: 'Перевірка оновлень…',
     railEmpty: 'Не завантажено',
     railDownload: 'Завантажити',
     railCheck: 'Перевірити оновлення',
@@ -1206,6 +1208,7 @@ export const uk: Strings = {
     scheduledTime: (time: string) => `За розкладом ${time}`,
     estimatedDelay: (n: number) => `Близько +${n} хв, оцінка за іншими автобусами`,
     untrackedVehicle: 'Немає актуальної позиції. Можливе запізнення.',
+    cancelledTrain: 'Потяг скасовано',
     uncertainTransfer: 'Мало часу на пересадку. Запізнення цього автобуса не підтверджено.',
     arrival: 'Прибуття',
     origin: 'Звідки',
@@ -1554,6 +1557,15 @@ export const uk: Strings = {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',
     disruptionsBadgeA11y: 'Ускладнення на маршруті',
+    cancelledTitle: 'Рейс скасовано',
+    cancelledBody: (train: string) =>
+      `Потяг ${train} скасовано оператором або управителем інфраструктури на цій ділянці.`,
+    cancelledSolution: 'Оберіть інше сполучення або перевірте заміну перевізника.',
+    detourTitle: 'Змінений маршрут (об’їзд)',
+    detourBody: 'Потяг їде об’їздом.',
+    detourSolution: 'Час у дорозі та проміжні станції можуть змінитися.',
+    departAt: (time: string) => `Відправлення: ${time}`,
+    liveLabel: 'Наживо',
   },
 
   data: {
@@ -1721,12 +1733,31 @@ export const uk: Strings = {
     loading: 'Завантаження…',
     buyKoleo: 'Купити квиток у KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
-    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
-      transfers === 1
-        ? `${from} до ${to} · 1 пересадка`
-        : `${from} до ${to} · ${transfers} пересадки`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) => {
+      const transfersLabel =
+        transfers === 1
+          ? '1 пересадка'
+          : isFew(transfers)
+            ? `${transfers} пересадки`
+            : `${transfers} пересадок`;
+      return `${from} до ${to} · ${transfersLabel}`;
+    },
     attachPdf: 'Додати квиток PDF',
     attachedTitle: 'Залізничний квиток',
+    ticketFallback: 'Квиток',
+    buyOrAdd: 'Купити / Додати',
+    showShort: 'Показати',
+    trainLabel: (number: string) => `Потяг ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `в. ${wagon}`,
+    seatShort: (seat: string) => `м. ${seat}`,
+    inspectCode: 'Код для контролю',
+    koleoOpenFailTitle: 'Не вдалося відкрити KOLEO',
+    koleoOpenFailBody:
+      'Не вдалося запустити додаток або сайт KOLEO. Перевірте з’єднання з інтернетом.',
+    koleoDesc: 'Офіційні тарифи PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Автоматично витягує код Aztec для контролю',
+    deckSheetTitle: 'Залізничний квиток',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Вагон ${wagon}`);
@@ -1762,6 +1793,14 @@ export const uk: Strings = {
       `Ділянка ${current} з ${total} · Торкніться, щоб змінити`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Ділянка ${current} з ${total}. Торкніться, щоб змінити.`,
+  },
+  travelDeck: {
+    protection: 'Захист',
+    protectionEnable: 'Увімкнути',
+    protectionAtRisk: 'Під загрозою',
+    protectionWatching: 'Стежить',
+    protectionSlack: (n: number) => `+${n} хв запасу`,
+    transferAlert: 'Пересадка!',
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

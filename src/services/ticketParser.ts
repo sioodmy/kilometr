@@ -20,6 +20,8 @@ export interface ExtractedBarcode {
   extension: 'png' | 'jpg';
   width: number;
   height: number;
+  /** True gdy matryca przeszła filtr mono (Flate) albo JPEG DeviceGray. */
+  monochromeVerified?: boolean;
 }
 
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -282,7 +284,7 @@ export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[]
   const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
   let match: RegExpExecArray | null;
 
-  const candidates: Array<ExtractedBarcode & { score: number }> = [];
+  const candidates: Array<ExtractedBarcode & { offset: number }> = [];
 
   while ((match = streamRegex.exec(latin1Str)) !== null) {
     const streamContent = match[1];
@@ -327,17 +329,26 @@ export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[]
     const isDct = dictHeader.includes('/DCTDecode');
     const isFlate = dictHeader.includes('/FlateDecode');
 
-    // 1. Obraz skompresowany JPEG (częsty w biletach PKP IC / KOLEO / KD)
+    // 1. JPEG (DCTDecode). Bez dekodera pikseli: DeviceGray / 1-składnikowy SOF
+    // uznajemy za mono; DeviceRGB zostaje (stary PKP IC), ale bez zaufania.
     if (isDct) {
       if (rawSlice.length >= 3 && rawSlice[0] === 0xff && rawSlice[1] === 0xd8 && rawSlice[2] === 0xff) {
-        const aspectDiff = Math.abs(1 - ratio);
-        const score = 100 - aspectDiff * 50 + Math.min(width, 400) / 10;
+        const deviceGray = /\/DeviceGray\b/.test(dictHeader) || /\/ImageMask\s+true/.test(dictHeader);
+        const sofGray = jpegSofIsGrayscale(rawSlice) === true;
+        const monochromeVerified = deviceGray || sofGray;
+        // Kolorowy kwadrat bez weryfikacji mono: tylko gdy wygląda na 1-bitowy kontrast w SOF
+        // albo jest DeviceGray. Czyste RGB logo odpada, chyba że brak lepszego kandydata
+        // i tekst biletu i tak potwierdzi import (patrz isLikelyRailTicket).
+        if (!monochromeVerified && /\/DeviceRGB\b/.test(dictHeader)) {
+          // Stary format PKP IC: Aztec jako JPEG RGB. Zostawiamy, ale niżej w sortowaniu.
+        }
         candidates.push({
-          bytes: rawSlice,
+          bytes: rawSlice.slice(),
           extension: 'jpg',
           width,
           height,
-          score,
+          monochromeVerified,
+          offset,
         });
         continue;
       }
@@ -416,26 +427,55 @@ export function extractBarcodesFromPdf(pdfBytes: Uint8Array): ExtractedBarcode[]
           continue;
         }
         normalizeBarcodePolarity(gray, width, height);
-        const aspectDiff = Math.abs(1 - ratio);
-        const score = 80 - aspectDiff * 50 + Math.min(width, 400) / 10;
         candidates.push({
           bytes: createPngGray8(width, height, gray),
           extension: 'png',
           width,
           height,
-          score,
+          monochromeVerified: true,
+          offset,
         });
       }
     }
   }
 
-  candidates.sort((a, b) => b.score - a.score);
+  // Najpierw zweryfikowane matryce mono, potem kolejność w pliku (nie rozmiar).
+  candidates.sort((a, b) => {
+    const trust = Number(Boolean(b.monochromeVerified)) - Number(Boolean(a.monochromeVerified));
+    if (trust !== 0) return trust;
+    return a.offset - b.offset;
+  });
   return candidates.map((c) => ({
     bytes: c.bytes,
     extension: c.extension,
     width: c.width,
     height: c.height,
+    monochromeVerified: c.monochromeVerified,
   }));
+}
+
+/** Czy JPEG ma 1 składową w SOF (DeviceGray w praktyce). null = nie udało się odczytać. */
+function jpegSofIsGrayscale(bytes: Uint8Array): boolean | null {
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xff) {
+      i++;
+      continue;
+    }
+    const marker = bytes[i + 1];
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (marker >= 0xc0 && marker <= 0xc3) {
+      return bytes[i + 9] === 1;
+    }
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd9)) {
+      i += 2;
+      continue;
+    }
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) break;
+    i += 2 + len;
+  }
+  return null;
 }
 
 /**
@@ -993,17 +1033,19 @@ function decodePdfString(str: string): string {
 }
 
 /**
- * Sprawdza czy dokument PDF wykazuje cechy biletu kolejowego (słowa kluczowe przewoźników, relacji lub kod 2D).
+ * Sprawdza czy dokument PDF wykazuje cechy biletu kolejowego.
+ * Samo słowo w nazwie pliku albo sam nieweryfikowany kwadrat JPEG nie wystarcza.
+ * `hasTrustedBarcode` = matryca mono (Flate / DeviceGray), nie logo.
  */
 export function isLikelyRailTicket(
   text: string,
   fileName?: string,
-  hasBarcode = false,
+  hasTrustedBarcode = false,
 ): boolean {
-  if (hasBarcode) return true;
+  const body = text.toLowerCase();
+  const name = (fileName || '').toLowerCase();
 
-  const keywords = [
-    'bilet',
+  const carriers = [
     'intercity',
     'koleo',
     'polregio',
@@ -1017,22 +1059,21 @@ export function isLikelyRailTicket(
     'koleje malopolskie',
     'łódzka kolej',
     'lodzka kolej',
-    'pociąg',
-    'pociag',
-    'wagon',
-    'miejsce',
-    'przejazd',
-    'taryfa',
-    'relacja',
     'pkp',
-    'uic',
-    'przewoźnik',
-    'przewoznik',
-    'stacja',
   ];
+  const hasCarrier = carriers.some((kw) => body.includes(kw));
+  const hasRailNoun =
+    /\b(bilet|pociąg|pociag|wagon|relacja|przejazd|taryfa|przewoźnik|przewoznik|uic)\b/.test(
+      body,
+    );
 
-  const lower = `${text} ${fileName || ''}`.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw));
+  if (hasCarrier || hasRailNoun) return true;
+
+  // Zaufany kod 2D + ślad treści kolejowej (bez ebooka z przypadkowym kwadratem).
+  if (hasTrustedBarcode && /\b(bilet|pkp|pociąg|pociag|wagon|stacja|peron|aztec)\b/.test(body + ' ' + name)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -1150,31 +1191,43 @@ export function parseRailTicketText(text: string, fileName?: string): ParsedTick
     }
   }
 
-  // 9. Data odjazdu / podróży. Priorytet: pełna data przy etykiecie "Data odjazdu"
-  // (nowy format PKP IC), potem data przy relacji "18.10 13:47 Katowice ->"
-  // (stary format PKP IC nie powtarza roku w wierszu relacji), na końcu pierwsza
-  // pełna data w tekście (np. data wystawienia biletu).
+  // 9. Data odjazdu. Tylko etykieta "Data odjazdu" albo wiersz relacji z godziną.
+  // Pierwsza data w PDF bywa datą wystawienia: nie bierzemy jej jako odjazdu.
   const labeledDate = text.match(
     /\bdata\s+odjazdu[\s\S]{0,40}?([0-3]?[0-9])\.(0[1-9]|1[0-2])\.(20[2-3][0-9])/i,
   );
   const relacjaDate = text.match(
     /\b([0-3]?[0-9])\.(0[1-9]|1[0-2])\.?\s+([0-2]?[0-9]:[0-5][0-9])\s+[A-ZŁŚĆŹŻĄĘÓŃ]/,
   );
-  const dateIso = text.match(/\b(20[2-3][0-9])[-.](0[1-9]|1[0-2])[-.]([0-3][0-9])\b/);
-  const datePl = text.match(/\b([0-3]?[0-9])\.(0[1-9]|1[0-2])\.(20[2-3][0-9])\b/);
 
   if (labeledDate) {
     result.departDate = `${labeledDate[3]}-${labeledDate[2]}-${labeledDate[1].padStart(2, '0')}`;
   } else if (relacjaDate) {
-    // Rok: najpóźniejszy pełny rok w tekście (np. rok wystawienia), brak -> bieżący.
-    const years = [...text.matchAll(/\b(20[2-3][0-9])\b/g)].map((m) => parseInt(m[1], 10));
-    const year = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
-    result.departDate = `${year}-${relacjaDate[2]}-${relacjaDate[1].padStart(2, '0')}`;
-  } else if (dateIso) {
-    result.departDate = dateIso[1] + '-' + dateIso[2] + '-' + dateIso[3];
-  } else if (datePl) {
-    result.departDate = `${datePl[3]}-${datePl[2]}-${datePl[1].padStart(2, '0')}`;
+    const day = relacjaDate[1].padStart(2, '0');
+    const month = relacjaDate[2];
+    // Rok z pełnej daty o tym samym dniu i miesiącu; inaczej bieżący (Warszawa).
+    const sameDayYear = text.match(
+      new RegExp(`\\b${relacjaDate[1]}\\.${month}\\.(20[2-3][0-9])\\b`),
+    );
+    const year = sameDayYear
+      ? parseInt(sameDayYear[1], 10)
+      : warsawYearFallback();
+    result.departDate = `${year}-${month}-${day}`;
   }
 
   return result;
+}
+
+function warsawYearFallback(): number {
+  try {
+    // Unikamy importu cyklicznego: lokalny formatter jak w geo.ts.
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Warsaw',
+      year: 'numeric',
+    }).formatToParts(new Date());
+    const year = parts.find((p) => p.type === 'year')?.value;
+    return year ? parseInt(year, 10) : new Date().getFullYear();
+  } catch {
+    return new Date().getFullYear();
+  }
 }

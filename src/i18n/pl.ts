@@ -670,7 +670,9 @@ export const pl = {
     railTitle: 'Rozkład kolejowy (Polska)',
     railHint:
       'Pociągi wszystkich przewoźników do planowania podróży między miastami: IC, EIC, PolRegio, KM i inni.',
-    railReady: (date: string) => `Pobrany (ważny do ${date})`,
+    railReady: (date: string) =>
+      date ? `Pobrany (ważny do ${date})` : 'Pobrany',
+    railChecking: 'Sprawdzanie aktualizacji…',
     railEmpty: 'Niepobrany',
     railDownload: 'Pobierz',
     railCheck: 'Sprawdź aktualizacje',
@@ -1196,6 +1198,7 @@ export const pl = {
     scheduledTime: (time: string) => `Planowo ${time}`,
     estimatedDelay: (n: number) => `Około +${n} min, szacunek z innych autobusów`,
     untrackedVehicle: 'Brak aktualnej pozycji. Możliwe opóźnienie.',
+    cancelledTrain: 'Pociąg odwołany',
     uncertainTransfer: 'Mało czasu na przesiadkę. Opóźnienie tego autobusu jest niepewne.',
     arrival: 'Na miejscu',
     origin: 'Skąd',
@@ -1543,6 +1546,15 @@ export const pl = {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
     fallbackLine: 'Pociąg',
     disruptionsBadgeA11y: 'Utrudnienia na trasie',
+    cancelledTitle: 'Kurs odwołany',
+    cancelledBody: (train: string) =>
+      `Pociąg ${train} został odwołany przez zarządcę lub przewoźnika na wybranym odcinku trasy.`,
+    cancelledSolution: 'Wybierz inne połączenie lub sprawdź komunikację zastępczą przewoźnika.',
+    detourTitle: 'Trasa zmieniona (objazd)',
+    detourBody: 'Pociąg jedzie drogą okrężną.',
+    detourSolution: 'Czas przejazdu i lista stacji pośrednich mogą ulec zmianie.',
+    departAt: (time: string) => `Odjazd: ${time}`,
+    liveLabel: 'Na żywo',
   },
   data: {
     stepUnpack: 'Rozpakowywanie…',
@@ -1723,12 +1735,31 @@ export const pl = {
     loading: 'Wczytywanie…',
     buyKoleo: 'Kup bilet w KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} do ${to}`,
-    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
-      transfers === 1
-        ? `${from} do ${to} · 1 przesiadka`
-        : `${from} do ${to} · ${transfers} przesiadki`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) => {
+      const transfersLabel =
+        transfers === 1
+          ? '1 przesiadka'
+          : isFew(transfers)
+            ? `${transfers} przesiadki`
+            : `${transfers} przesiadek`;
+      return `${from} do ${to} · ${transfersLabel}`;
+    },
     attachPdf: 'Dołącz bilet PDF',
     attachedTitle: 'Bilet kolejowy',
+    ticketFallback: 'Bilet',
+    buyOrAdd: 'Kup / Dodaj',
+    showShort: 'Pokaż',
+    trainLabel: (number: string) => `Pociąg ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `w. ${wagon}`,
+    seatShort: (seat: string) => `m. ${seat}`,
+    inspectCode: 'Kod do kontroli',
+    koleoOpenFailTitle: 'Nie można otworzyć KOLEO',
+    koleoOpenFailBody:
+      'Nie udało się uruchomić aplikacji ani strony KOLEO. Sprawdź połączenie z internetem.',
+    koleoDesc: 'Oficjalne taryfy PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Automatycznie wyciąga kod Aztec do kontroli',
+    deckSheetTitle: 'Bilet kolejowy',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Wagon ${wagon}`);
@@ -1764,6 +1795,14 @@ export const pl = {
       `Odcinek ${current} z ${total} · Dotknij, aby zmienić`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Odcinek ${current} z ${total}. Dotknij, aby zmienić.`,
+  },
+  travelDeck: {
+    protection: 'Ochrona',
+    protectionEnable: 'Włącz',
+    protectionAtRisk: 'Zagrożona',
+    protectionWatching: 'Czuwa',
+    protectionSlack: (n: number) => `+${n} min zapasu`,
+    transferAlert: 'Przesiadka!',
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',

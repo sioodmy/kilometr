@@ -192,16 +192,11 @@ function timeMatches(leg: Leg, ticketDepartTime?: string): boolean {
   try {
     const legSec = timeStringToSeconds(leg.departAt);
     const targetSec = timeStringToSeconds(target);
-    const diffSec = legSec - targetSec;
-    // Pociąg ma opóźnienie (od 0 do 180 min, dopuszczamy też minimalne różnice rozkładowe do 2 min)
-    if (diffSec >= -120 && diffSec <= 180 * 60) {
-      if (leg.delaySec && Math.abs(diffSec - leg.delaySec) <= 180) {
-        return true;
-      }
-      if (diffSec >= 0 && diffSec <= 90 * 60) {
-        return true;
-      }
-    }
+    // Różnica z zawinięciem doby (±12 h), żeby 23:50 vs 00:10 nie wybuchało.
+    const diffSec = ((legSec - targetSec + 129600) % 86400) - 43200;
+    // Tolerancja wyłącznie na drobne różnice rozkładu albo znane opóźnienie.
+    if (Math.abs(diffSec) <= 180) return true;
+    if (leg.delaySec != null && Math.abs(diffSec - leg.delaySec) <= 180) return true;
   } catch {}
 
   return false;
@@ -543,6 +538,7 @@ export async function importTicketPdf(
   let metadata: ParsedTicketMetadata = {};
   let barcodeUri: string | null = null;
   const barcodeUris: string[] = [];
+  let trustedBarcode = false;
   let text = '';
 
   try {
@@ -556,6 +552,7 @@ export async function importTicketPdf(
 
     try {
       const barcodes = extractBarcodesFromPdf(bytes);
+      trustedBarcode = barcodes.some((bc) => bc.monochromeVerified);
       for (let i = 0; i < barcodes.length; i++) {
         const bc = barcodes[i];
         const bcUri = `${dir}${ticketId}_barcode_${i}.${bc.extension}`;
@@ -576,24 +573,34 @@ export async function importTicketPdf(
   }
 
   // 2. Bezpiecznik semantyczny: czy to faktycznie jest bilet kolejowy?
-  const hasBarcode = Boolean(barcodeUri);
-  const looksLikeTicket = isLikelyRailTicket(text, asset.name, hasBarcode);
+  const hasTrustedBarcode = trustedBarcode;
+  const looksLikeTicket = isLikelyRailTicket(text, asset.name, hasTrustedBarcode);
 
   if (!looksLikeTicket) {
     await discardImportedFiles(targetUri, barcodeUris);
     return { status: 'rejected', reason: 'notTicket' };
   }
 
-  // 3. Zgodność z połączeniem. Sprawdzamy tylko dane, które udało się
-  // odczytać z biletu: nieczytelny numer czy data nie blokuje dodania.
+  // Bez numeru pociągu ani pary stacja+godzina nie wiemy, co dołączamy.
+  const hasTrainDigits = Boolean(metadata.trainNumber?.match(/\d{3,6}/));
+  const hasStationTime = Boolean(metadata.fromStation && metadata.departTime);
+  if (!hasTrainDigits && !hasStationTime) {
+    await discardImportedFiles(targetUri, barcodeUris);
+    return { status: 'rejected', reason: 'notTicket' };
+  }
+
+  // 3. Zgodność z połączeniem: data tylko z etykiety/relacji, +1 dzień wyłącznie
+  // dla odjazdu po północy. Numer albo stacja+godzina muszą się zgadzać.
   if (connection) {
     const summary = getTrainLegSummary(connection);
     const trainLegs = connection.legs.filter(isTrainLeg);
 
     if (metadata.departDate && connection.serviceDate && summary) {
-      const dateOk =
-        metadata.departDate === connection.serviceDate ||
-        metadata.departDate === nextCalendarDay(connection.serviceDate);
+      const dateOk = ticketDateMatchesService(
+        metadata.departDate,
+        connection.serviceDate,
+        metadata.departTime,
+      );
       if (!dateOk) {
         await discardImportedFiles(targetUri, barcodeUris);
         return {
@@ -605,17 +612,16 @@ export async function importTicketPdf(
       }
     }
 
-    const ticketDigits = metadata.trainNumber?.match(/\d{3,6}/g) ?? [];
-    if (summary && ticketDigits.length > 0) {
+    if (summary) {
+      const ticketDigits = metadata.trainNumber?.match(/\d{3,6}/g) ?? [];
       const legDigits = trainLegs.flatMap((leg) => [
         ...(leg.trainNumber?.match(/\d{3,6}/g) ?? []),
         ...(leg.line?.match(/\d{3,6}/g) ?? []),
         ...(leg.railLine?.match(/\d{3,6}/g) ?? []),
         ...(leg.tripId?.match(/\d{3,6}/g) ?? []),
       ]);
-      const digitsMatch = ticketDigits.some((d) => legDigits.includes(d));
-      // Ten sam odcinek i godzina: numer mógł się różnić zapisem (np. sam numer
-      // operacyjny vs pełny kod), więc nie odrzucamy.
+      const digitsMatch =
+        ticketDigits.length > 0 && ticketDigits.some((d) => legDigits.includes(d));
       const stationTimeMatch =
         metadata.fromStation && metadata.departTime
           ? trainLegs.some(
@@ -625,7 +631,19 @@ export async function importTicketPdf(
             )
           : false;
 
-      if (!digitsMatch && !stationTimeMatch) {
+      // Gdy znamy cyfry numeru: muszą trafić w kurs (albo stacja+godzina).
+      // Gdy znamy tylko stację+godzinę: ta para musi pasować.
+      if (ticketDigits.length > 0) {
+        if (!digitsMatch && !stationTimeMatch) {
+          await discardImportedFiles(targetUri, barcodeUris);
+          return {
+            status: 'rejected',
+            reason: 'wrongTrain',
+            ticketTrainNumber: metadata.trainNumber,
+            connectionTrainNumber: summary.trainNumber,
+          };
+        }
+      } else if (!stationTimeMatch) {
         await discardImportedFiles(targetUri, barcodeUris);
         return {
           status: 'rejected',
@@ -633,30 +651,6 @@ export async function importTicketPdf(
           ticketTrainNumber: metadata.trainNumber,
           connectionTrainNumber: summary.trainNumber,
         };
-      }
-    }
-  }
-
-  // Wzbogać metadane z samego połączenia, jeśli nie zostały znalezione w tekście PDF.
-  // Te dane napędzają odzyskiwanie biletu po powrocie (zmienne ID połączeń).
-  if (connection) {
-    const summary = getTrainLegSummary(connection);
-    if (summary) {
-      if (!metadata.trainNumber && summary.trainNumber) {
-        // summary.trainNumber jest bez prefiksu przewoźnika ("6130"), a bilet
-        // i pill pokazują "IC 6130".
-        metadata.trainNumber = summary.agency
-          ? `${summary.agency} ${summary.trainNumber}`
-          : summary.trainNumber;
-      }
-      if (!metadata.fromStation) {
-        metadata.fromStation = summary.fromStation;
-      }
-      if (!metadata.toStation) {
-        metadata.toStation = summary.toStation;
-      }
-      if (!metadata.departTime && summary.departureTime) {
-        metadata.departTime = summary.departureTime;
       }
     }
   }
@@ -750,6 +744,25 @@ function nextCalendarDay(dateStr: string): string | null {
   const next = new Date(ts + 24 * 3600 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`;
+}
+
+/**
+ * Data biletu vs serviceDate połączenia. +1 dzień tylko gdy odjazd jest
+ * w nocy (00:00-03:59): nocny kurs z datą kalendarzową po północy.
+ */
+function ticketDateMatchesService(
+  ticketDate: string,
+  serviceDate: string,
+  ticketDepartTime?: string,
+): boolean {
+  if (ticketDate === serviceDate) return true;
+  const next = nextCalendarDay(serviceDate);
+  if (!next || ticketDate !== next || !ticketDepartTime) return false;
+  try {
+    return timeStringToSeconds(ticketDepartTime.trim()) < 4 * 3600;
+  } catch {
+    return false;
+  }
 }
 
 /**

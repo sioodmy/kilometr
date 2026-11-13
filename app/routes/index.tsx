@@ -905,6 +905,9 @@ export default function RoutesScreen() {
       setLoadError(false);
       return;
     }
+    // Intercity: nie ruszaj RAPTOR-a, dopóki nie wiemy, czy baza polska jest.
+    // Inaczej pierwsze wyszukiwanie idzie w kosz (railDbReady: null → true/false).
+    if (intercityQuery && railDbReady === null) return;
     const task = InteractionManager.runAfterInteractions(() => {
       fetchRoutes(targetTimeSec, items.length > 0);
     });
@@ -928,6 +931,7 @@ export default function RoutesScreen() {
     timetableReady,
     targetTimeSec,
     timeMode,
+    intercityQuery,
     railDbReady,
   ]);
 

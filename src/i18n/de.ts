@@ -551,7 +551,9 @@ export const de: Strings = {
     railTitle: 'Nationales Bahnfahrplan',
     railHint:
       'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
-    railReady: (date: string) => `Heruntergeladen (gültig bis ${date})`,
+    railReady: (date: string) =>
+      date ? `Heruntergeladen (gültig bis ${date})` : 'Heruntergeladen',
+    railChecking: 'Suche nach Updates…',
     railEmpty: 'Nicht heruntergeladen',
     railDownload: 'Herunterladen',
     railCheck: 'Nach Updates suchen',
@@ -1053,6 +1055,7 @@ export const de: Strings = {
     scheduledTime: (time: string) => `Planmäßig ${time}`,
     estimatedDelay: (n: number) => `Etwa +${n} Min., aus anderen Bussen geschätzt`,
     untrackedVehicle: 'Keine aktuelle Position. Verspätung möglich.',
+    cancelledTrain: 'Zug ausgefallen',
     uncertainTransfer: 'Wenig Zeit zum Umsteigen. Die Verspätung dieses Busses ist ungewiss.',
     arrival: 'Ankunft',
     origin: 'Von',
@@ -1396,6 +1399,15 @@ export const de: Strings = {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',
     disruptionsBadgeA11y: 'Störungen auf der Route',
+    cancelledTitle: 'Zug ausgefallen',
+    cancelledBody: (train: string) =>
+      `Zug ${train} wurde vom Betreiber oder Infrastrukturbetreiber auf diesem Abschnitt ausgefallen.`,
+    cancelledSolution: 'Wähle eine andere Verbindung oder prüfe den Ersatzverkehr.',
+    detourTitle: 'Umleitung',
+    detourBody: 'Der Zug fährt eine Umleitung.',
+    detourSolution: 'Fahrzeit und Zwischenbahnhöfe können sich ändern.',
+    departAt: (time: string) => `Abfahrt: ${time}`,
+    liveLabel: 'Live',
   },
 
   data: {
@@ -1570,6 +1582,20 @@ export const de: Strings = {
         : `${from} nach ${to} · ${transfers} Umstiege`,
     attachPdf: 'PDF-Fahrkarte anhängen',
     attachedTitle: 'Zugfahrkarte',
+    ticketFallback: 'Fahrkarte',
+    buyOrAdd: 'Kaufen / Hinzufügen',
+    showShort: 'Anzeigen',
+    trainLabel: (number: string) => `Zug ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `W. ${wagon}`,
+    seatShort: (seat: string) => `Pl. ${seat}`,
+    inspectCode: 'Kontrollcode',
+    koleoOpenFailTitle: 'KOLEO lässt sich nicht öffnen',
+    koleoOpenFailBody:
+      'Die KOLEO-App oder Website konnte nicht gestartet werden. Prüfe deine Internetverbindung.',
+    koleoDesc: 'Offizielle Tarife für PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Extrahiert den Aztec-Code für die Kontrolle',
+    deckSheetTitle: 'Zugfahrkarte',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Wagen ${wagon}`);
@@ -1605,6 +1631,14 @@ export const de: Strings = {
       `Abschnitt ${current} von ${total} · Tippen zum Wechseln`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Abschnitt ${current} von ${total}. Tippen zum Wechseln.`,
+  },
+  travelDeck: {
+    protection: 'Schutz',
+    protectionEnable: 'Einschalten',
+    protectionAtRisk: 'Gefährdet',
+    protectionWatching: 'Aktiv',
+    protectionSlack: (n: number) => `+${n} Min. Reserve`,
+    transferAlert: 'Umstieg!',
   },
   widgets: {
     journeyTitle: 'Deine Ziele',
