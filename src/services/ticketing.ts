@@ -101,7 +101,7 @@ export function getTrainLegSummary(connection: Connection): TrainLegSummary | nu
  * jako "IC 6130", a odcinek z feedu ma railAgency "IC", więc sklejenie dawałoby
  * "IC IC 6130".
  */
-export function trainNumberLabel(leg: Pick<Leg, 'trainNumber' | 'line' | 'railAgency'>): string | undefined {
+function trainNumberLabel(leg: Pick<Leg, 'trainNumber' | 'line' | 'railAgency'>): string | undefined {
   const number = leg.trainNumber || leg.line;
   if (!number) return undefined;
   const agency = leg.railAgency?.trim();
