@@ -28,13 +28,15 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       MAX_AGE_DAYS: "3"
-      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
     steps:
       - name: Delete stale branches
         run: |
           set -euo pipefail
 
           repo="$GITHUB_REPOSITORY"
+          owner="${repo%%/*}"
+          name="${repo##*/}"
           protected="main dev nightly prod"
           default_branch=$(gh api "repos/$repo" --jq .default_branch)
           protected="$protected $default_branch"
@@ -46,13 +48,24 @@ jobs:
           # branche bazowe otwartych PR-ow (stackowane PR-y).
           open_prs=$(gh pr list --repo "$repo" --state open --limit 1000 \
             --json headRefName,baseRefName,isCrossRepository \
-            --jq '.[] | if .isCrossRepository then .baseRefName else .headRefName, .baseRefName end')
+            --jq '.[] | (.baseRefName, (if .isCrossRepository then empty else .headRefName end))')
+
+          # REST /branches zwraca tylko sha commita, bez daty, wiec daty bierzemy
+          # z GraphQL razem z lista branchy.
+          refs=$(gh api graphql --paginate \
+            -f query='query($owner: String!, $name: String!, $endCursor: String) {
+              repository(owner: $owner, name: $name) {
+                refs(refPrefix: "refs/heads/", first: 100, after: $endCursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes { name target { ... on Commit { committedDate } } }
+                }
+              }
+            }' -F owner="$owner" -F name="$name" \
+            --jq '.data.repository.refs.nodes[] | [.name, .target.committedDate] | @tsv')
 
           deleted_log="$RUNNER_TEMP/deleted-branches.txt"
           : > "$deleted_log"
 
-          gh api "repos/$repo/branches" --paginate \
-            --jq '.[] | [.name, .commit.commit.committer.date] | @tsv' |
           while IFS=$'\t' read -r branch last_commit; do
             [ -n "$branch" ] || continue
 
@@ -61,6 +74,11 @@ jobs:
             fi
 
             if grep -Fxq "$branch" <<<"$open_prs"; then
+              continue
+            fi
+
+            if [ -z "$last_commit" ]; then
+              echo "::warning title=Skip::$branch brak daty ostatniego commita"
               continue
             fi
 
@@ -85,7 +103,7 @@ jobs:
             else
               echo "::warning title=Failed::nie udalo sie usunac $branch (ochrona brancha?)"
             fi
-          done
+          done <<<"$refs"
 
           if [ "$DRY_RUN" = "true" ]; then
             echo "Dry run: nic nie usunieto." >> "$GITHUB_STEP_SUMMARY"
