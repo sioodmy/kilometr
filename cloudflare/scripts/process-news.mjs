@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { findUnknownNames } from './news-validate.mjs';
+import { findUnknownNames, normalizeName, sanitizeAnalysisText } from './news-validate.mjs';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../..');
 const ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -27,11 +30,11 @@ const SUPPORTED_CITIES = [
   'bialystok',
   'lublin',
   'radom',
-  'polska',
 ];
 
 const CITY_NAMES = {
   wroclaw: 'Wrocław',
+  gzm: 'Górnośląsko-Zagłębiowska Metropolia',
   warszawa: 'Warszawa',
   poznan: 'Poznań',
   trojmiasto: 'Trójmiasto',
@@ -45,11 +48,10 @@ const CITY_NAMES = {
   bialystok: 'Białystok',
   lublin: 'Lublin',
   radom: 'Radom',
-  polska: 'Polska (Kolej)',
 };
 
 // Podbij przy każdej zmianie promptu: hash cache zależy od tej wersji.
-const PROMPT_VERSION = '2026-11-12.1';
+const PROMPT_VERSION = '2026-11-13.2';
 
 function loadLocalEnv() {
   if (!fs.existsSync(ENV_PATH)) return;
@@ -79,22 +81,144 @@ function getArg(prefix, fallback = null) {
   return match ? match.slice(prefix.length) : fallback;
 }
 
+/**
+ * Rozpoznaje aliasy modeli (DeepSeek V4.1 Flash -> deepseek-flash,
+ * Gemini 3.8 Flash -> gemini-3.8-flash) oraz buduje plan kaskady AI:
+ * primary (szybki triage i proste komunikaty) + secondary (eskalacja
+ * dla gęstej topologii wieloliniowej, korekty nazw GTFS i failover API).
+ */
+export function resolveLlmPlan(providerRaw, modelRaw, env = process.env, explicitKey = null) {
+  const raw = String(providerRaw || env.LLM_PROVIDER || 'auto').trim().toLowerCase();
+  const explicitModel = modelRaw || env.LLM_MODEL || '';
+  const deepseekKey = explicitKey || env.DEEPSEEK_API_KEY || '';
+  const geminiKey = explicitKey || env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
+
+  const normalizeSpec = (spec, fallbackProvider) => {
+    const s = String(spec || '').trim().toLowerCase();
+    if (
+      s === 'deepseek' ||
+      s === 'deepseek-flash' ||
+      s === 'deepseek-v4.1-flash' ||
+      s === 'deepseekv4.1flash' ||
+      s === 'deepseek-v41-flash-1017'
+    ) {
+      return { provider: 'deepseek', model: 'deepseek-flash' };
+    }
+    if (s === 'deepseek-chat' || s === 'deepseek-v4-pro') {
+      return { provider: 'deepseek', model: s };
+    }
+    if (
+      s === 'gemini' ||
+      s === 'gemini-3.8-flash' ||
+      s === 'gemini3.8flash' ||
+      s === 'gemini 3.8flash'
+    ) {
+      return { provider: 'gemini', model: 'gemini-3.8-flash' };
+    }
+    if (s.startsWith('gemini-')) {
+      return { provider: 'gemini', model: s };
+    }
+    if (fallbackProvider === 'gemini') {
+      return { provider: 'gemini', model: 'gemini-3.8-flash' };
+    }
+    return { provider: 'deepseek', model: 'deepseek-flash' };
+  };
+
+  if (raw === 'auto') {
+    if (deepseekKey && geminiKey) {
+      return {
+        mode: 'auto-hybrid',
+        primary: {
+          provider: 'deepseek',
+          model: 'deepseek-flash',
+          apiKey: deepseekKey,
+          effort: 'low',
+        },
+        secondary: {
+          provider: 'gemini',
+          model: 'gemini-3.8-flash',
+          apiKey: geminiKey,
+          effort: 'medium',
+        },
+      };
+    }
+    if (geminiKey && !deepseekKey) {
+      return {
+        mode: 'auto-gemini',
+        primary: {
+          provider: 'gemini',
+          model: 'gemini-3.8-flash',
+          apiKey: geminiKey,
+          effort: 'low',
+        },
+        secondary: {
+          provider: 'gemini',
+          model: 'gemini-3.8-flash',
+          apiKey: geminiKey,
+          effort: 'high',
+        },
+      };
+    }
+    return {
+      mode: 'auto-deepseek',
+      primary: {
+        provider: 'deepseek',
+        model: 'deepseek-flash',
+        apiKey: deepseekKey,
+        effort: 'low',
+      },
+      secondary: {
+        provider: 'deepseek',
+        model: 'deepseek-flash',
+        apiKey: deepseekKey,
+        effort: 'high',
+      },
+    };
+  }
+
+  const base = normalizeSpec(explicitModel || raw, raw.includes('gemini') ? 'gemini' : 'deepseek');
+  const mainKey = base.provider === 'gemini' ? geminiKey : deepseekKey;
+  const backupKey = base.provider === 'gemini' ? deepseekKey : geminiKey;
+  const secondary = backupKey
+    ? {
+        provider: base.provider === 'gemini' ? 'deepseek' : 'gemini',
+        model: base.provider === 'gemini' ? 'deepseek-flash' : 'gemini-3.8-flash',
+        apiKey: backupKey,
+        effort: 'high',
+      }
+    : {
+        provider: base.provider,
+        model: base.model,
+        apiKey: mainKey,
+        effort: 'high',
+      };
+
+  return {
+    mode: `${base.provider}:${base.model}`,
+    primary: {
+      provider: base.provider,
+      model: base.model,
+      apiKey: mainKey,
+      effort: 'medium',
+    },
+    secondary,
+  };
+}
+
 const CITY_ARG = getArg('--city=', 'wroclaw').toLowerCase();
-const LIMIT = parseInt(getArg('--limit=', '5'), 10) || 5;
-const PROVIDER = getArg('--provider=', process.env.LLM_PROVIDER || 'deepseek').toLowerCase();
-const MODEL = getArg(
-  '--model=',
-  process.env.LLM_MODEL || (PROVIDER === 'deepseek' ? 'deepseek-chat' : 'gemini-3.8-flash'),
+const LIMIT = parseInt(getArg('--limit=', '8'), 10) || 8;
+const LLM_PLAN = resolveLlmPlan(
+  getArg('--provider=', null),
+  getArg('--model=', null),
+  process.env,
+  getArg('--key=', null),
 );
+const PUBLIC_TIMETABLE_URL = (
+  getArg('--timetable-url=', process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app') || ''
+).replace(/\/$/, '');
+const NO_GTFS = ARGS.includes('--no-gtfs');
 const DRY_RUN = ARGS.includes('--dry-run');
 const FORCE_REFRESH = ARGS.includes('--force');
-
-const API_KEY =
-  getArg('--key=', null) ||
-  (PROVIDER === 'deepseek'
-    ? process.env.DEEPSEEK_API_KEY
-    : process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) ||
-  '';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -156,18 +280,6 @@ async function fetchFullArticleText(url) {
       (html.match(/class="article-content"[\s\S]*?>([\s\S]*?)<\/div>/i)?.[1]) ||
       (html.match(/<main[\s\S]*?>([\s\S]*?)<\/main>/i)?.[1]) ||
       '';
-
-    if (url.includes('intercity.pl')) {
-      const main = html.match(/<main[\s\S]*?<\/main>/i)?.[0] || html;
-      let text = main.split(/Informujemy,\s*że mają Państwo prawo/i)[0];
-      text = text.split(/Prosimy o zwracanie uwagi na komunikaty głosowe/i)[0];
-      text = text.split(/Przepraszamy za niedogodności/i)[0];
-      const startIdx = text.search(/W dniu|Informujemy|Z powodu|W związku|Dnia\s+\d/i);
-      if (startIdx !== -1) {
-        text = text.slice(startIdx);
-      }
-      return cleanHtml(text.replace(/<li[^>]*>/gi, '\n• '));
-    }
 
     // Strony nowych miast mają własne kontenery treści; ogólny chain
     // wyciągałby nawigację albo panel boczny z innymi komunikatami.
@@ -233,278 +345,6 @@ function isObviousJunk(title, content) {
     return true;
   }
   return false;
-}
-
-function cleanIntercityTitle(title) {
-  return title
-    .replace(/w dniu\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/gi, '')
-    .replace(/Aktualizacja:[\s\S]*$/i, '')
-    .replace(/,,/g, '„')
-    .replace(/"/g, '„')
-    .replace(/“/g, '”')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function extractPkpTimeframe(pubDate, text) {
-  const m = text.match(/Aktualizacja:\s*(\d{4}-\d{2}-\d{2})\s*,\s*(\d{2}:\d{2})/i);
-  if (m) {
-    const [, date, time] = m;
-    const [, month, day] = date.split('-');
-    return `${day}.${month}, ${time}`;
-  }
-  if (pubDate) {
-    const d = new Date(pubDate);
-    if (!isNaN(d.getTime())) {
-      const day = String(d.getUTCDate()).padStart(2, '0');
-      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const time = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-      return `${day}.${month}, ${time}`;
-    }
-  }
-  return '';
-}
-
-function extractTrainNumbers(text) {
-  const seen = new Set();
-  const yearSet = new Set(['2024', '2025', '2026', '2027', '2028']);
-  const re = /\b(IC|TLK|EIC|EIP|PR|KM|KŚ|KW|KD|Polregio)?\s*(?:nr\s*)?(\d{3,5}(?:\/\d{1,2})?)\b/gi;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    const carrier = m[1] ? m[1].toUpperCase() : null;
-    const num = m[2];
-    if (yearSet.has(num)) continue;
-    seen.add(num);
-    if (carrier) seen.add(`${carrier} ${num}`);
-    if (num.includes('/')) {
-      const [base, slash] = num.split('/');
-      seen.add(base);
-      if (carrier) seen.add(`${carrier} ${base}`);
-      if (slash.length <= 2) {
-        const derived = base.slice(0, base.length - slash.length) + slash;
-        seen.add(derived);
-        if (carrier) seen.add(`${carrier} ${derived}`);
-      }
-    }
-  }
-  return [...seen];
-}
-
-function cleanProblemText(text) {
-  let s = text
-    .replace(/^w dniu\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/i, '')
-    .replace(/^dnia\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/i, '')
-    .replace(/Aktualizacja:[\s\S]*?(?:Opublikowano:[\s\S]*?)?(?=(?:W dniu|Dnia|Z powodu|W związku|Niżej|Informujemy))/i, '')
-    .replace(/^(?:W dniu|Dnia)\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?\s*,?\s*/i, '')
-    .replace(/,,/g, '„')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (s.length > 0) {
-    s = s.charAt(0).toUpperCase() + s.slice(1);
-  }
-  return s;
-}
-
-function buildPkpDirectAlert(item) {
-  if (item.pdpData) {
-    const pdp = item.pdpData;
-    const allLines = pdp.lines;
-    const headline = pdp.headline;
-
-    return {
-      is_transit_alert: true,
-      headline,
-      disruption_type: pdp.disruption_type,
-      is_emergency: true,
-      is_resolved: false,
-      severity: pdp.severity,
-      glance: {
-        problem: (pdp.message || headline).slice(0, 400),
-        solution: pdp.section ? `Odcinek: ${pdp.section}` : null,
-        timeframe: extractPkpTimeframe(item.pubDate, ""),
-      },
-      valid_from: item.pubDate || new Date().toISOString(),
-      valid_to: null,
-      all_lines: allLines,
-      impacted_lines: allLines.slice(0, 8).map((line) => ({
-        line,
-        direction: null,
-        impact_type: "schedule_change",
-        omitted_stops: [],
-        temporary_stops: [],
-        replacement_line: null,
-        details: headline,
-      })),
-      stops: pdp.stations || [],
-    };
-  }
-
-  const content = item.fullContent || item.content || '';
-  const headline = cleanIntercityTitle(item.title);
-  const timeframe = extractPkpTimeframe(item.pubDate, content);
-  const allLines = extractTrainNumbers(`${item.title} ${content}`);
-
-  const lower = content.toLowerCase();
-  const titleLower = item.title.toLowerCase();
-
-  const is_emergency =
-    lower.includes('opóźnieni') ||
-    lower.includes('usterk') ||
-    lower.includes('awari') ||
-    lower.includes('wypad') ||
-    titleLower.includes('opóźnieni');
-
-  const disruption_type =
-    lower.includes('usterk') || lower.includes('awari')
-      ? 'infrastructure_failure'
-      : lower.includes('wypad') || lower.includes('potrąc') || lower.includes('zderzen')
-        ? 'accident'
-        : lower.includes('prac') || lower.includes('remont')
-          ? 'planned_works'
-          : lower.includes('pogod') || lower.includes('wichur')
-            ? 'weather'
-            : 'other';
-
-  const severity =
-    lower.includes('odwołan') || lower.includes('zamknięt')
-      ? 'blocking'
-      : lower.includes('honorowanie biletów') || lower.includes('awari')
-        ? 'major'
-        : lower.includes('zastępcze składy') || lower.includes('opóźnieni')
-          ? 'minor'
-          : 'info';
-
-  const is_resolved =
-    lower.includes('ruch przywrócon') || lower.includes('awaria usunięt') || lower.includes('zakończon');
-
-  const bulletsIdx = content.indexOf('•');
-  let problem = bulletsIdx !== -1 ? content.slice(0, bulletsIdx) : content;
-  problem = cleanProblemText(problem);
-  if (!problem || problem.length < 10) {
-    problem = headline;
-  }
-
-  let solution = null;
-  if (bulletsIdx !== -1) {
-    solution = content.slice(bulletsIdx).trim();
-  } else if (lower.includes('honorowanie')) {
-    solution = 'Uzgodniono wzajemne honorowanie biletów.';
-  }
-
-  return {
-    is_transit_alert: true,
-    headline,
-    disruption_type,
-    is_emergency,
-    is_resolved,
-    severity,
-    glance: {
-      problem: problem.slice(0, 400),
-      solution: solution ? solution.slice(0, 500) : null,
-      timeframe,
-    },
-    valid_from: item.pubDate || new Date().toISOString(),
-    valid_to: null,
-    all_lines: allLines,
-    impacted_lines: allLines.slice(0, 8).map((line) => ({
-      line,
-      direction: null,
-      impact_type: lower.includes('zastępcze składy') ? 'special_service' : 'schedule_change',
-      omitted_stops: [],
-      temporary_stops: [],
-      replacement_line: null,
-      details: headline,
-    })),
-    stops: [],
-  };
-}
-
-function parsePdpDisruption(d, disruptionTypes = {}, stationsMap = {}) {
-  const id = String(d.disruptionId || d.id || crypto.createHash("sha256").update(d.message || "").digest("hex").slice(0, 16));
-  const typeName = (d.disruptionTypeCode && disruptionTypes[d.disruptionTypeCode]) || "Utrudnienie w ruchu";
-  const startStation = d.startStationId ? stationsMap[String(d.startStationId)] : null;
-  const endStation = d.endStationId ? stationsMap[String(d.endStationId)] : null;
-
-  let section = "";
-  if (startStation && endStation && startStation !== endStation) {
-    section = `${startStation} – ${endStation}`;
-  } else if (startStation) {
-    section = startStation;
-  }
-
-  const message = (d.message || "").trim();
-  const headline = section ? `${typeName}: ${section}` : (typeName !== "Utrudnienie w ruchu" ? typeName : (message.split(".")[0] || "Utrudnienie w ruchu"));
-
-  const lines = new Set(extractTrainNumbers(`${headline} ${message}`));
-
-  const lowerType = typeName.toLowerCase();
-  const lowerMsg = message.toLowerCase();
-
-  const disruption_type =
-    lowerType.includes("sieć") || lowerType.includes("trakc") || lowerType.includes("srk") || lowerType.includes("usterk") || lowerType.includes("awari") || lowerType.includes("tor")
-      ? "infrastructure_failure"
-      : lowerType.includes("wypad") || lowerType.includes("potrąc") || lowerType.includes("kolizj") || lowerMsg.includes("potrąc")
-        ? "accident"
-        : lowerType.includes("prac") || lowerType.includes("remont")
-          ? "planned_works"
-          : lowerType.includes("pogod") || lowerType.includes("wiatr") || lowerType.includes("drzew")
-            ? "weather"
-            : "other";
-
-  const severity =
-    lowerType.includes("wstrzyman") || lowerMsg.includes("wstrzyman") || lowerType.includes("zamknię") || lowerMsg.includes("przerwa w ruchu")
-      ? "blocking"
-      : lowerType.includes("awari") || lowerType.includes("usterk") || lowerType.includes("wypad") || lowerMsg.includes("honorowanie")
-        ? "major"
-        : "minor";
-
-  const stations = [startStation, endStation].filter(Boolean);
-
-  return {
-    id: `pdp-${id}`,
-    title: headline,
-    link: "https://portalpasazera.pl/Utrudnienia",
-    pubDate: new Date().toISOString(),
-    content: message,
-    fullContent: message,
-    pdpData: {
-      headline,
-      disruption_type,
-      severity,
-      message,
-      section,
-      typeName,
-      stations,
-      lines: [...lines],
-    },
-  };
-}
-// Komunikaty PKP Intercity (opóźnienia, awarie, honorowanie biletów, składy zastępcze).
-function parsePkpIntercityList(html, limit) {
-  const cardRegex = /<a\s+[^>]*href="([^"]*komunikaty\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-  const items = [];
-  let match;
-  while ((match = cardRegex.exec(html)) !== null && items.length < limit) {
-    const rawLink = match[1].replace(/^\/?pl\//, '');
-    const link = `https://www.intercity.pl/pl/${rawLink}`;
-    const block = match[2];
-    const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-    const title = cleanHtml(titleMatch ? (titleMatch[1] || '') : '').replace(/\s+/g, ' ').trim();
-    if (!title) continue;
-
-    const dateMatch = block.match(/Aktualizacja:\s*(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/i) ||
-                      title.match(/(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/);
-    const pubDate = dateMatch ? `${dateMatch[1]}T${dateMatch[2] || '00:00'}:00Z` : null;
-
-    items.push({
-      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
-      title,
-      link,
-      pubDate,
-      content: title,
-    });
-  }
-  return items;
 }
 
 // Lista komunikatów ZTM GZM to serwerowy HTML bez JSON-a i paginacji.
@@ -919,70 +759,13 @@ async function fetchCityFeed(city, limit) {
       const text = await fetchFeed('https://ztm.erzeszow.pl/feed/', 'Rzeszow ZTM', browserHeaders, 'xml');
       return parseRssItems(text, limit);
     }
-        case 'polska': {
-      const items = [];
-      const pdpKey = process.env.PDP_API_KEY || "";
-      if (pdpKey) {
-        try {
-          console.log("    [PDP API] Pobieranie oficjalnych utrudnień PKP PLK...");
-          const pdpRes = await fetch("https://pdp-api.plk-sa.pl/api/v1/disruptions", {
-            headers: {
-              "X-API-Key": pdpKey,
-              Accept: "application/json",
-              "User-Agent": "kilometr-timetable-bot/1.0",
-            },
-            signal: AbortSignal.timeout(15000),
-          });
-          if (pdpRes.ok) {
-            const data = await pdpRes.json();
-            const list = Array.isArray(data.disruptions)
-              ? data.disruptions
-              : Array.isArray(data.d)
-                ? data.d
-                : [];
-            const types = data.disruptionTypes || {};
-            const stations = data.stations || {};
-            for (const d of list.slice(0, limit)) {
-              items.push(parsePdpDisruption(d, types, stations));
-            }
-            console.log(`    [PDP API] Pobrano ${items.length} oficjalnych utrudnień.`);
-          } else {
-            console.warn(`    [!] PDP API zwróciło HTTP ${pdpRes.status}`);
-          }
-        } catch (err) {
-          console.warn("    [!] Błąd pobierania PDP API:", err.message);
-        }
-      }
-
-      if (items.length < limit) {
-        try {
-          const html = await fetchFeed(
-            "https://www.intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/",
-            "PKP Intercity Komunikaty",
-            browserHeaders,
-            "html",
-          );
-          const icItems = parsePkpIntercityList(html, limit - items.length);
-          items.push(...icItems);
-        } catch (err) {
-          if (items.length === 0) {
-            console.warn(`    [!] Intercity 403/błąd (${err.message}) i brak utrudnień z PDP API.`);
-            return [];
-          } else {
-            console.warn(`    [!] Intercity 403/błąd (${err.message}), ale pobrano ${items.length} pozycji z PDP API.`);
-          }
-        }
-      }
-
-      return items;
-    }
     default:
       throw new Error(`Nieobsługiwane miasto: ${city}. Dostępne: ${SUPPORTED_CITIES.join(', ')}`);
   }
 }
 
-const SYSTEM_INSTRUCTION = `Jesteś silnikiem analizy operacyjnej dla aplikacji transportu publicznego Kilometr.
-Przekształcasz komunikaty zarządców dróg i transportu w precyzyjną, maszynową topologię utrudnień oraz zwięzłe, ludzkie mikro-streszczenia (styl antislop: konkret, brak waty słownej).
+const SYSTEM_INSTRUCTION = `Jesteś silnikiem analizy operacyjnej i topologicznej dla aplikacji transportu publicznego Kilometr.
+Przekształcasz komunikaty zarządców dróg i transportu w precyzyjną, maszynową topologię utrudnień (powiązaną z bazą GTFS) oraz zwięzłe, ludzkie mikro-streszczenia (styl antislop: konkret, zero waty słownej, zero em dash).
 
 ODPOWIADAJ WYŁĄCZNIE CZYSTYM OBIEKTEM JSON O PONIŻSZEJ STRUKTURZE:
 {
@@ -994,29 +777,51 @@ ODPOWIADAJ WYŁĄCZNIE CZYSTYM OBIEKTEM JSON O PONIŻSZEJ STRUKTURZE:
   "severity": "info" | "minor" | "major" | "blocking", // blocking: paraliż korytarza transportowego; major: zmiana tras wielu linii lub kluczowych węzłów; minor: przeniesiony słupek/niewielka korekta; info: taryfy, odrzucone, utrudnienia zakończone
   "glance": {
     "problem": string, // Dokładnie 1 zwięzłe zdanie: co i gdzie się stało (np. "Kolizja na ul. Krakowskiej blokuje ruch tramwajowy w stronę Księża Małego.")
-    "solution": string | null, // Dokładnie 1 zwięzłe zdanie jak podróżować w zamian (np. "Na odcinku Galeria Dominikańska – Księże Małe kursuje autobus za-tramwaj."), lub null jeśli brak alternatywy lub ruch przywrócony
+    "solution": string | null, // Dokładnie 1 zwięzłe zdanie jak podróżować w zamian (np. "Na odcinku Galeria Dominikańska - Księże Małe kursuje autobus za-tramwaj 703."), lub null jeśli brak alternatywy lub ruch przywrócony
     "timeframe": string // Czytelny dla oka opis okresu, np. "Od 31.10 do 02.11", "Od godz. 13:30 (ruch przywrócony o 15:50)"
   },
+  "corridor": { // Główny zablokowany/remontowany korytarz (ulica, most, węzeł lub odcinek między dwoma przystankami), lub null gdy zmiana dotyczy np. tylko taryfy albo rozproszonych rozkładów
+    "label": string, // Zwięzła nazwa miejsca z treści, np. "ul. Krakowska", "Most Grunwaldzki", "Rondo Mogilskie"
+    "from_stop": string | null, // Początkowy przystanek zablokowanego odcinka (w mianowniku, z GTFS lub tekstu), lub null
+    "to_stop": string | null // Końcowy przystanek zablokowanego odcinka (w mianowniku, z GTFS lub tekstu), lub null
+  } | null,
+  "ticket_honoring": { // Wzajemne honorowanie biletów lub ważność biletu w komunikacji zastępczej, lub null gdy tekst nic o tym nie mówi
+    "active": boolean,
+    "summary": string, // 1 konkretne zdanie z zasadą z tekstu (np. "Bilety okresowe na linię 3 zachowują ważność w autobusie 703 na trasie objazdu.")
+    "operators": string[] // Wymienieni przewoźnicy (np. ["MPK", "KD"]), lub []
+  } | null,
+  "phases": [ // Etapy prac/zmian TYLKO gdy komunikat rozpisuje min. 2 odrębne etapy w czasie (np. Etap I weekendowy, Etap II w tygodniu). W zwykłym komunikacie pusta tablica []
+    {
+      "label": string, // np. "14-15.11 (sobota-niedziela)"
+      "from": string | null, // ISO 8601 jeśli znana data z tekstu, lub null
+      "to": string | null,
+      "lines": string[], // Linie objęte tym etapem
+      "summary": string // 1 krótkie zdanie co obowiązuje w tym etapie
+    }
+  ],
   "valid_from": string, // Data i czas ISO 8601 od kiedy zmiana obowiązuje (np. "2026-10-31T00:00:00Z"). Jeśli brak, użyj daty publikacji
   "valid_to": string | null, // Data i czas ISO 8601 końca utrudnień lub null ("do odwołania", na stałe lub nieznany)
   "all_lines": string[], // Numery/symbole wszystkich linii zbiorkomu, których dotyczy zmiana (np. ["3", "5"]). Pusta tablica [] jeśli irrelevant
-  "line_changes": [ // Rozbicie per-linia. JEDEN KOMUNIKAT MOŻE OPISYWAĆ WIELE LINII Z RÓŻNYMI ZMIANAMI: jedna linia zawieszona, inna na objazdach, jeszcze inna na stałej trasie. Każda linia to osobny wpis z własnym "change".
+  "line_changes": [ // Rozbicie per-linia. JEDEN KOMUNIKAT MOŻE OPISYWAĆ WIELE LINII Z RÓŻNYMI ZMIANAMI: jedna linia zawieszona, inna na objazdach, jeszcze inna skrócona. Każda linia to osobny wpis z własnym "change".
     {
       "line": string, // np. "3", "Z-15", "E-2"
-      "direction": string | null, // Docelowy kierunek problemu w mianowniku, np. "Księże Małe", "Oporów", lub "both", lub null gdy nieznany
+      "direction": string | null, // Docelowy kierunek w mianowniku, np. "Księże Małe", "Oporów", lub "both", lub null gdy nieznany
       "change": "cancelled" | "detour" | "shortened" | "stops_skipped" | "schedule_change" | "frequency_change" | "route_restored" | "other",
       // cancelled: linia w ogóle nie kursuje (w oknie czasowym)
       // detour: trasa czasowo zmieniona, fragment nowej trasy w "via"
-      // shortened: trasa skrócona (odpada część trasy)
+      // shortened: trasa skrócona (odpada część trasy, linia kończy na wcześniejszej pętli)
       // stops_skipped: linia jedzie swoją trasą, ale pomija wybrane przystanki
       // schedule_change: zmiany godzin odjazdów bez zmiany trasy
       // frequency_change: zmiana częstotliwości kursowania
       // route_restored: powrót na stałą trasę po utrudnieniu
       // other: zmiana, która nie pasuje do powyższych (opisz w details)
-      "via": string[] | null, // ZMIENIONY FRAGMENT TRASY W KOLEJNOŚCI JAZDY. Tylko gdy tekst wymienia punkty trasy po kolei (np. "pojedzie przez Dietla, Starowiślną do Poczty Głównej" -> ["Dietla", "Starowiślna", "Poczta Główna"]). Wielokropek w tekście ("Nowy Bieżanów – … – Krakowska") oznacza niezmieniony środek: podaj TYLKO wymieniony fragment od pierwszego do ostatniego wymienionego punktu. null gdy tekst nie podaje kolejności.
-      "omitted_stops": string[], // Przystanki omijane przez tę linię (w mianowniku, np. ["Plac Zgody", "Krakowska"])
-      "temporary_stops": string[], // Przystanki tymczasowe lub dodatkowe (w mianowniku)
-      "replacement_line": string | null, // Linia zastępcza jeśli uruchomiono (np. "Za-tramwaj 703" lub "autobus 705")
+      "from_stop": string | null, // Ostatni stały przystanek PRZED objazdem lub początek skróconej trasy (w mianowniku, z GTFS lub tekstu), lub null
+      "to_stop": string | null, // Pierwszy stały przystanek PO objeździe lub kraniec skróconej trasy (w mianowniku, z GTFS lub tekstu), lub null
+      "via": string[] | null, // ZMIENIONY FRAGMENT TRASY W KOLEJNOŚCI JAZDY. Tylko gdy tekst wymienia punkty trasy po kolei (np. "pojedzie przez Dietla, Starowiślną do Poczty Głównej" -> ["Dietla", "Starowiślna", "Poczta Główna"]). Wielokropek w tekście ("Nowy Bieżanów ... Krakowska") oznacza niezmieniony środek: podaj TYLKO wymieniony fragment od pierwszego do ostatniego wymienionego punktu. null gdy tekst nie podaje kolejności.
+      "omitted_stops": string[], // Przystanki omijane przez tę linię (w mianowniku, np. ["Plac Zgody", "Krakowska"]). Jeśli w zadaniu podano kanoniczną trasę GTFS linii, a komunikat jednoznacznie wycina odcinek między dwoma przystankami GTFS (from_stop i to_stop), wypisz pominięte przystanki z tego odcinka GTFS. Gdy niejednoznaczne, wpisz tylko przystanki wprost z tekstu.
+      "temporary_stops": string[], // Przystanki tymczasowe lub dodatkowe na objeździe (w mianowniku)
+      "transfer_stops": string[], // Węzły przesiadkowe na komunikację zastępczą wskazane w tekście (w mianowniku, np. ["Galeria Dominikańska"]), lub []
+      "replacement_line": string | null, // Symbol lub opis linii zastępczej jeśli uruchomiono (np. "703" lub "Za-tramwaj 703")
       "hours": { "from": string, "to": string }[], // Okna czasowe w ciągu doby, tylko z tekstu (np. "w godz. 11:45-13:00" -> [{"from":"11:45","to":"13:00"}]). Pusta tablica [] gdy zmiana obowiązuje całą dobę.
       "details": string // 1 zdanie o zmianie tej konkretnej linii
     }
@@ -1044,30 +849,371 @@ ODPOWIADAJ WYŁĄCZNIE CZYSTYM OBIEKTEM JSON O PONIŻSZEJ STRUKTURZE:
 }
 
 ZASADY ANTY-SLOP I JAKOŚCI DANYCH:
-1. ZERO WATY SŁOWNEJ: Bezwzględny zakaz fraz urzędowych typu: "przepraszamy za niedogodności", "nie kursują normalnie", "sprawdź rozkład przed wyjazdem", "decyzją zarządu". Pisz surowe fakty: GDZIE, CO i CZYM JECHAĆ W ZAMIAN.
-2. MIANOWNIK DLA PRZYSTANKÓW: Polskie nazwy przystanków zawsze sprowadzaj do formy bazowej: "Galeria Dominikańska", "Rondo Reagana", "Dworzec Główny", "Piecowice - pętla".
+1. ZERO WATY SŁOWNEJ I ZERO EM DASH: Bezwzględny zakaz znaku em dash (U+2014) oraz fraz urzędowych typu: "przepraszamy za niedogodności", "nie kursują normalnie", "sprawdź rozkład przed wyjazdem", "decyzją zarządu". Pisz surowe fakty: GDZIE, CO i CZYM JECHAĆ W ZAMIAN. Zamiast pauz używaj dwukropka, przecinka lub osobnego zdania.
+2. MIANOWNIK I KANONIZACJA GTFS: Polskie nazwy przystanków zawsze sprowadzaj do formy bazowej ("Galeria Dominikańska", "Rondo Reagana", "Dworzec Główny"). Jeśli w zadaniu podano KONTEKST TOPOLOGII GTFS i przystanek z tekstu odpowiada przystankowi GTFS, użyj dokładnej nazwy z GTFS.
 3. LINIE TO WYŁĄCZNIE ZBIORKOM: Nigdy nie dodawaj numerów dróg krajowych (np. DK94, AOW, A8), numerów ustaw, numerów peronów ani roczników.
 4. JEŚLI SPAM LUB BEZ WPŁYWU NA ZBIORKOM:
-   Ustaw is_transit_alert: false, severity: "info", all_lines: [], line_changes: [], temporary_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
-5. KOPIUJ, NIE TWÓRZ: nazwy ulic, placów, dzielnic, osiedli, mostów i przystanków przepisujesz znak w znak z treści. Zero odmiany, zero "poprawiania", zero tłumaczenia. Jeśli treść ma "Krzyki", pisz "Krzyki". Jeśli "Włochy", pisz "Włochy". Nigdy "Krzków", "Włochów".
-6. ZERO NOWEJ GEOGRAFII: nie dodawaj miejsc, których nie ma w treści. Nie zgaduj dzielnicy z nazwy ulicy. Brak nazwy w treści oznacza brak nazwy w odpowiedzi.
-7. FORMA Z TREŚCI: używaj dokładnie tej formy nazwy, która występuje w komunikacie. Jeśli treść ma "Krzykach", pisz "Krzykach". Nie twórz własnych form fleksyjnych. Żeby zdanie brzmiało naturalnie, użyj konstrukcji "w dzielnicy Krzyki", "w rejonie ul. Krakowskiej", "na trasie do Włoch".
+   Ustaw is_transit_alert: false, severity: "info", corridor: null, ticket_honoring: null, phases: [], all_lines: [], line_changes: [], temporary_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
+5. KOPIUJ, NIE TWÓRZ: nazwy ulic, placów, dzielnic, osiedli, mostów i przystanków przepisujesz z treści lub z przekazanego kontekstu GTFS tych linii. Zero tłumaczenia i zero zmyślonych form fleksyjnych (nigdy "Krzków", "Włochów").
+6. ZERO NOWEJ GEOGRAFII: nie dodawaj miejsc spoza treści i spoza podanego w zadaniu wycinka GTFS. Nie zgaduj dzielnicy z nazwy ulicy.
+7. FORMA Z TREŚCI W PROZIE: w polach opisowych (headline, glance, details) używaj naturalnych konstrukcji ("w dzielnicy Krzyki", "w rejonie ul. Krakowskiej", "na trasie do Włoch").
 8. MIASTO: komunikat dotyczy wyłącznie miasta podanego w zadaniu. Nie używaj dzielnic ani miejsc z innych miast.
-9. SAMOKONTROLA: przed odpowiedzią sprawdź każdą nazwę własną w headline, glance.problem, glance.solution, line_changes i stops. Musi występować w treści źródłowej. Jeśli nie występuje, usuń ją albo przepisz dokładnie z treści.
-10. JEDEN KOMUNIKAT, WIELE ZMIAN: gdy tekst wymienia linie zawieszone, linie na objazdach i linie bez zmian, zapisz w line_changes wyłącznie linie ze zmianami (cancelled, detour, shortened, stops_skipped, schedule_change, frequency_change). Linie "bez zmian" pomijasz; wystarczą w glance.problem.
-11. NIGDY NIE DOPISUJ FAKTÓW: nie wymyślaj linii, przystanków, godzin, dat ani częstotliwości, których nie ma w tekście. Aplikacja będzie na tych danych liczyć trasy, więc każdy zmyślony przystanek w via to błędne połączenie. Gdy tekst nie podaje kolejności trasy, via = null.
+9. SAMOKONTROLA: przed odpowiedzią sprawdź każdą nazwę własną. Musi pochodzić z treści źródłowej lub z podanej sekwencji przystanków GTFS zmienianych linii.
+10. JEDEN KOMUNIKAT, WIELE ZMIAN: gdy tekst wymienia linie zawieszone, linie na objazdach i linie bez zmian, zapisz w line_changes wyłącznie linie ze zmianami (cancelled, detour, shortened, stops_skipped, schedule_change, frequency_change, route_restored). Linie "bez zmian" pomijasz.
+11. NIGDY NIE DOPISUJ FAKTÓW: nie wymyślaj linii, godzin, dat, honorowania biletów ani częstotliwości spoza tekstu. Gdy tekst nie podaje kolejności objazdu, via = null.
 12. GODZINY I DATY TYLKO Z TEKSTU: hours wpisuj wyłącznie z konkretnych godzin w treści. Gdy tekst podaje tylko "wieczorem" albo "w nocy", zostaw hours: [] i wpisz zakres w details lub glance.timeframe.
 
 PRZYKŁADY POPRAWNEJ FORMY NAZW:
 - Treść: "utrudnienia w rejonie Krzyki" -> "Utrudnienia w dzielnicy Krzyki" (nie "Krzków").
 - Treść: "objazd przez Włochy" -> "Objazd przez Włochy" (nie "Włochów").
 PRZYKŁADY ROZBICIA NA LINIE:
-- Treść: "linie 2, 4, 6 są zawieszone; linia 13 kursuje po trasie czasowo zmienionej: Nowy Bieżanów P+R – … – Krakowska – Dietla – Starowiślna – Poczta Główna" ->
-  line_changes: [{"line":"2","change":"cancelled",...}, {"line":"4","change":"cancelled",...}, {"line":"6","change":"cancelled",...}, {"line":"13","change":"detour","via":["Krakowska","Dietla","Starowiślna","Poczta Główna"],...}]
+- Treść: "linie 2, 4, 6 są zawieszone; linia 13 kursuje po trasie czasowo zmienionej: Nowy Bieżanów P+R - ... - Krakowska - Dietla - Starowiślna - Poczta Główna" ->
+  line_changes: [{"line":"2","change":"cancelled",...}, {"line":"4","change":"cancelled",...}, {"line":"6","change":"cancelled",...}, {"line":"13","change":"detour","from_stop":"Krakowska","to_stop":"Poczta Główna","via":["Krakowska","Dietla","Starowiślna","Poczta Główna"],...}]
 - Treść: "uruchomiona zostanie dodatkowa linia C1 kursująca co 10 minut na trasie Pleszów - Rynek - Plac Centralny" ->
   temporary_lines: [{"line":"C1","via":["Pleszów","Rynek","Plac Centralny"],"frequency_min":10,...}]`;
 
-function buildPrompt(item, city, correction = []) {
+// ────────────────────────────────────────────────────────────────────────────
+// Kontekst GTFS miasta z R2 (node:sqlite): kanoniczne przystanki i trasy linii
+// ────────────────────────────────────────────────────────────────────────────
+
+const gtfsIndexCache = new Map();
+
+function loadGtfsIndexFromSqlite(dbPath) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const routesRows = db.prepare('SELECT route_id, short, type FROM routes').all();
+    const stopsRows = db.prepare('SELECT stop_id, name, lat, lon FROM stops').all();
+
+    const stopsById = new Map();
+    const stopsByNorm = new Map();
+    for (const st of stopsRows) {
+      stopsById.set(st.stop_id, {
+        id: st.stop_id,
+        name: st.name,
+        lat: Number(st.lat),
+        lon: Number(st.lon),
+      });
+      const norm = normalizeName(st.name);
+      if (norm && !stopsByNorm.has(norm)) {
+        stopsByNorm.set(norm, {
+          id: st.stop_id,
+          name: st.name,
+          lat: Number(st.lat),
+          lon: Number(st.lon),
+        });
+      }
+    }
+
+    // Dla każdego route_id bierzemy reprezentatywny kurs o najdłuższej sekwencji przystanków.
+    const repTripStmt = db.prepare(`
+      SELECT t.trip_id, t.headsign, COUNT(st.seq) AS cnt
+      FROM trips t
+      JOIN stop_times st ON st.trip_id = t.trip_id
+      WHERE t.route_id = ?
+      GROUP BY t.trip_id
+      ORDER BY cnt DESC
+      LIMIT 1
+    `);
+    const seqStmt = db.prepare(`
+      SELECT stop_id FROM stop_times WHERE trip_id = ? ORDER BY seq ASC
+    `);
+
+    const byLine = new Map();
+    for (const r of routesRows) {
+      const short = String(r.short || '').trim().toUpperCase();
+      if (!short) continue;
+      const rep = repTripStmt.get(r.route_id);
+      if (!rep?.trip_id) continue;
+      const seqRows = seqStmt.all(rep.trip_id);
+      const stopNames = [];
+      const seen = new Set();
+      for (const row of seqRows) {
+        const stop = stopsById.get(row.stop_id);
+        if (stop?.name && !seen.has(stop.name)) {
+          seen.add(stop.name);
+          stopNames.push(stop.name);
+        }
+      }
+      if (stopNames.length === 0) continue;
+      const existing = byLine.get(short);
+      if (!existing || stopNames.length > existing.stops.length) {
+        byLine.set(short, {
+          line: short,
+          routeId: r.route_id,
+          type: Number(r.type),
+          headsign: rep.headsign || stopNames[stopNames.length - 1] || '',
+          stops: stopNames,
+        });
+      }
+    }
+
+    return { byLine, stopsById, stopsByNorm };
+  } finally {
+    db.close();
+  }
+}
+
+async function getCityGtfsIndex(city) {
+  if (NO_GTFS) return null;
+  if (gtfsIndexCache.has(city)) return gtfsIndexCache.get(city);
+
+  const localBuilt = path.join(DIST_DIR, city, 'kilometr-gtfs.db');
+  if (fs.existsSync(localBuilt)) {
+    try {
+      const idx = loadGtfsIndexFromSqlite(localBuilt);
+      gtfsIndexCache.set(city, idx);
+      return idx;
+    } catch (err) {
+      console.warn(`    [GTFS] Nie udało się otworzyć lokalnej bazy ${localBuilt}: ${err.message}`);
+    }
+  }
+
+  if (!PUBLIC_TIMETABLE_URL) {
+    gtfsIndexCache.set(city, null);
+    return null;
+  }
+
+  const tmpDbPath = path.join(os.tmpdir(), `kilometr-disruptions-${city}.db`);
+  try {
+    if (!fs.existsSync(tmpDbPath) || Date.now() - fs.statSync(tmpDbPath).mtimeMs > 6 * 3600 * 1000) {
+      const gzUrl = `${PUBLIC_TIMETABLE_URL}/${city}/db/kilometr-gtfs.db.gz`;
+      const res = await fetch(gzUrl, { signal: AbortSignal.timeout(25000) });
+      if (!res.ok) {
+        gtfsIndexCache.set(city, null);
+        return null;
+      }
+      const gzBuf = Buffer.from(await res.arrayBuffer());
+      const rawDb = zlib.gunzipSync(gzBuf);
+      fs.writeFileSync(tmpDbPath, rawDb);
+    }
+    const idx = loadGtfsIndexFromSqlite(tmpDbPath);
+    console.log(
+      `    [GTFS] Załadowano topologię ${city}: ${idx.byLine.size} linii, ${idx.stopsByNorm.size} unikalnych przystanków.`,
+    );
+    gtfsIndexCache.set(city, idx);
+    return idx;
+  } catch (err) {
+    console.warn(`    [GTFS] Pomijam kontekst GTFS dla ${city}: ${err.message}`);
+    gtfsIndexCache.set(city, null);
+    return null;
+  }
+}
+
+const CANDIDATE_LINE_RE = /\b(?:[A-ZĄĆĘŁŃÓŚŹŻ]{1,3}-?\d{1,3}|\d{1,3}[A-Z]?|[A-Z]\d?)\b/gi;
+
+export function extractCandidateLinesFromText(text, gtfsIndex) {
+  if (!text || !gtfsIndex?.byLine) return [];
+  const found = new Set();
+  for (const m of String(text).matchAll(CANDIDATE_LINE_RE)) {
+    const token = m[0].toUpperCase();
+    if (gtfsIndex.byLine.has(token)) {
+      found.add(token);
+    }
+  }
+  return [...found];
+}
+
+export function buildGtfsPromptContext(item, gtfsIndex) {
+  if (!gtfsIndex) return { promptBlock: '', allowedStops: null, matchedLines: [] };
+  const text = `${item.title || ''}\n${item.fullContent || item.content || ''}`;
+  const matchedLines = extractCandidateLinesFromText(text, gtfsIndex).slice(0, 10);
+  if (matchedLines.length === 0) {
+    return { promptBlock: '', allowedStops: null, matchedLines: [] };
+  }
+
+  const allowedStops = new Set();
+  const linesDesc = [];
+  for (const line of matchedLines) {
+    const entry = gtfsIndex.byLine.get(line);
+    if (!entry) continue;
+    for (const st of entry.stops) {
+      allowedStops.add(normalizeName(st));
+    }
+    const previewStops =
+      entry.stops.length > 42
+        ? [...entry.stops.slice(0, 20), '...', ...entry.stops.slice(-20)]
+        : entry.stops;
+    linesDesc.push(`- Linia ${line}: ${previewStops.join(' -> ')}`);
+  }
+
+  if (linesDesc.length === 0) {
+    return { promptBlock: '', allowedStops: null, matchedLines: [] };
+  }
+
+  const promptBlock = `\n\nKONTEKST TOPOLOGII GTFS MIASTA (kanoniczne nazwy przystanków w kolejności jazdy):
+${linesDesc.join('\n')}
+Używaj tych dokładnych nazw przystanków w polach stops, omitted_stops, via, from_stop i to_stop, jeśli odpowiadają miejscom z komunikatu.`;
+
+  return { promptBlock, allowedStops, matchedLines };
+}
+
+/**
+ * Heurystyka złożoności komunikatu: decyduje, czy w trybie kaskadowym (auto)
+ * od razu skierować komunikat do Gemini 3.8 Flash (zamiast lekkiego DeepSeek V4.1 Flash)
+ * albo zweryfikować wynik drugim modelem.
+ */
+export function isComplexDisruptionText(title, content, matchedLinesCount = 0) {
+  const full = `${title || ''}\n${content || ''}`;
+  if (full.length > 2200) return true;
+  if (matchedLinesCount >= 5) return true;
+  const lower = full.toLowerCase();
+  if (/\betap\s+(i|ii|iii|1|2|3)\b/i.test(full)) return true;
+  const detourMentions = (lower.match(/objazd|tras[aąę]\s+zmienion|skrócon|zawieszon/g) || []).length;
+  return detourMentions >= 4;
+}
+
+export function needsEscalationAfterPrimary(analysis, sourceText) {
+  if (!analysis || analysis.is_transit_alert === false) return false;
+  const allLinesCount = Array.isArray(analysis.all_lines) ? analysis.all_lines.length : 0;
+  const lineChangesCount = Array.isArray(analysis.line_changes) ? analysis.line_changes.length : 0;
+  const lower = String(sourceText || '').toLowerCase();
+  const mentionsChanges = /objazd|zawieszon|skrócon|zmienia\s+tras|zastępcz/.test(lower);
+  if (allLinesCount >= 3 && lineChangesCount === 0 && mentionsChanges) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Wzbogaca przeanalizowany alert o kanoniczne stop_id i współrzędne z GTFS
+ * oraz uzupełnia brakujące pomijane przystanki z wyciętego odcinka linii,
+ * jeśli model podał jednoznaczne granice from_stop i to_stop na trasie GTFS.
+ */
+export function enrichAlertWithGtfs(analysis, gtfsIndex) {
+  if (!analysis || analysis.is_transit_alert === false || !gtfsIndex) return analysis;
+
+  const resolveStop = (rawName) => {
+    if (!rawName || rawName === 'both') return null;
+    const norm = normalizeName(rawName);
+    return gtfsIndex.stopsByNorm.get(norm) || null;
+  };
+
+  const coordMap = {};
+  const rememberCoord = (stopObj) => {
+    if (!stopObj || !Number.isFinite(stopObj.lat) || !Number.isFinite(stopObj.lon)) return;
+    coordMap[stopObj.name] = {
+      stop_id: stopObj.id,
+      lat: Math.round(stopObj.lat * 1e5) / 1e5,
+      lon: Math.round(stopObj.lon * 1e5) / 1e5,
+    };
+  };
+
+  if (analysis.corridor) {
+    const f = resolveStop(analysis.corridor.from_stop);
+    const t = resolveStop(analysis.corridor.to_stop);
+    if (f) {
+      analysis.corridor.from_stop = f.name;
+      rememberCoord(f);
+    }
+    if (t) {
+      analysis.corridor.to_stop = t.name;
+      rememberCoord(t);
+    }
+  }
+
+  for (const lc of analysis.line_changes || []) {
+    const f = resolveStop(lc.from_stop);
+    const t = resolveStop(lc.to_stop);
+    if (f) {
+      lc.from_stop = f.name;
+      rememberCoord(f);
+    }
+    if (t) {
+      lc.to_stop = t.name;
+      rememberCoord(t);
+    }
+
+    if (Array.isArray(lc.via)) {
+      lc.via = lc.via.map((v) => {
+        const hit = resolveStop(v);
+        if (hit) rememberCoord(hit);
+        return hit ? hit.name : v;
+      });
+    }
+    if (Array.isArray(lc.omitted_stops)) {
+      lc.omitted_stops = lc.omitted_stops.map((v) => {
+        const hit = resolveStop(v);
+        if (hit) rememberCoord(hit);
+        return hit ? hit.name : v;
+      });
+    }
+    if (Array.isArray(lc.temporary_stops)) {
+      lc.temporary_stops = lc.temporary_stops.map((v) => {
+        const hit = resolveStop(v);
+        if (hit) rememberCoord(hit);
+        return hit ? hit.name : v;
+      });
+    }
+    if (Array.isArray(lc.transfer_stops)) {
+      lc.transfer_stops = lc.transfer_stops.map((v) => {
+        const hit = resolveStop(v);
+        if (hit) rememberCoord(hit);
+        return hit ? hit.name : v;
+      });
+    }
+
+    // Jeśli to objazd między dwoma przystankami GTFS tej linii, a omitted_stops jest puste,
+    // wyliczamy pominięte przystanki z kanonicznej sekwencji GTFS (maks. 12 przystanków).
+    if (
+      lc.change === 'detour' &&
+      (!lc.omitted_stops || lc.omitted_stops.length === 0) &&
+      lc.from_stop &&
+      lc.to_stop
+    ) {
+      const lineEntry = gtfsIndex.byLine.get(String(lc.line || '').trim().toUpperCase());
+      if (lineEntry) {
+        const idxA = lineEntry.stops.indexOf(lc.from_stop);
+        const idxB = lineEntry.stops.indexOf(lc.to_stop);
+        if (idxA !== -1 && idxB !== -1 && Math.abs(idxB - idxA) > 1 && Math.abs(idxB - idxA) <= 13) {
+          const lo = Math.min(idxA, idxB);
+          const hi = Math.max(idxA, idxB);
+          const viaSet = new Set((lc.via || []).map((x) => normalizeName(x)));
+          const between = lineEntry.stops
+            .slice(lo + 1, hi)
+            .filter((stName) => !viaSet.has(normalizeName(stName)));
+          if (between.length > 0) {
+            lc.omitted_stops = between;
+            for (const stName of between) {
+              const hit = resolveStop(stName);
+              if (hit) rememberCoord(hit);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const tl of analysis.temporary_lines || []) {
+    if (Array.isArray(tl.via)) {
+      tl.via = tl.via.map((v) => {
+        const hit = resolveStop(v);
+        if (hit) rememberCoord(hit);
+        return hit ? hit.name : v;
+      });
+    }
+  }
+
+  for (const st of analysis.stops || []) {
+    const hit = resolveStop(st.name);
+    if (hit) {
+      st.name = hit.name;
+      rememberCoord(hit);
+    }
+    const rep = resolveStop(st.replaced_by);
+    if (rep) {
+      st.replaced_by = rep.name;
+      rememberCoord(rep);
+    }
+  }
+
+  if (Object.keys(coordMap).length > 0) {
+    analysis.stop_coords = coordMap;
+  }
+
+  return analysis;
+}
+
+function buildPrompt(item, city, gtfsPromptBlock = '', correction = []) {
   const cityName = CITY_NAMES[city] || city;
   const base = `Przeanalizuj komunikat miejski (${cityName}):
 Tytuł: ${item.title}
@@ -1075,29 +1221,48 @@ Data publikacji: ${item.pubDate || 'brak'}
 Link: ${item.link}
 
 Treść komunikatu:
-${item.fullContent || item.content || item.title}`;
+${item.fullContent || item.content || item.title}${gtfsPromptBlock}`;
   if (correction.length === 0) return base;
   return `${base}
 
 POPRAWA NAZW WŁASNYCH:
-Te nazwy nie występują w treści źródłowej: ${correction.map((name) => `"${name}"`).join(', ')}.
-Przepisz cały JSON. Każdą nazwę własną (ulica, plac, dzielnica, osiedle, most, przystanek) skopiuj dokładnie w formie z treści albo usuń zdanie z tą nazwą. Nie twórz nowych form.`;
+Te nazwy nie występują w treści źródłowej ani w trasie GTFS zmienianych linii: ${correction.map((name) => `"${name}"`).join(', ')}.
+Przepisz cały JSON. Każdą nazwę własną skopiuj dokładnie z treści komunikatu lub z podanej wyżej listy przystanków GTFS albo usuń zdanie z tą nazwą. Nie twórz nowych form.`;
 }
 
-async function callDeepSeek(item, city, apiKey, model, correction = [], maxRetries = 3) {
-  const prompt = buildPrompt(item, city, correction);
-
+async function callDeepSeek(
+  item,
+  city,
+  apiKey,
+  model,
+  gtfsPromptBlock = '',
+  correction = [],
+  effort = 'low',
+  maxRetries = 3,
+) {
+  const prompt = buildPrompt(item, city, gtfsPromptBlock, correction);
+  const resolvedModel = model || 'deepseek-flash';
   const url = 'https://api.deepseek.com/chat/completions';
 
   const body = {
-    model: model || 'deepseek-chat',
+    model: resolvedModel,
     messages: [
       { role: 'system', content: SYSTEM_INSTRUCTION },
       { role: 'user', content: prompt },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.1,
   };
+
+  if (resolvedModel === 'deepseek-flash' || resolvedModel.startsWith('deepseek-v4')) {
+    if (effort === 'none') {
+      body.thinking = { type: 'disabled' };
+      body.temperature = 0.1;
+    } else {
+      body.reasoning_effort = effort === 'medium' ? 'high' : effort;
+    }
+  } else {
+    body.temperature = 0.1;
+  }
 
   let attempt = 0;
   while (attempt <= maxRetries) {
@@ -1116,7 +1281,7 @@ async function callDeepSeek(item, city, apiKey, model, correction = [], maxRetri
     } catch (netErr) {
       if (attempt <= maxRetries) {
         const delay = attempt * 2000;
-        console.warn(`[!] Błąd sieci: ${netErr.message}. Ponawiam próbę (${attempt}/${maxRetries}) za ${delay}ms...`);
+        console.warn(`[!] Błąd sieci DeepSeek: ${netErr.message}. Ponawiam (${attempt}/${maxRetries}) za ${delay}ms...`);
         await sleep(delay);
         continue;
       }
@@ -1141,29 +1306,47 @@ async function callDeepSeek(item, city, apiKey, model, correction = [], maxRetri
 
     const json = await res.json();
     const rawContent = json.choices?.[0]?.message?.content;
-    if (!rawContent) throw new Error('Brak treści w odpowiedzi DeepSeek');
+    if (!rawContent || !rawContent.trim()) throw new Error('Brak treści JSON w odpowiedzi DeepSeek');
 
     const parsed = JSON.parse(rawContent);
     return {
       parsed,
+      modelUsed: `deepseek:${resolvedModel}`,
       usage: json.usage || null,
       durationMs,
     };
   }
 }
 
-async function callGemini(item, city, apiKey, model, correction = [], maxRetries = 3) {
-  const prompt = buildPrompt(item, city, correction);
+async function callGemini(
+  item,
+  city,
+  apiKey,
+  model,
+  gtfsPromptBlock = '',
+  correction = [],
+  effort = 'medium',
+  maxRetries = 3,
+) {
+  const prompt = buildPrompt(item, city, gtfsPromptBlock, correction);
+  const resolvedModel = model || 'gemini-3.8-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const isGemini3 = /^gemini-3(\.|$|-)/.test(resolvedModel);
+  const generationConfig = {
+    responseMimeType: 'application/json',
+  };
+  if (isGemini3) {
+    const level = effort === 'low' || effort === 'medium' || effort === 'high' ? effort : 'medium';
+    generationConfig.thinkingConfig = { thinkingLevel: level };
+  } else {
+    generationConfig.temperature = 0.1;
+  }
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-    generationConfig: {
-      temperature: 0.1,
-      responseMimeType: 'application/json',
-    },
+    generationConfig,
   };
 
   let attempt = 0;
@@ -1174,7 +1357,10 @@ async function callGemini(item, city, apiKey, model, correction = [], maxRetries
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify(body),
       });
     } catch (netErr) {
@@ -1201,15 +1387,102 @@ async function callGemini(item, city, apiKey, model, correction = [], maxRetries
     }
 
     const json = await res.json();
-    const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+    const parts = json.candidates?.[0]?.content?.parts || [];
+    const textPart = parts.find((p) => typeof p.text === 'string' && !p.thought) || parts[0];
+    const rawText = textPart?.text;
     if (!rawText) throw new Error('Brak odpowiedzi od Gemini');
 
     return {
       parsed: JSON.parse(rawText),
+      modelUsed: `gemini:${resolvedModel}`,
       usage: json.usageMetadata || null,
       durationMs,
     };
   }
+}
+
+async function invokeModelTarget(target, item, city, gtfsPromptBlock = '', correction = []) {
+  if (!target?.apiKey) {
+    throw new Error(`Brak klucza API dla ${target?.provider || 'LLM'}`);
+  }
+  if (target.provider === 'gemini') {
+    return callGemini(item, city, target.apiKey, target.model, gtfsPromptBlock, correction, target.effort);
+  }
+  return callDeepSeek(item, city, target.apiKey, target.model, gtfsPromptBlock, correction, target.effort);
+}
+
+async function analyzeWithCascade(item, city, gtfsCtx) {
+  const sourceText = `${item.title}\n${item.fullContent || item.content || ''}`;
+  const complex = isComplexDisruptionText(
+    item.title,
+    item.fullContent || item.content || '',
+    gtfsCtx.matchedLines.length,
+  );
+
+  // Przy bardzo złożonych wieloetapowych objazdach w trybie hybrydowym od razu bierzemy
+  // model secondary (Gemini 3.8 Flash), żeby uniknąć podwójnego wywołania.
+  const firstTarget =
+    complex && LLM_PLAN.mode === 'auto-hybrid' && LLM_PLAN.secondary?.apiKey
+      ? LLM_PLAN.secondary
+      : LLM_PLAN.primary;
+  const fallbackTarget =
+    firstTarget === LLM_PLAN.secondary ? LLM_PLAN.primary : LLM_PLAN.secondary;
+
+  let result;
+  try {
+    result = await invokeModelTarget(firstTarget, item, city, gtfsCtx.promptBlock);
+  } catch (primaryErr) {
+    if (fallbackTarget?.apiKey && fallbackTarget !== firstTarget) {
+      console.warn(
+        `    [!] ${firstTarget.provider}:${firstTarget.model} zawiódł (${primaryErr.message}). Przełączam na ${fallbackTarget.provider}:${fallbackTarget.model}...`,
+      );
+      result = await invokeModelTarget(fallbackTarget, item, city, gtfsCtx.promptBlock);
+    } else {
+      throw primaryErr;
+    }
+  }
+
+  // Jeśli pierwszy szybki przebieg zgubił strukturę line_changes dla złożonego komunikatu,
+  // eskalujemy do modelu wyższego rzędu (Gemini 3.8 Flash / high effort).
+  if (
+    needsEscalationAfterPrimary(result.parsed, sourceText) &&
+    LLM_PLAN.secondary?.apiKey &&
+    firstTarget !== LLM_PLAN.secondary
+  ) {
+    console.log(
+      `    [~] Eskalacja złożonej topologii do ${LLM_PLAN.secondary.provider}:${LLM_PLAN.secondary.model}...`,
+    );
+    try {
+      result = await invokeModelTarget(LLM_PLAN.secondary, item, city, gtfsCtx.promptBlock);
+    } catch (escErr) {
+      console.warn(`    [!] Eskalacja nieudana (${escErr.message}), zostaję przy wyniku primary.`);
+    }
+  }
+
+  let analysis = sanitizeAnalysisText(result.parsed);
+
+  if (analysis.is_transit_alert !== false) {
+    const unknown = findUnknownNames(analysis, sourceText, gtfsCtx.allowedStops);
+    if (unknown.length > 0) {
+      const repairTarget = LLM_PLAN.secondary?.apiKey ? LLM_PLAN.secondary : firstTarget;
+      console.log(
+        `    [!] Nazwy poza treścią/GTFS: ${unknown.join(', ')}. Korekta przez ${repairTarget.provider}:${repairTarget.model}...`,
+      );
+      result = await invokeModelTarget(repairTarget, item, city, gtfsCtx.promptBlock, unknown);
+      analysis = sanitizeAnalysisText(result.parsed);
+      const still = findUnknownNames(analysis, sourceText, gtfsCtx.allowedStops);
+      if (still.length > 0) {
+        return { rejectedReason: `nazwy nadal poza treścią: ${still.join(', ')}` };
+      }
+    }
+    analysis = enrichAlertWithGtfs(analysis, gtfsCtx.gtfsIndex);
+  }
+
+  return {
+    analysis,
+    modelUsed: result.modelUsed,
+    durationMs: result.durationMs,
+  };
 }
 
 function loadCache() {
@@ -1244,6 +1517,17 @@ function computeContentHash(item) {
   return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
 }
 
+function isExpiredResolvedAlert(analysis, nowMs = Date.now()) {
+  if (!analysis) return false;
+  if (analysis.valid_to) {
+    const endMs = new Date(analysis.valid_to).getTime();
+    if (!Number.isNaN(endMs) && nowMs - endMs > 12 * 3600 * 1000) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function processCity(city, limit, cache) {
   console.log(`\n============================================================`);
   console.log(`Miasto: ${city.toUpperCase()} | Pobieranie feedu...`);
@@ -1265,6 +1549,7 @@ async function processCity(city, limit, cache) {
 
   console.log(`Pobrano ${items.length} pozycji.`);
 
+  const gtfsIndex = !DRY_RUN ? await getCityGtfsIndex(city) : null;
   const acceptedAlerts = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -1287,14 +1572,17 @@ async function processCity(city, limit, cache) {
     const cached = cache.entries[item.id];
 
     if (!FORCE_REFRESH && cached && cached.contentHash === contentHash) {
-      console.log(`    [CACHE HIT] (hash: ${contentHash}) - pomijam wywołanie LLM`);
-      if (cached.analysis?.is_transit_alert) {
+      console.log(`    [CACHE HIT] (hash: ${contentHash}): pomijam wywołanie LLM`);
+      if (cached.analysis?.is_transit_alert && !isExpiredResolvedAlert(cached.analysis)) {
+        const enrichedCached = gtfsIndex
+          ? enrichAlertWithGtfs(sanitizeAnalysisText({ ...cached.analysis }), gtfsIndex)
+          : sanitizeAnalysisText({ ...cached.analysis });
         acceptedAlerts.push({
           id: item.id,
           source_title: item.title,
           link: item.link,
           published_at: item.pubDate,
-          ...cached.analysis,
+          ...enrichedCached,
         });
       }
       continue;
@@ -1307,64 +1595,18 @@ async function processCity(city, limit, cache) {
       continue;
     }
 
-    // Komunikaty PKP nie przechodzą przez model LLM - są dostarczane zwięźle as-is
-    if (city === 'polska') {
-      const directAnalysis = buildPkpDirectAlert(item);
-      cache.entries[item.id] = {
-        city,
-        contentHash,
-        firstSeen: cached?.firstSeen || new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
-        item: {
-          id: item.id,
-          title: item.title,
-          link: item.link,
-          pubDate: item.pubDate,
-        },
-        analysis: directAnalysis,
-      };
-
-      const badge = directAnalysis.is_resolved
-        ? '[ZAKOŃCZONE]'
-        : directAnalysis.is_emergency
-          ? '[AWARIA W TOKU]'
-          : '[PLANOWANE]';
-      console.log(`    [ALERT PKP AS-IS ${badge}] ${directAnalysis.headline}`);
-      acceptedAlerts.push({
-        id: item.id,
-        source_title: item.title,
-        link: item.link,
-        published_at: item.pubDate,
-        ...directAnalysis,
-      });
-      continue;
-    }
-
     try {
-      const sourceText = `${item.title}\n${item.fullContent || item.content || ''}`;
-      let result =
-        PROVIDER === 'deepseek'
-          ? await callDeepSeek(item, city, API_KEY, MODEL)
-          : await callGemini(item, city, API_KEY, MODEL);
-
-      let analysis = result.parsed;
-
-      if (analysis.is_transit_alert !== false) {
-        const unknown = findUnknownNames(analysis, sourceText);
-        if (unknown.length > 0) {
-          console.log(`    [!] Nazwy poza treścią: ${unknown.join(', ')}. Poprawiam...`);
-          result =
-            PROVIDER === 'deepseek'
-              ? await callDeepSeek(item, city, API_KEY, MODEL, unknown)
-              : await callGemini(item, city, API_KEY, MODEL, unknown);
-          analysis = result.parsed;
-          const still = findUnknownNames(analysis, sourceText);
-          if (still.length > 0) {
-            console.log(`    [ODRZUCONY]: nazwy nadal poza treścią: ${still.join(', ')}`);
-            continue;
-          }
-        }
+      const gtfsCtx = {
+        ...buildGtfsPromptContext(item, gtfsIndex),
+        gtfsIndex,
+      };
+      const outcome = await analyzeWithCascade(item, city, gtfsCtx);
+      if (outcome.rejectedReason) {
+        console.log(`    [ODRZUCONY]: ${outcome.rejectedReason}`);
+        continue;
       }
+
+      const { analysis, modelUsed, durationMs } = outcome;
 
       cache.entries[item.id] = {
         city,
@@ -1381,14 +1623,16 @@ async function processCity(city, limit, cache) {
       };
 
       if (!analysis.is_transit_alert) {
-        console.log(`    [ODRZUCONY PRZEZ MODEL]: ${analysis.glance?.problem || 'Nie dotyczy zbiorkomu'}`);
+        console.log(`    [ODRZUCONY PRZEZ MODEL ${modelUsed}]: ${analysis.glance?.problem || 'Nie dotyczy zbiorkomu'}`);
+      } else if (isExpiredResolvedAlert(analysis)) {
+        console.log(`    [POMINIĘTY WYGASŁY]: ${analysis.headline}`);
       } else {
         const badge = analysis.is_resolved
           ? '[ZAKOŃCZONE]'
           : analysis.is_emergency
             ? '[AWARIA W TOKU]'
             : '[PLANOWANE]';
-        console.log(`    [NOWY ALERT ${badge}] ${analysis.headline} (${result.durationMs}ms)`);
+        console.log(`    [NOWY ALERT ${badge}] ${analysis.headline} (${modelUsed}, ${durationMs}ms)`);
         acceptedAlerts.push({
           id: item.id,
           source_title: item.title,
@@ -1410,6 +1654,7 @@ async function processCity(city, limit, cache) {
 
   const disruptionsFile = path.join(cityDistDir, 'disruptions.json');
   const payload = {
+    schema_version: 2,
     city,
     generated_at: new Date().toISOString(),
     alerts_count: acceptedAlerts.length,
@@ -1423,9 +1668,10 @@ async function processCity(city, limit, cache) {
 }
 
 async function main() {
-  console.log(`=== Kilometr: Agregator i Generator Zakłóceń Transportowych ===`);
-  console.log(`Provider: ${PROVIDER} | Model: ${MODEL} | Limit: ${LIMIT}`);
-
+  console.log(`=== Kilometr: Agregator i Silnik Topologii Utrudnień ===`);
+  console.log(
+    `Tryb AI: ${LLM_PLAN.mode} | Primary: ${LLM_PLAN.primary.provider}:${LLM_PLAN.primary.model} | Secondary: ${LLM_PLAN.secondary.provider}:${LLM_PLAN.secondary.model} | Limit: ${LIMIT}`,
+  );
 
   const cache = loadCache();
   const cachedCount = Object.keys(cache.entries).length;
@@ -1446,10 +1692,9 @@ async function main() {
   }
   console.log(`Miasta: ${targetCities.join(', ')}`);
 
-  const onlyPolska = targetCities.every((c) => c === 'polska');
-  if (!API_KEY && !DRY_RUN && !onlyPolska) {
-    console.error(`\n[!] Brak klucza API dla providera: ${PROVIDER}.`);
-    console.error(`  export DEEPSEEK_API_KEY="sk-..."`);
+  const hasAnyKey = Boolean(LLM_PLAN.primary.apiKey || LLM_PLAN.secondary.apiKey);
+  if (!hasAnyKey && !DRY_RUN) {
+    console.error(`\n[!] Brak klucza API (DEEPSEEK_API_KEY lub GEMINI_API_KEY) dla trybu: ${LLM_PLAN.mode}.`);
     process.exit(1);
   }
 
