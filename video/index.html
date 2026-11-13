@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kilometr: launch video</title>
+    <link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css" />
+    <style>
+      @font-face {
+        font-family: 'Roboto Video';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Roboto Video';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin-ext.woff2') format('woff2');
+        unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+      }
+      :root {
+        --ink: #f4f8f6;
+        --muted: #bfc9c5;
+        --faint: #9ba5a2;
+        --teal: #5cdbbe;
+        --surface: #1b2220;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+      body {
+        font-family: 'Roboto Video', Roboto, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #stage {
+        position: relative;
+        overflow: hidden;
+        background: #101413;
+      }
+      .h #stage {
+        width: 1920px;
+        height: 1080px;
+      }
+      .v #stage {
+        width: 1080px;
+        height: 1920px;
+      }
+      #map,
+      #overlay,
+      #dim,
+      #scrim,
+      #labels {
+        position: absolute;
+        inset: 0;
+      }
+      #dim {
+        background: #050707;
+        opacity: 0;
+      }
+      .h #scrim {
+        background: linear-gradient(90deg, rgba(8, 11, 10, 0.9) 0%, rgba(8, 11, 10, 0.72) 32%, rgba(8, 11, 10, 0) 54%);
+      }
+      .v #scrim {
+        background: linear-gradient(180deg, rgba(8, 11, 10, 0.9) 0%, rgba(8, 11, 10, 0.7) 24%, rgba(8, 11, 10, 0) 40%);
+      }
+
+      /* Napisy */
+      #copy {
+        position: absolute;
+        color: var(--ink);
+      }
+      .h #copy {
+        left: 120px;
+        top: 120px;
+        width: 800px;
+      }
+      .v #copy {
+        left: 84px;
+        top: 200px;
+        width: 912px;
+      }
+      #title {
+        margin: 0;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.02;
+      }
+      .h #title {
+        font-size: 92px;
+      }
+      .v #title {
+        font-size: 106px;
+      }
+      .line {
+        display: block;
+        overflow: hidden;
+        padding-bottom: 0.1em;
+        margin-bottom: -0.1em;
+      }
+      .line > span {
+        display: inline-block;
+      }
+      #sub {
+        margin: 30px 0 0;
+        color: var(--muted);
+        line-height: 1.32;
+      }
+      .h #sub {
+        font-size: 34px;
+        max-width: 700px;
+      }
+      .v #sub {
+        font-size: 42px;
+        max-width: 880px;
+      }
+
+      /* Etykiety na mapie */
+      .pin,
+      .badge,
+      .city {
+        position: absolute;
+        left: 0;
+        top: 0;
+        white-space: nowrap;
+        visibility: hidden;
+      }
+      .pin {
+        margin: -26px 0 0 30px;
+        padding: 10px 16px;
+        border-radius: 12px;
+        background: rgba(16, 20, 19, 0.94);
+        color: var(--ink);
+        font-size: 26px;
+        font-weight: 500;
+      }
+      .badge {
+        margin: -78px 0 0 -26px;
+        min-width: 52px;
+        padding: 4px 12px;
+        box-sizing: border-box;
+        border-radius: 10px;
+        background: #7ada9e;
+        color: #0b2416;
+        font-size: 32px;
+        font-weight: 700;
+        text-align: center;
+      }
+      .city {
+        margin: -17px 0 0 16px;
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 500;
+        text-shadow:
+          0 0 4px #0b0f0e,
+          0 0 10px #0b0f0e;
+      }
+      .v .city {
+        font-size: 28px;
+      }
+
+      /* Telefon */
+      #phone {
+        position: absolute;
+        box-sizing: border-box;
+        padding: 14px;
+        border-radius: 66px;
+        background: #070909;
+        box-shadow:
+          0 0 0 2px #2b3432,
+          0 40px 120px rgba(0, 0, 0, 0.6);
+        visibility: hidden;
+      }
+      .h #phone {
+        width: 446px;
+        height: 960px;
+        right: 170px;
+        top: 60px;
+      }
+      .v #phone {
+        width: 620px;
+        height: 1330px;
+        left: 230px;
+        top: 960px;
+      }
+      .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 52px;
+        background: #111414;
+      }
+      .status {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 54px;
+        padding: 0 34px;
+        color: #e0e3e1;
+        font-size: 22px;
+        font-weight: 500;
+      }
+      .punch {
+        position: absolute;
+        left: 50%;
+        top: 15px;
+        width: 24px;
+        height: 24px;
+        margin-left: -12px;
+        border-radius: 50%;
+        background: #000;
+      }
+      .icons {
+        display: flex;
+        gap: 8px;
+      }
+      .icons svg {
+        width: 22px;
+        height: 22px;
+        fill: #e0e3e1;
+      }
+      .icons .plane {
+        opacity: 0;
+      }
+      .shot {
+        position: absolute;
+        left: 0;
+        top: 54px;
+        width: 100%;
+      }
+      .shot + .shot {
+        opacity: 0;
+      }
+
+      /* Powiadomienie */
+      #notif {
+        position: absolute;
+        box-sizing: border-box;
+        padding: 26px 30px 26px;
+        border-radius: 28px;
+        background: #1d2422;
+        color: var(--ink);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+        visibility: hidden;
+      }
+      .h #notif {
+        width: 600px;
+        right: 120px;
+        top: 120px;
+      }
+      .v #notif {
+        width: 912px;
+        left: 84px;
+        top: 650px;
+      }
+      .notif-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 22px;
+      }
+      .notif-head img {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+      }
+      .notif-title {
+        margin-top: 14px;
+        font-size: 33px;
+        font-weight: 700;
+      }
+      .notif-body {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 28px;
+      }
+      .notif-bar {
+        height: 8px;
+        margin-top: 20px;
+        overflow: hidden;
+        border-radius: 4px;
+        background: #334b46;
+      }
+      .notif-bar i {
+        display: block;
+        height: 100%;
+        background: var(--teal);
+      }
+
+      /* Porównanie z jakdojade */
+      #bench {
+        position: absolute;
+        color: var(--ink);
+        visibility: hidden;
+      }
+      .h #bench {
+        left: 120px;
+        top: 520px;
+        width: 760px;
+      }
+      .v #bench {
+        left: 84px;
+        top: 700px;
+        width: 912px;
+      }
+      .bench-nums {
+        display: flex;
+        justify-content: space-between;
+      }
+      .bench-num b {
+        display: block;
+        font-size: 128px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .bench-num span {
+        display: block;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 27px;
+      }
+      .bench-num.wins b {
+        color: var(--teal);
+      }
+      .bench-num.losses {
+        text-align: right;
+      }
+      .bench-bar {
+        display: flex;
+        gap: 6px;
+        height: 20px;
+        margin-top: 34px;
+      }
+      .bench-bar i {
+        display: block;
+        flex: 0 0 auto;
+        flex-basis: 0;
+        border-radius: 10px;
+      }
+      .bench-bar .wins {
+        background: var(--teal);
+      }
+      .bench-bar .ties {
+        background: #5b6662;
+      }
+      .bench-bar .losses {
+        background: #e0e3e1;
+      }
+      .bench-note {
+        margin: 26px 0 0;
+        color: var(--faint);
+        font-size: 22px;
+      }
+      .v .bench-note {
+        font-size: 26px;
+      }
+
+      /* Obietnica i plansza końcowa */
+      #promise,
+      #end {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink);
+        text-align: center;
+        visibility: hidden;
+      }
+      #promise {
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1;
+      }
+      .h #promise {
+        font-size: 168px;
+      }
+      .v #promise {
+        font-size: 150px;
+      }
+      #promise .line:last-child span {
+        color: var(--teal);
+      }
+      .logo svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .h .logo {
+        width: 170px;
+        height: 170px;
+      }
+      .v .logo {
+        width: 220px;
+        height: 220px;
+      }
+      .logo-bg,
+      .logo-node,
+      .logo-stop {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .logo-track,
+      .logo-up,
+      .logo-down {
+        stroke-dasharray: 1;
+      }
+      .end-name {
+        margin-top: 26px;
+        font-size: 50px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .end-title {
+        margin-top: 46px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.04;
+      }
+      .h .end-title {
+        font-size: 96px;
+      }
+      .v .end-title {
+        font-size: 90px;
+      }
+      .end-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 48px;
+        color: var(--muted);
+        font-size: 34px;
+      }
+      .end-site {
+        color: var(--teal);
+        font-weight: 500;
+      }
+
+      #attrib {
+        position: absolute;
+        color: rgba(224, 227, 225, 0.62);
+        visibility: hidden;
+      }
+      .h #attrib {
+        left: 120px;
+        bottom: 34px;
+        font-size: 18px;
+      }
+      .v #attrib {
+        left: 84px;
+        right: 84px;
+        top: 64px;
+        font-size: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="map"></div>
+      <canvas id="overlay"></canvas>
+      <div id="dim"></div>
+      <div id="scrim"></div>
+      <div id="labels"></div>
+      <div id="copy"><h1 id="title"></h1><p id="sub"></p></div>
+      <div id="bench"></div>
+      <div id="phone"></div>
+      <div id="notif"></div>
+      <div id="promise"></div>
+      <div id="end"></div>
+      <div id="attrib"></div>
+    </div>
+    <script type="module" src="/video/.cache/main.js"></script>
+  </body>
+</html>
