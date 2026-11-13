@@ -36,13 +36,13 @@ export function normalizePolish(s) {
     .trim();
 }
 
-export function poiSnapshotIsFresh(snapshot, now = Date.now()) {
+export function poiSnapshotIsFresh(snapshot, now = Date.now(), maxAgeMs = MAX_AGE_MS) {
   const age = now - Date.parse(snapshot?.builtAt);
   return (
     snapshot?.schemaVersion === POI_SCHEMA_VERSION &&
     snapshot.count > 0 &&
     age >= 0 &&
-    age < MAX_AGE_MS
+    age < maxAgeMs
   );
 }
 
@@ -163,7 +163,13 @@ async function fetchRemoteSnapshot(city, snapshotUrl, fetcher) {
 /**
  * Łańcuch ładowania: cache lokalny → R2 snapshot → Overpass API (lustra).
  */
-export async function loadPoiSnapshot(cityId, cacheDir, fetcher = fetch, snapshotUrl = '') {
+export async function loadPoiSnapshot(
+  cityId,
+  cacheDir,
+  fetcher = fetch,
+  snapshotUrl = '',
+  { maxAgeMs = MAX_AGE_MS } = {},
+) {
   const city = getCity(cityId);
   const file = join(cacheDir, `${city.id}.json.gz`);
   const save = (snapshot) => {
@@ -172,9 +178,9 @@ export async function loadPoiSnapshot(cityId, cacheDir, fetcher = fetch, snapsho
     renameSync(`${file}.tmp`, file);
   };
   const cached = readSnapshot(file, city);
-  if (poiSnapshotIsFresh(cached)) return cached;
+  if (poiSnapshotIsFresh(cached, Date.now(), maxAgeMs)) return cached;
   const remote = await fetchRemoteSnapshot(city, snapshotUrl, fetcher);
-  if (poiSnapshotIsFresh(remote)) {
+  if (poiSnapshotIsFresh(remote, Date.now(), maxAgeMs)) {
     save(remote);
     return remote;
   }
