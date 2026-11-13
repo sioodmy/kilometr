@@ -51,6 +51,10 @@ interface DbFlights {
 }
 
 const flights = new WeakMap<SQLite.SQLiteDatabase, DbFlights>();
+// Bazy już odcięte od nowych zapytań. Osobny zbiór, bo close może wystartować
+// w trakcie otwierania bazy: uchwyt utworzony po markDbClosed nie byłby
+// w dbHandles i dostałby closed=false, czyli zapytanie na zamykanym połączeniu.
+const closedDbs = new WeakSet<SQLite.SQLiteDatabase>();
 
 function trackDb<T>(db: SQLite.SQLiteDatabase, run: () => Promise<T>): Promise<T> {
   let flight = flights.get(db);
@@ -115,7 +119,7 @@ function dbHandle(db: SQLite.SQLiteDatabase, target?: string): GtfsDbHandle {
   const cached = byTarget.get(key);
   if (cached) return cached;
 
-  const state: HandleState = { target, closed: false };
+  const state: HandleState = { target, closed: closedDbs.has(db) };
   const run = <T>(direct: () => Promise<T>, again: (next: GtfsDbHandle) => Promise<T>): Promise<T> =>
     state.closed ? openGtfsDbHandle(state.target).then(again) : trackDb(db, direct);
 
@@ -143,6 +147,7 @@ function dbHandle(db: SQLite.SQLiteDatabase, target?: string): GtfsDbHandle {
 
 /** Po zamknięciu bazy uchwyty przeskakują na nowy plik zamiast wołać stary. */
 function markDbClosed(db: SQLite.SQLiteDatabase): void {
+  closedDbs.add(db);
   for (const handle of dbHandles.get(db) ?? []) {
     const state = handleStates.get(handle);
     if (state) state.closed = true;
