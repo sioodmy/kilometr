@@ -1,9 +1,10 @@
-# Cykliczna agregacja i analiza komunikatów transportowych (DeepSeek LLM) → Cloudflare R2.
+# Cykliczna agregacja i topologiczna analiza komunikatów transportowych
+# (DeepSeek V4.1 Flash z kontekstem topologii GTFS) → Cloudflare R2.
 #
 # Działa co 20 minut lub na żądanie (workflow_dispatch).
-# Pobiera feedy miejskie, filtruje spam, analizuje utrudnienia (z zachowaniem cache
-# w Actions, by nie płacić dwa razy za te same artykuły) i wrzuca gotowe
-# disruptions.json per-miasto do Cloudflare R2.
+# Pobiera feedy miejskie, dociąga topologię GTFS miasta z R2, filtruje spam,
+# wylicza strukturę objazdów/korytarzy (z zachowaniem cache w Actions)
+# i wrzuca gotowe disruptions.json per-miasto do Cloudflare R2.
 
 name: Disruptions sync → R2
 
@@ -18,7 +19,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom, polska]
+        options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom]
 
 permissions:
   contents: read
@@ -52,21 +53,21 @@ jobs:
           restore-keys: |
             disruptions-news-cache-
 
-      - name: Przetwarzanie komunikatów (DeepSeek)
+      - name: Przetwarzanie komunikatów (DeepSeek V4.1 Flash + GTFS)
         run: |
           CITY="${{ inputs.city }}"
           if [ -z "$CITY" ]; then
             CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom}"
           fi
-          node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=6
+          node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=10
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          PDP_API_KEY: ${{ secrets.PDP_API_KEY }}
+          TIMETABLE_PUBLIC_URL: ${{ vars.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app' }}
 
       - name: Upload disruptions.json do Cloudflare R2
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload do R2."
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN: pomijam upload do R2."
             exit 0
           fi
           for city_dir in cloudflare/dist/*/; do

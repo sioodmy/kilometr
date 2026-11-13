@@ -43,6 +43,7 @@ import {
   loadNewsCache,
   markNewsSeen,
   formatNewsDate,
+  rememberNewsItemForDetail,
   type MpkNewsItem,
 } from '../src/services/mpkNews';
 import { useActiveCity } from '../src/services/cityStore';
@@ -286,10 +287,12 @@ export default function NewsScreen() {
 
   const openItem = useCallback(
     (item: MpkNewsItem) => {
-      if (!item.link) return;
+      if (!item.link && !item.disruption) return;
+      rememberNewsItemForDetail(item);
       router.push({
         pathname: '/article',
         params: {
+          id: item.id,
           url: item.link,
           title: item.title,
           source: item.source,

@@ -132,14 +132,21 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   }
 
   const rawStops = new Set<string>();
+  if (alert.corridor) {
+    if (alert.corridor.from_stop) rawStops.add(alert.corridor.from_stop);
+    if (alert.corridor.to_stop) rawStops.add(alert.corridor.to_stop);
+  }
   for (const st of alert.stops ?? []) {
     if (st.name) rawStops.add(st.name);
     if (st.replaced_by) rawStops.add(st.replaced_by);
   }
   for (const lc of alert.line_changes ?? []) {
+    if (lc.from_stop) rawStops.add(lc.from_stop);
+    if (lc.to_stop) rawStops.add(lc.to_stop);
     for (const n of lc.via ?? []) if (n) rawStops.add(n);
     for (const n of lc.omitted_stops ?? []) if (n) rawStops.add(n);
     for (const n of lc.temporary_stops ?? []) if (n) rawStops.add(n);
+    for (const n of lc.transfer_stops ?? []) if (n) rawStops.add(n);
   }
   for (const imp of alert.impacted_lines ?? []) {
     for (const n of imp.omitted_stops ?? []) if (n) rawStops.add(n);
