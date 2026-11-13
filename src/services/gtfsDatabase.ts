@@ -26,6 +26,135 @@ function currentGtfsDbName(): string {
 
 const dbPromises = new Map<string, Promise<SQLite.SQLiteDatabase>>();
 
+/* ─── Bramka uchwytów ────────────────────────────────────────────────────
+ * Podmiana rozkładu zamyka bazę, a zapytania z innych ekranów (wyszukiwarka,
+ * diagnostyka, store routingu) mogą w tej samej chwili trzymać stary uchwyt.
+ * expo-sqlite nie kolejkuje natywnych wywołań: closeAsync wykonany w trakcie
+ * getAllAsync zwalnia mutex połączenia pod sqlite3_step i proces dostaje
+ * SIGSEGV. Dlatego każdy uchwyt jest opakowany: zapytania w locie są liczone,
+ * zamknięcie czeka na zero, a stary uchwyt po zamknięciu sam przeskakuje na
+ * świeżo otwartą bazę. */
+
+export interface GtfsDbHandle {
+  getAllAsync<T>(sql: string, ...params: SQLite.SQLiteVariadicBindParams): Promise<T[]>;
+  getFirstAsync<T>(sql: string, ...params: SQLite.SQLiteVariadicBindParams): Promise<T | null>;
+  runAsync(sql: string, ...params: SQLite.SQLiteVariadicBindParams): Promise<SQLite.SQLiteRunResult>;
+  execAsync(sql: string): Promise<void>;
+  withTransactionAsync(task: (tx: GtfsDbHandle) => Promise<void>): Promise<void>;
+}
+
+let closingDb: Promise<void> | null = null;
+
+interface DbFlights {
+  active: number;
+  idle: Array<() => void>;
+}
+
+const flights = new WeakMap<SQLite.SQLiteDatabase, DbFlights>();
+
+function trackDb<T>(db: SQLite.SQLiteDatabase, run: () => Promise<T>): Promise<T> {
+  let flight = flights.get(db);
+  if (!flight) {
+    flight = { active: 0, idle: [] };
+    flights.set(db, flight);
+  }
+  const counter = flight;
+  counter.active++;
+  return run().finally(() => {
+    counter.active--;
+    if (counter.active > 0 || counter.idle.length === 0) return;
+    const idle = counter.idle;
+    counter.idle = [];
+    for (const wake of idle) wake();
+  });
+}
+
+/** Czeka, aż wszystkie zapytania na tej bazie się skończą. */
+function drainDb(db: SQLite.SQLiteDatabase): Promise<void> {
+  const flight = flights.get(db);
+  if (!flight || flight.active === 0) return Promise.resolve();
+  return new Promise((resolve) => flight.idle.push(resolve));
+}
+
+interface HandleState {
+  target?: string;
+  closed: boolean;
+}
+
+// Ten sam plik musi dawać ten sam uchwyt, bo indeks adresów porównuje
+// referencje (readyDb === db). Różne cele (aktywne miasto vs konkretne miasto)
+// dostają osobne uchwyty, żeby po zamknięciu każdy wracał do właściwej bazy.
+const handles = new WeakMap<SQLite.SQLiteDatabase, Map<string, GtfsDbHandle>>();
+const handleStates = new WeakMap<GtfsDbHandle, HandleState>();
+const dbHandles = new WeakMap<SQLite.SQLiteDatabase, Set<GtfsDbHandle>>();
+const directHandles = new WeakMap<SQLite.SQLiteDatabase, GtfsDbHandle>();
+
+/** Uchwyt bez bramki: tylko do wnętrza transakcji, która już trzyma połączenie. */
+function directHandle(db: SQLite.SQLiteDatabase): GtfsDbHandle {
+  const cached = directHandles.get(db);
+  if (cached) return cached;
+  const handle: GtfsDbHandle = {
+    getAllAsync: (sql, ...params) => trackDb(db, () => db.getAllAsync(sql, ...params)),
+    getFirstAsync: (sql, ...params) => trackDb(db, () => db.getFirstAsync(sql, ...params)),
+    runAsync: (sql, ...params) => trackDb(db, () => db.runAsync(sql, ...params)),
+    execAsync: (sql) => trackDb(db, () => db.execAsync(sql)),
+    withTransactionAsync: (task) =>
+      trackDb(db, () => db.withTransactionAsync(() => task(directHandle(db)))),
+  };
+  directHandles.set(db, handle);
+  return handle;
+}
+
+function dbHandle(db: SQLite.SQLiteDatabase, target?: string): GtfsDbHandle {
+  let byTarget = handles.get(db);
+  if (!byTarget) {
+    byTarget = new Map();
+    handles.set(db, byTarget);
+  }
+  const key = target ?? '';
+  const cached = byTarget.get(key);
+  if (cached) return cached;
+
+  const state: HandleState = { target, closed: false };
+  const run = <T>(direct: () => Promise<T>, again: (next: GtfsDbHandle) => Promise<T>): Promise<T> =>
+    state.closed ? openGtfsDbHandle(state.target).then(again) : trackDb(db, direct);
+
+  const handle: GtfsDbHandle = {
+    getAllAsync: (sql, ...params) =>
+      run(() => db.getAllAsync(sql, ...params), (next) => next.getAllAsync(sql, ...params)),
+    getFirstAsync: (sql, ...params) =>
+      run(() => db.getFirstAsync(sql, ...params), (next) => next.getFirstAsync(sql, ...params)),
+    runAsync: (sql, ...params) =>
+      run(() => db.runAsync(sql, ...params), (next) => next.runAsync(sql, ...params)),
+    execAsync: (sql) => run(() => db.execAsync(sql), (next) => next.execAsync(sql)),
+    withTransactionAsync: (task) =>
+      run(
+        () => db.withTransactionAsync(() => task(directHandle(db))),
+        (next) => next.withTransactionAsync(task),
+      ),
+  };
+  handleStates.set(handle, state);
+  byTarget.set(key, handle);
+  const set = dbHandles.get(db);
+  if (set) set.add(handle);
+  else dbHandles.set(db, new Set([handle]));
+  return handle;
+}
+
+/** Po zamknięciu bazy uchwyty przeskakują na nowy plik zamiast wołać stary. */
+function markDbClosed(db: SQLite.SQLiteDatabase): void {
+  for (const handle of dbHandles.get(db) ?? []) {
+    const state = handleStates.get(handle);
+    if (state) state.closed = true;
+  }
+}
+
+/** Uchwyt do zapytań; po zamknięciu bazy dostajesz uchwyt nowej. */
+function liveHandle(): Promise<GtfsDbHandle> {
+  if (!closingDb) return getGtfsDb().then((db) => dbHandle(db));
+  return closingDb.then(() => liveHandle());
+}
+
 async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(name);
       await db.execAsync(`
@@ -105,7 +234,9 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           house TEXT NOT NULL,
           locality TEXT NOT NULL DEFAULT '',
           lat REAL NOT NULL,
-          lon REAL NOT NULL
+          lon REAL NOT NULL,
+          stop_m INTEGER,
+          stop_w INTEGER
         );
       `);
       // Migracje istniejących baz (CREATE TABLE IF NOT EXISTS ich nie rusza).
@@ -152,6 +283,246 @@ function getGtfsDbByName(name: string): Promise<SQLite.SQLiteDatabase> {
   return p;
 }
 
+/* ─── Baza ogólnopolska (kolej) ──────────────────────────────────────────
+ * Osobny plik SQLite obok baz miast: kilometr-gtfs-polska.db z buildu
+ * build-polska.mjs (dataset `polska` w R2). Wspólny schemat + kolumny
+ * kolejowe (train_number/train_name/category/agency w trips, platform
+ * w stop_times), więc magazyn routingu czyta ją tak samo jak miasto. */
+
+export const NATIONAL_DB_FILE = 'kilometr-gtfs-polska.db';
+
+let nationalSwapGate: Promise<void> | null = null;
+let releaseNationalSwapGate: (() => void) | null = null;
+
+/** Bramka podmiany pliku bazy krajowej (odpowiednik beginGtfsSwap). */
+export function beginNationalDbSwap(): void {
+  if (nationalSwapGate) return;
+  nationalSwapGate = new Promise<void>((resolve) => {
+    releaseNationalSwapGate = resolve;
+  });
+}
+
+export function endNationalDbSwap(): void {
+  const release = releaseNationalSwapGate;
+  nationalSwapGate = null;
+  releaseNationalSwapGate = null;
+  release?.();
+}
+
+/** Uchwyt bazy ogólnopolskiej; czeka na ewentualną podmianę pliku. */
+export function getNationalDb(): Promise<GtfsDbHandle> {
+  if (nationalSwapGate) {
+    return nationalSwapGate.then(() => getNationalDb());
+  }
+  return openGtfsDbHandle('national');
+}
+
+/** Zamyka TYLKO uchwyt bazy krajowej (przed podmianą pliku). */
+export async function closeNationalDb(): Promise<void> {
+  const p = dbPromises.get(NATIONAL_DB_FILE);
+  if (!p) return;
+  dbPromises.delete(NATIONAL_DB_FILE);
+  const close = (async () => {
+    try {
+      const db = await p;
+      // Najpierw odcinamy nowe zapytania (stary uchwyt przeskoczy na świeży
+      // plik), potem czekamy na te w locie. Odwrotna kolejność zostawia okno,
+      // w którym nowe zapytanie trafia na bazę zamykaną kilka mikrotasków
+      // później i ląduje w sqlite3_step na zwolnionym mutexie (SIGSEGV).
+      markDbClosed(db);
+      await drainDb(db);
+      await db.closeAsync();
+    } catch {
+      // best-effort: plik i tak podmieniamy
+    }
+  })();
+  const gate = Promise.all([closingDb, close]).then(() => undefined);
+  closingDb = gate;
+  await close;
+  if (closingDb === gate) closingDb = null;
+}
+
+/** Czy trwa podmiana pliku bazy krajowej (patrz beginNationalDbSwap). */
+export function isNationalDbSwapPending(): boolean {
+  return nationalSwapGate !== null;
+}
+
+/** Serwisy kursujące w danym dniu w konkretnej bazie (wspólne dla miasta i Polski). */
+async function activeServicesForDb(
+  db: GtfsDbHandle,
+  weekday: number,
+  dateStr?: string,
+): Promise<Set<string>> {
+  const day = ((weekday % 7) + 7) % 7;
+  const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
+  // Zakres dat jak w lineTimetable: bez niego stary i nowy rozkład z jednego
+  // feedu jeżdżą naraz, a wygasły serwis nadal wygląda na aktywny.
+  const rows = dateStr
+    ? await db.getAllAsync<{ service_id: string }>(
+        `SELECT service_id FROM calendar WHERE ${col} > 0 AND (start_date = '' OR start_date <= ?) AND (end_date = '' OR end_date >= ?)`,
+        dateStr,
+        dateStr,
+      )
+    : await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
+  const weekdayServices = rows.map((r) => r.service_id);
+  const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
+  const calendarRowCount = total?.n ?? 0;
+  const needsEverything = weekdayServices.length === 0 && (calendarRowCount === 0 || !dateStr);
+  const allTripServices = needsEverything
+    ? (await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips')).map(
+        (r) => r.service_id,
+      )
+    : [];
+  const dateExceptions = dateStr
+    ? await db.getAllAsync<{ service_id: string; exc: number }>(
+        'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
+        dateStr,
+      )
+    : [];
+  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
+}
+
+/** Serwisy bazy ogólnopolskiej w danym dniu (feed PLK: tylko calendar_dates). */
+export async function getNationalActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
+  const db = await getNationalDb();
+  return activeServicesForDb(db, weekday, dateStr);
+}
+
+export async function getNationalMeta(key: string): Promise<string | null> {
+  const db = await getNationalDb();
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
+  return row?.value ?? null;
+}
+
+export async function setNationalMeta(key: string, value: string): Promise<void> {
+  const db = await getNationalDb();
+  await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', key, value);
+}
+
+/** Ostatni dzień rozkładu kolejowego (YYYYMMDD) albo null. */
+export async function getNationalTimetableEndDate(): Promise<string | null> {
+  const db = await getNationalDb();
+  const cd = await db.getFirstAsync<{ d: string | null }>(
+    'SELECT MAX(date) AS d FROM calendar_dates WHERE exc = 1',
+  );
+  return cd?.d ?? null;
+}
+
+export interface NationalStation {
+  stop_id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  weight: number;
+}
+
+/** Czy plik bazy krajowej istnieje i ma stacje (tani EXISTS, bez ładowania). */
+export async function hasNationalDb(): Promise<boolean> {
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const main = `${base.replace(/\/+$/, '')}/SQLite/${NATIONAL_DB_FILE}`;
+      const info = await FileSystem.getInfoAsync(main);
+      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) {
+        return false;
+      }
+    }
+    const db = await getNationalDb();
+    const row = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stops) AS n');
+    return (row?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times). */
+export async function hasCityDb(cityId: string): Promise<boolean> {
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const main = `${base.replace(/\/+$/, '')}/SQLite/${gtfsDbName(cityId)}`;
+      const info = await FileSystem.getInfoAsync(main);
+      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) return false;
+    }
+    const db = await getGtfsDbByName(gtfsDbName(cityId));
+    const row = await db.getFirstAsync<{ s: number; t: number; st: number }>(
+      `SELECT EXISTS(SELECT 1 FROM stops) AS s,
+              EXISTS(SELECT 1 FROM trips) AS t,
+              EXISTS(SELECT 1 FROM stop_times) AS st`,
+    );
+    return (row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wyszukiwarka stacji kolejowych: SQL LIKE zawęża kandydatów (~3k stacji),
+ * ranking robi fuzzyMatch jak w searchStops. Waga = liczba odjazdów,
+ * więc "Główny" wygrywa z "Główny Towarowy".
+ */
+export async function searchNationalStations(query: string, limit = 8): Promise<NationalStation[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const tokens = normalizePolish(q).split(/[\s,./()\\-]+/).filter(Boolean);
+  if (!tokens.length) return [];
+
+  const clauses: string[] = [];
+  const params: string[] = [];
+  for (const token of tokens) {
+    const variants = expandTokenSynonyms(token).filter((v) => v.length >= 2);
+    const list = variants.length ? variants : [token];
+    clauses.push(`(${list.map(() => 'norm LIKE ?').join(' OR ')})`);
+    for (const v of list) params.push(`%${v.replace(/[%_]/g, '')}%`);
+  }
+
+  const db = await getNationalDb();
+  const rows = await db.getAllAsync<{ stop_id: string; name: string; lat: number; lon: number; weight: number }>(
+    `SELECT stop_id, name, lat, lon, weight FROM stops WHERE ${clauses.join(' AND ')} LIMIT 120`,
+    ...params,
+  );
+  const matches = fuzzyMatchBatch(q, rows.map((r) => r.name));
+  const scored: Array<NationalStation & { score: number }> = [];
+  for (let i = 0; i < rows.length; i++) {
+    const m = matches[i];
+    if (!m?.matches) continue;
+    const r = rows[i];
+    scored.push({ stop_id: r.stop_id, name: r.name, lat: r.lat, lon: r.lon, weight: r.weight ?? 0, score: m.score });
+  }
+  scored.sort((a, b) => {
+    if (Math.abs(a.score - b.score) > 12) return b.score - a.score;
+    return b.weight - a.weight;
+  });
+  return scored.slice(0, limit).map(({ stop_id, name, lat, lon, weight }) => ({ stop_id, name, lat, lon, weight }));
+}
+
+/** Najbliższe stacje kolejowe (do startu "z najbliższej stacji" poza miastem). */
+export async function findNearestNationalStations(
+  lat: number,
+  lon: number,
+  maxDistanceM = 30000,
+  limit = 5,
+): Promise<NationalStation[]> {
+  const db = await getNationalDb();
+  const latRange = maxDistanceM / 111000;
+  const lonRange = maxDistanceM / (111000 * Math.cos((lat * Math.PI) / 180));
+  const rows = await db.getAllAsync<{ stop_id: string; name: string; lat: number; lon: number; weight: number }>(
+    'SELECT stop_id, name, lat, lon, weight FROM stops WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?',
+    lat - latRange,
+    lat + latRange,
+    lon - lonRange,
+    lon + lonRange,
+  );
+  return rows
+    .map((r) => ({ ...r, distanceM: distanceMeters(lat, lon, r.lat, r.lon) }))
+    .filter((r) => r.distanceM <= maxDistanceM)
+    .sort((a, b) => a.distanceM - b.distanceM)
+    .slice(0, limit);
+}
+
+
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
   // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
@@ -163,9 +534,22 @@ export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   return getGtfsDbByName(currentGtfsDbName());
 }
 
-/** Uchwyt bazy wskazanego miasta; bez `cityId` aktywna baza (jak getGtfsDb). */
-function getDbForCity(cityId?: string): Promise<SQLite.SQLiteDatabase> {
-  return cityId ? getGtfsDbByName(gtfsDbName(cityId)) : getGtfsDb();
+/**
+ * Uchwyt do zapytań; bez celu aktywne miasto, z `cityId` baza tego miasta,
+ * `'national'` baza kolejowa. Bezpieczny przy zamykaniu bazy (patrz bramka).
+ */
+export function openGtfsDbHandle(target?: string): Promise<GtfsDbHandle> {
+  if (swapGate) return swapGate.then(() => openGtfsDbHandle(target));
+  if (target === 'national' && nationalSwapGate) {
+    return nationalSwapGate.then(() => openGtfsDbHandle(target));
+  }
+  const open = (): Promise<GtfsDbHandle> => {
+    if (!target) return getGtfsDb().then((db) => dbHandle(db));
+    const name = target === 'national' ? NATIONAL_DB_FILE : gtfsDbName(target);
+    return getGtfsDbByName(name).then((db) => dbHandle(db, target));
+  };
+  if (!closingDb) return open();
+  return closingDb.then(open);
 }
 
 // Bramka podmiany pliku bazy. Ustawiana na czas close→delete→move, żeby żaden
@@ -196,14 +580,29 @@ export function endGtfsSwap(): void {
 export async function closeGtfsDb(): Promise<void> {
   const entries = Array.from(dbPromises.entries());
   dbPromises.clear();
-  for (const [, p] of entries) {
-    try {
-      const db = await p;
-      await db.closeAsync();
-    } catch {
-      // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+  const close = (async () => {
+    for (const [, p] of entries) {
+      try {
+        const db = await p;
+        // Najpierw odcinamy nowe zapytania (stary uchwyt przeskoczy na świeży
+        // plik), potem czekamy na te w locie. Odwrotna kolejność zostawia okno,
+        // w którym nowe zapytanie trafia na bazę zamykaną kilka mikrotasków
+        // później i ląduje w sqlite3_step na zwolnionym mutexie (SIGSEGV).
+        markDbClosed(db);
+        await drainDb(db);
+        await db.closeAsync();
+      } catch {
+        // best-effort: plik i tak podmieniamy, a initDb otworzy od nowa
+      }
     }
-  }
+  })();
+  // Zapytania wołane w trakcie zamknięcia czekają i dostają świeży uchwyt.
+  // Bramka trzyma dotychczasową wartość, żeby otwarta baza nie migała w oknie
+  // między zwolnieniem a wyzerowaniem.
+  const gate = Promise.all([closingDb, close]).then(() => undefined);
+  closingDb = gate;
+  await close;
+  if (closingDb === gate) closingDb = null;
 }
 
 /** Znacznik kompletnego importu; bez niego dane w bazie są częściowe. */
@@ -211,18 +610,18 @@ export const GTFS_IMPORT_COMPLETE_META = 'gtfs_import_complete';
 
 /** Zapis mety w bazie wskazanego miasta; bez `cityId` w aktywnej. */
 export async function setMeta(key: string, value: string, cityId?: string): Promise<void> {
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   await db.runAsync('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', key, value);
 }
 
 export async function getMeta(key: string, cityId?: string): Promise<string | null> {
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
   return row?.value ?? null;
 }
 
 export async function prepareForBulkImport(cityId?: string): Promise<void> {
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   await db.execAsync(`
     PRAGMA synchronous = OFF;
     DROP INDEX IF EXISTS idx_stoptimes_trip;
@@ -230,7 +629,7 @@ export async function prepareForBulkImport(cityId?: string): Promise<void> {
 }
 
 export async function finishBulkImport(cityId?: string): Promise<void> {
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   // Klucz (trip_id, seq) nowych tabel WITHOUT ROWID pokrywa zapytania
   // po kursach. Legacy (rowid) odtwarzamy idx_trip po re-imporcie.
   const t = await db.getFirstAsync<{ sql: string | null }>(
@@ -245,9 +644,9 @@ export async function finishBulkImport(cityId?: string): Promise<void> {
 
 export async function importStops(stops: GtfsStop[], cityId?: string): Promise<void> {
   if (stops.length === 0) return;
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const CHUNK_SIZE = 50;
-  await db.withTransactionAsync(async () => {
+  await db.withTransactionAsync(async (tx) => {
     for (let i = 0; i < stops.length; i += CHUNK_SIZE) {
       const chunk = stops.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
@@ -255,7 +654,7 @@ export async function importStops(stops: GtfsStop[], cityId?: string): Promise<v
       for (const s of chunk) {
         params.push(s.stop_id, s.stop_code, s.stop_name, s.stop_lat, s.stop_lon, s.normalized_name);
       }
-      await db.runAsync(
+      await tx.runAsync(
         `INSERT OR REPLACE INTO stops (stop_id, code, name, lat, lon, norm) VALUES ${placeholders}`,
         ...params,
       );
@@ -265,9 +664,9 @@ export async function importStops(stops: GtfsStop[], cityId?: string): Promise<v
 
 export async function importRoutes(routes: GtfsRoute[], cityId?: string): Promise<void> {
   if (routes.length === 0) return;
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const CHUNK_SIZE = 50;
-  await db.withTransactionAsync(async () => {
+  await db.withTransactionAsync(async (tx) => {
     for (let i = 0; i < routes.length; i += CHUNK_SIZE) {
       const chunk = routes.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?, ?)').join(', ');
@@ -275,7 +674,7 @@ export async function importRoutes(routes: GtfsRoute[], cityId?: string): Promis
       for (const r of chunk) {
         params.push(r.route_id, r.route_short_name, r.route_long_name, r.route_type);
       }
-      await db.runAsync(
+      await tx.runAsync(
         `INSERT OR REPLACE INTO routes (route_id, short, long_name, type) VALUES ${placeholders}`,
         ...params,
       );
@@ -285,9 +684,9 @@ export async function importRoutes(routes: GtfsRoute[], cityId?: string): Promis
 
 export async function importTrips(trips: GtfsTrip[], cityId?: string): Promise<void> {
   if (trips.length === 0) return;
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const CHUNK_SIZE = 50;
-  await db.withTransactionAsync(async () => {
+  await db.withTransactionAsync(async (tx) => {
     for (let i = 0; i < trips.length; i += CHUNK_SIZE) {
       const chunk = trips.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
@@ -295,7 +694,7 @@ export async function importTrips(trips: GtfsTrip[], cityId?: string): Promise<v
       for (const t of chunk) {
         params.push(t.trip_id, t.route_id, t.service_id, t.trip_headsign, t.direction_id, t.shape_id);
       }
-      await db.runAsync(
+      await tx.runAsync(
         `INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, headsign, direction, shape) VALUES ${placeholders}`,
         ...params,
       );
@@ -305,9 +704,9 @@ export async function importTrips(trips: GtfsTrip[], cityId?: string): Promise<v
 
 export async function importCalendar(cals: GtfsCalendar[], cityId?: string): Promise<void> {
   if (cals.length === 0) return;
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const CHUNK_SIZE = 50;
-  await db.withTransactionAsync(async () => {
+  await db.withTransactionAsync(async (tx) => {
     for (let i = 0; i < cals.length; i += CHUNK_SIZE) {
       const chunk = cals.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
@@ -326,7 +725,7 @@ export async function importCalendar(cals: GtfsCalendar[], cityId?: string): Pro
           c.end_date,
         );
       }
-      await db.runAsync(
+      await tx.runAsync(
         `INSERT OR REPLACE INTO calendar (service_id, mon, tue, wed, thu, fri, sat, sun, start_date, end_date) VALUES ${placeholders}`,
         ...params,
       );
@@ -336,10 +735,10 @@ export async function importCalendar(cals: GtfsCalendar[], cityId?: string): Pro
 
 export async function importCalendarDates(rows: { service_id: string; date: string; exception_type: number }[], cityId?: string): Promise<void> {
   if (rows.length === 0) return;
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const CHUNK_SIZE = 50;
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM calendar_dates');
+  await db.withTransactionAsync(async (tx) => {
+    await tx.runAsync('DELETE FROM calendar_dates');
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
@@ -347,7 +746,7 @@ export async function importCalendarDates(rows: { service_id: string; date: stri
       for (const r of chunk) {
         params.push(r.service_id, r.date, r.exception_type);
       }
-      await db.runAsync(
+      await tx.runAsync(
         `INSERT INTO calendar_dates (service_id, date, exc) VALUES ${placeholders}`,
         ...params,
       );
@@ -358,9 +757,9 @@ export async function importCalendarDates(rows: { service_id: string; date: stri
 /** Wrzuca porcję stop_times (z parseStopTimesBatched) w wielowierszowych INSERT-ach. */
 export async function importStopTimesBatch(batch: GtfsStopTime[], cityId?: string): Promise<void> {
   if (batch.length === 0) return;
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   const CHUNK_SIZE = 100;
-  await db.withTransactionAsync(async () => {
+  await db.withTransactionAsync(async (tx) => {
     for (let i = 0; i < batch.length; i += CHUNK_SIZE) {
       const chunk = batch.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
@@ -368,7 +767,7 @@ export async function importStopTimesBatch(batch: GtfsStopTime[], cityId?: strin
       for (const st of chunk) {
         params.push(st.trip_id, st.stop_id, st.arrival_sec, st.departure_sec, st.stop_sequence);
       }
-      await db.runAsync(
+      await tx.runAsync(
         `INSERT INTO stop_times (trip_id, stop_id, arr_sec, dep_sec, seq) VALUES ${placeholders}`,
         ...params,
       );
@@ -381,7 +780,7 @@ export async function importStopTimesBatch(batch: GtfsStopTime[], cityId?: strin
  * ze znacznikiem kompletności. Partial import nie może udawać gotowej bazy.
  */
 export async function clearGtfsTables(cityId?: string): Promise<void> {
-  const db = await getDbForCity(cityId);
+  const db = await openGtfsDbHandle(cityId);
   await db.execAsync(
     `DELETE FROM stop_times; DELETE FROM trips; DELETE FROM stops; DELETE FROM routes; DELETE FROM calendar; DELETE FROM calendar_dates;
      DELETE FROM meta WHERE key IN ('${GTFS_IMPORT_COMPLETE_META}', 'gtfs_imported_at', 'timetable_version', 'gtfs_source');`,
@@ -404,7 +803,7 @@ export async function findNearestStops(
   maxDistanceM = 800,
   limit = 12,
 ): Promise<NearestStopRow[]> {
-  const db = await getGtfsDb();
+  const db = await liveHandle();
   const latRange = maxDistanceM / 111000;
   const lonRange = maxDistanceM / (111000 * Math.cos((lat * Math.PI) / 180));
   const rows = await db.getAllAsync<{
@@ -463,7 +862,7 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
     for (const v of list) params.push(`%${v.replace(/[%_]/g, '')}%`);
   }
 
-  const db = await getGtfsDb();
+  const db = await liveHandle();
   const rows = await db.getAllAsync<{ stop_id: string; code: string; name: string; lat: number; lon: number; weight: number }>(
     `SELECT stop_id, code, name, lat, lon, weight FROM stops WHERE ${clauses.join(' AND ')} LIMIT 120`,
     ...params,
@@ -496,7 +895,7 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
  */
 export async function computeStopWeights(cityId?: string): Promise<number> {
   try {
-    const db = await getDbForCity(cityId);
+    const db = await openGtfsDbHandle(cityId);
     await db.execAsync(`
       UPDATE stops SET weight = 0;
       UPDATE stops SET weight = agg.c
@@ -514,7 +913,7 @@ export async function computeStopWeights(cityId?: string): Promise<number> {
 /** Czy wagi są już policzone (false po imporcie / na starych bazach). */
 export async function needsStopWeights(): Promise<boolean> {
   try {
-    const db = await getGtfsDb();
+    const db = await liveHandle();
     const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
     if (!s || s.n === 0) return false;
     const w = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops WHERE weight > 0');
@@ -539,7 +938,7 @@ export interface PoiRow {
 
 export async function poiCount(): Promise<number> {
   try {
-    const db = await getGtfsDb();
+    const db = await liveHandle();
     const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM pois');
     return row?.n ?? 0;
   } catch {
@@ -556,7 +955,7 @@ export async function findPoiCandidates(query: string, limit = 60): Promise<PoiR
   if (!q || q.length < 2) return [];
   const normQ = normalizePolish(q);
   const tokens = normQ.split(/[\s,./()\\-]+/).filter((t) => t.length >= 2);
-  const db = await getGtfsDb();
+  const db = await liveHandle();
 
   const clauses: string[] = [];
   const params: (string | number)[] = [];
@@ -610,34 +1009,8 @@ export function resolveActiveServices(
 
 /** Serwisy kursujące w dany dzień (0 = niedziela), z wyjątkami calendar_dates. */
 export async function getActiveServices(weekday: number, dateStr?: string): Promise<Set<string>> {
-  const db = await getGtfsDb();
-  const day = ((weekday % 7) + 7) % 7;
-  const col = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day];
-  // Zakres dat jak w lineTimetable: bez niego stary i nowy rozkład z jednego
-  // feedu jeżdżą naraz, a wygasły serwis nadal wygląda na aktywny.
-  const rows = dateStr
-    ? await db.getAllAsync<{ service_id: string }>(
-        `SELECT service_id FROM calendar WHERE ${col} > 0 AND (start_date = '' OR start_date <= ?) AND (end_date = '' OR end_date >= ?)`,
-        dateStr,
-        dateStr,
-      )
-    : await db.getAllAsync<{ service_id: string }>(`SELECT service_id FROM calendar WHERE ${col} > 0`);
-  const weekdayServices = rows.map((r) => r.service_id);
-  const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
-  const calendarRowCount = total?.n ?? 0;
-  const needsEverything = weekdayServices.length === 0 && (calendarRowCount === 0 || !dateStr);
-  const allTripServices = needsEverything
-    ? (await db.getAllAsync<{ service_id: string }>('SELECT DISTINCT service_id FROM trips')).map(
-        (r) => r.service_id,
-      )
-    : [];
-  const dateExceptions = dateStr
-    ? await db.getAllAsync<{ service_id: string; exc: number }>(
-        'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
-        dateStr,
-      )
-    : [];
-  return resolveActiveServices(weekdayServices, calendarRowCount, !!dateStr, allTripServices, dateExceptions);
+  const db = await liveHandle();
+  return activeServicesForDb(db, weekday, dateStr);
 }
 
 /**
@@ -646,7 +1019,7 @@ export async function getActiveServices(weekday: number, dateStr?: string): Prom
  * calendar_dates kończy się zwykle przed MPK. Null, gdy baza nie ma dat.
  */
 export async function getTimetableEndDate(): Promise<string | null> {
-  const db = await getGtfsDb();
+  const db = await liveHandle();
   const cal = await db.getFirstAsync<{ d: string | null }>(
     "SELECT MAX(end_date) AS d FROM calendar WHERE end_date <> ''",
   );
@@ -656,12 +1029,37 @@ export async function getTimetableEndDate(): Promise<string | null> {
   return [cal?.d, cd?.d].filter((v): v is string => !!v).sort()[0] ?? null;
 }
 
-/** Czasy kursu posortowane po stop_sequence (do list rozwijanych + RAPTOR-a). */
-export async function getTripStopTimes(tripId: string): Promise<
-  { stop_id: string; arr_sec: number; dep_sec: number; seq: number }[]
-> {
-  const db = await getGtfsDb();
-  return db.getAllAsync('SELECT stop_id, arr_sec, dep_sec, seq FROM stop_times WHERE trip_id = ? ORDER BY seq ASC', tripId);
+interface TripStopTimeRow {
+  stop_id: string;
+  arr_sec: number;
+  dep_sec: number;
+  seq: number;
+  /** Nazwa stacji ze słownika; null, gdy stop_id nie ma wpisu w stops. */
+  name: string | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+/**
+ * Czasy kursu posortowane po stop_sequence z nazwami stacji (do list
+ * rozwijanych + RAPTOR-a). Nazwy czytamy w tym samym zapytaniu, bo ekran
+ * szczegółów zapisanej trasy działa po restarcie apki, zanim magazyn
+ * routingu zdąży załadować tabelę stops.
+ * `national` wybiera bazę kolejową zamiast bazy aktywnego miasta.
+ */
+export async function getTripStopTimes(
+  tripId: string,
+  national = false,
+): Promise<TripStopTimeRow[]> {
+  const db = national ? await getNationalDb() : await liveHandle();
+  return db.getAllAsync<TripStopTimeRow>(
+    `SELECT st.stop_id, st.arr_sec, st.dep_sec, st.seq, s.name, s.lat, s.lon
+       FROM stop_times st
+       LEFT JOIN stops s ON s.stop_id = st.stop_id
+      WHERE st.trip_id = ?
+      ORDER BY st.seq ASC`,
+    tripId,
+  );
 }
 
 /**
@@ -669,7 +1067,7 @@ export async function getTripStopTimes(tripId: string): Promise<
  * stop_times to skan ponad miliona wierszy, więc tu wystarcza EXISTS.
  */
 export async function getGtfsPresence(): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
-  const db = await getGtfsDb();
+  const db = await liveHandle();
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
   const st = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stop_times) AS n');
@@ -677,7 +1075,7 @@ export async function getGtfsPresence(): Promise<{ stops: number; trips: number;
 }
 
 export async function getGtfsStats(): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
-  const db = await getGtfsDb();
+  const db = await liveHandle();
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes');
   const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
@@ -691,7 +1089,7 @@ export async function getGtfsStats(): Promise<{ stops: number; routes: number; t
  */
 export async function hasTrainRoutes(): Promise<boolean> {
   try {
-    const db = await getGtfsDb();
+    const db = await liveHandle();
     const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes WHERE type = 2');
     return (row?.n ?? 0) > 0;
   } catch {

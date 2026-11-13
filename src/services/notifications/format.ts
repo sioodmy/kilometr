@@ -1,15 +1,25 @@
-// Formatowanie czasu i odległości dla powiadomień.
+// Formatowanie czasu i odleglosci dla powiadomien.
 //
-// Tu są WYŁĄCZNIE operacje językowo-neutralne: czasy bezwzględne, jednostki
-// metryczne i czysta arytmetyka. Wszystko, co ma być po polsku, angielsku,
-// niemiecku lub ukraińsku (jednostki po „min", liczby mnogie, nazwy faz),
-// żyje w słownikach `src/i18n` - patrz `buildPhaseCopy` w `content.ts`.
+// Tu sa wylacznie operacje jezykowo neutralne: czasy bezwzgledne, jednostki
+// metryczne i czysta arytmetyka. Wszystko, co ma byc po polsku, angielsku,
+// niemiecku lub ukrainsku (jednostki po min, liczby mnogie, nazwy faz),
+// zyje w slownikach src/i18n, patrz buildPhaseCopy w content.ts.
 //
-// Zasada: „14:32" w treści powiadomienia, a liczbę typu „4 min" rysuje zegar
-// systemowy przez `setUsesChronometer`. Dzięki temu tekst nie zestarzeje się
-// przy pierwszym odświeżeniu.
+// Zasada: 14:32 w tresci powiadomienia, a liczbe typu 4 min rysuje zegar
+// systemowy przez setUsesChronometer. Dzieki temu tekst nie zestarzeje sie
+// przy pierwszym odswiezeniu.
 
-/** Sekundy od północy → 'HH:MM'. */
+import { warsawNow, shiftWarsawDate } from '../../gtfs/geo';
+import { sharedTimeMs } from '../../sharing/progress';
+
+const WARSAW_TIME_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Warsaw',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Sekundy od polnocy -> 'HH:MM'. */
 export function formatClock(sec: number): string {
   const s = ((Math.round(sec) % 86400) + 86400) % 86400;
   const h = Math.floor(s / 3600);
@@ -18,16 +28,14 @@ export function formatClock(sec: number): string {
 }
 
 /**
- * 'HH:MM' z bezwzględnego znacznika ms - do tekstu w powiadomieniu, nie do
- * arytmetyki.
+ * 'HH:MM' z bezwzglednego znacznika ms w strefie Europe/Warsaw.
  */
 export function clockFromMs(ms: number): string {
   if (!isFinite(ms) || ms <= 0) return '';
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return WARSAW_TIME_FMT.format(new Date(ms));
 }
 
-/** 'HH:MM' → liczba sekund od północy. Odwrotność formatClock. */
+/** 'HH:MM' -> liczba sekund od polnocy. Odwrotnosc formatClock. */
 export function parseClock(hm: string | undefined | null): number | null {
   if (!hm) return null;
   const m = /^(\d{1,2}):(\d{2})/.exec(hm);
@@ -36,59 +44,63 @@ export function parseClock(hm: string | undefined | null): number | null {
 }
 
 const DAY_SEC = 86400;
-const DAY_MS = DAY_SEC * 1000;
+const AMBIGUOUS_WINDOW_MS = 14 * 3600 * 1000;
 
 /**
- * Sekundy od północy (mogą przekroczyć 86400 przy kursorze na jutrzejszy
- * rozkład - patrz engine.ts, dayOffsetSec) → bezwzględny znacznik ms.
+ * Sekundy od polnocy (moga przekroczyc 86400 przy kursorze na jutrzejszy
+ * rozklad, patrz engine.ts, dayOffsetSec) -> bezwzgledny znacznik ms.
  *
- * Pełne doby w `sec` wynikają z kursoru daty (jutro = +86400, wczoraj =
- * -86400), więc liczymy je wprost z midnight. Dla wartości z jednej doby
- * wybieramy wystąpienie najbliższe `now`: podróż o 23:58 oglądana o 00:03
- * ma być "3 minuty temu", a nie ETA za 24 godziny.
+ * Pelne doby w sec wynikaja z kursora daty (jutro = +86400, wczoraj =
+ * -86400), wiec liczymy je wprost z kalendarza Europe/Warsaw. Dla wartosci z jednej doby
+ * wybieramy wystapienie najblizsze now: podroz o 23:58 ogladana o 00:03
+ * ma byc 3 minuty temu, a nie ETA za 24 godziny.
  */
 export function toAbsoluteMs(sec: number, now: Date = new Date()): number {
   const s = Math.round(sec);
-  // GTFS 24:xx liczy się od początku TEJ doby serwisowej, nie od jutrzejszej:
-  // w przeddzień zmiany czasu jutrzejszy start jest o 1 h obok.
-  const dayShift = s < 0 ? Math.floor(s / DAY_SEC) : 0;
-  const offsetMs = (s - dayShift * DAY_SEC) * 1000;
-  const base = serviceDayStartMs(now, dayShift) + offsetMs;
-  // Bez tego jutrzejszy kurs (sec >= 86400) po południu wracał jako dzisiejszy:
-  // diff > 12h cofał go o dobę i tripMonitor widział "już dotarłeś".
+  const dayShift = Math.floor(s / DAY_SEC);
+  const remSec = s - dayShift * DAY_SEC;
+  const w = warsawNow(now);
+  const target = dayShift === 0 ? w : shiftWarsawDate(w, dayShift);
+  const base = sharedTimeMs(target.isoDate, remSec);
   if (Math.abs(sec) >= DAY_SEC) return base;
   const diff = base - now.getTime();
-  if (diff < -DAY_MS / 2) return serviceDayStartMs(now, dayShift + 1) + offsetMs;
-  if (diff > DAY_MS / 2) return serviceDayStartMs(now, dayShift - 1) + offsetMs;
+  if (diff < -AMBIGUOUS_WINDOW_MS) {
+    const next = shiftWarsawDate(w, dayShift + 1);
+    return sharedTimeMs(next.isoDate, remSec);
+  }
+  if (diff > AMBIGUOUS_WINDOW_MS) {
+    const prev = shiftWarsawDate(w, dayShift - 1);
+    return sharedTimeMs(prev.isoDate, remSec);
+  }
   return base;
 }
 
 /**
- * Absolutny odjazd kursu najbliższy `now`, bez offsetu dnia serwisowego.
+ * Absolutny odjazd kursu najblizszy now, bez offsetu dnia serwisowego.
  *
- * `toAbsoluteMs` zostawia 24:xx w dzisiejszej dobie, więc po północy kurs
- * 24:xx wypadał jutro. Plan śledzenia bierzemy z doby serwisowej najbliższej
- * zegarowi: po północy 24:xx należy jeszcze do wczorajszej. Nie liczymy godzin
- * modulo, bo w noc zmiany czasu przesunęłoby to kurs o godzinę.
+ * toAbsoluteMs zostawia 24:xx w dzisiejszej dobie, wiec po polnocy kurs
+ * 24:xx wypadaby jutro. Plan sledzenia bierzemy z doby serwisowej najblizszej
+ * zegarowi: po polnocy 24:xx nalezy jeszcze do wczorajszej. Uzywamy dokladnego
+ * czasu Europe/Warsaw z sharedTimeMs, dzieki czemu zmiana czasu DST
+ * nie przesuwa kursu o godzine.
  */
 export function nearestDepartureMs(sec: number, now: Date = new Date()): number {
   const s = Math.round(sec);
   const dayShift = s < 0 ? Math.floor(s / DAY_SEC) : 0;
-  const offsetMs = (s - dayShift * DAY_SEC) * 1000;
-  const base = serviceDayStartMs(now, dayShift) + offsetMs;
+  const remSec = s - dayShift * DAY_SEC;
+  const w = warsawNow(now);
+  const target = dayShift === 0 ? w : shiftWarsawDate(w, dayShift);
+  const base = sharedTimeMs(target.isoDate, remSec);
   const diff = base - now.getTime();
-  if (diff < -DAY_MS / 2) return serviceDayStartMs(now, dayShift + 1) + offsetMs;
-  if (diff > DAY_MS / 2) return serviceDayStartMs(now, dayShift - 1) + offsetMs;
+  if (diff < -AMBIGUOUS_WINDOW_MS) {
+    const next = shiftWarsawDate(w, dayShift + 1);
+    return sharedTimeMs(next.isoDate, remSec);
+  }
+  if (diff > AMBIGUOUS_WINDOW_MS) {
+    const prev = shiftWarsawDate(w, dayShift - 1);
+    return sharedTimeMs(prev.isoDate, remSec);
+  }
   return base;
-}
-
-/**
- * Początek doby GTFS: południe minus 12 h, nie północ. W dniu zmiany czasu
- * doba ma 23 albo 25 h i od północy wszystkie godziny wychodziły o 1 h obok.
- */
-function serviceDayStartMs(now: Date, dayShift: number): number {
-  const noon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayShift, 12, 0, 0, 0);
-  return noon.getTime() - DAY_MS / 2;
 }
 
 export function clamp01(v: number): number {
@@ -96,7 +108,7 @@ export function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/** '320 m', '1.2 km' - międzynarodowe symbole jednostek, bez odmiany. */
+/** 320 m, 1.2 km: miedzynarodowe symbole jednostek, bez odmiany. */
 export function formatDistance(meters: number | null | undefined): string {
   if (meters == null || !isFinite(meters) || meters < 0) return '';
   if (meters < 50) return `${Math.max(5, Math.round(meters / 5) * 5)} m`;

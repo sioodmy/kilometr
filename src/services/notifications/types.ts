@@ -130,6 +130,8 @@ export interface LivePlan {
   segments: LivePlanSegment[];
   states: LivePlanState[];
   alightAlertsEnabled: boolean;
+  /** GPS pasażera w trasie: serwis raportuje pomiary do JS (opóźnienie z przejazdów stacji). */
+  gpsOnboardEnabled?: boolean;
   transferProtectionEnabled?: boolean;
   transferAlertsEnabled?: boolean;
   copy: Record<TripPhase, LivePlanPhaseCopy>;

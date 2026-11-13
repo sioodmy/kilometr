@@ -13,8 +13,19 @@ type TransferStatus =
   | 'alternative'
   | 'changed'
   | 'noAlternative'
+  | 'conductor'
   | 'unavailable'
   | 'complete';
+
+/** Następny pociąg po spóźnieniu na połączenie międzyregionalne (tryb konduktora). */
+export interface NextTrainInfo {
+  /** Linia z kategorią (np. „IC 2522”). */
+  label: string;
+  /** Odjazd z tej samej stacji (ms epoki). */
+  departAtMs: number;
+  /** Nazwa handlowa pociągu (np. „SILESIUM”), jeśli jest. */
+  trainName?: string;
+}
 
 export interface TransferAlternative {
   id: string;
@@ -45,5 +56,7 @@ export interface TransferProtectionState {
   reason?: 'location' | 'offRoute' | 'routing' | 'expired';
   connection?: Connection;
   alternative?: TransferAlternative;
+  /** Tryb konduktora: następny pociąg po spóźnieniu na międzyregionalny. */
+  nextTrain?: NextTrainInfo;
   scope?: 'foreground' | 'background';
 }

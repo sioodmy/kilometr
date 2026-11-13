@@ -11,7 +11,7 @@ export default function RoutesLayout() {
         headerShown: false,
         contentStyle: { backgroundColor: scheme.surface },
         animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
-        animationDuration: 300,
+        animationDuration: 200,
         animationMatchesGesture: true,
         gestureEnabled: true,
         gestureDirection: 'horizontal',
@@ -23,7 +23,7 @@ export default function RoutesLayout() {
         name="[id]"
         options={{
           animation: reduceMotion ? 'none' : 'fade',
-          animationDuration: 240,
+          animationDuration: 200,
         }}
       />
     </Stack>

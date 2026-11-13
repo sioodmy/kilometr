@@ -14,6 +14,7 @@ export const pl = {
     label: 'Nawigacja główna',
   },
   language: 'Język strony',
+  sendSms: 'Wyślij SMS',
   hero: {
     eyebrow: 'Kilometr na Androida',
     title: 'Twój',
@@ -113,7 +114,7 @@ export const pl = {
     mock: 'Przykładowa podróż. Godziny według zegara urządzenia.',
     route: previewRoute,
     departIn: (n: number) => `za ${n} min`,
-    duration: (n: number) => `${n} min`,
+    duration: (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
     transfers: (n: number) =>
       n <= 0
         ? 'bezpośrednio'

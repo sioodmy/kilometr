@@ -46,6 +46,7 @@ export interface Leg {
   toLat?: number;
   toLon?: number;
   platformCode?: string;
+  trackCode?: string;
   railAgency?: string;
   railLine?: string;
   railColor?: string;
@@ -58,6 +59,7 @@ export interface Leg {
 
 export interface Connection {
   id: string;
+  serviceDate?: string;
   fromTitle: string;
   toTitle: string;
   departInMin: number;

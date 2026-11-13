@@ -4,6 +4,230 @@ import type { Strings } from './pl';
 import { de as landing } from './landing/de';
 import { de as share } from './share/de';
 
+function formatDuration(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0 Min.";
+  const rounded = Math.round(mins);
+  if (rounded >= 60) {
+    const h = Math.floor(rounded / 60);
+    const m = rounded % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${rounded} Min.`;
+}
+
+// Per-city strings als Records (gleiche Struktur wie pl.ts). Deutsch hält
+// die polnischen Stadtnamen in allen Fällen, wie die bisherige Kette.
+const CITY_NAME_DE: Record<string, string> = {
+  wroclaw: 'Wrocław',
+  krakow: 'Kraków',
+  gzm: 'GZM',
+  warszawa: 'Warszawa',
+  poznan: 'Poznań',
+  trojmiasto: 'Trójmiasto',
+  lodz: 'Łódź',
+  szczecin: 'Szczecin',
+  kielce: 'Kielce',
+  olsztyn: 'Olsztyn',
+  bialystok: 'Białystok',
+  opole: 'Opole',
+  rzeszow: 'Rzeszów',
+  lublin: 'Lublin',
+  radom: 'Radom',
+  bydgoszcz: 'Bydgoszcz',
+  torun: 'Toruń',
+  elblag: 'Elbląg',
+  gorzow: 'Gorzów Wielkopolski',
+  czestochowa: 'Częstochowa',
+  zielonagora: 'Zielona Góra',
+  rybnik: 'Rybnik',
+  slupsk: 'Słupsk',
+  walbrzych: 'Wałbrzych',
+  kalisz: 'Kalisz',
+  siedlce: 'Siedlce',
+  lomza: 'Łomża',
+  krosno: 'Krosno',
+  jaslo: 'Jasło',
+  olkusz: 'Olkusz',
+  chrzanow: 'Chrzanów',
+  bochnia: 'Bochnia',
+  ilawa: 'Iława',
+};
+const CITY_FEEDS_DE: Record<string, string> = {
+  wroclaw: 'MPK und Koleje Dolnośląskie',
+  krakow: 'ZTP und Koleje Małopolskie',
+  gzm: 'ZTM, Koleje Śląskie, POLREGIO und PKP Intercity',
+  warszawa: 'WTP, SKA, Koleje Mazowieckie und WKD',
+  poznan: 'ZTM und Koleje Wielkopolskie',
+  trojmiasto: 'ZTM Gdańsk, ZKM Gdynia und SKM',
+  lodz: 'MPK und Łódzka Kolej Aglomeracyjna',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Kielce',
+  olsztyn: 'ZDZiT Olsztyn',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Opole',
+  rzeszow: 'ZTM Rzeszów',
+  lublin: 'ZDiTM Lublin',
+  radom: 'MZDiK Radom',
+  bydgoszcz: 'ZDMiKP Bydgoszcz',
+  torun: 'MZK Toruń',
+  elblag: 'ZKM Elbląg',
+  gorzow: 'MZK Gorzów',
+  czestochowa: 'MPK Częstochowa',
+  zielonagora: 'MZK Zielona Góra',
+  rybnik: 'KM Rybnik',
+  slupsk: 'ZIM Słupsk',
+  walbrzych: 'MZUK Wałbrzych',
+  kalisz: 'KLA, PKS Kalisz und Agglomerationsverkehrsunternehmen',
+  siedlce: 'MPK Siedlce',
+  lomza: 'MPK Łomża',
+  krosno: 'MKS Krosno',
+  jaslo: 'MKS Jasło',
+  olkusz: 'ZKGKM Olkusz',
+  chrzanow: 'ZKKM Chrzanów',
+  bochnia: 'RPK Bochnia',
+  ilawa: 'ZKM Iława',
+};
+const CITY_NEWS_DE: Record<string, string> = {
+  wroclaw: 'MPK Wrocław • wroclaw.pl',
+  krakow: 'ZTP Kraków',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Warszawa',
+  poznan: 'ZTM Poznań',
+  trojmiasto: 'ZTM Gdańsk',
+  lodz: 'MPK Łódź',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Kielce',
+  olsztyn: 'ZDZiT Olsztyn',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Opole',
+  rzeszow: 'ZTM Rzeszów',
+  lublin: 'ZDiTM Lublin',
+  radom: 'MZDiK Radom',
+  bydgoszcz: 'ZDMiKP Bydgoszcz',
+  torun: 'MZK Toruń',
+  elblag: 'ZKM Elbląg',
+  gorzow: 'MZK Gorzów',
+  czestochowa: 'MPK Częstochowa',
+  zielonagora: 'MZK Zielona Góra',
+  rybnik: 'KM Rybnik',
+  slupsk: 'ZIM Słupsk',
+  walbrzych: 'MZUK Wałbrzych',
+  kalisz: 'KLA Kalisz',
+  siedlce: 'MPK Siedlce',
+  lomza: 'MPK Łomża',
+  krosno: 'MKS Krosno',
+  jaslo: 'MKS Jasło',
+  olkusz: 'ZKGKM Olkusz',
+  chrzanow: 'ZKKM Chrzanów',
+  bochnia: 'RPK Bochnia',
+  ilawa: 'ZKM Iława',
+};
+const CITY_OPERATOR_DE: Record<string, string> = {
+  wroclaw: 'MPK Wrocław',
+  krakow: 'ZTP Kraków',
+  gzm: 'ZTM GZM',
+  warszawa: 'WTP Warszawa',
+  poznan: 'ZTM Poznań',
+  trojmiasto: 'ZTM Gdańsk',
+  lodz: 'MPK Łódź',
+  szczecin: 'ZDiTM Szczecin',
+  kielce: 'ZTM Kielce',
+  olsztyn: 'ZDZiT Olsztyn',
+  bialystok: 'BKM Białystok',
+  opole: 'MZK Opole',
+  rzeszow: 'ZTM Rzeszów',
+  lublin: 'ZDiTM Lublin',
+  radom: 'MZDiK Radom',
+  bydgoszcz: 'ZDMiKP Bydgoszcz',
+  torun: 'MZK Toruń',
+  elblag: 'ZKM Elbląg',
+  gorzow: 'MZK Gorzów',
+  czestochowa: 'MPK Częstochowa',
+  zielonagora: 'MZK Zielona Góra',
+  rybnik: 'KM Rybnik',
+  slupsk: 'ZIM Słupsk',
+  walbrzych: 'MZUK Wałbrzych',
+  kalisz: 'KLA Kalisz',
+  siedlce: 'MPK Siedlce',
+  lomza: 'MPK Łomża',
+  krosno: 'MKS Krosno',
+  jaslo: 'MKS Jasło',
+  olkusz: 'ZKGKM Olkusz',
+  chrzanow: 'ZKKM Chrzanów',
+  bochnia: 'RPK Bochnia',
+  ilawa: 'ZKM Iława',
+};
+const CITY_OPERATOR_SHORT_DE: Record<string, string> = {
+  wroclaw: 'MPK',
+  krakow: 'ZTP',
+  gzm: 'ZTM',
+  warszawa: 'WTP',
+  poznan: 'ZTM',
+  trojmiasto: 'ZTM / ZKM',
+  lodz: 'MPK',
+  szczecin: 'ZDiTM',
+  kielce: 'ZTM',
+  olsztyn: 'ZDZiT',
+  bialystok: 'BKM',
+  opole: 'MZK',
+  rzeszow: 'ZTM',
+  lublin: 'ZDiTM',
+  radom: 'MZDiK',
+  bydgoszcz: 'ZDMiKP',
+  torun: 'MZK',
+  elblag: 'ZKM',
+  gorzow: 'MZK',
+  czestochowa: 'MPK',
+  zielonagora: 'MZK',
+  rybnik: 'KM',
+  slupsk: 'ZIM',
+  walbrzych: 'MZUK',
+  kalisz: 'KLA',
+  siedlce: 'MPK',
+  lomza: 'MPK',
+  krosno: 'MKS',
+  jaslo: 'MKS',
+  olkusz: 'ZKGKM',
+  chrzanow: 'ZKKM',
+  bochnia: 'RPK',
+  ilawa: 'ZKM',
+};
+const CITY_PORTAL_DE: Record<string, string> = {
+  wroclaw: 'wroclaw.pl',
+  krakow: 'ztp.krakow.pl',
+  gzm: 'metropoliaztm.pl',
+  warszawa: 'wtp.waw.pl',
+  poznan: 'ztm.poznan.pl',
+  trojmiasto: 'ztm.gda.pl',
+  lodz: 'mpk.lodz.pl',
+  szczecin: 'zditm.szczecin.pl',
+  kielce: 'ztm.kielce.pl',
+  olsztyn: 'zdzit.olsztyn.eu',
+  bialystok: 'komunikacja.bialystok.pl',
+  opole: 'mzkopole.pl',
+  rzeszow: 'ztm.erzeszow.pl',
+  lublin: 'zdtm.lublin.eu',
+  radom: 'mzdik.pl',
+  bydgoszcz: 'zdmikp.bydgoszcz.pl',
+  torun: 'mzk-torun.pl',
+  elblag: 'zkm.elblag.com.pl',
+  gorzow: 'mzk-gorzow.com.pl',
+  czestochowa: 'mpk.czest.pl',
+  zielonagora: 'mzk.zgora.pl',
+  rybnik: 'km.rybnik.pl',
+  slupsk: 'zimslupsk.com',
+  walbrzych: 'mzuk.com.pl',
+  kalisz: 'gtfs.kasznia.net',
+  siedlce: 'mpk.siedlce.pl',
+  lomza: 'mpklomza.pl',
+  krosno: 'mks-krosno.pl',
+  jaslo: 'e-podroznik.pl',
+  olkusz: 'zkgkm-olkusz.pl',
+  chrzanow: 'zkkm.pl',
+  bochnia: 'rpk-bochnia.pl',
+  ilawa: 'zkm.ilawa.pl',
+};
+
 export const de: Strings = {
   landing,
   share,
@@ -49,6 +273,11 @@ export const de: Strings = {
     changedBody: (line: string, stop: string) => `Steige an der Haltestelle ${stop} in ${line} um.`,
     noAlternative:
       'Keine erreichbare Alternative gefunden. Der aktuelle Umstieg könnte scheitern. Wir prüfen erneut.',
+    conductorTitle: 'Zug verpasst',
+    conductorBody: 'Informiere das Zugpersonal über den geplanten Umstieg',
+    nextTrainLabel: 'Nächster Zug',
+    nextTrainAt: (time: string) => `fährt ab um ${time}`,
+
     unavailable: 'Umstieg kann nicht bewertet werden',
     unavailableBody:
       'Wir warten auf eine genaue Position entlang der Route. Der aktuelle Plan bleibt sichtbar.',
@@ -100,7 +329,7 @@ export const de: Strings = {
     now: 'Jetzt',
     today: 'Heute',
     tomorrow: 'Morgen',
-    durMin: (n: number) => `${n} Min.`,
+    durMin: (n: number) => formatDuration(n),
     departIn: (n: number) => `in ${n} Min.`,
     departNow: 'gleich',
     departAgo: (n: number) => `vor ${n} Min.`,
@@ -129,36 +358,38 @@ export const de: Strings = {
     savedTitle: 'Gespeicherte Orte',
     editSavedA11y: 'Gespeicherte Orte bearbeiten',
     editCard: 'Bearbeiten',
+    tabRecent: 'Letzte Verbindungen',
+    tabSaved: 'Deine Routen',
     historyTitle: 'Letzte Orte',
     historyEmptyTitle: 'Keine letzten Orte',
     historyEmptyBody: 'Suche eine Verbindung, sie erscheint hier als Schnellziel.',
+    savedRoutesEmptyTitle: 'Keine gespeicherten Routen',
+    savedRoutesEmptyBody:
+      'Verfolge eine Verbindung oder hänge ein Bahnticket an, dann erscheint sie hier.',
+    routeActive: 'Unterwegs',
+    ticketAttachedA11y: 'Bahnticket gespeichert',
+    dockPinnedA11y: (title: string, time?: string) =>
+      `Angeheftete Fahrt nach ${title}${time ? `, ${time}` : ''}. Tippen zum Öffnen.`,
+    dockTicketA11y: (title: string, time: string) =>
+      `Zug nach ${title}, Abfahrt ${time}. Tippen zum Öffnen.`,
+    removeRouteA11y: (title: string) => `Verbindung nach ${title} aus deinen Routen entfernen`,
+    pinRouteA11y: (title: string) => `Verbindung nach ${title} zu deinen Routen anpinnen`,
+    unpinRouteA11y: (title: string) => `Verbindung nach ${title} von deinen Routen lösen`,
     openConnA11y: (title: string, label: string) => `Verbindung nach ${title} öffnen, ${label}`,
     gpsTitle: 'Mein Standort (GPS)',
     locationFallback: 'Dein Standort',
     gpsAddressHome: 'Aktuelle Geräteposition',
-    importingTitle: (gen: string) => `Fahrplan für ${gen} wird geladen…`,
     importErrorTitle: 'Fehler beim Laden des Fahrplans',
     importErrorRetry: 'Tippen zum Wiederholen.',
-    timetableUpdateTitle: 'Ein neuerer Fahrplan ist verfügbar',
-    timetableUpdateBody: 'Lade ihn, damit der Planer aktuelle Linien und Zeiten hat.',
-    timetableUpdateA11y: 'Neueren Fahrplan herunterladen',
+    updatingTimetable: 'Fahrplan wird aktualisiert',
     saveFailTitle: 'Keine Datenbankverbindung',
     saveFailBody: 'Ort konnte nicht gespeichert werden. Versuch es erneut.',
     searchPlaceholderTo: 'Wohin fährst du?',
     searchPlaceholderFrom: 'Wo startest du?',
-    unsupportedTitle: 'Nicht unterstützte Stadt',
-    unsupportedTitleOther: 'Andere Stadt in der App',
-    unsupportedBody: (city: string, supported: string) =>
-      `Dein GPS-Standort zeigt auf ${city}. Aktuell bedienen wir nur: ${supported}.`,
-    unsupportedBodyOther: (city: string, active: string) =>
-      `Du bist in ${city}, die App ist aber auf ${active} eingestellt. Stadt in den Einstellungen wechseln.`,
-    unsupportedBodyUnknown: (supported: string) =>
-      `Dein GPS-Standort liegt außerhalb des unterstützten Gebiets. Aktuell bedienen wir nur: ${supported}.`,
     unsupportedAction: 'Startpunkt wählen',
-    unsupportedActionShort: 'Start wählen',
-    unsupportedSwitchCity: (city: string) => `Zu ${city} wechseln`,
-    unsupportedSwitchCityA11y: (city: string) => `Stadt auf ${city} ändern`,
     pickStart: 'Startpunkt wählen',
+    outsideAreaShort: 'Du bist außerhalb des unterstützten Gebiets',
+    downloadCityTimetableA11y: (gen: string) => `Fahrplan für ${gen} herunterladen`,
     gpsBlockedTitle: 'GPS-Start nicht verfügbar',
     gpsBlockedBody: (city: string, supported: string) =>
       `Du bist außerhalb von ${supported} (${city}), GPS-Routen funktionieren daher nicht. Wähle den Start manuell.`,
@@ -169,280 +400,25 @@ export const de: Strings = {
     section: 'Stadt',
     settingsHint:
       'Fahrplan, Offline-Karte und Meldungen folgen der Stadt. Die Daten der anderen Stadt bleiben auf dem Telefon.',
-    name: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : id === 'radom'
-                                  ? 'Radom'
-                                  : 'Wrocław',
-    gen: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : id === 'radom'
-                                  ? 'Radom'
-                                  : 'Wrocław',
-    acc: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : id === 'radom'
-                                  ? 'Radom'
-                                  : 'Wrocław',
-    loc: (id: string): string =>
-      id === 'krakow'
-        ? 'Kraków'
-        : id === 'gzm'
-          ? 'GZM'
-          : id === 'warszawa'
-            ? 'Warszawa'
-            : id === 'poznan'
-              ? 'Poznań'
-              : id === 'trojmiasto'
-                ? 'Trójmiasto'
-                : id === 'lodz'
-                  ? 'Łódź'
-                  : id === 'szczecin'
-                    ? 'Szczecin'
-                    : id === 'kielce'
-                      ? 'Kielce'
-                      : id === 'olsztyn'
-                        ? 'Olsztyn'
-                        : id === 'bialystok'
-                          ? 'Białystok'
-                          : id === 'opole'
-                            ? 'Opole'
-                            : id === 'rzeszow'
-                              ? 'Rzeszów'
-                              : id === 'lublin'
-                                ? 'Lublin'
-                                : 'Wrocław',
-    feeds: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP und Koleje Małopolskie'
-        : id === 'gzm'
-          ? 'ZTM, Koleje Śląskie, POLREGIO und PKP Intercity'
-          : id === 'warszawa'
-            ? 'WTP, SKA, Koleje Mazowieckie und WKD'
-            : id === 'poznan'
-              ? 'ZTM und Koleje Wielkopolskie'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk, ZKM Gdynia und SKM'
-                : id === 'lodz'
-                  ? 'MPK und Łódzka Kolej Aglomeracyjna'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Kielce'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Olsztyn'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Opole'
-                            : id === 'rzeszow'
-                              ? 'ZTM Rzeszów'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK und Koleje Dolnośląskie',
-    newsSources: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Kraków'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Warszawa'
-            : id === 'poznan'
-              ? 'ZTM Poznań'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk'
-                : id === 'lodz'
-                  ? 'MPK Łódź'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Kielce'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Olsztyn'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Opole'
-                            : id === 'rzeszow'
-                              ? 'ZTM Rzeszów'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK Wrocław • wroclaw.pl',
-    operator: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP Kraków'
-        : id === 'gzm'
-          ? 'ZTM GZM'
-          : id === 'warszawa'
-            ? 'WTP Warszawa'
-            : id === 'poznan'
-              ? 'ZTM Poznań'
-              : id === 'trojmiasto'
-                ? 'ZTM Gdańsk'
-                : id === 'lodz'
-                  ? 'MPK Łódź'
-                  : id === 'szczecin'
-                    ? 'ZDiTM Szczecin'
-                    : id === 'kielce'
-                      ? 'ZTM Kielce'
-                      : id === 'olsztyn'
-                        ? 'ZDZiT Olsztyn'
-                        : id === 'bialystok'
-                          ? 'BKM Białystok'
-                          : id === 'opole'
-                            ? 'MZK Opole'
-                            : id === 'rzeszow'
-                              ? 'ZTM Rzeszów'
-                              : id === 'lublin'
-                                ? 'ZDiTM Lublin'
-                                : id === 'radom'
-                                  ? 'MZDiK Radom'
-                                  : 'MPK Wrocław',
+    name: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    gen: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    acc: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    loc: (id: string): string => CITY_NAME_DE[id] ?? CITY_NAME_DE.wroclaw,
+    feeds: (id: string): string => CITY_FEEDS_DE[id] ?? CITY_FEEDS_DE.wroclaw,
+    newsSources: (id: string): string => CITY_NEWS_DE[id] ?? CITY_NEWS_DE.wroclaw,
+    operator: (id: string): string => CITY_OPERATOR_DE[id] ?? CITY_OPERATOR_DE.wroclaw,
     operatorShort: (id: string): string =>
-      id === 'krakow'
-        ? 'ZTP'
-        : id === 'gzm'
-          ? 'ZTM'
-          : id === 'warszawa'
-            ? 'WTP'
-            : id === 'poznan'
-              ? 'ZTM'
-              : id === 'trojmiasto'
-                ? 'ZTM / ZKM'
-                : id === 'szczecin'
-                  ? 'ZDiTM'
-                  : id === 'kielce'
-                    ? 'ZTM'
-                    : id === 'olsztyn'
-                      ? 'ZDZiT'
-                      : id === 'bialystok'
-                        ? 'BKM'
-                        : id === 'opole'
-                          ? 'MZK'
-                          : id === 'rzeszow'
-                            ? 'ZTM'
-                            : id === 'lublin'
-                              ? 'ZDiTM'
-                              : id === 'radom'
-                                ? 'MZDiK'
-                                : 'MPK',
-    portal: (id: string): string =>
-      id === 'krakow'
-        ? 'ztp.krakow.pl'
-        : id === 'gzm'
-          ? 'metropoliaztm.pl'
-          : id === 'warszawa'
-            ? 'wtp.waw.pl'
-            : id === 'poznan'
-              ? 'ztm.poznan.pl'
-              : id === 'trojmiasto'
-                ? 'ztm.gda.pl'
-                : id === 'lodz'
-                  ? 'mpk.lodz.pl'
-                  : id === 'szczecin'
-                    ? 'zditm.szczecin.pl'
-                    : id === 'kielce'
-                      ? 'ztm.kielce.pl'
-                      : id === 'olsztyn'
-                        ? 'zdzit.olsztyn.eu'
-                        : id === 'bialystok'
-                          ? 'komunikacja.bialystok.pl'
-                          : id === 'opole'
-                            ? 'mzkopole.pl'
-                            : id === 'rzeszow'
-                              ? 'ztm.erzeszow.pl'
-                              : id === 'lublin'
-                                ? 'zdtm.lublin.eu'
-                                : id === 'radom'
-                                  ? 'mzdik.pl'
-                                  : 'wroclaw.pl',
+      CITY_OPERATOR_SHORT_DE[id] ?? CITY_OPERATOR_SHORT_DE.wroclaw,
+    portal: (id: string): string => CITY_PORTAL_DE[id] ?? CITY_PORTAL_DE.wroclaw,
     supportedList:
-      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom',
+      'Wrocław, Kraków, GZM, Warszawa, Poznań, Trójmiasto, Łódź, Szczecin, Kielce, Olsztyn, Białystok, Opole, Rzeszów, Lublin, Radom, Bydgoszcz, Toruń, Elbląg, Gorzów Wielkopolski, Częstochowa, Zielona Góra, Rybnik, Słupsk, Wałbrzych, Kalisz, Siedlce, Łomża, Krosno, Jasło, Olkusz, Chrzanów, Bochnia, Iława',
     changed: (name: string) => `Umgeschaltet auf: ${name}.`,
     switching: 'Stadt wird umgestellt…',
     blockedByDownload: 'Fahrplan wird geladen. Stadtwechsel danach möglich.',
     needDownload:
       'Für diese Stadt liegt noch kein Fahrplan auf dem Telefon. Lade ihn unter „Fahrplan und Karten“.',
     changeAction: 'Ändern',
+    downloadAction: 'Fahrplan herunterladen',
     selectTitle: 'Stadt wählen',
     selectSub: 'Wählen Sie das Verkehrsgebiet für Ihre Routen.',
     searchPlaceholder: 'Stadt oder Betreiber',
@@ -572,6 +548,19 @@ export const de: Strings = {
     downloadFailBody: (reason: string) =>
       `${reason}. Die App lädt eine fertige Datenbank vom Kilometr-Server oder klassisch aus den offenen Daten der Stadt.`,
     downloadFailFallback: 'Versuch es gleich erneut.',
+    railTitle: 'Nationales Bahnfahrplan',
+    railHint:
+      'Züge aller Betreiber für die Planung von Reisen zwischen Städten: IC, EIC, PolRegio, KM und weitere.',
+    railReady: (date: string) => `Heruntergeladen (gültig bis ${date})`,
+    railEmpty: 'Nicht heruntergeladen',
+    railDownload: 'Herunterladen',
+    railCheck: 'Nach Updates suchen',
+    railDelete: 'Vom Handy entfernen',
+    railDeleteTitle: 'Bahnfahrplan entfernen?',
+    railDeleteBody: 'Die Planung von Reisen zwischen Städten funktioniert dann offline nicht mehr.',
+    railDeleteConfirm: 'Entfernen',
+    railCancel: 'Abbrechen',
+
     downloadDone: 'Fahrplan aktualisiert.',
     downloadUpToDate: 'Der Fahrplan ist schon aktuell.',
     downloadKeptLocal:
@@ -582,7 +571,7 @@ export const de: Strings = {
         : `Der Fahrplan wurde gerade erst geladen. Ein erneutes volles Laden ist in ${hours} h möglich.`,
     diagTitle: 'Daten-Diagnose',
     diagHint:
-      'Prüft die Fahrplandatenbank auf dem Telefon. Kopiere das Ergebnis, wenn du ein Problem meldest.',
+      'Prüft Fahrplan, Bahn, Offline-Karte und Live-Quellen. Kopiere das Ergebnis, wenn du ein Problem meldest.',
     diagRun: 'Daten prüfen',
     diagRerun: 'Erneut prüfen',
     diagRunning: 'Prüfe…',
@@ -613,10 +602,28 @@ export const de: Strings = {
       days <= 1 ? 'Fahrplan läuft morgen ab' : `Fahrplan läuft in ${days} Tagen ab`,
     diagCalendarServices: (n: number) => `Aktive Dienste heute: ${n}`,
     diagSearch: 'Suche',
-    diagSearchOk: (weighted: number, pois: number) =>
-      `Ranking bereit (${weighted} Haltestellen) • POIs: ${pois}`,
+    diagSearchOk: (weighted: number, pois: number, addresses: number) =>
+      `Ranking bereit (${weighted === 1 ? '1 Haltestelle' : `${weighted} Haltestellen`}) • POIs: ${pois} • Adressen: ${addresses}`,
     diagSearchWeights: 'Vorschlagsranking nicht berechnet',
-    diagSearchPois: 'Keine POI-Punkte. Adressen brauchen Internet.',
+    diagSearchPois: 'Keine POI-Punkte',
+    diagSearchNoAddresses: 'Kein Adressindex. Adresssuche braucht Internet.',
+    diagRail: 'Bundesweite Bahn',
+    diagRailNone: 'Nicht geladen (Verbindungen zwischen Städten brauchen Internet)',
+    diagRailLine: (version: string, to: string | null) =>
+      to ? `Version ${version}, Fahrplan bis ${to}` : `Version ${version}`,
+    diagRailOutside: 'Bahnfahrplan ist abgelaufen',
+    diagRailExpiring: (days: number) =>
+      days <= 1 ? 'Bahnfahrplan läuft morgen ab' : `Bahnfahrplan läuft in ${days} Tagen ab`,
+    diagMap: 'Offline-Karte',
+    diagMapNone: 'Nicht geladen (Karte braucht Internet)',
+    diagMapReady: (mb: string) => `Kachelpaket bereit: ${mb} MB`,
+    diagMapInvalid: 'Kachelpaket beschädigt. Karte neu laden.',
+    diagLive: 'Live-Quellen',
+    diagLiveNone: 'Keine Messungen in dieser Sitzung',
+    diagLiveOkLine: (source: string, at: string) => `${source}: OK (${at})`,
+    diagLiveRecoveredLine: (source: string, at: string) => `${source}: wieder aktiv (${at})`,
+    diagLiveErrLine: (source: string, error: string) => `${source}: Fehler, ${error}`,
+    diagLiveNoAnswer: (source: string) => `${source}: keine Antwort`,
     diagCopy: 'Bericht kopieren',
     diagCopyA11y: 'Diagnosebericht in die Zwischenablage kopieren',
     diagCopied: 'Bericht in die Zwischenablage kopiert',
@@ -626,7 +633,15 @@ export const de: Strings = {
     diagReportCity: 'Stadt',
     diagReportTimetable: 'Fahrplan',
     diagReportImported: 'Geladen',
+    diagReportLastCheck: 'Prüfung',
+    diagReportRemote: 'Verfügbar',
+    diagReportFeeds: 'Feeds',
     diagReportDb: 'Datenbank',
+    diagReportRail: 'Bahn',
+    diagReportMap: 'Karte',
+    diagReportLive: 'Live',
+    diagReportNotDownloaded: 'nicht geladen',
+    diagReportMapInvalid: 'beschädigt',
     diagReportUnknown: 'unbekannt',
     transfersTitle: 'Max. Umstiege',
     transfersHintShort: 'Obergrenze pro Verbindung.',
@@ -863,6 +878,10 @@ export const de: Strings = {
     urgentChip: 'Störung',
     plannedChip: 'Fahrplanänderung',
     omittedStopsPrefix: 'Ohne Halt:',
+    lineSuspended: (line: string) => `Linie ${line} eingestellt`,
+    lineDetour: (line: string) => `Umleitung der Linie ${line}`,
+    specialLine: (line: string) => `Sonderlinie ${line}`,
+    everyNMin: (n: number) => `alle ${n} Min.`,
   },
   newsSvc: {
     justNow: 'gerade eben',
@@ -1032,12 +1051,12 @@ export const de: Strings = {
     noResultsHint: (id: string) =>
       `Versuch: ${id === 'krakow' ? '„rynek“, „grodzka“, „wawel“, „balice“' : id === 'gzm' ? '„katowice“, „gliwice“, „rynek“, „tychy“' : id === 'warszawa' ? '„metro“, „młociny“, „centralny“, „śródmieście“' : id === 'poznan' ? '„rynek“, „garbary“, „rondo“, „malta“' : id === 'trojmiasto' ? '„oliwa“, „wrzeszcz“, „orłowo“, „przymorze“' : id === 'lodz' ? '„piotrkowska“, „manufaktura“, „fabryczna“, „kaliska“' : id === 'szczecin' ? '„brama portowa“, „dąbie“, „police“, „pogodno“' : id === 'kielce' ? '„sienkiewicza“, „rynek“, „kadzielnia“, „herby“' : id === 'olsztyn' ? '„stare miasto“, „dworzec“, „jaroty“, „barczewo“' : id === 'bialystok' ? '„rynek kościuszki“, „lipowa“, „branicki“, „opera“' : id === 'opole' ? '„rynek“, „ozimska“, „solaris“, „dworzec“' : id === 'rzeszow' ? '„rynek“, „dworzec“, „rejtana“, „3 maja“' : id === 'lublin' ? '„krakowskie“, „zamek“, „felicity“, „świdnik“' : id === 'radom' ? '„żeromskiego“, „południe“, „gołębiów“, „idalin“' : '„arkady“, „biskupin“, „zoo“, „swojczycka“'}. Geht auch ohne polnische Zeichen und mit Tippfehlern.`,
     noResultsFor: (q: string) => `Nichts passt zu „${q}“`,
-    gpsOutsideNotice: 'GPS außerhalb der Stadt, Punkt manuell wählen.',
   },
   places: {
     editAction: 'Bearbeiten',
     editA11y: (name: string) => `Ort bearbeiten: ${name}`,
     removeA11y: (name: string) => `Ort löschen: ${name}`,
+    reorderA11y: (name: string) => `Reihenfolge ändern: ${name}`,
     clearAnchorA11y: 'Zugewiesene Haltestelle entfernen',
     manageTitle: 'Gespeicherte Orte',
     manageSub: 'Deine Schnellziele verwalten',
@@ -1154,7 +1173,7 @@ export const de: Strings = {
     dayTomorrow: 'Morgen',
     hourLabel: 'Stunde',
     minuteLabel: 'Minute',
-    pastWarning: 'Die gewählte Zeit ist bereits vergangen',
+    pastWarning: 'Die gewählte Zeit ist bereits vergangen. Ergebnisse starten dort und können veraltet sein.',
     switchTomorrow: 'Auf morgen umstellen',
   },
   routesBar: {
@@ -1166,7 +1185,7 @@ export const de: Strings = {
     arrivalShort: (time: string) => `bis ${time}`,
   },
   routesFilters: {
-    title: "Filter",
+    title: 'Filter',
     filterButton: 'Filter',
     filterA11y: 'Routenfilter',
     vehiclesSection: 'Verkehrsmittel',
@@ -1203,7 +1222,7 @@ export const de: Strings = {
       via: string,
       lines: string,
     ) =>
-      `${dep}, Fahrzeit ${dur} Min., Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
+      `${dep}, Fahrzeit ${formatDuration(dur)}, Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
     walkRoute: 'Fußweg',
   },
   vehiclePos: {
@@ -1223,6 +1242,8 @@ export const de: Strings = {
     noData: 'Keine Routendaten',
     expandA11y: (line: string, dir: string, expanded: boolean) =>
       `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+    expandStationsA11y: (line: string, dir: string, expanded: boolean) =>
+      `${line} Richtung ${dir}. Bahnhofsliste ${expanded ? 'ein' : 'aus'}klappen.`,
     vehicleBetween: (mode: string, from: string, to: string) =>
       `${mode} zwischen ${from} und ${to}`,
     fromPrefix: 'ab ',
@@ -1235,13 +1256,18 @@ export const de: Strings = {
     modeCable: 'Seilbahn',
     modeVehicle: 'Fahrzeug',
     currentLocation: (stop: string) => `Aktueller Standort: ${stop}`,
+    waitingAtTerminus: 'Wartet auf Abfahrt an der Endhaltestelle',
     liveTracking: 'Live-Verfolgung',
     transfer: 'Umstieg',
     transferMinutes: (min: number) => `Umstieg · ~${min} Min.`,
     nearStop: (mode: string, stop: string) => `${mode} nahe Haltestelle: ${stop}`,
     stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
+      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${formatDuration(mins)} • ${open ? 'ein' : 'aus'}klappen`,
+    stationsSummary: (n: number, mins: number, open: boolean) =>
+      `${n} ${n === 1 ? 'Bahnhof' : 'Bahnhöfe'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
     platformPeron: (code: string) => `Bahnsteig ${code}`,
+    platformPeronTrack: (code: string, track: string) => `Bahnsteig ${code}, Gleis ${track}`,
+    platformTrack: (track: string) => `Gleis ${track}`,
     platformPole: (code: string) => `Mast ${code}`,
     platformBay: (code: string) => `Stand ${code}`,
     platformPst: (code: string) => `PST-Mast ${code}`,
@@ -1290,6 +1316,43 @@ export const de: Strings = {
   suggestion: {
     stopFallback: 'Haltestelle',
   },
+  intercity: {
+    stationAddress: 'Bahnhof',
+    downloadTitle: 'Nationales Bahnfahrplan',
+    downloadBody:
+      'Lade den bundesweiten Zugfahrplan herunter, um Reisen zwischen Städten zu planen: IC, EIC, PolRegio, KM und weitere Betreiber.',
+    downloadCta: 'Fahrplan herunterladen',
+    downloadSize: (mb: string) => `ca. ${mb} MB`,
+    downloading: 'Bahnfahrplan wird heruntergeladen…',
+    downloadFailed: 'Bahnfahrplan konnte nicht heruntergeladen werden. Versuche es später erneut.',
+    ready: (date: string) => `Bahnfahrplan bereit (gültig bis ${date})`,
+    noTrainsTitle: 'Keine Züge',
+    noTrainsHint: 'Prüfe Datum und Uhrzeit oder wähle einen anderen Zielbahnhof.',
+    nearestStation: (name: string, dist: string) => `Nächster Bahnhof: ${name} (${dist})`,
+    startAtStation: 'Züge von diesem Bahnhof zeigen',
+  },
+
+  railAmenities: {
+    klimatyzacja: (_n?: number) => 'Klimaanlage',
+    gniazdka_230V: (_n?: number) => 'Steckdosen',
+    gniazdka_usb: (_n?: number) => 'USB-Anschlüsse',
+    wifi: (_n?: number) => 'WLAN',
+    wagon_restauracyjny: (_n?: number) => 'Speisewagen',
+    bar: (_n?: number) => 'Bar',
+    przewoz_rowerow: (n?: number) => (n ? `Fahrräder (${n})` : 'Fahrradmitnahme'),
+    dostepny_wozkarze: (_n?: number) => 'Rollstuhlgerecht',
+    miejsca_lezace: (_n?: number) => 'Liegewagen',
+    miejsca_sypialne: (_n?: number) => 'Schlafwagen',
+    strefa_ciszy: (_n?: number) => 'Ruhebereich',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Ausstattung: ${list}`,
+  },
+  railAlerts: {
+    cardA11y: (line: string) => `Warnung für Zug ${line}`,
+    fallbackLine: 'Zug',
+    disruptionsBadgeA11y: 'Störungen auf der Route',
+  },
+
   data: {
     stepUnpack: 'Entpacken…',
     stepStops: 'Haltestellen…',
@@ -1349,6 +1412,8 @@ export const de: Strings = {
     directionTo: (dir: string) => `Richtung ${dir}`,
     platform: (num: string) => `Gleis ${num}`,
     platformPeron: (num: string) => `Bahnsteig ${num}`,
+    platformPeronTrack: (num: string, track: string) => `Bahnsteig ${num}, Gleis ${track}`,
+    platformTrack: (track: string) => `Gleis ${track}`,
     walkApproach: (min: number) => `~${min} Min. zu Fuß`,
     rideLength: (min: number) => `${min} Min. Fahrt`,
     departAt: (at: string) => `ab ${at}`,
@@ -1359,6 +1424,9 @@ export const de: Strings = {
     transfers: (n: number) => `${n} ${n === 1 ? 'Umstieg' : 'Umstiege'}`,
     newDeparture: (at: string) => `neue Abfahrt ${at}`,
     delayTitle: (line: string, eta: string) => `Verspätung • ${line} • ${eta}`,
+    compensationTitle: 'Erstattung bei Zugverspätung',
+    compensationBody: (train: string, thresholdMin: number, percent: number) =>
+      `${train ? `Zug ${train} war` : 'Der Zug war'} über ${thresholdMin} Minuten verspätet. Du kannst eine Erstattung von ${percent} % des Fahrpreises beantragen.`,
   },
   ios: {
     departure: 'Abfahrt',
@@ -1446,6 +1514,52 @@ export const de: Strings = {
     channel: 'Angeheftete Verbindung',
     tram: 'Tram',
     bus: 'Bus',
+  },
+  railTickets: {
+    loading: 'Laden…',
+    buyKoleo: 'Fahrkarte in KOLEO kaufen',
+    buyKoleoSub: (from: string, to: string) => `${from} nach ${to}`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
+      transfers === 1
+        ? `${from} nach ${to} · 1 Umstieg`
+        : `${from} nach ${to} · ${transfers} Umstiege`,
+    attachPdf: 'PDF-Fahrkarte anhängen',
+    attachedTitle: 'Zugfahrkarte',
+    attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
+      const parts: string[] = [];
+      if (wagon) parts.push(`Wagen ${wagon}`);
+      if (seat) parts.push(`Sitzplatz ${seat}`);
+      if (seatType) parts.push(seatType);
+      return parts.join(', ');
+    },
+    showTicket: 'Fahrkarte anzeigen',
+    removeTicket: 'Fahrkarte entfernen',
+    removeConfirmTitle: 'Fahrkarte wirklich entfernen?',
+    removeConfirmBody: 'Die PDF-Datei wird aus dem Speicher gelöscht.',
+    fileLabel: (fileName: string) => `Datei: ${fileName}`,
+    importSuccess: 'PDF-Fahrkarte erfolgreich angehängt.',
+    importError: 'PDF-Datei konnte nicht geladen werden.',
+    rejectTooLargeTitle: 'Datei ist zu groß',
+    rejectTooLargeBody:
+      'Die gewählte Datei ist größer als 10 MB. Bahnfahrkarten als PDF sind meist zwischen wenigen Dutzend KB und 2 MB groß.',
+    rejectNotTicketTitle: 'Das sieht nicht nach einer Bahnfahrkarte aus',
+    rejectNotTicketBody:
+      'Das Dokument enthält keinen Kontrollcode und keine Reisedaten. Stelle sicher, dass du die richtige Datei wählst.',
+    rejectWrongTrainTitle: 'Diese Fahrkarte gilt für einen anderen Zug',
+    rejectWrongTrainBody: (ticketTrain: string, connectionTrain: string) =>
+      `Die Fahrkarte gilt für Zug ${ticketTrain}, aber diese Route fährt mit Zug ${connectionTrain}. Wähle die Fahrkarte für die richtige Verbindung.`,
+    rejectWrongDateTitle: 'Fahrkarte für einen anderen Tag',
+    rejectWrongDateBody: (ticketDate: string, connectionDate: string) =>
+      `Die Fahrkarte gilt am ${ticketDate}, aber diese Verbindung fährt am ${connectionDate}.`,
+    deleteTicket: 'Fahrkarte löschen',
+    deleteTicketTitle: 'Diese Fahrkarte löschen?',
+    deleteTicketBody: 'Die PDF-Datei und der Aztec-Code werden dauerhaft aus dem App-Speicher gelöscht.',
+    inspectionNoBarcode: 'Kein Rastercode im PDF gefunden',
+    inspectionBarcodeA11y: 'Aztec-Code für die Fahrkartenkontrolle',
+    inspectionSegmentLabel: (current: number, total: number) =>
+      `Abschnitt ${current} von ${total} · Tippen zum Wechseln`,
+    inspectionSegmentA11y: (current: number, total: number) =>
+      `Abschnitt ${current} von ${total}. Tippen zum Wechseln.`,
   },
   widgets: {
     journeyTitle: 'Deine Ziele',

@@ -31,10 +31,15 @@ const WALK_SEGMENT_COLOR = '#8A8F98';
 
 // Pociąg wsiada na peron, nie na słupek; reszta pojazdów zostaje przy "słup".
 function platformText(p: TripProgress, n: Strings['notification']): string {
-  if (!p.leg?.platformCode) return '';
-  return p.leg.mode === 'train'
-    ? n.platformPeron(p.leg.platformCode)
-    : n.platform(p.leg.platformCode);
+  if (!p.leg?.platformCode && !p.leg?.trackCode) return '';
+  if (p.leg.mode === 'train') {
+    if (p.leg.platformCode && p.leg.trackCode) {
+      return n.platformPeronTrack(p.leg.platformCode, p.leg.trackCode);
+    }
+    if (p.leg.platformCode) return n.platformPeron(p.leg.platformCode);
+    return n.platformTrack(p.leg.trackCode!);
+  }
+  return n.platform(p.leg.platformCode ?? '');
 }
 
 export interface TripCopy {
@@ -259,6 +264,8 @@ export interface BuildPlanOptions {
   stopAfterMs?: number;
   alightAlertsEnabled?: boolean;
   transferAlertsEnabled?: boolean;
+  /** GPS pasażera w trasie: serwis raportuje pomiary do JS (opóźnienie z przejazdów stacji). */
+  gpsOnboardEnabled?: boolean;
 }
 
 export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
@@ -340,6 +347,7 @@ export function buildLivePlan(
     segments: buildSegments(timeline, startAtMs, endAtMs),
     states: buildStates(p, conn, s),
     alightAlertsEnabled: !trip.sharedJourney && (options.alightAlertsEnabled ?? true),
+    gpsOnboardEnabled: !trip.sharedJourney && (options.gpsOnboardEnabled ?? true),
     transferProtectionEnabled: trip.protectionEnabled ?? false,
     transferAlertsEnabled: !trip.sharedJourney && (options.transferAlertsEnabled ?? true),
     copy: buildPhaseCopy(p, conn, s),

@@ -1,7 +1,9 @@
 import type { Leg } from '../types/models';
 import { timeStringToSeconds } from '../gtfs/geo';
 import { ZBIORKOM } from './gtfsConfig';
+import { trainNumberVariants } from './nationalRailLive';
 import { withTimeout } from './net';
+import { kvGet, kvSet } from './storage';
 
 interface ZbStation {
   stopId: string;
@@ -61,79 +63,87 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-function parseStation(value: unknown): ZbStation | null {
-  if (!isRecord(value)) return null;
-  const stopId = typeof value.gtfsId === 'string' ? value.gtfsId.split(',')[0]?.trim() : '';
-  const name = typeof value.name === 'string' ? value.name.trim() : '';
-  if (!stopId || !name || value.city !== 'pkp') return null;
-  const location = Array.isArray(value.location) ? value.location : [];
-  const lon = typeof location[0] === 'number' ? location[0] : undefined;
-  const lat = typeof location[1] === 'number' ? location[1] : undefined;
-  return {
-    stopId,
-    gtfsIds: typeof value.gtfsId === 'string' ? value.gtfsId.split(',').map((id) => id.trim()) : [],
-    name,
-    lon,
-    lat,
-  };
-}
+const KEY_ZB_RAIL_STOPS = 'kilometr.cache.zb_rail_stops.v1';
 
 async function loadStations(): Promise<StationIndex> {
   if (stationsPromise) return stationsPromise;
-  stationsPromise = fetchJson('https://cdn.zbiorkom.live/stations.json')
-    .then((raw) => {
-      const byStopId = new Map<string, ZbStation>();
-      const byName = new Map<string, ZbStation[]>();
-      if (!isRecord(raw)) throw new Error('Nieprawidłowy katalog stacji');
-      for (const entry of Object.values(raw)) {
-        const station = parseStation(entry);
-        if (!station) continue;
-        for (const id of station.gtfsIds) byStopId.set(id, station);
-        const key = normalized(station.name);
-        const group = byName.get(key) ?? [];
-        group.push(station);
-        byName.set(key, group);
+  stationsPromise = (async () => {
+    let raw: unknown;
+    try {
+      raw = await fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`);
+      void kvSet(KEY_ZB_RAIL_STOPS, JSON.stringify(raw));
+    } catch (netErr) {
+      try {
+        const cached = await kvGet(KEY_ZB_RAIL_STOPS);
+        if (cached) raw = JSON.parse(cached);
+      } catch {
+        // brak cache
       }
-      return { byStopId, byName };
-    })
-    .catch((error) => {
+      if (!raw) {
+        stationsPromise = null;
+        throw netErr;
+      }
+    }
+    const byStopId = new Map<string, ZbStation>();
+    const byName = new Map<string, ZbStation[]>();
+    if (!isRecord(raw) || !Array.isArray(raw.stops)) {
       stationsPromise = null;
-      throw error;
-    });
+      throw new Error('Nieprawidłowy katalog stacji');
+    }
+    for (const entry of raw.stops) {
+      if (!Array.isArray(entry)) continue;
+      const stopId = typeof entry[0] === 'string' ? entry[0] : '';
+      const name = typeof entry[2] === 'string' ? entry[2].trim() : '';
+      if (!stopId || !name) continue;
+      const loc = Array.isArray(entry[4]) ? entry[4] : [];
+      const lon = typeof loc[0] === 'number' ? loc[0] : undefined;
+      const lat = typeof loc[1] === 'number' ? loc[1] : undefined;
+      const station: ZbStation = {
+        stopId,
+        gtfsIds: [stopId],
+        name,
+        lon,
+        lat,
+      };
+      byStopId.set(stopId, station);
+      const key = normalized(name);
+      const group = byName.get(key) ?? [];
+      group.push(station);
+      byName.set(key, group);
+    }
+    return { byStopId, byName };
+  })();
   return stationsPromise;
 }
 
 function parseDeparture(value: unknown, fetchedAt: number): ZbRailDeparture | null {
-  if (!Array.isArray(value) || !Array.isArray(value[0]) || !Array.isArray(value[2])) return null;
-  const trip = value[0];
-  const route = trip[2];
-  const stop = value[2];
-  if (!Array.isArray(route) || typeof trip[0] !== 'string') return null;
-  if (
-    typeof route[2] !== 'string' ||
-    typeof route[4] !== 'string' ||
-    typeof trip[3] !== 'string' ||
-    typeof trip[5] !== 'string' ||
-    typeof stop[0] !== 'number'
-  )
-    return null;
-  const shortName = trip[5].trim();
+  if (!isRecord(value)) return null;
+  const trip = isRecord(value.trip) ? value.trip : null;
+  const route = trip && isRecord(trip.route) ? trip.route : null;
+  const shortName = typeof trip?.shortName === 'string' ? trip.shortName.trim() : '';
   const numberMatch = /^(\S+)(?:\s+(.+))?$/.exec(shortName);
   if (!numberMatch) return null;
-  const delayMs = typeof stop[1] === 'number' && Number.isFinite(stop[1]) ? stop[1] : 0;
-  const status = typeof stop[2] === 'number' ? stop[2] : 0;
+
+  const scheduledDeparture =
+    typeof value.scheduledDeparture === 'number' ? value.scheduledDeparture : 0;
+  const delayMs = typeof value.delay === 'number' && Number.isFinite(value.delay) ? value.delay : 0;
+  const isRealtime = value.isRealtime === true;
+  const isCancelled = value.isCancelled === true;
+  const platform =
+    typeof value.platform === 'string' && value.platform.trim() ? value.platform.trim() : undefined;
+
   return {
-    tripId: trip[0],
-    agency: route[4],
-    line: route[2],
-    color: typeof route[6] === 'string' ? route[6] : undefined,
-    direction: trip[3],
+    tripId: typeof trip?.id === 'string' ? trip.id : '',
+    agency: typeof route?.agency === 'string' ? route.agency : '',
+    line: typeof route?.name === 'string' ? route.name : '',
+    color: typeof route?.color === 'string' ? route.color : undefined,
+    direction: typeof trip?.headsign === 'string' ? trip.headsign : '',
     trainNumber: numberMatch[1],
     trainName: numberMatch[2] || undefined,
-    scheduledAt: stop[0],
+    scheduledAt: scheduledDeparture,
     delaySec: Math.round(delayMs / 1000),
-    platform: typeof stop[3] === 'string' && stop[3].trim() ? stop[3].trim() : undefined,
-    live: status !== 3 && (value[1] !== null || delayMs !== 0),
+    platform,
+    live: !isCancelled && (isRealtime || delayMs !== 0),
     fetchedAt,
   };
 }
@@ -143,7 +153,7 @@ async function fetchStationDepartures(stopId: string): Promise<ZbRailDeparture[]
   if (cached && Date.now() - cached.at < DEPARTURES_TTL_MS) return cached.promise;
   const at = Date.now();
   const promise = fetchJson(
-    `${ZBIORKOM.baseUrl}/api6/pkp/stops/${encodeURIComponent(stopId)}?limit=100`,
+    `${ZBIORKOM.baseUrl}/api6-open/pkp/stops/${encodeURIComponent(stopId)}?limit=100`,
   )
     .then((raw) => {
       if (!isRecord(raw) || !Array.isArray(raw.departures)) return [];
@@ -153,7 +163,7 @@ async function fetchStationDepartures(stopId: string): Promise<ZbRailDeparture[]
       });
     })
     .catch((error) => {
-      departuresCache.delete(stopId);
+      if (!cached) departuresCache.delete(stopId);
       throw error;
     });
   departuresCache.set(stopId, { at, promise });
@@ -178,99 +188,121 @@ function timeDifference(a: number, b: number): number {
   return Math.min(direct, DAY_SEC - direct);
 }
 
-function trainNumber(value?: string): string | undefined {
-  return /(?:^|\s)(\d{1,7}(?:\/\d+)?)(?:\s|$)/.exec(value?.trim() ?? '')?.[1];
-}
-
-function baseTrainNumber(value?: string): string | undefined {
-  return value?.split('/')[0];
-}
-
-function lineMatches(local: string | undefined, remote: string): boolean {
-  if (!local) return false;
-  const a = normalized(local);
-  const b = normalized(remote);
-  return a === b || a.endsWith(` ${b}`);
-}
-
-function matchRailDeparture(
-  leg: Pick<Leg, 'line' | 'direction' | 'departAt' | 'delaySec' | 'scheduledDepartureSec'>,
-  departures: ZbRailDeparture[],
-): ZbRailDeparture | null {
-  const localNumber = trainNumber(leg.line);
-  const localDirection = normalized(leg.direction ?? '');
-  let best: { departure: ZbRailDeparture; score: number } | null = null;
-  for (const departure of departures) {
-    const diff = timeDifference(scheduledLegSeconds(leg), secondsOfDay(departure.scheduledAt));
-    if (diff > 120) continue;
-    const remoteNumber = trainNumber(departure.trainNumber);
-    const numberMatch =
-      !!localNumber &&
-      !!remoteNumber &&
-      baseTrainNumber(localNumber) === baseTrainNumber(remoteNumber);
-    if (localNumber && remoteNumber && !numberMatch) continue;
-    const commercialMatch = lineMatches(leg.line, departure.line);
-    const remoteDirection = normalized(departure.direction);
-    const directionMatch =
-      !!localDirection &&
-      !!remoteDirection &&
-      (localDirection === remoteDirection ||
-        localDirection.includes(remoteDirection) ||
-        remoteDirection.includes(localDirection));
-    if (!numberMatch && !commercialMatch && !directionMatch) continue;
-    const score =
-      (numberMatch ? 1000 : 0) +
-      (directionMatch ? 300 : 0) +
-      (commercialMatch ? 200 : 0) +
-      (departure.live ? 10 : 0) -
-      diff;
-    if (!best || score > best.score) best = { departure, score };
-  }
-  return best?.departure ?? null;
-}
-
-function nearestStation(stations: ZbStation[], leg: Leg): ZbStation | null {
-  if (stations.length === 0) return null;
-  if (leg.fromLat == null || leg.fromLon == null) return stations[0] ?? null;
-  let best = stations[0];
-  let bestDistance = Infinity;
+function selectBestStation(stations: ZbStation[], leg: Leg): ZbStation | undefined {
+  if (stations.length <= 1) return stations[0];
+  if (leg.fromLat == null || leg.fromLon == null) return stations[0];
+  let best: ZbStation | undefined;
+  let minDistance = Infinity;
   for (const station of stations) {
     if (station.lat == null || station.lon == null) continue;
-    const distance = (station.lat - leg.fromLat) ** 2 + (station.lon - leg.fromLon) ** 2;
-    if (distance < bestDistance) {
+    const dLat = station.lat - leg.fromLat;
+    const dLon = station.lon - leg.fromLon;
+    const distance = dLat * dLat + dLon * dLon;
+    if (distance < minDistance) {
+      minDistance = distance;
       best = station;
-      bestDistance = distance;
     }
   }
-  return best ?? null;
+  return best ?? stations[0];
 }
 
-export function railLegKey(leg: Leg): string {
-  return (
-    leg.tripId ?? [leg.fromStopId, leg.scheduledDepartureSec ?? leg.departAt, leg.line].join(':')
-  );
+async function resolveStation(index: StationIndex, leg: Leg): Promise<ZbStation | undefined> {
+  if (leg.fromStopId) {
+    const station = index.byStopId.get(leg.fromStopId);
+    if (station) return station;
+  }
+  const byName = index.byName.get(normalized(leg.fromStop));
+  if (byName?.length) return selectBestStation(byName, leg);
+  return undefined;
 }
 
-/** Pobiera peron, nazwę handlową i opóźnienie kursu z tablicy odjazdów zbiorkom.live. */
-export async function fetchZbRailDepartures(legs: Leg[]): Promise<Map<string, ZbRailDeparture>> {
-  const trains = legs.filter((leg) => leg.mode === 'train');
-  const result = new Map<string, ZbRailDeparture>();
-  if (trains.length === 0) return result;
-  const stations = await loadStations();
+function matchDeparture(departures: ZbRailDeparture[], leg: Leg): ZbRailDeparture | undefined {
+  const targetSeconds = scheduledLegSeconds(leg);
+  const targetVariants = new Set(trainNumberVariants(leg.trainNumber, leg.line));
+  const targetDirection = normalized(leg.direction ?? leg.toStop);
+
+  if (targetVariants.size > 0) {
+    let bestByNum: ZbRailDeparture | undefined;
+    let bestNumDiff = Infinity;
+    for (const departure of departures) {
+      const depVariants = trainNumberVariants(departure.trainNumber);
+      if (!depVariants.some((v) => targetVariants.has(v))) continue;
+      const diff = timeDifference(secondsOfDay(departure.scheduledAt), targetSeconds);
+      if (diff < bestNumDiff) {
+        bestNumDiff = diff;
+        bestByNum = departure;
+      }
+    }
+    return bestNumDiff <= 1800 ? bestByNum : undefined;
+  }
+
+  let best: ZbRailDeparture | undefined;
+  let minDiff = Infinity;
+
+  for (const departure of departures) {
+    const diff = timeDifference(secondsOfDay(departure.scheduledAt), targetSeconds);
+    if (diff > 900) continue;
+    const matchesDirection = normalized(departure.direction).includes(targetDirection);
+    const score = diff + (matchesDirection ? 0 : 300);
+    if (score < minDiff) {
+      minDiff = score;
+      best = departure;
+    }
+  }
+
+  return minDiff <= 600 ? best : undefined;
+}
+
+export function railLegKey(
+  leg: Pick<Leg, 'fromStop' | 'toStop' | 'departAt' | 'line'> &
+    Partial<Pick<Leg, 'tripId' | 'scheduledDepartureSec'>>,
+): string {
+  return `${leg.tripId ?? leg.line ?? ''}|${leg.fromStop}|${leg.toStop}|${leg.scheduledDepartureSec ?? leg.departAt}`;
+}
+
+export async function fetchZbRailDepartures(
+  legs: readonly Leg[],
+): Promise<Map<string, ZbRailDeparture>> {
+  const trainLegs = legs.filter((leg) => leg.mode === 'train');
+  if (trainLegs.length === 0) return new Map();
+
+  const index = await loadStations();
+  const legsByStation = new Map<string, Leg[]>();
+
+  for (const leg of trainLegs) {
+    const station = await resolveStation(index, leg);
+    if (!station) continue;
+    const list = legsByStation.get(station.stopId) ?? [];
+    list.push(leg);
+    legsByStation.set(station.stopId, list);
+  }
+
+  const results = new Map<string, ZbRailDeparture>();
   await Promise.all(
-    trains.map(async (leg) => {
+    Array.from(legsByStation.entries()).map(async ([stopId, stationLegs]) => {
       try {
-        const station =
-          (leg.fromStopId ? stations.byStopId.get(leg.fromStopId) : undefined) ??
-          nearestStation(stations.byName.get(normalized(leg.fromStop)) ?? [], leg);
-        if (!station) return;
-        const departures = await fetchStationDepartures(station.stopId);
-        const match = matchRailDeparture(leg, departures);
-        if (match) result.set(railLegKey(leg), match);
+        let departures: ZbRailDeparture[] = [];
+        try {
+          departures = await fetchStationDepartures(stopId);
+        } catch {
+          const cachedHit = departuresCache.get(stopId);
+          if (cachedHit) {
+            try {
+              departures = await cachedHit.promise;
+            } catch {
+              departures = [];
+            }
+          }
+        }
+        for (const leg of stationLegs) {
+          const departure = matchDeparture(departures, leg);
+          if (departure) results.set(railLegKey(leg), departure);
+        }
       } catch {
-        // Brak danych dodatkowych nie może blokować rozkładu offline.
+        // Ignorujemy błędy stacji, żeby pozostałe działały
       }
     }),
   );
-  return result;
+
+  return results;
 }

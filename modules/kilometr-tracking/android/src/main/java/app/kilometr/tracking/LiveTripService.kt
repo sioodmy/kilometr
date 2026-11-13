@@ -37,6 +37,7 @@ class LiveTripService : Service() {
   private val locationManager by lazy { getSystemService(LocationManager::class.java) }
   private var locationForeground = false
   private var locationSubscribed = false
+  private var lastLocationEmitAt = 0L
   private val locationListener = object : LocationListener {
     override fun onLocationChanged(location: Location) {
       val current = plan ?: return
@@ -46,6 +47,13 @@ class LiveTripService : Service() {
         protection?.observe(location)
       }
       maybeVibrateAlight(TransferPresentation.decorate(current, protectionState, now), location)
+      // GPS pasażera w trasie: JS nie dostanie lokalizacji z expo-location,
+      // gdy apka jest w tle, więc pomiary bierze z serwisu. Throttle 5 s,
+      // żeby JS nie budził się 3600 razy na godzinę.
+      if (current.gpsOnboardEnabled && now - lastLocationEmitAt >= 5000L) {
+        lastLocationEmitAt = now
+        KilometrTrackingModule.emitTripLocation(location)
+      }
     }
     override fun onProviderEnabled(provider: String) {}
     override fun onProviderDisabled(provider: String) {}
@@ -190,7 +198,12 @@ class LiveTripService : Service() {
 
   private fun updateLocationSubscription() {
     val active = plan?.alightSegmentAt(System.currentTimeMillis())
+    val onboard = plan?.gpsOnboardEnabled == true && plan?.phaseAt(System.currentTimeMillis()) == LiveTripPlan.PHASE_RIDING
     if (protection != null && locationForeground && hasPreciseLocation()) {
+      subscribeLocation()
+      return
+    }
+    if (onboard && locationForeground && hasPreciseLocation()) {
       subscribeLocation()
       return
     }
@@ -236,10 +249,13 @@ class LiveTripService : Service() {
   private fun publish(current: LiveTripPlan, nowMs: Long, tryLocation: Boolean = false): Boolean {
     val displayed = TransferPresentation.decorate(current, protectionState, nowMs)
     val notification = LiveUpdateFactory.build(this, displayed, nowMs)
-    val wantsLocation = (current.alightAlertsEnabled || current.transferProtectionEnabled) && hasPreciseLocation() &&
+    // Lokalizacja potrzebna do wibracji przed wysiadaniem, ochrony przesiadki
+    // albo GPS pasażera w trasie (opóźnienie liczone w JS z pomiarów serwisu).
+    val alightWants = (current.alightAlertsEnabled || current.transferProtectionEnabled) &&
       current.segments.any {
         it.mode != LiveTripPlan.MODE_WALK && it.alightLat != null && it.alightLon != null
       }
+    val wantsLocation = hasPreciseLocation() && (alightWants || current.gpsOnboardEnabled)
     var useLocation = wantsLocation && (locationForeground || tryLocation)
     val baseType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
       ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE

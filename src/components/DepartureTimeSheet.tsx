@@ -203,38 +203,82 @@ export function DepartureTimeSheet({
   const [mode, setMode] = useState(initialMode);
   const initialSeconds = initialTimeSec ?? openedAt.getHours() * 3600 + openedAt.getMinutes() * 60;
   const [isNow, setIsNow] = useState(initialTimeSec === undefined && initialMode === 'departure');
-  const [day, setDay] = useState<'today' | 'tomorrow'>(
-    initialSeconds >= 86400 ? 'tomorrow' : 'today',
-  );
+  // Offset dni od dziś (0 = dziś, 1 = jutro, 2+ = konkretna data w przód).
+  const [dayOffset, setDayOffset] = useState(() => Math.floor(initialSeconds / 86400));
   const [hour, setHour] = useState(Math.floor(initialSeconds / 3600) % 24);
   const [minute, setMinute] = useState(Math.floor((initialSeconds % 3600) / 60));
+  // Horyzont planera: koniec rozkładu miasta (i kolejowego, gdy pobrany).
+  const [maxDayOffset, setMaxDayOffset] = useState(13);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const ends: Array<string | null> = [];
+      try {
+        const { getTimetableEndDate } = await import('../services/gtfsDatabase');
+        ends.push(await getTimetableEndDate());
+      } catch {}
+      try {
+        const { hasNationalDb, getNationalTimetableEndDate } = await import('../services/gtfsDatabase');
+        if (await hasNationalDb()) ends.push(await getNationalTimetableEndDate());
+      } catch {}
+      const valid = ends.filter((d): d is string => !!d && /^\d{8}$/.test(d));
+      if (!alive || valid.length === 0) return;
+      valid.sort();
+      const end = valid[0];
+      const endDate = new Date(
+        Number(end.slice(0, 4)),
+        Number(end.slice(4, 6)) - 1,
+        Number(end.slice(6, 8)),
+        23, 59, 59, 999,
+      );
+      const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
+      setMaxDayOffset(Math.max(1, Math.min(13, daysLeft)));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (dayOffset > maxDayOffset) setDayOffset(0);
+  }, [dayOffset, maxDayOffset]);
 
   const now = new Date();
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60;
   const selectedSec = hour * 3600 + minute * 60;
-  const isPast = !isNow && day === 'today' && selectedSec < nowSec;
+  const isPast = !isNow && dayOffset === 0 && selectedSec < nowSec;
 
   const handleQuickAdd = (addMinutes: number) => {
     const now = new Date();
     const baseSec = isNow
       ? now.getHours() * 3600 + now.getMinutes() * 60
-      : (day === 'tomorrow' ? 86400 : 0) + hour * 3600 + minute * 60;
-    const totalSec = Math.min(2 * 86400 - 60, baseSec + addMinutes * 60);
+      : dayOffset * 86400 + hour * 3600 + minute * 60;
+    const totalSec = Math.min(maxDayOffset * 86400 + 86340, baseSec + addMinutes * 60);
     setIsNow(false);
     setHour(Math.floor(totalSec / 3600) % 24);
     setMinute(Math.floor((totalSec % 3600) / 60));
-    setDay(totalSec >= 86400 ? 'tomorrow' : 'today');
+    setDayOffset(Math.floor(totalSec / 86400));
   };
 
   const handleSetNow = () => {
     const now = new Date();
     setIsNow(mode === 'departure');
-    setDay('today');
+    setDayOffset(0);
     setHour(now.getHours());
     setMinute(now.getMinutes());
   };
 
-  const dayLabel = day === 'today' ? s.common.today : s.common.tomorrow;
+  const dayLabel =
+    dayOffset === 0
+      ? s.common.today
+      : dayOffset === 1
+        ? s.common.tomorrow
+        : (() => {
+            const d = new Date(openedAt);
+            d.setDate(d.getDate() + dayOffset);
+            return getTimeSheetDateFormatter(getLocaleSync()).format(d);
+          })();
   const selection =
     isNow && mode === 'departure'
       ? s.common.now
@@ -246,7 +290,7 @@ export function DepartureTimeSheet({
       timeSec:
         isNow && mode === 'departure'
           ? undefined
-          : (day === 'tomorrow' ? 86400 : 0) + hour * 3600 + minute * 60,
+          : dayOffset * 86400 + hour * 3600 + minute * 60,
       mode,
       label: selection,
     });
@@ -269,18 +313,29 @@ export function DepartureTimeSheet({
   );
 
   const days = useMemo(() => {
-    const dateFormat = getTimeSheetDateFormatter(getLocaleSync());
-    const tomorrow = new Date(openedAt);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return [
-      { value: 'today' as const, label: s.timeSheet.dayToday, date: dateFormat.format(openedAt) },
-      {
-        value: 'tomorrow' as const,
-        label: s.timeSheet.dayTomorrow,
-        date: dateFormat.format(tomorrow),
-      },
-    ];
-  }, [openedAt, s]);
+    const locale = getLocaleSync();
+    const dateFormat = getTimeSheetDateFormatter(locale);
+    let weekdayFormat: Intl.DateTimeFormat | null = null;
+    try {
+      weekdayFormat = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+    } catch {
+      weekdayFormat = null;
+    }
+    return Array.from({ length: maxDayOffset + 1 }, (_, i) => {
+      const d = new Date(openedAt);
+      d.setDate(d.getDate() + i);
+      return {
+        value: i,
+        label:
+          i === 0
+            ? s.timeSheet.dayToday
+            : i === 1
+              ? s.timeSheet.dayTomorrow
+              : (weekdayFormat?.format(d) ?? dateFormat.format(d)),
+        date: dateFormat.format(d),
+      };
+    });
+  }, [openedAt, s, maxDayOffset]);
 
   return (
     <BottomSheet
@@ -337,11 +392,11 @@ export function DepartureTimeSheet({
                     setMode(option.value);
                     if (option.value === 'arrival') {
                       setIsNow(false);
-                      if (day === 'today' && hour * 3600 + minute * 60 <= nowSec) {
+                      if (dayOffset === 0 && hour * 3600 + minute * 60 <= nowSec) {
                         const targetSec = nowSec + 30 * 60;
                         setHour(Math.floor(targetSec / 3600) % 24);
                         setMinute(Math.floor((targetSec % 3600) / 60));
-                        if (targetSec >= 86400) setDay('tomorrow');
+                        if (targetSec >= 86400) setDayOffset(1);
                       }
                     }
                   }}
@@ -395,14 +450,19 @@ export function DepartureTimeSheet({
             ))}
           </View>
 
-          <View style={[styles.daySelector, compact && styles.daySelectorCompact]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            overScrollMode="never"
+            contentContainerStyle={[styles.daySelector, compact && styles.daySelectorCompact]}
+          >
             {days.map((option) => {
-              const active = day === option.value;
+              const active = dayOffset === option.value;
               return (
                 <Pressable
                   key={option.value}
                   onPress={() => {
-                    setDay(option.value);
+                    setDayOffset(option.value);
                     setIsNow(false);
                   }}
                   accessibilityRole="button"
@@ -422,7 +482,7 @@ export function DepartureTimeSheet({
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
 
           <View style={styles.timePicker}>
             <View style={styles.labelsRow}>
@@ -494,12 +554,12 @@ export function DepartureTimeSheet({
           {isPast ? (
             <View style={styles.warningBox}>
               <View style={styles.warningLeft}>
-                <AlertCircle size={16} color={scheme.onErrorContainer} />
+                <AlertCircle size={16} color={scheme.warning} />
                 <Text style={styles.warningText}>{s.timeSheet.pastWarning}</Text>
               </View>
               <Pressable
                 onPress={() => {
-                  setDay('tomorrow');
+                  setDayOffset(1);
                   setIsNow(false);
                 }}
                 accessibilityRole="button"
@@ -517,20 +577,12 @@ export function DepartureTimeSheet({
           )}
           <Pressable
             onPress={handleConfirm}
-            disabled={isPast}
             accessibilityRole="button"
-            accessibilityState={{ disabled: isPast }}
             accessibilityLabel={s.timeSheet.confirmAction}
             accessibilityHint={selection}
-            style={({ pressed }) => [
-              styles.confirmBtn,
-              isPast && styles.confirmBtnDisabled,
-              pressed && !isPast && { opacity: 0.85 },
-            ]}
+            style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
           >
-            <Text style={[styles.confirmText, isPast && styles.confirmTextDisabled]}>
-              {s.timeSheet.confirmAction}
-            </Text>
+            <Text style={styles.confirmText}>{s.timeSheet.confirmAction}</Text>
           </Pressable>
         </View>
       </View>
@@ -612,15 +664,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   presetTextActive: { color: scheme.onPrimaryContainer },
-  daySelector: { flexDirection: 'row', gap: 10 },
-  daySelectorCompact: { flexDirection: 'column' },
+  daySelector: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
+  // Poziomy pasek chipów dni: w wąskim oknie też zostaje w rzędzie
+  // (scroll w bok), a nie kolumną 14 kart.
+  daySelectorCompact: { flexDirection: 'row' },
   dayTab: {
-    flex: 1,
+    minWidth: 86,
     minHeight: 76,
     borderRadius: shape.large,
     backgroundColor: scheme.surfaceContainer,
     padding: 16,
     gap: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dayTabActive: { backgroundColor: scheme.primaryContainer },
   dayLabel: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
@@ -694,12 +750,14 @@ const styles = StyleSheet.create({
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: scheme.errorContainer,
+    gap: 10,
+    backgroundColor: scheme.surfaceContainerHigh,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: shape.medium,
+    borderRadius: shape.large,
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
   },
   warningLeft: {
     flexDirection: 'row',
@@ -709,22 +767,22 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...type.bodySmall,
-    color: scheme.onErrorContainer,
+    color: scheme.onSurfaceVariant,
     fontWeight: '500',
     flex: 1,
   },
   warningAction: {
-    minHeight: 44,
+    minHeight: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: shape.small,
-    backgroundColor: scheme.error,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
   },
   warningActionText: {
     ...type.labelSmall,
-    color: scheme.onError,
+    color: scheme.onSecondaryContainer,
     fontWeight: '600',
   },
   confirmBtn: {
@@ -736,17 +794,10 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primary,
     borderRadius: shape.large,
   },
-  confirmBtnDisabled: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    opacity: 0.6,
-  },
   confirmText: {
     ...type.labelLarge,
     fontWeight: '600',
     color: scheme.onPrimary,
     textAlign: 'center',
-  },
-  confirmTextDisabled: {
-    color: scheme.onSurfaceVariant,
   },
 });

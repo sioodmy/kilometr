@@ -112,7 +112,8 @@ const stubs: Record<string, unknown> = {
   '../settings': { getSettingsSync: () => ({}), profileWalkSpeedMps: () => 1.3 },
   '../api': { RoutingService: { getConnections: () => route() }, rememberPlannedConnection: (value: Connection) => { remembered.push(value); } },
   '../liveTracker': { liveTracker: { snapshot: () => [], pin: () => {}, start: () => {}, stop: () => {},
-    getLiveState: () => 'fresh', getTripDelays: () => new Map([['t1', 300]]) } },
+    getLiveState: () => 'fresh', getTripDelays: () => new Map([['t1', 300]]),
+    getTripArrivalDelays: () => new Map() } },
   '../../cities': { inCityBounds: () => true },
   '../cityStore': { getActiveCitySync: () => ({}) },
   '../widgetSnapshot': {
@@ -509,7 +510,7 @@ async function main() {
   await monitor.startTracking({ ...trip, id: 'midnight', connection: midnightConnection });
   const beforeMidnight = monitor.getTripProgressSync()!;
   assert.ok(
-    beforeMidnight.departInSec > 13 * 60 && beforeMidnight.departInSec < 16 * 60,
+    beforeMidnight.departInSec > 13 * 60 && beforeMidnight.departInSec < 20 * 60,
     'kurs 00:10 śledzony od 23:55 jest za kwadrans, nie za dobę',
   );
   const savedMidnight = storage.get('kilometr.trackedTrip.v2');

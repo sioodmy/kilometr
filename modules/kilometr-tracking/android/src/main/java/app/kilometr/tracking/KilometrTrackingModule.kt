@@ -2,6 +2,7 @@ package app.kilometr.tracking
 
 import android.content.Context
 import android.content.Intent
+import android.location.Location
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -21,6 +22,35 @@ import expo.modules.kotlin.modules.ModuleDefinition
  */
 class KilometrTrackingModule : Module() {
 
+  companion object {
+    /**
+     * LiveTripService żyje poza Expo i nie ma dostępu do `appContext` - mostek
+     * do `sendEvent` trzymamy tu. Null, gdy moduł jeszcze nie powstał (JS nie działa).
+     */
+    @Volatile
+    private var instance: KilometrTrackingModule? = null
+
+    /** Pomiar GPS z serwisu śledzącego → JS (tripMonitor liczy z niego opóźnienie). */
+    fun emitTripLocation(location: Location) {
+      val module = instance ?: return
+      try {
+        module.sendEvent(
+          "onTripLocation",
+          mapOf<String, Any?>(
+            "lat" to location.latitude,
+            "lon" to location.longitude,
+            "accuracy" to (if (location.hasAccuracy()) location.accuracy.toDouble() else null),
+            "speed" to (if (location.hasSpeed()) location.speed.toDouble() else null),
+            "heading" to (if (location.hasBearing()) location.bearing.toDouble() else null),
+            "timestamp" to location.time,
+          ),
+        )
+      } catch (_: Throwable) {
+        // JS może być właśnie martwe (proces ubity, serwis dalej żyje)
+      }
+    }
+  }
+
   /**
    * `AppContext` nie wystawia `context` - jedynym bezpiecznym źródłem jest
    * `reactContext`. Bierzemy `applicationContext`, żeby nie trzymać Activity.
@@ -30,6 +60,16 @@ class KilometrTrackingModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("KilometrTracking")
+
+    Events("onTripLocation")
+
+    OnCreate {
+      instance = this@KilometrTrackingModule
+    }
+
+    OnDestroy {
+      if (instance === this@KilometrTrackingModule) instance = null
+    }
 
     Function("isAvailable") { true }
     Function("supportsTransferDecisions") { true }

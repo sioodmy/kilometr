@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import type { OnboardLocationFix } from '../../../modules/kilometr-tracking';
 
 // Leniwe ładowanie modułów natywnych.
 //
@@ -34,6 +35,8 @@ export interface TrackingNativeModule {
   supportsTransferDecisions?(): boolean;
   configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
   getTransferProtectionState?(): Promise<string | null>;
+  /** Pomiar GPS z serwisu śledzącego (Android, działa także w tle). */
+  subscribeTripLocation?(cb: (fix: OnboardLocationFix) => void): (() => void) | null;
 }
 
 let nmod: NotificationsModule | null | undefined;

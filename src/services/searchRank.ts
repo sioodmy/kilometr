@@ -44,6 +44,15 @@ export function withDistances(
   }));
 }
 
+/**
+ * Kara za adres poza zasięgiem transportu (dystans do najbliższego przystanku
+ * GTFS). 1:1 z `stop_penalty` w Rust: do 1,2 km bez kary, pełna od ~4,2 km.
+ */
+export function stopPenalty(stopM?: number): number {
+  if (stopM == null || !Number.isFinite(stopM)) return 0;
+  return Math.min(50, Math.max(0, (stopM - 1200) / 60));
+}
+
 const DIST_PENALTY_CAP = 40;
 const DIST_PENALTY_PER_M = 250;
 

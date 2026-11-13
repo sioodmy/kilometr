@@ -51,13 +51,13 @@ export async function clearMapDownloadLimit(cityId?: string): Promise<void> {
   await kvRemove(mapKey(cityId));
 }
 
-export async function getTimetableDownloadGate(): Promise<DownloadGate> {
+export async function getTimetableDownloadGate(cityId?: string): Promise<DownloadGate> {
   try {
     // Limit jest per-baza, nie per-miasto w kv: znacznik `gtfs_last_download`
     // (i fallback na datę importu) żyją w meta aktywnego pliku SQLite, a każde
     // miasto ma własny plik, więc zmiana miasta nie dziedziczy cudzego licznika.
     const last =
-      (await getMeta(TIMETABLE_LAST_META)) ?? (await getMeta('gtfs_imported_at'));
+      (await getMeta(TIMETABLE_LAST_META, cityId)) ?? (await getMeta('gtfs_imported_at', cityId));
     return gateFrom(last, TIMETABLE_DOWNLOAD_MIN_INTERVAL_MS);
   } catch {
     return { allowed: true };

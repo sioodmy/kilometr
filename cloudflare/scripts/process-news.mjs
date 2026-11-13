@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { findUnknownNames } from './news-validate.mjs';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../..');
@@ -21,6 +22,12 @@ const SUPPORTED_CITIES = [
   'olsztyn',
   'opole',
   'rzeszow',
+  'szczecin',
+  'kielce',
+  'bialystok',
+  'lublin',
+  'radom',
+  'polska',
 ];
 
 const CITY_NAMES = {
@@ -33,10 +40,16 @@ const CITY_NAMES = {
   olsztyn: 'Olsztyn',
   opole: 'Opole',
   rzeszow: 'Rzeszów',
+  szczecin: 'Szczecin',
+  kielce: 'Kielce',
+  bialystok: 'Białystok',
+  lublin: 'Lublin',
+  radom: 'Radom',
+  polska: 'Polska (Kolej)',
 };
 
 // Podbij przy każdej zmianie promptu: hash cache zależy od tej wersji.
-const PROMPT_VERSION = '2026-10-29.1';
+const PROMPT_VERSION = '2026-11-12.1';
 
 function loadLocalEnv() {
   if (!fs.existsSync(ENV_PATH)) return;
@@ -134,6 +147,7 @@ async function fetchFullArticleText(url) {
     const html = await res.text();
 
     let rawFragment =
+      (html.split(/<span id="mtc"><\/span>/i)[1]?.split(/<\/div>\s*<\/div>\s*<\/div>/i)[0]) ||
       (html.match(/id="article-content"[\s\S]*?>([\s\S]*?)<div class="box-container/i)?.[1]) ||
       (html.match(/class="page-main"[\s\S]*?>([\s\S]*?)<\/main>/i)?.[1]) ||
       (html.split(/class="row content mt-4"/i)[1]?.split(/<\/section>/i)[0]) ||
@@ -142,6 +156,66 @@ async function fetchFullArticleText(url) {
       (html.match(/class="article-content"[\s\S]*?>([\s\S]*?)<\/div>/i)?.[1]) ||
       (html.match(/<main[\s\S]*?>([\s\S]*?)<\/main>/i)?.[1]) ||
       '';
+
+    if (url.includes('intercity.pl')) {
+      const main = html.match(/<main[\s\S]*?<\/main>/i)?.[0] || html;
+      let text = main.split(/Informujemy,\s*że mają Państwo prawo/i)[0];
+      text = text.split(/Prosimy o zwracanie uwagi na komunikaty głosowe/i)[0];
+      text = text.split(/Przepraszamy za niedogodności/i)[0];
+      const startIdx = text.search(/W dniu|Informujemy|Z powodu|W związku|Dnia\s+\d/i);
+      if (startIdx !== -1) {
+        text = text.slice(startIdx);
+      }
+      return cleanHtml(text.replace(/<li[^>]*>/gi, '\n• '));
+    }
+
+    // Strony nowych miast mają własne kontenery treści; ogólny chain
+    // wyciągałby nawigację albo panel boczny z innymi komunikatami.
+    if (/mpk\.lodz\.pl/i.test(url)) {
+      // wholemessage.jsp: treść w div#dWrkspc.
+      const m = html.split(/id="dWrkspc"/i)[1]?.split(/<\/div>\s*<\/div>\s*<\/div>/i)[0] ?? '';
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/ztm\.kielce\.pl/i.test(url)) {
+      const m = (html.split(/com-content-article__body/i)[1] ?? '')
+        .split(/rp-sidebarright/i)[0]
+        .replace(/<div class="rozklad_jazdy_aticle"[\s\S]*$/i, ' ');
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/zditm\.szczecin\.pl/i.test(url)) {
+      const m = (html.split(/id="pageContent"/i)[1]?.split(/<\/main>/i)[0] ?? '')
+        .split(/Więcej wiadomości/i)[0]
+        .split(/wiadomosci\.szczecin\.eu/i)[0]
+        .split(/<div class="offcanvas/i)[0];
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/mzdik\.pl/i.test(url)) {
+      // Sekcja komunikatu; aside z listą innych komunikatów leży poza nią.
+      const section = (html.split(/<section aria-labelledby="section-heading">/i)[1]?.split(/<\/section>/i)[0] ?? '').replace(
+        /<header\b[\s\S]*?<\/header>/i,
+        ' ',
+      );
+      const cleaned = cleanHtml(section);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/zdtm\.lublin\.eu/i.test(url)) {
+      const m = (html.split(/class="main-center-panel[^>]*>/i)[1]?.split(/main-right-panel/i)[0] ?? '')
+        .replace(/<ol class="breadcrumb"[\s\S]*?<\/ol>/gi, ' ')
+        .replace(/<h2 class="text-header"[\s\S]*?<\/h2>/i, ' ');
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
+    if (/komunikacja\.bialystok\.pl/i.test(url)) {
+      const m =
+        html
+          .split(/component-content-wysiwyg/i)[1]
+          ?.split(/Cms_Attachment|Cms_Gallery|<footer/i)[0] ?? '';
+      const cleaned = cleanHtml(m);
+      return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
+    }
 
     const cleaned = cleanHtml(rawFragment);
     return cleaned.length > 100 ? cleaned.slice(0, 4500) : null;
@@ -159,6 +233,278 @@ function isObviousJunk(title, content) {
     return true;
   }
   return false;
+}
+
+function cleanIntercityTitle(title) {
+  return title
+    .replace(/w dniu\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/gi, '')
+    .replace(/Aktualizacja:[\s\S]*$/i, '')
+    .replace(/,,/g, '„')
+    .replace(/"/g, '„')
+    .replace(/“/g, '”')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPkpTimeframe(pubDate, text) {
+  const m = text.match(/Aktualizacja:\s*(\d{4}-\d{2}-\d{2})\s*,\s*(\d{2}:\d{2})/i);
+  if (m) {
+    const [, date, time] = m;
+    const [, month, day] = date.split('-');
+    return `${day}.${month}, ${time}`;
+  }
+  if (pubDate) {
+    const d = new Date(pubDate);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const time = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+      return `${day}.${month}, ${time}`;
+    }
+  }
+  return '';
+}
+
+function extractTrainNumbers(text) {
+  const seen = new Set();
+  const yearSet = new Set(['2024', '2025', '2026', '2027', '2028']);
+  const re = /\b(IC|TLK|EIC|EIP|PR|KM|KŚ|KW|KD|Polregio)?\s*(?:nr\s*)?(\d{3,5}(?:\/\d{1,2})?)\b/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const carrier = m[1] ? m[1].toUpperCase() : null;
+    const num = m[2];
+    if (yearSet.has(num)) continue;
+    seen.add(num);
+    if (carrier) seen.add(`${carrier} ${num}`);
+    if (num.includes('/')) {
+      const [base, slash] = num.split('/');
+      seen.add(base);
+      if (carrier) seen.add(`${carrier} ${base}`);
+      if (slash.length <= 2) {
+        const derived = base.slice(0, base.length - slash.length) + slash;
+        seen.add(derived);
+        if (carrier) seen.add(`${carrier} ${derived}`);
+      }
+    }
+  }
+  return [...seen];
+}
+
+function cleanProblemText(text) {
+  let s = text
+    .replace(/^w dniu\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/i, '')
+    .replace(/^dnia\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?/i, '')
+    .replace(/Aktualizacja:[\s\S]*?(?:Opublikowano:[\s\S]*?)?(?=(?:W dniu|Dnia|Z powodu|W związku|Niżej|Informujemy))/i, '')
+    .replace(/^(?:W dniu|Dnia)\s+\d{1,2}\.\d{1,2}\.?\s*\d{0,4}\s*(?:roku|r\.?)?\s*,?\s*/i, '')
+    .replace(/,,/g, '„')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (s.length > 0) {
+    s = s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return s;
+}
+
+function buildPkpDirectAlert(item) {
+  if (item.pdpData) {
+    const pdp = item.pdpData;
+    const allLines = pdp.lines;
+    const headline = pdp.headline;
+
+    return {
+      is_transit_alert: true,
+      headline,
+      disruption_type: pdp.disruption_type,
+      is_emergency: true,
+      is_resolved: false,
+      severity: pdp.severity,
+      glance: {
+        problem: (pdp.message || headline).slice(0, 400),
+        solution: pdp.section ? `Odcinek: ${pdp.section}` : null,
+        timeframe: extractPkpTimeframe(item.pubDate, ""),
+      },
+      valid_from: item.pubDate || new Date().toISOString(),
+      valid_to: null,
+      all_lines: allLines,
+      impacted_lines: allLines.slice(0, 8).map((line) => ({
+        line,
+        direction: null,
+        impact_type: "schedule_change",
+        omitted_stops: [],
+        temporary_stops: [],
+        replacement_line: null,
+        details: headline,
+      })),
+      stops: pdp.stations || [],
+    };
+  }
+
+  const content = item.fullContent || item.content || '';
+  const headline = cleanIntercityTitle(item.title);
+  const timeframe = extractPkpTimeframe(item.pubDate, content);
+  const allLines = extractTrainNumbers(`${item.title} ${content}`);
+
+  const lower = content.toLowerCase();
+  const titleLower = item.title.toLowerCase();
+
+  const is_emergency =
+    lower.includes('opóźnieni') ||
+    lower.includes('usterk') ||
+    lower.includes('awari') ||
+    lower.includes('wypad') ||
+    titleLower.includes('opóźnieni');
+
+  const disruption_type =
+    lower.includes('usterk') || lower.includes('awari')
+      ? 'infrastructure_failure'
+      : lower.includes('wypad') || lower.includes('potrąc') || lower.includes('zderzen')
+        ? 'accident'
+        : lower.includes('prac') || lower.includes('remont')
+          ? 'planned_works'
+          : lower.includes('pogod') || lower.includes('wichur')
+            ? 'weather'
+            : 'other';
+
+  const severity =
+    lower.includes('odwołan') || lower.includes('zamknięt')
+      ? 'blocking'
+      : lower.includes('honorowanie biletów') || lower.includes('awari')
+        ? 'major'
+        : lower.includes('zastępcze składy') || lower.includes('opóźnieni')
+          ? 'minor'
+          : 'info';
+
+  const is_resolved =
+    lower.includes('ruch przywrócon') || lower.includes('awaria usunięt') || lower.includes('zakończon');
+
+  const bulletsIdx = content.indexOf('•');
+  let problem = bulletsIdx !== -1 ? content.slice(0, bulletsIdx) : content;
+  problem = cleanProblemText(problem);
+  if (!problem || problem.length < 10) {
+    problem = headline;
+  }
+
+  let solution = null;
+  if (bulletsIdx !== -1) {
+    solution = content.slice(bulletsIdx).trim();
+  } else if (lower.includes('honorowanie')) {
+    solution = 'Uzgodniono wzajemne honorowanie biletów.';
+  }
+
+  return {
+    is_transit_alert: true,
+    headline,
+    disruption_type,
+    is_emergency,
+    is_resolved,
+    severity,
+    glance: {
+      problem: problem.slice(0, 400),
+      solution: solution ? solution.slice(0, 500) : null,
+      timeframe,
+    },
+    valid_from: item.pubDate || new Date().toISOString(),
+    valid_to: null,
+    all_lines: allLines,
+    impacted_lines: allLines.slice(0, 8).map((line) => ({
+      line,
+      direction: null,
+      impact_type: lower.includes('zastępcze składy') ? 'special_service' : 'schedule_change',
+      omitted_stops: [],
+      temporary_stops: [],
+      replacement_line: null,
+      details: headline,
+    })),
+    stops: [],
+  };
+}
+
+function parsePdpDisruption(d, disruptionTypes = {}, stationsMap = {}) {
+  const id = String(d.disruptionId || d.id || crypto.createHash("sha256").update(d.message || "").digest("hex").slice(0, 16));
+  const typeName = (d.disruptionTypeCode && disruptionTypes[d.disruptionTypeCode]) || "Utrudnienie w ruchu";
+  const startStation = d.startStationId ? stationsMap[String(d.startStationId)] : null;
+  const endStation = d.endStationId ? stationsMap[String(d.endStationId)] : null;
+
+  let section = "";
+  if (startStation && endStation && startStation !== endStation) {
+    section = `${startStation} – ${endStation}`;
+  } else if (startStation) {
+    section = startStation;
+  }
+
+  const message = (d.message || "").trim();
+  const headline = section ? `${typeName}: ${section}` : (typeName !== "Utrudnienie w ruchu" ? typeName : (message.split(".")[0] || "Utrudnienie w ruchu"));
+
+  const lines = new Set(extractTrainNumbers(`${headline} ${message}`));
+
+  const lowerType = typeName.toLowerCase();
+  const lowerMsg = message.toLowerCase();
+
+  const disruption_type =
+    lowerType.includes("sieć") || lowerType.includes("trakc") || lowerType.includes("srk") || lowerType.includes("usterk") || lowerType.includes("awari") || lowerType.includes("tor")
+      ? "infrastructure_failure"
+      : lowerType.includes("wypad") || lowerType.includes("potrąc") || lowerType.includes("kolizj") || lowerMsg.includes("potrąc")
+        ? "accident"
+        : lowerType.includes("prac") || lowerType.includes("remont")
+          ? "planned_works"
+          : lowerType.includes("pogod") || lowerType.includes("wiatr") || lowerType.includes("drzew")
+            ? "weather"
+            : "other";
+
+  const severity =
+    lowerType.includes("wstrzyman") || lowerMsg.includes("wstrzyman") || lowerType.includes("zamknię") || lowerMsg.includes("przerwa w ruchu")
+      ? "blocking"
+      : lowerType.includes("awari") || lowerType.includes("usterk") || lowerType.includes("wypad") || lowerMsg.includes("honorowanie")
+        ? "major"
+        : "minor";
+
+  const stations = [startStation, endStation].filter(Boolean);
+
+  return {
+    id: `pdp-${id}`,
+    title: headline,
+    link: "https://portalpasazera.pl/Utrudnienia",
+    pubDate: new Date().toISOString(),
+    content: message,
+    fullContent: message,
+    pdpData: {
+      headline,
+      disruption_type,
+      severity,
+      message,
+      section,
+      typeName,
+      stations,
+      lines: [...lines],
+    },
+  };
+}
+// Komunikaty PKP Intercity (opóźnienia, awarie, honorowanie biletów, składy zastępcze).
+function parsePkpIntercityList(html, limit) {
+  const cardRegex = /<a\s+[^>]*href="([^"]*komunikaty\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const items = [];
+  let match;
+  while ((match = cardRegex.exec(html)) !== null && items.length < limit) {
+    const rawLink = match[1].replace(/^\/?pl\//, '');
+    const link = `https://www.intercity.pl/pl/${rawLink}`;
+    const block = match[2];
+    const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+    const title = cleanHtml(titleMatch ? (titleMatch[1] || '') : '').replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+
+    const dateMatch = block.match(/Aktualizacja:\s*(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/i) ||
+                      title.match(/(\d{4}-\d{2}-\d{2})(?:,\s*(\d{2}:\d{2}))?/);
+    const pubDate = dateMatch ? `${dateMatch[1]}T${dateMatch[2] || '00:00'}:00Z` : null;
+
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate,
+      content: title,
+    });
+  }
+  return items;
 }
 
 // Lista komunikatów ZTM GZM to serwerowy HTML bez JSON-a i paginacji.
@@ -226,7 +572,216 @@ function parseRssItems(xml, limit) {
   return items;
 }
 
+function isoFromDatetime(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function isoFromPolishDate(text) {
+  const m = String(text ?? '').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  const d = new Date(
+    Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 8), Number(m[5] ?? 0)),
+  );
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// ZTM Kielce: lista Joomla, karty com-content-category-blog__item.
+export function parseKielceList(html, limit) {
+  const cards = html.split(/com-content-category-blog__item(?!s)/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const linkRe = /<a href="(\/aktualnosci\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let href = '';
+    let title = '';
+    let m;
+    while ((m = linkRe.exec(card)) !== null) {
+      const text = cleanHtml(m[2]).replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      href = m[1].trim();
+      title = text;
+      break;
+    }
+    if (!href || !title) continue;
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const afterMeta = card.split(/<\/dl>/i)[1] ?? card;
+    const lead = cleanHtml((afterMeta.match(/<p>([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(href).digest('hex').slice(0, 16),
+      title,
+      link: `https://ztm.kielce.pl${href}`,
+      pubDate: isoFromDatetime(datetime),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// ZDiTM Szczecin: karty div.card z linkiem stretched-link.
+export function parseSzczecinList(html, limit) {
+  const cards = html.split(/<div class="card shadow img-hover/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const m = card.match(
+      /<a href="(https:\/\/www\.zditm\.szczecin\.pl\/pl\/pasazer\/informacje\/[^"]+)"[^>]*class="stretched-link"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!m) continue;
+    const link = m[1].trim();
+    if (/\/archiwum\/?$/.test(link)) continue;
+    const title = cleanHtml(m[2]).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    const datetime = (card.match(/<time datetime="([^"]+)"[^>]*>/i) ?? [])[1] ?? '';
+    const lead = cleanHtml((card.match(/<p class="card-text[^"]*">([\s\S]*?)<\/p>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate: isoFromDatetime(datetime),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// MZDiK Radom: karty article.section__article, link względny komunikaty/*.
+export function parseRadomList(html, limit) {
+  const cards = html.split(/<article class="section__article"/i).slice(1);
+  const items = [];
+  for (const card of cards.slice(0, limit)) {
+    const linkM = card.match(
+      /<h3[^>]*class="article__header"[^>]*>[\s\S]*?<a href="(komunikaty\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    if (!linkM) continue;
+    const href = linkM[1].trim();
+    const title = cleanHtml(linkM[2]).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    const lead = cleanHtml((card.match(/<div class="article__info">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(href).digest('hex').slice(0, 16),
+      title,
+      link: `https://mzdik.pl/${href}`,
+      pubDate: isoFromPolishDate(title),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// BKM Białystok: li.news__item, pełny tytuł w atrybucie title.
+export function parseBialystokList(html, limit) {
+  const blocks = html.match(/<li class="news__item">[\s\S]*?<\/li>/gi) ?? [];
+  const items = [];
+  for (const block of blocks.slice(0, limit)) {
+    const linkM = block.match(/<a class="news__title" href="([^"]+)"[^>]*title="([^"]*)"/i);
+    if (!linkM) continue;
+    const href = linkM[1].trim();
+    const link = href.startsWith('http') ? href : `https://komunikacja.bialystok.pl${href}`;
+    const title = cleanHtml(linkM[2]).replace(/\s+/g, ' ').trim();
+    if (!title) continue;
+    const dateRaw = (block.match(/<div class="news__date">([^<]*)/i) ?? [])[1] ?? '';
+    const lead = cleanHtml((block.match(/<div class="news__lead">([\s\S]*?)<\/div>/i) ?? [])[1] ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 600);
+    items.push({
+      id: crypto.createHash('sha256').update(link).digest('hex').slice(0, 16),
+      title,
+      link,
+      pubDate: isoFromPolishDate(dateRaw.trim()),
+      content: lead,
+    });
+  }
+  return items;
+}
+
+// ZDiTM Lublin: article.news z grupą dnia; karty bez daty dziedziczą poprzednią.
+export function parseLublinList(html, limit) {
+  const cards = html.split(/<article class="news">/i).slice(1);
+  const items = [];
+  let lastDate = null;
+  for (const card of cards) {
+    const dateRaw = (card.match(/<div class="data nowosc[\s\S]*?<h4>([^<]+)<\/h4>/i) ?? [])[1] ?? '';
+    const parsedDate = isoFromDatetime(dateRaw.trim());
+    if (parsedDate) lastDate = parsedDate;
+    const tinies = card.split(/<article class="tiny/i).slice(1);
+    const blocks = tinies.length > 0 ? tinies : [card];
+    for (const tiny of blocks) {
+      if (items.length >= limit) break;
+      const linkM = tiny.match(
+        /<a href="(\/pl\/aktualnosci\/[^"]+\.html)"[^>]*>(?:(?!<\/a>)[\s\S])*?Zobacz więcej/i,
+      );
+      if (!linkM) continue;
+      const href = linkM[1].trim();
+      const title = cleanHtml((tiny.match(/<h3 class="inline">([\s\S]*?)<\/h3>/i) ?? [])[1] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!title) continue;
+      const lead = cleanHtml((tiny.match(/<p[\s>][\s\S]*?<\/p>/i) ?? [])[0] ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 600);
+      items.push({
+        id: crypto.createHash('sha256').update(href).digest('hex').slice(0, 16),
+        title,
+        link: `https://www.zdtm.lublin.eu${href}`,
+        pubDate: lastDate,
+        content: lead,
+      });
+    }
+  }
+  return items.slice(0, limit);
+}
+
 const FEED_TIMEOUT_MS = 15000;
+
+// Łódź ma w RSS generyczne tytuły ("Planowane zmiany w rozkładach jazdy").
+// Tytuł karty bierzemy wtedy z początku treści, żeby LLM i cache miały
+// czym odróżnić komunikaty.
+const GENERIC_LODZ_TITLE = /^(planowane|aktualne) zmiany w rozkładach jazdy$/i;
+
+export function lodzReadableTitle(item) {
+  if (GENERIC_LODZ_TITLE.test(String(item.title ?? '').trim()) && item.content) {
+    const text = String(item.content).replace(/\s+/g, ' ').trim().slice(0, 140);
+    return { ...item, title: text || item.title };
+  }
+  return item;
+}
+
+// MPK Łódź serwuje RSS w ISO-8859-2, a fetch.text() dekoduje wszystko jako
+// UTF-8 (krzaki zamiast ogonków). TextDecoder, a gdy silnik go nie zna,
+// własna tablica Latin-2.
+export const LATIN2_HIGH =
+  '\u00a0Ą˘Ł¤ĽŚ§¨ŠŞŤŹ\u00adŽŻ°ą˛ł´ľśˇ¸šşťź˝žżŔÁÂĂÄĹĆÇČÉĘËĚÍÎĎĐŃŇÓÔŐÖ×ŘŮÚŰÜÝŢßŕáâăäĺćçčéęëěíîďđńňóôőö÷řůúűüýţ˙';
+
+export function decodeLatin2(buf) {
+  try {
+    return new TextDecoder('iso-8859-2').decode(buf);
+  } catch {
+    const bytes = new Uint8Array(buf);
+    let out = '';
+    for (const byte of bytes) {
+      out += byte < 0x80 ? String.fromCharCode(byte) : (LATIN2_HIGH[byte - 0xa0] ?? '');
+    }
+    return out;
+  }
+}
+
+// Łódź: XML w Latin-2, więc czytamy ArrayBuffer i dekodujemy sami.
+async function fetchFeedLatin2(url, label, headers) {
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${label}`);
+  return decodeLatin2(await res.arrayBuffer());
+}
 
 // Pobiera feed z limitem czasu. XML/JSON musi wrócić jako dane, nie jako strona
 // HTML, bo serwery potrafią oddać 200 z komunikatem błędu zamiast treści.
@@ -249,8 +804,18 @@ async function fetchFeed(url, label, headers, expect) {
 
 async function fetchCityFeed(city, limit) {
   const browserHeaders = {
-    'User-Agent': 'Mozilla/5.0 (compatible; kilometr/1.0)',
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent':
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Linux"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
   };
 
   switch (city) {
@@ -287,8 +852,60 @@ async function fetchCityFeed(city, limit) {
       return parseRssItems(text, limit);
     }
     case 'lodz': {
-      const text = await fetchFeed('https://mpk.lodz.pl/rozklady/rss/rozklady.jsp', 'Lodz MPK', browserHeaders, 'xml');
-      return parseRssItems(text, limit);
+      // Dwa kanały MPK Łódź (zmiany w rozkładach + utrudnienia), oba
+      // w ISO-8859-2. Kanały się dublują: ten sam link = jeden komunikat.
+      const [rozklady, utrudnienia] = await Promise.allSettled([
+        fetchFeedLatin2('https://mpk.lodz.pl/rozklady/rss/rozklady.jsp', 'Lodz MPK rozklady', browserHeaders),
+        fetchFeedLatin2('https://mpk.lodz.pl/showrss.action?c=1211', 'Lodz MPK utrudnienia', browserHeaders),
+      ]);
+      const all = [
+        ...(rozklady.status === 'fulfilled' ? parseRssItems(rozklady.value, limit) : []),
+        ...(utrudnienia.status === 'fulfilled' ? parseRssItems(utrudnienia.value, limit) : []),
+      ];
+      if (all.length === 0) {
+        const reason =
+          rozklady.status === 'rejected' ? rozklady.reason : utrudnienia.status === 'rejected' ? utrudnienia.reason : null;
+        throw reason instanceof Error ? reason : new Error('Lodz MPK: puste kanaly');
+      }
+      const seen = new Set();
+      return all
+        .filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        })
+        .map(lodzReadableTitle)
+        .slice(0, limit);
+    }
+    case 'szczecin': {
+      const html = await fetchFeed(
+        'https://www.zditm.szczecin.pl/pl/pasazer/informacje',
+        'ZDiTM Szczecin',
+        browserHeaders,
+        'html',
+      );
+      return parseSzczecinList(html, limit);
+    }
+    case 'kielce': {
+      const html = await fetchFeed('https://ztm.kielce.pl/aktualnosci.html', 'ZTM Kielce', browserHeaders, 'html');
+      return parseKielceList(html, limit);
+    }
+    case 'bialystok': {
+      const html = await fetchFeed(
+        'https://komunikacja.bialystok.pl/pl/informacje/wiadomosci/komunikaty/',
+        'BKM Bialystok',
+        browserHeaders,
+        'html',
+      );
+      return parseBialystokList(html, limit);
+    }
+    case 'lublin': {
+      const html = await fetchFeed('https://www.zdtm.lublin.eu/pl/aktualnosci', 'ZDiTM Lublin', browserHeaders, 'html');
+      return parseLublinList(html, limit);
+    }
+    case 'radom': {
+      const html = await fetchFeed('https://mzdik.pl/komunikaty', 'MZDiK Radom', browserHeaders, 'html');
+      return parseRadomList(html, limit);
     }
     case 'olsztyn': {
       const text = await fetchFeed('https://zdzit.olsztyn.eu/feed/', 'Olsztyn ZDZiT', browserHeaders, 'xml');
@@ -301,6 +918,63 @@ async function fetchCityFeed(city, limit) {
     case 'rzeszow': {
       const text = await fetchFeed('https://ztm.erzeszow.pl/feed/', 'Rzeszow ZTM', browserHeaders, 'xml');
       return parseRssItems(text, limit);
+    }
+        case 'polska': {
+      const items = [];
+      const pdpKey = process.env.PDP_API_KEY || "";
+      if (pdpKey) {
+        try {
+          console.log("    [PDP API] Pobieranie oficjalnych utrudnień PKP PLK...");
+          const pdpRes = await fetch("https://pdp-api.plk-sa.pl/api/v1/disruptions", {
+            headers: {
+              "X-API-Key": pdpKey,
+              Accept: "application/json",
+              "User-Agent": "kilometr-timetable-bot/1.0",
+            },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (pdpRes.ok) {
+            const data = await pdpRes.json();
+            const list = Array.isArray(data.disruptions)
+              ? data.disruptions
+              : Array.isArray(data.d)
+                ? data.d
+                : [];
+            const types = data.disruptionTypes || {};
+            const stations = data.stations || {};
+            for (const d of list.slice(0, limit)) {
+              items.push(parsePdpDisruption(d, types, stations));
+            }
+            console.log(`    [PDP API] Pobrano ${items.length} oficjalnych utrudnień.`);
+          } else {
+            console.warn(`    [!] PDP API zwróciło HTTP ${pdpRes.status}`);
+          }
+        } catch (err) {
+          console.warn("    [!] Błąd pobierania PDP API:", err.message);
+        }
+      }
+
+      if (items.length < limit) {
+        try {
+          const html = await fetchFeed(
+            "https://www.intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/",
+            "PKP Intercity Komunikaty",
+            browserHeaders,
+            "html",
+          );
+          const icItems = parsePkpIntercityList(html, limit - items.length);
+          items.push(...icItems);
+        } catch (err) {
+          if (items.length === 0) {
+            console.warn(`    [!] Intercity 403/błąd (${err.message}) i brak utrudnień z PDP API.`);
+            return [];
+          } else {
+            console.warn(`    [!] Intercity 403/błąd (${err.message}), ale pobrano ${items.length} pozycji z PDP API.`);
+          }
+        }
+      }
+
+      return items;
     }
     default:
       throw new Error(`Nieobsługiwane miasto: ${city}. Dostępne: ${SUPPORTED_CITIES.join(', ')}`);
@@ -326,22 +1000,44 @@ ODPOWIADAJ WYŁĄCZNIE CZYSTYM OBIEKTEM JSON O PONIŻSZEJ STRUKTURZE:
   "valid_from": string, // Data i czas ISO 8601 od kiedy zmiana obowiązuje (np. "2026-10-31T00:00:00Z"). Jeśli brak, użyj daty publikacji
   "valid_to": string | null, // Data i czas ISO 8601 końca utrudnień lub null ("do odwołania", na stałe lub nieznany)
   "all_lines": string[], // Numery/symbole wszystkich linii zbiorkomu, których dotyczy zmiana (np. ["3", "5"]). Pusta tablica [] jeśli irrelevant
-  "impacted_lines": [ // Rozbicie per-linia z topologią zmian
+  "line_changes": [ // Rozbicie per-linia. JEDEN KOMUNIKAT MOŻE OPISYWAĆ WIELE LINII Z RÓŻNYMI ZMIANAMI: jedna linia zawieszona, inna na objazdach, jeszcze inna na stałej trasie. Każda linia to osobny wpis z własnym "change".
     {
-      "line": string, // np. "3"
-      "direction": string | null, // Docelowy kierunek problemu w mianowniku, np. "Księże Małe", "Oporów", lub "both"
-      "impact_type": "detour" | "shortened" | "cancelled" | "route_restored" | "shuttle_bus" | "schedule_change" | "special_service",
+      "line": string, // np. "3", "Z-15", "E-2"
+      "direction": string | null, // Docelowy kierunek problemu w mianowniku, np. "Księże Małe", "Oporów", lub "both", lub null gdy nieznany
+      "change": "cancelled" | "detour" | "shortened" | "stops_skipped" | "schedule_change" | "frequency_change" | "route_restored" | "other",
+      // cancelled: linia w ogóle nie kursuje (w oknie czasowym)
+      // detour: trasa czasowo zmieniona, fragment nowej trasy w "via"
+      // shortened: trasa skrócona (odpada część trasy)
+      // stops_skipped: linia jedzie swoją trasą, ale pomija wybrane przystanki
+      // schedule_change: zmiany godzin odjazdów bez zmiany trasy
+      // frequency_change: zmiana częstotliwości kursowania
+      // route_restored: powrót na stałą trasę po utrudnieniu
+      // other: zmiana, która nie pasuje do powyższych (opisz w details)
+      "via": string[] | null, // ZMIENIONY FRAGMENT TRASY W KOLEJNOŚCI JAZDY. Tylko gdy tekst wymienia punkty trasy po kolei (np. "pojedzie przez Dietla, Starowiślną do Poczty Głównej" -> ["Dietla", "Starowiślna", "Poczta Główna"]). Wielokropek w tekście ("Nowy Bieżanów – … – Krakowska") oznacza niezmieniony środek: podaj TYLKO wymieniony fragment od pierwszego do ostatniego wymienionego punktu. null gdy tekst nie podaje kolejności.
       "omitted_stops": string[], // Przystanki omijane przez tę linię (w mianowniku, np. ["Plac Zgody", "Krakowska"])
       "temporary_stops": string[], // Przystanki tymczasowe lub dodatkowe (w mianowniku)
       "replacement_line": string | null, // Linia zastępcza jeśli uruchomiono (np. "Za-tramwaj 703" lub "autobus 705")
-      "details": string // 1 zdanie o zmianie trasy tej konkretnej linii
+      "hours": { "from": string, "to": string }[], // Okna czasowe w ciągu doby, tylko z tekstu (np. "w godz. 11:45-13:00" -> [{"from":"11:45","to":"13:00"}]). Pusta tablica [] gdy zmiana obowiązuje całą dobę.
+      "details": string // 1 zdanie o zmianie tej konkretnej linii
+    }
+  ],
+  "temporary_lines": [ // NOWE linie uruchamiane czasowo (mecz, święta, komunikacja zastępcza), których nie ma w stałym rozkładzie. TYLKO gdy tekst opisuje linię z własną trasą.
+    {
+      "line": string, // np. "C1", "Z-15", "704"
+      "via": string[], // PEŁNA trasa linii w kolejności jazdy z tekstu (np. ["Pleszów", "Klasztorna", "Rynek"]). Bez pełnej listy z tekstu nie twórz wpisu.
+      "frequency_min": number | null, // Interwał w minutach TYLKO gdy tekst podaje go liczbowo ("co 10 minut"). null gdy brak.
+      "days": string[], // Konkretne daty kursowania ISO "YYYY-MM-DD" tylko z tekstu. Pusta tablica [] gdy linia kursuje w całym okresie valid_from..valid_to.
+      "hours": { "from": string, "to": string }[], // Okna czasowe w ciągu doby jak wyżej, [] gdy cała doba.
+      "serves": string[], // Numery linii, które ta linia wspomaga/zastępuje, gdy tekst to podaje. [] gdy brak.
+      "details": string // 1 zdanie o linii (np. "Dodatkowa linia na mecz, kursuje co 10 minut.")
     }
   ],
   "stops": [ // Lista przystanków, których obsługa uległa zmianie
     {
       "name": string, // ZAWSZE W MIANOWNIKU: "Plac Bema" (nie: "Placu Bema"), "Księże Małe" (nie: "Księża Małego")
-      "action": "omitted" | "relocated" | "temporary" | "restored" | "board_opposite",
+      "action": "omitted" | "relocated" | "temporary" | "restored" | "board_opposite" | "replaced_by",
       "lines": string[], // Linie, których dotyczy ta zmiana przystankowa
+      "replaced_by": string | null, // Gdy action=replaced_by: przystanek obsługiwany zamiast tego (w mianowniku, z tekstu)
       "details": string // Konkretna wskazówka (np. "Słupek przeniesiony 50m za skrzyżowanie", "Przystanek zawieszony")
     }
   ]
@@ -352,16 +1048,24 @@ ZASADY ANTY-SLOP I JAKOŚCI DANYCH:
 2. MIANOWNIK DLA PRZYSTANKÓW: Polskie nazwy przystanków zawsze sprowadzaj do formy bazowej: "Galeria Dominikańska", "Rondo Reagana", "Dworzec Główny", "Piecowice - pętla".
 3. LINIE TO WYŁĄCZNIE ZBIORKOM: Nigdy nie dodawaj numerów dróg krajowych (np. DK94, AOW, A8), numerów ustaw, numerów peronów ani roczników.
 4. JEŚLI SPAM LUB BEZ WPŁYWU NA ZBIORKOM:
-   Ustaw is_transit_alert: false, severity: "info", all_lines: [], impacted_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
+   Ustaw is_transit_alert: false, severity: "info", all_lines: [], line_changes: [], temporary_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
 5. KOPIUJ, NIE TWÓRZ: nazwy ulic, placów, dzielnic, osiedli, mostów i przystanków przepisujesz znak w znak z treści. Zero odmiany, zero "poprawiania", zero tłumaczenia. Jeśli treść ma "Krzyki", pisz "Krzyki". Jeśli "Włochy", pisz "Włochy". Nigdy "Krzków", "Włochów".
 6. ZERO NOWEJ GEOGRAFII: nie dodawaj miejsc, których nie ma w treści. Nie zgaduj dzielnicy z nazwy ulicy. Brak nazwy w treści oznacza brak nazwy w odpowiedzi.
 7. FORMA Z TREŚCI: używaj dokładnie tej formy nazwy, która występuje w komunikacie. Jeśli treść ma "Krzykach", pisz "Krzykach". Nie twórz własnych form fleksyjnych. Żeby zdanie brzmiało naturalnie, użyj konstrukcji "w dzielnicy Krzyki", "w rejonie ul. Krakowskiej", "na trasie do Włoch".
 8. MIASTO: komunikat dotyczy wyłącznie miasta podanego w zadaniu. Nie używaj dzielnic ani miejsc z innych miast.
-9. SAMOKONTROLA: przed odpowiedzią sprawdź każdą nazwę własną w headline, glance.problem, glance.solution i stops. Musi występować w treści źródłowej. Jeśli nie występuje, usuń ją albo przepisz dokładnie z treści.
+9. SAMOKONTROLA: przed odpowiedzią sprawdź każdą nazwę własną w headline, glance.problem, glance.solution, line_changes i stops. Musi występować w treści źródłowej. Jeśli nie występuje, usuń ją albo przepisz dokładnie z treści.
+10. JEDEN KOMUNIKAT, WIELE ZMIAN: gdy tekst wymienia linie zawieszone, linie na objazdach i linie bez zmian, zapisz w line_changes wyłącznie linie ze zmianami (cancelled, detour, shortened, stops_skipped, schedule_change, frequency_change). Linie "bez zmian" pomijasz; wystarczą w glance.problem.
+11. NIGDY NIE DOPISUJ FAKTÓW: nie wymyślaj linii, przystanków, godzin, dat ani częstotliwości, których nie ma w tekście. Aplikacja będzie na tych danych liczyć trasy, więc każdy zmyślony przystanek w via to błędne połączenie. Gdy tekst nie podaje kolejności trasy, via = null.
+12. GODZINY I DATY TYLKO Z TEKSTU: hours wpisuj wyłącznie z konkretnych godzin w treści. Gdy tekst podaje tylko "wieczorem" albo "w nocy", zostaw hours: [] i wpisz zakres w details lub glance.timeframe.
 
 PRZYKŁADY POPRAWNEJ FORMY NAZW:
 - Treść: "utrudnienia w rejonie Krzyki" -> "Utrudnienia w dzielnicy Krzyki" (nie "Krzków").
-- Treść: "objazd przez Włochy" -> "Objazd przez Włochy" (nie "Włochów").`;
+- Treść: "objazd przez Włochy" -> "Objazd przez Włochy" (nie "Włochów").
+PRZYKŁADY ROZBICIA NA LINIE:
+- Treść: "linie 2, 4, 6 są zawieszone; linia 13 kursuje po trasie czasowo zmienionej: Nowy Bieżanów P+R – … – Krakowska – Dietla – Starowiślna – Poczta Główna" ->
+  line_changes: [{"line":"2","change":"cancelled",...}, {"line":"4","change":"cancelled",...}, {"line":"6","change":"cancelled",...}, {"line":"13","change":"detour","via":["Krakowska","Dietla","Starowiślna","Poczta Główna"],...}]
+- Treść: "uruchomiona zostanie dodatkowa linia C1 kursująca co 10 minut na trasie Pleszów - Rynek - Plac Centralny" ->
+  temporary_lines: [{"line":"C1","via":["Pleszów","Rynek","Plac Centralny"],"frequency_min":10,...}]`;
 
 function buildPrompt(item, city, correction = []) {
   const cityName = CITY_NAMES[city] || city;
@@ -598,6 +1302,41 @@ async function processCity(city, limit, cache) {
 
     if (DRY_RUN) {
       console.log(`    [DRY-RUN] Nowy komunikat (hash: ${contentHash}). Gotowy do analizy.`);
+      const preview = (item.fullContent || item.content || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      console.log(`      TREŚĆ: ${preview}`);
+      continue;
+    }
+
+    // Komunikaty PKP nie przechodzą przez model LLM - są dostarczane zwięźle as-is
+    if (city === 'polska') {
+      const directAnalysis = buildPkpDirectAlert(item);
+      cache.entries[item.id] = {
+        city,
+        contentHash,
+        firstSeen: cached?.firstSeen || new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+        item: {
+          id: item.id,
+          title: item.title,
+          link: item.link,
+          pubDate: item.pubDate,
+        },
+        analysis: directAnalysis,
+      };
+
+      const badge = directAnalysis.is_resolved
+        ? '[ZAKOŃCZONE]'
+        : directAnalysis.is_emergency
+          ? '[AWARIA W TOKU]'
+          : '[PLANOWANE]';
+      console.log(`    [ALERT PKP AS-IS ${badge}] ${directAnalysis.headline}`);
+      acceptedAlerts.push({
+        id: item.id,
+        source_title: item.title,
+        link: item.link,
+        published_at: item.pubDate,
+        ...directAnalysis,
+      });
       continue;
     }
 
@@ -687,11 +1426,6 @@ async function main() {
   console.log(`=== Kilometr: Agregator i Generator Zakłóceń Transportowych ===`);
   console.log(`Provider: ${PROVIDER} | Model: ${MODEL} | Limit: ${LIMIT}`);
 
-  if (!API_KEY && !DRY_RUN) {
-    console.error(`\n[!] Brak klucza API dla providera: ${PROVIDER}.`);
-    console.error(`  export DEEPSEEK_API_KEY="sk-..."`);
-    process.exit(1);
-  }
 
   const cache = loadCache();
   const cachedCount = Object.keys(cache.entries).length;
@@ -711,6 +1445,13 @@ async function main() {
     process.exit(1);
   }
   console.log(`Miasta: ${targetCities.join(', ')}`);
+
+  const onlyPolska = targetCities.every((c) => c === 'polska');
+  if (!API_KEY && !DRY_RUN && !onlyPolska) {
+    console.error(`\n[!] Brak klucza API dla providera: ${PROVIDER}.`);
+    console.error(`  export DEEPSEEK_API_KEY="sk-..."`);
+    process.exit(1);
+  }
 
   let totalAccepted = 0;
   let failedCities = 0;
@@ -738,7 +1479,9 @@ async function main() {
   console.log(`\nZakończono. Łącznie aktywnych/niedawnych alertów: ${totalAccepted}`);
 }
 
-main().catch((err) => {
-  console.error('Błąd krytyczny:', err);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('Błąd krytyczny:', err);
+    process.exit(1);
+  });
+}

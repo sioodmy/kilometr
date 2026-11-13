@@ -250,11 +250,15 @@ export function ConnectionPeek({
                   <Text style={[styles.stopTime, styles.secondary]}>{leg.arriveAt}</Text>
                   <Text style={[styles.stopName, styles.secondary]}>{leg.toStop}</Text>
                 </View>
-                {leg.platformCode && leg.mode !== 'walk' && (
+                {(leg.platformCode || leg.trackCode) && leg.mode !== 'walk' && (
                   <Text style={styles.platform}>
                     {leg.mode === 'train'
-                      ? s.notification.platformPeron(leg.platformCode)
-                      : s.notification.platform(leg.platformCode)}
+                      ? leg.platformCode && leg.trackCode
+                        ? s.notification.platformPeronTrack(leg.platformCode, leg.trackCode)
+                        : leg.platformCode
+                          ? s.notification.platformPeron(leg.platformCode)
+                          : s.notification.platformTrack(leg.trackCode!)
+                      : s.notification.platform(leg.platformCode ?? '')}
                   </Text>
                 )}
               </View>
@@ -372,11 +376,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 56,
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: shape.extraLarge,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+    marginTop: 8,
   },
-  gestureReady: { backgroundColor: scheme.primaryContainer },
+  gestureReady: {
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: shape.extraLarge,
+    overflow: 'hidden',
+  },
   hintText: { ...type.labelLarge, color: scheme.onSurfaceVariant, flexShrink: 1 },
   readyText: { color: scheme.onPrimaryContainer },
   open: {
@@ -389,6 +401,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
     marginTop: 8,
+    overflow: 'hidden',
   },
   openLabel: {
     ...type.labelLarge,

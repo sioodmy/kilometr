@@ -25,7 +25,7 @@
  *   feedu PLK (polish_trains.zip, tylko kursy dotykające Warszawy), WKD
  *   z własnego feedu (wkd.zip). Bez PDP i bez klucza.
  * Poznań:
- *   ZTM Poznań (mirror cdn.zbiorkom.live/gtfs/poznan.zip; upstream to
+ *   ZTM Poznań (GTFS z api.zbiorkom.live; upstream to
  *   oficjalny permalink www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile,
  *   ale nie zwraca Last-Modified/ETag, więc skip buildu nie wykryłby zmian)
  *   + Koleje Wielkopolskie z własnego publicznego GTFS (pkp-kw.zip, linie
@@ -38,7 +38,7 @@
   *   + SKM z własnego publicznego GTFS (numer pociągu w trip_short_name,
   *   tylko kursy dotykające aglomeracji). Bez PDP i bez klucza.
  * Łódź:
- *   ZDiT Łódź (mirror cdn.zbiorkom.live/gtfs/lodz.zip: tramwaje + autobusy
+ *   ZDiT Łódź (GTFS z api.zbiorkom.live: tramwaje + autobusy
  *   + linie zastępcze Z/R i nocne N, statyczny zrzut jak Poznań)
  *   + Łódzka Kolej Aglomeracyjna z własnego publicznego GTFS (pkp-lka.zip,
  *   linie Ł/ŁP/ŁS + ZKA jako route_type 3). Bez PDP i bez klucza.
@@ -55,48 +55,48 @@
  *   do skipu buildu). Kolej nie ma publicznego GTFS, więc miasto jedzie
  *   bez sekcji kolejowej. Bez PDP i bez klucza.
  * Olsztyn:
- *   ZDZiT Olsztyn (mirror cdn.zbiorkom.live/gtfs/olsztyn.zip: tramwaje 1–5
+ *   ZDZiT Olsztyn (GTFS z api.zbiorkom.live: tramwaje 1–5
  *   + autobusy + nocne N01/N02, statyczny zrzut, tylko calendar_dates).
  *   Oficjalna strona zdzit.olsztyn.eu/gtfs to WordPress z ręcznie
- *   wrzucanymi archiwami, więc źródłem jest mirror: zwraca poprawne
- *   Last-Modified/ETag i skip buildu działa wprost. Kolei nie ma wcale
+ *   wrzucanymi archiwami, więc źródłem jest API zbiorkom.live: zwraca
+ *   poprawne Last-Modified/ETag i skip buildu działa wprost. Kolei nie ma wcale
  *   (region nie ma publicznego GTFS kolejowego), więc miasto jedzie bez
  *   sekcji kolejowej. Bez PDP i bez klucza.
  * Białystok:
- *   BKM Białystok (mirror cdn.zbiorkom.live/gtfs/bialystok.zip: autobusy
+ *   BKM Białystok (GTFS z api.zbiorkom.live: autobusy
  *   1–30, 100+, J/J1–J6 i nocne N1–N6, statyczny zrzut z poprawnymi
  *   Last-Modified/ETag do skipu buildu; upstream to oficjalny permalink
  *   komunikacja.bialystok.pl/cms/File/download/gtfs/google_transit.zip,
  *   ale nie zwraca Last-Modified ani ETag, więc fingerprint i pobieranie
- *   idą z mirroru jak w Poznaniu i Łodzi). Kolej regionalna (POLREGIO)
+ *   idą z API zbiorkom.live jak w Poznaniu i Łodzi). Kolej regionalna (POLREGIO)
  *   nie ma publicznego GTFS, więc miasto jedzie bez sekcji kolejowej.
  *   Bez PDP i bez klucza.
  * Opole:
- *   MZK Opole z mirroru cdn.zbiorkom.live (autobusy dzienne 1–80 + nocne
+ *   MZK Opole z API zbiorkom.live (autobusy dzienne 1–80 + nocne
  *   N1–N2 i szkolne SZ1–SZ20, statyczny zrzut jak Poznań; bez calendar.txt,
  *   tylko calendar_dates, więc idzie generyczną ścieżką). Kolei brak
  *   (żaden publiczny GTFS nie kryje Opola), więc miasto jedzie bez sekcji
  *   kolejowej. Bez PDP i bez klucza.
  * Rzeszów:
- *   ZTM Rzeszów (mirror cdn.zbiorkom.live/gtfs/rzeszow.zip; upstream to
- *   mkuran.pl/gtfs/rzeszow.zip, ale mirror jest świeższy i odświeżany
- *   codziennie ok. 01:45 UTC z poprawnymi nagłówkami do skipu buildu):
+ *   ZTM Rzeszów (GTFS z api.zbiorkom.live; upstream to
+ *   mkuran.pl/gtfs/rzeszow.zip, ale API zbiorkom.live jest świeższe
+ *   (odświeżane codziennie) i zwraca poprawne nagłówki do skipu buildu):
  *   autobusy 0A/0B + 1–62 + nocne N1–N3 + PT, statyczny zrzut jak Poznań
  *   (tylko calendar_dates.txt, bez calendar.txt). Kolej nie ma publicznego
  *   GTFS ani feedu live w bboxie, więc miasto jedzie bez sekcji kolejowej.
  *   Bez PDP i bez klucza.
  * Lublin:
- *   ZDiTM Lublin z mirroru cdn.zbiorkom.live/gtfs/lublin.zip (autobusy
+ *   ZDiTM Lublin z API zbiorkom.live (autobusy
  *   2–85 + trolejbusy 150–162 z route_type 11 + nocne N1–N3, miejskie
  *   301–303, 912/917/922 i 950, statyczny zrzut jak Łódź: Last-Modified/
- *   ETag z mirroru, odświeżany codziennie ok. 01:45 UTC, licencja CC0 1.0).
+ *   ETag z API, odświeżane codziennie, licencja CC0 1.0).
  *   Kolej (POLREGIO/IC przez Lublin) nie ma publicznego GTFS w zakresie
  *   budowy, więc miasto jedzie bez sekcji kolejowej. Bez PDP i bez klucza.
  * Radom:
  *   MZDiK Radom z feedu mkuran.pl/gtfs/radom.zip (autobusy 1–27 + nocne
  *   N1–N3, licencja CC0 1.0; serwer zwraca poprawne Last-Modified/ETag,
- *   więc fingerprint i skip buildu działają wprost na źródle; mirror
- *   cdn.zbiorkom.live/gtfs/radom.zip w manifeście). Feed to eksport
+ *   więc fingerprint i skip buildu działają wprost na źródle; feed
+ *   api.zbiorkom.live/radom/gtfs/default w manifeście). Feed to eksport
  *   dzienny: trip_id niosą datę, kalendarz siedzi wyłącznie
  *   w calendar_dates.txt, więc import jest zwarty (kursy grupowane po
  *   sygnaturze czasów jak Warszawa). Kolei nie ma wcale. Bez PDP i bez klucza.
@@ -125,7 +125,7 @@ import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
+import { ADDRESSES_DB_SCHEMA, addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
 import { importPois, loadPoiSnapshot } from './build-pois.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -134,7 +134,69 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const WRITE_COORDS = args.has('--write-coords');
 const CITY_ARG = [...args].map((a) => /^--city=(.+)$/.exec(a)?.[1]).find(Boolean) || '';
-const CITY = CITY_ARG === 'krakow' ? 'krakow' : CITY_ARG === 'gzm' ? 'gzm' : CITY_ARG === 'warszawa' ? 'warszawa' : CITY_ARG === 'poznan' ? 'poznan' : CITY_ARG === 'trojmiasto' ? 'trojmiasto' : CITY_ARG === 'lodz' ? 'lodz' : CITY_ARG === 'szczecin' ? 'szczecin' : CITY_ARG === 'kielce' ? 'kielce' : CITY_ARG === 'olsztyn' ? 'olsztyn' : CITY_ARG === 'bialystok' ? 'bialystok' : CITY_ARG === 'opole' ? 'opole' : CITY_ARG === 'rzeszow' ? 'rzeszow' : CITY_ARG === 'lublin' ? 'lublin' : CITY_ARG === 'radom' ? 'radom' : 'wroclaw';
+/**
+ * Miasta dodane w 2026: pojedyncze statyczne feedy GTFS (bez PDP, bez kolei).
+ * Tabela zamiast gałęzi per miasto, bo 16 kopii skipu/manifestu to setki
+ * linii powtórzenia; `key` to klucz w manifest.sources (skip po fingerprint).
+ * Wszystkie źródła zwracają Last-Modified/ETag (zweryfikowane), więc
+ * fingerprint i skip idą wprost na źródło (wzorzec Radom). Licencje:
+ * mkuran.pl to CC0 1.0, ODT (data/api.odt.org.pl) to otwarte dane
+ * samorządowe, kasznia.net udostępnia zrzuty publicznie.
+ */
+const NEW_CITY_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
+const NEW_CITY_FEEDS = {
+  bydgoszcz: { key: 'zdmikp', label: 'ZDMiKP', url: 'https://mkuran.pl/gtfs/bydgoszcz.zip' },
+  torun: { key: 'mzk', label: 'MZK', url: 'https://mkuran.pl/gtfs/torun.zip' },
+  elblag: { key: 'zkm', label: 'ZKM', url: 'https://mkuran.pl/gtfs/elblag.zip' },
+  gorzow: { key: 'mzk', label: 'MZK', url: 'https://mkuran.pl/gtfs/gorzow_wlkp.zip' },
+  czestochowa: { key: 'mpk', label: 'MPK', url: 'https://data.odt.org.pl/gtfs/czestochowa-gtfs.zip' },
+  zielonagora: { key: 'mzk', label: 'MZK', url: 'https://data.odt.org.pl/gtfs/zielona-gora-gtfs.zip' },
+  rybnik: { key: 'km', label: 'KM', url: 'https://data.odt.org.pl/gtfs/rybnik-gtfs.zip' },
+  slupsk: { key: 'zim', label: 'ZIM', url: 'https://data.odt.org.pl/gtfs/slupsk-gtfs.zip' },
+  // Feed 20 „SKA” to nadzbiór feedu 19 (MUZK): te same linie MZUK plus 10,
+  // 15 i 20 do gmin powiatu wałbrzyskiego. Same autobusy (route_type 3),
+  // mimo nazwy w ODT nie ma tu kolei.
+  walbrzych: { key: 'mzuk', label: 'MZUK', url: 'https://api.odt.org.pl/feed/20/SKA.zip' },
+  siedlce: { key: 'mpk', label: 'MPK', url: 'https://ftp.mpk.siedlce.pl/GTFS-ST/GTFS.zip' },
+  lomza: { key: 'mpk', label: 'MPK', url: 'https://mpklomza.pl/dane-otwarte/GTFS-static.zip' },
+  krosno: { key: 'mks', label: 'MKS', url: 'https://mks.ekrosno.pl/GTFS-ST/GTFS.zip' },
+  jaslo: { key: 'mks', label: 'MKS', url: 'https://data.odt.org.pl/gtfs/jaslo-gtfs.zip' },
+  olkusz: { key: 'zkgkm', label: 'ZKGKM', url: 'https://data.odt.org.pl/gtfs/olkusz-gtfs.zip' },
+  chrzanow: { key: 'zkkm', label: 'ZKKM', url: 'https://data.odt.org.pl/gtfs/zkkm-gtfs.zip' },
+  bochnia: { key: 'rpk', label: 'RPK', url: 'https://api.odt.org.pl/feed/21/GTFS_RPKBochnia.zip' },
+  ilawa: { key: 'zkm', label: 'ZKM', url: 'https://api.odt.org.pl/feed/30/gtfs-ILAWA.zip' },
+};
+
+/**
+ * Kalisz: trzy feedy kasznia.net merdżowane prefiksami (wzorzec Kraków).
+ * Miasto (KLA) idzie ostatnie, bo 111 przystanków miejskich ma wspólne
+ * stop_id z feedem „others” (SDIP Kalisz) i REPLACE zostawia czyste nazwy
+ * bez prefiksu „Kalisz, ”. Reszta id z prefiksem KAL:{K,O,P}.
+ */
+const KALISZ_FEEDS = [
+  { label: 'Others', url: 'https://gtfs.kasznia.net/static/kalisz-others.zip', prefix: 'O' },
+  { label: 'PKS', url: 'https://gtfs.kasznia.net/static/kalisz-pks.zip', prefix: 'P' },
+  { label: 'KLA', url: 'https://gtfs.kasznia.net/static/kalisz.zip', prefix: 'K' },
+];
+
+const CITY =
+  CITY_ARG === 'krakow' ? 'krakow'
+  : CITY_ARG === 'gzm' ? 'gzm'
+  : CITY_ARG === 'warszawa' ? 'warszawa'
+  : CITY_ARG === 'poznan' ? 'poznan'
+  : CITY_ARG === 'trojmiasto' ? 'trojmiasto'
+  : CITY_ARG === 'lodz' ? 'lodz'
+  : CITY_ARG === 'szczecin' ? 'szczecin'
+  : CITY_ARG === 'kielce' ? 'kielce'
+  : CITY_ARG === 'olsztyn' ? 'olsztyn'
+  : CITY_ARG === 'bialystok' ? 'bialystok'
+  : CITY_ARG === 'opole' ? 'opole'
+  : CITY_ARG === 'rzeszow' ? 'rzeszow'
+  : CITY_ARG === 'lublin' ? 'lublin'
+  : CITY_ARG === 'radom' ? 'radom'
+  : CITY_ARG === 'kalisz' ? 'kalisz'
+  : NEW_CITY_FEEDS[CITY_ARG] ? CITY_ARG
+  : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
 const DIST = join(ROOT, 'dist', CITY);
@@ -259,14 +321,22 @@ const WKD_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@ki
 const WAW_ENVELOPE = { minLat: 51.95, maxLat: 52.45, minLon: 20.75, maxLon: 21.35 };
 
 /**
+ * Skompilowane feedy z API zbiorkom.live v6. Każde miasto ma osobny
+ * endpoint {miasto}/gtfs/{agencja}, a serwer zwraca Last-Modified z czasu
+ * kompilacji, więc fingerprint i skip buildu działają wprost. To następca
+ * wyłączonego mirroru cdn.zbiorkom.live/gtfs/*.zip.
+ */
+const ZBIORKOM_GTFS = 'https://api.zbiorkom.live/api6-open';
+
+/**
  * Poznań: statyczny zrzut ZTM (tramwaje + autobusy + linie podmiejskie).
  * Upstream to oficjalny permalink ZTM, ale serwer nie zwraca Last-Modified
  * ani ETag (a nazwa pliku z oknem ważności jest dopiero w nagłówku
  * Content-Disposition po pobraniu całości), więc fingerprint i pobieranie
- * idą z mirroru cdn.zbiorkom.live (ten sam zrzut, odświeżany codziennie
- * ok. 01:45 UTC, z poprawnymi nagłówkami do skipu buildu).
+ * idą z API zbiorkom.live (ten sam zrzut, odświeżany codziennie, z poprawnymi
+ * nagłówkami do skipu buildu).
  */
-const POZNAN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/poznan.zip';
+const POZNAN_GTFS_URL = `${ZBIORKOM_GTFS}/poznan/gtfs/default`;
 const POZNAN_GTFS_UPSTREAM = 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile';
 const POZNAN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
@@ -277,42 +347,45 @@ const POZNAN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev
  * aglomeracji (ten sam wzorzec co KM w Warszawie), ale z pełną geometrią
  * (da się jechać za miasto). Numer pociągu siedzi w trip_short_name.
  */
-const KW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-kw.zip';
+const KW_GTFS_URL = `${ZBIORKOM_GTFS}/pkp/gtfs/KW`;
 const KW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia aglomeracji: kurs KW łapiemy, gdy ma choć jeden postój w środku. */
 const POZ_ENVELOPE = { minLat: 52.1, maxLat: 52.65, minLon: 16.5, maxLon: 17.4 };
 
 /**
- * Trójmiasto: oba feedy miejskie idą z mirroru cdn.zbiorkom.live (ten sam
- * wzorzec co Poznań: mirror ma poprawne Last-Modified/ETag do skipu buildu,
- * upstreamy niekoniecznie). Gdańsk to eksport dzienny (trip_id z datą,
- * tylko calendar_dates), Gdynia to statyczny zrzut.
+ * Trójmiasto: oba feedy miejskie idą z API zbiorkom.live (ten sam wzorzec
+ * co Poznań: poprawne Last-Modified/ETag do skipu buildu, upstreamy
+ * niekoniecznie). Gdańsk to eksport dzienny (trip_id z datą, tylko
+ * calendar_dates), Gdynia to statyczny zrzut.
  */
-const TRICITY_GDA_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/tricity-gdansk.zip';
+const TRICITY_GDA_GTFS_URL = `${ZBIORKOM_GTFS}/tricity/gtfs/default`;
 const TRICITY_GDA_GTFS_UPSTREAM = 'https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/30e783e4-2bec-4a7d-bb22-ee3e3b26ca96/download/gtfsgoogle.zip';
-const TRICITY_GDY_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/tricity-gdynia.zip';
+const TRICITY_GDY_GTFS_URL = `${ZBIORKOM_GTFS}/tricity/gtfs/GDYNIA`;
 const TRICITY_GDY_GTFS_UPSTREAM = 'http://api.zdiz.gdynia.pl/pt/gtfs.zip';
 const TRICITY_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
- * SKM Trójmiasto: własny publiczny GTFS (wszystkie kursy to SKM,
+ * SKM Trójmiasto: oficjalny GTFS od PKP SKM (wszystkie kursy to SKM,
  * route_type 2; numer pociągu siedzi w trip_short_name, np. "59606").
+ * Serwer zwraca Last-Modified/ETag, więc skip buildu działa wprost.
  * Feed sięga Słupska, więc do bazy trafiają tylko kursy dotykające
  * obwiedni aglomeracji (ten sam wzorzec co KM/KW), ale z pełną geometrią.
  */
-const SKMT_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-skmt.zip';
-const SKMT_GTFS_UPSTREAM = 'https://bip.skm.pkp.pl/otwarte-dane';
+const SKMT_GTFS_URL = 'https://www.skm.pkp.pl/gtfs-mi-kpd.zip';
+const SKMT_GTFS_UPSTREAM = 'https://bip.skm.pkp.pl/c60/rozklad-jazdy';
 const SKMT_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia Trójmiasta z zapasem: kurs SKM łapiemy, gdy ma postój w środku. */
 const TRI_ENVELOPE = { minLat: 54.05, maxLat: 54.7, minLon: 18.1, maxLon: 19.05 };
 
 /**
  * Łódź: statyczny zrzut ZDiT (tramwaje + autobusy + linie zastępcze Z/R,
- * nocne N i podmiejskie). Ten sam wzorzec co Poznań: mirror
- * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
- * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
+ * nocne N i podmiejskie). Ten sam wzorzec co Poznań: API zbiorkom.live
+ * z poprawnymi nagłówkami do skipu buildu (Last-Modified/ETag, odświeżane
+ * codziennie). Gdy mirror padnie, pobieranie idzie z oficjalnego archiwum
+ * UMŁ (stały URL, plik podmieniany w miejscu).
  */
-const LODZ_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/lodz.zip';
+const LODZ_GTFS_URL = `${ZBIORKOM_GTFS}/lodz/gtfs/default`;
+const LODZ_GTFS_UPSTREAM = 'https://otwarte.miasto.lodz.pl/wp-content/uploads/2025/06/GTFS.zip';
 const LODZ_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
@@ -323,7 +396,7 @@ const LODZ_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@k
  * geometrią (da się jechać za miasto). Numer pociągu to pierwszy token
  * trip_short_name przed "/" (np. "11572" z "11572/3").
  */
-const LKA_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/pkp-lka.zip';
+const LKA_GTFS_URL = `${ZBIORKOM_GTFS}/pkp/gtfs/LKA`;
 const LKA_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 /** Obwiednia aglomeracji: kurs ŁKA łapiemy, gdy ma choć jeden postój w środku. */
 const LODZ_ENVELOPE = { minLat: 51.5, maxLat: 52.0, minLon: 19.0, maxLon: 19.9 };
@@ -346,12 +419,12 @@ const KIELCE_GTFS_URL = 'https://mkuran.pl/gtfs/kielce.zip';
 const KIELCE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
- * Olsztyn: mirror ZDZiT (tramwaje 1–5 + autobusy + nocne N01/N02). Oficjalna
+ * Olsztyn: feed ZDZiT (tramwaje 1–5 + autobusy + nocne N01/N02). Oficjalna
  * strona ZDZiT to WordPress z ręcznie wrzucanymi archiwami bez stabilnego
- * permalinka, a mirror zwraca poprawne Last-Modified/ETag, więc skip buildu
- * działa wprost (ten sam powód co przy Poznaniu i Łodzi).
+ * permalinka, a API zbiorkom.live zwraca poprawne Last-Modified/ETag, więc
+ * skip buildu działa wprost (ten sam powód co przy Poznaniu i Łodzi).
  */
-const OLSZTYN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/olsztyn.zip';
+const OLSZTYN_GTFS_URL = `${ZBIORKOM_GTFS}/olsztyn/gtfs/default`;
 const OLSZTYN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
@@ -359,43 +432,41 @@ const OLSZTYN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: de
  * Upstream to oficjalny permalink BKM, ale serwer nie zwraca Last-Modified
  * ani ETag (a nazwa pliku z datą modyfikacji jest dopiero w nagłówku
  * Content-Disposition po pobraniu całości), więc fingerprint i pobieranie
- * idą z mirroru cdn.zbiorkom.live (ten sam wzorzec co Poznań i Łódź:
- * ten sam zrzut, odświeżany codziennie ok. 01:45 UTC, z poprawnymi
- * nagłówkami do skipu buildu).
+ * idą z API zbiorkom.live (ten sam wzorzec co Poznań i Łódź: ten sam zrzut,
+ * odświeżany codziennie, z poprawnymi nagłówkami do skipu buildu).
  */
-const BIALYSTOK_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/bialystok.zip';
+const BIALYSTOK_GTFS_URL = `${ZBIORKOM_GTFS}/bialystok/gtfs/default`;
 const BIALYSTOK_GTFS_UPSTREAM = 'http://komunikacja.bialystok.pl/cms/File/download/gtfs/google_transit.zip';
 const BIALYSTOK_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Opole: statyczny zrzut MZK (autobusy dzienne + nocne N1–N2 i szkolne
- * SZ1–SZ20, sama route_type 3). Ten sam wzorzec co Poznań i Łódź: mirror
- * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
- * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
+ * SZ1–SZ20, sama route_type 3). Ten sam wzorzec co Poznań i Łódź:
+ * API zbiorkom.live z poprawnymi nagłówkami do skipu buildu
+ * (Last-Modified/ETag, odświeżane codziennie).
  */
-const OPOLE_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/opole.zip';
+const OPOLE_GTFS_URL = `${ZBIORKOM_GTFS}/opole/gtfs/default`;
 const OPOLE_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Rzeszów: statyczny zrzut ZTM (autobusy + nocne N1–N3 + PT).
- * Upstream to mkuran.pl/gtfs/rzeszow.zip, ale mirror cdn.zbiorkom.live
- * jest świeższy (odświeżany codziennie ok. 01:45 UTC) i zwraca poprawne
- * Last-Modified/ETag, więc fingerprint i pobieranie idą z mirroru
- * (ten sam wzorzec co Poznań i Łódź).
+ * Upstream to mkuran.pl/gtfs/rzeszow.zip, ale API zbiorkom.live jest
+ * świeższe (odświeżane codziennie) i zwraca poprawne Last-Modified/ETag,
+ * więc fingerprint i pobieranie idą z API (ten sam wzorzec co Poznań i Łódź).
  */
-const RZESZOW_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/rzeszow.zip';
+const RZESZOW_GTFS_URL = `${ZBIORKOM_GTFS}/rzeszow/gtfs/default`;
 const RZESZOW_GTFS_UPSTREAM = 'https://mkuran.pl/gtfs/rzeszow.zip';
 const RZESZOW_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 /**
  * Lublin: statyczny zrzut ZDiTM (autobusy + trolejbusy 150–162 jako
- * route_type 11 + nocne N1–N3). Ten sam wzorzec co Łódź: mirror
- * cdn.zbiorkom.live z poprawnymi nagłówkami do skipu buildu
- * (Last-Modified/ETag, odświeżany codziennie ok. 01:45 UTC).
- * Oryginał mkuran.pl/gtfs/lublin.zip trzymamy w komentarzu jako awaryjne
- * źródło (ten sam plik, licencja CC0 1.0).
+ * route_type 11 + nocne N1–N3). Ten sam wzorzec co Łódź: API zbiorkom.live
+ * z poprawnymi nagłówkami do skipu buildu (Last-Modified/ETag, odświeżane
+ * codziennie). Gdy mirror padnie, pobieranie idzie z mkuran.pl/gtfs/lublin.zip
+ * (ten sam plik, licencja CC0 1.0).
  */
-const LUBLIN_GTFS_URL = 'https://cdn.zbiorkom.live/gtfs/lublin.zip';
+const LUBLIN_GTFS_URL = `${ZBIORKOM_GTFS}/lublin/gtfs/default`;
+const LUBLIN_GTFS_UPSTREAM = 'https://mkuran.pl/gtfs/lublin.zip';
 const LUBLIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 
@@ -403,11 +474,11 @@ const LUBLIN_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev
  * Radom: feed MZDiK (mkuran.pl/gtfs/radom.zip: autobusy 1–27 + nocne N1–N3,
  * licencja CC0 1.0). Autor feedu zwraca poprawne Last-Modified/ETag, więc
  * fingerprint i skip buildu idą wprost na źródle (jak Szczecin). Mirror
- * cdn.zbiorkom.live/gtfs/radom.zip trafia tylko do manifestu jako źródło
- * zapasowe, gdyby mkuran.pl kiedyś przestał odpowiadać.
+ * z API zbiorkom.live trafia tylko do manifestu jako źródło zapasowe,
+ * gdyby mkuran.pl kiedyś przestał odpowiadać.
  */
 const RADOM_GTFS_URL = 'https://mkuran.pl/gtfs/radom.zip';
-const RADOM_GTFS_MIRROR = 'https://cdn.zbiorkom.live/gtfs/radom.zip';
+const RADOM_GTFS_MIRROR = `${ZBIORKOM_GTFS}/radom/gtfs/default`;
 const RADOM_UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilometr.local)' };
 
 
@@ -572,6 +643,28 @@ async function fetchBuffer(url, headers = {}, timeoutMs = 120000) {
   } finally {
     clearTimeout(t);
   }
+}
+
+/**
+ * Pobranie feedu z fallbackiem: najpierw mirror zbiorkom.live, a gdy padnie
+ * (sieć, 5xx, 404), oficjalny upstream. Zwraca też URL, z którego faktycznie
+ * poszło pobranie, żeby manifest mówił prawdę.
+ */
+async function fetchFeed(src, timeoutMs = 180000) {
+  try {
+    return { buf: await fetchBuffer(src.url, src.headers, timeoutMs), url: src.url };
+  } catch (error) {
+    if (!src.fallback) throw error;
+    warn(`${src.label}: mirror nie odpowiada (${error.message}), próbuję upstream ${src.fallback}`);
+    return { buf: await fetchBuffer(src.fallback, src.headers, timeoutMs), url: src.fallback };
+  }
+}
+
+/** Fingerprint z mirrora, a gdy mirror milczy, z upstreamu (może być pusty). */
+async function headVersionWithFallback(url, fallback, headers = {}) {
+  const version = await headVersion(url, headers);
+  if (version || !fallback) return version;
+  return headVersion(fallback, headers);
 }
 
 /** Tani fingerprint feedu (do skipu buildu): Last-Modified albo ETag. */
@@ -2169,6 +2262,8 @@ async function main() {
   let rzeszowFingerprint = '';
   let lublinFingerprint = '';
   let radomFingerprint = '';
+  let newCityFingerprint = '';
+  let kaliszFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
       gtfsSources.push({ label: `ZTP-${f.prefix}`, url: f.url, prefix: `KRK:${f.prefix}`, headers: ZTP_UA });
@@ -2188,26 +2283,26 @@ async function main() {
     wkdVersion = await headVersion(WKD_GTFS_URL, WKD_UA);
     log('WTP:', wawFingerprint || '?', '| KM:', kmVersion || '?', '| WKD:', wkdVersion || '?');
   } else if (CITY === 'poznan') {
-    gtfsSources = [{ label: 'ZTM', url: POZNAN_GTFS_URL, prefix: '', headers: POZNAN_UA }];
-    poznanFingerprint = await headVersion(POZNAN_GTFS_URL, POZNAN_UA);
+    gtfsSources = [{ label: 'ZTM', url: POZNAN_GTFS_URL, fallback: POZNAN_GTFS_UPSTREAM, prefix: '', headers: POZNAN_UA }];
+    poznanFingerprint = await headVersionWithFallback(POZNAN_GTFS_URL, POZNAN_GTFS_UPSTREAM, POZNAN_UA);
     kwVersion = await headVersion(KW_GTFS_URL, KW_UA);
     log('ZTM:', poznanFingerprint || '?', '| KW:', kwVersion || '?', '| upstream:', POZNAN_GTFS_UPSTREAM);
   } else if (CITY === 'trojmiasto') {
     // Dwa feedy miejskie mergujemy prefiksami GDA/GDY (ten sam wzorzec co
     // feedy ZTP Krakowa): id są dziś rozłączne, ale formaty ewoluują.
     gtfsSources = [
-      { label: 'ZTM-Gdansk', url: TRICITY_GDA_GTFS_URL, prefix: 'GDA', headers: TRICITY_UA },
-      { label: 'ZKM-Gdynia', url: TRICITY_GDY_GTFS_URL, prefix: 'GDY', headers: TRICITY_UA },
+      { label: 'ZTM-Gdansk', url: TRICITY_GDA_GTFS_URL, fallback: TRICITY_GDA_GTFS_UPSTREAM, prefix: 'GDA', headers: TRICITY_UA },
+      { label: 'ZKM-Gdynia', url: TRICITY_GDY_GTFS_URL, fallback: TRICITY_GDY_GTFS_UPSTREAM, prefix: 'GDY', headers: TRICITY_UA },
     ];
-    gdaFingerprint = await headVersion(TRICITY_GDA_GTFS_URL, TRICITY_UA);
-    gdyFingerprint = await headVersion(TRICITY_GDY_GTFS_URL, TRICITY_UA);
+    gdaFingerprint = await headVersionWithFallback(TRICITY_GDA_GTFS_URL, TRICITY_GDA_GTFS_UPSTREAM, TRICITY_UA);
+    gdyFingerprint = await headVersionWithFallback(TRICITY_GDY_GTFS_URL, TRICITY_GDY_GTFS_UPSTREAM, TRICITY_UA);
     skmtVersion = await headVersion(SKMT_GTFS_URL, SKMT_UA);
     log('GDA:', gdaFingerprint || '?', '| GDY:', gdyFingerprint || '?', '| SKMT:', skmtVersion || '?');
   } else if (CITY === 'lodz') {
-    gtfsSources = [{ label: 'ZDiT', url: LODZ_GTFS_URL, prefix: '', headers: LODZ_UA }];
-    lodzFingerprint = await headVersion(LODZ_GTFS_URL, LODZ_UA);
+    gtfsSources = [{ label: 'ZDiT', url: LODZ_GTFS_URL, fallback: LODZ_GTFS_UPSTREAM, prefix: '', headers: LODZ_UA }];
+    lodzFingerprint = await headVersionWithFallback(LODZ_GTFS_URL, LODZ_GTFS_UPSTREAM, LODZ_UA);
     lkaVersion = await headVersion(LKA_GTFS_URL, LKA_UA);
-    log('ZDiT:', lodzFingerprint || '?', '| ŁKA:', lkaVersion || '?');
+    log('ZDiT:', lodzFingerprint || '?', '| ŁKA:', lkaVersion || '?', '| upstream:', LODZ_GTFS_UPSTREAM);
   } else if (CITY === 'szczecin') {
     gtfsSources = [{ label: 'ZDiTM', url: SZCZECIN_GTFS_URL, prefix: '', headers: SZCZECIN_UA }];
     szczecinFingerprint = await headVersion(SZCZECIN_GTFS_URL, SZCZECIN_UA);
@@ -2221,25 +2316,41 @@ async function main() {
     olsztynFingerprint = await headVersion(OLSZTYN_GTFS_URL, OLSZTYN_UA);
     log('ZDZiT:', olsztynFingerprint || '?');
   } else if (CITY === 'bialystok') {
-    gtfsSources = [{ label: 'BKM', url: BIALYSTOK_GTFS_URL, prefix: '', headers: BIALYSTOK_UA }];
-    bialystokFingerprint = await headVersion(BIALYSTOK_GTFS_URL, BIALYSTOK_UA);
+    gtfsSources = [{ label: 'BKM', url: BIALYSTOK_GTFS_URL, fallback: BIALYSTOK_GTFS_UPSTREAM, prefix: '', headers: BIALYSTOK_UA }];
+    bialystokFingerprint = await headVersionWithFallback(BIALYSTOK_GTFS_URL, BIALYSTOK_GTFS_UPSTREAM, BIALYSTOK_UA);
     log('BKM:', bialystokFingerprint || '?', '| upstream:', BIALYSTOK_GTFS_UPSTREAM);
   } else if (CITY === 'opole') {
     gtfsSources = [{ label: 'MZK', url: OPOLE_GTFS_URL, prefix: '', headers: OPOLE_UA }];
     opoleFingerprint = await headVersion(OPOLE_GTFS_URL, OPOLE_UA);
     log('MZK:', opoleFingerprint || '?');
   } else if (CITY === 'rzeszow') {
-    gtfsSources = [{ label: 'ZTM', url: RZESZOW_GTFS_URL, prefix: '', headers: RZESZOW_UA }];
-    rzeszowFingerprint = await headVersion(RZESZOW_GTFS_URL, RZESZOW_UA);
+    gtfsSources = [{ label: 'ZTM', url: RZESZOW_GTFS_URL, fallback: RZESZOW_GTFS_UPSTREAM, prefix: '', headers: RZESZOW_UA }];
+    rzeszowFingerprint = await headVersionWithFallback(RZESZOW_GTFS_URL, RZESZOW_GTFS_UPSTREAM, RZESZOW_UA);
     log('ZTM:', rzeszowFingerprint || '?', '| upstream:', RZESZOW_GTFS_UPSTREAM);
   } else if (CITY === 'lublin') {
-    gtfsSources = [{ label: 'ZDiTM', url: LUBLIN_GTFS_URL, prefix: '', headers: LUBLIN_UA }];
-    lublinFingerprint = await headVersion(LUBLIN_GTFS_URL, LUBLIN_UA);
-    log('ZDiTM:', lublinFingerprint || '?');
+    gtfsSources = [{ label: 'ZDiTM', url: LUBLIN_GTFS_URL, fallback: LUBLIN_GTFS_UPSTREAM, prefix: '', headers: LUBLIN_UA }];
+    lublinFingerprint = await headVersionWithFallback(LUBLIN_GTFS_URL, LUBLIN_GTFS_UPSTREAM, LUBLIN_UA);
+    log('ZDiTM:', lublinFingerprint || '?', '| upstream:', LUBLIN_GTFS_UPSTREAM);
   } else if (CITY === 'radom') {
     gtfsSources = [{ label: 'MZDiK', url: RADOM_GTFS_URL, prefix: '', headers: RADOM_UA }];
     radomFingerprint = await headVersion(RADOM_GTFS_URL, RADOM_UA);
     log('MZDiK:', radomFingerprint || '?');
+  } else if (NEW_CITY_FEEDS[CITY]) {
+    const f = NEW_CITY_FEEDS[CITY];
+    gtfsSources = [{ label: f.label, url: f.url, prefix: '', headers: NEW_CITY_UA }];
+    newCityFingerprint = await headVersion(f.url, NEW_CITY_UA);
+    log(`${f.label}: ${newCityFingerprint || '?'}`);
+  } else if (CITY === 'kalisz') {
+    for (const f of KALISZ_FEEDS) {
+      gtfsSources.push({ label: f.label, url: f.url, prefix: `KAL:${f.prefix}`, headers: NEW_CITY_UA });
+    }
+    const versions = [];
+    for (const s of gtfsSources) {
+      s.version = await headVersion(s.url, s.headers);
+      versions.push(`${s.label}=${s.version || '?'}`);
+    }
+    kaliszFingerprint = versions.join('|');
+    log('Kalisz:', kaliszFingerprint);
   } else if (CITY === 'gzm') {
     if (!PDP_API_KEY) {
       throw new Error('GZM wymaga PDP_API_KEY (IC/PR z PDP API), inaczej baza byłaby bez kolei.');
@@ -2294,9 +2405,11 @@ async function main() {
   const lublinVersionReliable = CITY !== 'lublin' || !!lublinFingerprint;
 
   const radomVersionReliable = CITY !== 'radom' || !!radomFingerprint;
+  const newCityVersionReliable = !NEW_CITY_FEEDS[CITY] || !!newCityFingerprint;
+  const kaliszVersionReliable = CITY !== 'kalisz' || (gtfsSources.length > 0 && gtfsSources.every((s) => !!s.version));
 
 
-  if (!FORCE && remote?.sources && addressSnapshotIsFresh(remote.addresses)) {
+  if (!FORCE && remote?.sources && remote.dbSchema === ADDRESSES_DB_SCHEMA && addressSnapshotIsFresh(remote.addresses)) {
     if (CITY === 'krakow' && remote.sources.ztp?.fingerprint === ztpFingerprint && ztpFingerprint) {
       // Ten sam ZTP wystarczy do skipu tylko wtedy, gdy zdalna baza faktycznie
       // ma Koleje Małopolskie. Manifest sprzed ich wdrożenia ma zgodny odcisk
@@ -2486,6 +2599,24 @@ async function main() {
         process.exit(2);
       }
     }
+    if (NEW_CITY_FEEDS[CITY] && remote.sources[NEW_CITY_FEEDS[CITY].key]?.fingerprint === newCityFingerprint && newCityFingerprint) {
+      if (!newCityVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log(`brak zmian (${NEW_CITY_FEEDS[CITY].label}), skip buildu.`);
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
+    if (CITY === 'kalisz' && remote.sources.kalisz?.fingerprint === kaliszFingerprint && kaliszFingerprint) {
+      if (!kaliszVersionReliable) {
+        warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
+      } else {
+        log('brak zmian (KLA + Others + PKS), skip buildu.');
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+    }
     if (CITY === 'wroclaw'
       && remote.sources.mpk?.effectiveDate === mpk.effectiveDate
       && (remote.sources.kd?.schedulesVersion || 'none') === kdVersion) {
@@ -2545,9 +2676,9 @@ async function main() {
   for (const [i, src] of gtfsSources.entries()) {
     const zipPath = join(work, `gtfs-${i}.zip`);
     log(`pobieranie ZIP ${src.label}…`);
-    const zipBuf = await fetchBuffer(src.url, src.headers, 180000);
-    writeFileSync(zipPath, zipBuf);
-    log(`ZIP ${src.label}:`, (zipBuf.length / 1048576).toFixed(1), 'MB');
+    const feed = await fetchFeed(src);
+    writeFileSync(zipPath, feed.buf);
+    log(`ZIP ${src.label}:`, (feed.buf.length / 1048576).toFixed(1), 'MB', feed.url === src.url ? '' : `(fallback ${feed.url})`);
     const txtDir = join(work, `gtfs-${i}`);
     mkdirSync(txtDir, { recursive: true });
     // Niezerowy exit tolerujemy (np. brak opcjonalnego calendar.txt w feedzie:
@@ -4115,7 +4246,11 @@ async function main() {
               ? `${todayCompact()}-lublin${createHash('sha256').update(`${lublinFingerprint}`).digest('hex').slice(0, 8)}`
             : CITY === 'radom'
               ? `${todayCompact()}-radom${createHash('sha256').update(`${radomFingerprint}`).digest('hex').slice(0, 8)}`
-            : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
+            : CITY === 'kalisz'
+              ? `${todayCompact()}-kalisz${createHash('sha256').update(`${kaliszFingerprint}`).digest('hex').slice(0, 8)}`
+            : NEW_CITY_FEEDS[CITY]
+              ? `${todayCompact()}-${CITY}${createHash('sha256').update(`${newCityFingerprint}`).digest('hex').slice(0, 8)}`
+              : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const version = `${transitVersion}-addr${addressMetadata?.fingerprint.slice(0, 8) ?? 'none'}-poi${poiMetadata?.fingerprint.slice(0, 8) ?? 'none'}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
   meta.run('timetable_version', version);
@@ -4123,7 +4258,7 @@ async function main() {
   meta.run('gtfs_source', 'network');
   meta.run('address_snapshot', JSON.stringify(addressMetadata));
   meta.run('poi_snapshot', JSON.stringify(poiMetadata));
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : CITY === 'kalisz' ? { kalisz: kaliszFingerprint } : NEW_CITY_FEEDS[CITY] ? { [NEW_CITY_FEEDS[CITY].key]: newCityFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -4162,6 +4297,7 @@ async function main() {
 
   const manifest = {
     version,
+    dbSchema: ADDRESSES_DB_SCHEMA,
     addresses: addressMetadata,
     pois: poiMetadata,
     builtAt: new Date().toISOString(),
@@ -4238,7 +4374,7 @@ async function main() {
       : CITY === 'lodz'
       ? {
           mpk: {
-            kind: 'gtfs-zip', url: LODZ_GTFS_URL,
+            kind: 'gtfs-zip', url: LODZ_GTFS_URL, upstream: LODZ_GTFS_UPSTREAM,
             fingerprint: lodzFingerprint,
             stops: counts.stops - counts.lkaStations,
             routes: counts.routes - counts.lkaRoutes,
@@ -4304,7 +4440,7 @@ async function main() {
       : CITY === 'lublin'
       ? {
           zditm: {
-            kind: 'gtfs-zip', url: LUBLIN_GTFS_URL,
+            kind: 'gtfs-zip', url: LUBLIN_GTFS_URL, upstream: LUBLIN_GTFS_UPSTREAM,
             fingerprint: lublinFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
@@ -4315,6 +4451,24 @@ async function main() {
           mzdik: {
             kind: 'gtfs-zip', url: RADOM_GTFS_URL, mirror: RADOM_GTFS_MIRROR,
             fingerprint: radomFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : NEW_CITY_FEEDS[CITY]
+      ? {
+          [NEW_CITY_FEEDS[CITY].key]: {
+            kind: 'gtfs-zip', url: NEW_CITY_FEEDS[CITY].url,
+            fingerprint: newCityFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : CITY === 'kalisz'
+      ? {
+          kalisz: {
+            kind: 'gtfs-zip', urls: KALISZ_FEEDS.map((f) => f.url),
+            fingerprint: kaliszFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },

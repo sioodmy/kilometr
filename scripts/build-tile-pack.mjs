@@ -10,7 +10,7 @@
 // Katalog jest posortowany po (z, x, y), więc natywny serwer znajduje kafel
 // zwykłym wyszukiwaniem binarnym po pliku, bez wczytywania indeksu do RAM.
 //
-// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole|rzeszow|lublin|radom] [output]
+// Uruchomienie: node scripts/build-tile-pack.mjs [--city=wroclaw|krakow|gzm|warszawa|poznan|trojmiasto|lodz|szczecin|kielce|olsztyn|bialystok|opole|rzeszow|lublin|radom|bydgoszcz|torun|elblag|gorzow|czestochowa|zielonagora|rybnik|slupsk|walbrzych|kalisz|siedlce|lomza|krosno|jaslo|olkusz|chrzanow|bochnia|ilawa] [output]
 //
 // Nowe miasto = wpis w CITY_PACKS niżej (bbox + maxzoom + nazwa pliku).
 
@@ -119,6 +119,98 @@ const CITY_PACKS = {
     bbox: { minLon: 21.0, minLat: 51.28, maxLon: 21.36, maxLat: 51.5 },
     // Najmniejsza strefa z miast, ale gęste centrum: pomiar próbką kafli
     // z z14 (gzip -9) daje ~9,8 MB (jak tileBbox w cities.ts).
+    maxZoom: 14,
+  },
+  // Miasta z 2026: szacunki MB z gęstości istniejących paczek (radom 0,08 deg2
+  // = 10 MB), do zweryfikowania przy pierwszym buildzie.
+  bydgoszcz: {
+    out: 'bydgoszcz-tiles.ktp',
+    bbox: { minLon: 17.78, minLat: 52.94, maxLon: 18.35, maxLat: 53.34 },
+    maxZoom: 14,
+  },
+  torun: {
+    out: 'torun-tiles.ktp',
+    bbox: { minLon: 18.31, minLat: 52.91, maxLon: 18.94, maxLat: 53.11 },
+    maxZoom: 14,
+  },
+  elblag: {
+    out: 'elblag-tiles.ktp',
+    bbox: { minLon: 19.33, minLat: 54.12, maxLon: 19.59, maxLat: 54.25 },
+    maxZoom: 14,
+  },
+  gorzow: {
+    out: 'gorzow-tiles.ktp',
+    bbox: { minLon: 15.03, minLat: 52.67, maxLon: 15.34, maxLat: 52.78 },
+    maxZoom: 14,
+  },
+  czestochowa: {
+    out: 'czestochowa-tiles.ktp',
+    bbox: { minLon: 18.95, minLat: 50.72, maxLon: 19.3, maxLat: 50.89 },
+    maxZoom: 14,
+  },
+  zielonagora: {
+    out: 'zielonagora-tiles.ktp',
+    bbox: { minLon: 15.43, minLat: 51.82, maxLon: 15.67, maxLat: 52.01 },
+    maxZoom: 14,
+  },
+  rybnik: {
+    out: 'rybnik-tiles.ktp',
+    bbox: { minLon: 18.37, minLat: 49.99, maxLon: 18.71, maxLat: 50.2 },
+    maxZoom: 14,
+  },
+  slupsk: {
+    out: 'slupsk-tiles.ktp',
+    bbox: { minLon: 16.93, minLat: 54.4, maxLon: 17.16, maxLat: 54.52 },
+    maxZoom: 14,
+  },
+  walbrzych: {
+    out: 'walbrzych-tiles.ktp',
+    bbox: { minLon: 16.08, minLat: 50.61, maxLon: 16.4, maxLat: 50.87 },
+    maxZoom: 14,
+  },
+  kalisz: {
+    out: 'kalisz-tiles.ktp',
+    bbox: { minLon: 17.75, minLat: 51.6, maxLon: 18.35, maxLat: 51.92 },
+    maxZoom: 14,
+  },
+  siedlce: {
+    out: 'siedlce-tiles.ktp',
+    bbox: { minLon: 22.11, minLat: 52.05, maxLon: 22.59, maxLat: 52.27 },
+    maxZoom: 14,
+  },
+  lomza: {
+    out: 'lomza-tiles.ktp',
+    bbox: { minLon: 22.01, minLat: 53.13, maxLon: 22.13, maxLat: 53.23 },
+    maxZoom: 14,
+  },
+  krosno: {
+    out: 'krosno-tiles.ktp',
+    bbox: { minLon: 21.58, minLat: 49.61, maxLon: 21.89, maxLat: 49.84 },
+    maxZoom: 14,
+  },
+  jaslo: {
+    out: 'jaslo-tiles.ktp',
+    bbox: { minLon: 21.33, minLat: 49.63, maxLon: 21.71, maxLat: 49.86 },
+    maxZoom: 14,
+  },
+  olkusz: {
+    out: 'olkusz-tiles.ktp',
+    bbox: { minLon: 19.37, minLat: 50.19, maxLon: 19.7, maxLat: 50.42 },
+    maxZoom: 14,
+  },
+  chrzanow: {
+    out: 'chrzanow-tiles.ktp',
+    bbox: { minLon: 19.21, minLat: 50.03, maxLon: 19.58, maxLat: 50.22 },
+    maxZoom: 14,
+  },
+  bochnia: {
+    out: 'bochnia-tiles.ktp',
+    bbox: { minLon: 20.3, minLat: 49.88, maxLon: 20.55, maxLat: 50.1 },
+    maxZoom: 14,
+  },
+  ilawa: {
+    out: 'ilawa-tiles.ktp',
+    bbox: { minLon: 19.52, minLat: 53.55, maxLon: 19.62, maxLat: 53.63 },
     maxZoom: 14,
   },
 };

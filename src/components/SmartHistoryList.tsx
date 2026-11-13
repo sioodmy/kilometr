@@ -39,7 +39,7 @@ export function SmartHistoryList({
   if (items.length === 0) return null;
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: 10 }}>
       {!hideHeader && (
         <View style={styles.header}>
           <History size={16} color={scheme.primary} />
@@ -47,7 +47,7 @@ export function SmartHistoryList({
         </View>
       )}
       <View style={styles.list}>
-        {items.map((d, index) => {
+        {items.map((d) => {
           const departInMin = departures?.[d.id];
           const departLabel = formatDepartIn(departInMin, s);
           const meta = icons?.[d.id];
@@ -63,8 +63,7 @@ export function SmartHistoryList({
               style={({ pressed }) => [
                 styles.card,
                 compact && styles.cardCompact,
-                index > 0 && styles.cardDivider,
-                pressed && { backgroundColor: scheme.surfaceContainerHighest },
+                pressed && styles.cardPressed,
               ]}
             >
               <View style={styles.iconSlide}>
@@ -142,12 +141,7 @@ function formatDepartIn(departInMin: number | undefined, s: Strings): string | n
 }
 
 const styles = StyleSheet.create({
-  list: {
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.extraLarge,
-    paddingHorizontal: 4,
-  },
-  cardDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: scheme.outlineVariant },
+  list: { gap: 10 },
   cardCompact: { flexWrap: 'wrap' },
   rightSlideCompact: { width: '100%', maxWidth: '100%', paddingLeft: 56 },
   rightCompact: { flexDirection: 'row', justifyContent: 'flex-start', gap: 12 },
@@ -161,15 +155,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: shape.large,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.extraLarge,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     minHeight: 84,
   },
+  cardPressed: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    transform: [{ scale: 0.98 }],
+  },
   icon: {
-    width: 42,
-    height: 42,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: shape.large,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',

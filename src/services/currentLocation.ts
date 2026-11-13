@@ -223,6 +223,14 @@ function acquire(highAccuracy: boolean): () => void {
   };
 }
 
+/**
+ * Watch lokalizacji dla serwisów bez hooka (tripMonitor). Zwraca release.
+ * `highAccuracy` włączaj tylko na czas dojścia pieszo; domyślnie Balanced co 10 s.
+ */
+export function acquireCurrentLocation(highAccuracy = false): () => void {
+  return acquire(highAccuracy);
+}
+
 /** `highAccuracy` włączaj tylko na czas dojścia pieszo; domyślnie Balanced co 10 s. */
 export function useCurrentLocation(enabled = true, highAccuracy = false): LocationSnapshot {
   const value = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

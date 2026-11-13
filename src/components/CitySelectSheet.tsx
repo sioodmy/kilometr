@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -158,7 +158,92 @@ const CITY_ALIASES: Record<string, string[]> = {
     'wolanow',
     'zakrzew',
   ],
+  bydgoszcz: ['bydgoszcz', 'kujawy', 'kujawsko-pomorskie', 'zławieś wielka', 'zlawies wielka'],
+  torun: ['toruń', 'torun', 'kujawy', 'kujawsko-pomorskie', 'thorn'],
+  elblag: ['elbląg', 'elblag', 'elbing', 'żuławy', 'zulawy'],
+  gorzow: ['gorzów wielkopolski', 'gorzow wielkopolski', 'gorzów', 'gorzow', 'lubuskie'],
+  czestochowa: ['częstochowa', 'czestochowa', 'jura', 'województwo śląskie'],
+  zielonagora: ['zielona góra', 'zielona gora', 'lubuskie', 'grünberg'],
+  rybnik: ['rybnik', 'rybnicki', 'żory', 'zory', 'świerklany', 'swierklany'],
+  slupsk: ['słupsk', 'slupsk', 'pomorze', 'słupski', 'slupski', 'stolp'],
+  walbrzych: ['wałbrzych', 'walbrzych', 'dolny śląsk', 'dolnyslask', 'szczawno-zdrój', 'szczawno'],
+  kalisz: [
+    'kalisz',
+    'kaliskie',
+    'ostrow wielkopolski',
+    'ostrowskie',
+    'pleszew',
+    'skalmierzyce',
+    'opatówek',
+  ],
+  siedlce: ['siedlce', 'siedleckie', 'podlasie', 'podlaskie', 'mordy', 'suchożebry'],
+  lomza: ['łomża', 'lomza', 'podlasie', 'podlaskie', 'łomżyńskie', 'lomzynskie'],
+  krosno: ['krosno', 'krośnieńskie', 'krosnienskie', 'podkarpacie', 'podkarpackie'],
+  jaslo: ['jasło', 'jaslo', 'jasielskie', 'podkarpacie', 'podkarpackie'],
+  olkusz: ['olkusz', 'olkuski', 'bukowno', 'klucze'],
+  chrzanow: ['chrzanów', 'chrzanow', 'trzebinia', 'libiąż', 'libiaz', 'chełmek', 'chelmek'],
+  bochnia: ['bochnia', 'bocheńskie', 'bochenskie', 'małopolska', 'malopolska'],
+  ilawa: ['iława', 'ilawa', 'iławskie', 'ilawskie', 'warmia', 'mazury'],
 };
+
+/**
+ * Wpis listy z indeksem wyszukiwania policzonym raz na język. Normalizacja
+ * nazw, feedów i aliasów w trakcie pisania była wąskim gardłem przy 33 miastach.
+ */
+type CityEntry = {
+  city: CityDef;
+  name: string;
+  feeds: string;
+  nameNorm: string;
+  searchText: string;
+};
+
+const keyExtractor = (item: CityEntry) => item.city.id;
+
+/** Wiersz z własną memoizacją: wpisy są stabilne, więc scroll i pisanie nie przerenderowują całej listy. */
+const CityRow = memo(function CityRow({
+  entry,
+  active,
+  switching,
+  disabled,
+  onPress,
+}: {
+  entry: CityEntry;
+  active: boolean;
+  switching: boolean;
+  disabled: boolean;
+  onPress: (city: CityDef) => void;
+}) {
+  const { city, name, feeds } = entry;
+  return (
+    <Pressable
+      onPress={() => onPress(city)}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.cityItem,
+        active && styles.cityItemActive,
+        disabled && !active && styles.cityItemDisabled,
+        pressed && !disabled && { opacity: 0.75 },
+      ]}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: active, disabled }}
+      accessibilityLabel={`${name}, ${feeds}`}
+    >
+      <View style={styles.cityItemContent}>
+        <Text style={[styles.cityName, active && styles.cityNameActive]}>{name}</Text>
+        <Text style={[styles.cityFeeds, active && styles.cityFeedsActive]}>{feeds}</Text>
+      </View>
+
+      {switching ? (
+        <ActivityIndicator size="small" color={scheme.primary} />
+      ) : active ? (
+        <Check size={22} color={scheme.onPrimaryContainer} />
+      ) : (
+        <View style={styles.radioOutline} />
+      )}
+    </Pressable>
+  );
+});
 
 export interface CitySelectSheetProps {
   selectedCityId: CityId;
@@ -182,6 +267,13 @@ export function CitySelectSheet({
 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const selectRef = useRef(onSelectCity);
+  selectRef.current = onSelectCity;
+  const selectedRef = useRef(selectedCityId);
+  selectedRef.current = selectedCityId;
+  const switchingRef = useRef(switchingCity);
+  switchingRef.current = switchingCity;
+
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       closeRef.current();
@@ -193,6 +285,77 @@ export function CitySelectSheet({
   const handleClose = useCallback(() => {
     sheetRef.current?.close();
   }, []);
+
+  const entries = useMemo(() => {
+    const locale = getLocaleSync();
+    return CITIES.map((city) => {
+      const name = s.city.name(city.id);
+      const feeds = s.city.feeds(city.id);
+      const aliases = (CITY_ALIASES[city.id] ?? []).join(' ');
+      return {
+        city,
+        name,
+        feeds,
+        nameNorm: normalizePolish(name),
+        searchText: normalizePolish(
+          `${name} ${city.id} ${feeds} ${s.city.operator(city.id)} ${aliases}`,
+        ),
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name, locale));
+  }, [s]);
+
+  // Aktywne miasto pierwsze, ale dopiero po posortowaniu: sort na każdy render
+  // z localeCompare był odczuwalny przy otwieraniu arkusza.
+  const orderedEntries = useMemo(() => {
+    const index = entries.findIndex((entry) => entry.city.id === selectedCityId);
+    if (index <= 0) return entries;
+    const active = entries[index];
+    return [active, ...entries.slice(0, index), ...entries.slice(index + 1)];
+  }, [entries, selectedCityId]);
+
+  const normQuery = useMemo(() => normalizePolish(query), [query]);
+
+  const filteredCities = useMemo(() => {
+    if (!normQuery) return orderedEntries;
+    const prefixed: CityEntry[] = [];
+    const rest: CityEntry[] = [];
+    for (const entry of entries) {
+      if (!entry.searchText.includes(normQuery)) continue;
+      if (entry.nameNorm.startsWith(normQuery)) prefixed.push(entry);
+      else rest.push(entry);
+    }
+    if (prefixed.length === 0) return rest;
+    if (rest.length === 0) return prefixed;
+    return [...prefixed, ...rest];
+  }, [entries, normQuery, orderedEntries]);
+
+  const handleCityPress = useCallback((city: CityDef) => {
+    if (switchingRef.current) return;
+    if (city.id === selectedRef.current) {
+      sheetRef.current?.close();
+      return;
+    }
+    selectRef.current(city.id);
+    sheetRef.current?.close();
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: CityEntry }) => (
+      <CityRow
+        entry={item}
+        active={item.city.id === selectedCityId}
+        switching={Boolean(switchingCity) && switchingCityId === item.city.id}
+        disabled={Boolean(switchingCity)}
+        onPress={handleCityPress}
+      />
+    ),
+    [handleCityPress, selectedCityId, switchingCity, switchingCityId],
+  );
+
+  const listContentStyle = useMemo(
+    () => [styles.listContent, { paddingBottom: 24 + insets.bottom }],
+    [insets.bottom],
+  );
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -209,59 +372,18 @@ export function CitySelectSheet({
     [s.city.closeSheetA11y],
   );
 
-  const filteredCities = useMemo(() => {
-    const norm = normalizePolish(query);
-    if (!norm) {
-      return [...CITIES].sort((a, b) => {
-        if (a.id === selectedCityId) return -1;
-        if (b.id === selectedCityId) return 1;
-        return s.city.name(a.id).localeCompare(s.city.name(b.id), getLocaleSync());
-      });
-    }
-
-    return [...CITIES]
-      .filter((c) => {
-        const name = normalizePolish(s.city.name(c.id));
-        const id = normalizePolish(c.id);
-        const feeds = normalizePolish(s.city.feeds(c.id));
-        const op = normalizePolish(s.city.operator(c.id));
-        const aliases = CITY_ALIASES[c.id] ?? [];
-
-        if (name.includes(norm) || id.includes(norm) || feeds.includes(norm) || op.includes(norm)) {
-          return true;
-        }
-        return aliases.some((alias) => normalizePolish(alias).includes(norm));
-      })
-      .sort((a, b) => {
-        const aName = normalizePolish(s.city.name(a.id));
-        const bName = normalizePolish(s.city.name(b.id));
-        const aStarts = aName.startsWith(norm);
-        const bStarts = bName.startsWith(norm);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return aName.localeCompare(bName, getLocaleSync());
-      });
-  }, [query, s, selectedCityId]);
-
-  const handleCityPress = (city: CityDef) => {
-    if (switchingCity) return;
-    if (city.id === selectedCityId) {
-      handleClose();
-      return;
-    }
-    onSelectCity(city.id);
-    handleClose();
-  };
-
   return (
     <BottomSheet
       ref={sheetRef}
       index={0}
-      snapPoints={['82%', '96%']}
+      snapPoints={['92%']}
       topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       backdropComponent={renderBackdrop}
       onClose={onClose}
       backgroundStyle={styles.sheet}
@@ -313,47 +435,17 @@ export function CitySelectSheet({
 
         <BottomSheetFlatList
           data={filteredCities}
-          keyExtractor={(item: CityDef) => item.id}
+          keyExtractor={keyExtractor}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           overScrollMode="never"
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
           style={styles.list}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 24 + insets.bottom }]}
-          renderItem={({ item }: { item: CityDef }) => {
-            const active = item.id === selectedCityId;
-            const isSwitchingThis = switchingCity && switchingCityId === item.id;
-            const cityName = s.city.name(item.id);
-            const feeds = s.city.feeds(item.id);
-
-            return (
-              <Pressable
-                onPress={() => handleCityPress(item)}
-                disabled={switchingCity}
-                style={({ pressed }) => [
-                  styles.cityItem,
-                  active && styles.cityItemActive,
-                  switchingCity && !active && styles.cityItemDisabled,
-                  pressed && !switchingCity && { opacity: 0.75 },
-                ]}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: active, disabled: switchingCity }}
-                accessibilityLabel={`${cityName}, ${feeds}`}
-              >
-                <View style={styles.cityItemContent}>
-                  <Text style={[styles.cityName, active && styles.cityNameActive]}>{cityName}</Text>
-                  <Text style={[styles.cityFeeds, active && styles.cityFeedsActive]}>{feeds}</Text>
-                </View>
-
-                {isSwitchingThis ? (
-                  <ActivityIndicator size="small" color={scheme.primary} />
-                ) : active ? (
-                  <Check size={22} color={scheme.onPrimaryContainer} />
-                ) : (
-                  <View style={styles.radioOutline} />
-                )}
-              </Pressable>
-            );
-          }}
+          contentContainerStyle={listContentStyle}
+          renderItem={renderItem}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <MapPinOff size={28} color={scheme.onSurfaceVariant} />

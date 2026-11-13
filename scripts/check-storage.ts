@@ -229,8 +229,18 @@ async function main() {
   await assert.rejects(() => RoutingService.saveRoute(dummyConnection));
   assert.equal(files.get(path(routeKey)), 'corrupted json{');
 
+  // 9. Dlugie klucze (np. ticket:conn-[...]) nie przekraczaja limitu nazwy pliku i zapisuja sie poprawnie
+  const longKey = `ticket:conn-${encodeURIComponent(JSON.stringify([[51.109823482, 17.032849284, "Wroclaw Glowny"], [52.2296756, 21.0122287, "Warszawa Centralna"], 0, [["train", "IC 65100", "101", "202", "14:25", "17:15"]]]))}`;
+  await kvSet(longKey, '{"id":"ticket_123"}');
+  assert.equal(await kvGet(longKey), '{"id":"ticket_123"}');
+  const storedPaths = Array.from(files.keys());
+  const longKeyPath = storedPaths.find((p) => p.includes("ticket%3Aconn-"));
+  assert.ok(longKeyPath);
+  const fileName = longKeyPath.split("/").pop()!;
+  assert.ok(fileName.length <= 100, `Expected fileName length <= 100, got ${fileName.length}`);
+
   console.log(
-    'PASS: concurrent writes, removal, stale reads, retry, read after write, zip entry names, saved routes, strict write failures, backup import failure, empty smart cache',
+    'PASS: concurrent writes, removal, stale reads, retry, read after write, zip entry names, saved routes, strict write failures, backup import failure, empty smart cache, long key hashing',
   );
 }
 

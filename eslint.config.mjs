@@ -37,7 +37,7 @@ export default tseslint.config(
   },
   // Skrypty są celowo commonjs (app.config, pluginy Expo, skrypty tsx).
   {
-    files: ['**/*.js', '**/*.cjs', 'server/scripts/**/*.ts'],
+    files: ['**/*.js', '**/*.cjs', 'server/scripts/**/*.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },

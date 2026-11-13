@@ -50,6 +50,7 @@ export function TransferProtectionSheet({
   const expired =
     !!alternative && (now >= alternative.validUntil || now - state.updatedAt > 30_000);
   const warning = transferNeedsAttention(state);
+  const conductor = state.status === 'conductor';
   const compact = width / fontScale < 350;
   const Icon = warning ? ShieldAlert : ShieldCheck;
   const description =
@@ -59,17 +60,19 @@ export function TransferProtectionSheet({
         ? t.unavailableBody
         : state.status === 'noAlternative'
           ? t.noAlternative
-          : state.status === 'risk' || state.status === 'rerouting'
-            ? t.riskBody
-            : state.status === 'safe'
-              ? t.buffer(state.nextLine ?? '', Math.max(0, Math.floor((state.slackSec ?? 0) / 60)))
-              : state.status === 'complete'
-                ? t.complete
-                : state.status === 'changed'
-                  ? t.changedBody(state.nextLine ?? '', state.transferStop ?? '')
-                  : alternative
-                    ? t.unchanged
-                    : t.waiting;
+          : state.status === 'conductor'
+            ? t.conductorBody
+            : state.status === 'risk' || state.status === 'rerouting'
+              ? t.riskBody
+              : state.status === 'safe'
+                ? t.buffer(state.nextLine ?? '', Math.max(0, Math.floor((state.slackSec ?? 0) / 60)))
+                : state.status === 'complete'
+                  ? t.complete
+                  : state.status === 'changed'
+                    ? t.changedBody(state.nextLine ?? '', state.transferStop ?? '')
+                    : alternative
+                      ? t.unchanged
+                      : t.waiting;
   const remaining = alternative?.connection.legs
     .slice(alternative.activeLegIndex)
     .filter((_, index) => alternative.kind === 'fromHere' || index > 0);
@@ -165,24 +168,63 @@ export function TransferProtectionSheet({
                 )}
               </View>
             )}
-            {state.nextLine && (
-              <View style={styles.original}>
-                <View style={styles.flex}>
-                  <Text style={styles.label}>{t.originalPlan}</Text>
-                  <View style={styles.originalLine}>
-                    <LineBadge line={state.nextLine} />
-                    <Text style={styles.stopName}>{state.transferStop}</Text>
+            {state.nextLine &&
+              (conductor ? (
+                <View style={styles.planCard}>
+                  <View style={styles.planLabel}>
+                    <Text style={styles.planLabelText}>{t.originalPlan}</Text>
+                  </View>
+                  <View style={styles.planBody}>
+                    <View style={styles.originalLine}>
+                      <LineBadge line={state.nextLine} size="large" />
+                      <Text style={styles.planStop}>{state.transferStop}</Text>
+                    </View>
+                    {state.departureAtMs != null && (
+                      <View style={styles.planTime}>
+                        <Text style={styles.planTimeValue}>{clockFromMs(state.departureAtMs)}</Text>
+                        <Text style={styles.planTimeSource}>
+                          {state.departureSource === 'live' ? t.live : t.schedule}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
-                {state.departureAtMs != null && (
-                  <View style={styles.originalTime}>
-                    <Text style={styles.label}>{t.departure}</Text>
-                    <Text style={styles.timeSmall}>{clockFromMs(state.departureAtMs)}</Text>
-                    <Text style={styles.source}>
-                      {state.departureSource === 'live' ? t.live : t.schedule}
-                    </Text>
+              ) : (
+                <View style={styles.original}>
+                  <View style={styles.flex}>
+                    <Text style={styles.label}>{t.originalPlan}</Text>
+                    <View style={styles.originalLine}>
+                      <LineBadge line={state.nextLine} />
+                      <Text style={styles.stopName}>{state.transferStop}</Text>
+                    </View>
                   </View>
-                )}
+                  {state.departureAtMs != null && (
+                    <View style={styles.originalTime}>
+                      <Text style={styles.label}>{t.departure}</Text>
+                      <Text style={styles.timeSmall}>{clockFromMs(state.departureAtMs)}</Text>
+                      <Text style={styles.source}>
+                        {state.departureSource === 'live' ? t.live : t.schedule}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            {state.status === 'conductor' && state.nextTrain && (
+              <View style={styles.nextTrain}>
+                <View style={styles.flex}>
+                  <Text style={styles.label}>{t.nextTrainLabel}</Text>
+                  <View style={styles.originalLine}>
+                    <LineBadge line={state.nextTrain.label} />
+                    {state.nextTrain.trainName ? (
+                      <Text style={styles.stopName} numberOfLines={1} ellipsizeMode="tail">
+                        {state.nextTrain.trainName}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.originalTime}>
+                  <Text style={styles.label}>{t.nextTrainAt(clockFromMs(state.nextTrain.departAtMs))}</Text>
+                </View>
               </View>
             )}
             {alternative && (
@@ -331,7 +373,58 @@ const styles = StyleSheet.create({
   fact: { fontSize: 13, lineHeight: 20, color: scheme.onSurfaceVariant },
   warningFact: { color: scheme.warning },
   original: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, paddingVertical: 6 },
-  originalLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  // Tryb konduktora: obecny plan to rzecz, którą pokazujesz drużynie, więc dostaje
+  // pełny tonalny kontener, wypukły nagłówek i największy czas na ekranie.
+  planCard: {
+    borderRadius: 28,
+    borderTopLeftRadius: 8,
+    backgroundColor: scheme.primaryContainer,
+    overflow: 'hidden',
+  },
+  planLabel: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderBottomRightRadius: 16,
+    backgroundColor: scheme.primary,
+  },
+  planLabelText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: scheme.onPrimary,
+  },
+  planBody: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 18,
+  },
+  planStop: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    color: scheme.onPrimaryContainer,
+    flexShrink: 1,
+  },
+  planTime: { gap: 2 },
+  planTimeValue: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '600',
+    letterSpacing: -1,
+    color: scheme.onPrimaryContainer,
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+  },
+  planTimeSource: { fontSize: 12, lineHeight: 18, color: scheme.onPrimaryContainer },
+  nextTrain: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, paddingVertical: 6 },
+  originalLine: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   flex: { flex: 1, minWidth: 0, gap: 4 },
   stopName: { fontSize: 14, lineHeight: 20, color: scheme.onSurface, flexShrink: 1 },
   originalTime: { gap: 4 },
@@ -411,7 +504,7 @@ const styles = StyleSheet.create({
   stopText: {
     fontSize: 14,
     lineHeight: 20,
-    color: scheme.error,
+    color: scheme.onSurfaceVariant,
     textAlign: 'center',
     flexShrink: 1,
   },

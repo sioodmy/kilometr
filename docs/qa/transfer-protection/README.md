@@ -4,7 +4,26 @@ Karta jest pod listą przystanków, przed alarmem i mapą. Pojawia się tylko pr
 
 Panel decyzji otwiera się przy zagrożeniu także poza mapą. Zwinięty alert pozostaje na ekranie. Propozycja nie podmienia trasy bez potwierdzenia. Zbyt późne i nieaktualne propozycje są blokowane.
 
+Dla pociągów dalekobieżnych (połączenia kolejowe `pl:` / PKP Intercity) aplikacja przechodzi w **Tryb konduktora** (`status: 'conductor'`) zamiast automatycznego wyznaczania alternatywy – informuje pasażera o zachowaniu ważności biletu i pokazuje kolejny pociąg.
+
 Android z aktualnym modułem obsługuje ochronę w tle. iOS, Expo Go i starszy moduł Androida używają ochrony przy otwartej aplikacji. Zakres działania jest widoczny w panelu. W Expo Go istniejący silnik RAPTOR nie działa bez WebAssembly, więc zrzuty UI korzystają z oznaczonych scenariuszy testowych.
+
+## Narzędzia dla developerów i agentów
+
+Do szybkiego testowania i zrzutów ekranu na podłączonym telefonie (ADB + Expo Go):
+
+```bash
+# Trasa kolejowa (Legnica -> Warszawa, KD + IC, tryb konduktora)
+npm run preview:transfer
+# lub
+./scripts/preview-transfer.sh rail conductor --shot
+
+# Trasa miejska (tramwaj 4 -> 10, alternatywa)
+./scripts/preview-transfer.sh tram alternative --shot
+
+# Zwinięty arkusz (widok karty i dolnego paska RouteTravelDeck)
+./scripts/preview-transfer.sh rail conductor --close-sheet --shot
+```
 
 ## Sprawdzone
 
@@ -12,6 +31,7 @@ Android z aktualnym modułem obsługuje ochronę w tle. iOS, Expo Go i starszy m
 - „Zostaję przy swoim planie” zamyka panel i pozostawia linię 10.
 - „Wybieram tę trasę” zamyka panel; scenariusz pokazuje linię 12 i nowy przystanek.
 - Nieaktualna propozycja: widoczna przyczyna i nieaktywny przycisk potwierdzenia.
+- Tryb kolejowy: komunikat o konduktorze, kalkulacja opóźnienia i brakującego czasu, identyfikator kolejnego pociągu (IC 6200).
 - `npx tsc --noEmit` i ESLint zmienionych plików.
 - `npm run check:transfers`: GPS, potwierdzenie jazdy, północ, ryzyko, propozycja bez autopodmiany, limit zapytań, trasy bezpośrednie i dojście piesze.
 - `npm run check:notification-runtime`: potwierdzenie zmienia plan i dane mapy; przeterminowane i obce propozycje są odrzucane; jeden pojazd nie uruchamia ochrony.
@@ -46,4 +66,4 @@ Test tekstu 200% zatrzymał się na restarcie Expo Go. Po dwóch próbach zakoń
 - [Propozycja innej trasy](alternative.png)
 - [Nieaktualna propozycja](expired.png)
 
-Scenariusze są dostępne tylko w trybie deweloperskim pod `/dev/transfer`, z parametrami `state`, `expired=1` i `direct=1`. W buildzie produkcyjnym ten adres przekierowuje do ekranu głównego.
+Scenariusze są dostępne tylko w trybie deweloperskim pod `/dev/transfer`, z parametrami `rail=1`, `state`, `expired=1` i `direct=1`. W buildzie produkcyjnym ten adres przekierowuje do ekranu głównego.
