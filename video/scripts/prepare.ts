@@ -431,6 +431,31 @@ async function main() {
     vehicles.push({ shape: slotOf(t.shape), mode: meta.mode, line: meta.line, t: tt, d: dd, focus: trip === hero.leg.trip });
   }
 
+  // IC 6150 Śnieżka: prawdziwa geometria torów z bazy polska (video/data/sniezka.json).
+  const sniezka = JSON.parse(readFileSync(join(__dirname, '../data/sniezka.json'), 'utf8')) as {
+    line: string;
+    trainNumber: string;
+    trainName: string;
+    lineCoords: P[];
+    stops: { id: string; name: string; lon: number; lat: number }[];
+    warsaw: { name: string; lon: number; lat: number };
+  };
+  const railStops: VideoData['rail']['stops'] = sniezka.stops.map((s) => ({
+    id: s.id,
+    name: s.name,
+    lon: s.lon,
+    lat: s.lat,
+  }));
+  const rail: VideoData['rail'] = {
+    line: sniezka.line,
+    color: getLineColors(sniezka.line, 'train', 'wroclaw').bg,
+    ride: flat(sniezka.lineCoords),
+    stops: railStops,
+    warsaw: sniezka.warsaw,
+    trainNumber: sniezka.trainNumber,
+    trainName: sniezka.trainName,
+  };
+
   const data: VideoData = {
     feed: { publisher: feedRow[0], start: feedRow[1], end: feedRow[2] },
     style: buildMapStyle(null, { poi: false }),
@@ -441,6 +466,7 @@ async function main() {
     stops,
     journey,
     vehicles,
+    rail,
     cities: CITIES.map((c) => ({ id: c.id, name: c.name, lon: c.center.lon, lat: c.center.lat })),
   };
   const out = join(CACHE, 'data.json');

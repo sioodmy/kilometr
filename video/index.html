@@ -157,67 +157,160 @@
         font-size: 28px;
       }
 
-      /* Telefon */
+      /* Telefon: Google Pixel 9 Pro (obsidian), czysta CSS bez assetów. */
       #phone {
         position: absolute;
         box-sizing: border-box;
-        padding: 14px;
-        border-radius: 66px;
-        background: #070909;
-        box-shadow:
-          0 0 0 2px #2b3432,
-          0 40px 120px rgba(0, 0, 0, 0.6);
         visibility: hidden;
+        /* Google Pixel 9 Pro, obsidian: proporcje ~9:19.6 */
+        --bezel: 14px;
+        --frame: #1c1e22;
+        --frame-hi: #4a4e55;
+        --frame-lo: #0b0c0e;
       }
       .h #phone {
-        width: 446px;
-        height: 960px;
-        right: 170px;
-        top: 60px;
+        width: 438px;
+        height: 950px;
+        right: 156px;
+        top: 65px;
       }
       .v #phone {
-        width: 620px;
-        height: 1330px;
-        left: 230px;
-        top: 960px;
+        width: 572px;
+        height: 1240px;
+        left: 254px;
+        top: 968px;
+      }
+      #phone .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 56px;
+        background:
+          linear-gradient(152deg, var(--frame-hi) 0%, var(--frame) 22%, #14161a 55%, var(--frame-lo) 100%);
+        box-shadow:
+          0 0 0 1.5px rgba(255, 255, 255, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.16),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+          0 32px 80px rgba(0, 0, 0, 0.58),
+          0 10px 28px rgba(0, 0, 0, 0.42);
+      }
+      #phone .shell::before {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        border-radius: 54px;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 16%);
+        opacity: 0.5;
+      }
+      #phone .btn {
+        position: absolute;
+        z-index: 2;
+        background: linear-gradient(90deg, #3a3e45, #1a1c20 55%, #0e1012);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+          0 1px 2px rgba(0, 0, 0, 0.4);
+      }
+      #phone .btn-vol-up {
+        left: -5px;
+        top: 172px;
+        width: 5px;
+        height: 56px;
+        border-radius: 3px 0 0 3px;
+      }
+      #phone .btn-vol-down {
+        left: -5px;
+        top: 240px;
+        width: 5px;
+        height: 78px;
+        border-radius: 3px 0 0 3px;
+      }
+      #phone .btn-power {
+        right: -5px;
+        top: 228px;
+        width: 5px;
+        height: 96px;
+        border-radius: 0 3px 3px 0;
+      }
+      .v #phone .btn-vol-up {
+        top: 216px;
+        height: 68px;
+      }
+      .v #phone .btn-vol-down {
+        top: 300px;
+        height: 96px;
+      }
+      .v #phone .btn-power {
+        top: 284px;
+        height: 118px;
+      }
+      #phone .bezel {
+        position: absolute;
+        inset: var(--bezel);
+        border-radius: 44px;
+        overflow: hidden;
+        background: #000;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+          0 0 0 1px rgba(0, 0, 0, 0.8);
       }
       .screen {
         position: relative;
         width: 100%;
         height: 100%;
         overflow: hidden;
-        border-radius: 52px;
         background: #111414;
       }
       .status {
         position: relative;
+        z-index: 2;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: 54px;
-        padding: 0 34px;
+        height: 48px;
+        padding: 10px 28px 0;
         color: #e0e3e1;
-        font-size: 22px;
+        font-size: 18px;
         font-weight: 500;
       }
+      .v .status {
+        height: 56px;
+        padding-top: 14px;
+        font-size: 22px;
+      }
+      /* Punch-hole Pixel: pierścień + soczewka na środku u góry */
       .punch {
         position: absolute;
         left: 50%;
-        top: 15px;
-        width: 24px;
-        height: 24px;
-        margin-left: -12px;
+        top: 14px;
+        width: 18px;
+        height: 18px;
+        margin-left: -9px;
         border-radius: 50%;
-        background: #000;
+        background: radial-gradient(circle at 40% 35%, #1a1d22 0%, #000 55%, #050607 100%);
+        box-shadow:
+          0 0 0 2px #0c0d0f,
+          0 0 0 3.5px #2a2e33;
+        z-index: 3;
+      }
+      .v .punch {
+        top: 16px;
+        width: 22px;
+        height: 22px;
+        margin-left: -11px;
       }
       .icons {
         display: flex;
-        gap: 8px;
+        gap: 7px;
       }
       .icons svg {
+        width: 18px;
+        height: 18px;
+        fill: #e0e3e1;
+      }
+      .v .icons svg {
         width: 22px;
         height: 22px;
-        fill: #e0e3e1;
       }
       .icons .plane {
         opacity: 0;
@@ -225,67 +318,205 @@
       .shot {
         position: absolute;
         left: 0;
-        top: 54px;
+        top: 48px;
         width: 100%;
+        height: calc(100% - 48px);
+        object-fit: cover;
+        object-position: top center;
+      }
+      .v .shot {
+        top: 56px;
+        height: calc(100% - 56px);
       }
       .shot + .shot {
         opacity: 0;
       }
 
-      /* Powiadomienie */
+      /* Android Live Update (ProgressStyle) poza telefonem */
       #notif {
         position: absolute;
         box-sizing: border-box;
-        padding: 26px 30px 26px;
+        padding: 22px 26px 18px;
         border-radius: 28px;
-        background: #1d2422;
+        background: #2b322f;
         color: var(--ink);
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
         visibility: hidden;
       }
       .h #notif {
-        width: 600px;
-        right: 120px;
-        top: 120px;
+        width: 620px;
+        right: 100px;
+        top: 96px;
       }
       .v #notif {
         width: 912px;
         left: 84px;
-        top: 650px;
+        top: 620px;
       }
-      .notif-head {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        color: var(--muted);
+      /* Alert opóźnienia: wewnątrz ekranu, pod status barem (jak shade Androida) */
+      #delay {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 56px;
+        z-index: 6;
+        box-sizing: border-box;
+        padding: 14px 16px 14px;
+        border-radius: 18px;
+        background: #2b322f;
+        color: var(--ink);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+        visibility: hidden;
+      }
+      .v #delay {
+        left: 16px;
+        right: 16px;
+        top: 66px;
+        padding: 18px 20px;
+        border-radius: 22px;
+      }
+      #delay .lu-top {
+        font-size: 13px;
+        gap: 8px;
+      }
+      .v #delay .lu-top {
+        font-size: 16px;
+      }
+      #delay .lu-app-icon {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+      }
+      .v #delay .lu-app-icon {
+        width: 22px;
+        height: 22px;
+      }
+      #delay .lu-title {
+        margin-top: 8px;
+        font-size: 17px;
+      }
+      .v #delay .lu-title {
         font-size: 22px;
       }
-      .notif-head img {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
+      #delay .lu-text {
+        font-size: 14px;
       }
-      .notif-title {
+      .v #delay .lu-text {
+        font-size: 18px;
+      }
+      .lu-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #c5cdc9;
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .lu-app-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+      }
+      .lu-app {
+        letter-spacing: 0.01em;
+      }
+      .lu-chrono {
+        margin-left: auto;
+        color: #9aa8a3;
+        font-variant-numeric: tabular-nums;
+      }
+      .lu-title {
         margin-top: 14px;
-        font-size: 33px;
-        font-weight: 700;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
       }
-      .notif-body {
-        margin-top: 6px;
-        color: var(--muted);
-        font-size: 28px;
+      .delay-title {
+        color: #ffb4ab;
       }
-      .notif-bar {
-        height: 8px;
-        margin-top: 20px;
+      .lu-text {
+        margin-top: 4px;
+        color: #d6ddd9;
+        font-size: 26px;
+        line-height: 1.25;
+      }
+      .lu-sub {
+        margin-top: 2px;
+        color: #9aa8a3;
+        font-size: 22px;
+      }
+      .lu-progress {
+        position: relative;
+        height: 44px;
+        margin-top: 18px;
+      }
+      .lu-track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 16px;
+        display: flex;
+        height: 12px;
         overflow: hidden;
-        border-radius: 4px;
-        background: #334b46;
+        border-radius: 999px;
+        background: #3d4844;
       }
-      .notif-bar i {
+      .lu-seg {
         display: block;
         height: 100%;
-        background: var(--teal);
+      }
+      .lu-walk {
+        flex: 0 0 12%;
+        background: #6b7873;
+      }
+      .lu-ride {
+        flex: 1 1 auto;
+      }
+      .lu-tracker {
+        position: absolute;
+        top: 2px;
+        width: 40px;
+        height: 40px;
+        margin-left: -20px;
+        border-radius: 50%;
+        background: #006a60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      }
+      .lu-tracker svg {
+        width: 22px;
+        height: 22px;
+      }
+      .lu-flag {
+        position: absolute;
+        right: -2px;
+        top: 6px;
+        color: #c5cdc9;
+        width: 28px;
+        height: 28px;
+      }
+      .lu-flag svg {
+        width: 28px;
+        height: 28px;
+      }
+      .lu-actions {
+        display: flex;
+        gap: 28px;
+        margin-top: 16px;
+      }
+      .lu-action {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: var(--teal);
+        font: inherit;
+        font-size: 24px;
+        font-weight: 600;
+        padding: 4px 0;
+        cursor: default;
       }
 
       /* Obietnica i plansza końcowa */

@@ -3,8 +3,33 @@
 
 import { LngLat, type LngLatBoundsLike, type Map as MapLibreMap } from 'maplibre-gl';
 import type { VideoData } from './data';
-import { DURATION, FOLLOW_END, FOLLOW_START, LIVE_FROM, busClock, easeInOut, lerp, ramp, waveAt, type Format } from './timeline';
-import { buildShapes, distanceAt, heading, metersBetween, pointAt, type LonLat } from './transit';
+import {
+  DURATION,
+  FOLLOW_END,
+  FOLLOW_HOLD,
+  FOLLOW_START,
+  LIVE_FROM,
+  S,
+  busClock,
+  clamp01,
+  easeInOut,
+  lerp,
+  railProgress,
+  ramp,
+  smooth,
+  waveAt,
+  type Format,
+} from './timeline';
+import {
+  buildShapes,
+  distanceAt,
+  heading,
+  headingDelta,
+  metersBetween,
+  pointAt,
+  smoothPath,
+  type LonLat,
+} from './transit';
 
 export interface Pad {
   top: number;
@@ -144,23 +169,86 @@ export function buildCamera(map: MapLibreMap, data: VideoData, format: Format, f
     : pad({ top: 560, bottom: 1020, left: 130, right: 130 });
   const cityPad = h ? pad({ left: 820, top: 70, bottom: 70, right: 70 }) : pad({ top: 760, bottom: 150, left: 50, right: 50 });
   const polandPad = h ? pad({ left: 860, top: 90, bottom: 90, right: 230 }) : pad({ top: 760, bottom: 260, left: 60, right: 200 });
+  // 16:9: więcej paddingu z prawej (telefon), mniej z lewej, żeby trasa IC nie chowała się pod mockiem.
+  const trainPad = h
+    ? pad({ left: 380, top: 140, bottom: 80, right: 560 })
+    : pad({ top: 720, bottom: 900, left: 60, right: 60 });
 
   const withPad = (c: Cam, p: Pad): Cam => ({ ...c, pad: p });
   const cityCam = withPad(fit(reached, cityPad, 8, 42, -0.35), pad({}));
   // W pionie trasa leży w poprzek kadru, nad telefonem.
   const routeCam = withPad(h ? fit(route, routePad, 18, 48, -0.05) : fit(route, routePad, -40, 40, 0.75), pad({}));
   const polandCam = withPad(fit(cities, polandPad, 0, 0, 0), pad({}));
+  const railPts = pairs(data.rail.ride);
+  const railStart = railPts[0];
 
+  // Zoom fali: promień rośnie monotonnie (max), krzywa zoomu wygładzona z góry.
+  // Bez tego 90. percentyl skakał przy każdym nowym przystanku i MapLibre
+  // przeładowywał kafelki → lagi rysowania i kamery w pierwszych sekundach.
+  const reachDist: [number, number][] = [];
+  for (let i = 0; i < data.stops.length; i += 3) {
+    const reach = data.stops[i + 2];
+    if (reach >= 0) reachDist.push([reach, metersBetween(origin, [data.stops[i], data.stops[i + 1]])]);
+  }
+  reachDist.sort((a, b) => a[0] - b[0]);
+  const worldMeters = (40075016.686 * Math.cos((data.origin.lat * Math.PI) / 180)) / 512;
+  const radiusPx = h ? 430 : 440;
+  const radiusRaw = (wave: number) => {
+    let max = 250;
+    for (const [r, m] of reachDist) {
+      if (r > wave) break;
+      if (m > max) max = m;
+    }
+    return max;
+  };
+  const WAVE_Z_N = 160;
+  const rawZ: number[] = [];
+  for (let i = 0; i < WAVE_Z_N; i++) {
+    const t = (i / (WAVE_Z_N - 1)) * S.route;
+    const r = radiusRaw(waveAt(t));
+    rawZ.push(Math.max(cityCam.zoom, Math.log2((worldMeters * radiusPx) / r)));
+  }
+  // Średnia ruchoma + cap Δzoom między sąsiadami (max ~0.04/próbkę ≈ płynny zoom-out).
+  const smoothZ: number[] = rawZ.slice();
+  for (let pass = 0; pass < 2; pass++) {
+    const next = smoothZ.slice();
+    for (let i = 0; i < WAVE_Z_N; i++) {
+      let sum = 0;
+      let n = 0;
+      for (let j = Math.max(0, i - 6); j <= Math.min(WAVE_Z_N - 1, i + 6); j++) {
+        sum += smoothZ[j];
+        n++;
+      }
+      next[i] = sum / n;
+    }
+    for (let i = 0; i < WAVE_Z_N; i++) smoothZ[i] = next[i];
+  }
+  for (let i = 1; i < WAVE_Z_N; i++) {
+    const maxDrop = 0.045;
+    if (smoothZ[i] < smoothZ[i - 1] - maxDrop) smoothZ[i] = smoothZ[i - 1] - maxDrop;
+    if (smoothZ[i] > smoothZ[i - 1] + maxDrop) smoothZ[i] = smoothZ[i - 1] + maxDrop;
+  }
+  const waveZoomAt = (t: number) => {
+    const u = ramp(t, 0, S.route) * (WAVE_Z_N - 1);
+    const i = Math.min(WAVE_Z_N - 2, Math.floor(u));
+    return lerp(smoothZ[i], smoothZ[i + 1], u - i);
+  };
+
+  const waveCam = (t: number): Cam => {
+    const pitch = lerp(26, 38, smooth(ramp(t, 0, S.route)));
+    const bearing = lerp(-26, 6, smooth(ramp(t, 0, S.route)));
+    return at(origin, waveZoomAt(t), pitch, bearing, textPad);
+  };
+
+  // Fala → trasa: bez postoju na cityCam (hard stop). Blend zaczyna się
+  // jeszcze w trakcie oddalania, więc kamera cały czas jedzie.
+  const toRouteAt = S.route + 1.55;
+  const fromWaveAt = S.route - 1.05;
   const keys: Key[] = [
-    { t: 0, cam: at(origin, h ? 15.7 : 15.5, 22, -28, textPad) },
-    { t: 1.3, cam: at(origin, h ? 15.1 : 14.9, 30, -22, textPad) },
-    { t: 6.3, cam: cityCam },
-    { t: 8.2, cam: routeCam },
-    { t: 12.4, cam: { ...routeCam, zoom: routeCam.zoom + 0.15, bearing: routeCam.bearing + 8 } },
-    { t: LIVE_FROM, cam: { ...routeCam, zoom: routeCam.zoom + 0.3, bearing: routeCam.bearing + 14 } },
-    // Po śledzeniu tramwaju krótko całe miasto, potem lot nad Polskę.
-    { t: 23.8, cam: cityCam },
-    { t: 26, cam: polandCam, fly: true },
+    { t: toRouteAt, cam: routeCam },
+    { t: LIVE_FROM, cam: { ...routeCam, zoom: routeCam.zoom + 0.25, bearing: routeCam.bearing + 12 } },
+    { t: S.train, cam: at(railStart, h ? 9.4 : 9.0, 42, 55, trainPad) },
+    { t: S.poland, cam: polandCam, fly: true },
     { t: DURATION, cam: { ...polandCam, zoom: polandCam.zoom + 0.18 } },
   ];
 
@@ -174,6 +262,13 @@ export function buildCamera(map: MapLibreMap, data: VideoData, format: Format, f
       return b.fly ? fly(a.cam, b.cam, k, viewport) : mix(a.cam, b.cam, k);
     }
     return keys[keys.length - 1].cam;
+  };
+
+  const waveIntoRoute = (t: number): Cam => {
+    const k = easeInOut(ramp(t, fromWaveAt, toRouteAt));
+    if (k <= 0) return waveCam(t);
+    // Do S.route fala dalej żyje (zoom-out); potem zamrażamy jej koniec i dojeżdżamy do trasy.
+    return mix(waveCam(Math.min(t, S.route)), routeCam, k);
   };
 
   const shapes = buildShapes(data);
@@ -196,33 +291,72 @@ export function buildCamera(map: MapLibreMap, data: VideoData, format: Format, f
     return { lon, lat, zoom: h ? 15.9 : 15.7, pitch: 62, bearing: (Math.atan2(x, y) * 180) / Math.PI, pad: followPad };
   };
 
-  // Przy fali kamera oddala się tak, żeby 90% osiągniętych przystanków mieściło się w kadrze.
-  const reachDist: [number, number][] = [];
-  for (let i = 0; i < data.stops.length; i += 3) {
-    const reach = data.stops[i + 2];
-    if (reach >= 0) reachDist.push([reach, metersBetween(origin, [data.stops[i], data.stops[i + 1]])]);
+  // Tor wygładzony: ostre łuki PLK nie szarpią bearingiem kamery.
+  const railSmooth = smoothPath(railPts, 5, 280);
+  const railCum = [0];
+  for (let i = 1; i < railSmooth.length; i++) {
+    railCum.push(railCum[i - 1] + metersBetween(railSmooth[i - 1], railSmooth[i]));
   }
-  const worldMeters = (40075016.686 * Math.cos((data.origin.lat * Math.PI) / 180)) / 512;
-  const radiusPx = h ? 430 : 440;
-  const waveZoom = (wave: number) => {
-    const d = reachDist.filter(([r]) => r <= wave).map(([, m]) => m);
-    d.sort((a, b) => a - b);
-    const r = Math.max(250, d[Math.floor(d.length * 0.9)] ?? 0);
-    return Math.log2((worldMeters * radiusPx) / r);
+  const railLen = railCum[railCum.length - 1];
+  const railPoint = (dist: number): LonLat => {
+    let i = 0;
+    while (i < railCum.length - 2 && railCum[i + 1] < dist) i++;
+    const span = railCum[i + 1] - railCum[i];
+    const k = span > 0 ? (dist - railCum[i]) / span : 0;
+    const a = railSmooth[i];
+    const b = railSmooth[i + 1];
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
   };
-  const softMin = (a: number, b: number, k = 0.2) => -k * Math.log(Math.exp(-a / k) + Math.exp(-b / k));
+  // Bearing wstępnie wyliczony i wygładzony (seek jest losowy, bez stanu).
+  const BEAR_N = 320;
+  const rawBear: number[] = [];
+  for (let i = 0; i < BEAR_N; i++) {
+    const d = (i / (BEAR_N - 1)) * railLen;
+    const behind = railPoint(Math.max(0, d - 6_000));
+    const ahead = railPoint(Math.min(railLen, d + 28_000));
+    rawBear.push(heading(behind, ahead));
+  }
+  const unwrapped = [rawBear[0]];
+  for (let i = 1; i < BEAR_N; i++) unwrapped.push(unwrapped[i - 1] + headingDelta(unwrapped[i - 1], rawBear[i]));
+  const smoothBear = unwrapped.slice();
+  for (let pass = 0; pass < 3; pass++) {
+    const next = smoothBear.slice();
+    for (let i = 0; i < BEAR_N; i++) {
+      let sum = 0;
+      let n = 0;
+      for (let j = Math.max(0, i - 10); j <= Math.min(BEAR_N - 1, i + 10); j++) {
+        sum += smoothBear[j];
+        n++;
+      }
+      next[i] = sum / n;
+    }
+    for (let i = 0; i < BEAR_N; i++) smoothBear[i] = next[i];
+  }
+  const bearAt = (d: number) => {
+    const u = clamp01(d / (railLen || 1)) * (BEAR_N - 1);
+    const i = Math.min(BEAR_N - 2, Math.floor(u));
+    return lerp(smoothBear[i], smoothBear[i + 1], u - i);
+  };
+  const railFollow = (t: number): Cam => {
+    const d = railLen * railProgress(t);
+    const [lon, lat] = railPoint(d);
+    return { lon, lat, zoom: h ? 8.6 : 8.2, pitch: 48, bearing: bearAt(d), pad: trainPad };
+  };
 
   const blendIn = FOLLOW_START;
-  const blendOut = FOLLOW_END + 1.3;
+  const holdEnd = FOLLOW_END + FOLLOW_HOLD;
+  const blendOut = holdEnd + 0.35;
   return (t: number): Cam => {
-    if (t < 6.3) {
-      const c = keyed(t);
-      return { ...c, zoom: Math.max(cityCam.zoom, softMin(c.zoom, waveZoom(waveAt(t + 0.3)))) };
-    }
+    if (t < toRouteAt) return waveIntoRoute(t);
     if (t < LIVE_FROM) return keyed(t);
     if (t < blendIn) return mix(keyed(t), follow(t), easeInOut(ramp(t, LIVE_FROM, blendIn)));
     if (t < FOLLOW_END) return follow(t);
-    if (t < blendOut) return mix(follow(Math.min(t, FOLLOW_END + 0.6)), keyed(t), easeInOut(ramp(t, FOLLOW_END, blendOut)));
+    // Pauza na Katedrze, potem zejście do sceny pociągu.
+    if (t < holdEnd) return follow(FOLLOW_END);
+    if (t < blendOut) return mix(follow(FOLLOW_END), keyed(t), easeInOut(ramp(t, holdEnd, blendOut)));
+    if (t < S.train + 0.35) return keyed(t);
+    if (t < S.poland - 0.35) return railFollow(t);
+    if (t < S.poland) return mix(railFollow(t), keyed(t), easeInOut(ramp(t, S.poland - 0.35, S.poland)));
     return keyed(t);
   };
 }

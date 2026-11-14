@@ -62,3 +62,47 @@ export function heading(a: LonLat, b: LonLat): number {
 export function metersBetween(a: LonLat, b: LonLat): number {
   return Math.hypot((a[0] - b[0]) * MX, (a[1] - b[1]) * MY);
 }
+
+/** Najkrótsza zmiana kąta (−180…180). */
+export function headingDelta(from: number, to: number): number {
+  let d = to - from;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+
+/**
+ * Wygładza polilinię (średnia sąsiadów + Chaikin + min. krok).
+ * Kamera na torach PLK bez tego szarpie na rozjazdach i łukach.
+ */
+export function smoothPath(pts: LonLat[], passes = 4, minStepM = 220): LonLat[] {
+  if (pts.length < 3) return pts.slice();
+  let cur = pts.slice();
+  for (let p = 0; p < passes; p++) {
+    // 1) Laplacian: każdy punkt bliżej sąsiadów
+    const soft: LonLat[] = [cur[0]];
+    for (let i = 1; i < cur.length - 1; i++) {
+      soft.push([
+        cur[i - 1][0] * 0.25 + cur[i][0] * 0.5 + cur[i + 1][0] * 0.25,
+        cur[i - 1][1] * 0.25 + cur[i][1] * 0.5 + cur[i + 1][1] * 0.25,
+      ]);
+    }
+    soft.push(cur[cur.length - 1]);
+    // 2) Chaikin: łagodzi rogi
+    const next: LonLat[] = [soft[0]];
+    for (let i = 0; i < soft.length - 1; i++) {
+      const a = soft[i];
+      const b = soft[i + 1];
+      next.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+      next.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    next.push(soft[soft.length - 1]);
+    cur = next;
+  }
+  const out: LonLat[] = [cur[0]];
+  for (let i = 1; i < cur.length - 1; i++) {
+    if (metersBetween(out[out.length - 1], cur[i]) >= minStepM) out.push(cur[i]);
+  }
+  out.push(cur[cur.length - 1]);
+  return out;
+}

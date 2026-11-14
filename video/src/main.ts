@@ -10,6 +10,8 @@ import { createScenes } from './scenes';
 import {
   DURATION,
   FOLLOW_END,
+  FOLLOW_HOLD,
+  FOLLOW_RATE,
   FOLLOW_START,
   FPS,
   S,
@@ -17,6 +19,7 @@ import {
   busClock,
   clamp01,
   lerp,
+  railProgress,
   ramp,
   smooth,
   visible,
@@ -46,9 +49,10 @@ function isStyle(x: unknown): x is StyleSpecification {
   return typeof x === 'object' && x !== null && 'version' in x && x.version === 8 && 'layers' in x && Array.isArray(x.layers);
 }
 
-/** Styl aplikacji bez warstw trasy i nazw miejscowości, z budynkami 3D. */
+/** Styl aplikacji bez trasy, nazw ulic/rzek/miejsc i POI, z budynkami 3D. */
 function tuneStyle(style: StyleSpecification): StyleSpecification {
-  const drop = (id: string) => /^(trasa-|przystanki-|miejsce-)/.test(id);
+  const drop = (id: string) =>
+    /^(trasa-|przystanki-|miejsce-|nazwa-ulicy|nazwa-rzeki|poi-)/.test(id);
   const layers: LayerSpecification[] = style.layers.filter((l) => !drop(l.id));
   layers.splice(layers.findIndex((l) => l.id === 'budynki') + 1, 0, {
     id: 'budynki-3d',
@@ -67,16 +71,18 @@ function tuneStyle(style: StyleSpecification): StyleSpecification {
   return { ...style, sources, layers, transition: { duration: 0, delay: 0 } };
 }
 
-function idle(map: MapLibreMap): Promise<void> {
+function idle(map: MapLibreMap, maxMs = 30_000): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      window.video.stalls++;
-      resolve();
-    }, 30_000);
-    map.once('idle', () => {
+    let done = false;
+    const finish = (stall: boolean) => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
+      if (stall) window.video.stalls++;
       resolve();
-    });
+    };
+    const timer = setTimeout(() => finish(true), maxMs);
+    map.once('idle', () => finish(false));
     map.triggerRepaint();
   });
 }
@@ -117,41 +123,56 @@ async function main() {
 
   const stops = data.journey.stops;
   const lastStop = stops[stops.length - 1];
-  const focusAt = lastStop.time - (FOLLOW_END - FOLLOW_START) * 84;
+  const focusAt = lastStop.time - (FOLLOW_END - FOLLOW_START) * FOLLOW_RATE;
   const camera = buildCamera(map, data, format, focusAt);
   const overlay = createOverlay(canvas, data, buildShapes(data));
   const scenes = createScenes(stage, data, format);
   await Promise.all([...stage.querySelectorAll('img')].map((img) => img.decode()));
+
+  // Po notyfikacji Live Update gasimy siatkę MPK i trasę tramwaju (nie śmieci w IC/Polsce).
+  const clearAt = FOLLOW_END;
+  const clearBy = FOLLOW_END + FOLLOW_HOLD;
 
   window.seek = async (t: number) => {
     const started = performance.now();
     setNow(t * 1000);
     const cam = camera(t);
     map.jumpTo({ center: [cam.lon, cam.lat], zoom: cam.zoom, pitch: cam.pitch, bearing: cam.bearing, padding: cam.pad });
-    await idle(map);
+    // Fala: ograniczony idle (wygładzony zoom + cache z rozgrzewki).
+    // Reszta scen: dłuższy idle pod jakość kafelków.
+    await idle(map, t < S.route + 0.5 ? 220 : 8_000);
     const mapped = performance.now();
 
     const time = busClock(t, focusAt);
-    const network =
-      t < S.live
-        ? lerp(1, 0.26, smooth(ramp(t, 6.6, 7.6)))
-        : t < S.poland
-          ? lerp(0.26, 0.42, smooth(ramp(t, FOLLOW_END, FOLLOW_END + 1.4)))
-          : lerp(0.42, 1, smooth(ramp(t, S.poland + 0.1, S.poland + 1.8))) * (1 - ramp(t, S.promise - 0.2, S.promise + 0.5));
+    const netBase =
+      t < S.route + 0.2
+        ? 1
+        : t < clearAt
+          ? lerp(1, 0.22, smooth(ramp(t, S.route + 0.2, S.route + 1.0)))
+          : 0;
+    const network = netBase * (1 - smooth(ramp(t, clearAt, clearBy)));
+    const journeyAlpha =
+      lerp(1, 0.75, ramp(t, S.live, S.live + 0.6)) *
+      visible(t, S.route + 0.3, clearAt, 0.35) *
+      (1 - smooth(ramp(t, clearAt, clearBy)));
     const marks = overlay.draw({
       project: projector(map, cam, h),
       zoom: cam.zoom,
       wave: waveAt(t),
-      waveSpan: waveAt(t) - waveAt(t - 0.5),
+      waveSpan: waveAt(t) - waveAt(t - 0.35),
       networkAlpha: network,
-      journey: smooth(ramp(t, 6.9, 8.6)),
-      journeyAlpha: lerp(1, 0.8, ramp(t, S.live, S.live + 0.8)) * visible(t, 6.8, S.poland + 0.5, 0.6),
-      originAlpha: visible(t, 0.2, S.live + 0.3, 0.4),
+      journey: smooth(ramp(t, S.route + 0.4, S.route + 1.6)),
+      journeyAlpha,
+      originAlpha: visible(t, 0.15, S.live + 0.2, 0.35) * (1 - smooth(ramp(t, clearAt, clearBy))),
+      // Przy z16+ pełny znacznik; poniżej z12 znika (oddalenie fali).
+      originScale: clamp01((cam.zoom - 12.2) / 3.6),
       time,
-      vehicleAlpha: visible(t, S.live - 0.1, S.poland + 0.4, 0.6),
-      focusAlpha: visible(t, S.live - 0.1, S.poland + 0.5, 0.6),
-      citiesAt: t - (S.poland + 1.0),
-      citiesAlpha: visible(t, S.poland + 0.5, S.promise + 0.4, 0.4),
+      vehicleAlpha: visible(t, S.live - 0.1, clearAt, 0.45) * (1 - smooth(ramp(t, clearAt, clearBy))),
+      focusAlpha: visible(t, S.live - 0.1, clearAt, 0.45) * (1 - smooth(ramp(t, clearAt, clearBy))),
+      rail: railProgress(t),
+      railAlpha: visible(t, S.train + 0.15, S.poland + 0.5, 0.45),
+      citiesAt: t - (S.poland + 0.7),
+      citiesAlpha: visible(t, S.poland + 0.35, S.promise + 0.3, 0.35),
     });
     const next = stops.findIndex((s) => s.time > time);
     const progress = clamp01((time - stops[0].time) / (lastStop.time - stops[0].time));
@@ -161,6 +182,12 @@ async function main() {
     window.video.ms = [mapped - started, drawn - mapped, performance.now() - drawn];
   };
 
+  // Rozgrzewka kafelków na zakresie zoomu fali (seek jest losowy, cache zostaje).
+  for (let t = 0; t <= S.route; t += 0.2) {
+    const cam = camera(t);
+    map.jumpTo({ center: [cam.lon, cam.lat], zoom: cam.zoom, pitch: cam.pitch, bearing: cam.bearing, padding: cam.pad });
+    await idle(map, 600);
+  }
   await window.seek(0);
 }
 

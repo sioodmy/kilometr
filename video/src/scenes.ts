@@ -5,12 +5,15 @@ import type { VideoData } from './data';
 import {
   ATTRIBUTION,
   CLOSING,
+  FOLLOW_END,
+  FOLLOW_START,
   LIVE_NOTE,
   NOTIFY,
   PLATFORMS,
   PROMISE,
   S,
   SITE,
+  clamp01,
   copyFor,
   easeInOut,
   easeOut,
@@ -25,14 +28,16 @@ type XY = [number, number];
 export interface Marks {
   focus: XY | null;
   origin: XY | null;
+  /** Skala pinu Sky Tower (maleje przy oddaleniu kamery). */
+  originScale: number;
   destination: XY | null;
   cities: XY[];
+  warsaw: XY | null;
+  /** Gdy true, plakietka pokazuje numer pociągu IC zamiast linii tramwaju. */
+  railLabel?: boolean;
 }
 
 const LABELLED = new Set(['wroclaw', 'warszawa', 'krakow', 'poznan', 'trojmiasto', 'lodz', 'gzm', 'szczecin', 'lublin', 'bialystok', 'rzeszow']);
-
-const AIRPLANE =
-  'M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z';
 
 const LOGO = `
 <svg viewBox="0 0 1024 1024" aria-hidden="true">
@@ -86,10 +91,12 @@ function show(node: HTMLElement, opacity: number) {
   node.style.visibility = opacity > 0.001 ? 'visible' : 'hidden';
 }
 
-function place(node: HTMLElement, p: XY | null, opacity: number) {
+function place(node: HTMLElement, p: XY | null, opacity: number, scale = 1) {
   if (!p) return show(node, 0);
-  node.style.transform = `translate(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px)`;
-  show(node, opacity);
+  const s = Math.max(0.01, scale);
+  node.style.transform = `translate(${p[0].toFixed(1)}px, ${p[1].toFixed(1)}px) scale(${s.toFixed(3)})`;
+  node.style.transformOrigin = 'left center';
+  show(node, opacity * (scale < 0.08 ? 0 : 1));
 }
 
 export function createScenes(stage: HTMLElement, data: VideoData, format: Format) {
@@ -98,6 +105,7 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   const pinOrigin = el('div', 'pin', labels, data.origin.name);
   const dest = data.journey.stops[data.journey.stops.length - 1];
   const pinDest = el('div', 'pin', labels, dest.name);
+  const pinWarsaw = el('div', 'city', labels, data.rail.warsaw.name);
   const badge = el('div', 'badge', labels, data.journey.line);
   const cityLabels = data.cities.map((c) => (LABELLED.has(c.id) ? el('div', 'city', labels, c.name) : null));
 
@@ -107,33 +115,72 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   let active = -1;
   let spans: HTMLElement[] = [];
 
+  // Obudowa Pixel 9 Pro: shell + boczne przyciski + bezel + ekran.
   const phone = q<HTMLElement>(stage, '#phone');
-  const screen = el('div', 'screen', phone);
+  const shell = el('div', 'shell', phone);
+  el('i', 'btn btn-vol-up', shell);
+  el('i', 'btn btn-vol-down', shell);
+  el('i', 'btn btn-power', shell);
+  const bezel = el('div', 'bezel', shell);
+  const screen = el('div', 'screen', bezel);
   const status = el('div', 'status', screen);
   el('span', 'clock', status, '20:25');
-  el('i', 'punch', status);
+  el('i', 'punch', screen);
   const icons = el('span', 'icons', status);
   icons.innerHTML =
     `<svg class="net" viewBox="0 0 24 24"><path d="M2 22h20V2z"/></svg>` +
     `<svg class="net" viewBox="0 0 24 24"><path d="M12 21 1 9.5a15.5 15.5 0 0 1 22 0z"/></svg>` +
-    `<svg class="plane" viewBox="0 0 24 24"><path d="${AIRPLANE}"/></svg>` +
     `<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/></svg>`;
-  const nets = [...icons.querySelectorAll<SVGElement>('.net')];
-  const plane = q<SVGElement>(icons, '.plane');
   const trip = el('img', 'shot', screen);
   // Zrzuty prawdziwych ekranów aplikacji, robi je render.ts przed wideo (video/ui).
   trip.src = '/video/.cache/ui-trip.png';
-  const routes = el('img', 'shot', screen);
-  routes.src = '/video/.cache/ui-routes.png';
+  const train = el('img', 'shot', screen);
+  train.src = '/video/.cache/ui-train.png';
 
+  // Live Update jak Android 16 ProgressStyle (LiveUpdateFactory).
   const notif = q<HTMLElement>(stage, '#notif');
-  const head = el('div', 'notif-head', notif);
-  const icon = el('img', '', head);
-  icon.src = '/assets/icon.png';
-  el('span', '', head, 'Kilometr');
-  const nTitle = el('div', 'notif-title', notif, NOTIFY.alightAt(dest.name));
-  const nBody = el('div', 'notif-body', notif);
-  const nBar = el('i', '', el('div', 'notif-bar', notif));
+  notif.className = 'live-update';
+  const luTop = el('div', 'lu-top', notif);
+  const luIcon = el('img', 'lu-app-icon', luTop);
+  luIcon.src = '/assets/icon.png';
+  el('span', 'lu-app', luTop, 'kilometr');
+  const luChrono = el('span', 'lu-chrono', luTop, '4:12');
+  const lineName = data.journey.line.startsWith('Tramwaj')
+    ? data.journey.line
+    : `Tramwaj ${data.journey.line}`;
+  const arriveClock = (() => {
+    const s = dest.time;
+    return `${String(Math.floor(s / 3600) % 24).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}`;
+  })();
+  el('div', 'lu-title', notif, NOTIFY.rideTitle(lineName, arriveClock));
+  el('div', 'lu-text', notif, NOTIFY.alightAt(dest.name));
+  const nSub = el('div', 'lu-sub', notif, '');
+  const progress = el('div', 'lu-progress', notif);
+  const track = el('div', 'lu-track', progress);
+  el('i', 'lu-seg lu-walk', track);
+  const rideSeg = el('i', 'lu-seg lu-ride', track);
+  rideSeg.style.background = data.journey.color;
+  const tracker = el('div', 'lu-tracker', progress);
+  tracker.innerHTML =
+    `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M4 17.5v-9.5q0-2.425 2.125-3.175T11 4l.75-1.5H7.75q-.325 0-.537-.213T7 1.75q0-.325.213-.537T7.75 1h8.5q.325 0 .537.213T17 1.75q0 .325-.213.537T16.25 2.5H13.75l-.75 1.5q2.975.075 4.988.812T20 8v9.5q0 1.475-1.012 2.488T16.5 21l.5.5q.425.425.2.963T16.375 23q-.175 0-.338-.062T15.75 22.75L14 21H10l-1.75 1.75q-.125.125-.288.188T7.625 23q-.575 0-.812-.537T7 21.5l.5-.5q-1.475 0-2.488-1.012T4 17.5Zm9.062.062Q13.5 17.125 13.5 16.5t-.438-1.062Q12.625 15 12 15t-1.062.438Q10.5 15.875 10.5 16.5t.438 1.062Q11.375 18 12 18t1.062-.438ZM6 12h12v-3H6v3Z"/></svg>`;
+  const flag = el('div', 'lu-flag', progress);
+  flag.innerHTML =
+    `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 21V3h2v2h12l-2.5 4L19 13H7v8H5Z"/></svg>`;
+  const actions = el('div', 'lu-actions', notif);
+  el('button', 'lu-action', actions, NOTIFY.actionStop);
+  el('button', 'lu-action', actions, NOTIFY.actionRoute);
+
+  // Alert opóźnienia NA ekranie telefonu (shade Androida), nie poza mockiem.
+  const delay = el('div', '', screen);
+  delay.id = 'delay';
+  delay.className = 'android-alert';
+  const dTop = el('div', 'lu-top', delay);
+  const dIcon = el('img', 'lu-app-icon', dTop);
+  dIcon.src = '/assets/icon.png';
+  el('span', 'lu-app', dTop, 'kilometr');
+  el('span', 'lu-chrono', dTop, 'teraz');
+  el('div', 'lu-title delay-title', delay, 'Opóźnienie +10 minut');
+  el('div', 'lu-text', delay, 'Ograniczenie prędkości pociągu');
 
   const promise = q<HTMLElement>(stage, '#promise');
   const promiseSpans = lines(promise, PROMISE);
@@ -193,67 +240,87 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
       dim.style.opacity = String(dimK);
 
       // Etykiety na mapie.
-      place(pinOrigin, marks.origin, visible(t, 0.5, S.live + 0.3, 0.4));
-      place(pinDest, marks.destination, visible(t, 8.4, S.live + 0.3, 0.4));
-      place(badge, marks.focus, visible(t, S.live + 0.6, S.poland + 0.6, 0.5));
+      place(
+        pinOrigin,
+        marks.origin,
+        visible(t, 0.35, S.live + 0.2, 0.35) * clamp01(marks.originScale * 1.2),
+        marks.originScale,
+      );
+      place(pinDest, marks.destination, visible(t, S.route + 1.0, S.live + 0.2, 0.35));
+      place(pinWarsaw, marks.warsaw, visible(t, S.train + 0.6, S.poland + 0.3, 0.35));
+      badge.textContent = marks.railLabel ? data.rail.line : data.journey.line;
+      place(badge, marks.focus, visible(t, S.live + 0.4, S.poland + 0.4, 0.4));
       cityLabels.forEach((label, i) => {
         if (!label) return;
-        place(label, marks.cities[i] ?? null, smooth(ramp(t, S.poland + 2.2 + i * 0.03, S.poland + 2.7 + i * 0.03)) * visible(t, S.poland, S.promise + 0.2, 0.4));
+        place(
+          label,
+          marks.cities[i] ?? null,
+          smooth(ramp(t, S.poland + 1.4 + i * 0.025, S.poland + 1.8 + i * 0.025)) *
+            visible(t, S.poland, S.promise + 0.15, 0.35),
+        );
       });
 
-      // Telefon: trasa, potem tryb samolotowy i lista połączeń.
-      const phoneIn = easeInOut(ramp(t, 8.0, 8.9));
-      const phoneOut = easeInOut(ramp(t, S.live - 0.6, S.live + 0.2));
-      const off = (1 - phoneIn) + phoneOut;
+      // Telefon 1: szczegóły tramwaju (hint + live). Telefon 2: IC do Warszawy.
+      const phone1In = easeInOut(ramp(t, S.route + 0.35, S.route + 0.95));
+      const phone1Out = easeInOut(ramp(t, S.live - 0.55, S.live - 0.05));
+      const phone2In = easeInOut(ramp(t, S.train + 0.45, S.train + 1.0));
+      const phone2Out = easeInOut(ramp(t, S.poland - 0.7, S.poland - 0.15));
+      const off1 = 1 - phone1In + phone1Out;
+      const off2 = 1 - phone2In + phone2Out;
+      const off = Math.min(off1, off2);
       phone.style.transform = format === 'h' ? `translateX(${off * 125}%)` : `translateY(${off * 105}%)`;
       show(phone, off >= 1 ? 0 : 1);
-      const air = smooth(ramp(t, 13.4, 13.8));
-      nets.forEach((n) => (n.style.opacity = String(1 - air)));
-      plane.style.opacity = String(air);
-      routes.style.opacity = String(smooth(ramp(t, 14.4, 14.9)));
+      train.style.opacity = String(smooth(ramp(t, S.train + 0.5, S.train + 0.85)));
 
-      // Powiadomienie podczas śledzenia.
-      const nIn = easeOut(ramp(t, 18.7, 19.3));
-      const nOut = ramp(t, 23.0, 23.4);
-      notif.style.transform = `translateY(${(1 - nIn) * -40}px)`;
+      // Live Update podczas śledzenia: znika przy przyjeździe na Katedrę.
+      const nIn = easeOut(ramp(t, FOLLOW_START + 0.35, FOLLOW_START + 0.75));
+      const nOut = ramp(t, FOLLOW_END - 0.15, FOLLOW_END + 0.05);
+      notif.style.transform = `translateY(${(1 - nIn) * -36}px)`;
       show(notif, nIn * (1 - nOut));
       const next = data.journey.stops[Math.min(journeyStop, data.journey.stops.length - 1)];
-      nBody.textContent = NOTIFY.nextStop(next.name);
-      nTitle.textContent = NOTIFY.alightAt(dest.name);
-      nBar.style.width = `${(journeyProgress * 100).toFixed(1)}%`;
+      nSub.textContent = [NOTIFY.nextStop(next.name), NOTIFY.stops(Math.max(1, data.journey.stops.length - journeyStop))].join(' · ');
+      tracker.style.left = `${(8 + journeyProgress * 78).toFixed(1)}%`;
+      const chronoSec = Math.max(0, Math.round((1 - journeyProgress) * (dest.time - data.journey.stops[0].time)));
+      luChrono.textContent = `${Math.floor(chronoSec / 60)}:${String(chronoSec % 60).padStart(2, '0')}`;
+
+      // Alert opóźnienia na ekranie telefonu (wjeżdża z góry, bez wychodzenia poza bezel).
+      const dIn = easeOut(ramp(t, S.train + 1.4, S.train + 1.9));
+      const dOut = ramp(t, S.poland - 1.0, S.poland - 0.45);
+      delay.style.transform = `translateY(${(1 - dIn) * -16}px)`;
+      show(delay, dIn * (1 - dOut) * phone2In * (1 - phone2Out));
 
       // Obietnica.
-      show(promise, 1 - ramp(t, S.end - 0.3, S.end + 0.1));
+      show(promise, 1 - ramp(t, S.end - 0.25, S.end + 0.05));
       promiseSpans.forEach((span, i) => {
-        const k = easeOut(ramp(t, S.promise + 0.4 + i * 0.75, S.promise + 1.0 + i * 0.75));
+        const k = easeOut(ramp(t, S.promise + 0.25 + i * 0.55, S.promise + 0.7 + i * 0.55));
         span.style.transform = `translateY(${(1 - k) * 112}%)`;
       });
 
       // Plansza końcowa: znak rysuje się jak linia na mapie.
       const e = S.end;
-      show(end, ramp(t, e, e + 0.2));
-      const bgK = easeOut(ramp(t, e + 0.1, e + 0.5));
+      show(end, ramp(t, e, e + 0.15));
+      const bgK = easeOut(ramp(t, e + 0.08, e + 0.4));
       logoBg.style.transform = `scale(${0.6 + 0.4 * bgK})`;
       logoBg.style.opacity = String(bgK);
       strokes.forEach((s, i) => {
-        const k = easeInOut(ramp(t, e + 0.35 + i * 0.22, e + 0.85 + i * 0.22));
+        const k = easeInOut(ramp(t, e + 0.28 + i * 0.18, e + 0.7 + i * 0.18));
         s.style.strokeDashoffset = String(1 - k);
         s.style.opacity = k > 0 ? '1' : '0';
       });
-      const nodeK = easeOut(ramp(t, e + 0.5, e + 0.8));
+      const nodeK = easeOut(ramp(t, e + 0.4, e + 0.65));
       node.style.transform = `scale(${nodeK})`;
-      const stopK = easeOut(ramp(t, e + 1.05, e + 1.3));
+      const stopK = easeOut(ramp(t, e + 0.85, e + 1.05));
       stop.style.transform = `scale(${stopK})`;
-      arrow.style.opacity = String(ramp(t, e + 0.95, e + 1.2));
-      const nameK = easeOut(ramp(t, e + 1.1, e + 1.6));
+      arrow.style.opacity = String(ramp(t, e + 0.75, e + 0.95));
+      const nameK = easeOut(ramp(t, e + 0.9, e + 1.3));
       name.style.opacity = String(nameK);
       name.style.transform = `translateY(${(1 - nameK) * 20}px)`;
-      reveal(endSpans, t, e + 1.4, 0.14, 0.65);
-      const metaK = easeOut(ramp(t, e + 2.0, e + 2.6));
+      reveal(endSpans, t, e + 1.15, 0.12, 0.55);
+      const metaK = easeOut(ramp(t, e + 1.6, e + 2.1));
       meta.style.opacity = String(metaK);
 
-      show(attrib, visible(t, 0, S.promise + 0.2, 0.4));
-      show(liveNote, visible(t, S.live + 0.4, S.poland, 0.4));
+      show(attrib, visible(t, 0, S.promise + 0.15, 0.35));
+      show(liveNote, visible(t, S.live + 0.3, S.train, 0.35));
     },
   };
 }

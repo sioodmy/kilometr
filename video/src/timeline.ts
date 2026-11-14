@@ -6,7 +6,7 @@ import { pl } from '../../src/i18n/pl';
 export type Format = 'h' | 'v';
 
 export const FPS = 30;
-export const DURATION = 37;
+export const DURATION = 27;
 export const SIZE: Record<Format, { w: number; h: number }> = {
   h: { w: 1920, h: 1080 },
   v: { w: 1080, h: 1920 },
@@ -26,28 +26,37 @@ export const visible = (t: number, a: number, b: number, fade = 0.4) =>
 /** Granice scen (s). */
 export const S = {
   wave: 0,
-  route: 6.5,
-  offline: 12.5,
-  live: 17.5,
-  poland: 23.5,
-  promise: 28.5,
-  end: 32.5,
+  route: 4.2,
+  live: 8.5,
+  train: 11.6,
+  poland: 17.0,
+  promise: 21.0,
+  end: 24.0,
 } as const;
 
 /** Fala: sekundy od wyjścia (20:25) w funkcji czasu wideo. */
 export const WAVE_MAX = 60 * 60;
-export const waveAt = (t: number) => WAVE_MAX * smooth(ramp(t, 1.3, 6.1));
+export const waveAt = (t: number) => WAVE_MAX * smooth(ramp(t, 0.6, 3.9));
 
 /** Zegar rozkładu w scenach z pojazdami (s od północy). */
-export const LIVE_FROM = 17.3;
-export const FOLLOW_START = 18.3;
-export const FOLLOW_END = 23.2;
+export const LIVE_FROM = 8.4;
+export const FOLLOW_START = 9.0;
+/** Koniec jazdy: kropka stoi na Katedrze. */
+export const FOLLOW_END = 11.0;
+/** Pauza na Katedrze przed sceną pociągu. */
+export const FOLLOW_HOLD = 0.6;
+/** Tempo zegara podczas śledzenia (s rozkładu / s wideo). */
+export const FOLLOW_RATE = 130;
+
 export const busClock = (t: number, focusAt: number) => {
-  // Śledzenie: 7 min jazdy tramwaju w 5 s, potem szybszy podgląd całego miasta.
-  const follow = focusAt + (t - FOLLOW_START) * 84;
-  if (t <= FOLLOW_END) return follow;
-  return focusAt + (FOLLOW_END - FOLLOW_START) * 84 + (t - FOLLOW_END) * 220;
+  if (t <= FOLLOW_START) return focusAt;
+  if (t <= FOLLOW_END) return focusAt + (t - FOLLOW_START) * FOLLOW_RATE;
+  // Trzymaj rozkład na przyjeździe pod Katedrę przez FOLLOW_HOLD.
+  return focusAt + (FOLLOW_END - FOLLOW_START) * FOLLOW_RATE;
 };
+
+/** Postęp pociągu IC Wrocław → Warszawa w scenie kolejowej (0…1). */
+export const railProgress = (t: number) => easeInOut(ramp(t, S.train + 0.4, S.poland - 0.4));
 
 const L = pl.landing;
 
@@ -60,23 +69,23 @@ export interface Copy {
 
 export function copyFor(cities: number): Copy[] {
   return [
-    { at: 0.4, to: 6.3, title: ['Ze Sky Tower', 'pod Katedrę?'], sub: 'Kilometr sprawdza wszystkie kursy MPK Wrocław.' },
-    { at: 6.7, to: 12.3, title: ['Trasę liczy', 'Twój telefon.'], sub: 'Pełny rozkład jest zapisany w aplikacji.' },
+    { at: 0.25, to: 4.0, title: ['Ze Sky Tower', 'pod Katedrę?'], sub: 'Kilometr sprawdza wszystkie kursy MPK Wrocław.' },
+    { at: 4.3, to: 8.2, title: ['Trasę liczy', 'Twój telefon.'], sub: 'Pełny rozkład jest zapisany w aplikacji.' },
     {
-      at: 12.7,
-      to: 17.3,
-      title: ['Działa w trybie', 'samolotowym.'],
-      sub: 'Mapa i rozkład są w telefonie, więc zasięg nie jest potrzebny.',
-    },
-    {
-      at: 17.7,
-      to: 23.3,
-      title: ['Przypomni Ci,', 'kiedy wysiąść.'],
+      at: 8.6,
+      to: 11.5,
+      title: ['Śledzenie kursu', 'w powiadomieniu.'],
       sub: 'Na mapie widzisz tramwaj, a w powiadomieniu kolejny przystanek.',
     },
     {
-      at: 23.7,
-      to: 28.3,
+      at: 11.7,
+      to: 16.7,
+      title: ['To może teraz', 'do Warszawy?'],
+      sub: 'Pociągi dalekobieżne z opóźnieniami, udogodnieniami i komunikatami PKP.',
+    },
+    {
+      at: 17.1,
+      to: 20.7,
       title: ['Komunikacja', `w ${cities} miastach.`],
       sub: 'Do tego pociągi w całej Polsce, z opóźnieniami i komunikatami PKP.',
     },
@@ -86,7 +95,7 @@ export function copyFor(cities: number): Copy[] {
 export const PROMISE = [L.promise.ads, L.promise.free, L.promise.forever];
 export const CLOSING = L.footer.tagline;
 export const NOTIFY = pl.notification;
-export const SITE = 'sioodmy.github.io/kilometr';
+export const SITE = 'kilometr.app';
 export const PLATFORMS = `${L.install.android} · ${L.install.ios}`;
 export const ATTRIBUTION = 'Mapa © OpenStreetMap, OpenFreeMap · Rozkład MPK: UM Wrocław';
 export const LIVE_NOTE = 'Pozycje pojazdów według rozkładu';

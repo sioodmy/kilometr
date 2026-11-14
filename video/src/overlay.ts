@@ -5,7 +5,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Cam } from './camera';
 import type { VideoData } from './data';
 import { clamp01, lerp } from './timeline';
-import { distanceAt, metersBetween, pointAt, type LonLat, type Shape } from './transit';
+import { distanceAt, metersBetween, pointAt, smoothPath, type LonLat, type Shape } from './transit';
 
 type XY = [number, number];
 type Project = (lon: number, lat: number) => XY | null;
@@ -42,10 +42,15 @@ export interface Frame {
   journey: number;
   journeyAlpha: number;
   originAlpha: number;
+  /** Skala znacznika Sky Tower (1 przy bliskim zoomie, →0 przy oddaleniu). */
+  originScale: number;
   time: number;
   vehicleAlpha: number;
   /** Wyróżnienie śledzonego tramwaju (bez niego nie ma też plakietki linii). */
   focusAlpha: number;
+  /** Postęp pociągu IC (0…1) i widoczność trasy kolejowej. */
+  rail: number;
+  railAlpha: number;
   citiesAt: number;
   citiesAlpha: number;
 }
@@ -70,6 +75,24 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
   for (let i = 1; i < ride.length; i++) rideCum.push(rideCum[i - 1] + metersBetween(ride[i - 1], ride[i]));
   const rideLen = rideCum[rideCum.length - 1];
   const totalLen = walkLen + rideLen;
+  const railRaw: LonLat[] = [];
+  for (let i = 0; i < data.rail.ride.length; i += 2) railRaw.push([data.rail.ride[i], data.rail.ride[i + 1]]);
+  const rail = smoothPath(railRaw, 5, 280);
+  const railCum = [0];
+  for (let i = 1; i < rail.length; i++) railCum.push(railCum[i - 1] + metersBetween(rail[i - 1], rail[i]));
+  const railLen = railCum[railCum.length - 1];
+  const railStopAt = data.rail.stops.map((s) => {
+    let best = 0;
+    let bestD = Infinity;
+    rail.forEach((p, i) => {
+      const d = metersBetween(p, [s.lon, s.lat]);
+      if (d < bestD) {
+        bestD = d;
+        best = railCum[i];
+      }
+    });
+    return best;
+  });
   const stopAt = data.journey.stops.map((s) => {
     let best = 0;
     let bestD = Infinity;
@@ -113,46 +136,69 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
     return out;
   }
 
+  // Min. reach per linia: pomijamy całe warianty jeszcze przed czołem fali.
+  const lineMinReach = data.lines.map((l) => {
+    let min = Infinity;
+    for (const r of l.reach) if (r >= 0 && r < min) min = r;
+    return min;
+  });
+
   function drawWave(f: Frame) {
+    if (f.networkAlpha < 0.01) return;
     const core = lerp(1.3, 3.4, clamp01((f.zoom - 11) / 5));
     const frontSpan = Math.min(80, f.waveSpan);
+    const showFront = f.wave < 3500 && frontSpan > 1;
     const paths = (['bus', 'tram'] as const).map((mode) => {
       const lit = new Path2D();
       const front = new Path2D();
-      for (const l of data.lines) {
-        if (l.mode !== mode) continue;
+      for (let li = 0; li < data.lines.length; li++) {
+        const l = data.lines[li];
+        if (l.mode !== mode || lineMinReach[li] > f.wave) continue;
         const pts = data.shapes[l.shape];
         const reach = l.reach;
         let prev = f.project(pts[0], pts[1]);
         for (let i = 0; i < reach.length - 1; i++) {
-          const next = f.project(pts[2 * i + 2], pts[2 * i + 3]);
           const ra = reach[i];
           const rb = reach[i + 1];
-          if (prev && next && ra >= 0 && rb >= 0 && Math.min(ra, rb) <= f.wave) {
-            const [from, to] = ra <= rb ? [prev, next] : [next, prev];
-            const lo = Math.min(ra, rb);
-            const hi = Math.max(ra, rb);
-            const k = hi <= f.wave ? 1 : (f.wave - lo) / (hi - lo || 1);
-            const x = lerp(from[0], to[0], k);
-            const y = lerp(from[1], to[1], k);
-            lit.moveTo(from[0], from[1]);
-            lit.lineTo(x, y);
-            if (hi > f.wave - frontSpan && f.wave < 3500) {
-              const k0 = clamp01((f.wave - frontSpan - lo) / (hi - lo || 1));
-              front.moveTo(lerp(from[0], to[0], k0), lerp(from[1], to[1], k0));
-              front.lineTo(x, y);
-            }
+          if (ra < 0 || rb < 0 || Math.min(ra, rb) > f.wave) {
+            prev = f.project(pts[2 * i + 2], pts[2 * i + 3]);
+            continue;
+          }
+          const next = f.project(pts[2 * i + 2], pts[2 * i + 3]);
+          if (!prev || !next) {
+            prev = next;
+            continue;
+          }
+          // Pomiń odcinki poniżej ~1 px (dużo mikrosegmentów przy oddaleniu).
+          const dx = next[0] - prev[0];
+          const dy = next[1] - prev[1];
+          if (dx * dx + dy * dy < 1) {
+            prev = next;
+            continue;
+          }
+          const [from, to] = ra <= rb ? [prev, next] : [next, prev];
+          const lo = Math.min(ra, rb);
+          const hi = Math.max(ra, rb);
+          const k = hi <= f.wave ? 1 : (f.wave - lo) / (hi - lo || 1);
+          const x = lerp(from[0], to[0], k);
+          const y = lerp(from[1], to[1], k);
+          lit.moveTo(from[0], from[1]);
+          lit.lineTo(x, y);
+          if (showFront && hi > f.wave - frontSpan) {
+            const k0 = clamp01((f.wave - frontSpan - lo) / (hi - lo || 1));
+            front.moveTo(lerp(from[0], to[0], k0), lerp(from[1], to[1], k0));
+            front.lineTo(x, y);
           }
           prev = next;
         }
       }
       return { lit, front, color: mode === 'tram' ? TRAM : BUS };
     });
-    // Poświata się sumuje, ale same linie nie: tramwaj i autobus na jednej ulicy nie bieleją.
+    // Poświata + rdzeń w 2 przebiegach na tryb (wcześniej 4).
     ctx.globalCompositeOperation = 'lighter';
     for (const p of paths) {
-      ctx.strokeStyle = rgba(p.color, 0.09 * f.networkAlpha);
-      ctx.lineWidth = core * 4.5;
+      ctx.strokeStyle = rgba(p.color, 0.11 * f.networkAlpha);
+      ctx.lineWidth = core * 4.2;
       ctx.stroke(p.lit);
     }
     ctx.globalCompositeOperation = 'source-over';
@@ -161,22 +207,23 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
       ctx.lineWidth = core;
       ctx.stroke(p.lit);
     }
-    ctx.globalCompositeOperation = 'lighter';
-    for (const p of paths) {
-      ctx.strokeStyle = rgba(FRONT, 0.22 * f.networkAlpha);
-      ctx.lineWidth = core * 4.5;
-      ctx.stroke(p.front);
-      ctx.strokeStyle = rgba(FRONT, 0.9 * f.networkAlpha);
-      ctx.lineWidth = core * 1.4;
-      ctx.stroke(p.front);
+    if (showFront) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (const p of paths) {
+        ctx.strokeStyle = rgba(FRONT, 0.55 * f.networkAlpha);
+        ctx.lineWidth = core * 2.2;
+        ctx.stroke(p.front);
+      }
+      ctx.globalCompositeOperation = 'source-over';
     }
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   function drawStops(f: Frame) {
+    if (f.networkAlpha < 0.01) return;
     const dots = new Path2D();
+    const flash = new Path2D();
     const r = lerp(1.2, 2.6, clamp01((f.zoom - 11) / 5));
-    ctx.lineWidth = 1.5;
+    const flashOn = f.wave < 3500;
     for (let i = 0; i < data.stops.length; i += 3) {
       const reach = data.stops[i + 2];
       if (reach < 0 || reach > f.wave) continue;
@@ -184,13 +231,19 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
       if (!p) continue;
       dots.moveTo(p[0] + r, p[1]);
       dots.arc(p[0], p[1], r, 0, Math.PI * 2);
-      const age = (f.wave - reach) / (f.waveSpan || 1);
-      if (age < 1 && f.wave < 3500) {
-        ctx.strokeStyle = rgba(FRONT, 0.45 * (1 - age) * f.networkAlpha);
-        ctx.beginPath();
-        ctx.arc(p[0], p[1], r + 12 * age, 0, Math.PI * 2);
-        ctx.stroke();
+      if (flashOn) {
+        const age = (f.wave - reach) / (f.waveSpan || 1);
+        if (age < 1) {
+          const rr = r + 12 * age;
+          flash.moveTo(p[0] + rr, p[1]);
+          flash.arc(p[0], p[1], rr, 0, Math.PI * 2);
+        }
       }
+    }
+    if (flashOn) {
+      ctx.strokeStyle = rgba(FRONT, 0.35 * f.networkAlpha);
+      ctx.lineWidth = 1.5;
+      ctx.stroke(flash);
     }
     ctx.fillStyle = `rgba(236,242,240,${0.75 * f.networkAlpha})`;
     ctx.fill(dots);
@@ -246,12 +299,16 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
   function drawOrigin(f: Frame) {
     const p = f.project(data.origin.lon, data.origin.lat);
     if (!p) return;
-    const a = f.originAlpha;
+    const s = f.originScale;
+    const a = f.originAlpha * clamp01(s * 1.15);
+    if (a < 0.02 || s < 0.04) return;
+    // Znacznik maleje z zoomem: bez stałej „kropki” przy oddaleniu.
+    const r = lerp(1.2, 15, s);
     ctx.beginPath();
-    ctx.arc(p[0], p[1], 15, 0, Math.PI * 2);
+    ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(16,20,19,${a})`;
     ctx.fill();
-    ctx.lineWidth = 6;
+    ctx.lineWidth = Math.max(1.5, 6 * s);
     ctx.strokeStyle = rgba(TRAM, a);
     ctx.stroke();
   }
@@ -289,6 +346,60 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
       ctx.lineWidth = 1.5;
       ctx.stroke(dots[mode]);
     }
+  }
+
+  /** Trasa IC: rysuje się wraz z postępem pociągu, z plakietką na czołle. */
+  function drawRail(f: Frame): XY | null {
+    const a = f.railAlpha;
+    if (a <= 0 || f.rail <= 0) return null;
+    const upTo = railLen * f.rail;
+    const drawn = partial(rail, railCum, upTo).map(([lon, lat]) => f.project(lon, lat));
+    const path = new Path2D();
+    line(path, drawn);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = `rgba(8,12,11,${0.9 * a})`;
+    ctx.lineWidth = 14;
+    ctx.stroke(path);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = hexA(data.rail.color, 0.3 * a);
+    ctx.lineWidth = 28;
+    ctx.stroke(path);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = hexA(data.rail.color, a);
+    ctx.lineWidth = 7;
+    ctx.stroke(path);
+    data.rail.stops.forEach((s, i) => {
+      const at = railStopAt[i] ?? 0;
+      if (at > upTo + 1) return;
+      const p = f.project(s.lon, s.lat);
+      if (!p) return;
+      const last = i === data.rail.stops.length - 1;
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], last ? 10 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = last ? hexA(data.rail.color, a) : `rgba(16,20,19,${a})`;
+      ctx.fill();
+      ctx.lineWidth = last ? 4 : 2.5;
+      ctx.strokeStyle = last ? `rgba(244,248,246,${a})` : hexA(data.rail.color, a);
+      ctx.stroke();
+    });
+    const head = drawn[drawn.length - 1];
+    if (!head) return null;
+    const r = lerp(6, 12, clamp01((f.zoom - 6) / 4));
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.beginPath();
+    ctx.arc(head[0], head[1], r * 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = hexA(data.rail.color, 0.25 * a);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath();
+    ctx.arc(head[0], head[1], r, 0, Math.PI * 2);
+    ctx.fillStyle = hexA(data.rail.color, a);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(244,248,246,${a})`;
+    ctx.stroke();
+    return head;
   }
 
   /** Pozycja śledzonego tramwaju na ekranie (dla plakietki linii). */
@@ -361,14 +472,32 @@ export function createOverlay(canvas: HTMLCanvasElement, data: VideoData, shapes
       let focus: XY | null = null;
       if (f.vehicleAlpha > 0) drawVehicles(f);
       if (f.focusAlpha > 0) focus = focusPoint(f);
+      const railFocus = drawRail(f);
       const origin = f.project(data.origin.lon, data.origin.lat);
       const destination = data.journey.stops[data.journey.stops.length - 1];
       const cities = f.citiesAlpha > 0 ? drawCities(f) : [];
+      const warsaw =
+        f.railAlpha > 0.15
+          ? f.project(data.rail.warsaw.lon, data.rail.warsaw.lat)
+          : null;
+      if (warsaw && f.railAlpha > 0.2) {
+        const a = f.railAlpha;
+        ctx.beginPath();
+        ctx.arc(warsaw[0], warsaw[1], 9, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(244,248,246,${a})`;
+        ctx.fill();
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = hexA(data.rail.color, a);
+        ctx.stroke();
+      }
       return {
-        focus,
+        focus: railFocus ?? focus,
         origin,
+        originScale: f.originScale,
         destination: f.project(destination.lon, destination.lat),
         cities,
+        warsaw,
+        railLabel: f.railAlpha > 0.2,
       };
     },
   };

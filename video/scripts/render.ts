@@ -172,6 +172,37 @@ function buildUi() {
             contents: `${readFileSync(args.path, 'utf8')}\nexport const setDataStatusForVideo = emit;\n`,
             loader: 'ts',
           }));
+          // Udogodnienia i alerty PKP bez bazy / sieci: stały mock na zrzut ekranu.
+          b.onLoad({ filter: /src\/services\/railAmenities\.ts$/ }, () => ({
+            contents: readFileSync(join(UI, 'rail-amenities.ts'), 'utf8'),
+            loader: 'ts',
+            resolveDir: UI,
+          }));
+          b.onLoad({ filter: /src\/services\/railTripAlerts\.ts$/ }, () => ({
+            contents: readFileSync(join(UI, 'rail-alerts.ts'), 'utf8'),
+            loader: 'ts',
+            resolveDir: UI,
+          }));
+          b.onLoad({ filter: /src\/components\/RouteMapCard\.tsx$/ }, () => ({
+            contents: readFileSync(join(UI, 'route-map-card.tsx'), 'utf8'),
+            loader: 'tsx',
+            resolveDir: UI,
+          }));
+          b.onLoad({ filter: /src\/services\/useRailLiveConnections\.ts$/ }, () => ({
+            contents: readFileSync(join(UI, 'use-rail-live.ts'), 'utf8'),
+            loader: 'ts',
+            resolveDir: UI,
+          }));
+          b.onLoad({ filter: /src\/services\/mpkNews\.ts$/ }, () => ({
+            contents: readFileSync(join(UI, 'mpk-news.ts'), 'utf8'),
+            loader: 'ts',
+            resolveDir: UI,
+          }));
+          b.onLoad({ filter: /src\/services\/ticketStorage\.ts$/ }, () => ({
+            contents: readFileSync(join(UI, 'ticket-storage.ts'), 'utf8'),
+            loader: 'ts',
+            resolveDir: UI,
+          }));
           b.onLoad({ filter: /.*/, namespace: 'zaslepka' }, (args) => {
             const data: unknown = args.pluginData;
             if (typeof data !== 'object' || data === null || !('importer' in data) || !('module' in data)) return undefined;
@@ -262,7 +293,7 @@ async function main() {
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');
     // Ekrany aplikacji w rozmiarze telefonu (393 dp, gęstość 3), potem trafiają do wideo jako PNG.
-    for (const screen of ['trip', 'routes']) {
+    for (const screen of ['trip', 'routes', 'train']) {
       await cdp.send('Emulation.setDeviceMetricsOverride', { width: 393, height: 826, deviceScaleFactor: 3, mobile: true });
       await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/video/ui.html?screen=${screen}` });
       await until('window.uiReady === true');
@@ -271,7 +302,7 @@ async function main() {
       writeFileSync(join(CACHE, `ui-${screen}.png`), Buffer.from(r.data, 'base64'));
     }
     if (args.has('ui')) {
-      console.log(join(CACHE, 'ui-trip.png'), join(CACHE, 'ui-routes.png'));
+      console.log(join(CACHE, 'ui-trip.png'), join(CACHE, 'ui-routes.png'), join(CACHE, 'ui-train.png'));
       return;
     }
 

@@ -62,5 +62,16 @@ export interface VideoData {
   };
   /** Kursy w oknie animacji: pozycja na trasie (m) w funkcji czasu (s od północy). */
   vehicles: { shape: number; mode: Mode; line: string; t: number[]; d: number[]; focus: boolean }[];
+  /** IC Wrocław → Warszawa: geometria i przystanki do sceny kolejowej. */
+  rail: {
+    line: string;
+    color: string;
+    ride: number[];
+    stops: VideoStop[];
+    /** Punkt „Warszawa” na mapie (etykieta w scenie pociągu). */
+    warsaw: { name: string; lon: number; lat: number };
+    trainNumber: string;
+    trainName: string;
+  };
   cities: { id: string; name: string; lon: number; lat: number }[];
 }
