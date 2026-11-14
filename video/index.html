@@ -19,7 +19,6 @@
       :root {
         --ink: #f4f8f6;
         --muted: #bfc9c5;
-        --faint: #9ba5a2;
         --teal: #5cdbbe;
         --surface: #1b2220;
       }
@@ -289,76 +288,6 @@
         background: var(--teal);
       }
 
-      /* Porównanie z jakdojade */
-      #bench {
-        position: absolute;
-        color: var(--ink);
-        visibility: hidden;
-      }
-      .h #bench {
-        left: 120px;
-        top: 520px;
-        width: 760px;
-      }
-      .v #bench {
-        left: 84px;
-        top: 700px;
-        width: 912px;
-      }
-      .bench-nums {
-        display: flex;
-        justify-content: space-between;
-      }
-      .bench-num b {
-        display: block;
-        font-size: 128px;
-        font-weight: 700;
-        letter-spacing: -0.03em;
-        line-height: 1;
-        font-variant-numeric: tabular-nums;
-      }
-      .bench-num span {
-        display: block;
-        margin-top: 10px;
-        color: var(--muted);
-        font-size: 27px;
-      }
-      .bench-num.wins b {
-        color: var(--teal);
-      }
-      .bench-num.losses {
-        text-align: right;
-      }
-      .bench-bar {
-        display: flex;
-        gap: 6px;
-        height: 20px;
-        margin-top: 34px;
-      }
-      .bench-bar i {
-        display: block;
-        flex: 0 0 auto;
-        flex-basis: 0;
-        border-radius: 10px;
-      }
-      .bench-bar .wins {
-        background: var(--teal);
-      }
-      .bench-bar .ties {
-        background: #5b6662;
-      }
-      .bench-bar .losses {
-        background: #e0e3e1;
-      }
-      .bench-note {
-        margin: 26px 0 0;
-        color: var(--faint);
-        font-size: 22px;
-      }
-      .v .bench-note {
-        font-size: 26px;
-      }
-
       /* Obietnica i plansza końcowa */
       #promise,
       #end {
@@ -468,7 +397,6 @@
       <div id="scrim"></div>
       <div id="labels"></div>
       <div id="copy"><h1 id="title"></h1><p id="sub"></p></div>
-      <div id="bench"></div>
       <div id="phone"></div>
       <div id="notif"></div>
       <div id="promise"></div>

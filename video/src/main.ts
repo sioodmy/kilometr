@@ -145,11 +145,11 @@ async function main() {
       waveSpan: waveAt(t) - waveAt(t - 0.5),
       networkAlpha: network,
       journey: smooth(ramp(t, 6.9, 8.6)),
-      journeyAlpha: lerp(1, 0.8, ramp(t, S.live, S.live + 0.8)) * visible(t, 6.8, S.bench + 0.5, 0.6),
+      journeyAlpha: lerp(1, 0.8, ramp(t, S.live, S.live + 0.8)) * visible(t, 6.8, S.poland + 0.5, 0.6),
       originAlpha: visible(t, 0.2, S.live + 0.3, 0.4),
       time,
       vehicleAlpha: visible(t, S.live - 0.1, S.poland + 0.4, 0.6),
-      focusAlpha: visible(t, S.live - 0.1, S.bench + 0.5, 0.6),
+      focusAlpha: visible(t, S.live - 0.1, S.poland + 0.5, 0.6),
       citiesAt: t - (S.poland + 1.0),
       citiesAlpha: visible(t, S.poland + 0.5, S.promise + 0.4, 0.4),
     });

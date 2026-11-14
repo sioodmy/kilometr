@@ -3,7 +3,7 @@
 
 import { LngLat, type LngLatBoundsLike, type Map as MapLibreMap } from 'maplibre-gl';
 import type { VideoData } from './data';
-import { FOLLOW_END, FOLLOW_START, LIVE_FROM, busClock, easeInOut, lerp, ramp, waveAt, type Format } from './timeline';
+import { DURATION, FOLLOW_END, FOLLOW_START, LIVE_FROM, busClock, easeInOut, lerp, ramp, waveAt, type Format } from './timeline';
 import { buildShapes, distanceAt, heading, metersBetween, pointAt, type LonLat } from './transit';
 
 export interface Pad {
@@ -143,14 +143,12 @@ export function buildCamera(map: MapLibreMap, data: VideoData, format: Format, f
     ? pad({ top: 400, left: 110, right: 860, bottom: 110 })
     : pad({ top: 560, bottom: 1020, left: 130, right: 130 });
   const cityPad = h ? pad({ left: 820, top: 70, bottom: 70, right: 70 }) : pad({ top: 760, bottom: 150, left: 50, right: 50 });
-  const benchPad = h ? pad({ left: 980, top: 80, bottom: 80, right: 80 }) : pad({ top: 1000, bottom: 140, left: 60, right: 60 });
-  const polandPad = h ? pad({ left: 860, top: 90, bottom: 90, right: 230 }) : pad({ top: 760, bottom: 260, left: 60, right: 60 });
+  const polandPad = h ? pad({ left: 860, top: 90, bottom: 90, right: 230 }) : pad({ top: 760, bottom: 260, left: 60, right: 200 });
 
   const withPad = (c: Cam, p: Pad): Cam => ({ ...c, pad: p });
   const cityCam = withPad(fit(reached, cityPad, 8, 42, -0.35), pad({}));
   // W pionie trasa leży w poprzek kadru, nad telefonem.
   const routeCam = withPad(h ? fit(route, routePad, 18, 48, -0.05) : fit(route, routePad, -40, 40, 0.75), pad({}));
-  const benchCam = withPad(fit(reached, benchPad, 0, 0, 0), pad({}));
   const polandCam = withPad(fit(cities, polandPad, 0, 0, 0), pad({}));
 
   const keys: Key[] = [
@@ -160,10 +158,10 @@ export function buildCamera(map: MapLibreMap, data: VideoData, format: Format, f
     { t: 8.2, cam: routeCam },
     { t: 12.4, cam: { ...routeCam, zoom: routeCam.zoom + 0.15, bearing: routeCam.bearing + 8 } },
     { t: LIVE_FROM, cam: { ...routeCam, zoom: routeCam.zoom + 0.3, bearing: routeCam.bearing + 14 } },
-    { t: 24.6, cam: benchCam },
-    { t: 28.4, cam: { ...benchCam, zoom: benchCam.zoom - 0.2 } },
-    { t: 30.8, cam: polandCam, fly: true },
-    { t: 42, cam: { ...polandCam, zoom: polandCam.zoom + 0.18 } },
+    // Po śledzeniu tramwaju krótko całe miasto, potem lot nad Polskę.
+    { t: 23.8, cam: cityCam },
+    { t: 26, cam: polandCam, fly: true },
+    { t: DURATION, cam: { ...polandCam, zoom: polandCam.zoom + 0.18 } },
   ];
 
   const keyed = (t: number): Cam => {

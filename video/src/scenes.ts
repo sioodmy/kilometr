@@ -1,12 +1,9 @@
-// Warstwy HTML nad mapą: napisy, telefon ze screenami, powiadomienie,
-// porównanie z jakdojade, obietnica i plansza końcowa.
+// Warstwy HTML nad mapą: napisy, telefon z ekranami aplikacji, powiadomienie,
+// obietnica i plansza końcowa.
 
 import type { VideoData } from './data';
 import {
   ATTRIBUTION,
-  BENCH,
-  BENCH_LABELS,
-  BENCH_NOTE,
   CLOSING,
   LIVE_NOTE,
   NOTIFY,
@@ -110,18 +107,6 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   let active = -1;
   let spans: HTMLElement[] = [];
 
-  const bench = q<HTMLElement>(stage, '#bench');
-  const nums = el('div', 'bench-nums', bench);
-  const parts = (['wins', 'ties', 'losses'] as const).map((key) => {
-    const box = el('div', `bench-num ${key}`, nums);
-    const b = el('b', '', box, '0');
-    el('span', '', box, BENCH_LABELS[key]);
-    return { key, b };
-  });
-  const bar = el('div', 'bench-bar', bench);
-  const segs = parts.map((p) => el('i', p.key, bar));
-  el('p', 'bench-note', bench, BENCH_NOTE);
-
   const phone = q<HTMLElement>(stage, '#phone');
   const screen = el('div', 'screen', phone);
   const status = el('div', 'status', screen);
@@ -201,7 +186,6 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
 
       show(scrim, visible(t, 0, S.promise + 0.2, 0.5));
       const dimK = Math.max(
-        0.42 * visible(t, S.bench + 0.4, S.poland + 1.2, 0.8),
         0.18 * visible(t, S.poland + 1.2, S.promise + 0.4, 0.8),
         0.9 * ramp(t, S.promise - 0.2, S.promise + 0.6),
       );
@@ -210,7 +194,7 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
       // Etykiety na mapie.
       place(pinOrigin, marks.origin, visible(t, 0.5, S.live + 0.3, 0.4));
       place(pinDest, marks.destination, visible(t, 8.4, S.live + 0.3, 0.4));
-      place(badge, marks.focus, visible(t, S.live + 0.6, S.bench + 0.6, 0.5));
+      place(badge, marks.focus, visible(t, S.live + 0.6, S.poland + 0.6, 0.5));
       cityLabels.forEach((label, i) => {
         if (!label) return;
         place(label, marks.cities[i] ?? null, smooth(ramp(t, S.poland + 2.2 + i * 0.03, S.poland + 2.7 + i * 0.03)) * visible(t, S.poland, S.promise + 0.2, 0.4));
@@ -236,14 +220,6 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
       nBody.textContent = NOTIFY.nextStop(next.name);
       nTitle.textContent = NOTIFY.alightAt(dest.name);
       nBar.style.width = `${(journeyProgress * 100).toFixed(1)}%`;
-
-      // Porównanie z jakdojade.
-      const bIn = visible(t, S.bench + 0.9, S.poland - 0.2, 0.45);
-      show(bench, bIn);
-      const count = easeOut(ramp(t, S.bench + 1.0, S.bench + 2.2));
-      parts.forEach((p) => (p.b.textContent = String(Math.round(BENCH[p.key] * count))));
-      segs.forEach((s, i) => (s.style.flexGrow = String(BENCH[parts[i].key] * count + 0.0001)));
-      bench.style.transform = `translateY(${(1 - easeOut(ramp(t, S.bench + 0.9, S.bench + 1.5))) * 24}px)`;
 
       // Obietnica.
       show(promise, 1 - ramp(t, S.end - 0.3, S.end + 0.1));
