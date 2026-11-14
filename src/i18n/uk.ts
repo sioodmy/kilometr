@@ -1475,7 +1475,6 @@ export const uk: Strings = {
     stationsCountShort: (n: number) =>
       isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`,
     directRide: (mins: number) => `Без проміжних зупинок · ~${formatDuration(mins)}`,
-    expandPill: (open: boolean) => (open ? 'Згорнути' : 'Показати'),
     arrTime: (time: string) => `приб. ${time}`,
     depTime: (time: string) => `відпр. ${time}`,
     dwellMin: (min: number) => `зупинка ${min} хв`,

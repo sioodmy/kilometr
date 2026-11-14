@@ -15,13 +15,15 @@ export default function LineDeparturesScreen() {
     date: string;
     patternId: string;
     stopIndex: string;
+    dbTarget?: string;
   }>();
   const routeId = params.routeId ?? '';
   const date = params.date ?? timetableToday();
+  const dbTarget = params.dbTarget;
   const router = useRouter();
   const s = useStrings();
   const t = s.lineTimetable;
-  const { data, loading, error, retry } = useLineTimetable(routeId, date);
+  const { data, loading, error, retry } = useLineTimetable(routeId, date, { dbTarget });
   const pattern = data?.patterns.find((item) => item.id === params.patternId);
   const stopIndex = Number(params.stopIndex ?? -1);
   const stop =
@@ -50,7 +52,10 @@ export default function LineDeparturesScreen() {
           onPress={() =>
             router.canGoBack()
               ? router.back()
-              : router.replace({ pathname: '/line', params: { routeId } })
+              : router.replace({
+                  pathname: '/line',
+                  params: { routeId, ...(dbTarget ? { dbTarget } : {}) },
+                })
           }
           accessibilityRole="button"
           accessibilityLabel={t.back}
