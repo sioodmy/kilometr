@@ -30,11 +30,17 @@ function minutesSince2020(year, month, day, hour, minute) {
 // Podglądy mają wyższy kod niż nightly; prod może je zaktualizować.
 const PREVIEW_VERSION_CODE_BAND = 500000000;
 
-// Numeracja APK pozostaje zgodna z już wydanym v1.5.2.
+// Numeracja APK pozostaje zgodna z już wydanym v1.5.2 / v1.12.0.
 const PROD_VERSION_CODE_BAND = 700000000;
+// Podłoga gęstszej numeracji: v1.12.0 poszło jako 701120001 (stary wzór).
+const PROD_VERSION_CODE_DENSE_FLOOR = 701120000;
 
 // versionCode musi być liczbą całkowitą i rosnąć wraz z wydaniami.
-// prod: vX.Y.Z -> 700 mln + X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER.
+// prod < 1.12.1: 700 mln + X*1000000 + Y*10000 + Z*100 + BUILD_NUMBER
+//   (v1.5.4 = 701050401, v1.12.0 = 701120001; bez zmian dla F-Droid / sideload).
+// prod >= 1.12.1: gęściej, bez skoku +10000 przy minorze (Play ostrzega przy lukach).
+//   701120000 + (major-1)*100000 + minor*100 + patch*10 + BUILD_NUMBER
+//   v1.12.1 -> 701121211, v1.13.0 -> 701121301, v2.0.0 -> 701220001.
 // nightly: nightly-YYYYMMDD-HHMM-* -> minuty od 2020-01-01.
 // podglądy: dev-YYYYMMDD-HHMM-*, test-YYYYMMDD-HHMM-* -> banda podglądów + minuty.
 // AAB: ANDROID_VERSION_CODE ze wspólnego licznika workflow Play.
@@ -54,6 +60,16 @@ function versionCodeFromVersion(version) {
     const major = Number(semver[1]);
     const minor = Number(semver[2]);
     const patch = Number(semver[3]);
+    // Od 1.12.1: gęstszy wzór (powyżej już wydanego 701120001).
+    if (major > 1 || (major === 1 && (minor > 12 || (minor === 12 && patch >= 1)))) {
+      return (
+        PROD_VERSION_CODE_DENSE_FLOOR +
+        (major - 1) * 100000 +
+        minor * 100 +
+        patch * 10 +
+        BUILD_NUMBER
+      );
+    }
     return PROD_VERSION_CODE_BAND + major * 1000000 + minor * 10000 + patch * 100 + BUILD_NUMBER;
   }
 
