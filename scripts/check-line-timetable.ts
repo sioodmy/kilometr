@@ -20,6 +20,7 @@ async function main() {
   const {
     searchTransitLines,
     loadLineTimetable,
+    selectInitialPattern,
     shiftTimetableDate,
     timetableClock,
     formatTimetableDate,
@@ -73,6 +74,26 @@ async function main() {
   assert.deepEqual(
     friday.patterns.find((pattern) => pattern.stops[1].id === 'd')?.stops[0].departures,
     [5000],
+  );
+  assert.equal(
+    selectInitialPattern(friday.patterns, { direction: 'a' })?.headsign,
+    'A',
+  );
+  assert.deepEqual(
+    selectInitialPattern(friday.patterns, {
+      direction: 'C',
+      fromStopId: 'a',
+      toStopId: 'd',
+    })?.stops.map((stop) => stop.id),
+    ['a', 'd', 'c'],
+  );
+  assert.equal(
+    (await loadLineTimetable('', '20261023', { tripId: 'out1' })).line?.routeId,
+    'tram4',
+  );
+  assert.equal(
+    (await loadLineTimetable('', '20261023', { line: '4', mode: 'bus' })).line?.routeId,
+    'bus4',
   );
   assert.deepEqual(
     (await loadLineTimetable('tram4', '20261024')).patterns[0].stops[0].departures,

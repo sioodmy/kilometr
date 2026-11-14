@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -16,22 +16,72 @@ import { LineBadge } from '../src/components/LineBadge';
 import { useLineTimetable } from '../src/services/useLineTimetable';
 import {
   formatTimetableDate,
+  selectInitialPattern,
   shiftTimetableDate,
   timetableToday,
   type LineStop,
 } from '../src/services/lineTimetable';
+import type { LegMode } from '../src/types/models';
 import { scheme, shape, type } from '../src/theme/tokens';
 
 export default function LineScreen() {
-  const { routeId } = useLocalSearchParams<{ routeId: string }>();
+  const {
+    routeId,
+    direction,
+    line,
+    mode,
+    tripId,
+    fromStopId,
+    toStopId,
+    fromStop,
+    toStop,
+    dbTarget,
+  } = useLocalSearchParams<{
+    routeId?: string;
+    direction?: string;
+    line?: string;
+    mode?: string;
+    tripId?: string;
+    fromStopId?: string;
+    toStopId?: string;
+    fromStop?: string;
+    toStop?: string;
+    dbTarget?: string;
+  }>();
   const router = useRouter();
   const s = useStrings();
   const t = s.lineTimetable;
   const [date, setDate] = useState(timetableToday);
-  const { data, loading, error, retry } = useLineTimetable(routeId ?? '', date);
+  const { data, loading, error, retry } = useLineTimetable(routeId ?? '', date, {
+    tripId,
+    line,
+    mode: mode as LegMode | undefined,
+    dbTarget,
+  });
   const [patternId, setPatternId] = useState('');
+  const directionsScrollRef = useRef<ScrollView>(null);
+  const scrolledForKeyRef = useRef('');
 
-  const pattern = data?.patterns.find((item) => item.id === patternId) ?? data?.patterns[0];
+  useEffect(() => {
+    setPatternId('');
+    scrolledForKeyRef.current = '';
+  }, [routeId, direction, tripId, line]);
+
+  const matchedPattern = useMemo(
+    () =>
+      selectInitialPattern(data?.patterns ?? [], {
+        direction,
+        fromStopId,
+        toStopId,
+        fromStop,
+        toStop,
+      }),
+    [data?.patterns, direction, fromStopId, toStopId, fromStop, toStop],
+  );
+  const pattern =
+    (patternId ? data?.patterns.find((item) => item.id === patternId) : undefined) ??
+    matchedPattern ??
+    data?.patterns[0];
   const headsignCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of data?.patterns ?? []) {
@@ -44,6 +94,7 @@ export default function LineScreen() {
     [date, s],
   );
 
+  const resolvedRouteId = data?.line?.routeId ?? routeId ?? '';
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   return (
@@ -115,6 +166,7 @@ export default function LineScreen() {
                   {t.direction}
                 </Text>
                 <ScrollView
+                  ref={directionsScrollRef}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.directions}
@@ -126,6 +178,19 @@ export default function LineScreen() {
                       <Pressable
                         key={item.id}
                         onPress={() => setPatternId(item.id)}
+                        onLayout={(e) => {
+                          if (!selected || patternId) return;
+                          const key = `${resolvedRouteId}:${item.id}`;
+                          if (scrolledForKeyRef.current === key) return;
+                          scrolledForKeyRef.current = key;
+                          const x = e.nativeEvent.layout.x;
+                          if (x > 24) {
+                            directionsScrollRef.current?.scrollTo({
+                              x: Math.max(0, x - 16),
+                              animated: false,
+                            });
+                          }
+                        }}
                         accessibilityRole="radio"
                         accessibilityState={{ selected }}
                         style={[styles.direction, selected && styles.directionSelected]}
@@ -167,10 +232,11 @@ export default function LineScreen() {
                   router.push({
                     pathname: '/line-departures',
                     params: {
-                      routeId,
+                      routeId: resolvedRouteId,
                       date,
                       patternId: pattern.id,
                       stopIndex: String(index),
+                      ...(dbTarget ? { dbTarget } : {}),
                     },
                   });
                 }}

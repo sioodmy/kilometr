@@ -1467,7 +1467,6 @@ export const pl = {
     stationsCountShort: (n: number) =>
       `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'}`,
     directRide: (mins: number) => `Bez przystanków pośrednich · ~${formatDuration(mins)}`,
-    expandPill: (open: boolean): string => (open ? 'Zwiń' : 'Pokaż'),
     arrTime: (time: string) => `przyj. ${time}`,
     depTime: (time: string) => `odj. ${time}`,
     dwellMin: (min: number) => `postój ${min} min`,
