@@ -1,4 +1,5 @@
 User-agent: *
-Disallow: /trip/
+Disallow: /t
+Disallow: /t/
 
 Sitemap: https://kilometr.app/sitemap.xml

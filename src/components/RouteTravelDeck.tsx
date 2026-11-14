@@ -118,6 +118,8 @@ export type RouteTravelDeckProps = {
   transferActive: boolean;
   trackingBusy?: boolean;
   onTransferPress: () => void;
+  /** Z powiadomienia „Bilet": po wczytaniu otwórz kontrolę / PDF. */
+  autoInspectTicket?: boolean;
 };
 
 export function RouteTravelDeck({
@@ -127,6 +129,7 @@ export function RouteTravelDeck({
   transferActive,
   trackingBusy,
   onTransferPress,
+  autoInspectTicket = false,
 }: RouteTravelDeckProps) {
   const s = useStrings();
   const [ticket, setTicket] = useState<AttachedRailTicket | null>(null);
@@ -137,6 +140,7 @@ export function RouteTravelDeck({
   // Import trwa, a systemowy picker wraca do apki jako 'active'. Bez tej flagi
   // przeładowanie z dysku mogłoby nadpisać świeżo dodany bilet stanem sprzed importu.
   const importInFlight = useRef(false);
+  const autoInspectDone = useRef(false);
 
   const isTrainTrip = hasTrainLegs(connection);
   const trainSummary = getTrainLegSummary(connection);
@@ -147,6 +151,7 @@ export function RouteTravelDeck({
     let active = true;
     // Nowe połączenie: nie pokazuj biletu z poprzedniej karty.
     setTicket(null);
+    autoInspectDone.current = false;
     const loadTicket = () => {
       void getTicketForConnection(connection.id, connection).then((t) => {
         if (!active) return;
@@ -171,6 +176,18 @@ export function RouteTravelDeck({
       sub.remove();
     };
   }, [connection.id, connection.serviceDate]);
+
+  // Deep link / akcja „Bilet" z powiadomienia: otwórz kontrolę raz po wczytaniu.
+  useEffect(() => {
+    if (!autoInspectTicket || !ticket || autoInspectDone.current) return;
+    autoInspectDone.current = true;
+    void Haptics.selectionAsync().catch(() => {});
+    const hasBarcode = Boolean(
+      ticket.barcodeUri || (ticket.barcodeUris && ticket.barcodeUris.length > 0),
+    );
+    if (hasBarcode) setInspectionOpen(true);
+    else void openTicketPdf(ticket);
+  }, [autoInspectTicket, ticket]);
 
   if (!showTicketSegment && !showTransferSegment) {
     return null;

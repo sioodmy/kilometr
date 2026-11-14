@@ -46,6 +46,7 @@ function mergedOvernight(today: DayIndex, other: DayIndex, prefix = 'y_', offset
 /** Pełna sekwencja przystanków kursu (cała linia) z GTFS stop_times + stops.
  * Kursy `pl:` (kolej ogólnopolska) czyta z magazynu polskaStore. */
 export async function buildTripStops(tripId: string, store: LocalGtfsStore = tripId.startsWith('pl:') ? polskaStore : gtfsStore): Promise<LegStop[]> {
+  const isNational = store === polskaStore || tripId.startsWith('pl:');
   const mem = store.stopTimes.get(tripId);
   const toLegStops = (times: { stop_id: string; arrival_sec: number; departure_sec: number; stop_sequence: number }[]) =>
     times.map((t) => {
@@ -60,14 +61,12 @@ export async function buildTripStops(tripId: string, store: LocalGtfsStore = tri
         departSec: t.departure_sec,
       };
     });
-  if (mem && mem.length > 0) return toLegStops(mem);
-  // Kurs spoza aktywnego wycinka (np. rozwinięcie zapisanej trasy po
-  // restarcie apki): dociągnij z SQLite, ale nazwy stacji czytaj w tym samym
-  // zapytaniu. Magazyn routingu bywa jeszcze niezaładowany i wtedy
-  // podmiana stop_id na nazwę kończyła się „pl:60103” na liście.
+  if (mem && mem.length > 0 && !isNational) return toLegStops(mem);
+  // Kurs spoza aktywnego wycinka (albo kolej ogólnopolska z peronami/torami na każdej stacji):
+  // dociągnij z SQLite razem z nazwami i peronami.
   try {
     const { getTripStopTimes } = await import('../gtfsDatabase');
-    const rows = await getTripStopTimes(tripId, store === polskaStore);
+    const rows = await getTripStopTimes(tripId, isNational);
     if (rows.length > 0) {
       return rows.map((r) => ({
         stopId: r.stop_id,
@@ -77,11 +76,14 @@ export async function buildTripStops(tripId: string, store: LocalGtfsStore = tri
         seq: r.seq,
         arriveSec: r.arr_sec,
         departSec: r.dep_sec,
+        platform: r.platform || undefined,
+        track: r.track || undefined,
       }));
     }
   } catch {
-    // ignoruj - fallback niżej
+    // ignoruj - fallback do pamięci niżej
   }
+  if (mem && mem.length > 0) return toLegStops(mem);
   return [];
 }
 

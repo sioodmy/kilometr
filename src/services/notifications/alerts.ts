@@ -57,7 +57,12 @@ export function scheduleIOSTripAlerts(
         body: `${leg.line ?? ''} • ${clockFromMs(arriveMs)}`,
         kind: 'alight',
       }));
-    const arrived = buildTripCopy({ ...p, phase: 'arrived' }, trip.connection, s);
+    const arrived = buildTripCopy(
+      { ...p, phase: 'arrived' },
+      trip.connection,
+      s,
+      !!trip.sharedJourney,
+    );
     alerts.push({
       id: `kilometr.alert.ios.${trip.id}.arrived`,
       at: p.arriveAtMs, title: arrived.title, body: arrived.subtitle, kind: 'arrived',
@@ -142,7 +147,7 @@ export function sendArrivedNotification(p: TripProgress, trip: TrackedTrip): Pro
   return enqueue(async () => {
     const N = getNotifications();
     if (!N) return;
-    const copy = buildTripCopy(p, trip.connection, tr());
+    const copy = buildTripCopy(p, trip.connection, tr(), !!trip.sharedJourney);
     const id = `kilometr.alert.arrived.${trip.id}`;
     try {
       await N.scheduleNotificationAsync({

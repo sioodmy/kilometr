@@ -68,7 +68,30 @@ export const en: ShareStrings = {
   replaceBody: 'Current tracking will stop. The notification will show the shared journey.',
   trackError: 'Could not pin the journey. Try again.',
   notificationTitle: (place, time) => `${place}, arrival ${time}`,
-  notificationArrived: 'Vehicle reached the destination',
+  notificationWalkingTitle: (place, time) => `Shared • to ${place} at ${time}`,
+  notificationDepartTitle: (service, time) => `Shared • ${service} dep. ${time}`,
+  notificationRideTitle: (service, time) => `Shared • ${service} arr. ${time}`,
+  notificationTransferTitle: (service, time) => `Shared • transfer ${service} at ${time}`,
+  notificationBoardStop: (stop) => `Boarding at: ${stop}`,
+  notificationToStop: (stop) => `Heading to: ${stop}`,
+  notificationArrived: 'Shared journey reached the destination',
+  notificationArrivedBody: (place, time) => `${place} • scheduled ${time}`,
+  planYourOwn: 'Open in route planner',
+  inProgress: 'In transit',
+  upcoming: 'Upcoming',
+  arrTime: (time) => `arr. ${time}`,
+  depTime: (time) => `dep. ${time}`,
+  dwellMin: (min) => `${min} min stop`,
+  platformLabel: (platform, track) =>
+    platform && track
+      ? `Platform ${platform}, Track ${track}`
+      : platform
+        ? `Platform ${platform}`
+        : track
+          ? `Track ${track}`
+          : '',
+  liveDelay: (min) =>
+    min > 0 ? `+${min} min late` : min < 0 ? `${Math.abs(min)} min early` : 'On time',
   itinerary: 'Journey details',
   loading: 'Loading scheduled stops…',
   stopsUnavailable: 'Stop details are unavailable. Shared times and transfers are shown above.',

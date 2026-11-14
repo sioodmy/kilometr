@@ -131,6 +131,9 @@ export interface LegStop {
   /** sekundy od północy, jeśli znane z GTFS */
   arriveSec?: number;
   departSec?: number;
+  /** Peron i tor stacji pośredniej (kolej ogólnopolska). */
+  platform?: string;
+  track?: string;
 }
 
 export interface VehiclePosition {

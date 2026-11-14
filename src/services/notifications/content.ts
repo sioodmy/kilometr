@@ -67,18 +67,20 @@ export function buildPhaseCopy(
   p: TripProgress,
   conn: Connection,
   s: Strings,
+  shared = false,
 ): Record<TripPhase, LivePlanPhaseCopy> {
   const n = s.notification;
   const mode = modeLabel(p.lineMode, s);
   const service = p.line ? `${mode} ${p.line}` : mode;
+  const isTrain = p.lineMode === 'train';
   // Godzina z tego samego znacznika, na który celuje licznik systemowy-
   // inaczej tytuł obiecywałby jeden odjazd, a odliczanie szło do drugiego.
   const boardAt = clockFromMs(p.boardAtMs);
   const arriveAt = p.arriveAt;
-  // Przystanek, na którym wsiadamy (albo do którego idziemy) i kierunek.
+  // Przystanek/stacja, na którym wsiadamy (albo do którego idziemy) i kierunek.
   const boardStop = p.leg?.fromStop ?? '';
   const boarding = join(
-    boardStop ? n.stopHere(boardStop) : '',
+    boardStop ? (isTrain ? n.stationHere(boardStop) : n.stopHere(boardStop)) : '',
     p.direction ? n.directionTo(p.direction) : '',
     platformText(p, n),
   );
@@ -87,7 +89,12 @@ export function buildPhaseCopy(
   const walkText = walkMeters != null && walkMeters > 0 ? formatDistance(walkMeters) : '';
   const walkMin = p.walkSec != null ? Math.round(p.walkSec / 60) : null;
   const walk = join(walkText, walkMin != null && walkMin > 0 ? n.walkApproach(walkMin) : '');
-  const stops = p.stopsLeft != null && p.stopsLeft > 0 ? n.stops(p.stopsLeft) : '';
+  const stops =
+    p.stopsLeft != null && p.stopsLeft > 0
+      ? isTrain
+        ? n.stations(p.stopsLeft)
+        : n.stops(p.stopsLeft)
+      : '';
   const transfers = p.transfers > 0 ? n.transfers(p.transfers) : '';
   const delay =
     p.delayMin >= 2 ? n.delayLate(p.delayMin) : p.delayMin <= -2 ? n.delayEarly(p.delayMin) : '';
@@ -95,29 +102,45 @@ export function buildPhaseCopy(
     p.vehicleTracked && p.vehicleLabel
       ? p.vehicleLabel
       : p.nextStop
-        ? n.estimatedNextStop(p.nextStop)
+        ? isTrain
+          ? n.estimatedNextStation(p.nextStop)
+          : n.estimatedNextStop(p.nextStop)
         : '';
   // Ile trwa przejazd kursem, na którym czekamy. Liczba z rozkładu, więc nie
   // zestarzeje się przy zamkniętej aplikacji.
   const ride = rideLengthMin(p, s);
 
-  if (conn.serviceDate) {
-    const title = s.share.notificationTitle(conn.toTitle, arriveAt);
+  // Tylko udostępnione połączenie (sharedJourney), nie każde z serviceDate
+  // (np. Intercity w śledzeniu własnym).
+  if (shared) {
+    const sh = s.share;
     const detail = join(service, position, delay);
     return {
-      walking: { title, text: s.share.pageTitle, subText: detail },
+      walking: {
+        title: sh.notificationWalkingTitle(conn.toTitle, arriveAt),
+        text: sh.pageTitle,
+        subText: detail,
+      },
       waiting: {
-        title: n.departTitle(service, boardAt),
-        text: boarding,
-        subText: s.share.pageTitle,
+        title: sh.notificationDepartTitle(service, boardAt),
+        text: boarding || sh.notificationBoardStop(boardStop),
+        subText: sh.pageTitle,
       },
       transfer: {
-        title: n.transferTitle(service, boardAt),
-        text: boarding,
-        subText: s.share.pageTitle,
+        title: sh.notificationTransferTitle(service, boardAt),
+        text: boarding || interchangeName(p.interchange) || '',
+        subText: sh.pageTitle,
       },
-      riding: { title, text: s.share.pageTitle, subText: detail },
-      arrived: { title: s.share.notificationArrived, text: conn.toTitle, subText: arriveAt },
+      riding: {
+        title: sh.notificationRideTitle(service, arriveAt),
+        text: sh.pageTitle,
+        subText: detail,
+      },
+      arrived: {
+        title: sh.notificationArrived,
+        text: sh.notificationArrivedBody(conn.toTitle, arriveAt),
+        subText: '',
+      },
     };
   }
 
@@ -150,6 +173,7 @@ export function buildPhaseCopy(
       text: join(
         p.leg?.toStop ? n.alightAt(p.leg.toStop) : '',
         p.direction ? n.directionTo(p.direction) : '',
+        platformText(p, n),
       ),
       // Pozycja pojazdu mówi, czy to GPS, czy szacunek z rozkładu. Nie chowamy
       // jej, gdy kurs ma opóźnienie; treść pokazuje pozycję i opóźnienie razem.
@@ -197,9 +221,14 @@ function rideLengthMin(p: TripProgress, s: Strings): string {
  * 5 minut", opóźnienie, „jesteś na miejscu"). Zdanie budujemy z bieżącej
  * fazy, żeby banner i powiadomienie nie opowiadały o różnych rzeczach.
  */
-export function buildTripCopy(p: TripProgress, conn: Connection, s: Strings): TripCopy {
+export function buildTripCopy(
+  p: TripProgress,
+  conn: Connection,
+  s: Strings,
+  shared = false,
+): TripCopy {
   const n = s.notification;
-  const current = buildPhaseCopy(p, conn, s)[p.phase];
+  const current = buildPhaseCopy(p, conn, s, shared)[p.phase];
   return {
     title: current.title,
     subtitle: current.text,
@@ -266,6 +295,8 @@ export interface BuildPlanOptions {
   transferAlertsEnabled?: boolean;
   /** GPS pasażera w trasie: serwis raportuje pomiary do JS (opóźnienie z przejazdów stacji). */
   gpsOnboardEnabled?: boolean;
+  /** Dołączony bilet kolejowy: przycisk „Bilet" pod powiadomieniem. */
+  hasTicket?: boolean;
 }
 
 export const ARRIVED_LINGER_MS = 3 * 60 * 1000;
@@ -277,7 +308,12 @@ function countdownTarget(p: TripProgress): number {
     : p.arriveAtMs;
 }
 
-function buildStates(p: TripProgress, conn: Connection, s: Strings): LivePlanState[] {
+function buildStates(
+  p: TripProgress,
+  conn: Connection,
+  s: Strings,
+  shared: boolean,
+): LivePlanState[] {
   const timeline = computeLegTimeline(conn, new Date(p.computedAt));
   const times = new Set([p.computedAt, p.arriveAtMs]);
   for (const entry of timeline) {
@@ -297,7 +333,7 @@ function buildStates(p: TripProgress, conn: Connection, s: Strings): LivePlanSta
         phase: state.phase,
         countdownAtMs: countdownTarget(state),
         accentColor: state.lineColor,
-        copy: buildPhaseCopy(state, conn, s)[state.phase],
+        copy: buildPhaseCopy(state, conn, s, shared)[state.phase],
       };
     });
 }
@@ -329,6 +365,8 @@ export function buildLivePlan(
   // Po przekroczeniu celu licznik liczy w górę („14:51 • 3 min") zamiast
   // pokazywać ujemne minuty.
   const countdownDown = countdownAtMs > p.computedAt;
+  const shared = !!trip.sharedJourney;
+  const hasTicket = !!options.hasTicket && !shared;
 
   return {
     tripId: trip.id,
@@ -345,16 +383,17 @@ export function buildLivePlan(
     delayMin: Math.round(p.delayMin),
     stopAfterMs: options.stopAfterMs ?? endAtMs + ARRIVED_LINGER_MS,
     segments: buildSegments(timeline, startAtMs, endAtMs),
-    states: buildStates(p, conn, s),
-    alightAlertsEnabled: !trip.sharedJourney && (options.alightAlertsEnabled ?? true),
-    gpsOnboardEnabled: !trip.sharedJourney && (options.gpsOnboardEnabled ?? true),
+    states: buildStates(p, conn, s, shared),
+    alightAlertsEnabled: !shared && (options.alightAlertsEnabled ?? true),
+    gpsOnboardEnabled: !shared && (options.gpsOnboardEnabled ?? true),
     transferProtectionEnabled: trip.protectionEnabled ?? false,
-    transferAlertsEnabled: !trip.sharedJourney && (options.transferAlertsEnabled ?? true),
-    copy: buildPhaseCopy(p, conn, s),
+    transferAlertsEnabled: !shared && (options.transferAlertsEnabled ?? true),
+    copy: buildPhaseCopy(p, conn, s, shared),
     // Po przyjeździe „Zakończ" nie ma już czego kończyć - przycisk zmienia się
     // na potwierdzenie. Plan i tak przychodzi na każdą zmianę fazy, więc etykieta
-    // dojeżdża razem z resztą treści.
+    // dojeżdża razem z resztą treści. „Bilet" tylko gdy PDF jest dołączony.
     actions: [
+      ...(hasTicket ? [{ id: 'ticket' as const, title: s.notification.actionTicket }] : []),
       { id: 'route', title: s.notification.actionRoute },
       {
         id: 'stop',
@@ -415,10 +454,10 @@ function join(...parts: (string | null | undefined)[]): string {
 
 // ─── Deep linki ────────────────────────────────────────────────────────────
 
-/** Deep link do ekranu połączeń - te same parametry co w buildRoutesLink. */
+/** Deep link prosto do szczegółów śledzonego kursu (albo udostępnionego). */
 function buildTripLink(trip: TrackedTrip): string {
   if (trip.sharedJourney) return `kilometr://shared?trip=${trip.sharedJourney}`;
-  return `kilometr://routes?${queryString(tripParams(trip))}`;
+  return `kilometr://routes/${encodeURIComponent(trip.connection.id)}`;
 }
 
 function tripParams(trip: TrackedTrip): Record<string, string> {

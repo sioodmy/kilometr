@@ -61,8 +61,12 @@ export default function RouteDetailsScreen() {
   const router = useRouter();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId, action: routeAction } = useLocalSearchParams<{
+    id: string;
+    action?: string;
+  }>();
   const id = normalizeConnectionId(routeId ?? '');
+  const openTicket = routeAction === 'ticket';
   const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
@@ -486,6 +490,7 @@ export default function RouteDetailsScreen() {
                 transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
                 transferActive={isTrackedThis && trackedTrip?.protectionEnabled === true}
                 trackingBusy={trackingBusy}
+                autoInspectTicket={openTicket}
                 onTransferPress={() => {
                   if (isTrackedThis && trackedTrip?.protectionEnabled) {
                     openTransferProtection();

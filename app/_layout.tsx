@@ -58,17 +58,19 @@ function navigateFromNotification(res: TripResponse) {
     router.navigate({ pathname: '/shared', params: { trip: res.link.sharedTrip } });
     return;
   }
+  // Prosto do szczegółów kursu. Lista połączeń jest zbędnym przystankiem,
+  // gdy użytkownik wraca z powiadomienia śledzenia.
+  if (res.link.open) {
+    const params: { id: string; action?: string } = { id: res.link.open };
+    if (res.ticket || res.link.action === 'ticket') params.action = 'ticket';
+    const detail = { pathname: '/routes/[id]' as const, params };
+    if (router.canGoBack()) router.dismissTo(detail);
+    else router.push(detail);
+    return;
+  }
   const target = { pathname: '/routes' as const, params: res.link };
-  // Zimny start i ekran główny nie mają /routes w stosie: dismissTo zastąpiłby
-  // wtedy bieżący ekran i back zamykałby aplikację. W takim przypadku dokładamy
-  // ekran, żeby powrót prowadził do domu.
   if (router.canGoBack()) router.dismissTo(target);
   else router.push(target);
-  // Kolejne tapnięcie w powiadomienie ma te same parametry, więc ekran tras
-  // nie otworzy kursu ponownie sam z siebie. Otwieramy go tutaj.
-  if (res.link.open) {
-    router.navigate({ pathname: '/routes/[id]', params: { id: res.link.open } });
-  }
 }
 
 export default function RootLayout() {
