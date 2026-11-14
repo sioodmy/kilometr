@@ -65,20 +65,27 @@ export function resetNationalDisruptionsCache(): void {
   results.clear();
 }
 
+/** Jedno przejście po encjach: bez łańcucha `.replace(&amp;)` → CodeQL js/double-escaping. */
+const HTML_TEXT_ENTITIES: Record<string, string> = {
+  nbsp: ' ',
+  ndash: '-',
+  mdash: '-',
+  bdquo: '„',
+  rdquo: '”',
+  oacute: 'ó',
+  Oacute: 'Ó',
+  amp: '&',
+  quot: '"',
+  '#39': "'",
+};
+
 function decodeBasicHtml(raw: string): string {
   return raw
     .replace(/<(?:br|\/p|\/li|\/h[1-6])\b[^>]*>/gi, '\n')
     .replace(/<li\b[^>]*>/gi, '• ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&ndash;|&mdash;/gi, '-')
-    .replace(/&bdquo;|,,/gi, '„')
-    .replace(/&rdquo;/gi, '”')
-    .replace(/&oacute;/gi, 'ó')
-    .replace(/&Oacute;/gi, 'Ó')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/,,/g, '„')
+    .replace(/&(#39|[A-Za-z]+);/g, (entity, name: string) => HTML_TEXT_ENTITIES[name] ?? entity)
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n')
     .trim();
