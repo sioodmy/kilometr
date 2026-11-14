@@ -4,8 +4,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import {
   AcUnit,
   Accessible,
+  AirlineSeatFlat,
+  AirlineSeatIndividualSuite,
   DirectionsBike,
-  Hotel,
   LocalBar,
   Power,
   Restaurant,
@@ -27,8 +28,8 @@ const ICONS: Record<RailAmenity, ComponentType<{ size?: number; color?: string }
   bar: LocalBar,
   przewoz_rowerow: DirectionsBike,
   dostepny_wozkarze: Accessible,
-  miejsca_lezace: Hotel,
-  miejsca_sypialne: Hotel,
+  miejsca_lezace: AirlineSeatFlat,
+  miejsca_sypialne: AirlineSeatIndividualSuite,
   strefa_ciszy: VolumeOff,
 };
 
@@ -57,6 +58,7 @@ export function RailAmenities({
 
   useEffect(() => {
     let alive = true;
+    setData(null);
     void loadRailAmenities({
       id: '',
       mode: 'train',

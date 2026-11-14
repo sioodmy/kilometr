@@ -287,7 +287,16 @@ async function checkArrivalRouting() {
       stopTimes: direct.store.stopTimes,
       footpaths: direct.store.footpaths,
       isLoaded: true,
-      getDayIndexSlice: async () => direct.index,
+      // Przyjazd 08:31 → searchStart < 07:00 odpala nocny merge (wycinek
+      // wczoraj 22:00→24:xx+, to > 86400). Ten mock nie ma kursów 24:xx;
+      // ten sam indeks jako „wczoraj” robi duchy z dep < 0, które po
+      // dayOffset wyglądają jak dziś rano (flak po północy Warsaw).
+      getDayIndexSlice: async (
+        _weekday: number,
+        _date: string,
+        _from: number,
+        to: number,
+      ) => (to > 86400 ? emptyIndex() : direct.index),
     });
     const target = 86400 + at(8, 31);
     const query = {

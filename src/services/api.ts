@@ -337,8 +337,9 @@ function needsIntercity(query: RouteQuery): boolean {
   // Wyłączone pociągi w ustawieniach = nie planujemy kolei między miastami.
   if (query.trainsEnabled === false) return false;
   const destOutside = isOutsideServiceArea(query.toLat, query.toLon);
-  if (query.toId?.startsWith('stop-pl:')) return destOutside;
   const originOutside = isOutsideServiceArea(query.fromLat, query.fromLon);
+  // stop-pl: w mieście + start spoza (planReverse) też wymaga planera kolejowego.
+  if (query.toId?.startsWith('stop-pl:')) return destOutside || originOutside;
   return destOutside || originOutside;
 }
 

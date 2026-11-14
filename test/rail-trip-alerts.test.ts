@@ -4,7 +4,7 @@ import { alertsForLeg, resetNationalDisruptionsCache } from '../src/services/rai
 import { resetNationalRailUpdatesCache } from '../src/services/nationalRailUpdates';
 import type { Leg } from '../src/types/models';
 
-test('alertsForLeg preserves disruptions and alerts when offline', async () => {
+test('alertsForLeg fetches PKP announcements directly on device and preserves them offline', async () => {
   resetNationalDisruptionsCache();
   resetNationalRailUpdatesCache();
   const originalFetch = globalThis.fetch;
@@ -23,31 +23,31 @@ test('alertsForLeg preserves disruptions and alerts when offline', async () => {
     live: false,
   };
 
+  const listHtml = `
+    <a href="site/o-nas/dzial-prasowy/komunikaty/utrudnienia-ic-1620.html">
+      <h2>IC 1620 awaria sieci trakcyjnej w dniu 13.11.2026 roku</h2>
+      <span>Aktualizacja: 2026-11-13, 15:10(2)</span>
+    </a>
+  `;
+
+  const detailHtml = `
+    <article class="11200">
+      <div class="page-title"><h1>IC 1620 awaria sieci trakcyjnej</h1></div>
+      <p>Awaria sieci trakcyjnej dla pociągu IC nr 1620 relacji Wrocław Główny - Warszawa Centralna.</p>
+      <p>Wprowadzono zastępczą komunikację autobusową na odcinku Częstochowa - Piotrków Trybunalski.</p>
+      <p><em>Informujemy, że mają Państwo prawo do zgłoszenia reklamacji.</em></p>
+    </article>
+  `;
+
   try {
-    // 1. Online: pobranie utrudnień z R2 (polska/disruptions.json)
+    // 1. Online: bezpośrednie pobranie ze strony PKP Intercity na urządzeniu (bez R2 / bez AI)
     globalThis.fetch = async (url: string | URL | Request) => {
       const urlStr = String(url);
-      if (urlStr.includes('polska/disruptions.json')) {
-        return new Response(
-          JSON.stringify({
-            alerts: [
-              {
-                id: 'disruption-1620',
-                headline: 'IC 1620 awaria sieci trakcyjnej',
-                source_title: 'IC 1620',
-                all_lines: ['IC'],
-                is_emergency: true,
-                is_resolved: false,
-                glance: {
-                  problem: 'Awaria sieci trakcyjnej dla pociągu IC 1620.',
-                  solution: 'Wprowadzono komunikację zastępczą.',
-                  timeframe: '15:00 - 18:00',
-                },
-              },
-            ],
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        );
+      if (urlStr.includes('intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/utrudnienia-ic-1620.html')) {
+        return new Response(detailHtml, { status: 200, headers: { 'Content-Type': 'text/html' } });
+      }
+      if (urlStr.includes('intercity.pl/pl/site/o-nas/dzial-prasowy/komunikaty/')) {
+        return new Response(listHtml, { status: 200, headers: { 'Content-Type': 'text/html' } });
       }
       return new Response(JSON.stringify({ trips: {} }), {
         status: 200,
@@ -56,21 +56,22 @@ test('alertsForLeg preserves disruptions and alerts when offline', async () => {
     };
 
     const onlineAlerts = await alertsForLeg(leg);
-    assert.ok(onlineAlerts.length > 0, 'Powinno znaleźć alert dla pociągu IC 1620');
-    assert.equal(onlineAlerts[0]?.id, 'disruption-1620');
+    assert.ok(onlineAlerts.length > 0, 'Powinno znaleźć bezpośredni alert dla pociągu IC 1620');
+    assert.equal(onlineAlerts[0]?.id, 'pkp-ic-utrudnienia-ic-1620');
+    assert.equal(onlineAlerts[0]?.title, 'IC 1620 awaria sieci trakcyjnej');
+    assert.match(onlineAlerts[0]?.solution ?? '', /zastępczą komunikację/);
 
-    // 2. Offline: brak sieci (awaria / tunel / brak internetu w pociągu)
+    // 2. Offline: brak sieci w pociągu
     globalThis.fetch = async () => {
       throw new Error('Network unreachable');
     };
 
-    // Czyścimy cache w RAM, aby zasymulować restart aplikacji w pociągu bez zasięgu
     resetNationalDisruptionsCache();
     resetNationalRailUpdatesCache();
 
     const offlineAlerts = await alertsForLeg(leg);
     assert.ok(offlineAlerts.length > 0, 'Alert powinien zostać odzyskany z pamięci trwałej offline');
-    assert.equal(offlineAlerts[0]?.id, 'disruption-1620');
+    assert.equal(offlineAlerts[0]?.id, 'pkp-ic-utrudnienia-ic-1620');
     assert.equal(offlineAlerts[0]?.title, 'IC 1620 awaria sieci trakcyjnej');
   } finally {
     globalThis.fetch = originalFetch;

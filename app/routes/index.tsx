@@ -23,7 +23,12 @@ import {
   Flag,
   SlidersHorizontal,
 } from '../../src/components/icons';
-import Animated, { Easing, FadeInDown, useReducedMotion } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeInDown,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
@@ -64,9 +69,11 @@ import {
   mergeConnections,
 } from '../../src/services/routing/connectionIdentity';
 import { loadEarlierConnections } from '../../src/services/routing/earlierConnections';
-import { sortConnectionsByCost } from '../../src/services/routing/engine';
 import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
-import { boardingDepartureMs } from '../../src/services/routing/connectionTimes';
+import {
+  boardingDepartureMs,
+  boardingDepartureSec,
+} from '../../src/services/routing/connectionTimes';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
@@ -392,13 +399,14 @@ export default function RoutesScreen() {
         list = list.filter((c) => c.legs.some((l) => l.mode === modeFilter));
       }
     }
-    const cfg = getSettingsSync();
-    return sortConnectionsByCost(
-      [...list],
-      profileWalkSpeedMps(cfg.walkPace),
-      arrivalMode ? targetTimeSec : undefined,
+    // Kolejność zawsze po realnym odjeździe: opóźnienie przesuwa kartę na
+    // jej nowe miejsce w czasie, zamiast zostawiać ją tam, gdzie stała.
+    return [...list].sort(
+      (a, b) =>
+        boardingDepartureSec(a) - boardingDepartureSec(b) ||
+        (a.arrivalSec ?? a.departureSec) - (b.arrivalSec ?? b.departureSec),
     );
-  }, [liveItems, transfersFilter, liveOnly, modeFilter, arrivalMode, targetTimeSec]);
+  }, [liveItems, transfersFilter, liveOnly, modeFilter]);
 
   const listRef = useRef<FlatList<Connection>>(null);
 
@@ -897,6 +905,9 @@ export default function RoutesScreen() {
       setLoadError(false);
       return;
     }
+    // Intercity: nie ruszaj RAPTOR-a, dopóki nie wiemy, czy baza polska jest.
+    // Inaczej pierwsze wyszukiwanie idzie w kosz (railDbReady: null → true/false).
+    if (intercityQuery && railDbReady === null) return;
     const task = InteractionManager.runAfterInteractions(() => {
       fetchRoutes(targetTimeSec, items.length > 0);
     });
@@ -920,6 +931,7 @@ export default function RoutesScreen() {
     timetableReady,
     targetTimeSec,
     timeMode,
+    intercityQuery,
     railDbReady,
   ]);
 
@@ -1328,8 +1340,11 @@ export default function RoutesScreen() {
           </View>
         </ScrollView>
       ) : (
-        <FlatList
+        <Animated.FlatList
           ref={listRef}
+          itemLayoutAnimation={
+            reduceMotion ? undefined : LinearTransition.springify().damping(26).stiffness(320)
+          }
           accessibilityState={{ busy: loading }}
           pointerEvents={loading ? 'none' : 'auto'}
           refreshControl={

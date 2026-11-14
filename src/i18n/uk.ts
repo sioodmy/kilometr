@@ -673,7 +673,9 @@ export const uk: Strings = {
     railTitle: 'Залізничний розклад (Польща)',
     railHint:
       'Потяги всіх перевізників для планування подорожей між містами: IC, EIC, PolRegio, KM та інші.',
-    railReady: (date: string) => `Завантажено (дійсний до ${date})`,
+    railReady: (date: string) =>
+      date ? `Завантажено (дійсний до ${date})` : 'Завантажено',
+    railChecking: 'Перевірка оновлень…',
     railEmpty: 'Не завантажено',
     railDownload: 'Завантажити',
     railCheck: 'Перевірити оновлення',
@@ -1037,6 +1039,50 @@ export const uk: Strings = {
     lineDetour: (line: string) => `Об'їзд лінії ${line}`,
     specialLine: (line: string) => `Спеціальна лінія ${line}`,
     everyNMin: (n: number) => `кожні ${n} хв`,
+    detail: {
+      severityBlocking: 'Рух зупинено',
+      severityMajor: 'Значне ускладнення',
+      severityMinor: 'Зміна зупинки',
+      severityInfo: 'Інформація',
+      typeAccident: 'Подія на маршруті',
+      typeInfra: 'Аварія інфраструктури',
+      typeWorks: 'Планові роботи',
+      typeEvent: 'Міська подія',
+      typeWeather: 'Погодні умови',
+      typeFare: 'Тарифи та квитки',
+      typeOther: 'Повідомлення руху',
+      corridorLabel: 'Ділянка ускладнень',
+      howToTravel: 'Як їхати натомість',
+      ticketHonoring: 'Визнання квитків',
+      phasesSection: 'Етапи робіт',
+      linesSection: 'Зміни на лініях',
+      tempLinesSection: 'Тимчасові та замінні лінії',
+      stopsSection: 'Зупинки зі змінами',
+      originalNoticeShow: 'Показати повний текст повідомлення',
+      originalNoticeHide: 'Сховати повний текст повідомлення',
+      changeCancelled: 'Призупинено',
+      changeDetour: "Об'їзд",
+      changeShortened: 'Скорочений маршрут',
+      changeSkipped: 'Пропускає зупинки',
+      changeSchedule: 'Зміна розкладу',
+      changeFrequency: 'Інший інтервал',
+      changeRestored: 'Постійний маршрут',
+      changeOther: 'Зміна обслуговування',
+      directionPrefix: (dir: string) => (dir === 'both' ? 'В обох напрямках' : `Напрямок: ${dir}`),
+      viaLabel: "Маршрут об'їзду",
+      omittedLabel: 'Пропущені зупинки',
+      temporaryStopsLabel: 'Тимчасові зупинки',
+      transferAtLabel: 'Пересадка на вузлі',
+      replacementLabel: 'Заміна',
+      servesLines: (lines: string) => `За лінії: ${lines}`,
+      stopOmitted: 'Скасовано',
+      stopRelocated: 'Перенесено',
+      stopTemporary: 'Тимчасова',
+      stopRestored: 'Відновлено',
+      stopOpposite: 'Сідайте навпроти',
+      stopReplacedBy: (target: string) => `Замість неї: ${target}`,
+      openLineTimetableA11y: (line: string) => `Відкрити розклад лінії ${line}`,
+    },
   },
   newsSvc: {
     justNow: 'щойно',
@@ -1162,6 +1208,7 @@ export const uk: Strings = {
     scheduledTime: (time: string) => `За розкладом ${time}`,
     estimatedDelay: (n: number) => `Близько +${n} хв, оцінка за іншими автобусами`,
     untrackedVehicle: 'Немає актуальної позиції. Можливе запізнення.',
+    cancelledTrain: 'Потяг скасовано',
     uncertainTransfer: 'Мало часу на пересадку. Запізнення цього автобуса не підтверджено.',
     arrival: 'Прибуття',
     origin: 'Звідки',
@@ -1423,6 +1470,15 @@ export const uk: Strings = {
       const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
       return `${stations} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
+    stopsCountShort: (n: number) =>
+      isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`,
+    stationsCountShort: (n: number) =>
+      isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`,
+    directRide: (mins: number) => `Без проміжних зупинок · ~${formatDuration(mins)}`,
+    expandPill: (open: boolean) => (open ? 'Згорнути' : 'Показати'),
+    arrTime: (time: string) => `приб. ${time}`,
+    depTime: (time: string) => `відпр. ${time}`,
+    dwellMin: (min: number) => `зупинка ${min} хв`,
     platformPeron: (code: string) => `Платформа ${code}`,
     platformPeronTrack: (code: string, track: string) => `Платформа ${code}, колія ${track}`,
     platformTrack: (track: string) => `Колія ${track}`,
@@ -1510,6 +1566,15 @@ export const uk: Strings = {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',
     disruptionsBadgeA11y: 'Ускладнення на маршруті',
+    cancelledTitle: 'Рейс скасовано',
+    cancelledBody: (train: string) =>
+      `Потяг ${train} скасовано оператором або управителем інфраструктури на цій ділянці.`,
+    cancelledSolution: 'Оберіть інше сполучення або перевірте заміну перевізника.',
+    detourTitle: 'Змінений маршрут (об’їзд)',
+    detourBody: 'Потяг їде об’їздом.',
+    detourSolution: 'Час у дорозі та проміжні станції можуть змінитися.',
+    departAt: (time: string) => `Відправлення: ${time}`,
+    liveLabel: 'Наживо',
   },
 
   data: {
@@ -1550,6 +1615,7 @@ export const uk: Strings = {
       'Сповіщення вимкнено. Увімкни їх у системних налаштуваннях для kilometr, щоб відстежувати відправлення та прогрес поїздки.',
     actionStop: 'Зупинити',
     actionRoute: 'Маршрут',
+    actionTicket: 'Квиток',
     showRoutes: 'Показати маршрут',
     actionOk: 'Гаразд',
     modeWalk: 'Пішки',
@@ -1566,13 +1632,18 @@ export const uk: Strings = {
     arrivedBody: (at: string, dur: string) => `Прибуття о ${at} • поїздка тривала ${dur}`,
     nextStop: (name: string) => `наступна ${name}`,
     estimatedNextStop: (name: string) => `Орієнтовна наступна зупинка: ${name}`,
+    estimatedNextStation: (name: string) => `Наступна станція: ${name}`,
     stopHere: (name: string) => `зупинка ${name}`,
+    stationHere: (name: string) => `станція ${name}`,
     alightAt: (name: string) => `Виходь на: ${name}`,
     directionTo: (dir: string) => `У напрямку ${dir}`,
     platform: (num: string) => `колія ${num}`,
     platformPeron: (num: string) => `платформа ${num}`,
     platformPeronTrack: (num: string, track: string) => `платформа ${num}, колія ${track}`,
     platformTrack: (track: string) => `колія ${track}`,
+    seatMeta: (wagon?: string, seat?: string) =>
+      [wagon ? `вагон ${wagon}` : '', seat ? `м. ${seat}` : ''].filter(Boolean).join(', '),
+    cancelledAlert: (service: string) => `${service} • скасовано`,
     walkApproach: (min: number) => `~${min} хв пішки`,
     rideLength: (min: number) => `їзда ${min} хв`,
     departAt: (at: string) => `відправлення о ${at}`,
@@ -1580,6 +1651,8 @@ export const uk: Strings = {
     delayLate: (min: number) => `затримка +${Math.round(min)} хв`,
     delayEarly: (min: number) => `на ${Math.abs(Math.round(min))} хв раніше`,
     stops: (n: number) => (isOne(n) ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
+    stations: (n: number) =>
+      isOne(n) ? '1 станція' : isFew(n) ? `${n} станції` : `${n} станцій`,
     transfers: (n: number) =>
       isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
@@ -1677,12 +1750,31 @@ export const uk: Strings = {
     loading: 'Завантаження…',
     buyKoleo: 'Купити квиток у KOLEO',
     buyKoleoSub: (from: string, to: string) => `${from} до ${to}`,
-    buyKoleoTransferSub: (from: string, to: string, transfers: number) =>
-      transfers === 1
-        ? `${from} до ${to} · 1 пересадка`
-        : `${from} до ${to} · ${transfers} пересадки`,
+    buyKoleoTransferSub: (from: string, to: string, transfers: number) => {
+      const transfersLabel =
+        transfers === 1
+          ? '1 пересадка'
+          : isFew(transfers)
+            ? `${transfers} пересадки`
+            : `${transfers} пересадок`;
+      return `${from} до ${to} · ${transfersLabel}`;
+    },
     attachPdf: 'Додати квиток PDF',
     attachedTitle: 'Залізничний квиток',
+    ticketFallback: 'Квиток',
+    buyOrAdd: 'Купити / Додати',
+    showShort: 'Показати',
+    trainLabel: (number: string) => `Потяг ${number}`,
+    agencyTrain: (agency: string, number: string) => `${agency} ${number}`,
+    wagonShort: (wagon: string) => `в. ${wagon}`,
+    seatShort: (seat: string) => `м. ${seat}`,
+    inspectCode: 'Код для контролю',
+    koleoOpenFailTitle: 'Не вдалося відкрити KOLEO',
+    koleoOpenFailBody:
+      'Не вдалося запустити додаток або сайт KOLEO. Перевірте з’єднання з інтернетом.',
+    koleoDesc: 'Офіційні тарифи PKP IC, KD, KŚ, Polregio',
+    attachPdfDesc: 'Автоматично витягує код Aztec для контролю',
+    deckSheetTitle: 'Залізничний квиток',
     attachedDetails: (wagon?: string, seat?: string, seatType?: string) => {
       const parts: string[] = [];
       if (wagon) parts.push(`Вагон ${wagon}`);
@@ -1718,6 +1810,14 @@ export const uk: Strings = {
       `Ділянка ${current} з ${total} · Торкніться, щоб змінити`,
     inspectionSegmentA11y: (current: number, total: number) =>
       `Ділянка ${current} з ${total}. Торкніться, щоб змінити.`,
+  },
+  travelDeck: {
+    protection: 'Захист',
+    protectionEnable: 'Увімкнути',
+    protectionAtRisk: 'Під загрозою',
+    protectionWatching: 'Стежить',
+    protectionSlack: (n: number) => `+${n} хв запасу`,
+    transferAlert: 'Пересадка!',
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

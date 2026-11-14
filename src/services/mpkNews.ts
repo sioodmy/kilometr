@@ -105,10 +105,16 @@ export interface LineChange {
     | 'frequency_change'
     | 'route_restored'
     | 'other';
+  /** Ostatni stały przystanek przed objazdem lub początek skróconej trasy. */
+  from_stop?: string | null;
+  /** Pierwszy stały przystanek po objeździe lub kraniec skróconej trasy. */
+  to_stop?: string | null;
   /** Zmieniony fragment trasy w kolejności jazdy z tekstu; null gdy tekst nie podaje kolejności. */
   via: string[] | null;
   omitted_stops: string[];
   temporary_stops: string[];
+  /** Węzły przesiadkowe na komunikację zastępczą wskazane w komunikacie. */
+  transfer_stops?: string[];
   replacement_line: string | null;
   hours: DisruptionHours[];
   details: string;
@@ -135,6 +141,32 @@ export interface DisruptionStop {
   details: string;
 }
 
+export interface DisruptionCorridor {
+  label: string;
+  from_stop: string | null;
+  to_stop: string | null;
+}
+
+export interface DisruptionTicketHonoring {
+  active: boolean;
+  summary: string;
+  operators: string[];
+}
+
+export interface DisruptionPhase {
+  label: string;
+  from: string | null;
+  to: string | null;
+  lines: string[];
+  summary: string;
+}
+
+export interface DisruptionStopCoord {
+  stop_id: string;
+  lat: number;
+  lon: number;
+}
+
 export interface DisruptionAlert {
   id: string;
   source_title: string;
@@ -151,6 +183,10 @@ export interface DisruptionAlert {
     solution: string | null;
     timeframe: string;
   };
+  corridor?: DisruptionCorridor | null;
+  ticket_honoring?: DisruptionTicketHonoring | null;
+  phases?: DisruptionPhase[];
+  stop_coords?: Record<string, DisruptionStopCoord>;
   valid_from: string;
   valid_to: string | null;
   all_lines: string[];
@@ -2292,6 +2328,30 @@ export function extractArticleBlocks(html: string, url: string): ArticleBlock[] 
   // boczny wycinamy w extractorze).
   const ztmRzeszow = /ztm\.erzeszow\.pl/i.test(url);
   if (ztmRzeszow) return extractRzeszowArticle(html);
+  const intercity = /intercity\.pl/i.test(url);
+  if (intercity) {
+    const articleBody =
+      (html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+        html.split(/id="mtc"[^>]*>/i)[1]?.split(/<\/main>/i)[0] ??
+        '')
+        .replace(/<div class="page-title">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/i, ' ')
+        .replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, ' ')
+        .split(/Informujemy,\s*że mają Państwo prawo/i)[0] ?? '';
+    const cleaned = scrubArticleHtml(articleBody);
+    const out: ArticleBlock[] = [];
+    const icRe = /<(h[1-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = icRe.exec(cleaned))) {
+      const text = htmlToText(m[2]);
+      if (!text || ARTICLE_JUNK_RE.test(text)) continue;
+      out.push({ kind: m[1].toLowerCase().startsWith('h') ? 'h' : 'p', text });
+    }
+    if (out.length === 0) {
+      const plain = htmlToText(cleaned);
+      if (plain) out.push({ kind: 'p', text: plain });
+    }
+    return out;
+  }
   let fragment = mpk
     ? (html.match(/class="main__inner"[^>]*>([\s\S]*?)<\/div>/i)?.[1] ?? '')
     : mpkLodz
@@ -2386,6 +2446,25 @@ function activeCityId(): CityId {
 
 let cachedNewsItems: MpkNewsItem[] | null = null;
 let cachedNewsCity: string | null = null;
+const newsCacheListeners = new Set<() => void>();
+
+/** Powiadom karty (np. RailAlertsChip), gdy cache komunikatów się zmieni. */
+export function subscribeNewsCache(listener: () => void): () => void {
+  newsCacheListeners.add(listener);
+  return () => {
+    newsCacheListeners.delete(listener);
+  };
+}
+
+function notifyNewsCacheListeners(): void {
+  for (const listener of newsCacheListeners) {
+    try {
+      listener();
+    } catch {
+      // listener UI nie może rozwalić fetcha newsów
+    }
+  }
+}
 let inMemoryLastSeenDate: string | null = null;
 let inMemoryLastSeenTs: number | null = null;
 let inMemorySeenCity: string | null = null;
@@ -2401,6 +2480,53 @@ function getTodayDateString(d: Date = new Date()): string {
 export function getCachedNews(): MpkNewsItem[] | null {
   if (cachedNewsCity !== null && cachedNewsCity !== activeCityId()) return null;
   return cachedNewsItems;
+}
+
+const transientNewsItems = new Map<string, MpkNewsItem>();
+
+/** Zapamiętuje pojedynczy komunikat przed nawigacją do ekranu szczegółów. */
+export function rememberNewsItemForDetail(item: MpkNewsItem): void {
+  if (!item.id) return;
+  transientNewsItems.set(item.id, item);
+  if (transientNewsItems.size > 60) {
+    const oldest = transientNewsItems.keys().next();
+    if (!oldest.done) transientNewsItems.delete(oldest.value);
+  }
+}
+
+/** Odszukuje komunikat po id lub linku z pamięci i trwałego cache miasta. */
+export async function findNewsItemForDetail(
+  id?: string,
+  url?: string,
+): Promise<MpkNewsItem | null> {
+  const cleanId = id?.trim() || '';
+  const cleanUrl = url ? normalizeArticleUrl(url) || url.trim() : '';
+
+  if (cleanId) {
+    const direct = transientNewsItems.get(cleanId);
+    if (direct) return direct;
+  }
+
+  const matchInList = (list: MpkNewsItem[] | null | undefined): MpkNewsItem | null => {
+    if (!list || list.length === 0) return null;
+    if (cleanId) {
+      const byId = list.find((i) => i.id === cleanId);
+      if (byId) return byId;
+    }
+    if (cleanUrl) {
+      const byUrl = list.find((i) => (normalizeArticleUrl(i.link) || i.link) === cleanUrl);
+      if (byUrl) return byUrl;
+    }
+    return null;
+  };
+
+  const memHit = matchInList(getCachedNews());
+  if (memHit) return memHit;
+
+  const diskHit = matchInList(await loadNewsCache());
+  if (diskHit) return diskHit;
+
+  return null;
 }
 
 /**
@@ -2426,6 +2552,8 @@ const ARTICLE_HOST_ALLOWLIST = [
   'bialystok.pl',
   'mzkopole.pl',
   'ztm.erzeszow.pl',
+  'intercity.pl',
+  'portalpasazera.pl',
 ];
 
 const IPV4_LITERAL_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
@@ -2523,6 +2651,7 @@ export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsIt
     if (!Array.isArray(items) || items.length === 0) return null;
     cachedNewsItems = items;
     cachedNewsCity = city.id;
+    notifyNewsCacheListeners();
     return items;
   } catch {
     return null;
@@ -2537,6 +2666,7 @@ async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNe
   cachedNewsItems = items;
   cachedNewsCity = cityId;
   void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
+  notifyNewsCacheListeners();
   return items;
 }
 

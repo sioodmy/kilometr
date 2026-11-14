@@ -42,6 +42,8 @@ export function sharedToConnection(
       toStop: leg.to,
       fromStopId: leg.board,
       toStopId: leg.alight,
+      platformCode: leg.platform,
+      trackCode: leg.track,
       departAt: formatShareTime(leg.departure),
       arriveAt: formatShareTime(leg.arrival),
       stopsCount: leg.stops,

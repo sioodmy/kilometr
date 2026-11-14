@@ -241,7 +241,9 @@ function interchangeLabel(legs: Leg[], transfers: number): string | undefined {
     ),
   );
   if (via.length === 0) return undefined;
-  return via.length === 1 ? `Przesiadka: ${via[0]}` : `Przesiadki: ${via.join(' • ')}`;
+  // Same nazwy stacji bez prefiksu PL: ConnectionCard i powiadomienia
+  // i tak budują etykietę lokalnie / zdejmują "Przesiadka:".
+  return via.join(' • ');
 }
 
 /** Skleja nogę miejską z pociągiem (forward). Ostatni spacer nogi miejskiej
@@ -325,14 +327,18 @@ function combineForward(
     arrivalSec += 86400;
   }
   const transfers = effectiveCity ? effectiveCity.transfers + 1 + rail.transfers : rail.transfers;
+  const nowSec = warsawNow().sec;
 
   return {
     id: '',
+    serviceDate: rail.serviceDate ?? effectiveCity?.serviceDate,
     fromTitle: effectiveCity
       ? options.fromTitle
       : (firstTransitLeg(rail)?.fromStop ?? options.fromTitle),
     toTitle: rail.toTitle,
-    departInMin: effectiveCity ? effectiveCity.departInMin : 0,
+    departInMin: effectiveCity
+      ? effectiveCity.departInMin
+      : Math.max(0, Math.round((departureSec - nowSec) / 60)),
     departureSec,
     arrivalSec,
     departAt: secondsToTimeString(departureSec),
@@ -353,12 +359,14 @@ function combineReverse(rail: Connection, city: Connection, options: PlanOptions
     const departureSec = rail.departureSec;
     const arrivalSec = rail.arrivalSec ?? rail.departureSec + rail.durationMin * 60;
     const transfers = rail.transfers;
+    const nowSec = warsawNow().sec;
 
     return {
       id: '',
+      serviceDate: rail.serviceDate,
       fromTitle: options.fromTitle,
-      toTitle: rail.toTitle,
-      departInMin: 0,
+      toTitle: options.toTitle,
+      departInMin: Math.max(0, Math.round((departureSec - nowSec) / 60)),
       departureSec,
       arrivalSec,
       departAt: secondsToTimeString(departureSec),
@@ -392,12 +400,14 @@ function combineReverse(rail: Connection, city: Connection, options: PlanOptions
     arrivalSec += 86400;
   }
   const transfers = rail.transfers + 1 + city.transfers;
+  const nowSec = warsawNow().sec;
 
   return {
     id: '',
+    serviceDate: rail.serviceDate ?? city.serviceDate,
     fromTitle: options.fromTitle,
     toTitle: options.toTitle,
-    departInMin: 0,
+    departInMin: Math.max(0, Math.round((departureSec - nowSec) / 60)),
     departureSec,
     arrivalSec,
     departAt: secondsToTimeString(departureSec),
@@ -483,7 +493,8 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
   const destInsideCity = !isOutsideServiceArea(options.toLat, options.toLon);
   if (originInsideCity && destInsideCity) return { connections: [] };
 
-  // Cel: stacja z toId (stop-pl:…) albo najbliższa stacja do punktu docelowego.
+  // Cel: stacja z toId (stop-pl:…) albo najbliższa stacja poza miastem.
+  // W trybie reverse (cel w mieście) destination nie jest potrzebne.
   let destination: RailStation | undefined;
   if (options.toId?.startsWith('stop-pl:')) {
     destination = stationById(options.toId.slice('stop-'.length));
@@ -494,18 +505,16 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
       ? { stopId: near[0].stop_id, name: near[0].name, lat: near[0].lat, lon: near[0].lon }
       : undefined;
   }
-  if (!destination) return { connections: [] };
 
   const gateways = gatewayStations();
   const bufferSec = Math.max(120, Math.round(options.trainMinTransferSec ?? PLATFORM_BUFFER_SEC));
 
-  // Stacje docelowe nogi kolejowej: stacja + sąsiednie (Centralna + Śródmieście).
-  const destCluster = polskaStore
-    .findNearestStops(destination.lat, destination.lon, DESTINATION_CLUSTER_M, 5)
-    .map((n) => n.stop.stop_id);
-  const destinationStopIds = destCluster.length > 0 ? destCluster : [destination.stopId];
-
   if (originInsideCity) {
+    if (!destination) return { connections: [] };
+    const destCluster = polskaStore
+      .findNearestStops(destination.lat, destination.lon, DESTINATION_CLUSTER_M, 5)
+      .map((n) => n.stop.stop_id);
+    const destinationStopIds = destCluster.length > 0 ? destCluster : [destination.stopId];
     if (gateways.length === 0) return { connections: [], destinationStation: destination };
     return planForward(options, gateways, destination, destinationStopIds, bufferSec);
   }
@@ -538,6 +547,11 @@ export async function planIntercity(options: PlanOptions): Promise<IntercityPlan
     return planReverse(options, originStation, gateways, bufferSec);
   }
 
+  if (!destination) return { connections: [], originStation };
+  const destCluster = polskaStore
+    .findNearestStops(destination.lat, destination.lon, DESTINATION_CLUSTER_M, 5)
+    .map((n) => n.stop.stop_id);
+  const destinationStopIds = destCluster.length > 0 ? destCluster : [destination.stopId];
   return planRailOnly(options, originStation, destination, destinationStopIds);
 }
 
@@ -845,6 +859,7 @@ export async function nextNationalTrains(
     const services = await gtfs.getNationalActiveServices(afterWarsaw.weekday, afterWarsaw.dateStr);
     if (services.size === 0) return [];
     const placeholders = [...services].map(() => '?').join(',');
+    const afterSec = afterWarsaw.sec;
     const rows = await db.getAllAsync<{
       dep_sec: number;
       train_number: string;
@@ -855,10 +870,13 @@ export async function nextNationalTrains(
        FROM stop_times st JOIN trips t ON t.trip_id = st.trip_id
        WHERE st.stop_id = ?
          AND t.service_id IN (${placeholders})
+         AND st.dep_sec > ?
          ${toStopId ? 'AND EXISTS (SELECT 1 FROM stop_times d WHERE d.trip_id = st.trip_id AND d.stop_id = ? AND d.seq > st.seq)' : ''}
        ORDER BY st.dep_sec
-       LIMIT 60`,
-      ...(toStopId ? [fromStopId, ...services, toStopId] : [fromStopId, ...services]),
+       LIMIT ?`,
+      ...(toStopId
+        ? [fromStopId, ...services, afterSec, toStopId, Math.max(limit * 4, 12)]
+        : [fromStopId, ...services, afterSec, Math.max(limit * 4, 12)]),
     );
     const out: NextTrain[] = [];
     for (const row of rows) {
@@ -866,10 +884,14 @@ export async function nextNationalTrains(
       // (24:xx+) mają dep_sec > 86400 i należą do „jutra” zegara.
       const departAtMs = sharedTimeMs(afterWarsaw.isoDate, row.dep_sec);
       if (departAtMs <= afterMs) continue;
+      const category = (row.category || '')
+        .split('/')
+        .map((part) => part.trim())
+        .find((part) => part && !/BUS/i.test(part));
       out.push({
         label: row.train_number
-          ? `${row.category || 'IC'} ${row.train_number}`
-          : row.category || '',
+          ? `${category || 'IC'} ${row.train_number}`
+          : category || '',
         departAtMs,
         trainName: row.train_name || undefined,
       });

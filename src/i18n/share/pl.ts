@@ -74,7 +74,31 @@ export const pl = {
   replaceBody: 'Obecne śledzenie zostanie zakończone. Powiadomienie pokaże udostępnioną podróż.',
   trackError: 'Nie udało się przypiąć połączenia. Spróbuj ponownie.',
   notificationTitle: (place: string, time: string) => `${place}, przyjazd ${time}`,
-  notificationArrived: 'Pojazd dotarł do celu',
+  notificationWalkingTitle: (place: string, time: string) => `Udostępnione • cel ${place} o ${time}`,
+  notificationDepartTitle: (service: string, time: string) => `Udostępnione • ${service} odj. ${time}`,
+  notificationRideTitle: (service: string, time: string) => `Udostępnione • ${service} przyj. ${time}`,
+  notificationTransferTitle: (service: string, time: string) =>
+    `Udostępnione • przesiadka ${service} o ${time}`,
+  notificationBoardStop: (stop: string) => `Start odcinka: ${stop}`,
+  notificationToStop: (stop: string) => `W stronę: ${stop}`,
+  notificationArrived: 'Udostępniona podróż dotarła do celu',
+  notificationArrivedBody: (place: string, time: string) => `${place} • planowo ${time}`,
+  planYourOwn: 'Zaplanuj w wyszukiwarce',
+  inProgress: 'W trasie',
+  upcoming: 'Przed odjazdem',
+  arrTime: (time: string) => `przyj. ${time}`,
+  depTime: (time: string) => `odj. ${time}`,
+  dwellMin: (min: number) => `postój ${min} min`,
+  platformLabel: (platform?: string, track?: string) =>
+    platform && track
+      ? `Peron ${platform}, Tor ${track}`
+      : platform
+        ? `Peron ${platform}`
+        : track
+          ? `Tor ${track}`
+          : '',
+  liveDelay: (min: number) =>
+    min > 0 ? `+${min} min opóźnienia` : min < 0 ? `${Math.abs(min)} min przed czasem` : 'Na czas',
   itinerary: 'Przebieg podróży',
   loading: 'Wczytuję przystanki z rozkładu…',
   stopsUnavailable:

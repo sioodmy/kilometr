@@ -253,8 +253,10 @@ describe('Ticketing Service', () => {
     const kdTicketText = 'Koleje Dolnośląskie S.A. Bilet na przejazd relacji Wrocław Główny - Legnica';
     assert.equal(isLikelyRailTicket(kdTicketText, 'bilet.pdf', false), true);
 
-    // Dowolny plik z wyekstrahowanym kodem 2D Aztec jest akceptowany
-    assert.equal(isLikelyRailTicket(ebookText, 'random.pdf', true), true);
+    // Sam nieweryfikowany kwadrat nie wystarcza (logo / ebook)
+    assert.equal(isLikelyRailTicket(ebookText, 'random.pdf', true), false);
+    // Zaufany kod + ślad treści kolejowej: OK
+    assert.equal(isLikelyRailTicket('Bilet PKP Intercity', 'bilet.pdf', true), true);
   });
 
   it('parseCMapContent parses beginbfchar and beginbfrange correctly without NUL characters', () => {

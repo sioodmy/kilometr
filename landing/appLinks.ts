@@ -29,7 +29,12 @@ export function appLinkFiles(fingerprints: string, teamId: string) {
       fileName: '.well-known/apple-app-site-association',
       source: JSON.stringify({
         applinks: {
-          details: [{ appIDs: [`${teamId}.app.kilometr`], components: [{ '/': '/trip/*' }] }],
+          details: [
+            {
+              appIDs: [`${teamId}.app.kilometr`],
+              components: [{ '/': '/t' }, { '/': '/t/*' }],
+            },
+          ],
         },
       }),
     });

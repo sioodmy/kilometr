@@ -64,7 +64,7 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "https", "host": "kilometr.app", "pathPrefix": "/trip/" }],
+          "data": [{ "scheme": "https", "host": "kilometr.app", "pathPrefix": "/t" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
