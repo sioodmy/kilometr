@@ -121,9 +121,10 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   const nets = [...icons.querySelectorAll<SVGElement>('.net')];
   const plane = q<SVGElement>(icons, '.plane');
   const trip = el('img', 'shot', screen);
-  trip.src = '/landing/public/screenshots/trip.png';
+  // Zrzuty prawdziwych ekranów aplikacji, robi je render.ts przed wideo (video/ui).
+  trip.src = '/video/.cache/ui-trip.png';
   const routes = el('img', 'shot', screen);
-  routes.src = '/landing/public/screenshots/routes.png';
+  routes.src = '/video/.cache/ui-routes.png';
 
   const notif = q<HTMLElement>(stage, '#notif');
   const head = el('div', 'notif-head', notif);

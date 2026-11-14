@@ -5,12 +5,13 @@
  *
  * Użycie (po npm run video:prepare):
  *   nix shell nixpkgs#chromium nixpkgs#ffmpeg-full -c nix develop .#ci -c 'npm run video:render -- --format h'
- * Opcje: --format h|v, --from S, --to S, --fps N, --still 3,12.5 (klatki PNG).
+ * Opcje: --format h|v, --from S, --to S, --fps N, --still 3,12.5 (klatki PNG),
+ * --ui 1 (tylko ekrany aplikacji do video/.cache/ui-*.png).
  * Bez GPU: VIDEO_ANGLE=swiftshader (kilka sekund na klatkę zamiast ułamka).
  * Wynik: video/out/kilometr-launch-16x9.mp4 albo kilometr-launch-9x16.mp4.
  */
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { build } from 'esbuild';
@@ -33,6 +34,7 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 function serve(): Promise<number> {
@@ -87,7 +89,9 @@ async function connect(url: string) {
       return;
     }
     if (msg.method === 'Runtime.exceptionThrown' || (msg.method === 'Runtime.consoleAPICalled' && msg.params?.type === 'error')) {
-      console.error('[strona]', JSON.stringify(msg.params).slice(0, 600));
+      const text = JSON.stringify(msg.params);
+      const description = /"description":"((?:[^"\\]|\\.)*)"/.exec(text)?.[1] ?? /"value":"((?:[^"\\]|\\.)*)"/.exec(text)?.[1];
+      console.error('[strona]', (description ?? text).replace(/\\n/g, '\n').slice(0, 900));
     }
   };
   const send = (method: string, params: Record<string, unknown> = {}) =>
@@ -103,6 +107,80 @@ async function connect(url: string) {
     return typeof result === 'object' && result !== null && 'value' in result ? result.value : undefined;
   };
   return { send, evaluate, close: () => ws.close() };
+}
+
+const UI = join(ROOT, 'video/ui');
+const STUB = join(UI, 'stub.cjs');
+/** Moduły natywne w ekranach aplikacji: własne zamienniki albo uniwersalna zaślepka. */
+const UI_MODULES: [RegExp, string][] = [
+  [/^react-native$/, join(UI, 'react-native.ts')],
+  [/^react-native-web$/, join(ROOT, 'node_modules/react-native-web/dist/index.js')],
+  [/^react-native-reanimated$/, join(UI, 'reanimated.tsx')],
+  [/^react-native-safe-area-context$/, join(UI, 'safe-area.tsx')],
+  [/^react-native-gesture-handler$/, join(UI, 'gesture-handler.tsx')],
+  [/^expo-router$/, join(UI, 'router.tsx')],
+  [/^@expo\/vector-icons\/MaterialIcons$/, join(UI, 'icons.tsx')],
+  [/^(expo($|-)|@expo\/(?!vector-icons\/build)|@react-native-|@react-native\/(?!normalize-colors)|@maplibre\/|@gorhom\/|react-native-(?!web|svg)|react-native\/)/, STUB],
+];
+
+/**
+ * Zaślepka jako moduł ESM z dokładnie tymi nazwami, które importuje dany plik.
+ * Import nazwany z CJS esbuild kopiuje do nowego obiektu, więc Proxy samo nie wystarcza.
+ */
+function stubModule(importer: string, module: string): string {
+  const src = readFileSync(importer, 'utf8');
+  const from = `\\s*from\\s*['"]${module.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}['"]`;
+  const names = new Set<string>();
+  for (const m of src.matchAll(new RegExp(`import\\s+(?:type\\s+)?(?:[\\w$]+\\s*,\\s*)?\\{([^}]*)\\}${from}`, 'g'))) {
+    for (const part of m[1].split(',')) names.add(part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]);
+  }
+  for (const m of src.matchAll(new RegExp(`import\\s+\\*\\s+as\\s+([\\w$]+)${from}`, 'g'))) {
+    for (const use of src.matchAll(new RegExp(`\\b${m[1]}\\.([\\w$]+)`, 'g'))) names.add(use[1]);
+  }
+  names.delete('');
+  names.delete('default');
+  return [`import stub from ${JSON.stringify(STUB)};`, 'export default stub;', ...[...names].map((n) => `export const ${n} = stub;`)].join('\n');
+}
+
+/** Bundle ekranów aplikacji (app/routes) dla react-native-web. */
+function buildUi() {
+  return build({
+    entryPoints: [join(UI, 'main.tsx')],
+    bundle: true,
+    format: 'esm',
+    target: 'es2022',
+    outfile: join(CACHE, 'ui.js'),
+    jsx: 'automatic',
+    resolveExtensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.js', '.jsx', '.json'],
+    mainFields: ['browser', 'module', 'main'],
+    define: { 'process.env.NODE_ENV': '"production"', __DEV__: 'false', global: 'globalThis' },
+    banner: { js: 'globalThis.process ??= { env: { NODE_ENV: "production" } };' },
+    loader: { '.png': 'dataurl', '.jpg': 'dataurl', '.ttf': 'empty', '.otf': 'empty' },
+    logLevel: 'error',
+    plugins: [
+      {
+        name: 'moduly-natywne',
+        setup(b) {
+          b.onResolve({ filter: /^[@a-z]/ }, (args) => {
+            const hit = UI_MODULES.find(([re]) => re.test(args.path));
+            if (!hit || args.importer === hit[1]) return undefined;
+            if (hit[1] !== STUB || args.kind !== 'import-statement') return { path: hit[1] };
+            return { path: `${args.path} @ ${args.importer}`, namespace: 'zaslepka', pluginData: { importer: args.importer, module: args.path } };
+          });
+          // Status rozkładu liczy się z SQLite, której w przeglądarce nie ma: wideo ustawia go samo.
+          b.onLoad({ filter: /src\/services\/dataManager\.ts$/ }, (args) => ({
+            contents: `${readFileSync(args.path, 'utf8')}\nexport const setDataStatusForVideo = emit;\n`,
+            loader: 'ts',
+          }));
+          b.onLoad({ filter: /.*/, namespace: 'zaslepka' }, (args) => {
+            const data: unknown = args.pluginData;
+            if (typeof data !== 'object' || data === null || !('importer' in data) || !('module' in data)) return undefined;
+            return { contents: stubModule(String(data.importer), String(data.module)), loader: 'js', resolveDir: UI };
+          });
+        },
+      },
+    ],
+  });
 }
 
 async function main() {
@@ -122,6 +200,7 @@ async function main() {
       },
     ],
   });
+  await buildUi();
   if (!existsSync(join(CACHE, 'data.json'))) throw new Error('Brak video/.cache/data.json: najpierw npm run video:prepare');
   mkdirSync(OUT, { recursive: true });
 
@@ -146,7 +225,7 @@ async function main() {
       '--disable-backgrounding-occluded-windows',
       'about:blank',
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TZ: 'Europe/Warsaw' } },
   );
   const browserUrl = await new Promise<string>((resolve, reject) => {
     let log = '';
@@ -172,15 +251,33 @@ async function main() {
   if (!page) throw new Error('Brak karty Chromium');
   const cdp = await connect(page.webSocketDebuggerUrl);
 
+  const until = async (expression: string) => {
+    for (let i = 0; !(await cdp.evaluate(expression)); i++) {
+      if (i > 300) throw new Error(`Strona nie wystartowała: ${expression}`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  };
+
   try {
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');
+    // Ekrany aplikacji w rozmiarze telefonu (393 dp, gęstość 3), potem trafiają do wideo jako PNG.
+    for (const screen of ['trip', 'routes']) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 393, height: 826, deviceScaleFactor: 3, mobile: true });
+      await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/video/ui.html?screen=${screen}` });
+      await until('window.uiReady === true');
+      const r = await cdp.send('Page.captureScreenshot', { format: 'png' });
+      if (typeof r.data !== 'string') throw new Error('Pusty zrzut ekranu aplikacji');
+      writeFileSync(join(CACHE, `ui-${screen}.png`), Buffer.from(r.data, 'base64'));
+    }
+    if (args.has('ui')) {
+      console.log(join(CACHE, 'ui-trip.png'), join(CACHE, 'ui-routes.png'));
+      return;
+    }
+
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: size.w, height: size.h, deviceScaleFactor: 1, mobile: false });
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/video/index.html?format=${format}` });
-    for (let i = 0; !(await cdp.evaluate('Boolean(window.ready)')); i++) {
-      if (i > 300) throw new Error('Strona nie wystartowała');
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    await until('Boolean(window.ready)');
     await cdp.evaluate('window.ready');
     const duration = Number(await cdp.evaluate('window.video.duration'));
     const fps = Number(args.get('fps') ?? (await cdp.evaluate('window.video.fps')));

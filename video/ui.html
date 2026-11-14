@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kilometr: ekrany do wideo</title>
+    <style>
+      @font-face {
+        font-family: 'Roboto';
+        font-weight: 100 900;
+        src: url('/landing/public/fonts/roboto-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Roboto';
+        font-weight: 100 900;
+        src: url('/landing/public/fonts/roboto-latin-ext.woff2') format('woff2');
+        unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+      }
+      @font-face {
+        font-family: 'MaterialIcons';
+        src: url('/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf') format('truetype');
+      }
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #111414;
+        font-family: Roboto, sans-serif;
+      }
+      #root {
+        display: flex;
+      }
+    </style>
+    <script>
+      // Zegar aplikacji: wtorek 20.10.2026, 20:25, jak start podróży w wideo.
+      (() => {
+        const RealDate = Date;
+        const offset = new RealDate('2026-10-20T20:25:00+02:00').getTime() - RealDate.now();
+        const now = () => RealDate.now() + offset;
+        function VideoDate(...args) {
+          if (!new.target) return new RealDate(now()).toString();
+          return Reflect.construct(RealDate, args.length ? args : [now()], new.target);
+        }
+        VideoDate.prototype = RealDate.prototype;
+        VideoDate.now = now;
+        VideoDate.parse = RealDate.parse;
+        VideoDate.UTC = RealDate.UTC;
+        window.Date = VideoDate;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/video/.cache/ui.js"></script>
+  </body>
+</html>
