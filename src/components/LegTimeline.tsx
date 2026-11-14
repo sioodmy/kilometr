@@ -741,7 +741,9 @@ const TransitLegCard = memo(function TransitLegCard({
               </View>
             ) : null}
           </View>
-          <Text style={s.cardTime}>{leg.departAt}</Text>
+          <Text style={s.cardTime} numberOfLines={1}>
+            {leg.departAt}
+          </Text>
         </View>
 
         {/* 2. Stop-hint: M3 tonal callout container z mikro-ikoną */}
@@ -895,7 +897,9 @@ const TransitLegCard = memo(function TransitLegCard({
         <View style={s.cardEndRow}>
           <Text style={s.cardStopName}>{leg.toStop}</Text>
           <View style={s.arrivalTimes}>
-            <Text style={s.cardTime}>{leg.arriveAt}</Text>
+            <Text style={s.cardTime} numberOfLines={1}>
+              {leg.arriveAt}
+            </Text>
             {arrivalDelayMin !== 0 && arrivalDelayMin !== delayMin && (
               <Text
                 style={[
@@ -1102,7 +1106,8 @@ const s = StyleSheet.create({
   arrivalTimes: {
     alignItems: 'flex-end',
     gap: 2,
-    flexShrink: 1,
+    flexShrink: 0,
+    maxWidth: '65%',
   },
   cardStopName: {
     fontSize: 22,
@@ -1119,6 +1124,7 @@ const s = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
+    flexShrink: 0,
   },
   stopHintContainer: {
     flexDirection: 'row',
