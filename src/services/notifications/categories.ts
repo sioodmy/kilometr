@@ -26,11 +26,6 @@ export function isTicketAction(actionIdentifier: string | undefined): boolean {
   return actionIdentifier === ACTION_TICKET;
 }
 
-/** Czy użytkownik wcisnął „Trasa" pod powiadomieniem. */
-export function isRouteAction(actionIdentifier: string | undefined): boolean {
-  return actionIdentifier === ACTION_OPEN_ROUTES;
-}
-
 export async function setupNotificationCategories(): Promise<void> {
   const N = getNotifications();
   if (!N) return;

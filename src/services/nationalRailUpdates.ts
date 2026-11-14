@@ -161,8 +161,9 @@ async function savePersistedRailCache(
     updates: {},
   };
   const now = Date.now();
+  // fetchedAt = czas zapisu u nas, nie timestamp z feedu (ten bywa stary).
   current.apiResponses[requestUrl] = {
-    fetchedAt: apiData.fetchedAt ?? now,
+    fetchedAt: now,
     data: apiData,
   };
   for (const [key, upd] of newUpdates) {
@@ -639,19 +640,20 @@ export async function fetchNationalRailUpdates(
       platform: matchedStop?.platform,
       track: matchedStop?.track,
       cancelled: tripData.cancelled || matchedStop?.cancelled === true,
-      detour: tripData.detour,
+      detour: tripData.detour ?? false,
       confirmed: matchedStop?.confirmed,
       agency: tripData.agency,
       numbers: tripData.numbers,
-      fetchedAt:
-        data.fetchedAt ??
-        cacheFetchedAt ??
-        (isFromCache ? (cachedApi?.at ?? Date.now()) : Date.now()),
+      // Świeży fetch: znacznik = teraz. Z cache: czas zapisu u nas, nie feedu
+      // (feedowy fetchedAt bywa starszy niż TTL i prune kasowałby update).
+      fetchedAt: isFromCache
+        ? (cacheFetchedAt ?? cachedApi?.at ?? Date.now())
+        : Date.now(),
     });
   }
 
   if (!isFromCache && result.size > 0 && data) {
-    void savePersistedRailCache(requestUrl, data, result);
+    await savePersistedRailCache(requestUrl, data, result);
   } else if (isFromCache) {
     const disk = await getPersistedRailCache();
     const now = Date.now();
@@ -669,7 +671,7 @@ export async function fetchNationalRailUpdates(
     }
   }
 
-  // Odetnij przeterminowane wpisy zanim wyjdą do UI / liveTracker.
+  // Odetnij przeterminowane wpisy z cache zanim wyjdą do UI / liveTracker.
   const pruneAt = Date.now();
   for (const [tripId, upd] of result) {
     if (!isRailUpdateFresh(upd, pruneAt)) result.delete(tripId);

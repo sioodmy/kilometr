@@ -187,7 +187,7 @@ function coordinates(lat: unknown, lon: unknown): boolean {
   );
 }
 
-export function isSharedConnection(value: unknown): value is SharedConnection {
+function isSharedConnection(value: unknown): value is SharedConnection {
   if (
     !isRecord(value) ||
     value.v !== 1 ||
