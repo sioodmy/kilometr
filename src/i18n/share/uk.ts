@@ -79,7 +79,30 @@ export const uk: ShareStrings = {
   replaceBody: 'Поточне відстеження буде завершено. Сповіщення показуватиме поширену поїздку.',
   trackError: 'Не вдалося закріпити маршрут. Спробуйте ще раз.',
   notificationTitle: (place, time) => `${place}, прибуття ${time}`,
-  notificationArrived: 'Транспорт прибув до місця призначення',
+  notificationWalkingTitle: (place, time) => `Поширено • до ${place} о ${time}`,
+  notificationDepartTitle: (service, time) => `Поширено • ${service} відпр. ${time}`,
+  notificationRideTitle: (service, time) => `Поширено • ${service} приб. ${time}`,
+  notificationTransferTitle: (service, time) => `Поширено • пересадка ${service} о ${time}`,
+  notificationBoardStop: (stop) => `Посадка: ${stop}`,
+  notificationToStop: (stop) => `У бік: ${stop}`,
+  notificationArrived: 'Поширена поїздка прибула до цілі',
+  notificationArrivedBody: (place, time) => `${place} • за планом ${time}`,
+  planYourOwn: 'Відкрити в планувальнику',
+  inProgress: 'У дорозі',
+  upcoming: 'До відправлення',
+  arrTime: (time) => `приб. ${time}`,
+  depTime: (time) => `відпр. ${time}`,
+  dwellMin: (min) => `зупинка ${min} хв`,
+  platformLabel: (platform, track) =>
+    platform && track
+      ? `Платформа ${platform}, Колія ${track}`
+      : platform
+        ? `Платформа ${platform}`
+        : track
+          ? `Колія ${track}`
+          : '',
+  liveDelay: (min) =>
+    min > 0 ? `+${min} хв затримки` : min < 0 ? `на ${Math.abs(min)} хв раніше` : 'Вчасно',
   itinerary: 'Деталі поїздки',
   loading: 'Завантажуємо зупинки з розкладу…',
   stopsUnavailable: 'Деталі зупинок недоступні. Час і пересадки з поширеної поїздки наведені вище.',

@@ -165,3 +165,33 @@ test('zbiera linie i przystanki z line_changes i temporary_lines', async () => {
   assert.deepEqual([...g.routeIds].sort(), ['r3', 'r5']);
   assert.deepEqual([...g.stopIds].sort(), ['s1', 's2', 's3']);
 });
+
+test('zbiera przystanki z corridor oraz from_stop, to_stop i transfer_stops', async () => {
+  const g = await groundDisruption(
+    alert({
+      corridor: {
+        label: 'ul. Krakowska',
+        from_stop: 'Galeria Dominikańska',
+        to_stop: 'Księże Małe',
+      },
+      line_changes: [
+        {
+          line: '3',
+          direction: 'Księże Małe',
+          change: 'shortened',
+          from_stop: 'Galeria Dominikańska',
+          to_stop: null,
+          via: null,
+          omitted_stops: [],
+          temporary_stops: [],
+          transfer_stops: ['Plac Bema'],
+          replacement_line: '703',
+          hours: [],
+          details: '',
+        },
+      ],
+    }),
+  );
+  assert.deepEqual([...g.stopIds].sort(), ['s1', 's2', 's3']);
+});
+

@@ -12,7 +12,13 @@ import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
-import { fetchCityNews, getCachedNews, loadNewsCache, type MpkNewsItem } from '../services/mpkNews';
+import {
+  fetchCityNews,
+  getCachedNews,
+  loadNewsCache,
+  rememberNewsItemForDetail,
+  type MpkNewsItem,
+} from '../services/mpkNews';
 import { groundDisruption, type GroundedDisruption } from '../services/disruptionGrounding';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 import {
@@ -238,7 +244,7 @@ const AlertSubCard = memo(function AlertSubCard({
     });
   };
 
-  const canOpen = Boolean(item.link);
+  const canOpen = Boolean(item.link || item.disruption);
 
   return (
     <AnimatedPressable
@@ -693,11 +699,13 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     ) || flatTrainAlerts.some(({ alert }) => alert.isUrgent && !alert.isResolved);
 
   const openMpkItem = (item: MpkNewsItem) => {
-    if (!item.link) return;
+    if (!item.link && !item.disruption) return;
+    rememberNewsItemForDetail(item);
     const alertLines = getDisruptionLines(item);
     router.push({
       pathname: '/article',
       params: {
+        id: item.id,
         url: item.link,
         title: item.disruption?.headline || item.title,
         source: item.source,

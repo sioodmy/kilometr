@@ -73,7 +73,30 @@ export const de: ShareStrings = {
     'Die aktuelle Verfolgung wird beendet. Die Benachrichtigung zeigt die geteilte Fahrt.',
   trackError: 'Die Verbindung konnte nicht angeheftet werden. Versuche es erneut.',
   notificationTitle: (place, time) => `${place}, Ankunft ${time}`,
-  notificationArrived: 'Fahrzeug am Ziel angekommen',
+  notificationWalkingTitle: (place, time) => `Geteilt • Ziel ${place} um ${time}`,
+  notificationDepartTitle: (service, time) => `Geteilt • ${service} ab ${time}`,
+  notificationRideTitle: (service, time) => `Geteilt • ${service} an ${time}`,
+  notificationTransferTitle: (service, time) => `Geteilt • Umstieg ${service} um ${time}`,
+  notificationBoardStop: (stop) => `Einstieg: ${stop}`,
+  notificationToStop: (stop) => `Unterwegs nach: ${stop}`,
+  notificationArrived: 'Geteilte Fahrt am Ziel angekommen',
+  notificationArrivedBody: (place, time) => `${place} • planmäßig ${time}`,
+  planYourOwn: 'Im Routenplaner öffnen',
+  inProgress: 'Unterwegs',
+  upcoming: 'Vor Abfahrt',
+  arrTime: (time) => `an ${time}`,
+  depTime: (time) => `ab ${time}`,
+  dwellMin: (min) => `${min} Min. Halt`,
+  platformLabel: (platform, track) =>
+    platform && track
+      ? `Bahnsteig ${platform}, Gleis ${track}`
+      : platform
+        ? `Bahnsteig ${platform}`
+        : track
+          ? `Gleis ${track}`
+          : '',
+  liveDelay: (min) =>
+    min > 0 ? `+${min} Min. Verspätung` : min < 0 ? `${Math.abs(min)} Min. früher` : 'Pünktlich',
   itinerary: 'Reiseverlauf',
   loading: 'Haltestellen werden aus dem Fahrplan geladen…',
   stopsUnavailable:

@@ -39,7 +39,7 @@ import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { legDurationMin, scheduledLegTimes } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
-import { isTrainLeg, railDirectionLabel } from '../services/railIdentity';
+import { isIntercityTrain, isTrainLeg, railDirectionLabel } from '../services/railIdentity';
 import { useStopHint } from '../services/stopHints';
 import { getActiveCityIdSync } from '../services/cityStore';
 import { suggestCityForCoords } from '../cities';
@@ -102,107 +102,205 @@ const StopRow = memo(function StopRow({
   vehicleMode,
   emphasis,
   accent,
-  connectorAccent,
   passed,
   markerPlacement,
-  incomingPassed,
-  outgoingPassed,
   vehicleLabel,
+  showStationArrivals,
+  delayShiftSec,
 }: {
   stop: LegStop;
   isFirst: boolean;
   isLast: boolean;
   vehicleMode: Leg['mode'];
-  /** Przystanek startowy albo końcowy odcinka: wyróżniony wagą. */
+  /** Przystanek startowy albo końcowy odcinka: mocniejsza typografia. */
   emphasis: boolean;
   accent: string;
-  connectorAccent: boolean;
   passed: boolean;
   markerPlacement: 'at_stop' | 'between' | null;
-  incomingPassed: boolean;
-  outgoingPassed: boolean;
   vehicleLabel: string;
+  showStationArrivals: boolean;
+  delayShiftSec: number;
 }) {
   const t = useStrings();
   const boundary = parseFareBoundary(stop.name);
-  const lineCenter = boundary ? 20 : 10.5;
-  return (
-    <View style={s.stopRow}>
-      <View style={s.stopRail}>
-        {!isFirst && (
-          <View
-            style={[
-              s.stopRailLine,
-              { top: -1, height: lineCenter + 2 },
-              {
-                backgroundColor: incomingPassed
-                  ? scheme.outline
-                  : connectorAccent
-                    ? accent
-                    : scheme.outlineVariant,
-              },
-            ]}
-          />
-        )}
-        {!isLast && (
-          <View
-            style={[
-              s.stopRailLine,
-              { top: lineCenter, bottom: -1 },
-              {
-                backgroundColor: outgoingPassed
-                  ? scheme.outline
-                  : connectorAccent
-                    ? accent
-                    : scheme.outlineVariant,
-              },
-            ]}
-          />
-        )}
-        <View
-          style={[
-            boundary ? s.boundaryMark : s.dot,
-            passed
-              ? { backgroundColor: scheme.outline, borderColor: scheme.outline }
-              : { backgroundColor: accent, borderColor: accent },
-          ]}
-        />
-        {markerPlacement != null && (
-          <View
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel={vehicleLabel}
-            style={[s.vehicleMarker, markerPlacement === 'at_stop' && { top: lineCenter - 12 }]}
-          >
-            <VehicleGlyph mode={vehicleMode} />
-          </View>
-        )}
-      </View>
-      {boundary ? (
-        <View style={s.boundaryBody}>
-          <Ticket size={16} color={scheme.onSurfaceVariant} style={s.boundaryIcon} />
-          <View style={s.boundaryText}>
-            <Text style={s.boundaryTitle}>{t.leg.fareBoundary}</Text>
-            <Text style={s.boundaryDetail}>
-              {t.leg.fareBoundaryDetail(boundary.areas, boundary.point)}
-            </Text>
-          </View>
+  const isNow = markerPlacement != null;
+
+  const arrClock =
+    stop.arriveSec != null ? secondsToTimeString(stop.arriveSec + delayShiftSec) : null;
+  const depClock =
+    stop.departSec != null ? secondsToTimeString(stop.departSec + delayShiftSec) : null;
+  const dwellMin =
+    stop.arriveSec != null && stop.departSec != null
+      ? Math.floor((stop.departSec - stop.arriveSec) / 60)
+      : 0;
+  const stationPlatform =
+    !isFirst && !isLast && (stop.platform || stop.track)
+      ? formatPlatformLabel(t, stop.platform, vehicleMode, stop.name, stop.track)
+      : null;
+  const subMeta = [
+    stationPlatform,
+    !isFirst && !isLast && dwellMin >= 2 ? t.leg.dwellMin(dwellMin) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const showDualRailTimes =
+    !boundary && (showStationArrivals || (!isFirst && !isLast && dwellMin >= 2));
+
+  if (boundary) {
+    return (
+      <View style={s.boundaryChip} accessibilityRole="text">
+        <Ticket size={16} color={scheme.onSecondaryContainer} />
+        <View style={s.boundaryText}>
+          <Text style={s.boundaryTitle}>{t.leg.fareBoundary}</Text>
+          <Text style={s.boundaryDetail}>
+            {t.leg.fareBoundaryDetail(boundary.areas, boundary.point)}
+          </Text>
         </View>
-      ) : (
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        s.stopChip,
+        emphasis && s.stopChipEndpoint,
+        passed && s.stopChipPassed,
+        isNow && s.stopChipNow,
+      ]}
+    >
+      <View
+        style={[
+          s.stopAccent,
+          {
+            backgroundColor: isNow ? accent : passed ? scheme.outline : accent,
+            opacity: passed && !isNow ? 0.45 : 1,
+          },
+        ]}
+      />
+      <View style={s.stopRowMain}>
         <View style={s.stopBody}>
+          {isNow ? (
+            <View
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel={vehicleLabel}
+              style={[s.nowBadge, { backgroundColor: accent }]}
+            >
+              <VehicleGlyph mode={vehicleMode} />
+            </View>
+          ) : null}
           <Text
-            style={[s.stopName, emphasis && s.stopNameStrong, passed ? s.stopNamePassed : null]}
-            numberOfLines={1}
+            style={[
+              s.stopName,
+              emphasis && s.stopNameStrong,
+              passed && !isNow && s.stopNamePassed,
+              isNow && s.stopNameNow,
+            ]}
+            numberOfLines={2}
           >
             {stop.name}
           </Text>
+          {subMeta ? (
+            <Text
+              style={[
+                s.stopMeta,
+                passed && !isNow && s.stopNamePassed,
+                isNow && s.stopMetaNow,
+              ]}
+              numberOfLines={1}
+            >
+              {subMeta}
+            </Text>
+          ) : null}
         </View>
-      )}
+        {showDualRailTimes ? (
+          <View style={s.stopTimesCol}>
+            {isFirst ? (
+              <>
+                {arrClock && depClock && arrClock !== depClock ? (
+                  <Text
+                    style={[
+                      s.stopTimeSecondary,
+                      passed && !isNow && s.stopNamePassed,
+                      isNow && s.stopMetaNow,
+                    ]}
+                  >
+                    {t.leg.arrTime(arrClock)}
+                  </Text>
+                ) : null}
+                {depClock ?? arrClock ? (
+                  <Text
+                    style={[
+                      s.stopTimePrimary,
+                      s.stopTimeStrong,
+                      passed && !isNow && s.stopNamePassed,
+                      isNow && s.stopNameNow,
+                    ]}
+                  >
+                    {t.leg.depTime((depClock ?? arrClock)!)}
+                  </Text>
+                ) : null}
+              </>
+            ) : isLast ? (
+              (arrClock ?? depClock) ? (
+                <Text
+                  style={[
+                    s.stopTimePrimary,
+                    s.stopTimeStrong,
+                    passed && !isNow && s.stopNamePassed,
+                    isNow && s.stopNameNow,
+                  ]}
+                >
+                  {t.leg.arrTime((arrClock ?? depClock)!)}
+                </Text>
+              ) : null
+            ) : (
+              <>
+                {arrClock ?? depClock ? (
+                  <Text
+                    style={[
+                      s.stopTimePrimary,
+                      passed && !isNow && s.stopNamePassed,
+                      isNow && s.stopNameNow,
+                    ]}
+                  >
+                    {t.leg.arrTime((arrClock ?? depClock)!)}
+                  </Text>
+                ) : null}
+                {depClock && arrClock && depClock !== arrClock ? (
+                  <Text
+                    style={[
+                      s.stopTimeSecondary,
+                      passed && !isNow && s.stopNamePassed,
+                      isNow && s.stopMetaNow,
+                    ]}
+                  >
+                    {t.leg.depTime(depClock)}
+                  </Text>
+                ) : null}
+              </>
+            )}
+          </View>
+        ) : (isLast ? (arrClock ?? depClock) : (depClock ?? arrClock)) ? (
+          <Text
+            style={[
+              s.stopTimeSingle,
+              emphasis && s.stopTimeStrong,
+              passed && !isNow && s.stopNamePassed,
+              isNow && s.stopNameNow,
+            ]}
+          >
+            {isLast ? (arrClock ?? depClock) : (depClock ?? arrClock)}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 });
 
-// ─── Rozwijana lista kropek dla jednego lega ──────────────────────────────────
+// ─── Rozwijana lista stacji / przystanków (chipy M3, bez szyny) ───────────────
 function LegStopsList({
   leg,
   accent,
@@ -269,15 +367,18 @@ function LegStopsList({
     return pos;
   }, [active, stops, leg, vehicle, userLocation, now, allowLive, track]);
 
+  const showStationArrivals = isIntercityTrain(leg) || isTrainLeg(leg);
+  const delayShiftSec =
+    leg.live || leg.delayConfidence === 'estimated' ? (leg.delaySec ?? 0) : 0;
+  const rowHeight = showStationArrivals ? 58 : 48;
+
   if (loading) {
     return (
       <View style={s.stopsWrap}>
         {[0, 1, 2].map((i) => (
-          <View key={i} style={s.stopRow}>
-            <View style={s.stopRail}>
-              <View style={[s.dot, s.skeletonDot]} />
-            </View>
-            <View style={[s.skeletonLine, { width: `${72 - i * 12}%` }]} />
+          <View key={i} style={[s.stopChip, s.stopChipSkeleton, { minHeight: rowHeight }]}>
+            <View style={[s.stopAccent, { backgroundColor: scheme.outlineVariant }]} />
+            <View style={[s.skeletonLine, { width: `${68 - i * 14}%`, marginTop: 14 }]} />
           </View>
         ))}
       </View>
@@ -288,18 +389,11 @@ function LegStopsList({
     <View style={s.stopsWrap}>
       {stops.slice(segment.start, segment.end + 1).map((stop, offset) => {
         const i = segment.start + offset;
-        const connectorAccent = i + 1 <= segment.end;
         const passed = livePosition != null && i <= livePosition.passedStopIndex;
         const markerPlacement =
           livePosition?.marker && livePosition.marker.index === i
             ? livePosition.marker.placement
             : null;
-        const incomingPassed =
-          livePosition != null &&
-          (i <= livePosition.passedStopIndex || livePosition.atStopIndex === i);
-        const outgoingPassed =
-          livePosition != null &&
-          (i + 1 <= livePosition.passedStopIndex || livePosition.atStopIndex === i + 1);
 
         return (
           <StopRow
@@ -310,11 +404,10 @@ function LegStopsList({
             vehicleMode={leg.mode}
             emphasis={i === segment.start || i === segment.end}
             accent={accent}
-            connectorAccent={connectorAccent}
             passed={passed}
             markerPlacement={markerPlacement}
-            incomingPassed={incomingPassed}
-            outgoingPassed={outgoingPassed}
+            showStationArrivals={showStationArrivals}
+            delayShiftSec={delayShiftSec}
             vehicleLabel={
               markerPlacement === 'at_stop'
                 ? t.leg.nearStop(genericModeNom(t, leg.mode), stop.name)
@@ -406,12 +499,10 @@ const TransitLegCard = memo(function TransitLegCard({
   const chevron = useSharedValue(0);
   const [hasOpened, setHasOpened] = useState(expanded);
 
-  // Mierzymy szerokość badge linii, by wyśrodkować ikonę sensors pod nim
-  // i wyrównać kółko rozwijanej listy z początkiem tekstu statusu live.
+  // Mierzymy szerokość badge linii, by wyśrodkować ikonę sensors pod nim.
   const [badgeWidth, setBadgeWidth] = useState(56);
   const sensorSize = 19;
   const sensorCenterOffset = Math.max(0, badgeWidth / 2 - sensorSize / 2);
-  const stopsIndent = sensorCenterOffset + sensorSize + 8 - 11;
 
   const isTrain = isTrainLeg(leg);
   const legCityId = useMemo(() => {
@@ -445,7 +536,9 @@ const TransitLegCard = memo(function TransitLegCard({
   const [stops, setStops] = useState<LegStop[]>(
     () => stopsCache.get(cacheKey) ?? buildFallbackStops(leg),
   );
-  const estimatedInitialHeight = Math.max(1, (leg.stopsCount ?? stops.length) || 2) * 36;
+  const showStationArrivals = isIntercityTrain(leg) || isTrain;
+  const estimatedInitialHeight =
+    Math.max(1, (leg.stopsCount ?? stops.length) || 2) * (showStationArrivals ? 62 : 52);
   const measuredHeight = useSharedValue(estimatedInitialHeight);
   const stopsHeightAnim = useSharedValue(expanded ? estimatedInitialHeight : 0);
   const [loading, setLoading] = useState(
@@ -740,7 +833,7 @@ const TransitLegCard = memo(function TransitLegCard({
           {(expanded || hasOpened) && (
             <Animated.View
               pointerEvents={expanded ? 'auto' : 'none'}
-              style={[stopsAnimStyle, { marginLeft: stopsIndent, overflow: 'hidden' }]}
+              style={[stopsAnimStyle, { overflow: 'hidden', marginTop: 4 }]}
               accessibilityElementsHidden={!expanded}
               importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
             >
@@ -771,14 +864,27 @@ const TransitLegCard = memo(function TransitLegCard({
             </Animated.View>
           )}
 
-          {/* Etykieta podsumowania przystanków: bliżej separatora, dalej od sekcji live/na czas.
-              Kolej zatrzymuje się na stacjach, nie na przystankach. */}
+          {/* Podsumowanie + pill rozwijania: kolej = stacje, reszta = przystanki. */}
           <View style={s.stopsSummaryWrap}>
-            <Text style={s.stopsSummaryLabel}>
-              {leg.mode === 'train'
-                ? t.leg.stationsSummary(stopsCount, durationMin, expanded)
-                : t.leg.stopsSummary(stopsCount, durationMin, expanded)}
-            </Text>
+            <View style={s.stopsSummaryText}>
+              <Text style={s.stopsSummaryLabel}>
+                {stopsCount <= 0
+                  ? t.leg.directRide(durationMin)
+                  : isTrain
+                    ? t.leg.stationsCountShort(stopsCount)
+                    : t.leg.stopsCountShort(stopsCount)}
+              </Text>
+              {stopsCount > 0 ? (
+                <Text style={s.stopsSummaryMeta}>~{t.common.durMin(durationMin)}</Text>
+              ) : null}
+            </View>
+            {stopsCount > 0 ? (
+              <View style={[s.expandPill, expanded && s.expandPillOpen]}>
+                <Text style={[s.expandPillText, expanded && s.expandPillTextOpen]}>
+                  {t.leg.expandPill(expanded)}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -1106,11 +1212,51 @@ const s = StyleSheet.create({
   stopsSummaryWrap: {
     marginTop: 10,
     marginBottom: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  stopsSummaryText: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    rowGap: 2,
   },
   stopsSummaryLabel: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     fontSize: 12.5,
+    fontWeight: '600',
+  },
+  stopsSummaryMeta: {
+    ...type.bodySmall,
+    color: scheme.outline,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
+  expandPill: {
+    minHeight: 32,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expandPillOpen: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  expandPillText: {
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  expandPillTextOpen: {
+    color: scheme.onPrimaryContainer,
   },
   stopTitleWrap: {
     flexDirection: 'column',
@@ -1195,42 +1341,43 @@ const s = StyleSheet.create({
     right: 0,
   },
   stopsWrap: {
-    marginTop: 8,
-    gap: 0,
+    marginTop: 10,
+    gap: 6,
+    paddingBottom: 2,
   },
-  stopRow: {
+  stopChip: {
     flexDirection: 'row',
-    gap: 10,
     alignItems: 'stretch',
+    minHeight: 48,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+    overflow: 'hidden',
   },
-  stopRail: {
-    width: 22,
-    alignItems: 'center',
-    position: 'relative',
+  stopChipEndpoint: {
+    backgroundColor: scheme.surfaceContainerHighest,
   },
-  stopRailLine: {
-    position: 'absolute',
-    left: 9.5,
-    width: 3,
+  stopChipPassed: {
+    backgroundColor: scheme.surfaceContainer,
+    opacity: 0.72,
   },
-  boundaryMark: {
-    width: 19,
-    height: 2,
-    marginTop: 19,
-    zIndex: 1,
+  stopChipNow: {
+    backgroundColor: scheme.primaryContainer,
+    opacity: 1,
   },
-  boundaryBody: {
-    flex: 1,
+  stopChipSkeleton: {
+    backgroundColor: scheme.surfaceContainer,
+  },
+  stopAccent: {
+    width: 4,
+  },
+  boundaryChip: {
     flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    marginBottom: 6,
-  },
-  boundaryIcon: {
-    marginTop: 2,
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: shape.large,
+    backgroundColor: scheme.secondaryContainer,
   },
   boundaryText: {
     flex: 1,
@@ -1238,58 +1385,101 @@ const s = StyleSheet.create({
   },
   boundaryTitle: {
     ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
   },
   boundaryDetail: {
     ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
+    color: scheme.onSecondaryContainer,
+    lineHeight: 18,
   },
-  dot: {
-    width: 13,
-    height: 13,
-    borderRadius: 99,
-    borderWidth: 2,
-    marginTop: 4,
-    zIndex: 1,
-  },
-  vehicleMarker: {
-    position: 'absolute',
-    top: 17,
-    left: -1,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: scheme.surface,
-    backgroundColor: scheme.primary,
+  nowBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 3,
+    marginBottom: 4,
+  },
+  stopRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 48,
   },
   stopBody: {
     flex: 1,
     justifyContent: 'center',
-    minHeight: 30,
-    paddingBottom: 6,
+    gap: 2,
+    minWidth: 0,
   },
   stopName: {
     ...type.bodyMedium,
     color: scheme.onSurface,
+    lineHeight: 20,
+    fontSize: 14,
   },
   stopNameStrong: {
     fontWeight: '700',
+    fontSize: 15,
+    letterSpacing: -0.1,
   },
   stopNamePassed: {
     color: scheme.outline,
   },
-  skeletonDot: {
-    borderColor: scheme.outlineVariant,
-    backgroundColor: scheme.surfaceContainerHighest,
+  stopNameNow: {
+    color: scheme.onPrimaryContainer,
+  },
+  stopMeta: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  stopMetaNow: {
+    color: scheme.onPrimaryContainer,
+    opacity: 0.85,
+  },
+  stopTimesCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 2,
+    minWidth: 76,
+  },
+  stopTimePrimary: {
+    ...type.labelMedium,
+    color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  stopTimeSecondary: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  stopTimeSingle: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  stopTimeStrong: {
+    color: scheme.onSurface,
+    fontWeight: '700',
   },
   skeletonLine: {
     height: 12,
     borderRadius: 6,
     backgroundColor: scheme.surfaceContainerHighest,
-    marginTop: 6,
+    marginLeft: 12,
+    marginBottom: 14,
   },
 });

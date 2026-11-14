@@ -102,7 +102,14 @@ export function ensureNationalTimetable(force = false): Promise<NationalTimetabl
       return state;
     } catch (err) {
       console.warn('[NationalTimetable] sync failed:', err instanceof Error ? err.message : String(err));
-      setState({ phase: 'error' });
+      // Offline z już pobraną bazą: zostaw ready, nie udawaj błędu pobierania.
+      const local = await getNationalTimetableVersion().catch(() => null);
+      if (local) {
+        const endDate = await getNationalTimetableEndDate().catch(() => null);
+        setState({ phase: 'ready', version: local, endDate });
+      } else {
+        setState({ phase: 'error' });
+      }
       return state;
     } finally {
       inFlight = null;

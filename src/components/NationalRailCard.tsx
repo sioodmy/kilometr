@@ -32,13 +32,15 @@ export function NationalRailCard() {
   const checking = state.phase === 'checking';
   const busy = downloading || checking;
 
-  const statusText = busy
+  const statusText = downloading
     ? s.intercity.downloading
-    : ready
-      ? s.settings.railReady(formatEndDate(state.endDate))
-      : state.phase === 'error'
-        ? s.intercity.downloadFailed
-        : s.settings.railEmpty;
+    : checking
+      ? s.settings.railChecking
+      : ready
+        ? s.settings.railReady(formatEndDate(state.endDate))
+        : state.phase === 'error'
+          ? s.intercity.downloadFailed
+          : s.settings.railEmpty;
 
   return (
     <View style={styles.card}>
@@ -78,11 +80,13 @@ export function NationalRailCard() {
           />
         )}
         <Text style={ready ? styles.checkText : styles.downloadText}>
-          {busy
+          {downloading
             ? s.intercity.downloading
-            : ready
-              ? s.settings.railCheck
-              : s.settings.railDownload}
+            : checking
+              ? s.settings.railChecking
+              : ready
+                ? s.settings.railCheck
+                : s.settings.railDownload}
         </Text>
       </Pressable>
     </View>

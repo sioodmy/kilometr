@@ -34,7 +34,12 @@ import type { Connection } from '../types/models';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
 import { checkTicketCompensation } from '../services/notifications';
 import { transferNeedsAttention } from './TransferProtectionCard';
-import { getTrainLegSummary, hasTrainLegs, openKoleoRoute } from '../services/ticketing';
+import {
+  getTrainLegSummary,
+  hasTrainLegs,
+  openKoleoRoute,
+  stripAgencyPrefix,
+} from '../services/ticketing';
 import { RoutingService } from '../services';
 import {
   deleteTicketForConnection,
@@ -113,6 +118,8 @@ export type RouteTravelDeckProps = {
   transferActive: boolean;
   trackingBusy?: boolean;
   onTransferPress: () => void;
+  /** Z powiadomienia „Bilet": po wczytaniu otwórz kontrolę / PDF. */
+  autoInspectTicket?: boolean;
 };
 
 export function RouteTravelDeck({
@@ -122,6 +129,7 @@ export function RouteTravelDeck({
   transferActive,
   trackingBusy,
   onTransferPress,
+  autoInspectTicket = false,
 }: RouteTravelDeckProps) {
   const s = useStrings();
   const [ticket, setTicket] = useState<AttachedRailTicket | null>(null);
@@ -132,6 +140,7 @@ export function RouteTravelDeck({
   // Import trwa, a systemowy picker wraca do apki jako 'active'. Bez tej flagi
   // przeładowanie z dysku mogłoby nadpisać świeżo dodany bilet stanem sprzed importu.
   const importInFlight = useRef(false);
+  const autoInspectDone = useRef(false);
 
   const isTrainTrip = hasTrainLegs(connection);
   const trainSummary = getTrainLegSummary(connection);
@@ -140,12 +149,18 @@ export function RouteTravelDeck({
 
   useEffect(() => {
     let active = true;
+    // Nowe połączenie: nie pokazuj biletu z poprzedniej karty.
+    setTicket(null);
+    autoInspectDone.current = false;
     const loadTicket = () => {
       void getTicketForConnection(connection.id, connection).then((t) => {
-        // Reload (powrót do apki, zmiana połączenia) nie może zgasić biletu,
-        // który już jest na ekranie. Bilet znika tylko przez jawne odpięcie.
         if (!active) return;
-        setTicket((prev) => (t === null && prev !== null ? prev : t));
+        // Podczas importu picker wraca do apki: nie nadpisuj świeżego biletu
+        // pustym odczytem sprzed zapisu.
+        setTicket((prev) => {
+          if (importInFlight.current && t === null && prev !== null) return prev;
+          return t;
+        });
       });
     };
     loadTicket();
@@ -162,6 +177,18 @@ export function RouteTravelDeck({
     };
   }, [connection.id, connection.serviceDate]);
 
+  // Deep link / akcja „Bilet" z powiadomienia: otwórz kontrolę raz po wczytaniu.
+  useEffect(() => {
+    if (!autoInspectTicket || !ticket || autoInspectDone.current) return;
+    autoInspectDone.current = true;
+    void Haptics.selectionAsync().catch(() => {});
+    const hasBarcode = Boolean(
+      ticket.barcodeUri || (ticket.barcodeUris && ticket.barcodeUris.length > 0),
+    );
+    if (hasBarcode) setInspectionOpen(true);
+    else void openTicketPdf(ticket);
+  }, [autoInspectTicket, ticket]);
+
   if (!showTicketSegment && !showTransferSegment) {
     return null;
   }
@@ -172,10 +199,13 @@ export function RouteTravelDeck({
   const slackMin = Math.max(0, Math.floor((transferState?.slackSec ?? 0) / 60));
 
   // --- Handlery biletu ---
+  const ticketHasBarcode = (t: AttachedRailTicket) =>
+    Boolean(t.barcodeUri || (t.barcodeUris && t.barcodeUris.length > 0));
+
   const handleTicketPress = async () => {
     if (ticket) {
       void Haptics.selectionAsync().catch(() => {});
-      if (ticket.barcodeUri || (ticket.barcodeUris && ticket.barcodeUris.length > 0)) {
+      if (ticketHasBarcode(ticket)) {
         setInspectionOpen(true);
       } else {
         await openTicketPdf(ticket);
@@ -189,20 +219,23 @@ export function RouteTravelDeck({
   const handleTicketLongPress = () => {
     if (!ticket) return;
     void Haptics.selectionAsync().catch(() => {});
+    const trainNum = ticket.metadata.trainNumber
+      ? stripAgencyPrefix(ticket.metadata.trainNumber, trainSummary?.agency)
+      : null;
     Alert.alert(
       s.railTickets.attachedTitle,
-      ticket.metadata.trainNumber ? `Pociąg ${ticket.metadata.trainNumber}` : ticket.fileName,
+      trainNum ? s.railTickets.trainLabel(trainNum) : ticket.fileName,
       [
-        ...(ticket.barcodeUri
+        ...(ticketHasBarcode(ticket)
           ? [
               {
-                text: 'Kod do kontroli',
+                text: s.railTickets.inspectCode,
                 onPress: () => setInspectionOpen(true),
               },
             ]
           : []),
         {
-          text: 'Otwórz PDF',
+          text: s.railTickets.showTicket,
           onPress: async () => {
             await openTicketPdf(ticket);
           },
@@ -239,10 +272,7 @@ export function RouteTravelDeck({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const success = await openKoleoRoute(connection);
     if (!success) {
-      Alert.alert(
-        'Nie można otworzyć KOLEO',
-        'Nie udało się uruchomić aplikacji ani strony KOLEO. Sprawdź połączenie z internetem.',
-      );
+      Alert.alert(s.railTickets.koleoOpenFailTitle, s.railTickets.koleoOpenFailBody);
     }
   };
 
@@ -267,17 +297,20 @@ export function RouteTravelDeck({
         void checkTicketCompensation();
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
-        if (imported.barcodeUri || (imported.barcodeUris && imported.barcodeUris.length > 0)) {
+        if (ticketHasBarcode(imported)) {
           setInspectionOpen(true);
         } else {
           Alert.alert(s.railTickets.attachedTitle, s.railTickets.importSuccess);
         }
       } else if (result.status === 'rejected') {
+        // Sheet pod M3Dialog chowałby błąd: zamykamy najpierw.
+        setTicketSheetOpen(false);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
         setRejection(result);
       }
     } catch (err) {
       console.warn('[RouteTravelDeck] attach error:', err);
+      setTicketSheetOpen(false);
       Alert.alert(s.common.storageFailTitle, s.railTickets.importError);
     } finally {
       importInFlight.current = false;
@@ -322,31 +355,36 @@ export function RouteTravelDeck({
 
   // --- Dane tekstowe segmentu biletu ---
   const meta = ticket?.metadata;
-  const resolvedTrainNum = meta?.trainNumber || trainSummary?.trainNumber;
+  const rawTrainNum = meta?.trainNumber || trainSummary?.trainNumber;
+  const resolvedTrainNum = rawTrainNum
+    ? stripAgencyPrefix(rawTrainNum, trainSummary?.agency)
+    : undefined;
   const trainLabel = resolvedTrainNum
-    ? (trainSummary?.agency ? `${trainSummary.agency} ${resolvedTrainNum}` : `${resolvedTrainNum}`)
-    : 'Bilet';
+    ? trainSummary?.agency
+      ? s.railTickets.agencyTrain(trainSummary.agency, resolvedTrainNum)
+      : resolvedTrainNum
+    : s.railTickets.ticketFallback;
 
   const ticketTitle = ticket ? trainLabel : s.railTickets.attachedTitle;
 
   const seatParts: string[] = [];
-  if (meta?.wagon) seatParts.push(`w. ${meta.wagon}`);
-  if (meta?.seat) seatParts.push(`m. ${meta.seat}`);
+  if (meta?.wagon) seatParts.push(s.railTickets.wagonShort(meta.wagon));
+  if (meta?.seat) seatParts.push(s.railTickets.seatShort(meta.seat));
   const seatLabel = seatParts.length > 0 ? seatParts.join(' · ') : null;
 
   const ticketSubtitle = ticket
-    ? (seatLabel ?? (meta?.passenger ? meta.passenger : 'Pokaż'))
-    : 'Kup / Dodaj';
+    ? (seatLabel ?? (meta?.passenger ? meta.passenger : s.railTickets.showShort))
+    : s.railTickets.buyOrAdd;
 
   // --- Dane tekstowe segmentu ochrony przesiadek ---
-  const transferTitle = 'Ochrona';
+  const transferTitle = s.travelDeck.protection;
   const transferSubtitle = !transferActive
-    ? 'Włącz'
+    ? s.travelDeck.protectionEnable
     : isWarning
-      ? 'Zagrożona'
+      ? s.travelDeck.protectionAtRisk
       : isSafe
-        ? `+${slackMin} min zapasu`
-        : 'Czuwa';
+        ? s.travelDeck.protectionSlack(slackMin)
+        : s.travelDeck.protectionWatching;
 
   return (
     <Animated.View
@@ -369,7 +407,7 @@ export function RouteTravelDeck({
               ]}
             >
               {ticket ? (
-                ticket.barcodeUri ? (
+                ticketHasBarcode(ticket) ? (
                   <ScanLine size={16} color={scheme.onPrimaryContainer} />
                 ) : (
                   <TrainFront size={16} color={scheme.onPrimaryContainer} />
@@ -448,7 +486,7 @@ export function RouteTravelDeck({
                 ]}
                 numberOfLines={1}
               >
-                {isWarning ? 'Przesiadka!' : transferTitle}
+                {isWarning ? s.travelDeck.transferAlert : transferTitle}
               </Text>
               <Text
                 style={[
@@ -518,7 +556,7 @@ export function RouteTravelDeck({
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalHeading}>Bilet kolejowy</Text>
+                <Text style={styles.modalHeading}>{s.railTickets.deckSheetTitle}</Text>
                 {trainSummary && (
                   <Text style={styles.modalSubheading} numberOfLines={1}>
                     {trainSummary.fromStation} → {trainSummary.toStation}
@@ -552,9 +590,7 @@ export function RouteTravelDeck({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.actionTitlePrimary}>{s.railTickets.buyKoleo}</Text>
-                  <Text style={styles.actionDescPrimary}>
-                    Oficjalne taryfy PKP IC, KD, KŚ, Polregio
-                  </Text>
+                  <Text style={styles.actionDescPrimary}>{s.railTickets.koleoDesc}</Text>
                 </View>
                 <ExternalLink size={16} color={scheme.primary} />
               </Pressable>
@@ -581,9 +617,7 @@ export function RouteTravelDeck({
                   <Text style={styles.actionTitleSecondary}>
                     {importing ? s.railTickets.loading : s.railTickets.attachPdf}
                   </Text>
-                  <Text style={styles.actionDescSecondary}>
-                    Automatycznie wyciąga kod Aztec do kontroli
-                  </Text>
+                  <Text style={styles.actionDescSecondary}>{s.railTickets.attachPdfDesc}</Text>
                 </View>
                 <ChevronRight size={16} color={scheme.onSurfaceVariant} />
               </Pressable>

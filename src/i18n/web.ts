@@ -6,6 +6,7 @@ import { pl as sharePl } from './share/pl';
 import { en as shareEn } from './share/en';
 import { de as shareDe } from './share/de';
 import { uk as shareUk } from './share/uk';
+import { decodeSharedPayload, extractShareTripToken } from '../sharing/connection';
 
 export type Locale = 'pl' | 'en' | 'de' | 'uk';
 const dictionaries = { pl, en, de, uk };
@@ -19,9 +20,9 @@ export function initWebLocale() {
   try {
     stored = localStorage.getItem(key);
   } catch {}
-  const sharedLocale = window.location.hash.startsWith('#trip=')
-    ? new URLSearchParams(window.location.hash.slice(1)).get('lang')
-    : null;
+  const parsed = extractShareTripToken(window.location.hash);
+  const payloadLocale = parsed.trip ? decodeSharedPayload(parsed.trip)?.locale : undefined;
+  const sharedLocale = parsed.lang ?? payloadLocale ?? null;
   const preferred = sharedLocale ?? stored ?? navigator.language.split('-')[0];
   if (preferred === 'pl' || preferred === 'en' || preferred === 'de' || preferred === 'uk')
     locale = preferred;

@@ -6,7 +6,11 @@ import {
   type NationalLiveLeg,
   type NationalRailLive,
 } from './nationalRailLive';
-import { fetchNationalRailUpdates, type NationalRailLegUpdate } from './nationalRailUpdates';
+import {
+  fetchNationalRailUpdates,
+  isRailUpdateFresh,
+  type NationalRailLegUpdate,
+} from './nationalRailUpdates';
 import { fetchZbRailDepartures, railLegKey, type ZbRailDeparture } from './zbiorkomRail';
 import { liveTracker } from './liveTracker';
 
@@ -117,6 +121,7 @@ export function useRailLiveConnections(
         if (!rail && !pos && !update) return leg;
         const platformCode = update?.platform ?? rail?.platform ?? leg.platformCode;
         const trackCode = update?.track ?? leg.trackCode;
+        const cancelled = update?.cancelled === true || rail?.cancelled === true || leg.cancelled;
         if (
           leg.railAgency === (update?.agency ?? rail?.agency ?? leg.railAgency) &&
           leg.railLine === (rail?.line ?? leg.railLine) &&
@@ -124,7 +129,8 @@ export function useRailLiveConnections(
           leg.trainNumber === (update?.numbers?.[0] ?? rail?.trainNumber ?? leg.trainNumber) &&
           leg.trainName === (rail?.trainName ?? leg.trainName) &&
           leg.platformCode === platformCode &&
-          leg.trackCode === trackCode
+          leg.trackCode === trackCode &&
+          Boolean(leg.cancelled) === Boolean(cancelled)
         )
           return leg;
         legsChanged = true;
@@ -137,6 +143,7 @@ export function useRailLiveConnections(
           trainName: rail?.trainName ?? leg.trainName,
           platformCode,
           trackCode,
+          cancelled: cancelled || undefined,
         };
       });
       if (!legsChanged) return connection;
@@ -167,11 +174,7 @@ export function useRailLiveConnections(
         }
         // Główne źródło: oficjalny feed PKP PLK (nadpisuje wartości heurystyczne)
         const update = nationalUpdates.get(leg.tripId);
-        if (
-          update &&
-          update.hasRealtimeDelay !== false &&
-          now - update.fetchedAt <= 12 * 3600 * 1000
-        ) {
+        if (update && update.hasRealtimeDelay !== false && isRailUpdateFresh(update, now)) {
           delays.set(leg.tripId, update.delaySec);
           if (update.arrivalDelaySec != null) {
             arrivalDelays.set(leg.tripId, update.arrivalDelaySec);

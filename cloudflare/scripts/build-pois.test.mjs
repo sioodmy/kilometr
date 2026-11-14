@@ -7,8 +7,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
-process.env.POI_RETRY_WAIT_MS = '1,1';
-
 import {
   POI_SCHEMA_VERSION,
   poisFromElements,

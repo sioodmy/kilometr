@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findUnknownNames } from './news-validate.mjs';
+import { findUnknownNames, sanitizeAnalysisText } from './news-validate.mjs';
 import {
+  buildGtfsPromptContext,
   decodeLatin2,
+  enrichAlertWithGtfs,
+  isComplexDisruptionText,
   lodzReadableTitle,
   parseBialystokList,
   parseKielceList,
   parseLublinList,
   parseRadomList,
   parseSzczecinList,
+  resolveLlmPlan,
 } from './process-news.mjs';
 
 const JUNK_TITLE_RE =
@@ -237,3 +241,119 @@ test('parsuje listę ZDiTM Lublin i dziedziczy datę grupy', () => {
   assert.ok(items[0].pubDate);
   assert.equal(items[1].pubDate, items[0].pubDate);
 });
+
+test('resolveLlmPlan ustawia deepseek-flash i adaptacyjny effort (low/high)', () => {
+  const plan = resolveLlmPlan(null, { DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(plan.model, 'deepseek-flash');
+  assert.equal(plan.apiKey, 'sk-ds');
+  assert.equal(plan.fastEffort, 'low');
+  assert.equal(plan.deepEffort, 'high');
+});
+
+test('resolveLlmPlan mapuje aliasy deepseekv4.1flash i deepseek-v4-pro', () => {
+  const ds = resolveLlmPlan('deepseekv4.1flash', { DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(ds.model, 'deepseek-flash');
+  const pro = resolveLlmPlan('deepseek-v4-pro', { DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(pro.model, 'deepseek-v4-pro');
+});
+
+test('enrichAlertWithGtfs wylicza omijane przystanki między from_stop i to_stop oraz współrzędne', () => {
+  const gtfsIndex = {
+    byLine: new Map([
+      [
+        '3',
+        {
+          line: '3',
+          routeId: 'r3',
+          type: 0,
+          headsign: 'Księże Małe',
+          stops: [
+            'Galeria Dominikańska',
+            'Urząd Wojewódzki',
+            'Plac Zgody',
+            'Krakowska',
+            'Księże Małe',
+          ],
+        },
+      ],
+    ]),
+    stopsByNorm: new Map([
+      ['galeria dominikanska', { id: 's1', name: 'Galeria Dominikańska', lat: 51.1082, lon: 17.0394 }],
+      ['urzad wojewodzki', { id: 's2', name: 'Urząd Wojewódzki', lat: 51.1088, lon: 17.0481 }],
+      ['plac zgody', { id: 's3', name: 'Plac Zgody', lat: 51.1059, lon: 17.0512 }],
+      ['krakowska', { id: 's4', name: 'Krakowska', lat: 51.0962, lon: 17.0623 }],
+      ['ksieze male', { id: 's5', name: 'Księże Małe', lat: 51.0841, lon: 17.0875 }],
+    ]),
+  };
+
+  const ctx = buildGtfsPromptContext(
+    { title: 'Objazd linii 3', content: 'Linia 3 jedzie objazdem z pominięciem ul. Krakowskiej.' },
+    gtfsIndex,
+  );
+  assert.deepEqual(ctx.matchedLines, ['3']);
+  assert.match(ctx.promptBlock, /Linia 3: Galeria Dominikańska -> Urząd Wojewódzki/);
+
+  const rawAnalysis = {
+    is_transit_alert: true,
+    headline: 'Krakowska: objazd linii 3',
+    glance: { problem: 'Zamknięta ul. Krakowska.', solution: null, timeframe: 'Dziś' },
+    corridor: {
+      label: 'ul. Krakowska',
+      from_stop: 'galeria dominikanska',
+      to_stop: 'Księże Małe',
+    },
+    line_changes: [
+      {
+        line: '3',
+        direction: 'Księże Małe',
+        change: 'detour',
+        from_stop: 'Galeria Dominikańska',
+        to_stop: 'Księże Małe',
+        via: ['Traugutta'],
+        omitted_stops: [],
+        temporary_stops: [],
+        transfer_stops: ['Galeria Dominikańska'],
+        replacement_line: '703',
+        hours: [],
+        details: 'Objazd przez Traugutta.',
+      },
+    ],
+    stops: [],
+  };
+
+  // Przystanki z GTFS (Urząd Wojewódzki, Plac Zgody) są dozwolone przez allowedStops nawet gdy nie padły w tekście
+  assert.deepEqual(findUnknownNames(rawAnalysis, 'Krakowska Księże Małe Galeria Dominikańska Traugutta', ctx.allowedStops), []);
+
+  const enriched = enrichAlertWithGtfs(rawAnalysis, gtfsIndex);
+  assert.deepEqual(enriched.line_changes[0].omitted_stops, [
+    'Urząd Wojewódzki',
+    'Plac Zgody',
+    'Krakowska',
+  ]);
+  assert.equal(enriched.corridor.from_stop, 'Galeria Dominikańska');
+  assert.equal(enriched.stop_coords['Plac Zgody'].stop_id, 's3');
+});
+
+test('sanitizeAnalysisText usuwa em dash i urzędowe przeprosiny', () => {
+  const dirty = {
+    is_transit_alert: true,
+    headline: 'Krakowska \u2014 objazd linii 3',
+    glance: {
+      problem: 'Awaria torowiska - wstrzymany ruch. Za utrudnienia przepraszamy.',
+      solution: 'Autobus 703 -- co 10 minut.',
+      timeframe: 'Od 12:00',
+    },
+    line_changes: [{ details: 'Skrócenie trasy \u2014 pętla tymczasowa.' }],
+  };
+  const clean = sanitizeAnalysisText(dirty);
+  assert.ok(!JSON.stringify(clean).includes('\u2014'));
+  assert.ok(!clean.glance.problem.toLowerCase().includes('przepraszamy'));
+  assert.equal(clean.headline, 'Krakowska: objazd linii 3');
+});
+
+test('isComplexDisruptionText wykrywa wieloetapowe i wieloliniowe komunikaty', () => {
+  assert.equal(isComplexDisruptionText('Krótka awaria', 'Linia 5 stoi.', 1), false);
+  assert.equal(isComplexDisruptionText('Remont węzła', 'Etap I od soboty, Etap II od wtorku.', 2), true);
+  assert.equal(isComplexDisruptionText('Wielkie zmiany', 'Dużo linii.', 6), true);
+});
+

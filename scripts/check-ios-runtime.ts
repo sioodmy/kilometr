@@ -139,7 +139,7 @@ async function main() {
     assert.equal(plan.timerStartAt, at(12, 0) / 1000);
     assert.ok(plan.timerStartAt <= p.computedAt / 1000, 'Departure countdown starts before now');
     assert.ok(plan.staleAt <= at(12, 2) / 1000);
-    assert.equal(new URL(plan.deepLink).searchParams.get('open'), connection.id);
+    assert.equal(new URL(plan.deepLink).pathname.replace(/^\//, ''), connection.id);
     const warning = JSON.parse(buildIOSLiveActivity(p, { ...trip, transfer: {
       tripId: trip.id, status: 'alternative', updatedAt: p.computedAt, revision: 0, nextLine: '10',
     } }, strings));

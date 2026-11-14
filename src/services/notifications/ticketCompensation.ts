@@ -1,6 +1,6 @@
 import { AppState, Platform } from 'react-native';
 import { tr } from '../../i18n';
-import type { Connection } from '../../types/models';
+import type { Connection, Leg } from '../../types/models';
 import { RoutingService } from '../api';
 import { fetchNationalRailUpdates } from '../nationalRailUpdates';
 import { isTrainLeg } from '../railIdentity';
@@ -16,7 +16,6 @@ import {
 import { ALERT_CATEGORY } from './categories';
 import { ALERTS_CHANNEL_ID } from './channels';
 import {
-  cancelledTrainLeg,
   compensationLevelForDelay,
   compensationThresholdMinutes,
   finalTrainLeg,
@@ -123,8 +122,8 @@ async function checkEntry(
 
   const updates = await fetchNationalRailUpdates(connection.legs);
   if (updates.size === 0) return;
-  if (cancelledTrainLeg(connection, updates)) return;
 
+  // Odwołany odcinek przesiadkowy nie blokuje: measured pomija cancelled.
   const measured = measuredCompensationDelay(connection, updates, now);
   if (!measured) return;
   const level = compensationLevelForDelay(measured.delaySec);
@@ -134,7 +133,7 @@ async function checkEntry(
   const ticket = await getTicketForConnection(entry.connectionId, connection);
   if (!ticket) return;
 
-  const sent = await sendCompensationNotification(connection, ticket, level);
+  const sent = await sendCompensationNotification(connection, ticket, level, measured.leg);
   if (!sent) return;
 
   state[ticket.id] = {
@@ -169,16 +168,17 @@ async function sendCompensationNotification(
   connection: Connection,
   ticket: AttachedRailTicket,
   level: CompensationLevel,
+  measuredLeg?: Leg | null,
 ): Promise<boolean> {
   const N = getNotifications();
   if (!N) return false;
   const copy = tr().notification;
-  const lastTrain = finalTrainLeg(connection);
+  const lastTrain = measuredLeg ?? finalTrainLeg(connection);
   const train =
-    ticket.metadata.trainNumber ||
     lastTrain?.trainNumber ||
     lastTrain?.railLine ||
     lastTrain?.line ||
+    ticket.metadata.trainNumber ||
     '';
   const identifier = `kilometr.alert.compensation.${ticket.id}.${level}`;
   try {
