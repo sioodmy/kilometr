@@ -474,12 +474,6 @@ function tripParams(trip: TrackedTrip): Record<string, string> {
   };
 }
 
-function queryString(q: Record<string, string>): string {
-  return Object.entries(q)
-    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-    .join('&');
-}
-
 /**
  * `data` powiadomienia. Płaskie pola, bo po tapnięciu `expo-notifications`
  * oddaje je niezmienione i `app/_layout` przekłada je 1:1 na parametry
