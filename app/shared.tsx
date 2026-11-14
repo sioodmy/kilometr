@@ -445,7 +445,16 @@ const styles = StyleSheet.create({
   },
   note: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
   caption: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
-  status: { ...type.titleMedium, color: scheme.onSurface },
+  status: {
+    ...type.titleMedium,
+    color: scheme.onSurface,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    overflow: 'hidden',
+  },
   follow: {
     gap: 12,
     padding: 18,

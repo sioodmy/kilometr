@@ -8,6 +8,7 @@ import {
 import { TRACKING_CHANNEL_ID } from './channels';
 import { TRIP_CATEGORY } from './categories';
 import { tr } from '../../i18n';
+import { getTicketForConnection } from '../ticketStorage';
 import { buildLivePlanJson, buildTripCopy, tripNotificationData } from './content';
 import { buildIOSLiveActivity } from './iosLiveActivity';
 import { cancelScheduledAlerts, scheduleIOSTripAlerts } from './alerts';
@@ -43,7 +44,7 @@ let lastFallbackText = '';
 async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void> {
   const N = getNotifications();
   if (!N) return;
-  const copy = buildTripCopy(p, trip.connection, tr());
+  const copy = buildTripCopy(p, trip.connection, tr(), !!trip.sharedJourney);
   const fallbackText = `${copy.title}\n${copy.subtitle ?? ''}\n${copy.body}`;
   if (Platform.OS === 'ios') {
     if (fallbackText === lastFallbackText) return;
@@ -127,11 +128,18 @@ export async function presentTrip(
   try {
     // Po przyjeździe serwis dostaje `stopAfterMs` i sam się wyłącza, więc
     // komunikat zostaje na ekranie blokady do końca, a nie znika z APK-iem.
-    const json = Platform.OS === 'ios' ? buildIOSLiveActivity(p, trip, tr()) : buildLivePlanJson(p, trip.connection, trip, tr(), {
-      alightAlertsEnabled: prefs.trackingEnabled,
-      transferAlertsEnabled: prefs.disruptionAlertsEnabled,
-      gpsOnboardEnabled: prefs.trackingEnabled,
-    });
+    const hasTicket = trip.sharedJourney
+      ? false
+      : !!(await getTicketForConnection(trip.connection.id, trip.connection).catch(() => null));
+    const json =
+      Platform.OS === 'ios'
+        ? buildIOSLiveActivity(p, trip, tr(), hasTicket)
+        : buildLivePlanJson(p, trip.connection, trip, tr(), {
+            alightAlertsEnabled: prefs.trackingEnabled,
+            transferAlertsEnabled: prefs.disruptionAlertsEnabled,
+            gpsOnboardEnabled: prefs.trackingEnabled,
+            hasTicket,
+          });
     if (await native.startTrip(json)) {
       await dismissFallback();
       return;

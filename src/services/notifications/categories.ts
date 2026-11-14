@@ -14,10 +14,16 @@ export const ALERT_CATEGORY = 'kilometr.alert';
 
 const ACTION_STOP = 'kilometr.action.stop';
 const ACTION_OPEN_ROUTES = 'kilometr.action.routes';
+const ACTION_TICKET = 'kilometr.action.ticket';
 
 /** Czy użytkownik wcisnął „Zakończ śledzenie", a nie po prostu tapnął. */
 export function isStopAction(actionIdentifier: string | undefined): boolean {
   return actionIdentifier === ACTION_STOP;
+}
+
+/** Czy użytkownik wcisnął „Bilet" pod powiadomieniem. */
+export function isTicketAction(actionIdentifier: string | undefined): boolean {
+  return actionIdentifier === ACTION_TICKET;
 }
 
 export async function setupNotificationCategories(): Promise<void> {
@@ -29,14 +35,19 @@ export async function setupNotificationCategories(): Promise<void> {
   try {
     await N.setNotificationCategoryAsync(TRIP_CATEGORY, [
       {
-        identifier: ACTION_STOP,
-        buttonTitle: s.notification.actionStop,
-        options: { isDestructive: true },
+        identifier: ACTION_TICKET,
+        buttonTitle: s.notification.actionTicket,
+        options: { isDestructive: false },
       },
       {
         identifier: ACTION_OPEN_ROUTES,
         buttonTitle: s.notification.actionRoute,
         options: { isDestructive: false },
+      },
+      {
+        identifier: ACTION_STOP,
+        buttonTitle: s.notification.actionStop,
+        options: { isDestructive: true },
       },
     ]);
   } catch {

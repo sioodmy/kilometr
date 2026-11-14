@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f docs/index.html
-          test -f docs/trip/index.html
+          test -f docs/t/index.html
           test -f docs/.well-known/assetlinks.json
 
       - name: Upload Pages Artifact

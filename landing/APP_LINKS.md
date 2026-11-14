@@ -1,4 +1,4 @@
-Linki podróży mają postać `https://kilometr.app/trip/#trip=…`. Dane pozostają we fragmencie URL. Android otwiera aplikację, a przeglądarka przekierowuje do podglądu na stronie głównej.
+Linki podróży mają postać `https://kilometr.app/t#…`. Dane pozostają we fragmencie URL (skompresowany binarny snapshot). Android otwiera aplikację, a przeglądarka przekierowuje do podglądu na stronie głównej (`/#t=…`).
 
 Konfiguracja publikacji:
 
@@ -7,7 +7,7 @@ Konfiguracja publikacji:
 - `APPLE_TEAM_ID` generuje plik `apple-app-site-association` dla podpisanego `app.kilometr`. Bez Team ID działa przycisk otwarcia przez `kilometr://`.
 - Workflow Pages publikuje pliki powiązań oraz geometrię GTFS. Aplikacja wymaga nowego wydania z filtrami linków. Sama publikacja strony nie aktualizuje APK.
 
-Geometria pochodzi z `shapes.txt` źródłowego GTFS. Eksporter zapisuje ją raz na kształt, a odcinki podróży odwołują się do tych plików. Aplikacja dołącza wycięty przebieg do linku i zachowuje osiem ostatnich planów offline. Brak geometrii nie tworzy prostej między końcami przejazdu. Przebieg przez same przystanki jest oznaczony jako przybliżony.
+Geometria pochodzi z `shapes.txt` źródłowego GTFS. Eksporter zapisuje ją raz na kształt, a odcinki podróży odwołują się do tych plików. Link nie niesie geometrii: aplikacja i strona dociągają przebieg ze shardów. Brak geometrii nie tworzy prostej między końcami przejazdu. Przebieg przez same przystanki jest oznaczony jako przybliżony.
 
 Kontrola na Androidzie po publikacji:
 

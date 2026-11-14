@@ -16,10 +16,10 @@ import {
 } from 'lucide-react';
 import {
   decodeSharedConnection,
+  extractShareTripToken,
   formatShareTime,
   shareMessage,
   transferCount,
-  encodeSharedConnection,
   type SharedLeg,
 } from '../../../src/sharing/connection';
 import type { StaticStop } from '../../../src/sharing/timetable';
@@ -39,6 +39,13 @@ function lineStyle(leg: SharedLeg, city: string): CSSProperties {
   return { '--leg-accent': bg, '--leg-on-accent': fg } as CSSProperties;
 }
 
+function clockLabel(seconds: number): { time: string; day: number } {
+  return {
+    time: formatShareTime(((Math.floor(seconds / 60) % 1440) + 1440) % 1440),
+    day: Math.floor(seconds / 86400),
+  };
+}
+
 function Vehicle({ mode }: { mode: SharedLeg['mode'] }) {
   const Icon =
     mode === 'walk'
@@ -55,6 +62,7 @@ function Vehicle({ mode }: { mode: SharedLeg['mode'] }) {
 
 function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]; now: number }) {
   const s = useShareStrings();
+  const isTrain = leg.mode === 'train';
   const position = leg.mode === 'walk' ? null : scheduledVehiclePosition(stops, now);
   const current = position ? stops[position.index] : null;
   const label =
@@ -63,27 +71,59 @@ function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]
         ? s.vehicleAt(s.modes[leg.mode], current.name)
         : s.vehicleBetween(s.modes[leg.mode], current.name, stops[position.index + 1].name)
       : '';
+  const platform = s.platformLabel(leg.platform, leg.track);
 
   return (
     <>
       {position && <p className="journey-position-label">{s.estimatedPosition}</p>}
-      <ol className="journey-stop-list" aria-label={s.timetable}>
+      <ol className={`journey-stop-list${isTrain ? ' journey-stop-list-train' : ''}`} aria-label={s.timetable}>
         {stops.map((stop, index) => {
-          const seconds = index === stops.length - 1 ? stop.arrival : stop.departure;
-          const endpoint = index === 0 || index === stops.length - 1;
+          const isFirst = index === 0;
+          const isLast = index === stops.length - 1;
+          const endpoint = isFirst || isLast;
+          const arr = clockLabel(stop.arrival);
+          const dep = clockLabel(stop.departure);
+          const showDual =
+            isTrain && !isFirst && !isLast && Math.abs(stop.departure - stop.arrival) >= 60;
+          const primarySec = isLast ? stop.arrival : stop.departure;
+          const primary = clockLabel(primarySec);
+          const dwellMin = Math.round((stop.departure - stop.arrival) / 60);
           return (
             <li
               key={`${stop.id}-${index}`}
-              className={`journey-stop${endpoint ? ' journey-stop-endpoint' : ''}${now > seconds ? ' journey-stop-passed' : ''}`}
+              className={`journey-stop${endpoint ? ' journey-stop-endpoint' : ''}${now > primarySec ? ' journey-stop-passed' : ''}${showDual ? ' journey-stop-dual' : ''}`}
             >
               <span className="journey-stop-rail" aria-hidden="true">
                 <span className="journey-stop-dot" />
               </span>
-              <span className="journey-stop-name">{stop.name}</span>
-              <time>
-                {formatShareTime(((Math.floor(seconds / 60) % 1440) + 1440) % 1440)}
-                {seconds >= 86400 && <small>{s.dayLater(Math.floor(seconds / 86400))}</small>}
-              </time>
+              <span className="journey-stop-copy">
+                <span className="journey-stop-name">{stop.name}</span>
+                {isFirst && platform ? (
+                  <span className="journey-stop-meta">{platform}</span>
+                ) : null}
+                {showDual && dwellMin >= 2 ? (
+                  <span className="journey-stop-meta">{s.dwellMin(dwellMin)}</span>
+                ) : null}
+              </span>
+              <span className="journey-stop-times">
+                {showDual ? (
+                  <>
+                    <time dateTime={arr.time}>
+                      <span className="journey-stop-time-label">{s.arrTime(arr.time)}</span>
+                      {arr.day > 0 && <small>{s.dayLater(arr.day)}</small>}
+                    </time>
+                    <time dateTime={dep.time}>
+                      <span className="journey-stop-time-label">{s.depTime(dep.time)}</span>
+                      {dep.day > 0 && <small>{s.dayLater(dep.day)}</small>}
+                    </time>
+                  </>
+                ) : (
+                  <time dateTime={primary.time}>
+                    {primary.time}
+                    {primary.day > 0 && <small>{s.dayLater(primary.day)}</small>}
+                  </time>
+                )}
+              </span>
               {position?.index === index && (
                 <span
                   className="journey-vehicle"
@@ -106,9 +146,10 @@ export default function SharedJourney({ hash }: { hash: string }) {
   const s = useShareStrings();
   const { sendSms } = useStrings();
   const locale = useWebLocale();
+  const tripToken = useMemo(() => extractShareTripToken(hash).trip, [hash]);
   const journey = useMemo(
-    () => decodeSharedConnection(new URLSearchParams(hash.slice(1)).get('trip') || ''),
-    [hash],
+    () => (tripToken ? decodeSharedConnection(tripToken) : null),
+    [tripToken],
   );
   const [stops, setStops] = useState<StaticStop[][]>([]);
   const [loading, setLoading] = useState(false);
@@ -217,7 +258,7 @@ export default function SharedJourney({ hash }: { hash: string }) {
         <p>{date}</p>
         <a
           className="journey-button"
-          href={`kilometr://shared?trip=${encodeSharedConnection(journey)}`}
+          href={tripToken ? `kilometr://shared?trip=${tripToken}` : 'kilometr://shared'}
         >
           {s.openApp}
         </a>
@@ -335,6 +376,9 @@ export default function SharedJourney({ hash }: { hash: string }) {
                       <p>
                         <span>{s.from}</span> <strong>{leg.from}</strong>{' '}
                         <time>{formatShareTime(leg.departure)}</time>
+                        {leg.platform || leg.track ? (
+                          <> · {s.platformLabel(leg.platform, leg.track)}</>
+                        ) : null}
                       </p>
                       <p>
                         <span>{s.to}</span> <strong>{leg.to}</strong>{' '}
@@ -346,10 +390,12 @@ export default function SharedJourney({ hash }: { hash: string }) {
                         </time>
                       </p>
                     </div>
-                    <details className="journey-stops" open>
+                    <details className="journey-stops">
                       <summary>
-                        <span className="journey-show-stops">{s.showStops(stops[i].length)}</span>
-                        <span className="journey-hide-stops">{s.hideStops}</span>
+                        <span className="journey-expand-pill">
+                          <span className="journey-show-stops">{s.showStops(stops[i].length)}</span>
+                          <span className="journey-hide-stops">{s.hideStops}</span>
+                        </span>
                         <ChevronDown size={18} aria-hidden="true" />
                       </summary>
                       <StopTimeline leg={leg} stops={sharedLegStops(leg, stops[i])} now={elapsed} />

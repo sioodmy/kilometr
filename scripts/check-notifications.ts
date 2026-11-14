@@ -681,7 +681,7 @@ expect('dwa przyciski', ridingPlan.actions.length, 2);
 expect('akcja trasy jest pierwsza', ridingPlan.actions[0].id, 'route');
 expect('zakończenie jest drugą akcją', ridingPlan.actions[1].id, 'stop');
 expect('w trasie przycisk brzmi „Zakończ”', ridingPlan.actions[1].title, 'Zakończ');
-expect('deep link do trasy', ridingPlan.deepLink.startsWith('kilometr://routes?'), true);
+expect('deep link do trasy', /^kilometr:\/\/routes\//.test(ridingPlan.deepLink), true);
 // Wszystko idzie jako jeden JSON do Intent - mieszanie typów (Date, Color)
 // wybuchłoby przy marshallowaniu.
 expect('JSON-serializowalne', JSON.parse(JSON.stringify(ridingPlan)).segments.length, 2);
@@ -762,7 +762,7 @@ expect(
 );
 expect(
   'deep link otwiera śledzone połączenie',
-  new URL(backgroundPlan.deepLink).searchParams.get('open'),
+  new URL(backgroundPlan.deepLink).pathname.replace(/^\//, ''),
   transfer.id,
 );
 expect(

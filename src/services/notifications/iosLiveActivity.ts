@@ -4,9 +4,14 @@ import type { TrackedTrip, TripProgress } from './types';
 import { getLocaleSync } from '../../i18n/locale';
 import { getLineColors } from '../lineIdentity';
 
-export function buildIOSLiveActivity(p: TripProgress, trip: TrackedTrip, s: Strings): string {
-  const plan = buildLivePlan(p, trip.connection, trip, s);
-  const copy = buildTripCopy(p, trip.connection, s);
+export function buildIOSLiveActivity(
+  p: TripProgress,
+  trip: TrackedTrip,
+  s: Strings,
+  hasTicket = false,
+): string {
+  const plan = buildLivePlan(p, trip.connection, trip, s, { hasTicket });
+  const copy = buildTripCopy(p, trip.connection, s, !!trip.sharedJourney);
   const transfer = trip.transfer;
   const warning = transfer && p.computedAt - transfer.updatedAt <= 30_000 &&
     ['risk', 'rerouting', 'alternative', 'noAlternative'].includes(transfer.status);

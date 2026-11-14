@@ -192,6 +192,7 @@ internal object LiveUpdateFactory {
 
   private fun actionIcon(id: String): Int = when (id) {
     ACTION_STOP -> R.drawable.ic_kilometr_stop
+    ACTION_TICKET -> R.drawable.ic_kilometr_ticket
     ACTION_ROUTE -> R.drawable.ic_kilometr_route
     else -> R.drawable.ic_kilometr_route
   }
@@ -219,11 +220,12 @@ internal object LiveUpdateFactory {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
     }
-    // Przycisk trasy prowadzi prosto do szczegółów śledzonego kursu, a nie na
-    // listę połączeń - to o dwa dotknięcia bliżej tego, czego szuka użytkownik
-    // w trakcie podróży. `tripId` jest stabilny (to id z listy połączeń),
-    // więc zawsze trafiamy w ten sam ekran.
-    val url = appendRoute(plan.deepLink)
+    // deepLink wskazuje już szczegóły kursu (`/routes/<id>`). „Bilet" dokłada
+    // action=ticket, żeby ekran od razu otworzył kontrolę biletu.
+    val url = when (action.id) {
+      ACTION_TICKET -> appendQuery(plan.deepLink, "action=ticket")
+      else -> plan.deepLink
+    }
     return openApp(context, url, REQUEST_ACTIONS + action.id.hashCode())
   }
 
@@ -246,10 +248,10 @@ internal object LiveUpdateFactory {
     }
   }
 
-  private fun appendRoute(deepLink: String): String {
+  private fun appendQuery(deepLink: String, query: String): String {
     if (deepLink.isBlank()) return deepLink
     val separator = if (deepLink.contains('?')) "&" else "?"
-    return deepLink + separator + "action=route"
+    return deepLink + separator + query
   }
 
   /** Czy system w ogóle pozwoli promować powiadomienie do Live Updates. */
@@ -265,6 +267,7 @@ internal object LiveUpdateFactory {
 
   const val ACTION_STOP = "stop"
   const val ACTION_ROUTE = "route"
+  const val ACTION_TICKET = "ticket"
 
   private const val REQUEST_CONTENT = 1
   private const val REQUEST_STOP = 2

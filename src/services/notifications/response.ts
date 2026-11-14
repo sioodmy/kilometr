@@ -1,5 +1,5 @@
 import { getNotifications } from './module';
-import { isStopAction } from './categories';
+import { isStopAction, isTicketAction } from './categories';
 
 // Odpowiedź konsumujemy raz. Wiek powiadomienia nie określa czasu tapnięcia.
 
@@ -20,26 +20,31 @@ export interface TripResponse {
   link: Record<string, string> | null;
   /** Użytkownik wcisnął „Zakończ śledzenie”. */
   stop: boolean;
+  /** Użytkownik wcisnął „Bilet”: otwórz kontrolę biletu na trasie. */
+  ticket: boolean;
   /** Który alert: 'lead' | 'imminent' | 'disruption' | 'arrived' | null. */
   alert: string | null;
 }
 
-const EMPTY: TripResponse = { link: null, stop: false, alert: null };
+const EMPTY: TripResponse = { link: null, stop: false, ticket: false, alert: null };
 
 function parseData(data: unknown, actionIdentifier: string | undefined): TripResponse {
   if (!data || typeof data !== 'object') return EMPTY;
   const d = data as Record<string, unknown>;
   if (d.kind !== 'trip') return EMPTY;
   const stop = isStopAction(actionIdentifier);
+  const ticket = isTicketAction(actionIdentifier);
 
   const link: Record<string, string> = {};
   for (const k of LINK_KEYS) {
     const v = d[k];
     if (typeof v === 'string') link[k] = v;
   }
+  if (ticket && link.open) link.action = 'ticket';
   return {
     link: link.sharedTrip || link.open || (link.toLat && link.toLon) ? link : null,
     stop,
+    ticket,
     alert: typeof d.alert === 'string' ? d.alert : null,
   };
 }

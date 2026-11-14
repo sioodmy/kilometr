@@ -2,7 +2,7 @@
 
 W szczegółach połączenia przycisk udostępniania otwiera dolny arkusz M3 Expressive. Pokazuje kartę z godziną przyjazdu, celem, początkiem, datą i liniami. Dostępne są karta PNG z linkiem, SMS, kopiowanie linku oraz systemowe udostępnianie samego tekstu.
 
-Link ma postać `https://kilometr.app/#trip=<deflate-base64url>&lang=pl`. Przeglądarka odczytuje dane lokalnie. Fragment zawiera podsumowanie podróży, więc zmiana rozkładu nie usuwa udostępnionych godzin. To snapshot, bez aktualizacji GPS i opóźnień. Wiadomość i interfejs mają słowniki PL, EN, DE i UK w `src/i18n/share`.
+Link ma postać `https://kilometr.app/t#<token>`. Token to skompresowany binarny snapshot (deflate + base64url), z lokalizacją językową w payloadzie. Przeglądarka przepisuje go na `/#t=<token>` i odczytuje lokalnie. Fragment zawiera podsumowanie podróży, więc zmiana rozkładu nie usuwa udostępnionych godzin. To snapshot, bez aktualizacji GPS i opóźnień. Wiadomość i interfejs mają słowniki PL, EN, DE i UK w `src/i18n/share`.
 
 ## Rozkłady na GitHub Pages
 
