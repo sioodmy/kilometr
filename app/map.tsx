@@ -11,13 +11,8 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  ArrowRight,
-  ChevronLeft,
-  ChevronRight,
-  ScanLine,
-  WifiOff,
-} from '../src/components/icons';
+import { ArrowRight, ChevronLeft, ChevronRight, ScanLine, WifiOff } from '../src/components/icons';
+import { DirectionsWalk } from '../src/components/DirectionsWalk';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -35,11 +30,7 @@ import {
   LineBadge,
   mapLineColor,
 } from '../src/components/LineBadge';
-import {
-  buildMapStages,
-  resolveStageSelection,
-  useEnrichedConnection,
-} from '../src/map/stages';
+import { buildMapStages, resolveStageSelection, useEnrichedConnection } from '../src/map/stages';
 import { acquireMapServerForRoute } from '../src/services/mapServerLease';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
@@ -66,7 +57,6 @@ export default function RouteMapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
-  const compact = width / fontScale < 330;
   const { id: routeId, stageId: initialStageId } = useLocalSearchParams<{
     id: string;
     stageId?: string;
@@ -92,6 +82,8 @@ export default function RouteMapScreen() {
 
   const mapRef = useRef<RouteMapHandle>(null);
   const legScrollRef = useRef<ScrollView>(null);
+  const chipLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
+  const pendingScrollStageIdRef = useRef<string | null>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
 
   // Mapa pokazuje pojazd na żywo, więc poll chodzi tylko, gdy ekran widać.
@@ -129,7 +121,7 @@ export default function RouteMapScreen() {
 
   useEffect(() => () => clearOfflinePillTimer(), [clearOfflinePillTimer]);
 
-  // ─── Połączenie ───────────────────────────────────────────────
+  // ─── Połączenie ──────────────────────────────────────────────
   useEffect(() => {
     if (trackedConnection) {
       setItem(trackedConnection);
@@ -170,6 +162,8 @@ export default function RouteMapScreen() {
     return buildMapStages(route, geometryRef.current);
   }, [route, geometryVersion]);
 
+  const compact = stages.length > 1 ? width / fontScale < 460 : width / fontScale < 320;
+
   const activeStage = useMemo(
     () => resolveStageSelection(stages, selectedStageId),
     [stages, selectedStageId],
@@ -185,21 +179,42 @@ export default function RouteMapScreen() {
     }
     if (lastRouteIdRef.current !== route.id) {
       lastRouteIdRef.current = route.id;
+      chipLayoutsRef.current = {};
       setSelectedStageId(null);
     }
   }, [initialStageId, route?.id]);
 
-  const cardWidth = useMemo(
+  const expandedCardWidth = useMemo(
     () => Math.min(width - 40, 290 * Math.max(1, fontScale)),
     [fontScale, width],
+  );
+  const inactiveTransitMaxWidth = useMemo(
+    () => Math.min(width - 48, 172 * Math.max(1, fontScale)),
+    [fontScale, width],
+  );
+
+  const scrollChipIntoView = useCallback(
+    (stageId: string) => {
+      const layout = chipLayoutsRef.current[stageId];
+      if (!layout) return;
+      const offset = Math.max(0, layout.x - (width - layout.width) / 2);
+      legScrollRef.current?.scrollTo({ x: offset, animated: true });
+    },
+    [width],
   );
 
   useEffect(() => {
     if (!activeStage) return;
-    const idx = activeStage.stageNumber - 1;
-    const offset = Math.max(0, idx * (cardWidth + 12) - 20);
-    legScrollRef.current?.scrollTo({ x: offset, animated: true });
-  }, [activeStage, cardWidth]);
+    const targetId = activeStage.id;
+    pendingScrollStageIdRef.current = targetId;
+    const raf = requestAnimationFrame(() => {
+      if (pendingScrollStageIdRef.current === targetId) {
+        scrollChipIntoView(targetId);
+        pendingScrollStageIdRef.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeStage, scrollChipIntoView]);
 
   // ─── Geometria ulic i torów (OSRM / OSM Overpass, w tle) ──────
   const pushGeometry = useCallback((legId: string, coords: Coord[]) => {
@@ -271,7 +286,7 @@ export default function RouteMapScreen() {
     }
   }, [activeStage]);
 
-  // ─── Pojazd na żywo ───────────────────────────────────────────
+  // ─── Pojazd na żywo ──────────────────────────────────────────
   useEffect(() => {
     if (!item) return;
     let cancelled = false;
@@ -366,7 +381,7 @@ export default function RouteMapScreen() {
     };
   }, [item, route, trackedConnection]);
 
-  // ─── Akcje ────────────────────────────────────────────────────
+  // ─── Akcje ──────────────────────────────────────────────────
   const handleSelectStage = useCallback(
     (stageId: string) => {
       if (activeStage?.id === stageId) mapRef.current?.fit();
@@ -436,7 +451,7 @@ export default function RouteMapScreen() {
     [panelHeight],
   );
 
-  // ─── Render ───────────────────────────────────────────────────
+  // ─── Render ──────────────────────────────────────────────────
   if (loadFailed && !item) {
     return (
       <View style={styles.safe}>
@@ -566,15 +581,17 @@ export default function RouteMapScreen() {
         onLayout={handlePanelLayout}
       >
         <View style={[styles.panelHead, compact && styles.panelHeadCompact]}>
-          <View style={styles.panelTitleWrap}>
-            <Text style={styles.panelTitle}>{s.map.stagesTitle}</Text>
+          <View style={[styles.panelTitleWrap, !compact && styles.panelTitleWrapRow]}>
+            <Text style={styles.panelTitle} numberOfLines={1} ellipsizeMode="tail">
+              {s.map.stagesTitle}
+            </Text>
             <View style={styles.stageCounterChip}>
               <Text style={styles.stageCounterText}>
                 {activeStage ? `${activeStage.stageNumber}/${stages.length}` : stages.length}
               </Text>
             </View>
           </View>
-          <View style={styles.panelActions}>
+          <View style={[styles.panelActions, compact && styles.panelActionsCompact]}>
             {stages.length > 1 && (
               <View style={styles.stepperGroup}>
                 <Pressable
@@ -611,10 +628,9 @@ export default function RouteMapScreen() {
                 color={activeStage === null ? scheme.onPrimaryContainer : scheme.onSurface}
               />
               <Text
-                style={[
-                  styles.fitLabel,
-                  activeStage !== null && { color: scheme.onSurface },
-                ]}
+                style={[styles.fitLabel, activeStage !== null && { color: scheme.onSurface }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
                 {s.map.showWholeRoute}
               </Text>
@@ -632,6 +648,7 @@ export default function RouteMapScreen() {
           {stages.map((stage) => {
             const { leg } = stage;
             const active = activeStage?.id === stage.id;
+            const isWalk = leg.mode === 'walk';
             const endpointTitle =
               stage.endpointRole === 'start'
                 ? `${s.map.board}: ${stage.fromStop}`
@@ -642,102 +659,118 @@ export default function RouteMapScreen() {
               <Pressable
                 key={stage.id}
                 onPress={() => handleSelectStage(stage.id)}
+                onLayout={(e) => {
+                  const { x, width: chipWidth } = e.nativeEvent.layout;
+                  chipLayoutsRef.current[stage.id] = { x, width: chipWidth };
+                  if (pendingScrollStageIdRef.current === stage.id) {
+                    scrollChipIntoView(stage.id);
+                    pendingScrollStageIdRef.current = null;
+                  }
+                }}
                 style={({ pressed }) => [
                   styles.legCard,
-                  { width: cardWidth },
-                  active && styles.legCardActive,
+                  active
+                    ? [styles.legCardActive, { width: expandedCardWidth }]
+                    : isWalk
+                      ? styles.legCardWalkCompact
+                      : [styles.legCardTransitCompact, { maxWidth: inactiveTransitMaxWidth }],
                   pressed && { opacity: 0.8 },
                 ]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={
-                  leg.mode === 'walk'
+                  isWalk
                     ? s.map.walkStageA11y(formatWalkDistance(stage.walkM ?? 0))
                     : s.map.lineStageA11y(leg.line ?? '', stage.toStop)
                 }
               >
-                <View style={styles.legBadgeColumn}>
-                  <LineBadge mode={leg.mode} line={leg.line} compact active={active} />
-                  {stage.segmentIndex && stage.segmentCount ? (
-                    <View
-                      style={[
-                        styles.segmentPill,
-                        active && styles.segmentPillActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentPillText,
-                          active && styles.segmentPillTextActive,
-                        ]}
-                      >
-                        {stage.segmentIndex}/{stage.segmentCount}
+                {active ? (
+                  <>
+                    <View style={styles.legBadgeColumn}>
+                      <LineBadge mode={leg.mode} line={leg.line} compact active />
+                      {stage.segmentIndex && stage.segmentCount ? (
+                        <View style={[styles.segmentPill, styles.segmentPillActive]}>
+                          <Text style={[styles.segmentPillText, styles.segmentPillTextActive]}>
+                            {stage.segmentIndex}/{stage.segmentCount}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={[styles.stageNumLabel, styles.legTitleActive]}>
+                          #{stage.stageNumber}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.legInfo}>
+                      {endpointTitle ? (
+                        <Text
+                          style={[styles.legTitle, styles.legTitleActive]}
+                          numberOfLines={fontScale > 1.3 ? undefined : 2}
+                        >
+                          {endpointTitle}
+                        </Text>
+                      ) : stage.fromStop === stage.toStop ? (
+                        <Text
+                          style={[styles.legTitle, styles.legTitleActive]}
+                          numberOfLines={fontScale > 1.3 ? undefined : 2}
+                        >
+                          {stage.toStop}
+                        </Text>
+                      ) : isWalk && isFallbackOrigin(stage.fromStop) ? (
+                        <Text
+                          style={[styles.legTitle, styles.legTitleActive]}
+                          numberOfLines={fontScale > 1.3 ? undefined : 2}
+                        >
+                          {s.connection.walkTo(stage.toStop)}
+                        </Text>
+                      ) : (
+                        <View style={styles.legTitleRow}>
+                          <Text
+                            style={[styles.legTitle, styles.legTitleActive]}
+                            numberOfLines={fontScale > 1.3 ? 2 : 1}
+                          >
+                            {stage.fromStop}
+                          </Text>
+                          <ArrowRight size={14} color={scheme.onPrimaryContainer} />
+                          <Text
+                            style={[styles.legTitle, styles.legTitleActive]}
+                            numberOfLines={fontScale > 1.3 ? 2 : 1}
+                          >
+                            {stage.toStop}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={[styles.legSub, styles.legTitleActive]}>
+                        {stage.endpointRole
+                          ? stage.departAt
+                          : `${stage.departAt}–${stage.arriveAt}`}
+                        {isWalk
+                          ? ` • ${formatWalkDistance(stage.walkM ?? 0)}`
+                          : stage.stopsCount > 0
+                            ? ` • ${s.map.legStops(stage.stopsCount)}`
+                            : ''}
                       </Text>
                     </View>
-                  ) : (
-                    <Text
-                      style={[
-                        styles.stageNumLabel,
-                        active && styles.legTitleActive,
-                      ]}
-                    >
-                      #{stage.stageNumber}
+                  </>
+                ) : isWalk ? (
+                  <>
+                    <DirectionsWalk size={18} color={scheme.onSurfaceVariant} />
+                    <Text style={styles.walkChipDist} numberOfLines={1}>
+                      {formatWalkDistance(stage.walkM ?? 0)}
                     </Text>
-                  )}
-                </View>
-                <View style={styles.legInfo}>
-                  {endpointTitle ? (
-                    <Text
-                      style={[styles.legTitle, active && styles.legTitleActive]}
-                      numberOfLines={fontScale > 1.3 ? undefined : 2}
-                    >
-                      {endpointTitle}
-                    </Text>
-                  ) : stage.fromStop === stage.toStop ? (
-                    <Text
-                      style={[styles.legTitle, active && styles.legTitleActive]}
-                      numberOfLines={fontScale > 1.3 ? undefined : 2}
-                    >
-                      {stage.toStop}
-                    </Text>
-                  ) : leg.mode === 'walk' && isFallbackOrigin(stage.fromStop) ? (
-                    <Text
-                      style={[styles.legTitle, active && styles.legTitleActive]}
-                      numberOfLines={fontScale > 1.3 ? undefined : 2}
-                    >
-                      {s.connection.walkTo(stage.toStop)}
-                    </Text>
-                  ) : (
-                    <View style={styles.legTitleRow}>
-                      <Text
-                        style={[styles.legTitle, active && styles.legTitleActive]}
-                        numberOfLines={fontScale > 1.3 ? 2 : 1}
-                      >
-                        {stage.fromStop}
+                  </>
+                ) : (
+                  <>
+                    <LineBadge mode={leg.mode} line={leg.line} compact />
+                    <View style={styles.legInfoCompact}>
+                      <Text style={styles.legTitleCompact} numberOfLines={1} ellipsizeMode="tail">
+                        {endpointTitle ?? stage.toStop}
                       </Text>
-                      <ArrowRight
-                        size={14}
-                        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                      />
-                      <Text
-                        style={[styles.legTitle, active && styles.legTitleActive]}
-                        numberOfLines={fontScale > 1.3 ? 2 : 1}
-                      >
-                        {stage.toStop}
+                      <Text style={styles.legSubCompact} numberOfLines={1}>
+                        {stage.departAt}
                       </Text>
                     </View>
-                  )}
-                  <Text style={[styles.legSub, active && styles.legTitleActive]}>
-                    {stage.endpointRole
-                      ? stage.departAt
-                      : `${stage.departAt}–${stage.arriveAt}`}
-                    {leg.mode === 'walk'
-                      ? ` • ${formatWalkDistance(stage.walkM ?? 0)}`
-                      : stage.stopsCount > 0
-                        ? ` • ${s.map.legStops(stage.stopsCount)}`
-                        : ''}
-                  </Text>
-                </View>
+                  </>
+                )}
               </Pressable>
             );
           })}
@@ -819,22 +852,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    marginBottom: 14,
+    marginBottom: 12,
     gap: 12,
   },
-  panelHeadCompact: { flexDirection: 'column', alignItems: 'stretch' },
+  panelHeadCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   panelTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    minWidth: 0,
+  },
+  panelTitleWrapRow: {
+    flex: 1,
+  },
+  panelTitle: {
+    ...type.titleMedium,
+    fontWeight: '500',
+    color: scheme.onSurface,
     flexShrink: 1,
   },
-  panelTitle: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface, flexShrink: 1 },
   stageCounterChip: {
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.full,
     paddingHorizontal: 9,
     paddingVertical: 3,
+    flexShrink: 0,
   },
   stageCounterText: {
     ...type.labelSmall,
@@ -845,6 +891,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 0,
+  },
+  panelActionsCompact: {
+    justifyContent: 'space-between',
   },
   stepperGroup: {
     flexDirection: 'row',
@@ -877,7 +927,8 @@ const styles = StyleSheet.create({
   legScroller: { flexGrow: 0, flexShrink: 0 },
   legScroll: {
     paddingHorizontal: 20,
-    gap: 12,
+    gap: 8,
+    alignItems: 'stretch',
   },
   legCard: {
     flexDirection: 'row',
@@ -885,15 +936,34 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    minHeight: 74,
+    minHeight: 62,
     borderRadius: shape.large,
     borderWidth: 1,
     borderColor: 'transparent',
     backgroundColor: scheme.surfaceContainerHigh,
   },
+  legCardWalkCompact: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 58,
+  },
+  legCardTransitCompact: {
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   legCardActive: {
     backgroundColor: scheme.primaryContainer,
     borderColor: scheme.primary,
+  },
+  walkChipDist: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   legBadgeColumn: {
     alignItems: 'center',
@@ -926,6 +996,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   legInfo: { flex: 1, minWidth: 0, gap: 6 },
+  legInfoCompact: { flexShrink: 1, minWidth: 0, gap: 2 },
   legTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -938,8 +1009,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  legTitleCompact: {
+    ...type.bodyMedium,
+    fontWeight: '500',
+    color: scheme.onSurface,
+  },
   legTitleActive: { color: scheme.onPrimaryContainer },
   legSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  legSubCompact: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
   centeredTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },
