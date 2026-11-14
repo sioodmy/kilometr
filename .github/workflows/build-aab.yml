@@ -48,9 +48,12 @@ env:
   ANDROID_NDK: '27.1.12297006'
   ANDROID_CMAKE: '3.30.5'
   BUILD_NUMBER: ${{ github.run_attempt }}
-  # Pierwszy run po v1.5.2: 56. Każdy kolejny rezerwuje 100 kodów na ponowienia.
-  PLAY_RUN_NUMBER_BASE: '56'
-  PLAY_VERSION_CODE_BASE: '701050201'
+  # Licznik AAB: baza = ostatni opublikowany kod (v1.12.0 = run 68 → 701051402).
+  # Każdy run rezerwuje PLAY_ATTEMPT_SLOTS kodów na ponowienia (nie 100: Play
+  # ostrzega przy dużych skokach versionCode między uploadami).
+  PLAY_RUN_NUMBER_BASE: '69'
+  PLAY_VERSION_CODE_BASE: '701051402'
+  PLAY_ATTEMPT_SLOTS: '10'
   # Podpis release: hasła i alias muszą widzieć prebuild (wtyczka z bramką
   # sekretów) i gradle (kto czyta je dopiero w chwili builda). KEY_PASSWORD
   # może zostać pusty, wtedy klucz użyje hasła keystore.
@@ -145,11 +148,11 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_RUN_NUMBER" -lt "$PLAY_RUN_NUMBER_BASE" ] || [ "$GITHUB_RUN_ATTEMPT" -gt 99 ]; then
+          if [ "$GITHUB_RUN_NUMBER" -lt "$PLAY_RUN_NUMBER_BASE" ] || [ "$GITHUB_RUN_ATTEMPT" -gt "$PLAY_ATTEMPT_SLOTS" ]; then
             echo "::error::Nieprawidłowy licznik AAB. Uruchom nowy workflow zamiast starego podejścia."
             exit 1
           fi
-          ANDROID_VERSION_CODE=$((PLAY_VERSION_CODE_BASE + (GITHUB_RUN_NUMBER - PLAY_RUN_NUMBER_BASE) * 100 + GITHUB_RUN_ATTEMPT))
+          ANDROID_VERSION_CODE=$((PLAY_VERSION_CODE_BASE + (GITHUB_RUN_NUMBER - PLAY_RUN_NUMBER_BASE) * PLAY_ATTEMPT_SLOTS + GITHUB_RUN_ATTEMPT))
           export ANDROID_VERSION_CODE
           echo "ANDROID_VERSION_CODE=$ANDROID_VERSION_CODE" >> "$GITHUB_ENV"
           ARCH="${INPUT_ARCH:-all}"
