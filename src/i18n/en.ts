@@ -1299,7 +1299,6 @@ export const en: Strings = {
     stopsCountShort: (n: number) => `${n} ${n === 1 ? 'stop' : 'stops'}`,
     stationsCountShort: (n: number) => `${n} ${n === 1 ? 'station' : 'stations'}`,
     directRide: (mins: number) => `Non-stop · ~${formatDuration(mins)}`,
-    expandPill: (open: boolean) => (open ? 'Hide' : 'Show'),
     arrTime: (time: string) => `arr. ${time}`,
     depTime: (time: string) => `dep. ${time}`,
     dwellMin: (min: number) => `${min} min stop`,
