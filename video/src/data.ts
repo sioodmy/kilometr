@@ -3,6 +3,40 @@
 
 export type Mode = 'tram' | 'bus';
 
+export interface VideoStop {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+}
+
+/** Pieszo do `to`: ze startu albo z przystanku z poprzedniego odcinka. Metry w linii prostej. */
+export interface VideoWalk {
+  kind: 'walk';
+  walkM: number;
+  to: VideoStop;
+  dep: number;
+  arr: number;
+}
+
+/** Przejazd jednym kursem; czasy w sekundach od północy. */
+export interface VideoRide {
+  kind: 'ride';
+  trip: string;
+  line: string;
+  mode: Mode;
+  color: string;
+  direction: string;
+  from: VideoStop;
+  to: VideoStop;
+  dep: number;
+  arr: number;
+  stopCount: number;
+}
+
+/** Połączenie z wyszukiwarki, odcinek po odcinku. */
+export type VideoOption = (VideoWalk | VideoRide)[];
+
 export interface VideoData {
   feed: { publisher: string; start: string; end: string };
   /** Styl mapy aplikacji (buildMapStyle) jako MapLibre style JSON. */
@@ -15,12 +49,16 @@ export interface VideoData {
   lines: { shape: number; mode: Mode; reach: number[] }[];
   /** Przystanki: lon, lat, czas dotarcia fali (s od startu, -1 = poza zasięgiem). */
   stops: number[];
+  /** Najszybsza podróż do celu: dojście i jeden kurs, z geometrią do mapy. */
   journey: {
     line: string;
     color: string;
     walk: number[];
     ride: number[];
-    stops: { name: string; lon: number; lat: number; time: number }[];
+    /** Przystanki kursu: `time` to odjazd, `arr` przyjazd. */
+    stops: (VideoStop & { seq: number; arr: number; time: number })[];
+    /** Połączenia na ekranie wyszukiwarki; pierwsze to ta podróż. */
+    options: VideoOption[];
   };
   /** Kursy w oknie animacji: pozycja na trasie (m) w funkcji czasu (s od północy). */
   vehicles: { shape: number; mode: Mode; line: string; t: number[]; d: number[]; focus: boolean }[];

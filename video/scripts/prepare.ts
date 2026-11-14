@@ -4,9 +4,10 @@
  *
  * Użycie: nix develop .#ci -c 'npm run video:prepare'
  *
- * Podróż odpowiada screenom z landing/public/screenshots: Sky Tower o 20:25,
- * tramwaj 9 z Sanockiej do Pl. Wróblewskiego. Fala to najwcześniejszy
- * dojazd do każdego przystanku (connection scan po rozkładzie dnia roboczego).
+ * Fala to najwcześniejszy dojazd ze Sky Tower o 20:25 do każdego przystanku
+ * (connection scan po rozkładzie dnia roboczego). Podróż i lista połączeń to
+ * kursy bez przesiadek do celu z tego samego rozkładu; scan pilnuje, żeby
+ * przesiadka nie była szybsza od pokazanej podróży.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,17 +15,16 @@ import { strFromU8, unzipSync } from 'fflate';
 import { CITIES } from '../../src/cities';
 import { buildMapStyle } from '../../src/map/mapStyle';
 import { getLineColors } from '../../src/services/lineIdentity';
-import type { Mode, VideoData } from '../src/data';
+import type { Mode, VideoData, VideoOption, VideoRide, VideoStop } from '../src/data';
 
-// Archiwum Otwartego Wrocławia z 17.10.2026: ten sam rozkład co na screenach
-// (później linia 9 jeździ objazdem i nie mija Pl. Wróblewskiego).
+// Archiwum Otwartego Wrocławia z 17.10.2026: stały rozkład, więc wideo wychodzi zawsze takie samo.
 const GTFS_URL = 'https://open-data.cui.wroclaw.pl/hdb/download/146/';
 const CACHE = join(__dirname, '../.cache');
 
 const ORIGIN = { name: 'Sky Tower', lat: 51.0944, lon: 17.0192 };
 const DEPART = hms('20:25:00');
 const WAVE_END = DEPART + 75 * 60;
-const JOURNEY = { line: '9', from: 'Sanocka', to: 'Pl. Wróblewskiego', at: hms('20:34:00') };
+const DESTINATION = 'Katedra';
 const VEHICLE_WINDOW = [hms('20:30:00'), hms('21:00:00')] as const;
 const WALK_MPS = 1.0;
 const ORIGIN_WALK_M = 900;
@@ -190,9 +190,9 @@ async function main() {
     routes.set(id, { line, mode: type === '0' ? 'tram' : 'bus' });
   }
 
-  const trips = new Map<string, { route: string; shape: string }>();
-  for (const [route, sid, trip, shape] of rows(zip, 'trips.txt', ['route_id', 'service_id', 'trip_id', 'shape_id'])) {
-    if (sid === service && routes.has(route)) trips.set(trip, { route, shape });
+  const trips = new Map<string, { route: string; shape: string; headsign: string }>();
+  for (const [route, sid, trip, shape, headsign] of rows(zip, 'trips.txt', ['route_id', 'service_id', 'trip_id', 'shape_id', 'trip_headsign'])) {
+    if (sid === service && routes.has(route)) trips.set(trip, { route, shape, headsign });
   }
 
   const stopIds: string[] = [];
@@ -276,6 +276,59 @@ async function main() {
   const reachOf = (stop: number) =>
     arrival[stop] <= WAVE_END ? Math.round(arrival[stop] - DEPART) : -1;
 
+  const stop = (s: number): VideoStop => ({
+    id: stopIds[s],
+    name: stopName[s],
+    lon: +stopPos[s][0].toFixed(5),
+    lat: +stopPos[s][1].toFixed(5),
+  });
+  /** Fragment kursu `trip` od odjazdu z `from` do przyjazdu na `to`. */
+  const tripPart = (trip: string, from: number, dep: number, to: number) => {
+    const t = trips.get(trip);
+    const meta = t && routes.get(t.route);
+    const list = times.get(trip);
+    if (!t || !meta || !list) throw new Error(`Niepełny kurs ${trip}`);
+    const a = list.findIndex((x) => x.stop === from && x.dep === dep);
+    const b = list.findIndex((x, i) => i > a && x.stop === to);
+    const leg: VideoRide = {
+      kind: 'ride',
+      trip,
+      line: meta.line,
+      mode: meta.mode,
+      color: getLineColors(meta.line, meta.mode, 'wroclaw').bg,
+      direction: t.headsign,
+      from: stop(from),
+      to: stop(to),
+      dep,
+      arr: list[b].arr,
+      stopCount: b - a,
+    };
+    return { leg, shape: t.shape, stops: list.slice(a, b + 1) };
+  };
+
+  // Połączenia bez przesiadek (filtr „bezpośrednie” w aplikacji): z każdego kursu
+  // przez cel wsiadamy tam, gdzie można wyjść ze startu najpóźniej.
+  const direct: { leave: number; part: ReturnType<typeof tripPart>; walkM: number }[] = [];
+  for (const [trip, list] of times) {
+    const b = list.findIndex((x) => stopName[x.stop] === DESTINATION);
+    let best: { a: number; leave: number; walkM: number } | undefined;
+    for (let a = 0; a < b; a++) {
+      const walkM = meters(origin, stopPos[list[a].stop]);
+      const leave = list[a].dep - walkM / WALK_MPS;
+      if (walkM <= ORIGIN_WALK_M && leave >= DEPART && (!best || leave > best.leave)) best = { a, leave, walkM };
+    }
+    if (best) direct.push({ ...best, part: tripPart(trip, list[best.a].stop, list[best.a].dep, list[b].stop) });
+  }
+  // Zostają tylko te, których nie bije kurs z późniejszym wyjściem i wcześniejszym dojazdem.
+  const options = direct
+    .sort((x, y) => x.part.leg.arr - y.part.leg.arr || y.leave - x.leave)
+    .filter((x, i, all) => !all.slice(0, i).some((y) => y.leave >= x.leave))
+    .slice(0, 4);
+  const hero = options[0]?.part;
+  const fastest = Math.min(...stopPos.map((_, i) => (stopName[i] === DESTINATION ? arrival[i] : Infinity)));
+  // shortcut: mapa rysuje dojście i jeden kurs; gdy przesiadka jest szybsza, trzeba rysować kilka odcinków.
+  if (!hero || fastest < hero.leg.arr) throw new Error(`Do ${DESTINATION} szybciej jest z przesiadką`);
+
   // Kształty: wspólna tablica dla linii i pojazdów.
   const shapeOut: number[][] = [];
   const shapeSlot = new Map<string, number>();
@@ -323,23 +376,9 @@ async function main() {
     reachOf(s),
   ]);
 
-  // Podróż ze screena: kurs linii 9 z Sanockiej najbliżej 20:36.
-  let best: { trip: string; a: number; b: number; gap: number } | undefined;
-  for (const [trip, t] of trips) {
-    if (routes.get(t.route)?.line !== JOURNEY.line) continue;
-    const list = times.get(trip) ?? [];
-    const a = list.findIndex((x) => stopName[x.stop] === JOURNEY.from);
-    const b = list.findIndex((x, i) => i > a && stopName[x.stop] === JOURNEY.to);
-    if (a < 0 || b < 0) continue;
-    const gap = Math.abs(list[a].dep - JOURNEY.at);
-    if (!best || gap < best.gap) best = { trip, a, b, gap };
-  }
-  if (!best) throw new Error(`Brak kursu ${JOURNEY.line} ${JOURNEY.from} -> ${JOURNEY.to}`);
-  const jTrip = trips.get(best.trip);
-  const jList = times.get(best.trip);
-  const jGeo = jTrip && shapeGeo.get(jTrip.shape);
-  if (!jTrip || !jList || !jGeo) throw new Error('Niepełny kurs podróży');
-  const jStops = jList.slice(best.a, best.b + 1);
+  const jGeo = shapeGeo.get(hero.shape);
+  if (!jGeo) throw new Error('Brak kształtu podróży');
+  const jStops = hero.stops;
   const jPos = locate(jGeo.pts, jGeo.cum, jStops.map((x) => stopPos[x.stop]));
   const ride: P[] = [];
   const start = jPos[0];
@@ -358,16 +397,15 @@ async function main() {
   });
   ride.push(pointAt(end));
   const journey: VideoData['journey'] = {
-    line: JOURNEY.line,
-    color: getLineColors(JOURNEY.line, 'tram', 'wroclaw').bg,
+    line: hero.leg.line,
+    color: hero.leg.color,
     walk: flat([origin, stopPos[jStops[0].stop]]),
     ride: flat(ride),
-    stops: jStops.map((x) => ({
-      name: stopName[x.stop],
-      lon: +stopPos[x.stop][0].toFixed(5),
-      lat: +stopPos[x.stop][1].toFixed(5),
-      time: x.dep,
-    })),
+    stops: jStops.map((x) => ({ ...stop(x.stop), seq: x.seq, arr: x.arr, time: x.dep })),
+    options: options.map(({ leave, part, walkM }): VideoOption => [
+      { kind: 'walk', walkM: Math.round(walkM), to: part.leg.from, dep: leave, arr: part.leg.dep },
+      part.leg,
+    ]),
   };
 
   // Pojazdy: kursy jadące w oknie animacji.
@@ -390,7 +428,7 @@ async function main() {
         dd.push(d);
       }
     });
-    vehicles.push({ shape: slotOf(t.shape), mode: meta.mode, line: meta.line, t: tt, d: dd, focus: trip === best.trip });
+    vehicles.push({ shape: slotOf(t.shape), mode: meta.mode, line: meta.line, t: tt, d: dd, focus: trip === hero.leg.trip });
   }
 
   const data: VideoData = {
