@@ -65,7 +65,7 @@ export default function App() {
   const s = useStrings();
   const shareStrings = useShareStrings();
   const [hash, setHash] = useState(window.location.hash);
-  const shared = hash.startsWith('#trip');
+  const shared = hash.startsWith('#t=') || hash.startsWith('#trip');
   const page =
     hash === '#polityka'
       ? 'privacy'

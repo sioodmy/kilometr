@@ -274,17 +274,30 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.75rem;
   list-style: none;
   cursor: pointer;
   min-height: 2.75rem;
-  padding: 0.875rem 0.25rem;
-  color: var(--journey-primary);
+  padding: 0.5rem 0.25rem;
+  color: var(--journey-muted);
   font-size: 0.875rem;
   font-weight: 600;
 }
 .journey-stops summary::-webkit-details-marker {
   display: none;
+}
+.journey-expand-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--journey-primary) 18%, transparent);
+  color: var(--journey-primary);
+  transition: background 160ms ease, color 160ms ease;
+}
+.journey-stops[open] .journey-expand-pill {
+  background: color-mix(in srgb, var(--journey-primary) 28%, transparent);
 }
 .journey-stops[open] summary svg {
   transform: rotate(180deg);
@@ -295,6 +308,11 @@
 }
 .journey-stops[open] .journey-hide-stops {
   display: inline;
+}
+@media (prefers-reduced-motion: reduce) {
+  .journey-expand-pill {
+    transition: none;
+  }
 }
 .journey-position-label {
   font-size: 0.8125rem;
@@ -316,14 +334,28 @@
   font-size: 0.875rem;
   line-height: 1.5rem;
 }
+.journey-stop-list-train .journey-stop-dual {
+  min-height: 3.75rem;
+  align-items: start;
+}
+.journey-stop-copy {
+  display: grid;
+  gap: 0.15rem;
+  padding-bottom: 1.5rem;
+  min-width: 0;
+}
 .journey-stop-name {
   overflow-wrap: anywhere;
-  padding-bottom: 1.5rem;
+}
+.journey-stop-meta {
+  color: var(--journey-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 .journey-stop:last-child {
   min-height: 1.5rem;
 }
-.journey-stop:last-child .journey-stop-name {
+.journey-stop:last-child .journey-stop-copy {
   padding-bottom: 0;
 }
 .journey-stop-endpoint .journey-stop-name {
@@ -332,9 +364,20 @@
 .journey-stop-passed {
   color: var(--journey-muted);
 }
-.journey-stop time {
+.journey-stop-times {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
   color: var(--journey-muted);
   font-variant-numeric: tabular-nums;
+}
+.journey-stop-time-label {
+  white-space: nowrap;
+}
+.journey-stop time {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 .journey-stop time small {
   display: block;

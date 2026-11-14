@@ -84,8 +84,9 @@ assert.equal(
 const url = new URL(buildShareUrl(journey, 'uk'));
 assert.equal(url.origin, 'https://kilometr.app');
 assert.equal(url.search, '');
-assert.equal(url.pathname, '/trip/');
-assert.equal(new URLSearchParams(url.hash.slice(1)).get('lang'), 'uk');
+assert.equal(url.pathname, '/t');
+assert.ok(url.hash.startsWith('#'));
+assert.equal(decodeSharedConnection(url.hash.slice(1))?.from, journey.from);
 assert.ok(url.href.length < 1000);
 for (const s of [pl, en, de, uk]) {
   assert.ok(shareMessage(journey, s).includes('4'));
@@ -196,18 +197,20 @@ assert.deepEqual(
 console.log('Udostępnianie: URL, daty, północ, słowniki, przystanki i pozycja według rozkładu OK.');
 
 const encoded = encodeSharedConnection(journey);
+const urlToken = url.hash.slice(1);
+assert.equal(sharedTripPath(url.href), `/shared?trip=${urlToken}`);
 for (const link of [
-  url.href,
-  `https://kilometr.app/#trip=${encoded}`,
+  `https://kilometr.app/t#${encoded}`,
+  `https://kilometr.app/#t=${encoded}`,
   `kilometr://shared?trip=${encoded}`,
-  `kilometr://trip/#trip=${encoded}`,
+  `kilometr://t#${encoded}`,
   `/shared?trip=${encoded}`,
 ])
   assert.equal(sharedTripPath(link), `/shared?trip=${encoded}`);
-assert.equal(sharedTripPath('https://kilometr.app/trip/#trip=broken'), '/shared');
+assert.equal(sharedTripPath('https://kilometr.app/t#broken'), '/shared');
 assert.equal(sharedTripPath('https://kilometr.app/'), null);
-assert.equal(sharedTripPath(`https://evil.example/trip/#trip=${encoded}`), null);
-assert.equal(sharedTripPath(`https://kilometr.app.evil.example/trip/#trip=${encoded}`), null);
+assert.equal(sharedTripPath(`https://evil.example/t#${encoded}`), null);
+assert.equal(sharedTripPath(`https://kilometr.app.evil.example/t#${encoded}`), null);
 assert.equal(sharedTripPath('kilometr://routes?open=other'), null);
 for (const coords of [{ fromLat: 91, fromLon: 17 }, { fromLat: 51 }, { toLat: 51, toLon: 181 }])
   assert.equal(
@@ -277,7 +280,19 @@ assert.equal(plan.alightAlertsEnabled, false);
 assert.equal(plan.transferAlertsEnabled, false);
 assert.equal(plan.transferProtectionEnabled, false);
 assert.equal(plan.copy.arrived.title, strings.share.notificationArrived);
+assert.match(plan.copy.riding.title, /^Udostępnione/);
 assert.equal(tripNotificationData(observed).sharedTrip, encoded);
+const { sharedJourney: _ignored, ...ownBase } = observed;
+const own = {
+  ...ownBase,
+  connection: { ...nativeConnection, serviceDate: '2026-10-19' },
+};
+const ownPlan = buildLivePlan(nativeProgress, own.connection, own, strings);
+assert.equal(ownPlan.deepLink, `kilometr://routes/${encodeURIComponent(own.connection.id)}`);
+assert.equal(ownPlan.copy.arrived.title, strings.notification.arrivedTitle);
+assert.ok(!ownPlan.actions.some((a) => a.id === 'ticket'));
+const withTicket = buildLivePlan(nativeProgress, own.connection, own, strings, { hasTicket: true });
+assert.ok(withTicket.actions.some((a) => a.id === 'ticket'));
 assert.deepEqual(appLinkFiles('', ''), []);
 assert.throws(() => appLinkFiles('invalid', ''));
 assert.throws(() => appLinkFiles('', 'invalid'));

@@ -291,8 +291,12 @@ async function checkArrivalRouting() {
       // wczoraj 22:00→24:xx+, to > 86400). Ten mock nie ma kursów 24:xx;
       // ten sam indeks jako „wczoraj” robi duchy z dep < 0, które po
       // dayOffset wyglądają jak dziś rano (flak po północy Warsaw).
-      getDayIndexSlice: async (_weekday, _date, _from, to) =>
-        to > 86400 ? emptyIndex() : direct.index,
+      getDayIndexSlice: async (
+        _weekday: number,
+        _date: string,
+        _from: number,
+        to: number,
+      ) => (to > 86400 ? emptyIndex() : direct.index),
     });
     const target = 86400 + at(8, 31);
     const query = {

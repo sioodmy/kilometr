@@ -1462,6 +1462,15 @@ export const pl = {
       `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'} • ~${formatDuration(mins)} • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
     stationsSummary: (n: number, mins: number, open: boolean) =>
       `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'} • ~${formatDuration(mins)} • ${open ? 'zwiń' : 'rozwiń'} stacje`,
+    stopsCountShort: (n: number) =>
+      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'}`,
+    stationsCountShort: (n: number) =>
+      `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'}`,
+    directRide: (mins: number) => `Bez przystanków pośrednich · ~${formatDuration(mins)}`,
+    expandPill: (open: boolean): string => (open ? 'Zwiń' : 'Pokaż'),
+    arrTime: (time: string) => `przyj. ${time}`,
+    depTime: (time: string) => `odj. ${time}`,
+    dwellMin: (min: number) => `postój ${min} min`,
     platformPeron: (code: string) => `Peron ${code}`,
     platformPeronTrack: (code: string, track: string) => `Peron ${code}, Tor ${track}`,
     platformTrack: (track: string) => `Tor ${track}`,
@@ -1597,6 +1606,7 @@ export const pl = {
     // pokazuje najwyżej trzy przyciski i skraca dłuższe tytuły.
     actionStop: 'Zakończ',
     actionRoute: 'Trasa',
+    actionTicket: 'Bilet',
     showRoutes: 'Pokaż trasę',
     actionOk: 'OK',
     modeWalk: 'Pieszo',
@@ -1617,7 +1627,9 @@ export const pl = {
     arrivedBody: (at: string, dur: string) => `Na miejscu ${at} • podróż trwała ${dur}`,
     nextStop: (name: string) => `następny ${name}`,
     estimatedNextStop: (name: string) => `Szacowany następny: ${name}`,
+    estimatedNextStation: (name: string) => `Następna stacja: ${name}`,
     stopHere: (name: string) => `przystanek ${name}`,
+    stationHere: (name: string) => `stacja ${name}`,
     // Najważniejsze pytanie w trakcie jazdy: gdzie wysiadam. Bez tego
     // użytkownik musiał zaglądać do aplikacji, żeby nie przegapić przystanku.
     alightAt: (name: string) => `Wysiądź na: ${name}`,
@@ -1626,6 +1638,9 @@ export const pl = {
     platformPeron: (num: string) => `peron ${num}`,
     platformPeronTrack: (num: string, track: string) => `peron ${num}, tor ${track}`,
     platformTrack: (track: string) => `tor ${track}`,
+    seatMeta: (wagon?: string, seat?: string) =>
+      [wagon ? `wagon ${wagon}` : '', seat ? `m. ${seat}` : ''].filter(Boolean).join(', '),
+    cancelledAlert: (service: string) => `${service} • kurs odwołany`,
     walkApproach: (min: number) => `dojście ~${min} min`,
     rideLength: (min: number) => `przejazd ${min} min`,
     departAt: (at: string) => `odjazd ${at}`,
@@ -1634,6 +1649,8 @@ export const pl = {
     delayEarly: (min: number) => `spieszy ${Math.abs(Math.round(min))} min`,
     stops: (n: number) =>
       n === 1 ? '1 przystanek' : isFew(n) ? `${n} przystanki` : `${n} przystanków`,
+    stations: (n: number) =>
+      n === 1 ? '1 stacja' : isFew(n) ? `${n} stacje` : `${n} stacji`,
     transfers: (n: number) =>
       n === 1 ? '1 przesiadka' : isFew(n) ? `${n} przesiadki` : `${n} przesiadek`,
     newDeparture: (at: string) => `nowy odjazd ${at}`,

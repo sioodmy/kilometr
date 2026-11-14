@@ -1043,6 +1043,8 @@ interface TripStopTimeRow {
   name: string | null;
   lat: number | null;
   lon: number | null;
+  platform?: string | null;
+  track?: string | null;
 }
 
 /**
@@ -1057,6 +1059,20 @@ export async function getTripStopTimes(
   national = false,
 ): Promise<TripStopTimeRow[]> {
   const db = national ? await getNationalDb() : await liveHandle();
+  if (national) {
+    try {
+      return await db.getAllAsync<TripStopTimeRow>(
+        `SELECT st.stop_id, st.arr_sec, st.dep_sec, st.seq, st.platform, st.track, s.name, s.lat, s.lon
+           FROM stop_times st
+           LEFT JOIN stops s ON s.stop_id = st.stop_id
+          WHERE st.trip_id = ?
+          ORDER BY st.seq ASC`,
+        tripId,
+      );
+    } catch {
+      // starsza baza bez kolumny track/platform
+    }
+  }
   return db.getAllAsync<TripStopTimeRow>(
     `SELECT st.stop_id, st.arr_sec, st.dep_sec, st.seq, s.name, s.lat, s.lon
        FROM stop_times st

@@ -135,7 +135,7 @@ export interface LivePlan {
   transferProtectionEnabled?: boolean;
   transferAlertsEnabled?: boolean;
   copy: Record<TripPhase, LivePlanPhaseCopy>;
-  actions: { id: 'stop' | 'route'; title: string }[];
+  actions: { id: 'stop' | 'route' | 'ticket'; title: string }[];
 }
 
 export interface LivePlanState {

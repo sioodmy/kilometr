@@ -1470,6 +1470,15 @@ export const uk: Strings = {
       const stations = isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`;
       return `${stations} • ~${formatDuration(mins)} • ${open ? 'згорнути' : 'розгорнути'}`;
     },
+    stopsCountShort: (n: number) =>
+      isOne(n) ? `${n} зупинка` : isFew(n) ? `${n} зупинки` : `${n} зупинок`,
+    stationsCountShort: (n: number) =>
+      isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`,
+    directRide: (mins: number) => `Без проміжних зупинок · ~${formatDuration(mins)}`,
+    expandPill: (open: boolean) => (open ? 'Згорнути' : 'Показати'),
+    arrTime: (time: string) => `приб. ${time}`,
+    depTime: (time: string) => `відпр. ${time}`,
+    dwellMin: (min: number) => `зупинка ${min} хв`,
     platformPeron: (code: string) => `Платформа ${code}`,
     platformPeronTrack: (code: string, track: string) => `Платформа ${code}, колія ${track}`,
     platformTrack: (track: string) => `Колія ${track}`,
@@ -1606,6 +1615,7 @@ export const uk: Strings = {
       'Сповіщення вимкнено. Увімкни їх у системних налаштуваннях для kilometr, щоб відстежувати відправлення та прогрес поїздки.',
     actionStop: 'Зупинити',
     actionRoute: 'Маршрут',
+    actionTicket: 'Квиток',
     showRoutes: 'Показати маршрут',
     actionOk: 'Гаразд',
     modeWalk: 'Пішки',
@@ -1622,13 +1632,18 @@ export const uk: Strings = {
     arrivedBody: (at: string, dur: string) => `Прибуття о ${at} • поїздка тривала ${dur}`,
     nextStop: (name: string) => `наступна ${name}`,
     estimatedNextStop: (name: string) => `Орієнтовна наступна зупинка: ${name}`,
+    estimatedNextStation: (name: string) => `Наступна станція: ${name}`,
     stopHere: (name: string) => `зупинка ${name}`,
+    stationHere: (name: string) => `станція ${name}`,
     alightAt: (name: string) => `Виходь на: ${name}`,
     directionTo: (dir: string) => `У напрямку ${dir}`,
     platform: (num: string) => `колія ${num}`,
     platformPeron: (num: string) => `платформа ${num}`,
     platformPeronTrack: (num: string, track: string) => `платформа ${num}, колія ${track}`,
     platformTrack: (track: string) => `колія ${track}`,
+    seatMeta: (wagon?: string, seat?: string) =>
+      [wagon ? `вагон ${wagon}` : '', seat ? `м. ${seat}` : ''].filter(Boolean).join(', '),
+    cancelledAlert: (service: string) => `${service} • скасовано`,
     walkApproach: (min: number) => `~${min} хв пішки`,
     rideLength: (min: number) => `їзда ${min} хв`,
     departAt: (at: string) => `відправлення о ${at}`,
@@ -1636,6 +1651,8 @@ export const uk: Strings = {
     delayLate: (min: number) => `затримка +${Math.round(min)} хв`,
     delayEarly: (min: number) => `на ${Math.abs(Math.round(min))} хв раніше`,
     stops: (n: number) => (isOne(n) ? '1 зупинка' : isFew(n) ? `${n} зупинки` : `${n} зупинок`),
+    stations: (n: number) =>
+      isOne(n) ? '1 станція' : isFew(n) ? `${n} станції` : `${n} станцій`,
     transfers: (n: number) =>
       isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     newDeparture: (at: string) => `новий рейс о ${at}`,
