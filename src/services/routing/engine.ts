@@ -1,6 +1,7 @@
 import { DayIndex, gtfsStore, polskaStore, LocalGtfsStore } from './store';
-import { DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
-import { AllowedTransferModes, Connection, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
+import { classifyTransitMode, DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
+import { AllowedTransferModes, Connection, JourneySegment, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
+import type { BoardedTripOrigin } from '../../types/models';
 import { distanceMeters, secondsToTimeString, shiftWarsawDate, warsawNow } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { MAX_DELAY_SEC } from '../liveQuality';
@@ -9,6 +10,7 @@ import { deduplicateConnections, stableConnectionId } from './connectionIdentity
 import { isFareBoundary } from '../../gtfs/fareBoundary';
 import { refreshConnectionTimes, scheduledLegTimes } from './connectionTimes';
 import { predictDelaySec } from './delays';
+import { projectRoutePoint } from '../routeGeometry';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -317,6 +319,10 @@ export interface PlanOptions {
   originStopIds?: string[];
   /** Jawne przystanki docelowe (omijają szukanie po współrzędnych). */
   destinationStopIds?: string[];
+  /** Aktywny pojazd jako punkt startowy podróży (bez szukania dojścia na przystanek). */
+  boardedTrip?: BoardedTripOrigin;
+  /** Opcjonalny indeks dnia (np. do testów jednostkowych bez SQLite). */
+  dayIndex?: DayIndex;
 }
 
 
@@ -386,6 +392,7 @@ function mapJourneysToConnections(
   options: PlanOptions,
   ctx: MapCtx,
   store: LocalGtfsStore = gtfsStore,
+  skipPointlessCheck = false,
 ): Connection[] {
   const connections: Connection[] = [];
 
@@ -393,7 +400,7 @@ function mapJourneysToConnections(
     const rj = journeys[idx];
     // Kotwica nie może wymuszać bezsensu: "wsiądź i wysiądź po 1 przystanku,
     // resztę idź z buta" odrzucamy niezależnie od preferencji startu.
-    if (isPointlessShortRide(rj)) continue;
+    if (!skipPointlessCheck && isPointlessShortRide(rj)) continue;
     // Przejazd w jedną stronę i z powrotem (ten sam przystanek dwa razy)
     // nic nie daje, a RAPTOR potrafi go zaproponować przy bliskim celu.
     if (revisitsStops(rj)) continue;
@@ -675,11 +682,545 @@ function buildWalkOnlyConnection(
   };
 }
 
+
+interface BoardedStopFeed {
+  alightIdx: number;
+  alightStop: LegStop;
+  alightSec: number;
+  walkM: number;
+  walkSec: number;
+  readySec: number;
+}
+
+function selectBoardedJourneys(
+  journeys: RawJourney[],
+  refSec: number,
+  cost: CostParams,
+  uncertaintyPenalty: ReadonlyMap<string, number>,
+  limit = 12,
+): RawJourney[] {
+  const walkSecOf = (j: RawJourney) =>
+    j.segments.reduce((sum, s) => (s.type === "walk" ? sum + Math.max(0, s.arriveSec - s.departSec) : sum), 0);
+  const scored = journeys.map((j) => {
+    const walk = walkSecOf(j);
+    const transit = j.segments.filter((s) => s.type === "transit");
+    const c =
+      j.arrivalSec -
+      refSec +
+      (Math.max(1, cost.walkReluctance) - 1) * walk +
+      j.transfers * cost.transferPenaltySec +
+      transit.reduce((sum, s) => sum + (uncertaintyPenalty.get(s.tripId ?? "") ?? 0), 0);
+    return {
+      j,
+      cost: c,
+      walk,
+      chain: transit.map((s) => `${s.tripId ?? ""}@${s.fromStopId}>${s.toStopId}`).join("|"),
+      combo: transit.map((s) => s.line ?? "").join("+"),
+    };
+  });
+
+  scored.sort((a, b) => a.cost - b.cost || a.j.transfers - b.j.transfers || a.j.arrivalSec - b.j.arrivalSec);
+
+  const byChain = new Set<string>();
+  const unique = scored.filter((x) => {
+    if (byChain.has(x.chain)) return false;
+    byChain.add(x.chain);
+    return true;
+  });
+
+  const front = unique.filter(
+    (x) =>
+      !unique.some(
+        (y) =>
+          y !== x &&
+          y.j.arrivalSec <= x.j.arrivalSec &&
+          y.j.transfers <= x.j.transfers &&
+          y.walk <= x.walk + 30 &&
+          y.cost <= x.cost &&
+          (y.j.arrivalSec < x.j.arrivalSec ||
+            y.j.transfers < x.j.transfers ||
+            y.walk < x.walk - 30 ||
+            y.cost < x.cost),
+      ),
+  );
+
+  const perCombo = new Map<string, number>();
+  const result: RawJourney[] = [];
+  for (const x of front) {
+    const count = perCombo.get(x.combo) ?? 0;
+    if (count >= 3) continue;
+    perCombo.set(x.combo, count + 1);
+    result.push(x.j);
+    if (result.length >= limit) break;
+  }
+
+  if (result.length > 0 && front.length > 0) {
+    let fastest = front[0].j;
+    for (const x of front) {
+      if (x.j.arrivalSec < fastest.arrivalSec) fastest = x.j;
+    }
+    if (!result.includes(fastest)) {
+      if (result.length >= limit) result.pop();
+      result.push(fastest);
+    }
+  }
+  return result;
+}
+
+/**
+ * Planuje dalszą podróż z pokładu jadącego pojazdu: zwraca opcje bez przesiadki
+ * (wysiadka przy celu + dojście) oraz warianty z 1+ przesiadkami od kolejnych
+ * przystanków na trasie kursu (włącznie z sąsiednimi słupkami w zasięgu spaceru).
+ */
+async function planFromBoardedTrip(
+  options: PlanOptions,
+  store: LocalGtfsStore = gtfsStore,
+): Promise<Connection[]> {
+  const boarded = options.boardedTrip!;
+  const now = new Date();
+  const nowWarsaw = warsawNow(now);
+  const currentSec = nowWarsaw.sec;
+
+  const rawTarget = Math.max(-86400 * 2, Math.round(options.departureTimeSec ?? currentSec));
+  const horizonSec = options.searchAheadSec ?? 10800;
+  const slices = options.dayIndex
+    ? {
+        departureSec: ((rawTarget % 86400) + 86400) % 86400,
+        dayOffsetSec: Math.floor(rawTarget / 86400) * 86400,
+        searchStartSec: ((rawTarget % 86400) + 86400) % 86400,
+        searchIndex: options.dayIndex,
+        patternOffsets: undefined,
+      }
+    : await buildSearchSlices(rawTarget, false, store, horizonSec);
+
+  const { dayOffsetSec, searchStartSec, searchIndex, patternOffsets } = slices;
+  const dayShift = Math.round(dayOffsetSec / 86400);
+  const targetWarsaw = dayShift === 0 ? nowWarsaw : shiftWarsawDate(nowWarsaw, dayShift);
+
+  const maxTransfers = Math.max(0, Math.min(3, Math.round(options.maxTransfers ?? 2)));
+  const modes: TransitModePreference =
+    options.modes === "tram" || options.modes === "bus" ? options.modes : "all";
+  const minTransferSec = Math.max(0, Math.min(600, Math.round(options.minTransferSec ?? 120)));
+  const allow = options.allowedTransferModes;
+  const trainsEnabled = allow?.train ?? options.trainsEnabled ?? true;
+  const cableEnabled = allow?.cable ?? options.cableEnabled ?? true;
+  const trainMinTransferSec = Math.max(0, Math.min(1200, Math.round(options.trainMinTransferSec ?? 300)));
+  const maxWalkM = Math.max(100, Math.min(2000, Math.round(options.maxWalkM ?? 800)));
+  const userWalkSpeed = Math.max(0.8, Math.min(2.0, options.walkSpeedMps ?? WALK_SPEED_MPS));
+  const cost = DEFAULT_COST;
+
+  await liveTracker.ensureFresh();
+  const snapshot =
+    dayOffsetSec === 0
+      ? liveTracker.getRoutingSnapshot(searchIndex, patternOffsets)
+      : emptyRoutingSnapshot();
+
+  const tripStops = await buildTripStops(boarded.tripId, store);
+  if (tripStops.length < 2) return [];
+
+  const trip = store.trips.get(boarded.tripId);
+  const route = trip
+    ? store.routes.get(trip.route_id)
+    : boarded.routeId
+      ? store.routes.get(boarded.routeId)
+      : undefined;
+  const line = boarded.line || route?.route_short_name || "MPK";
+  const mode: LegMode = boarded.mode ?? classifyTransitMode(route?.route_type, line);
+  const direction = boarded.direction || trip?.trip_headsign || "";
+  const routeId = boarded.routeId || trip?.route_id || route?.route_id;
+
+  const tripDelays = new Map(snapshot.delays);
+  const confidence = new Map(snapshot.confidence);
+  if (boarded.delaySec !== undefined && !tripDelays.has(boarded.tripId)) {
+    tripDelays.set(boarded.tripId, boarded.delaySec);
+    confidence.set(boarded.tripId, "live");
+  }
+  const rawDelaySec = tripDelays.get(boarded.tripId) ?? 0;
+  const delayRefSec = options.departureTimeSec !== undefined ? searchStartSec : currentSec;
+
+  const effArr: number[] = [];
+  const effDep: number[] = [];
+  for (let i = 0; i < tripStops.length; i++) {
+    const st = tripStops[i];
+    const schedArr = st.arriveSec ?? st.departSec ?? searchStartSec;
+    const schedDep = st.departSec ?? st.arriveSec ?? searchStartSec;
+    let a =
+      rawDelaySec === 0
+        ? schedArr
+        : schedArr + predictDelaySec(rawDelaySec, schedArr - (delayRefSec - rawDelaySec), "arrive", mode);
+    let d =
+      rawDelaySec === 0
+        ? schedDep
+        : schedDep + predictDelaySec(rawDelaySec, schedDep - (delayRefSec - rawDelaySec), "board", mode);
+    if (i > 0) {
+      a = Math.max(a, effArr[i - 1]);
+      d = Math.max(d, a);
+    } else {
+      d = Math.max(d, a);
+    }
+    effArr.push(a);
+    effDep.push(d);
+  }
+
+  // Zbuduj dystanse narastające wzdłuż przystanków kursu (dla projekcji pozycji pojazdu/usera).
+  const cumDist: number[] = new Array(tripStops.length).fill(0);
+  const polyCoords: [number, number][] = [];
+  const polyStopIndices: number[] = [];
+  for (let i = 0; i < tripStops.length; i++) {
+    const st = tripStops[i];
+    if (st.lat !== undefined && st.lon !== undefined && Number.isFinite(st.lat) && Number.isFinite(st.lon)) {
+      if (polyCoords.length > 0) {
+        const prev = polyCoords[polyCoords.length - 1];
+        const segD = distanceMeters(prev[0], prev[1], st.lat, st.lon);
+        cumDist[i] = cumDist[polyStopIndices[polyStopIndices.length - 1]] + segD;
+      }
+      polyCoords.push([st.lat, st.lon]);
+      polyStopIndices.push(i);
+    } else if (i > 0) {
+      cumDist[i] = cumDist[i - 1];
+    }
+  }
+
+  const refLat = boarded.currentLat ?? (boarded.boardStopId ? undefined : options.fromLat);
+  const refLon = boarded.currentLon ?? (boarded.boardStopId ? undefined : options.fromLon);
+  const proj =
+    refLat !== undefined &&
+    refLon !== undefined &&
+    Number.isFinite(refLat) &&
+    Number.isFinite(refLon) &&
+    polyCoords.length >= 2
+      ? projectRoutePoint(polyCoords, refLat, refLon)
+      : null;
+  const hasSpatialPos = Boolean(proj && proj.offsetM <= 500);
+
+  let boardIdx = -1;
+  if (boarded.boardStopId) {
+    let bestScore = Infinity;
+    for (let i = 0; i < tripStops.length - 1; i++) {
+      if (tripStops[i].stopId !== boarded.boardStopId) continue;
+      const score = hasSpatialPos
+        ? Math.abs((cumDist[i] ?? 0) - proj!.alongM)
+        : Math.abs(effDep[i] - searchStartSec);
+      if (score < bestScore) {
+        bestScore = score;
+        boardIdx = i;
+      }
+    }
+  }
+  if (boardIdx < 0 && hasSpatialPos) {
+    boardIdx = 0;
+    for (let i = 0; i < tripStops.length - 1; i++) {
+      if (cumDist[i] <= proj!.alongM + 35) boardIdx = i;
+    }
+  }
+  if (boardIdx < 0) {
+    boardIdx = 0;
+    for (let i = 0; i < tripStops.length - 1; i++) {
+      if (effDep[i] <= searchStartSec) boardIdx = i;
+    }
+  }
+
+  let minAlightIdx = Math.min(tripStops.length - 1, boardIdx + 1);
+  if (hasSpatialPos) {
+    if (proj!.alongM > proj!.totalM + 100 && effArr[tripStops.length - 1] < searchStartSec - 60) {
+      return [];
+    }
+    while (
+      minAlightIdx < tripStops.length - 1 &&
+      (cumDist[minAlightIdx] - proj!.alongM < 60 || effArr[minAlightIdx] < searchStartSec - 120)
+    ) {
+      minAlightIdx++;
+    }
+  } else {
+    while (minAlightIdx < tripStops.length - 1 && effArr[minAlightIdx] < searchStartSec + 15) {
+      minAlightIdx++;
+    }
+  }
+
+  const alightSec: number[] = new Array(tripStops.length).fill(0);
+  for (let i = minAlightIdx; i < tripStops.length; i++) {
+    let t = effArr[i];
+    if (hasSpatialPos) {
+      const remM = Math.max(0, cumDist[i] - proj!.alongM);
+      const minTravel = remM > 0 ? Math.max(15, Math.round(remM / 6.0)) : 15;
+      t = Math.max(t, searchStartSec + minTravel);
+    } else {
+      t = Math.max(t, searchStartSec + 15);
+    }
+    if (i > minAlightIdx) {
+      t = Math.max(t, alightSec[i - 1] + 10);
+    }
+    alightSec[i] = t;
+  }
+
+  const boardStop = tripStops[boardIdx];
+  const boardDepartSec = effDep[boardIdx];
+
+  const isBanned = (m: string | undefined): boolean => {
+    if (!m || m === "walk") return false;
+    if (m === "train") return !trainsEnabled;
+    if (m === "cable") return !cableEnabled;
+    const v = (allow as Record<string, boolean | undefined> | undefined)?.[m];
+    return v === false;
+  };
+  const transferAllowed = (j: RawJourney): boolean => {
+    const transit = j.segments.filter((s) => s.type === "transit");
+    if (transit.some((s) => isBanned(s.mode))) return false;
+    if (modes === "all") return true;
+    return transit.every((s) => s.mode === modes || (modes === "bus" && s.mode === "trolleybus"));
+  };
+
+  const makeBoardedSeg = (alightStop: LegStop, arrSec: number, stopsCount: number): JourneySegment => ({
+    type: "transit",
+    tripId: boarded.tripId,
+    routeId,
+    line,
+    mode,
+    direction,
+    fromStopId: boardStop.stopId,
+    fromStopName: boardStop.name,
+    toStopId: alightStop.stopId,
+    toStopName: alightStop.name,
+    departSec: boardDepartSec,
+    arriveSec: arrSec,
+    stopsCount,
+  });
+
+  const combinedJourneys: RawJourney[] = [];
+
+  // 1. Opcje bez przesiadek: jedź dalej tym samym pojazdem aż pod cel.
+  const destStopIdSet = options.destinationStopIds?.length ? new Set(options.destinationStopIds) : null;
+  for (let i = minAlightIdx; i < tripStops.length; i++) {
+    const s = tripStops[i];
+    if (isFareBoundary(s.name) && s.stopId !== options.toId && !destStopIdSet?.has(s.stopId)) {
+      continue;
+    }
+    let walkM = 0;
+    let walkSec = 0;
+    if (destStopIdSet) {
+      if (!destStopIdSet.has(s.stopId)) continue;
+    } else if (s.stopId === options.toId) {
+      const d =
+        s.lat !== undefined && s.lon !== undefined
+          ? Math.round(distanceMeters(s.lat, s.lon, options.toLat, options.toLon))
+          : 0;
+      walkM = Math.min(d, 50);
+      walkSec = walkM <= 20 ? 0 : Math.max(30, Math.round((walkM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+    } else if (s.lat !== undefined && s.lon !== undefined) {
+      const d = Math.round(distanceMeters(s.lat, s.lon, options.toLat, options.toLon));
+      if (d > maxWalkM) continue;
+      walkM = d;
+      walkSec = walkM <= 20 ? 0 : Math.max(30, Math.round((walkM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+    } else {
+      continue;
+    }
+
+    const segs: JourneySegment[] = [makeBoardedSeg(s, alightSec[i], i - boardIdx)];
+    if (walkM > 20 || walkSec > 0) {
+      segs.push({
+        type: "walk",
+        fromStopId: s.stopId,
+        fromStopName: s.name,
+        toStopId: "destination",
+        toStopName: options.toTitle,
+        departSec: alightSec[i],
+        arriveSec: alightSec[i] + walkSec,
+        stopsCount: 0,
+        walkMeters: walkM,
+      });
+    }
+    combinedJourneys.push({
+      departureSec: searchStartSec,
+      arrivalSec: alightSec[i] + walkSec,
+      transfers: 0,
+      segments: segs,
+    });
+  }
+
+  // 2. Opcje z przesiadkami (1..maxTransfers) od kolejnych przystanków na trasie kursu.
+  if (maxTransfers >= 1) {
+    const destinations = options.destinationStopIds?.length
+      ? options.destinationStopIds.map((stopId) => ({ stopId, walkM: 0, walkSec: 0 }))
+      : store.findNearestStops(options.toLat, options.toLon, maxWalkM, MAX_ACCESS_STOPS).map((n) => ({
+          stopId: n.stop.stop_id,
+          walkM: n.distanceM,
+          walkSec: Math.max(30, Math.round((n.distanceM * WALK_DETOUR_FACTOR) / userWalkSpeed)),
+        }));
+
+    if (destinations.length > 0) {
+      const bestFeedByStop = new Map<string, BoardedStopFeed>();
+      const registerFeed = (targetStopId: string, candidate: BoardedStopFeed) => {
+        const prev = bestFeedByStop.get(targetStopId);
+        if (!prev || candidate.readySec < prev.readySec) {
+          bestFeedByStop.set(targetStopId, candidate);
+        }
+      };
+
+      const transferWalkCap = Math.min(maxWalkM, 800);
+      for (let i = minAlightIdx; i < tripStops.length; i++) {
+        const s = tripStops[i];
+        if (isFareBoundary(s.name)) continue;
+        const arr = alightSec[i];
+
+        registerFeed(s.stopId, {
+          alightIdx: i,
+          alightStop: s,
+          alightSec: arr,
+          walkM: 0,
+          walkSec: 0,
+          readySec: arr + minTransferSec,
+        });
+
+        const fps = store.footpaths.get(s.stopId);
+        if (fps && fps.length > 0) {
+          for (const fp of fps) {
+            if (!fp.fixed && fp.distance_m > transferWalkCap) continue;
+            const toStop = store.stops.get(fp.to_stop_id);
+            if (!toStop || isFareBoundary(toStop.stop_name ?? "")) continue;
+            const walkSec = fp.fixed
+              ? fp.duration_sec
+              : Math.max(45, Math.round((fp.distance_m * WALK_DETOUR_FACTOR) / userWalkSpeed));
+            registerFeed(fp.to_stop_id, {
+              alightIdx: i,
+              alightStop: s,
+              alightSec: arr,
+              walkM: fp.distance_m,
+              walkSec,
+              readySec: arr + Math.max(minTransferSec, walkSec + 60),
+            });
+          }
+        } else if (s.lat !== undefined && s.lon !== undefined) {
+          const near = store.findNearestStops(s.lat, s.lon, Math.min(transferWalkCap, 500), 20);
+          for (const n of near) {
+            if (n.stop.stop_id === s.stopId) continue;
+            if (isFareBoundary(n.stop.stop_name ?? "")) continue;
+            const walkSec = Math.max(45, Math.round((n.distanceM * WALK_DETOUR_FACTOR) / userWalkSpeed));
+            registerFeed(n.stop.stop_id, {
+              alightIdx: i,
+              alightStop: s,
+              alightSec: arr,
+              walkM: n.distanceM,
+              walkSec,
+              readySec: arr + Math.max(minTransferSec, walkSec + 60),
+            });
+          }
+        }
+      }
+
+      const MAX_BOARD_AHEAD_SEC = Math.max(7200, horizonSec);
+      const raptorOrigins = Array.from(bestFeedByStop.entries())
+        .filter(([, feed]) => feed.readySec <= searchStartSec + MAX_BOARD_AHEAD_SEC)
+        .map(([stopId, feed]) => ({
+          stopId,
+          walkSec: Math.max(0, feed.readySec - searchStartSec),
+          walkM: 0,
+        }));
+
+      if (raptorOrigins.length > 0) {
+        const batch = await runRaptorAsync(store, raptorOrigins, destinations, searchStartSec, {
+          maxTransfers: maxTransfers - 1,
+          minTransferSec,
+          trainsEnabled,
+          cableEnabled,
+          trainMinTransferSec,
+          dayIndex: searchIndex,
+          tripDelays,
+          transferBuffers: snapshot.transferBuffers,
+          nowSec: currentSec,
+          allowedModes: modes,
+          patternTimeOffsets: patternOffsets,
+          windowSec: Math.min(MAX_BOARD_AHEAD_SEC, 5400),
+          walkSpeedMps: userWalkSpeed,
+          maxTransferWalkM: maxWalkM,
+          cost,
+        });
+
+        for (const rj of batch) {
+          if (rj.transfers > maxTransfers - 1) continue;
+          if (!transferAllowed(rj)) continue;
+          const transit = rj.segments.filter((seg) => seg.type === "transit");
+          if (transit.length === 0) continue;
+          if (transit.some((seg) => seg.tripId === boarded.tripId)) continue;
+
+          const firstTransit = transit[0];
+          const feed = bestFeedByStop.get(firstTransit.fromStopId);
+          if (!feed || feed.alightIdx <= boardIdx) continue;
+          if (firstTransit.departSec < feed.readySec) continue;
+          if (firstTransit.mode === "train") {
+            const needTrain = Math.max(trainMinTransferSec, feed.walkSec > 0 ? feed.walkSec + 60 : 0);
+            if (firstTransit.departSec < feed.alightSec + needTrain) continue;
+          }
+
+          const segs: JourneySegment[] = [
+            makeBoardedSeg(feed.alightStop, feed.alightSec, feed.alightIdx - boardIdx),
+          ];
+          if (firstTransit.fromStopId !== feed.alightStop.stopId) {
+            segs.push({
+              type: "walk",
+              fromStopId: feed.alightStop.stopId,
+              fromStopName: feed.alightStop.name,
+              toStopId: firstTransit.fromStopId,
+              toStopName: firstTransit.fromStopName,
+              departSec: feed.alightSec,
+              arriveSec: feed.alightSec + feed.walkSec,
+              stopsCount: 0,
+              walkMeters: feed.walkM,
+            });
+          }
+          segs.push(...rj.segments);
+
+          const candidate: RawJourney = {
+            departureSec: searchStartSec,
+            arrivalSec: rj.arrivalSec,
+            transfers: rj.transfers + 1,
+            segments: segs,
+          };
+          if (!revisitsStops(candidate)) {
+            combinedJourneys.push(candidate);
+          }
+        }
+      }
+    }
+  }
+
+  if (combinedJourneys.length === 0) return [];
+
+  const uncertaintyPenalty = new Map([...snapshot.transferBuffers.keys()].map((id) => [id, 120]));
+  const selected = selectBoardedJourneys(combinedJourneys, searchStartSec, cost, uncertaintyPenalty);
+  const mapCtx: MapCtx = {
+    currentSec,
+    dayOffsetSec,
+    tripDelays,
+    confidence,
+    serviceDate: targetWarsaw.isoDate,
+  };
+  const connections = mapJourneysToConnections(selected, options, mapCtx, store, true);
+  const nowStartSec = searchStartSec + dayOffsetSec;
+  for (const c of connections) {
+    c.boarded = true;
+    c.departureSec = nowStartSec;
+    c.departAt = secondsToTimeString(nowStartSec);
+    c.departInMin = 0;
+    c.durationMin = Math.max(1, Math.round(((c.arrivalSec ?? nowStartSec) - nowStartSec) / 60));
+    c.id = stableConnectionId(c);
+  }
+  const deduped = deduplicateConnections(connections);
+  sortConnectionsByCost(deduped, userWalkSpeed, undefined, cost);
+  if (options.onProgress && deduped.length > 0) {
+    options.onProgress(deduped);
+  }
+  return deduped;
+}
+
 export async function planConnections(
   options: PlanOptions,
   store: LocalGtfsStore = gtfsStore,
 ): Promise<Connection[]> {
   await store.load();
+
+  if (options.boardedTrip) {
+    return planFromBoardedTrip(options, store);
+  }
 
   const now = new Date();
   const nowWarsaw = warsawNow(now);

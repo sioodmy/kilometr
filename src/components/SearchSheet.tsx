@@ -28,7 +28,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, LocateFixed, Search, X } from './icons';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPinned, Search, X } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
@@ -44,9 +44,18 @@ import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { frecency, matchSuggestions, rankWithFrecency } from '../services/searchFrecency';
 import { searchTransitLines, type TransitLine } from '../services/lineTimetable';
 import { LineBadge } from './LineBadge';
+import { SpringPressable } from './SpringPressable';
+import type { NearbyLiveVehicle } from '../services/onboardDetector';
 
 type Row =
   | { type: 'header'; label: string }
+  | { type: 'liveMap' }
+  | {
+      type: 'vehicle';
+      vehicle: NearbyLiveVehicle;
+      first: boolean;
+      last: boolean;
+    }
   | { type: 'line'; line: TransitLine }
   | {
       type: 'item';
@@ -76,6 +85,9 @@ export function SearchSheet({
   placeholder: placeholderProp,
   originTitle,
   onChangeOrigin,
+  nearbyVehicles,
+  onSelectVehicle,
+  onOpenLiveMap,
   closeOnSelect = true,
 }: {
   open?: boolean;
@@ -92,6 +104,9 @@ export function SearchSheet({
   placeholder?: string;
   originTitle?: string;
   onChangeOrigin?: () => void;
+  nearbyVehicles?: NearbyLiveVehicle[];
+  onSelectVehicle?: (vehicle: NearbyLiveVehicle) => void;
+  onOpenLiveMap?: () => void;
   closeOnSelect?: boolean;
 }) {
   const inputRef = useRef<TextInput>(null);
@@ -312,6 +327,21 @@ export function SearchSheet({
       });
     };
     if (!trimmed) {
+      if (onOpenLiveMap) {
+        out.push({ type: 'liveMap' });
+      }
+      if (nearbyVehicles && nearbyVehicles.length > 0 && onSelectVehicle) {
+        const list = nearbyVehicles.slice(0, 4);
+        out.push({ type: 'header', label: s.search.nearbyVehiclesSection });
+        list.forEach((vehicle, index) => {
+          out.push({
+            type: 'vehicle',
+            vehicle,
+            first: index === 0,
+            last: index === list.length - 1,
+          });
+        });
+      }
       const now = Date.now();
       const seen = new Set<string>();
       const ordered = [...recent]
@@ -340,7 +370,7 @@ export function SearchSheet({
     }
     append(s.search.resultsFor(trimmed, ranked.length), ranked);
     return out;
-  }, [trimmed, recent, ranked, s, lines]);
+  }, [trimmed, recent, ranked, s, lines, nearbyVehicles, onSelectVehicle, onOpenLiveMap]);
 
   const lineEntering = reducedMotion
     ? undefined
@@ -373,18 +403,41 @@ export function SearchSheet({
     [closeOnSelect, finishClose, onSelect],
   );
 
+  const handleVehicleSelect = useCallback(
+    (vehicle: NearbyLiveVehicle) => {
+      onSelectVehicle?.(vehicle);
+      if (closeOnSelect) {
+        finishClose();
+      } else {
+        Keyboard.dismiss();
+      }
+    },
+    [closeOnSelect, finishClose, onSelectVehicle],
+  );
+
+  const handleOpenLiveMap = useCallback(() => {
+    finishClose();
+    onOpenLiveMap?.();
+  }, [finishClose, onOpenLiveMap]);
+
   const keyExtractor = useCallback(
     (r: Row) =>
       r.type === 'header'
         ? r.label === s.lineTimetable.title
           ? 'h-lines'
-          : r.label === s.search.suggestedPlaces
-            ? 'h-suggested'
-            : 'h-results'
-        : r.type === 'line'
-          ? `line-${r.line.routeId}`
-          : r.item.id,
-    [s.lineTimetable.title, s.search.suggestedPlaces],
+          : r.label === s.search.nearbyVehiclesSection
+            ? 'h-vehicles'
+            : r.label === s.search.suggestedPlaces
+              ? 'h-suggested'
+              : 'h-results'
+        : r.type === 'liveMap'
+          ? 'live-map-picker'
+          : r.type === 'vehicle'
+            ? `veh-${r.vehicle.vehicle.vehicleId}`
+            : r.type === 'line'
+              ? `line-${r.line.routeId}`
+              : r.item.id,
+    [s.lineTimetable.title, s.search.nearbyVehiclesSection, s.search.suggestedPlaces],
   );
 
   const renderRow = useCallback(
@@ -393,6 +446,63 @@ export function SearchSheet({
         <Text style={styles.section} accessibilityRole="header">
           {row.label}
         </Text>
+      ) : row.type === 'liveMap' ? (
+        <SpringPressable
+          onPress={handleOpenLiveMap}
+          accessibilityRole="button"
+          accessibilityLabel={s.search.pickOnLiveMap}
+          style={styles.liveMapRow}
+          scaleDelta={0.02}
+        >
+          <View style={styles.liveMapIcon}>
+            <MapPinned size={20} color={scheme.onSecondaryContainer} />
+          </View>
+          <View style={styles.liveMapText}>
+            <Text style={styles.liveMapTitle} numberOfLines={1}>
+              {s.search.pickOnLiveMap}
+            </Text>
+            <Text style={styles.liveMapSub} numberOfLines={1}>
+              {s.search.pickOnLiveMapSub}
+            </Text>
+          </View>
+          <ChevronRight size={20} color={scheme.onSurfaceVariant} />
+        </SpringPressable>
+      ) : row.type === 'vehicle' ? (
+        <SpringPressable
+          onPress={() => handleVehicleSelect(row.vehicle)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            row.vehicle.direction
+              ? `${row.vehicle.line} ${s.search.vehicleDirectionTo(row.vehicle.direction)}`
+              : row.vehicle.line
+          }
+          style={[
+            styles.vehicleRow,
+            row.first && styles.vehicleFirst,
+            row.last && styles.vehicleLast,
+          ]}
+          scaleDelta={0.02}
+        >
+          <LineBadge line={row.vehicle.line} mode={row.vehicle.mode} />
+          <View style={styles.vehicleText}>
+            <Text style={styles.vehicleTitle} numberOfLines={1}>
+              {row.vehicle.direction
+                ? s.search.vehicleDirectionTo(row.vehicle.direction)
+                : row.vehicle.line}
+            </Text>
+            <Text style={styles.vehicleSub} numberOfLines={1}>
+              {[
+                row.vehicle.nextStopName
+                  ? s.liveMap.nextStop(row.vehicle.nextStopName)
+                  : null,
+                s.liveMap.distanceAway(row.vehicle.distanceM),
+              ]
+                .filter(Boolean)
+                .join(' \u00b7 ')}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+        </SpringPressable>
       ) : row.type === 'line' ? (
         <Animated.View entering={lineEntering} exiting={lineExiting}>
           <TouchableOpacity
@@ -421,7 +531,16 @@ export function SearchSheet({
           prominent={row.prominent}
         />
       ),
-    [handleLineSelect, handleSelect, lineEntering, lineExiting, s, trimmed],
+    [
+      handleLineSelect,
+      handleOpenLiveMap,
+      handleSelect,
+      handleVehicleSelect,
+      lineEntering,
+      lineExiting,
+      s,
+      trimmed,
+    ],
   );
 
   const listContentStyle = useMemo(
@@ -706,6 +825,49 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     flex: 1,
   },
+  liveMapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 60,
+    marginTop: 4,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  liveMapIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveMapText: { flex: 1, gap: 2, minWidth: 0 },
+  liveMapTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
+  liveMapSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 60,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.small,
+  },
+  vehicleFirst: {
+    borderTopLeftRadius: shape.large,
+    borderTopRightRadius: shape.large,
+  },
+  vehicleLast: {
+    borderBottomLeftRadius: shape.large,
+    borderBottomRightRadius: shape.large,
+  },
+  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
+  vehicleTitle: { ...type.titleSmall, fontWeight: '600', color: scheme.onSurface },
+  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   lineResult: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -12,9 +12,21 @@ import {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeOutUp, LinearTransition, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import { SpringPressable } from '../src/components/SpringPressable';
+import { motion } from '../src/theme/motion';
 import * as Haptics from 'expo-haptics';
-import { Bell, Download, History, MapPin, MapPinned, Settings2 } from '../src/components/icons';
+import { Bell, Download, History, MapPin, MapPinned, Settings2, X } from '../src/components/icons';
+import { LineBadge } from '../src/components/LineBadge';
+import { consumePendingBoardedOrigin } from '../src/services/boardedOriginSelection';
+import { useCurrentLocation } from '../src/services/currentLocation';
+import {
+  ONBOARD_MIN_SPEED_MPS,
+  buildBoardedOriginFromVehicle,
+  detectBoardedVehicles,
+  findNearbyLiveVehicles,
+} from '../src/services/onboardDetector';
+import { gtfsStore } from '../src/services/routing/store';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
 import { defaultLocationForCity } from '../src/config';
@@ -69,6 +81,7 @@ import {
   type WidgetQuickItem,
 } from '../src/services/widgetSnapshot';
 import type {
+  BoardedTripOrigin,
   Connection,
   LegMode,
   SavedPlace,
@@ -180,6 +193,10 @@ export default function HomeScreen() {
     city?: string | null;
   } | null>(null);
   const [isCustomStart, setIsCustomStart] = useState(false);
+  const [boardedOrigin, setBoardedOrigin] = useState<BoardedTripOrigin | null>(null);
+  const [dismissedOnboardKey, setDismissedOnboardKey] = useState<string | null>(null);
+  const [liveVersion, setLiveVersion] = useState(0);
+  const [gtfsLoaded, setGtfsLoaded] = useState(() => gtfsStore.isLoaded);
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
   const isCustomStartRef = useRef(isCustomStart);
   isCustomStartRef.current = isCustomStart;
@@ -223,6 +240,12 @@ export default function HomeScreen() {
     const d = defaultLocationForCity(getActiveCityIdSync());
     return { lat: d.lat, lon: d.lon };
   });
+  const currentCoordsRef = useRef(currentCoords);
+  currentCoordsRef.current = currentCoords;
+  const { location: motionLocation } = useCurrentLocation(
+    !isCustomStart && !boardedOrigin && !gpsUnsupported,
+    false,
+  );
   const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
   const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: LegMode; line?: string }>>({});
   // Odliczanie „za X min" musi tykać: bez tego etykieta zapisana przy fetchu
@@ -327,6 +350,40 @@ export default function HomeScreen() {
       return () => liveTracker.release();
     }, []),
   );
+
+  const shouldWatchLive =
+    sheetMode === 'start' ||
+    (!isCustomStart &&
+      !boardedOrigin &&
+      motionLocation?.speed != null &&
+      motionLocation.speed >= ONBOARD_MIN_SPEED_MPS);
+
+  useEffect(() => {
+    if (!shouldWatchLive) return;
+    if (!gtfsStore.isLoaded && getDataStatus().state === 'ready') {
+      void gtfsStore.load().then(() => setGtfsLoaded(gtfsStore.isLoaded)).catch(() => {});
+    }
+    setLiveVersion((v) => v + 1);
+    return liveTracker.subscribe(() => {
+      setLiveVersion((v) => v + 1);
+    });
+  }, [shouldWatchLive]);
+
+  const onboardCandidates = useMemo(() => {
+    if (isCustomStart || boardedOrigin || gpsUnsupported) return [];
+    if (!gtfsLoaded) return [];
+    const list = detectBoardedVehicles(motionLocation, liveTracker.snapshot(), gtfsStore);
+    const key = list.map((c) => c.vehicle.vehicleId).join(',');
+    if (dismissedOnboardKey && key === dismissedOnboardKey) return [];
+    return list;
+  }, [boardedOrigin, dismissedOnboardKey, gpsUnsupported, gtfsLoaded, isCustomStart, liveVersion, motionLocation]);
+
+  const nearbyVehicles = useMemo(() => {
+    if (sheetMode !== 'start' || !gtfsLoaded) return [];
+    const refLat = gpsLocation?.lat ?? currentCoords.lat;
+    const refLon = gpsLocation?.lon ?? currentCoords.lon;
+    return findNearbyLiveVehicles(refLat, refLon, liveTracker.snapshot(), gtfsStore);
+  }, [currentCoords.lat, currentCoords.lon, gpsLocation?.lat, gpsLocation?.lon, gtfsLoaded, liveVersion, sheetMode]);
 
   // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
   // Sprawdzamy przy starcie i powrocie na foreground, bez interwału, żeby nie spamować feedu.
@@ -550,6 +607,36 @@ export default function HomeScreen() {
     const badgeLegs = (conn: Connection) =>
       conn.legs.filter((l) => l.mode !== 'walk' && l.line).slice(0, 2);
 
+    let boardedChip: DockChip | null = null;
+    if (boardedOrigin) {
+      boardedChip = {
+        id: `boarded:${boardedOrigin.tripId}`,
+        badgeLegs: [
+          {
+            id: 'boarded',
+            mode: boardedOrigin.mode ?? 'bus',
+            line: boardedOrigin.line,
+            fromStop:
+              (boardedOrigin.boardStopId
+                ? gtfsStore.stops.get(boardedOrigin.boardStopId)?.stop_name
+                : undefined) || '',
+            toStop: boardedOrigin.direction || '',
+            departAt: '',
+            arriveAt: '',
+            stopsCount: 0,
+            live: true,
+          },
+        ],
+        title: s.home.boardedChipTitle(boardedOrigin.line),
+        timeLabel: s.home.boardedInVehicle,
+        a11yLabel: s.home.boardedOriginTitle(boardedOrigin.line, boardedOrigin.direction || ''),
+        onPress: () => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          setQuery('');
+          setSheetMode('start');
+        },
+      };
+    }
     let pinnedChip: DockChip | null = null;
     if (trackedTrip) {
       const depInSec = trackedProgress?.departInSec ?? null;
@@ -599,8 +686,13 @@ export default function HomeScreen() {
       });
     }
     tickets.sort((a, b) => a.depMs - b.depMs);
-    return [...(pinnedChip ? [pinnedChip] : []), ...tickets.map((t) => t.chip)];
+    return [
+      ...(boardedChip ? [boardedChip] : []),
+      ...(pinnedChip ? [pinnedChip] : []),
+      ...tickets.map((t) => t.chip),
+    ];
   }, [
+    boardedOrigin,
     trackedTrip,
     trackedProgress,
     savedRoutes,
@@ -608,6 +700,7 @@ export default function HomeScreen() {
     homeTick,
     s,
     router,
+    setSheetMode,
     handleOpenSavedTicket,
     handleSelectSavedRoute,
   ]);
@@ -737,6 +830,8 @@ export default function HomeScreen() {
     pendingDestinationRef.current = null;
     smartCoordsRef.current = null;
     setIsCustomStart(false);
+    setBoardedOrigin(null);
+    setDismissedOnboardKey(null);
     setQuery('');
     setResults([]);
     setSmart([]);
@@ -789,7 +884,7 @@ export default function HomeScreen() {
     // Przy samej zamianie listy (cache → świeży ranking, reorder) przycinamy
     // jedynie wpisy znikniętych celów, a reszta dokleja się po kolei bez
     // mrugnięcia całością naraz.
-    const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}`;
+    const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}|${boardedOrigin ? `${boardedOrigin.tripId}:${boardedOrigin.boardStopId ?? ''}` : ''}`;
     if (lastOriginRef.current !== originKey) {
       lastOriginRef.current = originKey;
       setFirstConns({});
@@ -831,6 +926,7 @@ export default function HomeScreen() {
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
+            boardedTrip: boardedOrigin ?? undefined,
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -855,7 +951,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [smart, currentCoords, locTitle, warmupNonce]);
+  }, [smart, currentCoords, locTitle, warmupNonce, boardedOrigin]);
 
   // Prawe strony wierszy liczymy raz: po odjeździe kursu trzeba je przeliczyć,
   // żeby pokazywały następny pojazd, a nie „X min temu". Ticker (homeTick) co
@@ -893,6 +989,7 @@ export default function HomeScreen() {
             trainMinTransferSec: s.trainMinTransferSec,
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
+            boardedTrip: boardedOrigin ?? undefined,
           });
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -1058,6 +1155,7 @@ export default function HomeScreen() {
     pendingDestinationRef.current = null;
     isCustomStartRef.current = false;
     setIsCustomStart(false);
+    setBoardedOrigin(null);
 
     const fallbackTitle = gpsLocation?.title ?? defaultLocationForCity(getActiveCityIdSync()).title;
     const fallbackCoords = gpsLocation
@@ -1129,6 +1227,7 @@ export default function HomeScreen() {
     startSelGen.current++;
     isCustomStartRef.current = true;
     setIsCustomStart(true);
+    setBoardedOrigin(null);
     setLocTitle(sel.title);
     const coords = { lat: sel.lat, lon: sel.lon };
     setCurrentCoords(coords);
@@ -1202,9 +1301,34 @@ export default function HomeScreen() {
     [saved],
   );
 
+  const applyBoardedOrigin = useCallback(
+    (origin: BoardedTripOrigin, openDest = false) => {
+      startSelGen.current++;
+      isCustomStartRef.current = true;
+      setIsCustomStart(true);
+      setBoardedOrigin(origin);
+      setDismissedOnboardKey(null);
+      const title = s.home.boardedOriginTitle(origin.line, origin.direction || '');
+      setLocTitle(title);
+      const coords = {
+        lat: origin.currentLat ?? currentCoordsRef.current.lat,
+        lon: origin.currentLon ?? currentCoordsRef.current.lon,
+      };
+      setCurrentCoords(coords);
+      requestSmart(origin.boardStopId || title, coords);
+      if (openDest) {
+        setReturnToDestinationAfterStart(false);
+        setQuery('');
+        setSheetMode('destination');
+      }
+    },
+    [requestSmart, s.home, setSheetMode],
+  );
+
   const goToRoutes = useCallback(
     (to: RouteTarget, origin?: RouteOrigin): boolean => {
-      const fromCustom = origin?.custom ?? isCustomStartRef.current;
+      const activeBoarded = !origin ? boardedOrigin : null;
+      const fromCustom = origin?.custom ?? (isCustomStartRef.current || Boolean(activeBoarded));
       // GPS spoza strefy nie może być startem: zamiast puszczać trasę
       // z pozycji spoza strefy prosimy o ręczny wybór startu, a cel zostaje
       // zapamiętany i wraca po wybraniu startu.
@@ -1241,6 +1365,7 @@ export default function HomeScreen() {
           fromLon: String(fromLon),
           // Start z GPS: ekran tras może go po cichu podmienić na dokładniejszy fix.
           fromGps: fromCustom ? '0' : '1',
+          boardedTrip: activeBoarded ? JSON.stringify(activeBoarded) : undefined,
           toId: to.id,
           toTitle: to.title,
           toLat: String(to.lat),
@@ -1250,6 +1375,7 @@ export default function HomeScreen() {
       return true;
     },
     [
+      boardedOrigin,
       gpsUnsupported,
       blockGpsStart,
       currentCoords.lat,
@@ -1499,10 +1625,14 @@ export default function HomeScreen() {
       // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
       setSheetMode(null);
       setQuery('');
+      const pendingBoarded = consumePendingBoardedOrigin('home');
+      if (pendingBoarded) {
+        applyBoardedOrigin(pendingBoarded.origin, pendingBoarded.openDestination);
+      }
       return () => {
         cancelled = true;
       };
-    }, [requestSmart]),
+    }, [applyBoardedOrigin, requestSmart, setSheetMode]),
   );
 
   // Wczytanie kopii zapasowej podmienia miejsca i historię w KV, ale `saved`
@@ -1613,6 +1743,17 @@ export default function HomeScreen() {
                     )}
                   </Pressable>
                 )}
+                <SpringPressable
+                  style={styles.iconBtn}
+                  onPress={() =>
+                    router.push({ pathname: '/live-map', params: { returnTo: 'home' } })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={s.home.liveMapA11y}
+                  scaleDelta={0.05}
+                >
+                  <MapPinned size={20} color={scheme.onSurfaceVariant} />
+                </SpringPressable>
                 <Pressable
                   style={styles.iconBtn}
                   onPress={() => router.push('/settings')}
@@ -1626,6 +1767,82 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle} accessibilityRole="header">
               {s.home.title}
             </Text>
+
+            {onboardCandidates.length > 0 && !boardedOrigin && (
+              <Animated.View
+                entering={FadeInDown.duration(motion.enter.duration)
+                  .easing(motion.enter.easing)
+                  .reduceMotion(motion.enter.reduceMotion)}
+                exiting={FadeOutUp.duration(motion.state.duration)
+                  .easing(motion.state.easing)
+                  .reduceMotion(motion.state.reduceMotion)}
+                layout={LinearTransition.duration(motion.state.duration)
+                  .easing(motion.state.easing)
+                  .reduceMotion(motion.state.reduceMotion)}
+                style={styles.onboardCard}
+              >
+                <View style={styles.onboardHeader}>
+                  <View style={styles.onboardTitles}>
+                    <Text style={styles.onboardTitle}>{s.home.boardedDetectedTitle}</Text>
+                    <Text style={styles.onboardSub}>{s.home.boardedDetectedSub}</Text>
+                  </View>
+                  <SpringPressable
+                    onPress={() =>
+                      setDismissedOnboardKey(
+                        onboardCandidates.map((c) => c.vehicle.vehicleId).join(','),
+                      )
+                    }
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.home.boardedDismissA11y}
+                    style={styles.onboardDismiss}
+                    scaleDelta={0.05}
+                  >
+                    <X size={18} color={scheme.onSurfaceVariant} />
+                  </SpringPressable>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.onboardRow}
+                >
+                  {onboardCandidates.map((cand) => (
+                    <SpringPressable
+                      key={cand.vehicle.vehicleId}
+                      onPress={() => {
+                        void Haptics.selectionAsync().catch(() => {});
+                        applyBoardedOrigin(cand.origin, false);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        cand.direction
+                          ? `${cand.line} ${s.search.vehicleDirectionTo(cand.direction)}`
+                          : cand.line
+                      }
+                      style={styles.onboardChip}
+                      scaleDelta={0.03}
+                    >
+                      <LineBadge line={cand.line} mode={cand.mode} compact />
+                      <Text style={styles.onboardChipText} numberOfLines={1}>
+                        {cand.direction || cand.nextStopName || cand.line}
+                      </Text>
+                    </SpringPressable>
+                  ))}
+                  <SpringPressable
+                    onPress={() =>
+                      router.push({ pathname: '/live-map', params: { returnTo: 'home' } })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={s.home.boardedPickOnMap}
+                    style={styles.onboardMapChip}
+                    scaleDelta={0.03}
+                  >
+                    <MapPinned size={15} color={scheme.onSecondaryContainer} />
+                    <Text style={styles.onboardMapText}>{s.home.boardedPickOnMap}</Text>
+                  </SpringPressable>
+                </ScrollView>
+              </Animated.View>
+            )}
 
             {dataStatus.state === 'error' && (
               <Pressable
@@ -1818,6 +2035,28 @@ export default function HomeScreen() {
               sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo
             }
             originTitle={sheetMode === 'destination' ? locTitle : undefined}
+            nearbyVehicles={sheetMode === 'start' ? nearbyVehicles : undefined}
+            onSelectVehicle={
+              sheetMode === 'start'
+                ? (v) => {
+                    const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
+                    if (!origin) return;
+                    const openDest = returnToDestinationAfterStart;
+                    setReturnToDestinationAfterStart(false);
+                    applyBoardedOrigin(origin, openDest);
+                  }
+                : undefined
+            }
+            onOpenLiveMap={
+              sheetMode === 'start'
+                ? () => {
+                    setReturnToDestinationAfterStart(false);
+                    setSheetMode(null);
+                    setQuery('');
+                    router.push({ pathname: '/live-map', params: { returnTo: 'home' } });
+                  }
+                : undefined
+            }
             closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
             onChangeOrigin={
               sheetMode === 'destination'
@@ -1956,6 +2195,75 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  onboardCard: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.extraLarge,
+    padding: 16,
+    gap: 12,
+    marginBottom: 18,
+  },
+  onboardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  onboardTitles: {
+    flex: 1,
+    gap: 2,
+  },
+  onboardTitle: {
+    ...type.titleSmall,
+    color: scheme.onSurface,
+    fontWeight: '700',
+  },
+  onboardSub: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  onboardDismiss: {
+    width: 44,
+    height: 44,
+    marginTop: -6,
+    marginRight: -6,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  onboardChip: {
+    minHeight: 44,
+    maxWidth: 220,
+    paddingHorizontal: 12,
+    borderRadius: shape.large,
+    backgroundColor: scheme.primaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  onboardChipText: {
+    ...type.labelLarge,
+    color: scheme.onPrimaryContainer,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  onboardMapChip: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: shape.large,
+    backgroundColor: scheme.secondaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  onboardMapText: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '600',
   },
   alertBadge: {
     position: 'absolute',

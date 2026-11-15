@@ -64,6 +64,12 @@ import {
   type DataStatus,
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
+import { consumePendingBoardedOrigin } from '../../src/services/boardedOriginSelection';
+import {
+  buildBoardedOriginFromVehicle,
+  findNearbyLiveVehicles,
+} from '../../src/services/onboardDetector';
+import { gtfsStore } from '../../src/services/routing/store';
 import {
   deduplicateConnections,
   mergeConnections,
@@ -76,7 +82,7 @@ import {
 } from '../../src/services/routing/connectionTimes';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
-import type { Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
+import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
@@ -95,6 +101,19 @@ import { useStrings } from '../../src/i18n';
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
 const connectionKey = (item: Connection) => item.id;
+
+function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<BoardedTripOrigin>;
+    if (!parsed || typeof parsed.tripId !== 'string' || typeof parsed.line !== 'string') {
+      return null;
+    }
+    return parsed as BoardedTripOrigin;
+  } catch {
+    return null;
+  }
+}
 
 export default function RoutesScreen() {
   const s = useStrings();
@@ -123,6 +142,8 @@ export default function RoutesScreen() {
     fromLon?: string;
     /** '1', gdy start pochodzi z GPS; wtedy wolno go doprecyzować fixem w tle. */
     fromGps?: string;
+    /** Zserializowany BoardedTripOrigin, gdy startem jest pojazd w ruchu. */
+    boardedTrip?: string;
     toId?: string;
     toTitle: string;
     toLat: string;
@@ -142,6 +163,9 @@ export default function RoutesScreen() {
   // Czy start nadal jest GPS-em (a nie ręcznie wybranym punktem). Zmiana na
   // custom wyłącza doprecyzowanie w tle i odwrotnie.
   const [gpsOrigin, setGpsOrigin] = useState(params.fromGps === '1');
+  const [boardedTrip, setBoardedTrip] = useState<BoardedTripOrigin | null>(() =>
+    parseBoardedParam(params.boardedTrip),
+  );
 
   const [toTitle, setToTitle] = useState(String(params.toTitle ?? s.routes.destFallback));
   const [toLat, setToLat] = useState(Number(params.toLat ?? 0));
@@ -149,7 +173,7 @@ export default function RoutesScreen() {
   const [toId, setToId] = useState(String(params.toId ?? ''));
   // Ten sam punkt po obu stronach: nie ma czego planować, a silnik sam z siebie
   // potrafi tu wygenerować przejazd w kółko.
-  const samePlace = distanceMeters(fromLat, fromLon, toLat, toLon) <= 40;
+  const samePlace = !boardedTrip && distanceMeters(fromLat, fromLon, toLat, toLon) <= 40;
 
   // Expo-router podmienia parametry bez remountu, gdy ekran jest już otwarty.
   // Każdy nowy deep link musi przestawić start i cel, inaczej zostaje stara trasa.
@@ -171,6 +195,7 @@ export default function RoutesScreen() {
       setFromLon(nextLon);
       setGpsOrigin(params.fromGps === '1');
       setActiveAnchor(null);
+      setBoardedTrip(parseBoardedParam(params.boardedTrip));
     }
     if (params.toTitle === undefined || params.toLat === undefined || params.toLon === undefined) {
       return;
@@ -191,6 +216,7 @@ export default function RoutesScreen() {
     params.fromLat,
     params.fromLon,
     params.fromGps,
+    params.boardedTrip,
     params.toId,
     params.toTitle,
     params.toLat,
@@ -248,6 +274,50 @@ export default function RoutesScreen() {
     // w zapytaniu): dismiss czyści samą preferencję i odświeża listę.
     setActiveAnchor(null);
   }, [activeAnchor]);
+
+  const handleDismissBoarded = useCallback(() => {
+    startSelGen.current++;
+    setBoardedTrip(null);
+    setItems([]);
+    setLoading(true);
+    void LocationService.getCurrentLocation()
+      .then((loc) => {
+        if (isOutsideServiceArea(loc.lat, loc.lon)) {
+          setFromTitle(cityDef.title);
+          setFromLat(cityDef.lat);
+          setFromLon(cityDef.lon);
+          setGpsOrigin(false);
+          return;
+        }
+        setGpsOrigin(true);
+        setFromId(loc.stopId ?? '');
+        setFromTitle(loc.title);
+        setFromLat(loc.lat);
+        setFromLon(loc.lon);
+      })
+      .catch(() => {
+        setGpsOrigin(false);
+      });
+  }, [cityDef.lat, cityDef.lon, cityDef.title]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const pending = consumePendingBoardedOrigin('routes');
+      if (!pending) return;
+      startSelGen.current++;
+      setGpsOrigin(false);
+      setActiveAnchor(null);
+      setBoardedTrip(pending.origin);
+      setFromId(pending.origin.boardStopId ?? '');
+      setFromTitle(s.home.boardedOriginTitle(pending.origin.line, pending.origin.direction || ''));
+      if (pending.origin.currentLat != null && pending.origin.currentLon != null) {
+        setFromLat(pending.origin.currentLat);
+        setFromLon(pending.origin.currentLon);
+      }
+      setItems([]);
+      setLoading(true);
+    }, [s.home]),
+  );
 
   const [items, setItems] = useState<Connection[]>([]);
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
@@ -426,6 +496,7 @@ export default function RoutesScreen() {
       anchorStopId: activeAnchor?.stopId,
       anchorStopLat: activeAnchor?.lat,
       anchorStopLon: activeAnchor?.lon,
+      boardedTrip: boardedTrip ?? undefined,
       departureTimeSec: arrivalMode ? undefined : depSec,
       arriveBySec: arrivalMode ? depSec : undefined,
       maxTransfers: cfg.maxTransfers,
@@ -498,7 +569,7 @@ export default function RoutesScreen() {
           })),
         );
 
-        if (!initialAnchorCheckedRef.current) {
+        if (!initialAnchorCheckedRef.current && !boardedTrip) {
           initialAnchorCheckedRef.current = true;
           const cityD = defaultLocationForCity(getActiveCityIdSync());
           const startLat = Number(params.fromLat || cityD.lat);
@@ -531,7 +602,7 @@ export default function RoutesScreen() {
   // Po wyszukaniu bierzemy dokładniejszy fix w tle; gdy pozycja faktycznie się
   // przesunęła, podmieniamy origin, a lista odświeża się seamless, bez spinnera.
   useEffect(() => {
-    if (!gpsOrigin || activeAnchor) return;
+    if (!gpsOrigin || activeAnchor || boardedTrip) return;
     let cancelled = false;
     const gen = startSelGen.current;
     const apply = (loc: LocationResult) => {
@@ -557,7 +628,7 @@ export default function RoutesScreen() {
       cancelled = true;
       unsubscribe();
     };
-  }, [gpsOrigin, activeAnchor]);
+  }, [gpsOrigin, activeAnchor, boardedTrip]);
 
   // Lokalny indeks odpowiada od razu, odległości względem aktualnego startu.
   const searchSeq = useRef(0);
@@ -597,6 +668,14 @@ export default function RoutesScreen() {
     [sheetFor, recent, gpsItem, gpsOutside],
   );
 
+  const nearbyVehicles = useMemo(
+    () =>
+      sheetFor === 'from' && gtfsStore.isLoaded
+        ? findNearbyLiveVehicles(fromLat, fromLon, liveTracker.snapshot(), gtfsStore)
+        : [],
+    [fromLat, fromLon, liveTick, sheetFor],
+  );
+
   const handleSuggestionSelect = async (sug: Suggestion) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     // Wybór startu unieważnia GPS w locie: spóźniony fix nie nadpisze
@@ -629,6 +708,7 @@ export default function RoutesScreen() {
           return;
         }
         setGpsOutside(false);
+        setBoardedTrip(null);
         setGpsOrigin(true);
         refineAppliedRef.current = false;
         const currentSettings = getSettingsSync();
@@ -676,6 +756,7 @@ export default function RoutesScreen() {
       }
       setGpsOrigin(false);
       setActiveAnchor(null);
+      setBoardedTrip(null);
       setFromId(sug.id);
       setFromTitle(sug.title);
       setFromLat(sug.lat);
@@ -700,7 +781,7 @@ export default function RoutesScreen() {
     if (depSec === undefined) {
       const d = new Date();
       const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-      list = list.filter((item) => item.departureSec <= 0 || item.departureSec >= nowS - 60);
+      list = list.filter((item) => item.boarded || item.departureSec <= 0 || item.departureSec >= nowS - 60);
     }
     return list;
   };
@@ -928,6 +1009,7 @@ export default function RoutesScreen() {
     toId,
     samePlace,
     activeAnchor,
+    boardedTrip,
     timetableReady,
     targetTimeSec,
     timeMode,
@@ -952,6 +1034,7 @@ export default function RoutesScreen() {
     // Start = stary cel (ręczny punkt), więc doprecyzowanie GPS już nie dotyczy.
     setGpsOrigin(false);
     setActiveAnchor(null);
+    setBoardedTrip(null);
     const tempId = fromId;
     const tempTitle = fromTitle;
     const tempLat = fromLat;
@@ -1127,6 +1210,24 @@ export default function RoutesScreen() {
                 }
               : undefined
           }
+          boarded={
+            boardedTrip
+              ? {
+                  line: boardedTrip.line,
+                  mode: boardedTrip.mode ?? 'bus',
+                  label: s.routes.boardedOriginLabel(
+                    boardedTrip.line,
+                    boardedTrip.direction ||
+                      (boardedTrip.boardStopId
+                        ? gtfsStore.stops.get(boardedTrip.boardStopId)?.stop_name
+                        : undefined) ||
+                      '',
+                  ),
+                  onDismiss: handleDismissBoarded,
+                  dismissA11y: s.routes.dismissBoardedA11y,
+                }
+              : undefined
+          }
         />
 
         <View style={styles.filterCardsRow}>
@@ -1187,11 +1288,13 @@ export default function RoutesScreen() {
       fromTitle,
       toTitle,
       activeAnchor,
+      boardedTrip,
       s,
       handleReverse,
       handleOpenFrom,
       handleOpenTo,
       handleDismissAnchor,
+      handleDismissBoarded,
       hasActiveFilters,
       isCustomTime,
       timeDisplayLabel,
@@ -1572,6 +1675,38 @@ export default function RoutesScreen() {
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
+          nearbyVehicles={sheetFor === 'from' ? nearbyVehicles : undefined}
+          onSelectVehicle={
+            sheetFor === 'from'
+              ? (v) => {
+                  const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
+                  if (!origin) return;
+                  startSelGen.current++;
+                  setGpsOrigin(false);
+                  setActiveAnchor(null);
+                  setBoardedTrip(origin);
+                  setFromId(origin.boardStopId ?? '');
+                  setFromTitle(s.home.boardedOriginTitle(origin.line, origin.direction || ''));
+                  if (origin.currentLat != null && origin.currentLon != null) {
+                    setFromLat(origin.currentLat);
+                    setFromLon(origin.currentLon);
+                  }
+                  setItems([]);
+                  setLoading(true);
+                  setQuery('');
+                  setSheetFor(null);
+                }
+              : undefined
+          }
+          onOpenLiveMap={
+            sheetFor === 'from'
+              ? () => {
+                  setSheetFor(null);
+                  setQuery('');
+                  router.push({ pathname: '/live-map', params: { returnTo: 'routes' } });
+                }
+              : undefined
+          }
           onQuery={setQuery}
           onSelect={handleSuggestionSelect}
           onClose={() => {

@@ -10,16 +10,18 @@
 
 import { normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
-import { gtfsStore } from './routing/store';
+import { gtfsStore, type LocalGtfsStore } from './routing/store';
 import type { DisruptionAlert } from './mpkNews';
 
 /** Przystanek uziemiony: nazwa z komunikatu -> stop_id + kanoniczna nazwa. */
-interface GroundedStop {
+export interface GroundedStop {
   /** Nazwa dokładnie taka, jakiej użył LLM. */
   raw: string;
   stop_id: string;
   /** Kanoniczna stop_name z GTFS. */
   name: string;
+  lat: number;
+  lon: number;
 }
 
 /** Linia uziemiona: oznaczenie z komunikatu -> route_id. */
@@ -48,14 +50,13 @@ interface StopIndex {
 }
 
 // Indeks budowany raz na generację sklepu (reset() przy imporcie czyści dane).
-let stopIndex: StopIndex | null = null;
-let stopIndexGeneration = -1;
+const indexCache = new WeakMap<LocalGtfsStore, { generation: number; stopCount: number; index: StopIndex }>();
 
-function buildStopIndex(): StopIndex {
+function buildStopIndex(store: LocalGtfsStore): StopIndex {
   const byName = new Map<string, string[]>();
   const names: string[] = [];
   const ids: string[] = [];
-  for (const stop of gtfsStore.stops.values()) {
+  for (const stop of store.stops.values()) {
     const key = normalizePolish(stop.stop_name);
     const existing = byName.get(key);
     if (existing) existing.push(stop.stop_id);
@@ -66,18 +67,28 @@ function buildStopIndex(): StopIndex {
   return { byName, names, ids };
 }
 
-function ensureStopIndex(): StopIndex {
-  if (!stopIndex || stopIndexGeneration !== gtfsStore.currentGeneration) {
-    stopIndex = buildStopIndex();
-    stopIndexGeneration = gtfsStore.currentGeneration;
+function ensureStopIndex(store: LocalGtfsStore): StopIndex {
+  const cached = indexCache.get(store);
+  if (
+    cached &&
+    cached.generation === store.currentGeneration &&
+    cached.stopCount === store.stops.size
+  ) {
+    return cached.index;
   }
-  return stopIndex;
+  const index = buildStopIndex(store);
+  indexCache.set(store, {
+    generation: store.currentGeneration,
+    stopCount: store.stops.size,
+    index,
+  });
+  return index;
 }
 
 /** Próg fuzzyMatchBatch (0..100): exact=100, startsWith=90, no-space=98. */
 const FUZZY_THRESHOLD = 80;
 
-function groundStopName(raw: string, index: StopIndex): GroundedStop | null {
+function groundStopName(raw: string, index: StopIndex, store: LocalGtfsStore): GroundedStop | null {
   const query = normalizePolish(raw);
   if (!query) return null;
 
@@ -102,9 +113,24 @@ function groundStopName(raw: string, index: StopIndex): GroundedStop | null {
   }
 
   if (!stopId) return null;
-  const stop = gtfsStore.stops.get(stopId);
+  const stop = store.stops.get(stopId);
   if (!stop) return null;
-  return { raw, stop_id: stopId, name: stop.stop_name };
+  return {
+    raw,
+    stop_id: stopId,
+    name: stop.stop_name,
+    lat: stop.stop_lat,
+    lon: stop.stop_lon,
+  };
+}
+
+/** Synchroniczne dopasowanie pojedynczej nazwy przystanku do załadowanego sklepu GTFS. */
+export function resolveGroundedStopSync(
+  raw: string,
+  store: LocalGtfsStore = gtfsStore,
+): GroundedStop | null {
+  if (!raw || store.stops.size === 0) return null;
+  return groundStopName(raw, ensureStopIndex(store), store);
 }
 
 /**
@@ -117,7 +143,7 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   } catch {
     return { routeIds: [], stopIds: [], lines: [], stops: [] };
   }
-  const index = ensureStopIndex();
+  const index = ensureStopIndex(gtfsStore);
 
   const rawLines = new Set<string>();
   for (const l of alert.all_lines ?? []) if (l) rawLines.add(l);
@@ -135,6 +161,7 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   if (alert.corridor) {
     if (alert.corridor.from_stop) rawStops.add(alert.corridor.from_stop);
     if (alert.corridor.to_stop) rawStops.add(alert.corridor.to_stop);
+    for (const n of alert.corridor.stops ?? []) if (n) rawStops.add(n);
   }
   for (const st of alert.stops ?? []) {
     if (st.name) rawStops.add(st.name);
@@ -158,7 +185,7 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
 
   const stops: GroundedStop[] = [];
   for (const name of rawStops) {
-    const grounded = groundStopName(name, index);
+    const grounded = groundStopName(name, index, gtfsStore);
     if (grounded) stops.push(grounded);
   }
 

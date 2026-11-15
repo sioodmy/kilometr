@@ -246,9 +246,27 @@ export interface Connection {
   delayMin: number;
   /** any leg has live GPS? */
   live: boolean;
+  /** True gdy połączenie startuje z pokładu wybranego pojazdu. */
+  boarded?: boolean;
   legs: Leg[];
   /** interchange hint, e.g. "Przesiadka: Rondo" */
   interchange?: string;
+}
+
+/** Aktywny pojazd (kurs GTFS), z pokładu którego planujemy dalszą podróż. */
+export interface BoardedTripOrigin {
+  tripId: string;
+  routeId?: string;
+  line: string;
+  mode?: LegMode;
+  direction?: string;
+  /** Aktualny lub ostatni minięty przystanek na trasie kursu (opcjonalnie). */
+  boardStopId?: string;
+  /** Pozycja pojazdu/pasażera użyta do ustalenia postępu na kursie. */
+  currentLat?: number;
+  currentLon?: number;
+  /** Znane opóźnienie pojazdu w sekundach, gdy brak wpisu w liveTracker. */
+  delaySec?: number;
 }
 
 export interface RouteQuery {
@@ -290,4 +308,6 @@ export interface RouteQuery {
   anchorStopId?: string;
   anchorStopLat?: number;
   anchorStopLon?: number;
+  /** Aktywny pojazd (kurs), z którego kontynuujemy podróż bez szukania dojścia na start. */
+  boardedTrip?: BoardedTripOrigin;
 }
