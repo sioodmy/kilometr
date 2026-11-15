@@ -4,7 +4,7 @@ import { resolveGroundedStopSync } from './disruptionGrounding';
 import type { DisruptionAlert, DisruptionStopCoord, MpkNewsItem } from './mpkNews';
 import type { DayIndex, LocalGtfsStore } from './routing/store';
 
-export interface LiveMapDisruptionStopPoint {
+interface LiveMapDisruptionStopPoint {
   name: string;
   lat: number;
   lon: number;
@@ -55,6 +55,14 @@ export function isDisruptionActiveForMap(
   if (alert.is_resolved === true) return false;
   if (alert.disruption_type === 'fare' && !alert.corridor && (alert.stops?.length ?? 0) === 0) {
     return false;
+  }
+  // Zaplanowane utrudnienia (np. remont od przyszłego tygodnia) nie są jeszcze
+  // aktywne, więc nie mogą wisieć na mapie jako bieżące.
+  if (alert.valid_from) {
+    const validFromMs = Date.parse(alert.valid_from);
+    if (Number.isFinite(validFromMs) && validFromMs > nowMs) {
+      return false;
+    }
   }
   if (alert.valid_to) {
     const validToMs = Date.parse(alert.valid_to);
@@ -181,10 +189,13 @@ function resolveCorridorViaDayIndex(
       routeIdSet.add(rid);
     }
   }
+  // Żadna linia z alertu nie istnieje w GTFS (np. linia zastępcza): nie
+  // zgaduj trasy po dowolnym wariancie, zostaw fallback na odcinek from->to.
+  if (routeIdSet.size === 0) return null;
 
   let bestSeq: string[] | null = null;
   for (const pattern of dayIndex.patterns.values()) {
-    if (routeIdSet.size > 0 && !routeIdSet.has(pattern.routeId)) continue;
+    if (!routeIdSet.has(pattern.routeId)) continue;
     const seq = pattern.stopSequence;
     let idxA = -1;
     let idxB = -1;

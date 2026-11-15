@@ -471,6 +471,10 @@ function railQueryOptions(
     anchorStopId: undefined,
     anchorStopLat: undefined,
     anchorStopLon: undefined,
+    // Noga kolejowa startuje z bramy, nie z pokładu autobusu miejskiego:
+    // boardedTrip i dayIndex miasta nie mają sensu w magazynie `polska`.
+    boardedTrip: undefined,
+    dayIndex: undefined,
     originStopIds: origins,
     destinationStopIds: destinations,
     modes: 'all' as const,

@@ -184,8 +184,9 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     }, [disruptions, selectedDisruptionId, send, showDisruptions]);
 
     useEffect(() => {
-      if (!readyRef.current || !userPos) return;
-      send({ t: 'user', lat: userPos[1], lon: userPos[0] });
+      if (!readyRef.current) return;
+      // null czyści niebieską kropkę, gdy GPS znika (np. brak zgody w trakcie).
+      send({ t: 'user', lat: userPos?.[1] ?? null, lon: userPos?.[0] ?? null });
     }, [send, userPos]);
 
     useEffect(() => {
