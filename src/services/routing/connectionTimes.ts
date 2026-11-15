@@ -13,6 +13,7 @@ function alignClock(seconds: number, anchor: number): number {
 
 /** Pierwszy pojazd, bez czasu dojscia. Kotwica zachowuje date po polnocy. */
 export function boardingDepartureSec(connection: Connection): number {
+  if (connection.boarded) return connection.departureSec;
   let cursor = connection.departureSec;
   for (const leg of connection.legs) {
     const departure = alignClock(timeStringToSeconds(leg.departAt), cursor);
@@ -30,8 +31,9 @@ export function boardingDepartureSec(connection: Connection): number {
 export function boardingDepartureMs(connection: Connection, now = new Date()): number {
   const seconds = boardingDepartureSec(connection);
   const firstVehicle = connection.legs.find((leg) => leg.mode !== 'walk');
-  const anchor =
-    firstVehicle?.scheduledDepartureSec != null
+  const anchor = connection.boarded
+    ? connection.departureSec
+    : firstVehicle?.scheduledDepartureSec != null
       ? connection.departureSec - (firstVehicle.delaySec ?? 0)
       : connection.departureSec;
   return connection.serviceDate
@@ -249,7 +251,7 @@ export function refreshConnectionTimes(
     connection.delayMin === maxDelayMin
   )
     return connection;
-  const departureSec = connection.departureSec + (firstShift ?? 0);
+  const departureSec = connection.boarded ? connection.departureSec : connection.departureSec + (firstShift ?? 0);
   const arrivalSec =
     (connection.arrivalSec ?? connection.departureSec + connection.durationMin * 60) + lastShift;
   return {
@@ -259,9 +261,9 @@ export function refreshConnectionTimes(
     delayMin: maxDelayMin,
     departureSec,
     arrivalSec,
-    departAt: secondsToTimeString(departureSec),
+    departAt: connection.boarded ? connection.departAt : secondsToTimeString(departureSec),
     arriveAt: secondsToTimeString(arrivalSec),
-    departInMin: connection.departInMin + Math.round((firstShift ?? 0) / 60),
+    departInMin: connection.boarded ? 0 : connection.departInMin + Math.round((firstShift ?? 0) / 60),
     durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
   };
 }

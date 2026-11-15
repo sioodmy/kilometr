@@ -21,6 +21,8 @@ const CACHE_MAX = 60;
 const NETWORK_DELAY_MS = 280;
 // Literówki dopiero po pauzie w pisaniu; dokładne adresy odpowiadają od razu.
 const FUZZY_DELAY_MS = 250;
+// Zimny indeks adresowy (np. GZM 618k wierszy) nie może blokować przystanków ani Nominatim.
+const ADDRESS_COLD_BUDGET_MS = 180;
 
 class SearchAbortedError extends Error {
   constructor() {
@@ -49,6 +51,31 @@ function waitForIdle(signal: AbortSignal, delay: number): Promise<void> {
   });
 }
 
+function raceWithBudget(task: Promise<void>, signal: AbortSignal, budgetMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (err?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      if (err !== undefined) reject(err);
+      else resolve();
+    };
+    const onAbort = () => finish(new SearchAbortedError());
+    const timer = setTimeout(() => finish(), budgetMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    task.then(
+      () => finish(),
+      (err) => finish(err),
+    );
+  });
+}
+
 export const SearchService: ISearchService = {
   cancel,
   async search(query, coords, scope = 'default', onPartial) {
@@ -65,6 +92,7 @@ export const SearchService: ISearchService = {
     const key = `${cityId}:${q}:${coords ? `${coords.lat.toFixed(3)},${coords.lon.toFixed(3)}` : ''}`;
     const rank = (items: Suggestion[], history: Suggestion[]) =>
       rankWithFrecency(withDistances(items, coords?.lat, coords?.lon), history, q).slice(0, 15);
+    let completed = false;
 
     try {
       const cached = cache.get(key);
@@ -109,6 +137,13 @@ export const SearchService: ISearchService = {
       let pois: Suggestion[] = [];
       let addresses: Suggestion[] = [];
       let fuzzyPromise: Promise<void> | null = null;
+      const buildLocal = () => {
+        // Stacja o nazwie przystanku miasta (np. Wrocław Główny w bazie
+        // Wrocławia) wypada: dojazd liczy miejski silnik z KD.
+        const cityStopNames = new Set(stops.map((s) => normalizePolish(s.title)));
+        const visibleStations = stations.filter((s) => !cityStopNames.has(normalizePolish(s.title)));
+        return [...stops, ...visibleStations, ...pois, ...extras, ...addresses];
+      };
       let local = extras;
       const merge = (remote: Suggestion[]) =>
         dedupeAndSort(
@@ -119,11 +154,7 @@ export const SearchService: ISearchService = {
         );
       const publish = () => {
         assertCurrent();
-        // Stacja o nazwie przystanku miasta (np. Wrocław Główny w bazie
-        // Wrocławia) wypada: dojazd liczy miejski silnik z KD.
-        const cityStopNames = new Set(stops.map((s) => normalizePolish(s.title)));
-        const visibleStations = stations.filter((s) => !cityStopNames.has(normalizePolish(s.title)));
-        local = [...stops, ...visibleStations, ...pois, ...extras, ...addresses];
+        local = buildLocal();
         onPartial?.(rank(merge([]), history));
       };
       const searchFuzzyAddresses = async () => {
@@ -139,9 +170,18 @@ export const SearchService: ISearchService = {
         publishScheduled = true;
         queueMicrotask(() => {
           publishScheduled = false;
-          if (!ctrl.signal.aborted) publish();
+          if (!completed && !ctrl.signal.aborted) publish();
         });
       };
+      const addressIndexWarm = hasOfflineAddressIndex();
+      const addressesTask = addressesPromise.then((hits) => {
+        if (completed || ctrl.signal.aborted || cityId !== getActiveCityIdSync()) return;
+        addresses = hits;
+        schedulePublish();
+        if (!hits.length && q.length >= 4 && hasOfflineAddressIndex()) {
+          fuzzyPromise = searchFuzzyAddresses();
+        }
+      });
       await Promise.all([
         stopsPromise.then((hits) => {
           stops = hits.map((hit) => ({
@@ -172,15 +212,13 @@ export const SearchService: ISearchService = {
           pois = hits;
           schedulePublish();
         }),
-        addressesPromise.then((hits) => {
-          addresses = hits;
-          schedulePublish();
-          if (!hits.length && q.length >= 4 && hasOfflineAddressIndex()) {
-            fuzzyPromise = searchFuzzyAddresses();
-          }
-        }),
+        addressIndexWarm
+          ? addressesTask
+          : raceWithBudget(addressesTask, ctrl.signal, ADDRESS_COLD_BUDGET_MS),
       ]);
+      assertCurrent();
       if (fuzzyPromise) await fuzzyPromise;
+      local = buildLocal();
       let remote: Suggestion[] = [];
       const isAddressWithNumber = /\d/.test(q);
       const allowRemote = !hasOfflineAddressIndex() || !isAddressWithNumber;
@@ -195,6 +233,7 @@ export const SearchService: ISearchService = {
         remote = await searchNominatimDirect(persistedQuery, coords?.lat, coords?.lon, ctrl.signal);
         assertCurrent();
       }
+      local = buildLocal();
       let candidates = merge(remote);
       if (!candidates.length) {
         candidates = await loadSuggestions(persistedQuery, cityId);
@@ -223,6 +262,7 @@ export const SearchService: ISearchService = {
       }
       return rank(candidates, history);
     } finally {
+      completed = true;
       if (requests.get(scope) === ctrl) requests.delete(scope);
     }
   },

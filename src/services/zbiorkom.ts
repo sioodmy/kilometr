@@ -38,6 +38,8 @@ export interface ZbKdVehicle {
   line: string;
   lat: number;
   lon: number;
+  /** kierunek z API w stopniach (0-360), jesli dostepny */
+  bearing?: number;
   /** opóźnienie z API [s] */
   delaySec: number;
   updatedAt: number;
@@ -52,6 +54,7 @@ interface ZbPositionJson {
   brigade?: string;
   location?: [number, number];
   timestamp?: number;
+  bearing?: number;
   delay?: number;
   headsign?: string;
   upcomingStops?: { name?: string; scheduledArrival?: number; scheduledDeparture?: number }[];
@@ -326,6 +329,12 @@ export async function fetchZbNewCityRows(id: string): Promise<RawVehicleRow[] | 
   return toRawRows(positions);
 }
 
+function parseBearingDeg(raw: unknown): number | undefined {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
+  const norm = ((raw % 360) + 360) % 360;
+  return norm === 360 ? 0 : norm;
+}
+
 function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
   const rows: RawVehicleRow[] = [];
   for (const p of positions) {
@@ -346,6 +355,7 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
       x: lat,
       y: lon,
       k: id,
+      bearing: parseBearingDeg(p.bearing),
       delaySec,
       timestamp: p.timestamp,
       headsign: p.headsign,
@@ -496,6 +506,7 @@ function toRailVehicles(positions: ZbPositionJson[]): ZbKdVehicle[] {
       line: (p.routeName || '').trim().toUpperCase(),
       lat,
       lon,
+      bearing: parseBearingDeg(p.bearing),
       delaySec: Math.round((p.delay ?? 0) / 1000),
       updatedAt: p.timestamp ?? Date.now(),
       currentStopName: stops[0]?.name,

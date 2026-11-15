@@ -62,7 +62,7 @@ Wymagany iOS 16.4 lub nowszy. GitHub Actions kompiluje aplikację na macOS z Xco
 
 ### Pobranie
 
-- IPA powstaje tylko na gałęzi `prod`: push do `prod` buduje ją po APK i AAB i dołącza do tego samego [GitHub Release](https://github.com/sioodmy/kilometr/releases). Nie powstaje osobny tag iOS. Błąd kompilacji iOS pozostawia dostępne APK; IPA pojawia się dopiero po udanym buildzie.
+- IPA powstaje tylko na gałęzi `prod`: push do `prod` buduje ją równolegle z APK i AAB i dołącza do tego samego [GitHub Release](https://github.com/sioodmy/kilometr/releases). Nie powstaje osobny tag iOS. Błąd kompilacji iOS pozostawia dostępne APK; IPA pojawia się dopiero po udanym buildzie.
 - Build testowy: otwórz [Build IPA](https://github.com/sioodmy/kilometr/actions/workflows/build-ipa.yml), wybierz `Run workflow` na gałęzi `prod`. Po udanym buildzie pobierz artefakt `kilometr-ios-unsigned`, rozpakuj ZIP i znajdź `kilometr-unsigned.ipa`.
 - `dev` testuje wyłącznie APK z Azure Pipelines; GitHub nie buduje tam iOS.
 - Obok IPA znajduje się plik SHA-256. Po rozpakowaniu możesz sprawdzić go poleceniem `shasum -a 256 -c kilometr-unsigned.ipa.sha256`.

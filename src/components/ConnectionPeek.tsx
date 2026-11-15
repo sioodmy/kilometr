@@ -224,45 +224,52 @@ export function ConnectionPeek({
             availableWidth={Math.min(width - 48, 464)}
           />
           <View style={styles.legs}>
-            {item.legs.map((leg, index) => (
-              <View key={`${leg.id}-${index}`} style={styles.leg}>
-                <View style={styles.legHeading}>
-                  {leg.mode === 'walk' ? (
-                    <Footprints size={18} color={scheme.onSurfaceVariant} />
-                  ) : (
-                    <LineBadge leg={leg} compact />
+            {item.legs.map((leg, index) => {
+              const boardedFirstLeg = Boolean(item.boarded) && index === 0 && leg.mode !== 'walk';
+              return (
+                <View key={`${leg.id}-${index}`} style={styles.leg}>
+                  <View style={styles.legHeading}>
+                    {leg.mode === 'walk' ? (
+                      <Footprints size={18} color={scheme.onSurfaceVariant} />
+                    ) : (
+                      <LineBadge leg={leg} compact />
+                    )}
+                    <Text style={styles.legMeta}>
+                      {leg.mode === 'walk'
+                        ? leg.walkM != null && leg.walkM > 0
+                          ? formatWalkTime(walkMinutesFor(leg.walkM, walkMps))
+                          : s.connection.walkLeg
+                        : leg.direction
+                          ? s.notification.directionTo(leg.direction)
+                          : s.notification.stops(leg.stopsCount)}
+                    </Text>
+                  </View>
+                  <View style={styles.stopRow}>
+                    <Text style={styles.stopTime}>
+                      {boardedFirstLeg ? item.departAt : leg.departAt}
+                    </Text>
+                    <Text style={styles.stopName}>
+                      {boardedFirstLeg ? s.home.boardedInVehicle : leg.fromStop}
+                    </Text>
+                  </View>
+                  <View style={styles.stopRow}>
+                    <Text style={[styles.stopTime, styles.secondary]}>{leg.arriveAt}</Text>
+                    <Text style={[styles.stopName, styles.secondary]}>{leg.toStop}</Text>
+                  </View>
+                  {(leg.platformCode || leg.trackCode) && leg.mode !== 'walk' && !boardedFirstLeg && (
+                    <Text style={styles.platform}>
+                      {leg.mode === 'train'
+                        ? leg.platformCode && leg.trackCode
+                          ? s.notification.platformPeronTrack(leg.platformCode, leg.trackCode)
+                          : leg.platformCode
+                            ? s.notification.platformPeron(leg.platformCode)
+                            : s.notification.platformTrack(leg.trackCode!)
+                        : s.notification.platform(leg.platformCode ?? '')}
+                    </Text>
                   )}
-                  <Text style={styles.legMeta}>
-                    {leg.mode === 'walk'
-                      ? leg.walkM != null && leg.walkM > 0
-                        ? formatWalkTime(walkMinutesFor(leg.walkM, walkMps))
-                        : s.connection.walkLeg
-                      : leg.direction
-                        ? s.notification.directionTo(leg.direction)
-                        : s.notification.stops(leg.stopsCount)}
-                  </Text>
                 </View>
-                <View style={styles.stopRow}>
-                  <Text style={styles.stopTime}>{leg.departAt}</Text>
-                  <Text style={styles.stopName}>{leg.fromStop}</Text>
-                </View>
-                <View style={styles.stopRow}>
-                  <Text style={[styles.stopTime, styles.secondary]}>{leg.arriveAt}</Text>
-                  <Text style={[styles.stopName, styles.secondary]}>{leg.toStop}</Text>
-                </View>
-                {(leg.platformCode || leg.trackCode) && leg.mode !== 'walk' && (
-                  <Text style={styles.platform}>
-                    {leg.mode === 'train'
-                      ? leg.platformCode && leg.trackCode
-                        ? s.notification.platformPeronTrack(leg.platformCode, leg.trackCode)
-                        : leg.platformCode
-                          ? s.notification.platformPeron(leg.platformCode)
-                          : s.notification.platformTrack(leg.trackCode!)
-                      : s.notification.platform(leg.platformCode ?? '')}
-                  </Text>
-                )}
-              </View>
-            ))}
+              );
+            })}
           </View>
         </ScrollView>
         {sticky ? (

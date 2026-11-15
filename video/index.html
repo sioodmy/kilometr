@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kilometr: launch video</title>
+    <link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css" />
+    <style>
+      @font-face {
+        font-family: 'Roboto Video';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Roboto Video';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin-ext.woff2') format('woff2');
+        unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+      }
+      :root {
+        --ink: #f4f8f6;
+        --muted: #bfc9c5;
+        --teal: #5cdbbe;
+        --surface: #1b2220;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #000;
+      }
+      body {
+        font-family: 'Roboto Video', Roboto, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #stage {
+        position: relative;
+        overflow: hidden;
+        background: #101413;
+      }
+      .h #stage {
+        width: 1920px;
+        height: 1080px;
+      }
+      .v #stage {
+        width: 1080px;
+        height: 1920px;
+      }
+      #map,
+      #overlay,
+      #dim,
+      #scrim,
+      #labels {
+        position: absolute;
+        inset: 0;
+      }
+      #dim {
+        background: #050707;
+        opacity: 0;
+      }
+      .h #scrim {
+        background: linear-gradient(90deg, rgba(8, 11, 10, 0.9) 0%, rgba(8, 11, 10, 0.72) 32%, rgba(8, 11, 10, 0) 54%);
+      }
+      .v #scrim {
+        background: linear-gradient(180deg, rgba(8, 11, 10, 0.9) 0%, rgba(8, 11, 10, 0.7) 24%, rgba(8, 11, 10, 0) 40%);
+      }
+
+      /* Napisy */
+      #copy {
+        position: absolute;
+        color: var(--ink);
+      }
+      .h #copy {
+        left: 120px;
+        top: 120px;
+        width: 800px;
+      }
+      .v #copy {
+        left: 84px;
+        top: 200px;
+        width: 912px;
+      }
+      #title {
+        margin: 0;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.02;
+      }
+      .h #title {
+        font-size: 92px;
+      }
+      .v #title {
+        font-size: 106px;
+      }
+      .line {
+        display: block;
+        overflow: hidden;
+        padding-bottom: 0.1em;
+        margin-bottom: -0.1em;
+      }
+      .line > span {
+        display: inline-block;
+      }
+      #sub {
+        margin: 30px 0 0;
+        color: var(--muted);
+        line-height: 1.32;
+      }
+      .h #sub {
+        font-size: 34px;
+        max-width: 700px;
+      }
+      .v #sub {
+        font-size: 42px;
+        max-width: 880px;
+      }
+
+      /* Etykiety na mapie */
+      .pin,
+      .badge,
+      .city {
+        position: absolute;
+        left: 0;
+        top: 0;
+        white-space: nowrap;
+        visibility: hidden;
+      }
+      .pin {
+        margin: -26px 0 0 30px;
+        padding: 10px 16px;
+        border-radius: 12px;
+        background: rgba(16, 20, 19, 0.94);
+        color: var(--ink);
+        font-size: 26px;
+        font-weight: 500;
+      }
+      .badge {
+        margin: -78px 0 0 -26px;
+        min-width: 52px;
+        padding: 4px 12px;
+        box-sizing: border-box;
+        border-radius: 10px;
+        background: #7ada9e;
+        color: #0b2416;
+        font-size: 32px;
+        font-weight: 700;
+        text-align: center;
+      }
+      .city {
+        margin: -17px 0 0 16px;
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 500;
+        text-shadow:
+          0 0 4px #0b0f0e,
+          0 0 10px #0b0f0e;
+      }
+      .v .city {
+        font-size: 28px;
+      }
+
+      /* Telefon: Google Pixel 9 Pro (obsidian), czysta CSS bez assetów. */
+      #phone {
+        position: absolute;
+        box-sizing: border-box;
+        visibility: hidden;
+        /* Google Pixel 9 Pro, obsidian: proporcje ~9:19.6 */
+        --bezel: 14px;
+        --frame: #1c1e22;
+        --frame-hi: #4a4e55;
+        --frame-lo: #0b0c0e;
+      }
+      .h #phone {
+        width: 438px;
+        height: 950px;
+        right: 156px;
+        top: 65px;
+      }
+      .v #phone {
+        width: 572px;
+        height: 1240px;
+        left: 254px;
+        top: 968px;
+      }
+      #phone .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 56px;
+        background:
+          linear-gradient(152deg, var(--frame-hi) 0%, var(--frame) 22%, #14161a 55%, var(--frame-lo) 100%);
+        box-shadow:
+          0 0 0 1.5px rgba(255, 255, 255, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.16),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+          0 32px 80px rgba(0, 0, 0, 0.58),
+          0 10px 28px rgba(0, 0, 0, 0.42);
+      }
+      #phone .shell::before {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        border-radius: 54px;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 16%);
+        opacity: 0.5;
+      }
+      #phone .btn {
+        position: absolute;
+        z-index: 2;
+        background: linear-gradient(90deg, #3a3e45, #1a1c20 55%, #0e1012);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+          0 1px 2px rgba(0, 0, 0, 0.4);
+      }
+      #phone .btn-vol-up {
+        left: -5px;
+        top: 172px;
+        width: 5px;
+        height: 56px;
+        border-radius: 3px 0 0 3px;
+      }
+      #phone .btn-vol-down {
+        left: -5px;
+        top: 240px;
+        width: 5px;
+        height: 78px;
+        border-radius: 3px 0 0 3px;
+      }
+      #phone .btn-power {
+        right: -5px;
+        top: 228px;
+        width: 5px;
+        height: 96px;
+        border-radius: 0 3px 3px 0;
+      }
+      .v #phone .btn-vol-up {
+        top: 216px;
+        height: 68px;
+      }
+      .v #phone .btn-vol-down {
+        top: 300px;
+        height: 96px;
+      }
+      .v #phone .btn-power {
+        top: 284px;
+        height: 118px;
+      }
+      #phone .bezel {
+        position: absolute;
+        inset: var(--bezel);
+        border-radius: 44px;
+        overflow: hidden;
+        background: #000;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+          0 0 0 1px rgba(0, 0, 0, 0.8);
+      }
+      .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #111414;
+      }
+      .status {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 48px;
+        padding: 10px 28px 0;
+        color: #e0e3e1;
+        font-size: 18px;
+        font-weight: 500;
+      }
+      .v .status {
+        height: 56px;
+        padding-top: 14px;
+        font-size: 22px;
+      }
+      /* Punch-hole Pixel: pierścień + soczewka na środku u góry */
+      .punch {
+        position: absolute;
+        left: 50%;
+        top: 14px;
+        width: 18px;
+        height: 18px;
+        margin-left: -9px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 40% 35%, #1a1d22 0%, #000 55%, #050607 100%);
+        box-shadow:
+          0 0 0 2px #0c0d0f,
+          0 0 0 3.5px #2a2e33;
+        z-index: 3;
+      }
+      .v .punch {
+        top: 16px;
+        width: 22px;
+        height: 22px;
+        margin-left: -11px;
+      }
+      .icons {
+        display: flex;
+        gap: 7px;
+      }
+      .icons svg {
+        width: 18px;
+        height: 18px;
+        fill: #e0e3e1;
+      }
+      .v .icons svg {
+        width: 22px;
+        height: 22px;
+      }
+      .icons .plane {
+        opacity: 0;
+      }
+      .shot {
+        position: absolute;
+        left: 0;
+        top: 48px;
+        width: 100%;
+        height: calc(100% - 48px);
+        object-fit: cover;
+        object-position: top center;
+      }
+      .v .shot {
+        top: 56px;
+        height: calc(100% - 56px);
+      }
+      .shot + .shot {
+        opacity: 0;
+      }
+
+      /* Android Live Update (ProgressStyle) poza telefonem */
+      #notif {
+        position: absolute;
+        box-sizing: border-box;
+        padding: 22px 26px 18px;
+        border-radius: 28px;
+        background: #2b322f;
+        color: var(--ink);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+        visibility: hidden;
+      }
+      .h #notif {
+        width: 620px;
+        right: 100px;
+        top: 96px;
+      }
+      .v #notif {
+        width: 912px;
+        left: 84px;
+        top: 620px;
+      }
+      /* Alert opóźnienia: wewnątrz ekranu, pod status barem (jak shade Androida) */
+      #delay {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 56px;
+        z-index: 6;
+        box-sizing: border-box;
+        padding: 14px 16px 14px;
+        border-radius: 18px;
+        background: #2b322f;
+        color: var(--ink);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+        visibility: hidden;
+      }
+      .v #delay {
+        left: 16px;
+        right: 16px;
+        top: 66px;
+        padding: 18px 20px;
+        border-radius: 22px;
+      }
+      #delay .lu-top {
+        font-size: 13px;
+        gap: 8px;
+      }
+      .v #delay .lu-top {
+        font-size: 16px;
+      }
+      #delay .lu-app-icon {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+      }
+      .v #delay .lu-app-icon {
+        width: 22px;
+        height: 22px;
+      }
+      #delay .lu-title {
+        margin-top: 8px;
+        font-size: 17px;
+      }
+      .v #delay .lu-title {
+        font-size: 22px;
+      }
+      #delay .lu-text {
+        font-size: 14px;
+      }
+      .v #delay .lu-text {
+        font-size: 18px;
+      }
+      .lu-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #c5cdc9;
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .lu-app-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+      }
+      .lu-app {
+        letter-spacing: 0.01em;
+      }
+      .lu-chrono {
+        margin-left: auto;
+        color: #9aa8a3;
+        font-variant-numeric: tabular-nums;
+      }
+      .lu-title {
+        margin-top: 14px;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+      }
+      .delay-title {
+        color: #ffb4ab;
+      }
+      .lu-text {
+        margin-top: 4px;
+        color: #d6ddd9;
+        font-size: 26px;
+        line-height: 1.25;
+      }
+      .lu-sub {
+        margin-top: 2px;
+        color: #9aa8a3;
+        font-size: 22px;
+      }
+      .lu-progress {
+        position: relative;
+        height: 44px;
+        margin-top: 18px;
+      }
+      .lu-track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 16px;
+        display: flex;
+        height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #3d4844;
+      }
+      .lu-seg {
+        display: block;
+        height: 100%;
+      }
+      .lu-walk {
+        flex: 0 0 12%;
+        background: #6b7873;
+      }
+      .lu-ride {
+        flex: 1 1 auto;
+      }
+      .lu-tracker {
+        position: absolute;
+        top: 2px;
+        width: 40px;
+        height: 40px;
+        margin-left: -20px;
+        border-radius: 50%;
+        background: #006a60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      }
+      .lu-tracker svg {
+        width: 22px;
+        height: 22px;
+      }
+      .lu-flag {
+        position: absolute;
+        right: -2px;
+        top: 6px;
+        color: #c5cdc9;
+        width: 28px;
+        height: 28px;
+      }
+      .lu-flag svg {
+        width: 28px;
+        height: 28px;
+      }
+      .lu-actions {
+        display: flex;
+        gap: 28px;
+        margin-top: 16px;
+      }
+      .lu-action {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: var(--teal);
+        font: inherit;
+        font-size: 24px;
+        font-weight: 600;
+        padding: 4px 0;
+        cursor: default;
+      }
+
+      /* Obietnica i plansza końcowa */
+      #promise,
+      #end {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink);
+        text-align: center;
+        visibility: hidden;
+      }
+      #promise {
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1;
+      }
+      .h #promise {
+        font-size: 168px;
+      }
+      .v #promise {
+        font-size: 150px;
+      }
+      #promise .line:last-child span {
+        color: var(--teal);
+      }
+      .logo svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .h .logo {
+        width: 170px;
+        height: 170px;
+      }
+      .v .logo {
+        width: 220px;
+        height: 220px;
+      }
+      .logo-bg,
+      .logo-node,
+      .logo-stop {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .logo-track,
+      .logo-up,
+      .logo-down {
+        stroke-dasharray: 1;
+      }
+      .end-name {
+        margin-top: 26px;
+        font-size: 50px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .end-title {
+        margin-top: 46px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1.04;
+      }
+      .h .end-title {
+        font-size: 96px;
+      }
+      .v .end-title {
+        font-size: 90px;
+      }
+      .end-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 48px;
+        color: var(--muted);
+        font-size: 34px;
+      }
+      .end-site {
+        color: var(--teal);
+        font-weight: 500;
+      }
+
+      #attrib {
+        position: absolute;
+        color: rgba(224, 227, 225, 0.62);
+        visibility: hidden;
+      }
+      .h #attrib {
+        left: 120px;
+        bottom: 34px;
+        font-size: 18px;
+      }
+      .v #attrib {
+        left: 84px;
+        right: 84px;
+        top: 64px;
+        font-size: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="map"></div>
+      <canvas id="overlay"></canvas>
+      <div id="dim"></div>
+      <div id="scrim"></div>
+      <div id="labels"></div>
+      <div id="copy"><h1 id="title"></h1><p id="sub"></p></div>
+      <div id="phone"></div>
+      <div id="notif"></div>
+      <div id="promise"></div>
+      <div id="end"></div>
+      <div id="attrib"></div>
+    </div>
+    <script type="module" src="/video/.cache/main.js"></script>
+  </body>
+</html>

@@ -1,15 +1,31 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
-import BottomSheet, {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetFlatList,
-  BottomSheetTextInput,
-} from '@gorhom/bottom-sheet';
+import {
+  ActivityIndicator,
+  BackHandler,
+  FlatList,
+  Keyboard,
+  KeyboardAvoidingView,
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, MapPinOff, Search, X } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
-import { getLocaleSync, useStrings } from '../i18n';
+import { getLocaleSync, type Strings, useStrings } from '../i18n';
 import { CITIES, type CityDef, type CityId } from '../cities';
 import { normalizePolish } from '../gtfs/geo';
 
@@ -186,10 +202,6 @@ const CITY_ALIASES: Record<string, string[]> = {
   ilawa: ['iława', 'ilawa', 'iławskie', 'ilawskie', 'warmia', 'mazury'],
 };
 
-/**
- * Wpis listy z indeksem wyszukiwania policzonym raz na język. Normalizacja
- * nazw, feedów i aliasów w trakcie pisania była wąskim gardłem przy 33 miastach.
- */
 type CityEntry = {
   city: CityDef;
   name: string;
@@ -198,9 +210,36 @@ type CityEntry = {
   searchText: string;
 };
 
+// Cache po instancji słownika: unikamy ponownej normalizacji 33 miast i tworzenia
+// Intl.Collator przy każdym otwarciu arkusza.
+const cachedEntriesByStrings = new WeakMap<Strings, CityEntry[]>();
+
+function getCityEntries(s: Strings): CityEntry[] {
+  const cached = cachedEntriesByStrings.get(s);
+  if (cached) return cached;
+
+  const collator = new Intl.Collator(getLocaleSync());
+  const entries = CITIES.map((city) => {
+    const name = s.city.name(city.id);
+    const feeds = s.city.feeds(city.id);
+    const aliases = (CITY_ALIASES[city.id] ?? []).join(' ');
+    return {
+      city,
+      name,
+      feeds,
+      nameNorm: normalizePolish(name),
+      searchText: normalizePolish(
+        `${name} ${city.id} ${feeds} ${s.city.operator(city.id)} ${aliases}`,
+      ),
+    };
+  }).sort((a, b) => collator.compare(a.name, b.name));
+
+  cachedEntriesByStrings.set(s, entries);
+  return entries;
+}
+
 const keyExtractor = (item: CityEntry) => item.city.id;
 
-/** Wiersz z własną memoizacją: wpisy są stabilne, więc scroll i pisanie nie przerenderowują całej listy. */
 const CityRow = memo(function CityRow({
   entry,
   active,
@@ -215,15 +254,16 @@ const CityRow = memo(function CityRow({
   onPress: (city: CityDef) => void;
 }) {
   const { city, name, feeds } = entry;
+  const handlePress = useCallback(() => onPress(city), [onPress, city]);
   return (
     <Pressable
-      onPress={() => onPress(city)}
+      onPress={handlePress}
       disabled={disabled}
       style={({ pressed }) => [
         styles.cityItem,
         active && styles.cityItemActive,
         disabled && !active && styles.cityItemDisabled,
-        pressed && !disabled && { opacity: 0.75 },
+        pressed && !disabled && styles.cityItemPressed,
       ]}
       accessibilityRole="radio"
       accessibilityState={{ checked: active, disabled }}
@@ -253,6 +293,11 @@ export interface CitySelectSheetProps {
   switchingCityId?: CityId | null;
 }
 
+/**
+ * Arkusz wyboru miasta: montuje się natychmiast bez animacji wejścia,
+ * a gest zamykania w dół siedzi wyłącznie na uchwycie i nagłówku,
+ * żeby FlatList przewijał się natywnie bez blokady gestów.
+ */
 export function CitySelectSheet({
   selectedCityId,
   onSelectCity,
@@ -260,10 +305,15 @@ export function CitySelectSheet({
   switchingCity,
   switchingCityId,
 }: CitySelectSheetProps) {
-  const sheetRef = useRef<BottomSheet>(null);
   const [query, setQuery] = useState('');
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
+  const { height: windowHeight } = useWindowDimensions();
+
+  const [overlayHeight, setOverlayHeight] = useState(windowHeight);
+  const maxOverlayHeightRef = useRef(windowHeight);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -273,39 +323,90 @@ export function CitySelectSheet({
   selectedRef.current = selectedCityId;
   const switchingRef = useRef(switchingCity);
   switchingRef.current = switchingCity;
+  const closingRef = useRef(false);
+
+  const finishClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    Keyboard.dismiss();
+    closeRef.current();
+  }, []);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeRef.current();
+      finishClose();
       return true;
     });
     return () => sub.remove();
+  }, [finishClose]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setAndroidKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setAndroidKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
-  const handleClose = useCallback(() => {
-    sheetRef.current?.close();
+  const handleOverlayLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > maxOverlayHeightRef.current) {
+      maxOverlayHeightRef.current = h;
+    }
+    setOverlayHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
 
-  const entries = useMemo(() => {
-    const locale = getLocaleSync();
-    return CITIES.map((city) => {
-      const name = s.city.name(city.id);
-      const feeds = s.city.feeds(city.id);
-      const aliases = (CITY_ALIASES[city.id] ?? []).join(' ');
-      return {
-        city,
-        name,
-        feeds,
-        nameNorm: normalizePolish(name),
-        searchText: normalizePolish(
-          `${name} ${city.id} ${feeds} ${s.city.operator(city.id)} ${aliases}`,
-        ),
-      };
-    }).sort((a, b) => a.name.localeCompare(b.name, locale));
-  }, [s]);
+  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const windowShrank = maxOverlayHeightRef.current - overlayHeight > androidKeyboardHeight * 0.5;
+  const extraKeyboardInset =
+    Platform.OS === 'android' && androidKeyboardHeight > 0 && !windowShrank
+      ? androidKeyboardHeight
+      : 0;
 
-  // Aktywne miasto pierwsze, ale dopiero po posortowaniu: sort na każdy render
-  // z localeCompare był odczuwalny przy otwieraniu arkusza.
+  const translateY = useSharedValue(0);
+
+  const dismissPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY(8)
+        .failOffsetX([-20, 20])
+        .onUpdate((e) => {
+          translateY.value = e.translationY > 0 ? e.translationY : 0;
+        })
+        .onEnd((e) => {
+          if (e.translationY > 110 || e.velocityY > 900) {
+            if (reduceMotion) {
+              runOnJS(finishClose)();
+              return;
+            }
+            translateY.value = withTiming(targetSheetHeight, { duration: 140 }, (finished) => {
+              if (finished) runOnJS(finishClose)();
+            });
+          } else {
+            translateY.value = withTiming(0, { duration: 140 });
+          }
+        }),
+    [finishClose, reduceMotion, targetSheetHeight, translateY],
+  );
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropAnimatedStyle = useAnimatedStyle(() => {
+    const progress = 1 - Math.min(1, translateY.value / Math.max(1, targetSheetHeight * 0.7));
+    return { opacity: progress * 0.6 };
+  });
+
+  const entries = useMemo(() => getCityEntries(s), [s]);
+
   const orderedEntries = useMemo(() => {
     const index = entries.findIndex((entry) => entry.city.id === selectedCityId);
     if (index <= 0) return entries;
@@ -329,15 +430,18 @@ export function CitySelectSheet({
     return [...prefixed, ...rest];
   }, [entries, normQuery, orderedEntries]);
 
-  const handleCityPress = useCallback((city: CityDef) => {
-    if (switchingRef.current) return;
-    if (city.id === selectedRef.current) {
-      sheetRef.current?.close();
-      return;
-    }
-    selectRef.current(city.id);
-    sheetRef.current?.close();
-  }, []);
+  const handleCityPress = useCallback(
+    (city: CityDef) => {
+      if (switchingRef.current) return;
+      if (city.id === selectedRef.current) {
+        finishClose();
+        return;
+      }
+      selectRef.current(city.id);
+      finishClose();
+    },
+    [finishClose],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: CityEntry }) => (
@@ -357,132 +461,158 @@ export function CitySelectSheet({
     [insets.bottom],
   );
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.6}
-        pressBehavior="close"
-        accessibilityRole="button"
-        accessibilityLabel={s.city.closeSheetA11y}
-      />
+  const emptyComponent = useMemo(
+    () => (
+      <View style={styles.emptyContainer}>
+        <MapPinOff size={28} color={scheme.onSurfaceVariant} />
+        <Text style={styles.emptyTitle}>{s.city.noSearchResults(query.trim())}</Text>
+        <Text style={styles.emptySub}>{s.city.searchEmptyHint}</Text>
+      </View>
     ),
-    [s.city.closeSheetA11y],
+    [query, s],
   );
 
   return (
-    <BottomSheet
-      ref={sheetRef}
-      index={0}
-      snapPoints={['92%']}
-      topInset={insets.top}
-      bottomInset={insets.bottom}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
-      backdropComponent={renderBackdrop}
-      onClose={onClose}
-      backgroundStyle={styles.sheet}
-      handleIndicatorStyle={styles.handle}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        styles.overlay,
+        { paddingTop: insets.top, paddingBottom: extraKeyboardInset },
+      ]}
+      onLayout={handleOverlayLayout}
+      accessibilityViewIsModal
     >
-      <View style={styles.container} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.title} accessibilityRole="header">
-              {s.city.selectTitle}
-            </Text>
-            <Text style={styles.subtitle}>{s.city.selectSub}</Text>
-          </View>
-          <Pressable
-            onPress={handleClose}
-            hitSlop={8}
-            style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
-            accessibilityRole="button"
-            accessibilityLabel={s.city.closeSheetA11y}
-          >
-            <X size={20} color={scheme.onSurfaceVariant} />
-          </Pressable>
-        </View>
-
-        <View style={styles.searchBox}>
-          <Search size={18} color={scheme.onSurfaceVariant} />
-          <BottomSheetTextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder={s.city.searchPlaceholder}
-            accessibilityLabel={s.city.searchPlaceholder}
-            placeholderTextColor={scheme.onSurfaceVariant}
-            style={styles.searchInput}
-            autoCorrect={false}
-            clearButtonMode="never"
-          />
-          {query.length > 0 ? (
-            <Pressable
-              onPress={() => setQuery('')}
-              hitSlop={8}
-              style={styles.searchClearBtn}
-              accessibilityRole="button"
-              accessibilityLabel={s.city.searchClearA11y}
-            >
-              <X size={16} color={scheme.onSurfaceVariant} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <BottomSheetFlatList
-          data={filteredCities}
-          keyExtractor={keyExtractor}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          overScrollMode="never"
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          updateCellsBatchingPeriod={50}
-          windowSize={7}
-          style={styles.list}
-          contentContainerStyle={listContentStyle}
-          renderItem={renderItem}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <MapPinOff size={28} color={scheme.onSurfaceVariant} />
-              <Text style={styles.emptyTitle}>{s.city.noSearchResults(query.trim())}</Text>
-              <Text style={styles.emptySub}>{s.city.searchEmptyHint}</Text>
-            </View>
-          }
+      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimatedStyle]}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={finishClose}
+          accessibilityRole="button"
+          accessibilityLabel={s.city.closeSheetA11y}
         />
-      </View>
-    </BottomSheet>
+      </Animated.View>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.kav}
+        pointerEvents="box-none"
+      >
+        <Animated.View style={[styles.sheet, { height: targetSheetHeight }, sheetAnimatedStyle]}>
+          <View style={styles.container}>
+            <GestureDetector gesture={dismissPanGesture}>
+              <View collapsable={false}>
+                <View style={styles.handleRow}>
+                  <View style={styles.handle} />
+                </View>
+                <View style={styles.header}>
+                  <View style={styles.headerText}>
+                    <Text style={styles.title} accessibilityRole="header">
+                      {s.city.selectTitle}
+                    </Text>
+                    <Text style={styles.subtitle}>{s.city.selectSub}</Text>
+                  </View>
+                </View>
+              </View>
+            </GestureDetector>
+
+            <Pressable
+              onPress={finishClose}
+              hitSlop={8}
+              style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedFade]}
+              accessibilityRole="button"
+              accessibilityLabel={s.city.closeSheetA11y}
+            >
+              <X size={20} color={scheme.onSurfaceVariant} />
+            </Pressable>
+
+            <View style={styles.searchBox}>
+              <Search size={18} color={scheme.onSurfaceVariant} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={s.city.searchPlaceholder}
+                accessibilityLabel={s.city.searchPlaceholder}
+                placeholderTextColor={scheme.onSurfaceVariant}
+                style={styles.searchInput}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="search"
+                clearButtonMode="never"
+              />
+              {query.length > 0 ? (
+                <Pressable
+                  onPress={() => setQuery('')}
+                  hitSlop={8}
+                  style={styles.searchClearBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.city.searchClearA11y}
+                >
+                  <X size={16} color={scheme.onSurfaceVariant} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <FlatList
+              data={filteredCities}
+              keyExtractor={keyExtractor}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              overScrollMode="never"
+              showsVerticalScrollIndicator
+              initialNumToRender={12}
+              maxToRenderPerBatch={12}
+              updateCellsBatchingPeriod={16}
+              windowSize={9}
+              style={styles.list}
+              contentContainerStyle={listContentStyle}
+              renderItem={renderItem}
+              ListEmptyComponent={emptyComponent}
+            />
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    zIndex: 100,
+    elevation: 24,
+  },
+  backdrop: {
+    backgroundColor: '#000000',
+  },
+  kav: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   sheet: {
+    maxHeight: '100%',
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-  },
-  handle: {
-    backgroundColor: scheme.outlineVariant,
-    width: 36,
+    overflow: 'hidden',
   },
   container: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 8,
+  },
+  handleRow: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: scheme.outlineVariant,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    paddingRight: 56,
     marginBottom: 20,
-    gap: 12,
   },
   headerText: {
-    flex: 1,
     minWidth: 0,
   },
   title: {
@@ -497,11 +627,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   closeBtn: {
+    position: 'absolute',
+    top: 22,
+    right: 20,
     width: 48,
     height: 48,
     borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pressedFade: {
+    opacity: 0.7,
   },
   searchBox: {
     flexDirection: 'row',
@@ -547,6 +683,9 @@ const styles = StyleSheet.create({
   },
   cityItemDisabled: {
     opacity: 0.5,
+  },
+  cityItemPressed: {
+    opacity: 0.75,
   },
   cityItemContent: {
     flex: 1,

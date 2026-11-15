@@ -509,6 +509,15 @@ export const pl = {
     pickStart: 'Wybierz punkt startowy',
     outsideAreaShort: 'Jesteś poza obsługiwanym obszarem',
     downloadCityTimetableA11y: (gen: string) => `Pobierz rozkład ${gen}`,
+    liveMapA11y: 'Mapa pojazdów na żywo',
+    boardedOriginTitle: (line: string, direction: string) =>
+      direction ? `Linia ${line} (${direction})` : `Linia ${line}`,
+    boardedChipTitle: (line: string) => `W pojeździe ${line}`,
+    boardedInVehicle: 'W pojeździe',
+    boardedDetectedTitle: 'Jedziesz teraz którymś z tych pojazdów?',
+    boardedDetectedSub: 'Wybierz pojazd jako start, żeby sprawdzić dojazd z trasy.',
+    boardedPickOnMap: 'Wybierz na mapie',
+    boardedDismissA11y: 'Ukryj podpowiedź pojazdu',
     gpsBlockedTitle: 'Start z GPS niedostępny',
     gpsBlockedBody: (city: string, supported: string) =>
       `Jesteś poza strefą ${supported} (${city}), więc trasy z GPS nie zadziałają. Wybierz punkt startowy manualnie.`,
@@ -1139,6 +1148,11 @@ export const pl = {
     changeFromA11y: (t: string) => `Zmień miejsce startowe, obecnie ${t}`,
     changeFromAnchorA11y: (t: string, stop: string) =>
       `Zmień miejsce startowe, obecnie ${t}, odjazd z przystanku ${stop}`,
+    boardedOriginLabel: (line: string, direction: string) =>
+      direction ? `W pojeździe ${line} (${direction})` : `W pojeździe ${line}`,
+    changeFromBoardedA11y: (line: string, direction: string) =>
+      `Start w pojeździe ${line}${direction ? `, kierunek ${direction}` : ''}. Dotknij, aby zmienić.`,
+    dismissBoardedA11y: 'Wróć do pozycji GPS zamiast startu z pojazdu',
     dismissAnchorA11y: 'Usuń zakotwiczenie przystanku i szukaj z GPS',
     swapA11y: 'Odwróć trasę: zamień punkt startowy z docelowym',
     changeToA11y: (t: string) => `Zmień cel, obecnie ${t}`,
@@ -1224,6 +1238,10 @@ export const pl = {
     lineAlertsError: 'Nie udało się sprawdzić utrudnień.',
   },
   search: {
+    nearbyVehiclesSection: 'Pojazdy w pobliżu (wsiądź jako start)',
+    vehicleDirectionTo: (dir: string) => `kierunek ${dir}`,
+    pickOnLiveMap: 'Wybierz pojazd na mapie na żywo',
+    pickOnLiveMapSub: 'Zobacz pojazdy w okolicy i wybierz swój ręcznie',
     suggestedPlaces: 'Proponowane miejsca',
     emptyTitle: 'Dokąd jedziesz?',
     emptyHint: 'Wpisz nazwę przystanku, adres lub miejsce. Twoje wybory pojawią się tutaj.',
@@ -1242,6 +1260,10 @@ export const pl = {
     noResultsHint: (id: string) =>
       `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
+    timetableDownloadingHint: 'Wyniki pojawią się po zakończeniu pobierania rozkładu.',
+    timetableMissingTitle: 'Brak rozkładu na telefonie',
+    timetableMissingHint: (city: string) =>
+      `Pobierz rozkład dla ${city}, aby szukać przystanków i adresów.`,
   },
   places: {
     editAction: 'Edytuj',
@@ -1409,6 +1431,8 @@ export const pl = {
             : `${n} przesiadek`,
     connections: (n: number) =>
       n === 1 ? '1 połączenie' : isFew(n) ? `${n} połączenia` : `${n} połączeń`,
+    inVehicleNow: 'Jedziesz',
+    boardedBadge: 'W pojeździe',
     walkAll: 'całość pieszo',
     walkLeg: 'pieszo',
     walkTo: (stop: string) => `Dojście do: ${stop}`,
@@ -1422,6 +1446,16 @@ export const pl = {
     ) =>
       `${dep}, czas jazdy ${formatDuration(dur)}, odjazd ${depAt}, przyjazd ${arrAt}, ${via}${lines ? `, linie ${lines}` : ''}`,
     walkRoute: 'trasa piesza',
+    riskyTransferA11y: (stop: string, min: number) =>
+      min <= 0
+        ? `Ryzykowna przesiadka na przystanku ${stop}, mniej niż minuta zapasu`
+        : `Ryzykowna przesiadka na przystanku ${stop}, ${min} min zapasu`,
+    longWalkA11y: (min: number) => `Wymaga dłuższego dojścia pieszo do celu: ${min} min`,
+    onTimeBadge: 'na czas',
+    plannedShort: (time: string) => `(plan. ${time})`,
+    fromStopLabel: (stop: string) => `z: ${stop}`,
+    exitStopLabel: (stop: string) => `wysiadka: ${stop}`,
+    finalWalkPill: (min: number) => `${min}' do celu`,
   },
   vehiclePos: {
     noRoute: 'Brak danych o trasie',
@@ -1467,7 +1501,6 @@ export const pl = {
     stationsCountShort: (n: number) =>
       `${n} ${n === 1 ? 'stacja' : isFew(n) ? 'stacje' : 'stacji'}`,
     directRide: (mins: number) => `Bez przystanków pośrednich · ~${formatDuration(mins)}`,
-    expandPill: (open: boolean): string => (open ? 'Zwiń' : 'Pokaż'),
     arrTime: (time: string) => `przyj. ${time}`,
     depTime: (time: string) => `odj. ${time}`,
     dwellMin: (min: number) => `postój ${min} min`,
@@ -1550,6 +1583,18 @@ export const pl = {
     strefa_ciszy: (_n?: number) => 'Strefa ciszy',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Udogodnienia: ${list}`,
+  },
+  stationAmenities: {
+    toilets: 'Toaleta',
+    gastronomy: 'Gastronomia',
+    shop: 'Sklep',
+    cafe: 'Kawiarnia',
+    bakery: 'Piekarnia',
+    pharmacy: 'Apteka',
+    atm: 'Bankomat',
+    luggage: 'Przechowalnia bagażu',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Na dworcu: ${list}`,
   },
   railAlerts: {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
@@ -1820,6 +1865,63 @@ export const pl = {
     protectionWatching: 'Czuwa',
     protectionSlack: (n: number) => `+${n} min zapasu`,
     transferAlert: 'Przesiadka!',
+  },
+  liveMap: {
+    title: 'Mapa na żywo',
+    backA11y: 'Wróć',
+    recenterA11y: 'Wyśrodkuj mapę na mojej lokalizacji',
+    filterAll: 'Wszystkie',
+    filterTram: 'Tramwaje',
+    filterBus: 'Autobusy',
+    filterTrain: 'Kolej',
+    loadingVehicles: 'Pobieram pozycje pojazdów…',
+    noVehiclesTitle: 'Brak pojazdów na mapie',
+    noVehiclesBody: 'Dla wybranego filtra nie widać teraz aktywnych pojazdów live.',
+    offlineTilesNote: 'Brak kafelków offline i sieci: widać same pozycje pojazdów.',
+    vehiclesCount: (n: number) =>
+      n === 1 ? '1 pojazd na żywo' : isFew(n) ? `${n} pojazdy na żywo` : `${n} pojazdów na żywo`,
+    vehicleTowards: (dir: string) => `Kierunek: ${dir}`,
+    nextStop: (stop: string) => `Następny przystanek: ${stop}`,
+    distanceAway: (m: number) =>
+      m < 1000 ? `${Math.round(m)} m stąd` : `${(m / 1000).toFixed(1)} km stąd`,
+    delayOnTime: 'Punktualnie',
+    delayLate: (min: number) => `+${min} min opóźnienia`,
+    delayEarly: (min: number) => `${min} min przed czasem`,
+    delayUnknown: 'Brak danych o opóźnieniu',
+    unmatchedTitle: 'Nie można użyć jako startu',
+    unmatchedBody:
+      'Ten pojazd nie jest dopasowany do kursu w pobranym rozkładzie, więc nie wyznaczymy z niego przesiadek.',
+    boardCta: 'Jedź tym pojazdem',
+    closeSheetA11y: 'Zamknij szczegóły',
+    stopBoardTitle: 'Tablica odjazdów',
+    vehicleBoardTitle: 'Następne przystanki',
+    scheduledOnly: 'Rozkładowo',
+    stopNoDepartures: 'Brak najbliższych odjazdów w tym oknie czasowym.',
+    stopBoardUnavailable: 'Pobierz rozkład miasta, aby zobaczyć tablicę odjazdów.',
+    stopCodeLabel: (code: string) => `Słupek ${code}`,
+    departInMin: (min: number) => (min <= 0 ? 'teraz' : `za ${min} min`),
+    vehicleNoStops: 'Brak listy kolejnych przystanków dla tego kursu.',
+    filterDisruptions: 'Utrudnienia',
+    disruptionsCount: (n: number) =>
+      n === 1 ? '1 utrudnienie' : isFew(n) ? `${n} utrudnienia` : `${n} utrudnień`,
+    disruptionSheetTitle: 'Utrudnienie w ruchu',
+    disruptionCorridor: (from: string, to: string) => `Odcinek: ${from} → ${to}`,
+    disruptionReplacement: (line: string) => `Komunikacja zastępcza: ${line}`,
+    disruptionOpenArticleCta: 'Zobacz szczegóły komunikatu',
+    disruptionSeverityBlocking: 'Blokada',
+    disruptionSeverityMajor: 'Objazd',
+    disruptionSeverityMinor: 'Zmiana',
+    disruptionSeverityInfo: 'Komunikat',
+    disruptionFallbackAccident: 'wypadek',
+    disruptionFallbackFailure: 'awaria',
+    disruptionFallbackWorks: 'remont',
+    disruptionFallbackEvent: 'wydarzenie',
+    disruptionFallbackWeather: 'pogoda',
+    disruptionFallbackFare: 'taryfa',
+    disruptionFallbackOther: 'utrudnienie',
+    mapErrorTitle: 'Nie udało się wczytać mapy',
+    mapErrorBody: 'Sprawdź połączenie z internetem i odśwież widok mapy.',
+    mapRetryCta: 'Odśwież mapę',
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',

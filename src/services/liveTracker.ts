@@ -134,6 +134,8 @@ export interface RawVehicleRow {
   x: number;
   y: number;
   k: number | string;
+  /** Kierunek z API w stopniach (0-360), jesli dostepny. */
+  bearing?: number;
   /** Sekundy z API, weryfikowane względem GPS. */
   delaySec?: number;
   /** Czas pomiaru GPS w milisekundach epoch. */
@@ -364,7 +366,13 @@ class LiveTracker {
         const prev = this.byId.get(vehicleId);
         const leg = this.nationalWatch.find((l) => l.tripId === tripId);
         const delay = this.tripDelays.get(tripId) ?? null;
-        if (!prev || prev.lat !== pos.lat || prev.lon !== pos.lon || prev.delaySec !== delay) {
+        if (
+          !prev ||
+          prev.lat !== pos.lat ||
+          prev.lon !== pos.lon ||
+          prev.bearing !== pos.bearing ||
+          prev.delaySec !== delay
+        ) {
           changed = true;
         }
         this.byId.set(vehicleId, {
@@ -372,6 +380,7 @@ class LiveTracker {
           line: leg?.line ?? 'PKP',
           lat: pos.lat,
           lon: pos.lon,
+          bearing: pos.bearing,
           type: 'train',
           delaySec: delay,
           matchedTripId: tripId,
@@ -1011,6 +1020,7 @@ class LiveTracker {
         aliases: Array.from(aliases),
         lat: veh.lat,
         lon: veh.lon,
+        bearing: veh.bearing,
         type: 'train',
         delaySec: match && !outOfRange ? veh.delaySec : null,
         matchedTripId: match && !outOfRange ? match.tripId : undefined,
@@ -1217,6 +1227,7 @@ class LiveTracker {
         line,
         lat,
         lon,
+        bearing: row.bearing,
         type,
         delaySec:
           bestTripId && !delayOutOfRange
@@ -1444,6 +1455,7 @@ class LiveTracker {
           line,
           lat: row.x,
           lon: row.y,
+          bearing: row.bearing,
           type: vtype,
           delaySec:
             tripId && !delayOutOfRange

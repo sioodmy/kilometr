@@ -10,6 +10,14 @@ on:
         type: string
         required: false
         default: ''
+      artifact_only:
+        type: boolean
+        required: false
+        default: false
+      skip_publish:
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -30,43 +38,62 @@ jobs:
       - name: Verify release channel
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
+          ARTIFACT_ONLY: ${{ inputs.artifact_only }}
         run: |
           if [ "$GITHUB_REF_NAME" = "prod" ]; then
             exit 0
           fi
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -z "$RELEASE_TAG" ]; then
+          if [ -z "$RELEASE_TAG" ] && { [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || [ "$ARTIFACT_ONLY" = "true" ]; }; then
             echo "Build artefaktu z gałęzi $GITHUB_REF_NAME, bez publikacji w release."
             exit 0
           fi
           echo "::error::Publikacja IPA wymaga gałęzi prod (jest: $GITHUB_REF_NAME)."
           exit 1
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
+
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
           xcodebuild -version
+
       - run: npm ci
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Cache Rust RAPTOR target
+        uses: actions/cache@v5
+        with:
+          path: modules/kilometr-raptor/rust/target
+          key: rust-raptor-ios-${{ runner.os }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
+          restore-keys: |
+            rust-raptor-ios-${{ runner.os }}-
+
       - name: Test Rust
         run: cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+
       - name: Build Rust for iOS
         run: bash scripts/build-rust-ios.sh
+
       - name: Test native offline files
         run: |
           xcrun swiftc -parse-as-library modules/kilometr-maps/ios/TilePack.swift scripts/check-ios-offline.swift -o "$RUNNER_TEMP/check-ios-offline"
           "$RUNNER_TEMP/check-ios-offline"
+
       - name: Test widget snapshot and timeline
         run: |
           xcrun swiftc -parse-as-library modules/kilometr-widgets/ios/extension/WidgetSnapshot.swift scripts/check-ios-widgets.swift -o "$RUNNER_TEMP/check-ios-widgets"
           "$RUNNER_TEMP/check-ios-widgets"
+
       - name: Check app and translations
         run: |
           npm run typecheck
@@ -74,15 +101,19 @@ jobs:
           npm run check:ios
           npm run check:ios-widgets
           npm run check:widget-strings
+
       - name: Generate Xcode project
         env:
           APP_VERSION: ${{ inputs.release_tag }}
         run: npx expo prebuild --platform ios --clean --no-install
+
       - name: Verify iOS configuration
         run: python3 scripts/check-ios-prebuild.py
+
       - name: Install pods
         working-directory: ios
         run: pod install
+
       - name: Archive without signing
         env:
           APP_VERSION: ${{ inputs.release_tag }}
@@ -99,16 +130,19 @@ jobs:
               tail -n 180 "$RUNNER_TEMP/xcodebuild.log"
               exit 1
             }
+
       - name: Package and verify IPA
         run: |
           bash scripts/package-ipa.sh "$RUNNER_TEMP/Kilometr.xcarchive" "$RUNNER_TEMP/ipa-dist"
           python3 scripts/check-ipa.py "$RUNNER_TEMP/ipa-dist/kilometr-unsigned.ipa"
+
       - uses: actions/upload-artifact@v4
         with:
           name: kilometr-ios-unsigned
           path: ${{ runner.temp }}/ipa-dist/*
           if-no-files-found: error
           retention-days: 30
+
       - name: Build logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,6 +155,7 @@ jobs:
             ${{ runner.temp }}/Kilometr.xcarchive/dSYMs
             ios/Podfile.lock
           retention-days: 7
+
       - name: Installation instructions
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
@@ -133,8 +168,9 @@ jobs:
   publish:
     name: Attach IPA to release
     needs: build
-    if: inputs.release_tag != ''
+    if: inputs.release_tag != '' && !inputs.skip_publish
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

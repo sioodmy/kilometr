@@ -51,7 +51,7 @@ const CITY_NAMES = {
 };
 
 // Podbij przy każdej zmianie promptu: hash cache zależy od tej wersji.
-const PROMPT_VERSION = '2026-11-13.2';
+const PROMPT_VERSION = '2026-11-15.1';
 
 function loadLocalEnv() {
   if (!fs.existsSync(ENV_PATH)) return;
@@ -682,6 +682,7 @@ ODPOWIADAJ WYŁĄCZNIE CZYSTYM OBIEKTEM JSON O PONIŻSZEJ STRUKTURZE:
   "is_emergency": boolean, // true dla zdarzeń nagłych (kolizja, zerwana sieć, awaria torowiska); false dla zaplanowanych prac, świąt, meczów, stałych korekt
   "is_resolved": boolean, // true jeśli w treści jest informacja o zakończeniu utrudnienia (np. "Aktualizacja: ruch przywrócony", "awaria usunięta", "tramwaje wróciły na stałe trasy"). false gdy utrudnienie nadal trwa lub wejdzie w życie w przyszłości
   "severity": "info" | "minor" | "major" | "blocking", // blocking: paraliż korytarza transportowego; major: zmiana tras wielu linii lub kluczowych węzłów; minor: przeniesiony słupek/niewielka korekta; info: taryfy, odrzucone, utrudnienia zakończone
+  "map_label": string | null, // Bardzo krótki opis na znacznik mapy (1-3 słowa małymi literami po polsku, maks. 24 znaki), np. "wykolejenie", "remont", "wypadek", "awaria sieci", "objazd", "brak napięcia", "zamknięta ulica". null gdy is_transit_alert=false, is_resolved=true lub brak konkretnego miejsca na mapie
   "glance": {
     "problem": string, // Dokładnie 1 zwięzłe zdanie: co i gdzie się stało (np. "Kolizja na ul. Krakowskiej blokuje ruch tramwajowy w stronę Księża Małego.")
     "solution": string | null, // Dokładnie 1 zwięzłe zdanie jak podróżować w zamian (np. "Na odcinku Galeria Dominikańska - Księże Małe kursuje autobus za-tramwaj 703."), lub null jeśli brak alternatywy lub ruch przywrócony
@@ -760,7 +761,7 @@ ZASADY ANTY-SLOP I JAKOŚCI DANYCH:
 2. MIANOWNIK I KANONIZACJA GTFS: Polskie nazwy przystanków zawsze sprowadzaj do formy bazowej ("Galeria Dominikańska", "Rondo Reagana", "Dworzec Główny"). Jeśli w zadaniu podano KONTEKST TOPOLOGII GTFS i przystanek z tekstu odpowiada przystankowi GTFS, użyj dokładnej nazwy z GTFS.
 3. LINIE TO WYŁĄCZNIE ZBIORKOM: Nigdy nie dodawaj numerów dróg krajowych (np. DK94, AOW, A8), numerów ustaw, numerów peronów ani roczników.
 4. JEŚLI SPAM LUB BEZ WPŁYWU NA ZBIORKOM:
-   Ustaw is_transit_alert: false, severity: "info", corridor: null, ticket_honoring: null, phases: [], all_lines: [], line_changes: [], temporary_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
+   Ustaw is_transit_alert: false, severity: "info", map_label: null, corridor: null, ticket_honoring: null, phases: [], all_lines: [], line_changes: [], temporary_lines: [], stops: [], glance.problem: "Informacja nieoperacyjna: [powód odrzucenia]".
 5. KOPIUJ, NIE TWÓRZ: nazwy ulic, placów, dzielnic, osiedli, mostów i przystanków przepisujesz z treści lub z przekazanego kontekstu GTFS tych linii. Zero tłumaczenia i zero zmyślonych form fleksyjnych (nigdy "Krzków", "Włochów").
 6. ZERO NOWEJ GEOGRAFII: nie dodawaj miejsc spoza treści i spoza podanego w zadaniu wycinka GTFS. Nie zgaduj dzielnicy z nazwy ulicy.
 7. FORMA Z TREŚCI W PROZIE: w polach opisowych (headline, glance, details) używaj naturalnych konstrukcji ("w dzielnicy Krzyki", "w rejonie ul. Krakowskiej", "na trasie do Włoch").
@@ -769,6 +770,7 @@ ZASADY ANTY-SLOP I JAKOŚCI DANYCH:
 10. JEDEN KOMUNIKAT, WIELE ZMIAN: gdy tekst wymienia linie zawieszone, linie na objazdach i linie bez zmian, zapisz w line_changes wyłącznie linie ze zmianami (cancelled, detour, shortened, stops_skipped, schedule_change, frequency_change, route_restored). Linie "bez zmian" pomijasz.
 11. NIGDY NIE DOPISUJ FAKTÓW: nie wymyślaj linii, godzin, dat, honorowania biletów ani częstotliwości spoza tekstu. Gdy tekst nie podaje kolejności objazdu, via = null.
 12. GODZINY I DATY TYLKO Z TEKSTU: hours wpisuj wyłącznie z konkretnych godzin w treści. Gdy tekst podaje tylko "wieczorem" albo "w nocy", zostaw hours: [] i wpisz zakres w details lub glance.timeframe.
+13. MAP_LABEL: krótkie hasło na znacznik mapy (1-3 słowa małymi literami, np. "wykolejenie", "remont", "wypadek", "awaria sieci", "objazd"), bez numerów linii, nazw ulic i znaków interpunkcyjnych.
 
 PRZYKŁADY POPRAWNEJ FORMY NAZW:
 - Treść: "utrudnienia w rejonie Krzyki" -> "Utrudnienia w dzielnicy Krzyki" (nie "Krzków").
@@ -1014,6 +1016,39 @@ export function enrichAlertWithGtfs(analysis, gtfsIndex) {
     if (t) {
       analysis.corridor.to_stop = t.name;
       rememberCoord(t);
+    }
+    if (analysis.corridor.from_stop && analysis.corridor.to_stop) {
+      const candidateLines = [
+        ...(Array.isArray(analysis.all_lines) ? analysis.all_lines : []),
+        ...((analysis.line_changes || []).map((lc) => lc.line)),
+      ];
+      const seenLines = new Set();
+      let bestStops = null;
+      for (const rawLine of candidateLines) {
+        const lineKey = String(rawLine || "").trim().toUpperCase();
+        if (!lineKey || seenLines.has(lineKey)) continue;
+        seenLines.add(lineKey);
+        const lineEntry = gtfsIndex.byLine.get(lineKey);
+        if (!lineEntry || !Array.isArray(lineEntry.stops)) continue;
+        const idxA = lineEntry.stops.indexOf(analysis.corridor.from_stop);
+        const idxB = lineEntry.stops.indexOf(analysis.corridor.to_stop);
+        if (idxA !== -1 && idxB !== -1 && idxA !== idxB && Math.abs(idxB - idxA) <= 24) {
+          const slice =
+            idxA < idxB
+              ? lineEntry.stops.slice(idxA, idxB + 1)
+              : lineEntry.stops.slice(idxB, idxA + 1).reverse();
+          if (!bestStops || slice.length < bestStops.length) {
+            bestStops = slice;
+          }
+        }
+      }
+      if (bestStops && bestStops.length >= 2) {
+        analysis.corridor.stops = bestStops;
+        for (const stName of bestStops) {
+          const hit = resolveStop(stName);
+          if (hit) rememberCoord(hit);
+        }
+      }
     }
   }
 
