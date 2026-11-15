@@ -1596,6 +1596,18 @@ export const uk: Strings = {
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Зручності: ${list}`,
   },
+  stationAmenities: {
+    toilets: 'Туалет',
+    gastronomy: 'Заклади харчування',
+    shop: 'Магазин',
+    cafe: 'Кавʼярня',
+    bakery: 'Пекарня',
+    pharmacy: 'Аптека',
+    atm: 'Банкомат',
+    luggage: 'Камера схову',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `На вокзалі: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',

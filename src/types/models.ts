@@ -231,6 +231,20 @@ export type RailAmenity =
   | 'miejsca_sypialne'
   | 'strefa_ciszy';
 
+/**
+ * Klucze udogodnień stacji kolejowej (OSM 50 m od dworca). Muszą się zgadzać
+ * z STATION_AMENITY_ORDER w build-polska.mjs i sekcją stationAmenities w i18n.
+ */
+export type StationAmenity =
+  | 'toilets'
+  | 'gastronomy'
+  | 'shop'
+  | 'cafe'
+  | 'bakery'
+  | 'pharmacy'
+  | 'atm'
+  | 'luggage';
+
 export interface Connection {
   id: string;
   serviceDate?: string;

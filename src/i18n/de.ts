@@ -1436,6 +1436,18 @@ export const de: Strings = {
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Ausstattung: ${list}`,
   },
+  stationAmenities: {
+    toilets: 'Toiletten',
+    gastronomy: 'Gastronomie',
+    shop: 'Geschäft',
+    cafe: 'Café',
+    bakery: 'Bäckerei',
+    pharmacy: 'Apotheke',
+    atm: 'Geldautomat',
+    luggage: 'Gepäckaufbewahrung',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Am Bahnhof: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',

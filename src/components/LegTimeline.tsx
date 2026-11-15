@@ -17,6 +17,8 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
 import { RailAmenities } from './RailAmenities';
+import { StationAmenities } from './StationAmenities';
+import { shouldShowStationAmenities } from './stationAmenitiesGate';
 import { LiveSensors } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
@@ -454,6 +456,7 @@ const TransitLegCard = memo(function TransitLegCard({
   userLocation,
   allowLive,
   boardedDepartAt,
+  showStationAmenities,
 }: {
   leg: Leg;
   expanded: boolean;
@@ -461,6 +464,7 @@ const TransitLegCard = memo(function TransitLegCard({
   userLocation: CurrentLocation | null;
   allowLive: boolean;
   boardedDepartAt?: string;
+  showStationAmenities?: boolean;
 }) {
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
@@ -977,7 +981,12 @@ const TransitLegCard = memo(function TransitLegCard({
 
         {/* 6. Przystanek docelowy (bez prefixu "do:") + godzina przyjazdu po prawej */}
         <View style={s.cardEndRow}>
-          <Text style={s.cardStopName}>{leg.toStop}</Text>
+          <View style={s.cardEndLeft}>
+            <Text style={s.cardStopName}>{leg.toStop}</Text>
+            {showStationAmenities ? (
+              <StationAmenities stopId={leg.toStopId} lat={leg.toLat} lon={leg.toLon} />
+            ) : null}
+          </View>
           <View style={s.arrivalTimes}>
             <Text style={s.cardTime} numberOfLines={1}>
               {leg.arriveAt}
@@ -1123,7 +1132,7 @@ export function LegTimeline({
             </View>
           );
         }
-        const nextVehicle = legs.slice(i + 1).find((next) => next.mode !== 'walk');
+        const nextVehicle = displayLegs.slice(i + 1).find((next) => next.mode !== 'walk');
         let transferGap = nextVehicle
           ? timeStringToSeconds(nextVehicle.departAt) - timeStringToSeconds(leg.arriveAt)
           : Infinity;
@@ -1131,8 +1140,9 @@ export function LegTimeline({
         const uncertainTransfer =
           (leg.delayConfidence === 'estimated' || leg.delayConfidence === 'untracked') &&
           transferGap < 360;
-        const hasNextLeg = i < legs.length - 1;
-        const nextLegIsTransit = hasNextLeg && legs[i + 1].mode !== 'walk';
+        const hasNextLeg = i < displayLegs.length - 1;
+        const nextLegIsTransit = hasNextLeg && displayLegs[i + 1].mode !== 'walk';
+        const showStationAmenities = shouldShowStationAmenities(displayLegs, i, walkMps);
         return (
           <View key={leg.id} style={s.cardContainer}>
             <TransitLegCard
@@ -1141,6 +1151,7 @@ export function LegTimeline({
               userLocation={observeOnly || expandedId !== leg.id ? null : location}
               allowLive={!observeOnly || leg.live}
               boardedDepartAt={leg.id === firstTransitId ? boardedDepartAt : undefined}
+              showStationAmenities={showStationAmenities}
               onToggle={toggleLeg}
             />
             {uncertainTransfer && (
@@ -1197,6 +1208,11 @@ const s = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  cardEndLeft: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
   },
   arrivalTimes: {
     alignItems: 'flex-end',
