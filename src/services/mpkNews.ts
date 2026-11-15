@@ -145,6 +145,7 @@ export interface DisruptionCorridor {
   label: string;
   from_stop: string | null;
   to_stop: string | null;
+  stops?: string[];
 }
 
 export interface DisruptionTicketHonoring {
@@ -178,6 +179,7 @@ export interface DisruptionAlert {
   is_emergency: boolean;
   is_resolved: boolean;
   severity: 'info' | 'minor' | 'major' | 'blocking';
+  map_label?: string | null;
   glance: {
     problem: string;
     solution: string | null;

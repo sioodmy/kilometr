@@ -249,7 +249,7 @@ export function refreshConnectionTimes(
     connection.delayMin === maxDelayMin
   )
     return connection;
-  const departureSec = connection.departureSec + (firstShift ?? 0);
+  const departureSec = connection.boarded ? connection.departureSec : connection.departureSec + (firstShift ?? 0);
   const arrivalSec =
     (connection.arrivalSec ?? connection.departureSec + connection.durationMin * 60) + lastShift;
   return {
@@ -259,9 +259,9 @@ export function refreshConnectionTimes(
     delayMin: maxDelayMin,
     departureSec,
     arrivalSec,
-    departAt: secondsToTimeString(departureSec),
+    departAt: connection.boarded ? connection.departAt : secondsToTimeString(departureSec),
     arriveAt: secondsToTimeString(arrivalSec),
-    departInMin: connection.departInMin + Math.round((firstShift ?? 0) / 60),
+    departInMin: connection.boarded ? 0 : connection.departInMin + Math.round((firstShift ?? 0) / 60),
     durationMin: Math.max(1, Math.round((arrivalSec - departureSec) / 60)),
   };
 }

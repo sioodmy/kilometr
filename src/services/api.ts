@@ -337,7 +337,7 @@ function needsIntercity(query: RouteQuery): boolean {
   // Wyłączone pociągi w ustawieniach = nie planujemy kolei między miastami.
   if (query.trainsEnabled === false) return false;
   const destOutside = isOutsideServiceArea(query.toLat, query.toLon);
-  const originOutside = isOutsideServiceArea(query.fromLat, query.fromLon);
+  const originOutside = query.boardedTrip ? false : isOutsideServiceArea(query.fromLat, query.fromLon);
   // stop-pl: w mieście + start spoza (planReverse) też wymaga planera kolejowego.
   if (query.toId?.startsWith('stop-pl:')) return destOutside || originOutside;
   return destOutside || originOutside;
@@ -367,6 +367,7 @@ function toPlanOptions(query: RouteQuery, onProgress?: (partial: Connection[]) =
     anchorStopId: query.anchorStopId,
     anchorStopLat: query.anchorStopLat,
     anchorStopLon: query.anchorStopLon,
+    boardedTrip: query.boardedTrip,
     onProgress,
   };
 }
@@ -388,7 +389,7 @@ export const RoutingService: IRoutingService = {
       if (needsIntercity(query)) {
         const { connections } = await planIntercity(toPlanOptions(query));
         remember(connections);
-        if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
+        if (query.departureTimeSec === undefined && query.arriveBySec === undefined && !query.boardedTrip) {
           void saveConnections(query, connections);
           void import('./geometryWarmup')
             .then((m) => m.warmConnections(connections))
@@ -401,7 +402,7 @@ export const RoutingService: IRoutingService = {
 
       remember(connections);
 
-      if (query.departureTimeSec === undefined && query.arriveBySec === undefined) {
+      if (query.departureTimeSec === undefined && query.arriveBySec === undefined && !query.boardedTrip) {
         void saveConnections(query, connections);
         // Zawczasu pobierz i przypnij przebieg ulic kilku najlepszych
         // połączeń, żeby ostatnie trasy działały offline.

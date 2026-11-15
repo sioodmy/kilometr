@@ -230,7 +230,10 @@ export const ConnectionCard = memo(function ConnectionCard({
     firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
       ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure
       : undefined;
-  const minsAgo = item.departureSec > 0 ? Math.floor((now.getTime() - departureMs) / 60000) : -1;
+  const minsAgo =
+    !item.boarded && item.departureSec > 0
+      ? Math.floor((now.getTime() - departureMs) / 60000)
+      : -1;
   const historical = minsAgo >= 1;
 
   const effectiveMin =
@@ -241,23 +244,27 @@ export const ConnectionCard = memo(function ConnectionCard({
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
   const walkMin = item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
 
-  const departureText = historical
-    ? minsAgo <= 1
-      ? tr().common.departJustAgo
-      : tr().common.departAgo(minsAgo)
-    : walkOnly && walkM != null
-      ? formatWalkTime(walkMin)
-      : effectiveMin <= 0
-        ? tr().common.departNow
-        : effectiveMin > 59
-          ? departAt
-          : tr().common.departIn(effectiveMin);
+  const departureText = item.boarded
+    ? s.connection.inVehicleNow
+    : historical
+      ? minsAgo <= 1
+        ? tr().common.departJustAgo
+        : tr().common.departAgo(minsAgo)
+      : walkOnly && walkM != null
+        ? formatWalkTime(walkMin)
+        : effectiveMin <= 0
+          ? tr().common.departNow
+          : effectiveMin > 59
+            ? departAt
+            : tr().common.departIn(effectiveMin);
   const departureColor =
     dimmed || historical
       ? scheme.onSurfaceVariant
-      : item.live && item.delayMin > 0
-        ? scheme.error
-        : scheme.primary;
+      : item.boarded
+        ? scheme.primary
+        : item.live && item.delayMin > 0
+          ? scheme.error
+          : scheme.primary;
 
   const linesSummary = boarding
     .map((b) => b.line)
@@ -303,6 +310,7 @@ export const ConnectionCard = memo(function ConnectionCard({
         onBlur={() => setFocused(false)}
         style={({ pressed }) => [
           styles.card,
+          item.boarded && styles.boardedCard,
           dimmed && styles.pastCard,
           focused && styles.focused,
           pressed && styles.pressed,
@@ -313,6 +321,11 @@ export const ConnectionCard = memo(function ConnectionCard({
             {walkOnly ? s.connection.walkRoute : departureText}
           </Text>
           <View style={styles.scheduleRight}>
+            {item.boarded && (
+              <View style={styles.boardedPill}>
+                <Text style={styles.boardedPillText}>{s.connection.boardedBadge}</Text>
+              </View>
+            )}
             <RailAlertsChip connection={item} dimmed={dimmed} />
             <View style={styles.duration}>
               <Clock3 size={14} color={scheme.onSecondaryContainer} />
@@ -372,11 +385,25 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
+  boardedCard: { backgroundColor: scheme.surfaceContainerHigh },
   pastCard: { backgroundColor: scheme.surfaceContainerLow },
   scheduleRight: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
+  },
+  boardedPill: {
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.primaryContainer,
+  },
+  boardedPillText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
   },
   schedule: {
     flexDirection: 'row',
