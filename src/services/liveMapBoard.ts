@@ -1,13 +1,12 @@
 // Logika mapy live w stylu zbiorkom.live:
-// - kolory typow pojazdow i przystankow o wysokim kontrascie WCAG AA,
-// - budowa warstwy przystankow z kierunkiem odjazdu (strzalka z geometrii linii),
-// - tablice odjazdow dla kliknietego przystanku oraz kolejnych przystankow pojazdu.
+// - spójna tożsamość kolorów z LineBadge o wysokim kontraście WCAG AA,
+// - budowa warstwy przystanków z kierunkiem odjazdu (strzałka z geometrii linii),
+// - tablice odjazdów, kolejne przystanki oraz przebieg trasy wybranego pojazdu.
 
 import { bearingDegrees, distanceMeters, shiftWarsawDate, warsawNow } from '../gtfs/geo';
 import { isFareBoundary } from '../gtfs/fareBoundary';
-import { getContrastForeground, inferTransitMode } from './lineIdentity';
+import { inferTransitMode, mapLineColor, resolveLineBadgeIdentity } from './lineIdentity';
 import type { TrackedVehicle } from './liveTracker';
-import { getRailAgencyColor, inferRailAgencyFromLine } from './railIdentity';
 import { projectRoutePoint } from './routeGeometry';
 import { classifyTransitMode, mergeDayIndexes } from './routing/raptor';
 import { gtfsStore, type DayIndex, type LocalGtfsStore } from './routing/store';
@@ -39,6 +38,24 @@ export interface VehicleStopEta {
   isNext: boolean;
 }
 
+export interface LiveVehicleRouteStop {
+  stopId: string;
+  stopName: string;
+  lat: number;
+  lon: number;
+  passed: boolean;
+  isNext: boolean;
+}
+
+export interface LiveVehicleRoute {
+  tripId?: string;
+  mode: Exclude<LegMode, 'walk'>;
+  line: string;
+  color: string;
+  coords: [number, number][];
+  stops: LiveVehicleRouteStop[];
+}
+
 export interface LiveMapScheduleContext {
   dayIndex: DayIndex;
   offsets?: Map<string, number>;
@@ -54,48 +71,22 @@ const MODE_PRIORITY: Record<Exclude<LegMode, 'walk'>, number> = {
   bus: 1,
 };
 
-const TRAM_MAP_BG = '#C62828';
-const BUS_MAP_BG = '#2E7D32';
-const TRAIN_MAP_BG = '#1D4ED8';
-const CABLE_MAP_BG = '#0369A1';
-const SUBWAY_M1_BG = '#1D4ED8';
-const SUBWAY_M2_BG = '#C62828';
-const SUBWAY_FALLBACK_BG = '#4338CA';
-
 /**
- * Kolory pojazdow i przystankow na mapie na zywo (styl zbiorkom.live):
- * czerwone tramwaje, zielone autobusy/trolejbusy, kolory przewoznikow dla kolei.
- * Kazde tlo ma gwarancje kontrastu >= 4.5:1 z wyznaczonym tekstem `fg`.
+ * Kolory pojazdów i przystanków na mapie na żywo współdzielone z LineBadge.
+ * Każde tło ma gwarancję kontrastu >= 4.5:1 z wyznaczonym tekstem `fg`.
  */
 export function getLiveMapModeColors(
   mode: Exclude<LegMode, 'walk'>,
   line: string | undefined,
   cityId: string,
 ): { bg: string; fg: string } {
-  const cleanLine = (line ?? '').trim().toUpperCase();
-  if (mode === 'train') {
-    const agency = inferRailAgencyFromLine(line, cityId);
-    const agencyBg = agency ? getRailAgencyColor(agency) : undefined;
-    const bg = agencyBg || TRAIN_MAP_BG;
-    return { bg, fg: getContrastForeground(bg) };
-  }
-  if (mode === 'subway') {
-    const bg =
-      cleanLine === 'M1' ? SUBWAY_M1_BG : cleanLine === 'M2' ? SUBWAY_M2_BG : SUBWAY_FALLBACK_BG;
-    return { bg, fg: getContrastForeground(bg) };
-  }
-  if (mode === 'cable') {
-    return { bg: CABLE_MAP_BG, fg: getContrastForeground(CABLE_MAP_BG) };
-  }
-  if (mode === 'tram') {
-    return { bg: TRAM_MAP_BG, fg: getContrastForeground(TRAM_MAP_BG) };
-  }
-  return { bg: BUS_MAP_BG, fg: getContrastForeground(BUS_MAP_BG) };
+  const { bg, fg } = resolveLineBadgeIdentity({ mode, line, cityId });
+  return { bg, fg };
 }
 
 /**
- * Laduje wycinek rozkladu na biezace okno czasowe mapy live (z obsluga
- * kursow nocnych po polnocy).
+ * Ładuje wycinek rozkładu na bieżące okno czasowe mapy live (z obsługą
+ * kursów nocnych po północy).
  */
 export async function loadLiveMapSchedule(
   store: LocalGtfsStore = gtfsStore,
@@ -129,8 +120,8 @@ export async function loadLiveMapSchedule(
 }
 
 /**
- * Buduje liste przystankow do rysowania na mapie na zywo wraz z typem
- * dominujacego srodka transportu i kierunkiem odjazdow (jesli slupki sa kierunkowe).
+ * Buduje listę przystanków do rysowania na mapie na żywo wraz z typem
+ * dominującego środka transportu i kierunkiem odjazdów (jeśli słupki są kierunkowe).
  */
 export function buildLiveMapStops(
   store: LocalGtfsStore,
@@ -217,8 +208,8 @@ export function buildLiveMapStops(
 }
 
 /**
- * Zwraca najblizsze odjazdy z wybranego przystanku w horyzoncie 3 godzin,
- * polaczone z danymi live (opoznienia i dopasowane pojazdy).
+ * Zwraca najbliższe odjazdy z wybranego przystanku w horyzoncie 3 godzin,
+ * połączone z danymi live (opóźnienia i dopasowane pojazdy).
  */
 export function getStopDepartureBoard(
   stopId: string,
@@ -308,7 +299,7 @@ export function getStopDepartureBoard(
 
 /**
  * Zwraca kolejne przystanki wraz z prognozowanym czasem odjazdu/przyjazdu
- * dla wybranego pojazdu na podstawie jego dopasowanego kursu GTFS i opoznienia.
+ * dla wybranego pojazdu na podstawie jego dopasowanego kursu GTFS i opóźnienia.
  */
 export function getVehicleUpcomingBoard(
   vehicle: TrackedVehicle,
@@ -375,4 +366,304 @@ export function getVehicleUpcomingBoard(
     });
   }
   return out;
+}
+
+function buildRouteStopsWithProgress(
+  rawStops: Array<{ stopId: string; stopName: string; lat: number; lon: number }>,
+  vehicleLat: number,
+  vehicleLon: number,
+): LiveVehicleRouteStop[] {
+  const coords: [number, number][] = rawStops.map((s) => [s.lat, s.lon]);
+  let nextIdx = 0;
+  if (coords.length >= 2) {
+    const cumDist: number[] = [0];
+    for (let i = 1; i < coords.length; i++) {
+      cumDist.push(
+        cumDist[i - 1] + distanceMeters(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]),
+      );
+    }
+    const proj = projectRoutePoint(coords, vehicleLat, vehicleLon);
+    if (proj) {
+      let passedCoordIdx = 0;
+      for (let i = 0; i < cumDist.length - 1; i++) {
+        if (cumDist[i] <= proj.alongM + 35) passedCoordIdx = i;
+      }
+      nextIdx =
+        passedCoordIdx === 0 && proj.alongM < 30
+          ? 0
+          : Math.min(coords.length - 1, passedCoordIdx + 1);
+    }
+  }
+
+  return rawStops.map((s, idx) => ({
+    stopId: s.stopId,
+    stopName: s.stopName,
+    lat: s.lat,
+    lon: s.lon,
+    passed: idx < nextIdx,
+    isNext: idx === nextIdx,
+  }));
+}
+
+function angleDiffDeg(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/**
+ * Buduje trasę i przystanki wybranego pojazdu z lokalnego GTFS (kurs dopasowany
+ * lub najbliższy wariant linii z aktywnego rozkładu).
+ */
+export function buildSelectedVehicleRoute(
+  vehicle: TrackedVehicle,
+  store: LocalGtfsStore,
+  dayIndex: DayIndex | null,
+  cityId: string,
+  bearing?: number,
+): LiveVehicleRoute | null {
+  const identity = resolveLineBadgeIdentity({ mode: vehicle.type, line: vehicle.line, cityId });
+  const resolvedMode: Exclude<LegMode, 'walk'> =
+    identity.resolvedMode === 'walk' ? vehicle.type : identity.resolvedMode;
+  const line = identity.normalizedLine || vehicle.line || '?';
+  const color = mapLineColor(identity.bg);
+
+  let stopIds: string[] | null = null;
+  let tripId = vehicle.matchedTripId;
+
+  if (tripId) {
+    const times = store.stopTimes.get(tripId);
+    if (times && times.length >= 2) {
+      stopIds = times.map((t) => t.stop_id);
+    }
+  }
+
+  if (!stopIds && dayIndex && vehicle.line) {
+    const targetLine = vehicle.line.trim().toUpperCase();
+    const targetNorm = line.trim().toUpperCase();
+    const nextHint = vehicle.nextStopName?.trim().toLowerCase();
+    let bestScore = Infinity;
+
+    for (const pattern of dayIndex.patterns.values()) {
+      const route = store.routes.get(pattern.routeId);
+      const rLine = (route?.route_short_name || '').trim().toUpperCase();
+      if (!rLine || (rLine !== targetLine && rLine !== targetNorm)) continue;
+      if (pattern.stopSequence.length < 2) continue;
+
+      const coords: [number, number][] = [];
+      for (const sid of pattern.stopSequence) {
+        const st = store.stops.get(sid);
+        if (st && Number.isFinite(st.stop_lat) && Number.isFinite(st.stop_lon)) {
+          coords.push([st.stop_lat, st.stop_lon]);
+        }
+      }
+      if (coords.length < 2) continue;
+      const proj = projectRoutePoint(coords, vehicle.lat, vehicle.lon);
+      if (!proj || proj.offsetM > 400) continue;
+
+      let score = proj.offsetM;
+      if (typeof bearing === 'number' && Number.isFinite(bearing)) {
+        const diff = angleDiffDeg(bearing, proj.heading);
+        if (diff > 105) continue;
+        score += diff * 1.5;
+      }
+      if (nextHint) {
+        const hasNext = pattern.stopSequence.some((sid) =>
+          (store.stops.get(sid)?.stop_name || '').toLowerCase().includes(nextHint),
+        );
+        if (hasNext) score -= 80;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        stopIds = pattern.stopSequence;
+        tripId = pattern.trips[0]?.trip_id;
+      }
+    }
+  }
+
+  if (!stopIds || stopIds.length < 2) return null;
+
+  const rawStops: Array<{ stopId: string; stopName: string; lat: number; lon: number }> = [];
+  for (const sid of stopIds) {
+    const stop = store.stops.get(sid);
+    if (!stop || !Number.isFinite(stop.stop_lat) || !Number.isFinite(stop.stop_lon)) continue;
+    const stopName = (stop.stop_name || '').trim();
+    if (!stopName || isFareBoundary(stopName)) continue;
+    rawStops.push({ stopId: stop.stop_id, stopName, lat: stop.stop_lat, lon: stop.stop_lon });
+  }
+  if (rawStops.length < 2) return null;
+
+  const stops = buildRouteStopsWithProgress(rawStops, vehicle.lat, vehicle.lon);
+  return {
+    tripId,
+    mode: resolvedMode,
+    line,
+    color,
+    coords: stops.map((s) => [s.lat, s.lon]),
+    stops,
+  };
+}
+
+/**
+ * Rozwiązuje trasę oraz tablicę kolejnych stacji dla pociągów krajowych (PLK/Polska DB),
+ * gdy kurs nie występuje w lokalnym rozkładzie miejskim.
+ */
+export async function resolveNationalTrainVehicleRoute(
+  vehicle: TrackedVehicle,
+  cityId: string,
+  nowSec: number,
+  signal?: AbortSignal,
+): Promise<{ route: LiveVehicleRoute; upcoming: VehicleStopEta[] } | null> {
+  if (signal?.aborted) return null;
+  const identity = resolveLineBadgeIdentity({ mode: vehicle.type, line: vehicle.line, cityId });
+  if (identity.resolvedMode !== 'train') return null;
+
+  try {
+    const { getNationalDb } = await import('./gtfsDatabase');
+    const db = await getNationalDb();
+    if (signal?.aborted) return null;
+
+    let tripId: string | null = null;
+    let shapeId: string | null = null;
+
+    if (vehicle.matchedTripId) {
+      const cleanId = vehicle.matchedTripId.replace(/^pl:/, '');
+      const row = await db.getFirstAsync<{ trip_id: string; shape: string }>(
+        'SELECT trip_id, shape FROM trips WHERE trip_id = ? OR trip_id = ? OR trip_id = ? LIMIT 1',
+        vehicle.matchedTripId,
+        cleanId,
+        `pl:${cleanId}`,
+      );
+      if (row) {
+        tripId = row.trip_id;
+        shapeId = row.shape ? row.shape.replace(/^pl:/, '') : null;
+      }
+    }
+
+    if (!tripId) {
+      const numMatch = `${vehicle.line} ${vehicle.vehicleId}`.match(/\b(\d{3,6}(?:\/\d+)?)\b/);
+      if (numMatch) {
+        const candidates = await db.getAllAsync<{ trip_id: string; shape: string }>(
+          'SELECT trip_id, shape FROM trips WHERE train_number = ? OR train_number LIKE ? LIMIT 12',
+          numMatch[1],
+          `${numMatch[1]}/%`,
+        );
+        const nextHint = vehicle.nextStopName?.trim().toLowerCase();
+        const curHint = vehicle.currentStopName?.trim().toLowerCase();
+        let bestScore = Infinity;
+        for (const cand of candidates) {
+          if (signal?.aborted) return null;
+          const stRows = await db.getAllAsync<{ name: string; lat: number; lon: number }>(
+            'SELECT s.name, s.lat, s.lon FROM stop_times st JOIN stops s ON s.stop_id = st.stop_id WHERE st.trip_id = ? ORDER BY st.seq',
+            cand.trip_id,
+          );
+          if (stRows.length < 2) continue;
+          const proj = projectRoutePoint(
+            stRows.map((r) => [r.lat, r.lon] as [number, number]),
+            vehicle.lat,
+            vehicle.lon,
+          );
+          if (!proj || proj.offsetM > 15000) continue;
+          let score = proj.offsetM;
+          if (nextHint && stRows.some((r) => r.name.toLowerCase().includes(nextHint))) {
+            score -= 2000;
+          }
+          if (curHint && stRows.some((r) => r.name.toLowerCase().includes(curHint))) {
+            score -= 1000;
+          }
+          if (cand.shape) score -= 200;
+          if (score < bestScore) {
+            bestScore = score;
+            tripId = cand.trip_id;
+            shapeId = cand.shape ? cand.shape.replace(/^pl:/, '') : null;
+          }
+        }
+      }
+    }
+
+    if (!tripId || signal?.aborted) return null;
+
+    const rows = await db.getAllAsync<{
+      stop_id: string;
+      name: string;
+      lat: number;
+      lon: number;
+      arrival_sec: number;
+      departure_sec: number;
+    }>(
+      `SELECT st.stop_id, s.name, s.lat, s.lon, st.arr_sec AS arrival_sec, st.dep_sec AS departure_sec
+       FROM stop_times st
+       JOIN stops s ON s.stop_id = st.stop_id
+       WHERE st.trip_id = ?
+       ORDER BY st.seq`,
+      tripId,
+    );
+    if (rows.length < 2 || signal?.aborted) return null;
+
+    const rawStops = rows
+      .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.name)
+      .map((r) => ({
+        stopId: `pl:${r.stop_id}`,
+        stopName: r.name,
+        lat: r.lat,
+        lon: r.lon,
+      }));
+    if (rawStops.length < 2) return null;
+
+    const stops = buildRouteStopsWithProgress(rawStops, vehicle.lat, vehicle.lon);
+    const nextIdx = Math.max(
+      0,
+      stops.findIndex((s) => s.isNext),
+    );
+    const delaySec = vehicle.delaySec ?? 0;
+    const delayMin = vehicle.delaySec != null ? Math.round(vehicle.delaySec / 60) : null;
+    const lastDep = rows[rows.length - 1]?.departure_sec ?? 0;
+    const offset = nowSec < 7 * 3600 && lastDep >= 24 * 3600 ? -86400 : 0;
+
+    const upcoming: VehicleStopEta[] = [];
+    for (let i = nextIdx; i < rows.length; i++) {
+      const r = rows[i];
+      const rawSec = i === rows.length - 1 ? r.arrival_sec : r.departure_sec;
+      const scheduledSec = rawSec + offset;
+      upcoming.push({
+        stopId: `pl:${r.stop_id}`,
+        stopName: r.name,
+        scheduledSec,
+        expectedSec: scheduledSec + delaySec,
+        delayMin,
+        isNext: upcoming.length === 0,
+      });
+    }
+
+    const line = identity.normalizedLine || vehicle.line || '?';
+    const color = mapLineColor(identity.bg);
+    let coords: [number, number][] = stops.map((s) => [s.lat, s.lon]);
+
+    const fullTripId = tripId.startsWith('pl:') ? tripId : `pl:${tripId}`;
+    const { resolveLiveVehicleRouteGeometry } = await import('./routeGeometry');
+    const geom = await resolveLiveVehicleRouteGeometry({
+      mode: 'train',
+      line,
+      tripId: shapeId ? fullTripId : fullTripId,
+      color,
+      stops: stops.map((s) => ({ id: s.stopId, name: s.stopName, lat: s.lat, lon: s.lon })),
+      signal,
+    });
+    if (geom && geom.length >= 2) {
+      coords = geom;
+    }
+
+    return {
+      route: {
+        tripId: fullTripId,
+        mode: 'train',
+        line,
+        color,
+        coords,
+        stops,
+      },
+      upcoming,
+    };
+  } catch {
+    return null;
+  }
 }

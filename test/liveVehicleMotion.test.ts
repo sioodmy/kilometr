@@ -23,6 +23,7 @@ interface MotionController {
       lat: number;
       lon: number;
       bearing?: number;
+      bearingExact?: boolean;
       delaySec: number | null;
       updatedAt?: number;
     }>,
@@ -51,6 +52,7 @@ function makeVehicle(overrides: Partial<{
   lat: number;
   lon: number;
   bearing: number;
+  bearingExact: boolean;
   updatedAt: number;
 }> = {}) {
   return {
@@ -62,6 +64,7 @@ function makeVehicle(overrides: Partial<{
     lat: overrides.lat ?? 51.11,
     lon: overrides.lon ?? 17.03,
     bearing: overrides.bearing,
+    bearingExact: overrides.bearingExact,
     delaySec: 0,
     updatedAt: overrides.updatedAt ?? 1000,
   };
@@ -266,15 +269,45 @@ test('stepFrame filtruje pojazdy do widocznego viewportu, ale zachowuje wybrany 
   assert.equal(frame.animating, false);
 });
 
-test('buildLiveVehiclesMapDocument osadza poprawny skrypt ruchu pojazdow', () => {
+test('buildLiveVehiclesMapDocument osadza skrypt ruchu, warstwy trasy pojazdu i ikony przewoznikow', () => {
   const html = buildLiveVehiclesMapDocument({
     center: [17.0385, 51.1079],
     vehicles: [makeVehicle()],
     stops: [],
     selectedId: null,
     selectedStopId: null,
+    selectedRoute: {
+      color: '#1565C0',
+      coords: [
+        [51.11, 17.03],
+        [51.112, 17.035],
+      ],
+      stops: [
+        { id: 'S1', name: 'Start', lat: 51.11, lon: 17.03, passed: true, isNext: false },
+        { id: 'S2', name: 'Koniec', lat: 51.112, lon: 17.035, passed: false, isNext: true },
+      ],
+    },
     userPos: null,
   });
   assert.ok(html.includes('createVehicleMotionController'));
   assert.ok(html.includes('paddedViewportBounds'));
+  assert.ok(html.includes('live-selected-route-line'));
+  assert.ok(html.includes('live-selected-stop'));
+  assert.ok(html.includes('drawOrbitDirectionArrow'));
+  assert.ok(html.includes('RAIL_SPECS'));
+});
+
+test('dokladny kierunek z geometrii (bearingExact) aktualizuje stojacy pojazd i utrzymuje zakret', () => {
+  const ctrl = createController();
+  ctrl.ingest([makeVehicle({ id: 'IC-100', lat: 51.11, lon: 17.03, bearing: 90, updatedAt: 10_000 })], 10_000);
+  // Asynchronicznie doczytany shape PLK z ta sama probka powinien poprawic kierunek bez ruchu
+  ctrl.ingest([makeVehicle({ id: 'IC-100', lat: 51.11, lon: 17.03, bearing: 42, bearingExact: true, updatedAt: 10_000 })], 10_200);
+  const fIdle = ctrl.stepFrame(10_200, null, null);
+  assert.equal(fIdle.animating, false);
+  assert.equal(fIdle.items[0].bearing, 42);
+
+  // Na ciasnym luku (> 100 deg wzgledem cieciwy) bearingExact nie powinien byc nadpisany przez moveB
+  ctrl.ingest([makeVehicle({ id: 'IC-100', lat: 51.1103, lon: 17.0303, bearing: 175, bearingExact: true, updatedAt: 15_000 })], 15_000);
+  const fCurve = ctrl.stepFrame(20_000, null, null);
+  assert.equal(fCurve.items[0].bearing, 175);
 });

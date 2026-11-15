@@ -1,13 +1,13 @@
-// Silnik plynnej interpolacji pozycji pojazdow na mapie WebView:
-// - brak ekstrapolacji w ciemno i tlumienie drobnego cofania GPS (anti-backtrack),
-// - wykrywanie skrzyzowan z warstw wektorowych drog/torow w MapLibre,
-// - realistyczne zwalnianie i krotkie zatrzymania przed skrzyzowaniami przy niskiej predkosci,
+// Silnik płynnej interpolacji pozycji pojazdów na mapie WebView:
+// - brak ekstrapolacji w ciemno i tłumienie drobnego cofania GPS (anti-backtrack),
+// - wykrywanie skrzyżowań z warstw wektorowych dróg/torów w MapLibre,
+// - realistyczne zwalnianie i krótkie zatrzymania przed skrzyżowaniami przy niskiej prędkości,
 // - filtrowanie klatki do poszerzonego widoku kamery (viewport + margines).
 
 /**
- * Kod wykonywany bezposrednio w WebView (ES5/ES6 bez zewnetrznych zaleznosci).
- * Udostepnia fabryke `createVehicleMotionController()` uzywana przez dokument mapy
- * oraz bezposrednio testowana w srodowisku Node przez `node:vm`.
+ * Kod wykonywany bezpośrednio w WebView (ES5/ES6 bez zewnętrznych zależności).
+ * Udostępnia fabrykę `createVehicleMotionController()` używaną przez dokument mapy
+ * oraz bezpośrednio testowaną w środowisku Node przez `node:vm`.
  */
 export const LIVE_VEHICLE_MOTION_SCRIPT = [
   'function createVehicleMotionController() {',
@@ -295,6 +295,7 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '      nextOrder.push(v.id);',
   '      var sampleAt = typeof v.updatedAt === "number" && isFinite(v.updatedAt) ? v.updatedAt : nowMs;',
   '      var vBearing = typeof v.bearing === "number" && isFinite(v.bearing) ? v.bearing : NaN;',
+  '      var vExact = v.bearingExact === true;',
   '      var st = states[v.id];',
   '      if (!st) {',
   '        states[v.id] = {',
@@ -303,6 +304,7 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '          mode: v.mode,',
   '          bg: v.bg,',
   '          fg: v.fg,',
+  '          railAgency: v.railAgency,',
   '          delaySec: v.delaySec,',
   '          lat: v.lat,',
   '          lon: v.lon,',
@@ -330,15 +332,20 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '      st.mode = v.mode;',
   '      st.bg = v.bg;',
   '      st.fg = v.fg;',
+  '      st.railAgency = v.railAgency;',
   '      st.delaySec = v.delaySec;',
   '      st.lastSeenMs = nowMs;',
   '',
   '      var sameSample = st.lastSampleAt === sampleAt && distMeters(st.lastSampleLat, st.lastSampleLon, v.lat, v.lon) < 0.5;',
   '      if (sameSample) {',
-  '        if (!isFinite(st.bearing) && isFinite(vBearing)) {',
-  '          st.bearing = vBearing;',
-  '          st.startBearing = vBearing;',
-  '          st.targetBearing = vBearing;',
+  '        if (isFinite(vBearing)) {',
+  '          var curTarget = isFinite(st.targetBearing) ? st.targetBearing : st.bearing;',
+  '          var minDelta = vExact ? 2 : 5;',
+  '          if (!isFinite(curTarget) || angleDiffDeg(curTarget, vBearing) >= minDelta) {',
+  '            st.bearing = vBearing;',
+  '            st.startBearing = vBearing;',
+  '            st.targetBearing = vBearing;',
+  '          }',
   '        }',
   '        continue;',
   '      }',
@@ -377,10 +384,13 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '        st.animDurationMs = 0;',
   '        st.speedMps *= 0.35;',
   '        st.pause = null;',
-  '        if (!isFinite(st.bearing) && isFinite(vBearing)) {',
-  '          st.bearing = vBearing;',
-  '          st.startBearing = vBearing;',
-  '          st.targetBearing = vBearing;',
+  '        if (isFinite(vBearing)) {',
+  '          var curIdleB = isFinite(st.targetBearing) ? st.targetBearing : st.bearing;',
+  '          if (!isFinite(curIdleB) || angleDiffDeg(curIdleB, vBearing) >= (vExact ? 2 : 5)) {',
+  '            st.bearing = vBearing;',
+  '            st.startBearing = vBearing;',
+  '            st.targetBearing = vBearing;',
+  '          }',
   '        }',
   '        continue;',
   '      }',
@@ -409,7 +419,8 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '        st.animDurationMs = 0;',
   '        st.speedMps = 0;',
   '        st.pause = null;',
-  '        var snapB = isFinite(vBearing) ? vBearing : refBearing;',
+  '        var teleMoveB = d >= 4 ? bearingDeg(dispLat, dispLon, v.lat, v.lon) : refBearing;',
+  '        var snapB = isFinite(vBearing) ? vBearing : (isFinite(teleMoveB) ? teleMoveB : refBearing);',
   '        st.bearing = snapB;',
   '        st.startBearing = snapB;',
   '        st.targetBearing = snapB;',
@@ -425,7 +436,7 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '      st.speedMps = st.speedMps > 0 ? st.speedMps * 0.35 + segSpeed * 0.65 : segSpeed;',
   '',
   '      var moveB = d >= 4 ? bearingDeg(dispLat, dispLon, v.lat, v.lon) : refBearing;',
-  '      var nextBearing = isFinite(vBearing) && (!isFinite(moveB) || angleDiffDeg(vBearing, moveB) < 75 || d < 12) ? vBearing : moveB;',
+  '      var nextBearing = isFinite(vBearing) && (vExact || isTurnaround || !isFinite(moveB) || angleDiffDeg(vBearing, moveB) < 95 || d < 12) ? vBearing : moveB;',
   '      st.startBearing = isFinite(st.bearing) ? st.bearing : nextBearing;',
   '      st.targetBearing = isFinite(nextBearing) ? nextBearing : st.startBearing;',
   '',
@@ -472,6 +483,7 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '        mode: st.mode,',
   '        bg: st.bg,',
   '        fg: st.fg,',
+  '        railAgency: st.railAgency,',
   '        lat: st.lat,',
   '        lon: st.lon,',
   '        bearing: isFinite(st.bearing) ? st.bearing : undefined,',
