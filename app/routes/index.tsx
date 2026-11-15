@@ -276,12 +276,13 @@ export default function RoutesScreen() {
   }, [activeAnchor]);
 
   const handleDismissBoarded = useCallback(() => {
-    startSelGen.current++;
+    const gen = ++startSelGen.current;
     setBoardedTrip(null);
     setItems([]);
     setLoading(true);
     void LocationService.getCurrentLocation()
       .then((loc) => {
+        if (gen !== startSelGen.current) return;
         if (isOutsideServiceArea(loc.lat, loc.lon)) {
           setFromTitle(cityDef.title);
           setFromLat(cityDef.lat);
@@ -296,7 +297,7 @@ export default function RoutesScreen() {
         setFromLon(loc.lon);
       })
       .catch(() => {
-        setGpsOrigin(false);
+        if (gen === startSelGen.current) setGpsOrigin(false);
       });
   }, [cityDef.lat, cityDef.lon, cityDef.title]);
 

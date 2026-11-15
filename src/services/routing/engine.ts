@@ -838,20 +838,27 @@ async function planFromBoardedTrip(
   const rawDelaySec = tripDelays.get(boarded.tripId) ?? 0;
   const delayRefSec = options.departureTimeSec !== undefined ? searchStartSec : currentSec;
 
+  // stop_times mogą mieć godziny 24:xx+ (nocny kurs z poprzedniej doby).
+  // Sprowadź cały kurs do doby punktu startowego, inaczej porównania z
+  // searchStartSec (0..86399) dają przyjazd +1 dzień i ogromny czas podróży.
+  const firstSchedSec = tripStops[0].arriveSec ?? tripStops[0].departSec ?? searchStartSec;
+  const tripDayShiftSec = Math.round((searchStartSec - firstSchedSec) / 86400) * 86400;
+  const delayRefTripSec = delayRefSec + tripDayShiftSec;
+
   const effArr: number[] = [];
   const effDep: number[] = [];
   for (let i = 0; i < tripStops.length; i++) {
     const st = tripStops[i];
-    const schedArr = st.arriveSec ?? st.departSec ?? searchStartSec;
-    const schedDep = st.departSec ?? st.arriveSec ?? searchStartSec;
+    const schedArr = (st.arriveSec ?? st.departSec ?? searchStartSec) + tripDayShiftSec;
+    const schedDep = (st.departSec ?? st.arriveSec ?? searchStartSec) + tripDayShiftSec;
     let a =
       rawDelaySec === 0
         ? schedArr
-        : schedArr + predictDelaySec(rawDelaySec, schedArr - (delayRefSec - rawDelaySec), "arrive", mode);
+        : schedArr + predictDelaySec(rawDelaySec, schedArr - (delayRefTripSec - rawDelaySec), "arrive", mode);
     let d =
       rawDelaySec === 0
         ? schedDep
-        : schedDep + predictDelaySec(rawDelaySec, schedDep - (delayRefSec - rawDelaySec), "board", mode);
+        : schedDep + predictDelaySec(rawDelaySec, schedDep - (delayRefTripSec - rawDelaySec), "board", mode);
     if (i > 0) {
       a = Math.max(a, effArr[i - 1]);
       d = Math.max(d, a);
@@ -1206,10 +1213,16 @@ async function planFromBoardedTrip(
   }
   const deduped = deduplicateConnections(connections);
   sortConnectionsByCost(deduped, userWalkSpeed, undefined, cost);
-  if (options.onProgress && deduped.length > 0) {
-    options.onProgress(deduped);
+  // "Bądź na" obowiązuje też z pokładu: odrzuć przyjazdy po terminie.
+  const arriveBySec = options.arriveBySec;
+  const result =
+    arriveBySec !== undefined && Number.isFinite(arriveBySec)
+      ? deduped.filter((c) => (c.arrivalSec ?? Infinity) <= arriveBySec)
+      : deduped;
+  if (options.onProgress && result.length > 0) {
+    options.onProgress(result);
   }
-  return deduped;
+  return result;
 }
 
 export async function planConnections(
