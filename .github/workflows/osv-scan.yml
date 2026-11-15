@@ -19,6 +19,10 @@ permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: osv-scan-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   scan-pr:
     if: github.event_name == 'pull_request'

@@ -1,0 +1,31 @@
+name: Setup Node.js for CI
+description: Installs Node.js with npm cache and runs npm ci.
+
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: '22'
+  install:
+    description: Whether to run npm ci in repository root
+    required: false
+    default: 'true'
+  cache-dependency-path:
+    description: Lockfile pattern for npm cache
+    required: false
+    default: 'package-lock.json'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Install root Node dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      run: npm ci

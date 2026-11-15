@@ -371,7 +371,7 @@ export function mapLineColor(bg: string): string {
 }
 
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
-export function getContrastForeground(bg: string): string {
+function getContrastForeground(bg: string): string {
   const lum = relativeLuminance(bg) ?? 0;
   const whiteContrast = 1.05 / (lum + 0.05);
   const blackContrast = (lum + 0.05) / 0.05;

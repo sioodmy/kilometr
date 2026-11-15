@@ -1,7 +1,7 @@
 import { G, Path, Svg } from 'react-native-svg';
-import { isRailAgency, RAIL_ICON_SPECS, type RailAgency } from '../services/railIconPaths';
+import { isRailAgency, RAIL_ICON_SPECS } from '../services/railIconPaths';
 
-export { isRailAgency, type RailAgency };
+export { isRailAgency };
 
 export function RailIcon({
   agency,

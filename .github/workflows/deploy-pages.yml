@@ -29,25 +29,21 @@ jobs:
   build-pages:
     name: Build Landing Page
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v6
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
         with:
-          node-version: 22
-          cache: 'npm'
           cache-dependency-path: |
             package-lock.json
             landing/package-lock.json
 
-      - name: Install dependencies
-        run: |
-          set -euo pipefail
-          npm ci
-          npm --prefix landing ci
+      - name: Install landing dependencies
+        run: npm --prefix landing ci
 
       - name: Export share timetables (best effort)
         continue-on-error: true
@@ -74,6 +70,7 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: build-pages
     environment:
       name: github-pages
