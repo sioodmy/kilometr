@@ -1584,6 +1584,18 @@ export const pl = {
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Udogodnienia: ${list}`,
   },
+  stationAmenities: {
+    toilets: 'Toaleta',
+    gastronomy: 'Gastronomia',
+    shop: 'Sklep',
+    cafe: 'Kawiarnia',
+    bakery: 'Piekarnia',
+    pharmacy: 'Apteka',
+    atm: 'Bankomat',
+    luggage: 'Przechowalnia bagażu',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `Na dworcu: ${list}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
     fallbackLine: 'Pociąg',

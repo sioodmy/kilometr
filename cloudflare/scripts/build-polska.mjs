@@ -45,7 +45,7 @@ const UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilome
 const PUBLIC_URL = process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app';
 /** Rewizja schematu bazy: podbicie wymusza re-download na telefonach
  *  (wersja z fingerprintu feedu nie zmienia się, dopóki PLK nie ruszy rozkładu). */
-const SCHEMA_REV = 4;
+const SCHEMA_REV = 5;
 
 const FORCE = new Set(process.argv.slice(2)).has('--force');
 
@@ -53,7 +53,7 @@ function log(msg) {
   console.log(`[polska] ${msg}`);
 }
 
-/* ─── CSV (quote-aware, jak src/gtfs/csv.ts) ─────────────────────────── */
+/* ─── CSV (quote-aware, jak src/gtfs/csv.ts) ───────────────────────────── */
 
 function parseCsvLine(line) {
   const out = [];
@@ -100,7 +100,7 @@ function normalizePolish(s) {
   return String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/ł/g, 'l')
     .replace(/Ł/g, 'l')
     .trim();
@@ -113,7 +113,7 @@ function hmsToSec(hms) {
   return (Number(p[0]) || 0) * 3600 + (Number(p[1]) || 0) * 60 + (Number(p[2]) || 0);
 }
 
-/* ─── Udogodnienia składu (vagonweb) ──────────────────────────────────── */
+/* ─── Udogodnienia składu (vagonweb) ────────────────────────────────────── */
 
 /**
  * Kolejność bitów w trip_amenities.bits. Musi być identyczna z
@@ -135,6 +135,22 @@ const AMENITY_ORDER = [
 ];
 
 /**
+ * Kolejność bitów w station_amenities.bits. Musi być identyczna z
+ * STATION_AMENITY_ORDER w src/services/stationAmenities.ts oraz
+ * cloudflare/scripts/build-station-amenities.mjs.
+ */
+const STATION_AMENITY_ORDER = [
+  'toilets',
+  'gastronomy',
+  'shop',
+  'cafe',
+  'bakery',
+  'pharmacy',
+  'atm',
+  'luggage',
+];
+
+/**
  * Kod przewoźnika vagonweb -> agency_id feedu PLK. Ta sama mapa jest
  * w scripts/vagonweb/scrape_vagonweb.py (VAGONWEB_AGENCY).
  */
@@ -152,6 +168,15 @@ function encodeAmenities(keys) {
   let bits = 0;
   for (const key of keys || []) {
     const i = AMENITY_ORDER.indexOf(key);
+    if (i >= 0) bits |= 1 << i;
+  }
+  return bits;
+}
+
+function encodeStationAmenities(keys) {
+  let bits = 0;
+  for (const key of keys || []) {
+    const i = STATION_AMENITY_ORDER.indexOf(key);
     if (i >= 0) bits |= 1 << i;
   }
   return bits;
@@ -185,7 +210,28 @@ function readAmenitiesFile() {
   return byKey;
 }
 
-/* ─── HTTP ────────────────────────────────────────────────────────────── */
+/**
+ * Wczytuje cloudflare/data/station-amenities.json (udogodnienia OSM w promieniu 50 m)
+ * i zwraca mapę `stop_id` -> maska bitowa. Brak pliku nie przerywa buildu.
+ */
+function readStationAmenitiesFile() {
+  const file = join(DATA, 'station-amenities.json');
+  if (!existsSync(file)) {
+    log('brak data/station-amenities.json - buduję bez udogodnień dworca');
+    return null;
+  }
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  const byStop = new Map();
+  for (const [rawId, keys] of Object.entries(raw.stations || {})) {
+    const id = rawId.startsWith('pl:') ? rawId.slice(3) : rawId;
+    const bits = encodeStationAmenities(keys);
+    if (id && bits) byStop.set(id, bits);
+  }
+  log(`udogodnienia dworców: ${byStop.size} stacji z pliku`);
+  return byStop;
+}
+
+/* ─── HTTP ──────────────────────────────────────────────────────────────── */
 
 async function headVersion(url) {
   try {
@@ -280,9 +326,13 @@ CREATE TABLE trip_amenities (
   bits INTEGER NOT NULL,
   numbers TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE station_amenities (
+  stop_id TEXT PRIMARY KEY NOT NULL,
+  bits INTEGER NOT NULL
+);
 `;
 
-/* ─── Build ───────────────────────────────────────────────────────────── */
+/* ─── Build ─────────────────────────────────────────────────────────────── */
 
 async function main() {
   mkdirSync(DIST, { recursive: true });
@@ -560,6 +610,24 @@ async function main() {
     }
     db.exec('COMMIT');
     log(`udogodnienia: dopasowano ${matched} kursów`);
+  }
+
+  // 5c. Udogodnienia dworców (OSM w promieniu 50 m od stacji / budynku dworca).
+  const stationAmenities = readStationAmenitiesFile();
+  if (stationAmenities) {
+    const insStationAmenity = db.prepare(
+      'INSERT OR REPLACE INTO station_amenities (stop_id, bits) VALUES (?, ?)',
+    );
+    let matchedStations = 0;
+    db.exec('BEGIN');
+    for (const [id] of stations) {
+      const bits = stationAmenities.get(id);
+      if (!bits) continue;
+      insStationAmenity.run(`pl:${id}`, bits);
+      matchedStations++;
+    }
+    db.exec('COMMIT');
+    log(`udogodnienia dworców: dopasowano ${matchedStations} stacji`);
   }
 
   // 6. Wagi stacji (ranking wyszukiwarki: liczba odjazdów).
@@ -843,7 +911,13 @@ async function main() {
 }
 
 // Eksporty dla testów; uruchomienie buildu tylko przy bezpośrednim wywołaniu.
-export { AMENITY_ORDER, VAGONWEB_AGENCY, encodeAmenities };
+export {
+  AMENITY_ORDER,
+  STATION_AMENITY_ORDER,
+  VAGONWEB_AGENCY,
+  encodeAmenities,
+  encodeStationAmenities,
+};
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((err) => {
