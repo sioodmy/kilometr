@@ -197,6 +197,9 @@ export default function LiveVehiclesMapScreen() {
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
+  // Bez sieci pierwszy poll live nigdy nie kończy się sukcesem, więc bez
+  // timeoutu spinner "Ładowanie pojazdów" wisiałby w nieskończoność.
+  const [liveWaitExpired, setLiveWaitExpired] = useState(false);
   const offlinePillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const motionRef = useRef(
     new Map<string, { lat: number; lon: number; bearing?: number }>(),
@@ -207,6 +210,8 @@ export default function LiveVehiclesMapScreen() {
       liveTracker.acquire();
       let cancelled = false;
       const newsController = new AbortController();
+      setLiveWaitExpired(false);
+      const liveWaitTimer = setTimeout(() => setLiveWaitExpired(true), 12000);
 
       void loadLiveMapSchedule()
         .then((ctx) => {
@@ -262,6 +267,7 @@ export default function LiveVehiclesMapScreen() {
         cancelled = true;
         newsController.abort();
         clearInterval(clock);
+        clearTimeout(liveWaitTimer);
         unsubNews();
         unsub();
         liveTracker.release();
@@ -583,7 +589,7 @@ export default function LiveVehiclesMapScreen() {
   }, []);
 
   const liveState = liveTracker.getLiveState();
-  const isInitialLoading = vehicles.length === 0 && liveState === 'unknown';
+  const isInitialLoading = vehicles.length === 0 && liveState === 'unknown' && !liveWaitExpired;
   const hasSheet = Boolean((selectedVehicle && selectedMeta) || selectedStop || selectedDisruption);
 
   const severityLabel = useCallback(

@@ -61,8 +61,8 @@ export type LiveMapInMessage =
     }
   | {
       t: 'user';
-      lat: number;
-      lon: number;
+      lat: number | null;
+      lon: number | null;
     }
   | {
       t: 'center';
@@ -892,7 +892,10 @@ const runtime = [
   '    return;',
   '  }',
   '  if (msg.t === "user") {',
-  '    if (isFinite(msg.lon) && isFinite(msg.lat)) {',
+  '    if (msg.lat === null || msg.lon === null) {',
+  '      userPos = null;',
+  '      drawUser();',
+  '    } else if (isFinite(msg.lon) && isFinite(msg.lat)) {',
   '      userPos = [msg.lon, msg.lat];',
   '      drawUser();',
   '    }',
@@ -946,10 +949,13 @@ const runtime = [
   '      if (loadFailures >= 6 && !tilesDown) { tilesDown = true; post({ t: "tiles", ok: false }); }',
   '    }',
   '  });',
+  '  map.on("data", function (e) {',
+  '    if (!e || !e.tile) return;',
+  '    loadFailures = 0;',
+  '    if (tilesDown) { tilesDown = false; post({ t: "tiles", ok: true }); }',
+  '  });',
   '  map.on("idle", function () {',
-  '    tilesDown = false; loadFailures = 0;',
   '    scheduleIntersectionsRebuild();',
-  '    post({ t: "tiles", ok: true });',
   '  });',
   '  map.on("moveend", function () {',
   '    if (!styleReady) return;',
