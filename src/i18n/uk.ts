@@ -1451,6 +1451,16 @@ export const uk: Strings = {
     ) =>
       `${dep}, час їзди ${formatDuration(dur)}, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
+    riskyTransferA11y: (stop: string, min: number) =>
+      min <= 0
+        ? `Ризикована пересадка на зупинці ${stop}, менше хвилини запасу`
+        : `Ризикована пересадка на зупинці ${stop}, ${min} хв запасу`,
+    longWalkA11y: (min: number) => `Потрібно довше йти пішки до мети: ${min} хв`,
+    onTimeBadge: 'вчасно',
+    plannedShort: (time: string) => `(план. ${time})`,
+    fromStopLabel: (stop: string) => `від: ${stop}`,
+    exitStopLabel: (stop: string) => `вихід: ${stop}`,
+    finalWalkPill: (min: number) => `${min}' до мети`,
   },
   vehiclePos: {
     noRoute: 'Немає даних про маршрут',

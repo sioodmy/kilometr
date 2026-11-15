@@ -1297,6 +1297,16 @@ export const de: Strings = {
     ) =>
       `${dep}, Fahrzeit ${formatDuration(dur)}, Abfahrt ${depAt}, Ankunft ${arrAt}, ${via}${lines ? `, Linien ${lines}` : ''}`,
     walkRoute: 'Fußweg',
+    riskyTransferA11y: (stop: string, min: number) =>
+      min <= 0
+        ? `Knapper Umstieg an ${stop}, weniger als 1 Minute Puffer`
+        : `Knapper Umstieg an ${stop}, ${min} Min. Puffer`,
+    longWalkA11y: (min: number) => `Längerer Fußweg zum Ziel nötig: ${min} Min.`,
+    onTimeBadge: 'pünktlich',
+    plannedShort: (time: string) => `(planm. ${time})`,
+    fromStopLabel: (stop: string) => `ab: ${stop}`,
+    exitStopLabel: (stop: string) => `Ausstieg: ${stop}`,
+    finalWalkPill: (min: number) => `${min}' zum Ziel`,
   },
   vehiclePos: {
     noRoute: 'Keine Routendaten',
