@@ -117,12 +117,16 @@ function makeItem(alert: Partial<DisruptionAlert>, id = 'a1'): MpkNewsItem {
   };
 }
 
-test('pomija utrudnienia rozwiązane, nieoperacyjne oraz wygasłe', () => {
+test('pomija utrudnienia rozwiązane, nieoperacyjne, przyszłe oraz wygasłe', () => {
   const now = Date.parse('2026-11-15T12:00:00Z');
   assert.equal(isDisruptionActiveForMap(makeItem({ is_resolved: true }).disruption, now), false);
   assert.equal(isDisruptionActiveForMap(makeItem({ is_transit_alert: false }).disruption, now), false);
   assert.equal(
     isDisruptionActiveForMap(makeItem({ valid_to: '2026-11-15T10:00:00Z' }).disruption, now),
+    false,
+  );
+  assert.equal(
+    isDisruptionActiveForMap(makeItem({ valid_from: '2026-11-16T08:00:00Z' }).disruption, now),
     false,
   );
   assert.equal(isDisruptionActiveForMap(makeItem({}).disruption, now), true);

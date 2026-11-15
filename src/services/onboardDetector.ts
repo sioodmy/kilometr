@@ -181,6 +181,7 @@ export function detectBoardedVehicles(
   for (const v of vehicles) {
     const tripId = v.matchedTripId;
     if (!tripId) continue;
+    if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) continue;
     const directDist = distanceMeters(location.lat, location.lon, v.lat, v.lon);
     if (directDist > 850) continue;
 
@@ -276,6 +277,7 @@ export function findNearbyLiveVehicles(
   for (const v of vehicles) {
     const tripId = v.matchedTripId;
     if (!tripId) continue;
+    if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) continue;
     const d = Math.round(distanceMeters(lat, lon, v.lat, v.lon));
     if (d > maxDistM) continue;
     const poly = buildTripPolyline(tripId, store);
