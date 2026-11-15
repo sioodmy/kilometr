@@ -471,6 +471,12 @@ jobs:
     name: Build Play AAB
     needs: prepare
     if: needs.prepare.outputs.build_aab == 'true'
+    # Wywoływany workflow nie może podnieść uprawnień ponad job wywołujący;
+    # bez tego wpisu dostaje domyślne read i publikacja AAB pada jeszcze
+    # przed startem pierwszym krokiem.
+    permissions:
+      contents: write
+      actions: read
     uses: ./.github/workflows/build-aab.yml
     with:
       arch: ${{ needs.prepare.outputs.arch }}
