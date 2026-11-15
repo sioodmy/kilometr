@@ -261,6 +261,33 @@ export function useWalkSpeedMps(): number {
   return mps;
 }
 
+/**
+ * Minimalne bufory przesiadek z ustawień użytkownika. Lekka subskrypcja
+ * dla kart połączeń oceniających ryzyko przesiadek bez zbędnych odczytów storage.
+ */
+export function useTransferThresholds(): { minTransferSec: number; trainMinTransferSec: number } {
+  const [thresholds, setThresholds] = useState(() => ({
+    minTransferSec: cached.minTransferSec,
+    trainMinTransferSec: cached.trainMinTransferSec,
+  }));
+
+  useEffect(() => {
+    const onChange = (s: RoutingSettings) =>
+      setThresholds((prev) =>
+        prev.minTransferSec === s.minTransferSec &&
+        prev.trainMinTransferSec === s.trainMinTransferSec
+          ? prev
+          : { minTransferSec: s.minTransferSec, trainMinTransferSec: s.trainMinTransferSec },
+      );
+    listeners.add(onChange);
+    return () => {
+      listeners.delete(onChange);
+    };
+  }, []);
+
+  return thresholds;
+}
+
 /** Metry przechodzone w minucie dla danego tempa (1,34 m/s to ok. 80 m/min). */
 function walkMetersPerMinute(speedMps: number = WALK_PACE_DEFAULTS_MPS.normal): number {
   return Math.max(1, speedMps * 60);

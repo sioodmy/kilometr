@@ -21,6 +21,21 @@ export interface LinePattern {
   stops: LineStop[];
 }
 
+export interface LineTimetableLookupOptions {
+  tripId?: string;
+  line?: string;
+  mode?: LegMode;
+  dbTarget?: string;
+}
+
+export interface LinePatternHint {
+  direction?: string;
+  fromStopId?: string;
+  toStopId?: string;
+  fromStop?: string;
+  toStop?: string;
+}
+
 interface RouteRow {
   route_id: string;
   short: string;
@@ -132,6 +147,74 @@ export function timetableClock(seconds: number): string {
   return `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
+function normalizeText(value?: string): string {
+  if (!value) return '';
+  return value
+    .replace(/[łŁ]/g, 'l')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findStopIndex(stops: LineStop[], stopId?: string, stopName?: string): number {
+  if (stopId) {
+    const cleanHint = stopId.replace(/^stop-pl:/, '');
+    const byId = stops.findIndex(
+      (stop) =>
+        stop.id === stopId ||
+        (cleanHint !== stopId && stop.id.replace(/^stop-pl:/, '') === cleanHint),
+    );
+    if (byId >= 0) return byId;
+  }
+  const targetName = normalizeText(stopName);
+  if (!targetName) return -1;
+  return stops.findIndex((stop) => normalizeText(stop.name) === targetName);
+}
+
+/** Wybiera wariant kierunku najbliższy wskazówce z karty połączenia. */
+export function selectInitialPattern(
+  patterns: LinePattern[],
+  hint: LinePatternHint,
+): LinePattern | undefined {
+  if (!patterns.length) return undefined;
+  const targetDir = normalizeText(hint.direction);
+  const hasStopHint = Boolean(
+    hint.fromStopId || hint.toStopId || hint.fromStop || hint.toStop,
+  );
+  if (!targetDir && !hasStopHint) return patterns[0];
+
+  let best = patterns[0];
+  let bestScore = -1;
+  for (const pattern of patterns) {
+    let score = 0;
+    const headsign = normalizeText(pattern.headsign);
+    const terminal = normalizeText(pattern.stops[pattern.stops.length - 1]?.name);
+    if (targetDir) {
+      if (headsign === targetDir) score += 1000;
+      else if (
+        headsign &&
+        (headsign.includes(targetDir) || targetDir.includes(headsign))
+      ) {
+        score += 400;
+      }
+      if (terminal && terminal === targetDir) score += 250;
+    }
+
+    const fromIdx = findStopIndex(pattern.stops, hint.fromStopId, hint.fromStop);
+    const toIdx = findStopIndex(pattern.stops, hint.toStopId, hint.toStop);
+    if (fromIdx >= 0 && toIdx > fromIdx) score += 500;
+    else if (fromIdx >= 0 || toIdx >= 0) score += 100;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = pattern;
+    }
+  }
+  return bestScore > 0 ? best : patterns[0];
+}
+
 interface TimetableTrip {
   trip_id: string;
   headsign: string;
@@ -192,19 +275,56 @@ function buildLinePatterns(trips: TimetableTrip[], times: TimetableTime[]): Line
     });
 }
 
+async function resolveRouteRow(
+  db: Awaited<ReturnType<typeof openGtfsDbHandle>>,
+  routeId: string,
+  options?: LineTimetableLookupOptions,
+): Promise<RouteRow | null> {
+  if (routeId) {
+    const byId = await db.getFirstAsync<RouteRow>(
+      'SELECT route_id, short, long_name, type FROM routes WHERE route_id = ?',
+      routeId,
+    );
+    if (byId) return byId;
+  }
+  if (options?.tripId) {
+    const byTrip = await db.getFirstAsync<RouteRow>(
+      'SELECT r.route_id, r.short, r.long_name, r.type FROM trips t JOIN routes r ON r.route_id = t.route_id WHERE t.trip_id = ?',
+      options.tripId,
+    );
+    if (byTrip) return byTrip;
+  }
+  const short = options?.line?.trim();
+  if (short) {
+    const rows = await db.getAllAsync<RouteRow>(
+      'SELECT route_id, short, long_name, type FROM routes WHERE short = ? COLLATE NOCASE ORDER BY type, route_id',
+      short,
+    );
+    if (rows.length > 0) {
+      if (options?.mode) {
+        const modeMatch = rows.find((row) => toLine(row).mode === options.mode);
+        if (modeMatch) return modeMatch;
+      }
+      return rows[0];
+    }
+  }
+  return null;
+}
+
 export async function loadLineTimetable(
   routeId: string,
   date: string,
+  options?: LineTimetableLookupOptions,
 ): Promise<{
   line: TransitLine | null;
   patterns: LinePattern[];
 }> {
-  const db = await openGtfsDbHandle();
-  const route = await db.getFirstAsync<RouteRow>(
-    'SELECT route_id, short, long_name, type FROM routes WHERE route_id = ?',
-    routeId,
+  const db = await openGtfsDbHandle(
+    options?.dbTarget === 'national' ? 'national' : undefined,
   );
+  const route = await resolveRouteRow(db, routeId, options);
   if (!route) return { line: null, patterns: [] };
+  const resolvedRouteId = route.route_id;
   const weekday = new Date(
     `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T12:00:00Z`,
   ).getUTCDay();
@@ -217,7 +337,7 @@ export async function loadLineTimetable(
   const total = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM calendar');
   const trips = await db.getAllAsync<TimetableTrip & { service_id: string }>(
     'SELECT trip_id, service_id, headsign, direction FROM trips WHERE route_id = ?',
-    routeId,
+    resolvedRouteId,
   );
   const exceptions = await db.getAllAsync<{ service_id: string; exc: number }>(
     'SELECT service_id, exc FROM calendar_dates WHERE date = ?',
@@ -239,7 +359,7 @@ export async function loadLineTimetable(
     `SELECT st.trip_id, st.stop_id, st.seq, st.dep_sec, s.name, s.code
      FROM trips t JOIN stop_times st ON st.trip_id = t.trip_id JOIN stops s ON s.stop_id = st.stop_id
      WHERE t.route_id = ? AND t.service_id IN (${services.map(() => '?').join(',')})`,
-    routeId,
+    resolvedRouteId,
     ...services,
   );
   return { line: toLine(route), patterns: buildLinePatterns(activeTrips, times) };

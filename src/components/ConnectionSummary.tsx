@@ -37,12 +37,16 @@ export function ConnectionSummary({
   const firstVehicle = boarding[0];
   const lastVehicle = boarding[boarding.length - 1];
   const departureSec = boardingDepartureSec(item);
-  const departure = firstVehicle ? secondsToTimeString(departureSec) : item.departAt;
-  const scheduled = firstVehicle
-    ? scheduledLegTimes(firstVehicle, departureSec).departure
-    : undefined;
+  const departure =
+    item.boarded || !firstVehicle ? item.departAt : secondsToTimeString(departureSec);
+  const scheduled =
+    !item.boarded && firstVehicle
+      ? scheduledLegTimes(firstVehicle, departureSec).departure
+      : undefined;
   const departureDelay =
-    firstVehicle?.live && !offline ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
+    !item.boarded && firstVehicle?.live && !offline
+      ? Math.round((firstVehicle.delaySec ?? 0) / 60)
+      : 0;
   // Przyjazd ma osobne opoznienie: pociag zbiera je po drodze, wiec koncowa
   // godzina nie moze zostac na wartosci ze stacji poczatkowej.
   const arrivalDelaySec =
@@ -90,7 +94,11 @@ export function ConnectionSummary({
       <View style={[styles.endpoints, stacked && styles.endpointsStacked]}>
         <View style={styles.endpoint}>
           <Text style={styles.label}>
-            {firstVehicle ? s.routeDetails.vehicleDeparture : s.routeDetails.departure}
+            {item.boarded
+              ? s.connection.inVehicleNow
+              : firstVehicle
+                ? s.routeDetails.vehicleDeparture
+                : s.routeDetails.departure}
           </Text>
           <RollingTime value={departure} style={styles.time} />
           {departureDelay !== 0 && scheduled != null && (
@@ -110,7 +118,9 @@ export function ConnectionSummary({
               </Text>
             </View>
           )}
-          <Text style={styles.place}>{firstVehicle?.fromStop ?? item.fromTitle}</Text>
+          <Text style={styles.place}>
+            {item.boarded ? item.fromTitle : (firstVehicle?.fromStop ?? item.fromTitle)}
+          </Text>
         </View>
         <View style={[styles.direction, stacked && styles.directionStacked]}>
           <Direction size={30} color={scheme.primary} />
@@ -118,7 +128,9 @@ export function ConnectionSummary({
         <View style={styles.endpoint}>
           <Text style={styles.label}>{s.routeDetails.arrival}</Text>
           <RollingTime value={item.arriveAt} style={styles.time} />
-          {arrivalDelay !== 0 && arrivalDelay !== departureDelay && scheduledArrival != null && (
+          {arrivalDelay !== 0 &&
+            (item.boarded || arrivalDelay !== departureDelay) &&
+            scheduledArrival != null && (
             <View style={styles.delayDetails} accessibilityLiveRegion="polite">
               <Text style={styles.label}>
                 {s.routeDetails.scheduledTime(secondsToTimeString(scheduledArrival))}

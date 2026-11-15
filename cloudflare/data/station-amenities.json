@@ -1,0 +1,2002 @@
+{
+  "builtAt": "2026-11-15T20:53:41.526Z",
+  "radiusM": 50,
+  "stationCount": 470,
+  "stations": {
+    "0": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm"
+    ],
+    "273": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "luggage"
+    ],
+    "1008": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm",
+      "luggage"
+    ],
+    "1024": [
+      "toilets"
+    ],
+    "1214": [
+      "shop"
+    ],
+    "1404": [
+      "cafe"
+    ],
+    "1644": [
+      "toilets"
+    ],
+    "1859": [
+      "shop",
+      "cafe"
+    ],
+    "2147": [
+      "toilets",
+      "gastronomy"
+    ],
+    "2170": [
+      "toilets"
+    ],
+    "2204": [
+      "toilets",
+      "shop"
+    ],
+    "3301": [
+      "toilets"
+    ],
+    "3905": [
+      "gastronomy"
+    ],
+    "3988": [
+      "shop"
+    ],
+    "4101": [
+      "toilets",
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "4952": [
+      "toilets"
+    ],
+    "5132": [
+      "shop"
+    ],
+    "5447": [
+      "shop",
+      "bakery"
+    ],
+    "5900": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm",
+      "luggage"
+    ],
+    "5926": [
+      "gastronomy",
+      "shop"
+    ],
+    "6031": [
+      "toilets",
+      "shop"
+    ],
+    "6064": [
+      "bakery"
+    ],
+    "6098": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "6106": [
+      "gastronomy",
+      "shop"
+    ],
+    "6122": [
+      "toilets"
+    ],
+    "6304": [
+      "shop"
+    ],
+    "6700": [
+      "toilets",
+      "shop"
+    ],
+    "6742": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "pharmacy"
+    ],
+    "6767": [
+      "gastronomy"
+    ],
+    "6775": [
+      "toilets"
+    ],
+    "6791": [
+      "toilets"
+    ],
+    "7112": [
+      "toilets",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "7500": [
+      "atm",
+      "luggage"
+    ],
+    "7526": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "7534": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "7567": [
+      "gastronomy",
+      "bakery",
+      "atm"
+    ],
+    "7583": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe"
+    ],
+    "7617": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "7872": [
+      "toilets",
+      "shop",
+      "pharmacy",
+      "atm"
+    ],
+    "8151": [
+      "toilets",
+      "shop",
+      "atm"
+    ],
+    "8409": [
+      "pharmacy"
+    ],
+    "8474": [
+      "gastronomy"
+    ],
+    "9209": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "9233": [
+      "toilets"
+    ],
+    "10405": [
+      "toilets"
+    ],
+    "10603": [
+      "toilets"
+    ],
+    "10827": [
+      "gastronomy",
+      "shop"
+    ],
+    "11312": [
+      "gastronomy"
+    ],
+    "11809": [
+      "toilets"
+    ],
+    "12609": [
+      "toilets",
+      "shop"
+    ],
+    "12807": [
+      "toilets"
+    ],
+    "12963": [
+      "toilets"
+    ],
+    "13003": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm"
+    ],
+    "13904": [
+      "toilets",
+      "luggage"
+    ],
+    "14308": [
+      "toilets",
+      "shop"
+    ],
+    "14407": [
+      "toilets",
+      "shop"
+    ],
+    "15008": [
+      "shop"
+    ],
+    "15354": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "15750": [
+      "gastronomy",
+      "shop"
+    ],
+    "16907": [
+      "shop"
+    ],
+    "17434": [
+      "gastronomy"
+    ],
+    "17731": [
+      "shop"
+    ],
+    "17772": [
+      "shop"
+    ],
+    "18002": [
+      "toilets",
+      "gastronomy"
+    ],
+    "18408": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "19430": [
+      "toilets",
+      "shop"
+    ],
+    "19703": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "19760": [
+      "gastronomy"
+    ],
+    "19794": [
+      "toilets",
+      "gastronomy"
+    ],
+    "20263": [
+      "shop"
+    ],
+    "20396": [
+      "shop"
+    ],
+    "20941": [
+      "shop"
+    ],
+    "21535": [
+      "bakery"
+    ],
+    "21550": [
+      "toilets",
+      "gastronomy"
+    ],
+    "21600": [
+      "toilets",
+      "shop"
+    ],
+    "22202": [
+      "toilets"
+    ],
+    "23101": [
+      "shop"
+    ],
+    "24000": [
+      "toilets",
+      "shop"
+    ],
+    "24059": [
+      "toilets"
+    ],
+    "24737": [
+      "shop"
+    ],
+    "24919": [
+      "toilets"
+    ],
+    "25809": [
+      "toilets",
+      "cafe"
+    ],
+    "26104": [
+      "toilets",
+      "gastronomy"
+    ],
+    "26211": [
+      "toilets"
+    ],
+    "26708": [
+      "gastronomy"
+    ],
+    "27805": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "27920": [
+      "shop"
+    ],
+    "28100": [
+      "toilets"
+    ],
+    "28472": [
+      "toilets"
+    ],
+    "28522": [
+      "toilets",
+      "shop",
+      "bakery"
+    ],
+    "28688": [
+      "toilets"
+    ],
+    "29405": [
+      "shop"
+    ],
+    "29645": [
+      "toilets"
+    ],
+    "29843": [
+      "toilets"
+    ],
+    "29850": [
+      "shop"
+    ],
+    "29868": [
+      "toilets"
+    ],
+    "29892": [
+      "toilets",
+      "gastronomy",
+      "bakery"
+    ],
+    "30288": [
+      "toilets"
+    ],
+    "30429": [
+      "shop",
+      "cafe"
+    ],
+    "30452": [
+      "toilets"
+    ],
+    "30601": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery"
+    ],
+    "30809": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "30965": [
+      "toilets",
+      "shop"
+    ],
+    "30973": [
+      "toilets"
+    ],
+    "30981": [
+      "toilets"
+    ],
+    "31302": [
+      "gastronomy"
+    ],
+    "32003": [
+      "gastronomy"
+    ],
+    "32201": [
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "32706": [
+      "toilets"
+    ],
+    "33050": [
+      "shop"
+    ],
+    "33100": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "33191": [
+      "toilets",
+      "shop"
+    ],
+    "33498": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "33506": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "33514": [
+      "gastronomy",
+      "shop"
+    ],
+    "33530": [
+      "pharmacy"
+    ],
+    "33571": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "33605": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm"
+    ],
+    "33639": [
+      "toilets",
+      "gastronomy"
+    ],
+    "33902": [
+      "toilets",
+      "shop"
+    ],
+    "33928": [
+      "shop",
+      "bakery"
+    ],
+    "34108": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "34124": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery"
+    ],
+    "34132": [
+      "toilets"
+    ],
+    "34140": [
+      "toilets",
+      "shop",
+      "cafe",
+      "bakery"
+    ],
+    "34165": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery"
+    ],
+    "34207": [
+      "toilets",
+      "atm"
+    ],
+    "34322": [
+      "shop"
+    ],
+    "34348": [
+      "toilets"
+    ],
+    "34355": [
+      "toilets"
+    ],
+    "34363": [
+      "shop"
+    ],
+    "34447": [
+      "shop"
+    ],
+    "34603": [
+      "toilets",
+      "shop"
+    ],
+    "34629": [
+      "shop"
+    ],
+    "36103": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "36368": [
+      "shop"
+    ],
+    "36467": [
+      "toilets",
+      "cafe"
+    ],
+    "36475": [
+      "toilets",
+      "gastronomy",
+      "bakery"
+    ],
+    "36509": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "36939": [
+      "toilets",
+      "atm"
+    ],
+    "37440": [
+      "gastronomy"
+    ],
+    "37457": [
+      "toilets",
+      "gastronomy"
+    ],
+    "37507": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "37770": [
+      "toilets"
+    ],
+    "37838": [
+      "shop"
+    ],
+    "38653": [
+      "toilets",
+      "shop",
+      "atm"
+    ],
+    "38687": [
+      "toilets"
+    ],
+    "38711": [
+      "shop"
+    ],
+    "38729": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "38745": [
+      "toilets"
+    ],
+    "38778": [
+      "gastronomy"
+    ],
+    "38885": [
+      "toilets"
+    ],
+    "38943": [
+      "gastronomy",
+      "shop"
+    ],
+    "39008": [
+      "atm"
+    ],
+    "39081": [
+      "gastronomy"
+    ],
+    "39131": [
+      "toilets",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "39149": [
+      "toilets",
+      "gastronomy"
+    ],
+    "39321": [
+      "gastronomy"
+    ],
+    "39883": [
+      "toilets",
+      "shop",
+      "bakery"
+    ],
+    "40808": [
+      "toilets"
+    ],
+    "40998": [
+      "toilets"
+    ],
+    "42002": [
+      "shop"
+    ],
+    "42200": [
+      "gastronomy",
+      "bakery"
+    ],
+    "42606": [
+      "toilets",
+      "shop"
+    ],
+    "42788": [
+      "pharmacy"
+    ],
+    "43000": [
+      "gastronomy",
+      "shop",
+      "pharmacy"
+    ],
+    "43356": [
+      "shop"
+    ],
+    "43448": [
+      "toilets"
+    ],
+    "44420": [
+      "toilets"
+    ],
+    "44552": [
+      "shop",
+      "pharmacy"
+    ],
+    "45245": [
+      "toilets",
+      "atm"
+    ],
+    "45476": [
+      "pharmacy"
+    ],
+    "45906": [
+      "toilets",
+      "gastronomy"
+    ],
+    "46052": [
+      "toilets"
+    ],
+    "46060": [
+      "toilets"
+    ],
+    "46409": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "46458": [
+      "toilets",
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "46581": [
+      "toilets"
+    ],
+    "47001": [
+      "gastronomy",
+      "bakery"
+    ],
+    "47258": [
+      "shop"
+    ],
+    "47316": [
+      "gastronomy",
+      "shop"
+    ],
+    "47704": [
+      "shop"
+    ],
+    "47886": [
+      "shop"
+    ],
+    "48009": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "pharmacy"
+    ],
+    "48355": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm"
+    ],
+    "48736": [
+      "toilets"
+    ],
+    "49106": [
+      "toilets"
+    ],
+    "49809": [
+      "gastronomy",
+      "shop"
+    ],
+    "49916": [
+      "toilets",
+      "shop"
+    ],
+    "50500": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "51508": [
+      "shop"
+    ],
+    "51805": [
+      "toilets"
+    ],
+    "51847": [
+      "toilets",
+      "cafe"
+    ],
+    "52027": [
+      "toilets"
+    ],
+    "53009": [
+      "toilets",
+      "gastronomy",
+      "atm"
+    ],
+    "53280": [
+      "toilets"
+    ],
+    "53611": [
+      "shop"
+    ],
+    "53850": [
+      "cafe"
+    ],
+    "54007": [
+      "toilets"
+    ],
+    "54262": [
+      "cafe"
+    ],
+    "54403": [
+      "toilets"
+    ],
+    "54544": [
+      "toilets"
+    ],
+    "54551": [
+      "gastronomy",
+      "shop"
+    ],
+    "54619": [
+      "toilets",
+      "shop"
+    ],
+    "54627": [
+      "toilets"
+    ],
+    "54817": [
+      "toilets",
+      "cafe"
+    ],
+    "54908": [
+      "gastronomy"
+    ],
+    "55103": [
+      "toilets"
+    ],
+    "55632": [
+      "toilets"
+    ],
+    "55665": [
+      "shop"
+    ],
+    "55806": [
+      "toilets",
+      "shop"
+    ],
+    "55970": [
+      "pharmacy"
+    ],
+    "56184": [
+      "toilets"
+    ],
+    "56226": [
+      "gastronomy",
+      "atm"
+    ],
+    "56523": [
+      "gastronomy"
+    ],
+    "56606": [
+      "toilets",
+      "cafe"
+    ],
+    "57307": [
+      "toilets"
+    ],
+    "57414": [
+      "toilets",
+      "cafe"
+    ],
+    "57646": [
+      "shop"
+    ],
+    "57703": [
+      "gastronomy"
+    ],
+    "58271": [
+      "toilets"
+    ],
+    "58487": [
+      "gastronomy"
+    ],
+    "58651": [
+      "toilets"
+    ],
+    "58784": [
+      "toilets"
+    ],
+    "58883": [
+      "toilets"
+    ],
+    "58933": [
+      "gastronomy",
+      "shop"
+    ],
+    "58974": [
+      "toilets"
+    ],
+    "59055": [
+      "toilets"
+    ],
+    "59071": [
+      "toilets",
+      "cafe"
+    ],
+    "59105": [
+      "gastronomy"
+    ],
+    "59246": [
+      "toilets"
+    ],
+    "59501": [
+      "bakery"
+    ],
+    "60103": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "60269": [
+      "toilets"
+    ],
+    "60285": [
+      "shop"
+    ],
+    "60335": [
+      "gastronomy"
+    ],
+    "60459": [
+      "toilets"
+    ],
+    "60566": [
+      "shop"
+    ],
+    "60608": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm",
+      "luggage"
+    ],
+    "60673": [
+      "gastronomy"
+    ],
+    "61705": [
+      "shop"
+    ],
+    "62109": [
+      "toilets",
+      "shop"
+    ],
+    "62182": [
+      "shop"
+    ],
+    "62307": [
+      "gastronomy"
+    ],
+    "62653": [
+      "toilets"
+    ],
+    "62802": [
+      "toilets"
+    ],
+    "63131": [
+      "shop"
+    ],
+    "63305": [
+      "bakery"
+    ],
+    "63552": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery"
+    ],
+    "63883": [
+      "shop"
+    ],
+    "63925": [
+      "toilets"
+    ],
+    "64303": [
+      "atm"
+    ],
+    "64451": [
+      "toilets",
+      "shop"
+    ],
+    "65003": [
+      "toilets"
+    ],
+    "65037": [
+      "gastronomy"
+    ],
+    "65904": [
+      "gastronomy"
+    ],
+    "65979": [
+      "shop"
+    ],
+    "67009": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "67843": [
+      "toilets"
+    ],
+    "68205": [
+      "toilets",
+      "gastronomy"
+    ],
+    "68403": [
+      "toilets",
+      "gastronomy"
+    ],
+    "68700": [
+      "gastronomy",
+      "shop"
+    ],
+    "69005": [
+      "toilets"
+    ],
+    "69708": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm",
+      "luggage"
+    ],
+    "69823": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "69849": [
+      "gastronomy"
+    ],
+    "70607": [
+      "toilets"
+    ],
+    "71001": [
+      "gastronomy"
+    ],
+    "71407": [
+      "toilets",
+      "gastronomy"
+    ],
+    "71555": [
+      "shop"
+    ],
+    "72157": [
+      "pharmacy"
+    ],
+    "72272": [
+      "gastronomy"
+    ],
+    "72306": [
+      "gastronomy",
+      "shop",
+      "bakery",
+      "pharmacy"
+    ],
+    "72900": [
+      "toilets",
+      "pharmacy"
+    ],
+    "73106": [
+      "gastronomy",
+      "shop"
+    ],
+    "73312": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "73502": [
+      "shop",
+      "bakery"
+    ],
+    "73700": [
+      "toilets",
+      "shop"
+    ],
+    "73742": [
+      "gastronomy"
+    ],
+    "74583": [
+      "toilets"
+    ],
+    "74633": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "74658": [
+      "toilets",
+      "gastronomy"
+    ],
+    "75036": [
+      "shop"
+    ],
+    "75200": [
+      "gastronomy"
+    ],
+    "75309": [
+      "gastronomy"
+    ],
+    "75424": [
+      "toilets"
+    ],
+    "75630": [
+      "shop"
+    ],
+    "75655": [
+      "toilets"
+    ],
+    "75739": [
+      "shop"
+    ],
+    "75788": [
+      "gastronomy"
+    ],
+    "75903": [
+      "cafe"
+    ],
+    "75986": [
+      "shop"
+    ],
+    "76000": [
+      "gastronomy",
+      "shop"
+    ],
+    "76109": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "76182": [
+      "shop",
+      "bakery"
+    ],
+    "76604": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "76745": [
+      "pharmacy"
+    ],
+    "76786": [
+      "shop"
+    ],
+    "76869": [
+      "shop"
+    ],
+    "76968": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe"
+    ],
+    "76992": [
+      "toilets"
+    ],
+    "77107": [
+      "toilets",
+      "gastronomy",
+      "luggage"
+    ],
+    "77271": [
+      "toilets"
+    ],
+    "77503": [
+      "gastronomy"
+    ],
+    "77701": [
+      "toilets"
+    ],
+    "77834": [
+      "gastronomy",
+      "pharmacy"
+    ],
+    "78048": [
+      "toilets",
+      "gastronomy"
+    ],
+    "78063": [
+      "shop"
+    ],
+    "78113": [
+      "toilets"
+    ],
+    "78402": [
+      "toilets"
+    ],
+    "78709": [
+      "shop"
+    ],
+    "78733": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "78832": [
+      "bakery"
+    ],
+    "78980": [
+      "shop",
+      "pharmacy"
+    ],
+    "79236": [
+      "gastronomy"
+    ],
+    "79467": [
+      "toilets",
+      "shop"
+    ],
+    "79657": [
+      "toilets",
+      "gastronomy"
+    ],
+    "79681": [
+      "toilets"
+    ],
+    "79806": [
+      "gastronomy"
+    ],
+    "79848": [
+      "toilets"
+    ],
+    "79905": [
+      "gastronomy",
+      "shop"
+    ],
+    "79939": [
+      "toilets"
+    ],
+    "80044": [
+      "toilets"
+    ],
+    "80101": [
+      "toilets",
+      "gastronomy",
+      "cafe"
+    ],
+    "80390": [
+      "toilets"
+    ],
+    "80416": [
+      "gastronomy",
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "80440": [
+      "toilets"
+    ],
+    "80630": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "pharmacy",
+      "atm"
+    ],
+    "80986": [
+      "toilets"
+    ],
+    "81067": [
+      "toilets"
+    ],
+    "81208": [
+      "gastronomy",
+      "shop"
+    ],
+    "81604": [
+      "gastronomy",
+      "shop",
+      "pharmacy"
+    ],
+    "81687": [
+      "shop"
+    ],
+    "81760": [
+      "shop"
+    ],
+    "81901": [
+      "toilets",
+      "shop"
+    ],
+    "82032": [
+      "toilets"
+    ],
+    "82073": [
+      "toilets"
+    ],
+    "82099": [
+      "toilets",
+      "gastronomy"
+    ],
+    "82487": [
+      "toilets"
+    ],
+    "82560": [
+      "shop"
+    ],
+    "82602": [
+      "gastronomy"
+    ],
+    "82669": [
+      "pharmacy",
+      "luggage"
+    ],
+    "82743": [
+      "shop"
+    ],
+    "82826": [
+      "shop"
+    ],
+    "82925": [
+      "cafe"
+    ],
+    "82974": [
+      "toilets",
+      "cafe"
+    ],
+    "83022": [
+      "toilets"
+    ],
+    "83105": [
+      "toilets"
+    ],
+    "83170": [
+      "shop"
+    ],
+    "83220": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "83261": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "pharmacy"
+    ],
+    "83501": [
+      "gastronomy"
+    ],
+    "83600": [
+      "toilets"
+    ],
+    "83758": [
+      "shop"
+    ],
+    "84400": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "atm",
+      "luggage"
+    ],
+    "84780": [
+      "gastronomy"
+    ],
+    "124876": [
+      "pharmacy",
+      "atm"
+    ],
+    "124879": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm"
+    ],
+    "124979": [
+      "shop",
+      "cafe"
+    ],
+    "125013": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "pharmacy"
+    ],
+    "125072": [
+      "toilets",
+      "shop",
+      "atm"
+    ],
+    "125082": [
+      "toilets",
+      "gastronomy"
+    ],
+    "125159": [
+      "toilets",
+      "shop"
+    ],
+    "125182": [
+      "cafe"
+    ],
+    "125205": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm"
+    ],
+    "125266": [
+      "gastronomy",
+      "cafe",
+      "atm"
+    ],
+    "125585": [
+      "toilets",
+      "shop",
+      "cafe"
+    ],
+    "125634": [
+      "toilets",
+      "shop"
+    ],
+    "125662": [
+      "cafe",
+      "atm"
+    ],
+    "125672": [
+      "atm"
+    ],
+    "125711": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "125780": [
+      "toilets"
+    ],
+    "125787": [
+      "toilets",
+      "shop",
+      "cafe"
+    ],
+    "125797": [
+      "toilets",
+      "atm"
+    ],
+    "125806": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "126254": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "126258": [
+      "toilets",
+      "shop"
+    ],
+    "127178": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "127265": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "127295": [
+      "shop",
+      "cafe"
+    ],
+    "127419": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "127420": [
+      "toilets",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "127436": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe"
+    ],
+    "127482": [
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "127490": [
+      "gastronomy"
+    ],
+    "127651": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "127662": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "127718": [
+      "gastronomy",
+      "atm"
+    ],
+    "127986": [
+      "gastronomy"
+    ],
+    "128002": [
+      "toilets"
+    ],
+    "128006": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "128071": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "atm",
+      "luggage"
+    ],
+    "128154": [
+      "cafe",
+      "luggage"
+    ],
+    "128166": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "128270": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "128471": [
+      "cafe"
+    ],
+    "128485": [
+      "gastronomy"
+    ],
+    "128506": [
+      "toilets",
+      "gastronomy"
+    ],
+    "128532": [
+      "gastronomy",
+      "shop"
+    ],
+    "129043": [
+      "shop"
+    ],
+    "129059": [
+      "cafe"
+    ],
+    "129083": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "130357": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "130393": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery"
+    ],
+    "130396": [
+      "toilets"
+    ],
+    "130399": [
+      "gastronomy"
+    ],
+    "130963": [
+      "toilets",
+      "gastronomy"
+    ],
+    "130985": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "131012": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "131023": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "140168": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "140277": [
+      "toilets",
+      "gastronomy",
+      "bakery",
+      "atm"
+    ],
+    "140282": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "140533": [
+      "luggage"
+    ],
+    "140707": [
+      "toilets"
+    ],
+    "141249": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "141295": [
+      "toilets",
+      "cafe",
+      "bakery",
+      "atm"
+    ],
+    "141299": [
+      "toilets",
+      "gastronomy"
+    ],
+    "141388": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "141406": [
+      "gastronomy"
+    ],
+    "141407": [
+      "gastronomy",
+      "shop"
+    ],
+    "141410": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "141427": [
+      "toilets",
+      "bakery"
+    ],
+    "146599": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "146659": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "146771": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "148445": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "150198": [
+      "shop"
+    ],
+    "150200": [
+      "toilets",
+      "shop",
+      "luggage"
+    ],
+    "150205": [
+      "gastronomy"
+    ],
+    "150207": [
+      "gastronomy"
+    ],
+    "150594": [
+      "gastronomy",
+      "shop",
+      "luggage"
+    ],
+    "150622": [
+      "gastronomy"
+    ],
+    "150692": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "155861": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "luggage"
+    ],
+    "155886": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "atm"
+    ],
+    "155921": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "luggage"
+    ],
+    "155936": [
+      "toilets",
+      "shop",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "155955": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "157114": [
+      "gastronomy"
+    ],
+    "157163": [
+      "toilets",
+      "bakery",
+      "atm"
+    ],
+    "157172": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "luggage"
+    ],
+    "178137": [
+      "gastronomy",
+      "shop"
+    ],
+    "178639": [
+      "shop"
+    ],
+    "178662": [
+      "toilets"
+    ],
+    "179200": [
+      "toilets"
+    ],
+    "179210": [
+      "toilets",
+      "gastronomy"
+    ],
+    "179212": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "179216": [
+      "toilets",
+      "shop",
+      "atm",
+      "luggage"
+    ],
+    "179223": [
+      "gastronomy",
+      "shop",
+      "atm"
+    ],
+    "179225": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "pharmacy",
+      "atm"
+    ],
+    "190042": [
+      "shop"
+    ],
+    "209839": [
+      "gastronomy",
+      "cafe",
+      "pharmacy",
+      "atm"
+    ],
+    "209910": [
+      "pharmacy"
+    ],
+    "216857": [
+      "toilets",
+      "gastronomy"
+    ],
+    "216859": [
+      "toilets",
+      "gastronomy",
+      "shop"
+    ],
+    "224050": [
+      "shop",
+      "cafe",
+      "atm"
+    ],
+    "239138": [
+      "toilets"
+    ],
+    "239140": [
+      "shop"
+    ],
+    "243509": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "atm",
+      "luggage"
+    ],
+    "247482": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "cafe",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "247495": [
+      "gastronomy"
+    ],
+    "247860": [
+      "gastronomy"
+    ],
+    "248058": [
+      "toilets",
+      "gastronomy",
+      "shop",
+      "bakery",
+      "pharmacy",
+      "atm",
+      "luggage"
+    ],
+    "257530": [
+      "atm"
+    ],
+    "257532": [
+      "toilets"
+    ],
+    "257535": [
+      "gastronomy"
+    ],
+    "257551": [
+      "gastronomy",
+      "shop"
+    ],
+    "264913": [
+      "shop"
+    ],
+    "281405": [
+      "gastronomy"
+    ]
+  }
+}

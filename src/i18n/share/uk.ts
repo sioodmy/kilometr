@@ -60,6 +60,7 @@ export const uk: ShareStrings = {
   following: 'Завершити спостереження',
   followHint:
     'Прибуття та перебіг поїздки на екрані блокування. Доступ до вашого місцеположення не потрібен.',
+  followActiveHint: 'Закріплено на екрані блокування. Оновлюється у фоні.',
   vehicleLive: 'Положення транспорту за GPS',
   noVehicle:
     'Немає поточного положення GPS. Карта показує маршрут, а час узято з поширеного плану.',
@@ -68,6 +69,8 @@ export const uk: ShareStrings = {
   planned: 'План поїздки',
   map: 'Карта поїздки',
   fitMap: 'Показати весь маршрут',
+  expandMap: 'Розгорнути карту',
+  closeMap: 'Закрити карту',
   mapUnavailable: 'Геометрія маршруту недоступна. Спробуйте завантажити її знову.',
   geometryLoading: 'Завантаження геометрії маршруту…',
   approximateGeometry: 'Приблизний маршрут через зупинки.',
@@ -90,6 +93,21 @@ export const uk: ShareStrings = {
   planYourOwn: 'Відкрити в планувальнику',
   inProgress: 'У дорозі',
   upcoming: 'До відправлення',
+  etaInMin: (min) => `за ${min} хв`,
+  departsInMin: (min) => `відправлення за ${min} хв`,
+  nextStopLabel: (stop) => `Наступна зупинка: ${stop}`,
+  stopsToGo: (n) => {
+    const last = n % 10;
+    const teen = n % 100;
+    return last === 1 && teen !== 11
+      ? `${n} зупинка до цілі`
+      : last >= 2 && last <= 4 && (teen < 12 || teen > 14)
+        ? `${n} зупинки до цілі`
+        : `${n} зупинок до цілі`;
+  },
+  waitingAtStop: (stop) => `Очікування: ${stop}`,
+  transferAtStop: (stop) => `Пересадка: ${stop}`,
+  walkingToStop: (stop) => `Пішки до: ${stop}`,
   arrTime: (time) => `приб. ${time}`,
   depTime: (time) => `відпр. ${time}`,
   dwellMin: (min) => `зупинка ${min} хв`,

@@ -87,6 +87,7 @@ export function findUnknownNames(analysis, sourceText, allowedGtfsStops = null) 
   if (analysis.corridor) {
     checkStop(analysis.corridor.from_stop);
     checkStop(analysis.corridor.to_stop);
+    for (const stop of analysis.corridor.stops || []) checkStop(stop);
   }
 
   for (const stop of analysis.stops || []) {
@@ -128,6 +129,23 @@ function cleanProseField(text) {
   return cleaned;
 }
 
+function cleanMapLabel(value) {
+  if (typeof value !== 'string') return null;
+  const cleaned = cleanProseField(value)
+    .replace(/[.,:;!?]+$/g, '')
+    .toLowerCase()
+    .trim();
+  if (!cleaned) return null;
+  const words = cleaned.split(/\s+/).slice(0, 3);
+  let out = '';
+  for (const w of words) {
+    const next = out ? `${out} ${w}` : w;
+    if (next.length > 26 && out) break;
+    out = next;
+  }
+  return (out.length > 26 ? out.slice(0, 26) : out).replace(/[.,:;!?]+$/g, "").trim();
+}
+
 /**
  * Czyści teksty wygenerowane przez LLM z pauz em dash (U+2014), spacjonowanych
  * łączników i urzędowych formułek grzecznościowych przed zapisem do R2.
@@ -136,6 +154,9 @@ export function sanitizeAnalysisText(analysis) {
   if (!analysis || typeof analysis !== 'object') return analysis;
   if (typeof analysis.headline === 'string') {
     analysis.headline = cleanProseField(analysis.headline);
+  }
+  if ('map_label' in analysis) {
+    analysis.map_label = cleanMapLabel(analysis.map_label);
   }
   if (analysis.glance && typeof analysis.glance === 'object') {
     if (typeof analysis.glance.problem === 'string') {

@@ -17,58 +17,109 @@ concurrency:
 
 jobs:
   build:
+    name: Build Unsigned F-Droid APK
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       APP_VERSION: ${{ inputs.version }}
       FDROID_BUILD: '1'
       BUILD_NUMBER: '1'
       EXPO_NO_TELEMETRY: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
+      - name: Validate F-Droid version input
+        run: |
+          if ! [[ "$APP_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Wersja F-Droid musi mieć format vX.Y.Z (otrzymano: $APP_VERSION)."
+            exit 1
+          fi
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Android & Rust toolchain
+        uses: ./.github/actions/setup-android-toolchain
         with:
-          node-version: 22.22.0
-          cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-      - name: Install Android toolchain
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.30.5'
-      - uses: dtolnay/rust-toolchain@1.90.0
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
-      - run: npm ci
-      - run: npm run prebuild:fdroid
-      - run: npm run check:fdroid
+          arch: all
+          rust-cache-scope: fdroid
+
+      - name: Run pre-build Rust & Android gates
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+          npm run check:permission-gate
+          node --test scripts/check-android-version-code.test.mjs
+
+      - name: Prebuild & verify F-Droid configuration
+        run: |
+          set -euo pipefail
+          npm run prebuild:fdroid
+          npm run check:fdroid
+
+      - name: Tune Gradle for CI
+        run: |
+          set -euo pipefail
+          GP=android/gradle.properties
+          printf '\n' >> "$GP"
+          cat >> "$GP" <<'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.caching=true
+          EOF
+
       - name: Build unsigned APK
         working-directory: android
         run: |
           ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64,x86 \
-            -Dorg.gradle.jvmargs='-Xmx4g -XX:MaxMetaspaceSize=1g' \
-            -x lint --no-daemon --console=plain
-      - name: Check manifest and dependencies
+            -x lint --no-daemon --console=plain --stacktrace
+
+      - name: Verify unsigned APK, manifest, ABIs and dependencies
         run: |
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release-unsigned.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions "$APK" > "$RUNNER_TEMP/permissions.txt"
+          if [ ! -f "$APK" ]; then
+            echo "::error::Nie znaleziono $APK"
+            exit 1
+          fi
+
+          "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/aapt" dump permissions "$APK" > "$RUNNER_TEMP/permissions.txt"
           npm run check:android-permissions -- "$RUNNER_TEMP/permissions.txt"
-          if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"; then
+
+          if "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner" verify "$APK" 2>/dev/null; then
             echo '::error::APK F-Droid musi być niepodpisane.'
             exit 1
           fi
+
+          python3 - "$APK" <<'PY'
+          import json
+          import os
+          import sys
+          import zipfile
+
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              embedded = json.loads(apk.read('assets/app.config'))
+              assert embedded['version'] == os.environ['APP_VERSION'], (
+                  f"Nieprawidłowa wersja w assets/app.config: {embedded.get('version')}"
+              )
+              abis = {
+                  path.split('/')[1]
+                  for path in apk.namelist()
+                  if path.startswith('lib/') and path.endswith('/libkilometr_raptor.so')
+              }
+          expected = {'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'}
+          assert abis == expected, f'Niepełne architektury silnika RAPTOR: {abis}'
+          print(f'F-Droid APK OK: version={os.environ["APP_VERSION"]}, arch={sorted(abis)}')
+          PY
+
           cd android
           ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --console=plain > "$RUNNER_TEMP/dependencies.txt"
           if grep -E 'com\.google\.(firebase|android\.gms)|com\.android\.installreferrer' "$RUNNER_TEMP/dependencies.txt"; then
             echo '::error::W APK pozostały zależności Google.'
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload unsigned F-Droid APK
+        uses: actions/upload-artifact@v4
         with:
           name: kilometr-fdroid-unsigned
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
+          retention-days: 30

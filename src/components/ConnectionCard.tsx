@@ -1,15 +1,33 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ArrowDown, ArrowRight, ChevronRight, Clock3, Footprints } from './icons';
+import Animated, {
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { ArrowDown, ArrowRight, Footprints, TriangleAlert } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
-import { LineBadge } from './LineBadge';
+import { LineBadge, resolveLegBadgeColors } from './LineBadge';
 import { DirectionsWalk } from './DirectionsWalk';
+import { LiveSensors } from './LiveDot';
 import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionPeek';
 import { RailAlertsChip } from './RailAlertsChip';
-import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
-
+import {
+  formatDistance,
+  formatWalkTime,
+  useTransferThresholds,
+  useWalkSpeedMps,
+  walkMinutesFor,
+} from '../services/settings';
+import { getActiveCityIdSync } from '../services/cityStore';
+import {
+  analyzeConnection,
+  type ConnectionInsights,
+  type TransferRiskInfo,
+} from './connectionInsights';
 import { tr, useStrings } from '../i18n';
 import {
   boardingDepartureMs,
@@ -19,6 +37,11 @@ import {
 import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const PRESS_SPRING = { damping: 24, stiffness: 420, reduceMotion: ReduceMotion.System };
+const DASH_COUNT = 20;
+const DASH_INDICES = Array.from({ length: DASH_COUNT }, (_, i) => i);
+
 export interface CardLayoutInfo {
   y: number;
   height: number;
@@ -27,110 +50,6 @@ export interface CardLayoutInfo {
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
   return tr().connection.transfers(n);
-}
-
-function parseHMtoSec(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hm || '');
-  if (!m) return null;
-  return Number(m[1]) * 3600 + Number(m[2]) * 60;
-}
-
-function getLegWalkMin(leg: Leg | undefined, walkMps: number): number {
-  if (!leg) return 1;
-  if (leg.walkM != null && leg.walkM > 0) {
-    return walkMinutesFor(leg.walkM, walkMps);
-  }
-  const dep = parseHMtoSec(leg.departAt);
-  const arr = parseHMtoSec(leg.arriveAt);
-  if (dep != null && arr != null && arr > dep) {
-    return Math.max(1, Math.round((arr - dep) / 60));
-  }
-  return 1;
-}
-
-interface TransitLegItem {
-  key: string;
-  leg: Leg;
-  transferWalkMinAfter: number;
-}
-
-interface JourneyStripData {
-  initialWalkMin: number;
-  transitLegs: TransitLegItem[];
-  finalWalkMin: number;
-}
-
-function buildJourneyStripData(rawLegs: Leg[], walkMps: number): JourneyStripData {
-  const legs =
-    rawLegs.length > 1
-      ? rawLegs.filter(
-          (leg) =>
-            !(
-              leg.mode === 'walk' &&
-              (leg.walkM ?? 0) <= 0 &&
-              (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
-            ),
-        )
-      : rawLegs;
-  const transitLegs: Leg[] = [];
-  const transitIndices: number[] = [];
-
-  for (let i = 0; i < legs.length; i++) {
-    if (legs[i].mode !== 'walk') {
-      transitLegs.push(legs[i]);
-      transitIndices.push(i);
-    }
-  }
-
-  if (transitLegs.length === 0) {
-    return { initialWalkMin: 0, transitLegs: [], finalWalkMin: 0 };
-  }
-
-  let initialWalkMin = 0;
-  const firstTransitIdx = transitIndices[0];
-  if (firstTransitIdx > 0) {
-    const initialWalks = legs.slice(0, firstTransitIdx);
-    const walkM = initialWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    initialWalkMin =
-      walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(initialWalks[0], walkMps);
-  }
-
-  let finalWalkMin = 0;
-  const lastTransitIdx = transitIndices[transitIndices.length - 1];
-  if (lastTransitIdx < legs.length - 1) {
-    const finalWalks = legs.slice(lastTransitIdx + 1);
-    const walkM = finalWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-    finalWalkMin =
-      walkM > 0 ? walkMinutesFor(walkM, walkMps) : getLegWalkMin(finalWalks[0], walkMps);
-  }
-
-  const items: TransitLegItem[] = [];
-  for (let i = 0; i < transitLegs.length; i++) {
-    const leg = transitLegs[i];
-    let transferWalkMinAfter = 0;
-
-    if (i < transitLegs.length - 1) {
-      const curIdx = transitIndices[i];
-      const nextIdx = transitIndices[i + 1];
-      if (nextIdx > curIdx + 1) {
-        const intermediateWalks = legs.slice(curIdx + 1, nextIdx).filter((l) => l.mode === 'walk');
-        const transferM = intermediateWalks.reduce((acc, l) => acc + (l.walkM ?? 0), 0);
-        if (transferM > 0) {
-          transferWalkMinAfter = walkMinutesFor(transferM, walkMps);
-        } else if (intermediateWalks.length > 0) {
-          transferWalkMinAfter = getLegWalkMin(intermediateWalks[0], walkMps);
-        }
-      }
-    }
-
-    items.push({
-      key: `transit-${leg.id || i}`,
-      leg,
-      transferWalkMinAfter,
-    });
-  }
-
-  return { initialWalkMin, transitLegs: items, finalWalkMin };
 }
 
 /** Nazwy przystanków przesiadkowych z pola interchange silnika. */
@@ -144,54 +63,202 @@ function interchangeStops(raw?: string): string[] {
     .filter(Boolean);
 }
 
-function JourneyStrip({ data }: { data: JourneyStripData }) {
+type StripStep =
+  | { key: string; kind: 'leg'; leg: Leg }
+  | { key: string; kind: 'walk'; walkMin: number }
+  | { key: string; kind: 'risk'; risk: TransferRiskInfo; walkMin: number };
+
+type BarSegment =
+  | { key: string; kind: 'leg'; min: number; color: string }
+  | { key: string; kind: 'walk'; min: number }
+  | { key: string; kind: 'longWalk'; min: number }
+  | { key: string; kind: 'riskTight' | 'riskCritical'; min: number };
+
+function JourneyStrip({
+  insights,
+  dimmed,
+}: {
+  insights: ConnectionInsights;
+  dimmed: boolean;
+}) {
   const s = useStrings();
   const { width } = useWindowDimensions();
-  if (data.transitLegs.length === 0) return null;
+  const cityId = getActiveCityIdSync();
+  if (insights.transitLegs.length === 0) return null;
 
-  const steps: ({ key: string; leg: Leg } | { key: string; walkMin: number })[] = [];
-  if (data.initialWalkMin > 0) {
-    steps.push({ key: 'initial-walk', walkMin: data.initialWalkMin });
+  const steps: StripStep[] = [];
+  const segments: BarSegment[] = [];
+
+  if (insights.initialWalkMin > 0) {
+    steps.push({ key: 'initial-walk', kind: 'walk', walkMin: insights.initialWalkMin });
+    segments.push({ key: 'seg-initial-walk', kind: 'walk', min: insights.initialWalkMin });
   }
-  for (const item of data.transitLegs) {
-    steps.push({ key: item.key, leg: item.leg });
-    if (item.transferWalkMinAfter > 0) {
-      steps.push({ key: `${item.key}-walk`, walkMin: item.transferWalkMinAfter });
+
+  for (let i = 0; i < insights.transitLegs.length; i++) {
+    const item = insights.transitLegs[i];
+    steps.push({ key: item.key, kind: 'leg', leg: item.leg });
+    const badgeColors = resolveLegBadgeColors({ leg: item.leg, compact: true, cityId });
+    segments.push({
+      key: `seg-${item.key}`,
+      kind: 'leg',
+      min: item.durationMin,
+      color: badgeColors.bg,
+    });
+
+    const hasNext = i < insights.transitLegs.length - 1;
+    if (hasNext && item.transferRiskAfter) {
+      steps.push({
+        key: `${item.key}-risk`,
+        kind: 'risk',
+        risk: item.transferRiskAfter,
+        walkMin: item.transferWalkMinAfter,
+      });
+      segments.push({
+        key: `seg-${item.key}-risk`,
+        kind: item.transferRiskAfter.level === 'critical' ? 'riskCritical' : 'riskTight',
+        min: Math.max(1, item.transferWalkMinAfter || 1),
+      });
+    } else if (item.transferWalkMinAfter > 0) {
+      steps.push({
+        key: `${item.key}-walk`,
+        kind: 'walk',
+        walkMin: item.transferWalkMinAfter,
+      });
+      segments.push({
+        key: `seg-${item.key}-walk`,
+        kind: 'walk',
+        min: item.transferWalkMinAfter,
+      });
     }
   }
-  if (data.finalWalkMin > 0) {
-    steps.push({ key: 'final-walk', walkMin: data.finalWalkMin });
+
+  const pinFinalWalk =
+    insights.hasLongDestinationWalk && insights.finalWalkMin > 0 && !dimmed;
+
+  if (insights.finalWalkMin > 0) {
+    if (!pinFinalWalk) {
+      steps.push({
+        key: 'final-walk',
+        kind: 'walk',
+        walkMin: insights.finalWalkMin,
+      });
+    }
+    segments.push({
+      key: 'seg-final-walk',
+      kind: pinFinalWalk ? 'longWalk' : 'walk',
+      min: insights.finalWalkMin,
+    });
   }
 
   return (
-    <ScrollView
-      horizontal
-      style={styles.strip}
-      contentContainerStyle={styles.stripContent}
-      showsHorizontalScrollIndicator={false}
-      nestedScrollEnabled
+    <View
+      style={[styles.stripSurface, dimmed && styles.stripSurfaceDimmed]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      {steps.map((step, i) => {
-        const leg = 'leg' in step ? step.leg : undefined;
-        return (
-          <View key={step.key} style={styles.stripCell}>
-            {i > 0 && <ChevronRight size={12} color={scheme.onSurfaceVariant} />}
-            {leg ? (
-              <LineBadge leg={leg} maxWidth={width - 96} />
-            ) : (
-              <View style={styles.walkStep}>
-                <DirectionsWalk size={15} color={scheme.onSurfaceVariant} />
-                <Text style={styles.walkMinutes}>
-                  {'walkMin' in step ? s.common.durMin(step.walkMin) : ''}
-                </Text>
+      <View style={styles.stripTopRow}>
+        <ScrollView
+          horizontal
+          style={styles.stripScroll}
+          contentContainerStyle={styles.stripContent}
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          {steps.map((step) => {
+            if (step.kind === 'leg') {
+              return (
+                <LineBadge
+                  key={step.key}
+                  leg={step.leg}
+                  compact
+                  maxWidth={width - 128}
+                />
+              );
+            }
+
+            if (step.kind === 'risk') {
+              const critical = step.risk.level === 'critical';
+              const fg = critical ? scheme.onErrorContainer : scheme.onWarningContainer;
+              const timeLabel = step.risk.slackMin <= 0 ? '<1\'' : `${step.risk.slackMin}'`;
+              return (
+                <View
+                  key={step.key}
+                  style={[
+                    styles.riskConnector,
+                    critical ? styles.riskConnectorCritical : styles.riskConnectorTight,
+                  ]}
+                >
+                  <TriangleAlert size={11} color={fg} />
+                  {step.walkMin > 0 && <DirectionsWalk size={12} color={fg} />}
+                  <Text style={[styles.riskConnectorText, { color: fg }]}>{timeLabel}</Text>
+                </View>
+              );
+            }
+
+            return (
+              <View key={step.key} style={styles.walkStep}>
+                <DirectionsWalk size={13} color={scheme.onSurfaceVariant} />
+                <Text style={styles.walkMinutes}>{`${step.walkMin}'`}</Text>
               </View>
-            )}
+            );
+          })}
+        </ScrollView>
+
+        {pinFinalWalk && (
+          <View style={styles.pinnedFinalWalk}>
+            <DirectionsWalk size={13} color={scheme.warning} />
+            <Text style={styles.pinnedFinalWalkText} numberOfLines={1}>
+              {s.connection.finalWalkPill(insights.finalWalkMin)}
+            </Text>
           </View>
-        );
-      })}
-    </ScrollView>
+        )}
+      </View>
+
+      {segments.length > 0 && (
+        <View style={styles.proportionBar}>
+          {segments.map((seg) => {
+            if (seg.kind === 'longWalk') {
+              return (
+                <View
+                  key={seg.key}
+                  style={[
+                    styles.barLongWalk,
+                    { flexGrow: Math.max(1, seg.min), flexBasis: 0 },
+                  ]}
+                >
+                  {DASH_INDICES.map((idx) => (
+                    <View key={idx} style={styles.barDash} />
+                  ))}
+                </View>
+              );
+            }
+
+            const barColor =
+              seg.kind === 'leg'
+                ? seg.color
+                : seg.kind === 'riskCritical'
+                  ? scheme.error
+                  : seg.kind === 'riskTight'
+                    ? scheme.warning
+                    : scheme.outlineVariant;
+
+            return (
+              <View
+                key={seg.key}
+                style={[
+                  styles.barSegment,
+                  {
+                    flexGrow: Math.max(1, seg.min),
+                    flexBasis: 0,
+                    backgroundColor: barColor,
+                  },
+                ]}
+              />
+            );
+          })}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -213,13 +280,20 @@ export const ConnectionCard = memo(function ConnectionCard({
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const [focused, setFocused] = useState(false);
-  const verticalTimes = (width - 60) / fontScale < 140;
+  const press = useSharedValue(0);
+
+  const verticalTimes = (width - 64) / fontScale < 148;
   const Direction = verticalTimes ? ArrowDown : ArrowRight;
   const walkMps = useWalkSpeedMps();
+  const thresholds = useTransferThresholds();
   const now = useMemo(() => new Date(), [tick]);
+
   const boarding = useMemo(() => item.legs.filter((l) => l.mode !== 'walk'), [item.legs]);
   const walkOnly = boarding.length === 0;
-  const stripData = useMemo(() => buildJourneyStripData(item.legs, walkMps), [item.legs, walkMps]);
+  const insights = useMemo(
+    () => analyzeConnection(item, walkMps, thresholds),
+    [item, walkMps, thresholds],
+  );
   const transfers = useMemo(() => interchangeStops(item.interchange), [item.interchange]);
 
   const departureMs = boardingDepartureMs(item, now);
@@ -227,10 +301,15 @@ export const ConnectionCard = memo(function ConnectionCard({
   const firstVehicle = boarding[0];
   const notice = reliabilityNotice(boarding, s);
   const scheduledDeparture =
-    firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
+    !item.boarded &&
+    firstVehicle?.live &&
+    Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
       ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure
       : undefined;
-  const minsAgo = item.departureSec > 0 ? Math.floor((now.getTime() - departureMs) / 60000) : -1;
+  const minsAgo =
+    !item.boarded && item.departureSec > 0
+      ? Math.floor((now.getTime() - departureMs) / 60000)
+      : -1;
   const historical = minsAgo >= 1;
 
   const effectiveMin =
@@ -241,39 +320,83 @@ export const ConnectionCard = memo(function ConnectionCard({
   const walkM = walkOnly ? item.legs[0]?.walkM : undefined;
   const walkMin = item.durationMin || (walkM != null ? walkMinutesFor(walkM, walkMps) : 1);
 
-  const departureText = historical
-    ? minsAgo <= 1
-      ? tr().common.departJustAgo
-      : tr().common.departAgo(minsAgo)
-    : walkOnly && walkM != null
-      ? formatWalkTime(walkMin)
-      : effectiveMin <= 0
-        ? tr().common.departNow
-        : effectiveMin > 59
-          ? departAt
-          : tr().common.departIn(effectiveMin);
+  const departureText = item.boarded
+    ? s.connection.inVehicleNow
+    : historical
+      ? minsAgo <= 1
+        ? tr().common.departJustAgo
+        : tr().common.departAgo(minsAgo)
+      : walkOnly && walkM != null
+        ? formatWalkTime(walkMin)
+        : effectiveMin <= 0
+          ? tr().common.departNow
+          : effectiveMin > 59
+            ? departAt
+            : tr().common.departIn(effectiveMin);
+
+  const showLiveOnTime = item.live && item.delayMin === 0 && !item.boarded && !dimmed && !walkOnly;
+  const showDelayPill = !notice && item.live && item.delayMin !== 0 && !item.boarded && !dimmed && !walkOnly;
+
   const departureColor =
     dimmed || historical
       ? scheme.onSurfaceVariant
-      : item.live && item.delayMin > 0
-        ? scheme.error
-        : scheme.primary;
+      : item.boarded || showLiveOnTime
+        ? scheme.primary
+        : walkOnly && insights.hasLongDestinationWalk
+          ? scheme.warning
+          : scheme.onSurface;
 
   const linesSummary = boarding
     .map((b) => b.line)
     .filter(Boolean)
     .join(', ');
-  const transferText = [
-    walkOnly ? s.connection.walkLeg : transfersLabel(item.transfers),
-    ...transfers,
-  ].join(' • ');
-  const accessibilityDesc = tr().connection.cardA11y(
-    departureText,
-    item.durationMin,
-    departAt,
-    item.arriveAt,
-    walkOnly ? tr().connection.walkRoute : transferText,
-    linesSummary,
+  const transferSummary = walkOnly ? s.connection.walkLeg : transfersLabel(item.transfers);
+  const transferA11y = [transferSummary, ...transfers].join(' • ');
+
+  const contextRightText = walkOnly
+    ? s.connection.walkLeg
+    : transfers.length > 0
+      ? `${transferSummary} · ${transfers.join(' · ')}`
+      : item.boarded && insights.lastTransitStop
+        ? `${transferSummary} · ${s.connection.exitStopLabel(insights.lastTransitStop)}`
+        : insights.firstBoardingStop
+          ? `${transferSummary} · ${s.connection.fromStopLabel(insights.firstBoardingStop)}`
+          : transferSummary;
+
+  const worstRisk = !dimmed ? insights.worstTransferRisk : undefined;
+  const riskA11yText = worstRisk
+    ? s.connection.riskyTransferA11y(worstRisk.stopName, worstRisk.slackMin)
+    : undefined;
+  const longWalkA11yText = insights.hasLongDestinationWalk
+    ? s.connection.longWalkA11y(insights.destinationWalkMin)
+    : undefined;
+
+  const accessibilityDesc = [
+    tr().connection.cardA11y(
+      departureText,
+      item.durationMin,
+      departAt,
+      item.arriveAt,
+      walkOnly ? tr().connection.walkRoute : transferA11y,
+      linesSummary,
+    ),
+    riskA11yText,
+    longWalkA11yText,
+    notice,
+  ]
+    .filter(Boolean)
+    .join('. ');
+
+  const animatedCardStyle = useAnimatedStyle(() => ({
+    borderRadius: 24 - press.value * 10,
+    transform: [{ scale: 1 - press.value * 0.015 }],
+  }));
+
+  const setPress = useCallback(
+    (value: number) => {
+      press.value = withSpring(value, PRESS_SPRING);
+    },
+    [press],
   );
 
   const handlePress = useCallback(() => {
@@ -281,13 +404,17 @@ export const ConnectionCard = memo(function ConnectionCard({
     onPress(item);
   }, [item, onPress]);
 
+  const showLongWalkStyle = insights.hasLongDestinationWalk && !dimmed && !item.boarded;
+
   return (
     <ConnectionPeekTarget item={item} handlers={peek}>
-      <Pressable
+      <AnimatedPressable
         collapsable={false}
         onPress={handlePress}
+        onPressIn={() => setPress(1)}
+        onPressOut={() => setPress(0)}
         accessibilityRole="button"
-        accessibilityLabel={[accessibilityDesc, notice].filter(Boolean).join('. ')}
+        accessibilityLabel={accessibilityDesc}
         accessibilityHint={peek ? s.connection.previewHint : undefined}
         accessibilityActions={
           peek
@@ -301,64 +428,117 @@ export const ConnectionCard = memo(function ConnectionCard({
         }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        style={({ pressed }) => [
+        style={[
           styles.card,
+          showLongWalkStyle && styles.longWalkCard,
+          item.boarded && styles.boardedCard,
           dimmed && styles.pastCard,
           focused && styles.focused,
-          pressed && styles.pressed,
+          animatedCardStyle,
         ]}
       >
-        <View style={styles.schedule}>
-          <Text style={[styles.departure, { color: departureColor }]}>
-            {walkOnly ? s.connection.walkRoute : departureText}
-          </Text>
-          <View style={styles.scheduleRight}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Text style={[styles.departure, { color: departureColor }]}>
+              {walkOnly ? s.connection.walkRoute : departureText}
+            </Text>
+
+            {showLiveOnTime && (
+              <View style={styles.onTimePill}>
+                <LiveSensors size={13} color={scheme.success} pulse={!dimmed} />
+                <Text style={styles.onTimePillText}>{s.connection.onTimeBadge}</Text>
+              </View>
+            )}
+
+            {showDelayPill && (
+              <View
+                style={[
+                  styles.delayPill,
+                  item.delayMin > 0 ? styles.delayPillLate : styles.delayPillEarly,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.delayPillText,
+                    { color: item.delayMin > 0 ? scheme.onErrorContainer : scheme.onWarningContainer },
+                  ]}
+                >
+                  {item.delayMin > 0 ? `+${item.delayMin} min` : `${item.delayMin} min`}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.headerRight}>
             <RailAlertsChip connection={item} dimmed={dimmed} />
-            <View style={styles.duration}>
-              <Clock3 size={14} color={scheme.onSecondaryContainer} />
-              <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+            <View style={[styles.durationPill, dimmed && styles.durationPillDimmed]}>
+              <Text style={[styles.durationText, dimmed && styles.durationTextDimmed]}>
+                {s.common.durMin(item.durationMin)}
+              </Text>
             </View>
           </View>
         </View>
 
-        <View style={[styles.journeyMeta, fontScale > 1.3 && styles.journeyMetaStacked]}>
+        <View style={[styles.timeRow, fontScale > 1.3 && styles.timeRowStacked]}>
           <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-            <Text style={styles.hours}>{departAt}</Text>
-            <Direction size={14} color={scheme.onSurfaceVariant} />
-            <Text style={[styles.hours, styles.arrival]}>{item.arriveAt}</Text>
+            <Text style={[styles.departClock, dimmed && styles.textDimmed]}>{departAt}</Text>
+            <Direction size={13} color={scheme.onSurfaceVariant} />
+            <Text style={[styles.arriveClock, dimmed && styles.textDimmed]}>{item.arriveAt}</Text>
+            {scheduledDeparture != null && item.live && item.delayMin !== 0 && (
+              <Text style={styles.plannedInline}>
+                {s.connection.plannedShort(secondsToTimeString(scheduledDeparture))}
+              </Text>
+            )}
           </View>
-          <Text style={styles.metaText} numberOfLines={fontScale > 1.3 ? undefined : 1}>
-            {transferText}
+
+          <Text
+            style={styles.contextRight}
+            numberOfLines={fontScale > 1.3 ? 2 : 1}
+            ellipsizeMode="tail"
+          >
+            {contextRightText}
           </Text>
         </View>
 
         {walkOnly ? (
-          <View style={styles.walkOnlyWrap}>
-            <Footprints size={18} color={scheme.onSurfaceVariant} />
-            <Text style={styles.walkLabel}>{s.connection.walkAll}</Text>
-          </View>
-        ) : stripData.transitLegs.length > 0 ? (
-          <JourneyStrip data={stripData} />
-        ) : null}
-
-        {!notice && item.live && item.delayMin !== 0 && (
-          <Text
+          <View
             style={[
-              styles.delay,
-              {
-                color: item.delayMin > 0 ? scheme.error : scheme.warning,
-              },
+              styles.walkOnlyBox,
+              insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyBoxLong,
+              dimmed && styles.stripSurfaceDimmed,
             ]}
           >
-            {scheduledDeparture != null &&
-              `${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} • `}
-            {item.delayMin > 0
-              ? s.routeDetails.late(item.delayMin)
-              : s.routeDetails.early(-item.delayMin)}
-          </Text>
-        )}
-        {notice && <Text style={[styles.delay, { color: scheme.onSurfaceVariant }]}>{notice}</Text>}
-      </Pressable>
+            <View
+              style={[
+                styles.walkIconBadge,
+                insights.hasLongDestinationWalk && !dimmed && styles.walkIconBadgeLong,
+              ]}
+            >
+              <Footprints
+                size={16}
+                color={
+                  insights.hasLongDestinationWalk && !dimmed
+                    ? scheme.warning
+                    : scheme.onSurfaceVariant
+                }
+              />
+            </View>
+            <Text
+              style={[
+                styles.walkOnlyLabel,
+                insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyLabelLong,
+              ]}
+            >
+              {s.connection.walkAll}
+              {walkM != null && walkM > 0 ? ` · ${formatDistance(walkM)}` : ''}
+            </Text>
+          </View>
+        ) : insights.transitLegs.length > 0 ? (
+          <JourneyStrip insights={insights} dimmed={dimmed} />
+        ) : null}
+
+        {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
+      </AnimatedPressable>
     </ConnectionPeekTarget>
   );
 });
@@ -366,124 +546,308 @@ export const ConnectionCard = memo(function ConnectionCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.extraLarge,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    padding: 12,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant + '44',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     gap: 10,
   },
-  pastCard: { backgroundColor: scheme.surfaceContainerLow },
-  scheduleRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  boardedCard: {
+    backgroundColor: scheme.primaryContainer + '35',
+    borderColor: scheme.primary + '70',
   },
-  schedule: {
+  longWalkCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderColor: scheme.warning + '70',
+  },
+  pastCard: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderColor: 'transparent',
+  },
+  focused: {
+    borderWidth: 2,
+    borderColor: scheme.primary,
+  },
+  headerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     columnGap: 10,
-    rowGap: 4,
+    rowGap: 6,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
   },
   departure: {
-    fontSize: 22,
+    fontSize: 24,
     lineHeight: 28,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: -0.4,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
-    maxWidth: '100%',
   },
-  metaText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flexShrink: 1, minWidth: 0 },
-  duration: {
+  onTimePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: shape.medium,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.successContainer + '66',
+  },
+  onTimePillText: {
+    ...type.labelMedium,
+    color: scheme.success,
+    fontWeight: '700',
+  },
+  delayPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+  },
+  delayPillLate: {
+    backgroundColor: scheme.errorContainer,
+  },
+  delayPillEarly: {
+    backgroundColor: scheme.warningContainer,
+  },
+  delayPillText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  durationPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    maxWidth: '100%',
+  },
+  durationPillDimmed: {
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   durationText: {
-    ...type.labelLarge,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
     color: scheme.onSecondaryContainer,
   },
-  journeyMeta: {
+  durationTextDimmed: {
+    color: scheme.onSurfaceVariant,
+  },
+  timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 8,
   },
-  journeyMetaStacked: {
+  timeRowStacked: {
     flexDirection: 'column',
     alignItems: 'flex-start',
+    gap: 4,
   },
   timeRange: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
+    flexShrink: 0,
   },
   timeRangeStacked: {
     flexDirection: 'column',
     alignItems: 'flex-start',
     gap: 2,
   },
-  hours: {
-    ...type.titleSmall,
-    fontVariant: ['tabular-nums'],
+  departClock: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
     color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
   },
-  arrival: {
+  arriveClock: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  plannedInline: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+    marginLeft: 2,
+  },
+  textDimmed: {
     color: scheme.onSurfaceVariant,
   },
-  walkOnlyWrap: {
+  contextRight: {
+    ...type.bodySmall,
+    fontSize: 13,
+    lineHeight: 18,
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  stripSurface: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  stripSurfaceDimmed: {
+    opacity: 0.72,
+  },
+  stripTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 4,
+    gap: 6,
   },
-  walkLabel: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-  },
-  strip: {
-    marginTop: 2,
+  stripScroll: {
+    flex: 1,
+    minWidth: 0,
   },
   stripContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  stripCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   walkStep: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
+    gap: 3,
+    paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: shape.small,
+    minHeight: 26,
     backgroundColor: scheme.surfaceContainerHigh,
   },
   walkMinutes: {
-    ...type.labelSmall,
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
-  delay: {
-    ...type.labelSmall,
+  riskConnector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: shape.small,
+    minHeight: 26,
+  },
+  riskConnectorTight: {
+    backgroundColor: scheme.warningContainer,
+  },
+  riskConnectorCritical: {
+    backgroundColor: scheme.errorContainer,
+  },
+  riskConnectorText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  pinnedFinalWalk: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minHeight: 26,
+    borderRadius: shape.small,
+    backgroundColor: scheme.warningContainer,
+    borderWidth: 1,
+    borderColor: scheme.warning + '70',
+    flexShrink: 0,
+  },
+  pinnedFinalWalkText: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: scheme.onWarningContainer,
+    fontVariant: ['tabular-nums'],
+  },
+  proportionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  barSegment: {
+    height: 4,
+    borderRadius: shape.full,
+    minWidth: 10,
+  },
+  barLongWalk: {
+    height: 4,
+    minWidth: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    overflow: 'hidden',
+  },
+  barDash: {
+    width: 5,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: scheme.warning,
+    flexShrink: 0,
+  },
+  walkOnlyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  walkOnlyBoxLong: {
+    backgroundColor: scheme.warningContainer + '42',
+    borderWidth: 1,
+    borderColor: scheme.warning + '38',
+  },
+  walkIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walkIconBadgeLong: {
+    backgroundColor: scheme.warningContainer,
+  },
+  walkOnlyLabel: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  walkOnlyLabelLong: {
+    color: scheme.onWarningContainer,
     fontWeight: '700',
   },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.985 }],
-  },
-  focused: {
-    borderColor: scheme.primary,
+  noticeText: {
+    ...type.labelSmall,
+    color: scheme.error,
+    fontWeight: '700',
   },
 });

@@ -397,4 +397,6 @@ export async function downloadNationalDb(
   // Udogodnienia też siedzą w tej bazie: cache per pociąg trzymałby stare bity.
   const { resetRailAmenitiesCache } = await import('./railAmenities');
   resetRailAmenitiesCache();
+  const { resetStationAmenitiesCache } = await import('./stationAmenities');
+  resetStationAmenitiesCache();
 }

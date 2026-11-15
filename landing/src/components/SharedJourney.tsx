@@ -4,6 +4,7 @@ import {
   BusFront,
   CableCar,
   Check,
+  CheckCircle2,
   ChevronDown,
   Clock3,
   Copy,
@@ -11,6 +12,7 @@ import {
   Link,
   MessageCircle,
   Share2,
+  Smartphone,
   TrainFront,
   TramFront,
 } from 'lucide-react';
@@ -57,7 +59,7 @@ function Vehicle({ mode }: { mode: SharedLeg['mode'] }) {
           : mode === 'cable'
             ? CableCar
             : BusFront;
-  return <Icon size={20} aria-hidden="true" />;
+  return <Icon size={18} aria-hidden="true" />;
 }
 
 function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]; now: number }) {
@@ -76,7 +78,10 @@ function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]
   return (
     <>
       {position && <p className="journey-position-label">{s.estimatedPosition}</p>}
-      <ol className={`journey-stop-list${isTrain ? ' journey-stop-list-train' : ''}`} aria-label={s.timetable}>
+      <ol
+        className={`journey-stop-list${isTrain ? ' journey-stop-list-train' : ''}`}
+        aria-label={s.timetable}
+      >
         {stops.map((stop, index) => {
           const isFirst = index === 0;
           const isLast = index === stops.length - 1;
@@ -208,13 +213,17 @@ export default function SharedJourney({ hash }: { hash: string }) {
 
   if (!journey)
     return (
-      <main id="main" className="shared-journey shared-empty">
-        <Link size={36} aria-hidden="true" />
-        <h1>{s.invalidTitle}</h1>
-        <p>{s.invalidBody}</p>
-        <a className="journey-button" href="#top">
-          {s.home}
-        </a>
+      <main id="main" className="shared-journey shared-empty" tabIndex={-1}>
+        <div className="shared-empty-card">
+          <span className="shared-empty-icon" aria-hidden="true">
+            <Link size={26} />
+          </span>
+          <h1>{s.invalidTitle}</h1>
+          <p>{s.invalidBody}</p>
+          <a className="journey-button journey-button-primary" href="#top">
+            {s.home}
+          </a>
+        </div>
       </main>
     );
 
@@ -227,9 +236,28 @@ export default function SharedJourney({ hash }: { hash: string }) {
   }).format(new Date(`${journey.date}T12:00:00Z`));
   const arrivalDay = Math.floor(journey.arrival / 1440);
   const elapsed = sharedJourneySeconds(journey.date, now);
+  const depSec = journey.departure * 60;
+  const arrSec = journey.arrival * 60;
+  const ended = elapsed > arrSec;
+  const started = elapsed >= depSec && !ended;
+  const etaMin = started ? Math.max(1, Math.round((arrSec - elapsed) / 60)) : 0;
+  const departInMin = !started && !ended ? Math.round((depSec - elapsed) / 60) : 0;
+  const progressRatio = started
+    ? Math.max(0.04, Math.min(1, (elapsed - depSec) / Math.max(60, arrSec - depSec)))
+    : 0;
+  const showDepartBadge = !started && !ended && departInMin >= 1 && departInMin <= 180;
+  const statusText = ended
+    ? s.finished
+    : started
+      ? s.inProgress
+      : showDepartBadge
+        ? s.upcoming
+        : s.planned;
+
   const url = window.location.href;
   const message = shareMessage(journey, s);
   const smsUrl = `sms:${/iPhone|iPad|iPod/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(`${message}\n${url}`)}`;
+  const allWalk = journey.legs.every((leg) => leg.mode === 'walk');
 
   async function copyLink() {
     try {
@@ -252,100 +280,147 @@ export default function SharedJourney({ hash }: { hash: string }) {
   }
 
   return (
-    <main id="main" className="shared-journey">
-      <div className="journey-heading">
-        <h1>{s.pageTitle}</h1>
-        <p>{date}</p>
-        <a
-          className="journey-button"
-          href={tripToken ? `kilometr://shared?trip=${tripToken}` : 'kilometr://shared'}
-        >
-          {s.openApp}
-        </a>
-        <p>{s.appHint}</p>
-      </div>
+    <main id="main" className="shared-journey" tabIndex={-1}>
+      <header className="journey-heading">
+        <div className="journey-topbar">
+          <a className="brand journey-brand" href="#top">
+            <img src="./icon.png" alt="" width="24" height="24" />
+            <span>{s.brand}</span>
+          </a>
+          <time className="journey-date" dateTime={journey.date}>
+            {date}
+          </time>
+        </div>
+
+        <div className="journey-hero-bar">
+          <div className="journey-heading-copy">
+            <h1>{s.pageTitle}</h1>
+            <p className="journey-app-hint">{s.appHint}</p>
+          </div>
+          <a
+            className="journey-button journey-button-primary journey-app-cta"
+            href={tripToken ? `kilometr://shared?trip=${tripToken}` : 'kilometr://shared'}
+          >
+            <Smartphone size={18} aria-hidden="true" />
+            <span>{s.openApp}</span>
+          </a>
+        </div>
+      </header>
+
       <div className="journey-layout">
         <aside
           className="journey-overview"
           aria-label={s.cardLabel(journey.from, journey.to, formatShareTime(journey.arrival))}
         >
-          <div className="journey-ticket">
-            <div className="journey-endpoints">
-              <div>
-                <p>{s.departure}</p>
-                <div className="journey-time">{formatShareTime(journey.departure)}</div>
-                <h2>{journey.from}</h2>
-              </div>
-              <ArrowRight className="journey-route-arrow" size={24} aria-hidden="true" />
-              <div>
-                <p>{s.arrival}</p>
-                <div className="journey-time">
-                  {formatShareTime(journey.arrival)}
-                  {arrivalDay > 0 && <span>{s.dayLater(arrivalDay)}</span>}
-                </div>
-                <h2>{journey.to}</h2>
-              </div>
-            </div>
-            <div className="journey-ticket-body">
-              <div className="journey-facts">
-                <strong>
-                  <Clock3 size={20} aria-hidden="true" />
-                  {s.duration(journey.arrival - journey.departure)}
-                </strong>
-                <span>
-                  {journey.legs.every((leg) => leg.mode === 'walk')
-                    ? s.walk
-                    : s.transfers(transferCount(journey))}
+          <div className={`journey-ticket${ended ? ' journey-ticket-ended' : ''}`}>
+            <div className="journey-ticket-hero">
+              <div className="journey-status-row">
+                <span className="journey-status">
+                  {ended ? (
+                    <CheckCircle2 size={15} aria-hidden="true" />
+                  ) : started ? (
+                    <span className="journey-live-dot" aria-hidden="true" />
+                  ) : (
+                    <Clock3 size={15} aria-hidden="true" />
+                  )}
+                  <span>{statusText}</span>
                 </span>
+                {started && !ended && (
+                  <span className="journey-countdown journey-countdown-accent">
+                    {s.etaInMin(etaMin)}
+                  </span>
+                )}
+                {showDepartBadge && (
+                  <span className="journey-countdown">{s.departsInMin(departInMin)}</span>
+                )}
               </div>
+
+              <p className="journey-hero-label">{s.arrival}</p>
+              <div className="journey-arrival-row">
+                <div className="journey-time">{formatShareTime(journey.arrival)}</div>
+                {arrivalDay > 0 && (
+                  <span className="journey-day-later">{s.dayLater(arrivalDay)}</span>
+                )}
+              </div>
+              <h2 className="journey-destination">{journey.to}</h2>
+
+              {started && !ended && (
+                <div className="journey-progress" aria-hidden="true">
+                  <span style={{ width: `${Math.round(progressRatio * 100)}%` }} />
+                </div>
+              )}
+            </div>
+
+            <div className="journey-ticket-body">
+              <div className="journey-meta-row">
+                <div className="journey-origin-col">
+                  <p className="journey-meta-label">
+                    {s.departure} · <time>{formatShareTime(journey.departure)}</time>
+                  </p>
+                  <p className="journey-origin-name">{journey.from}</p>
+                </div>
+                <div className="journey-facts-col">
+                  <strong>{s.duration(journey.arrival - journey.departure)}</strong>
+                  <span>{allWalk ? s.walk : s.transfers(transferCount(journey))}</span>
+                </div>
+              </div>
+
               <div className="journey-services">
                 {journey.legs.map((leg, i) => (
-                  <span
-                    key={i}
-                    className="journey-service"
-                    data-mode={leg.mode}
-                    style={lineStyle(leg, journey.city)}
-                    aria-label={`${s.modes[leg.mode]} ${leg.line || ''}`}
-                  >
-                    <Vehicle mode={leg.mode} />
-                    {leg.line || (leg.mode === 'walk' ? s.walk : s.modes[leg.mode])}
-                  </span>
+                  <div key={i} className="journey-service-step">
+                    {i > 0 && (
+                      <ArrowRight
+                        className="journey-chain-arrow"
+                        size={13}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span
+                      className="journey-service"
+                      data-mode={leg.mode}
+                      style={lineStyle(leg, journey.city)}
+                      aria-label={`${s.modes[leg.mode]} ${leg.line || ''}`}
+                    >
+                      <Vehicle mode={leg.mode} />
+                      {leg.line || (leg.mode === 'walk' ? s.walk : s.modes[leg.mode])}
+                    </span>
+                  </div>
                 ))}
               </div>
             </div>
           </div>
+
+          <div className="journey-actions">
+            <button type="button" className="journey-button" onClick={() => void share()}>
+              <Share2 size={18} aria-hidden="true" />
+              <span>{s.linkOnly}</span>
+            </button>
+            <button type="button" className="journey-button" onClick={() => void copyLink()}>
+              {copied ? (
+                <Check size={18} aria-hidden="true" />
+              ) : (
+                <Copy size={18} aria-hidden="true" />
+              )}
+              <span aria-live="polite">{copied ? s.copied : s.copy}</span>
+            </button>
+            <a className="journey-sms" href={smsUrl}>
+              <MessageCircle size={18} aria-hidden="true" />
+              <span>{sendSms}</span>
+            </a>
+          </div>
+
           <p className="journey-note">
             {s.snapshot}
             {journey.legs.some((leg) => leg.mode !== 'walk') && <> {s.positionNote}</>}
           </p>
-          <div className="journey-actions">
-            <button type="button" className="journey-button" onClick={() => void share()}>
-              <Share2 size={20} aria-hidden="true" />
-              {s.linkOnly}
-            </button>
-            <button
-              type="button"
-              className="journey-button journey-button-tonal"
-              onClick={() => void copyLink()}
-            >
-              {copied ? (
-                <Check size={20} aria-hidden="true" />
-              ) : (
-                <Copy size={20} aria-hidden="true" />
-              )}
-              <span aria-live="polite">{copied ? s.copied : s.copy}</span>
-            </button>
-            <a className="journey-sms journey-button-tonal" href={smsUrl}>
-              <MessageCircle size={20} aria-hidden="true" />
-              {sendSms}
-            </a>
-          </div>
+
           {shareError && (
             <p className="journey-error" role="alert">
               {s.error}
             </p>
           )}
         </aside>
+
         <section className="journey-itinerary" aria-labelledby="itinerary-title">
           <h2 id="itinerary-title">{s.itinerary}</h2>
           <ol className="journey-legs">

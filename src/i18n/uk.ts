@@ -512,6 +512,15 @@ export const uk: Strings = {
     pickStart: 'Вибери початок',
     outsideAreaShort: 'Ти поза підтримуваною територією',
     downloadCityTimetableA11y: (gen: string) => `Завантажити розклад ${gen}`,
+    liveMapA11y: 'Мапа транспорту наживо',
+    boardedOriginTitle: (line: string, direction: string) =>
+      direction ? `Лінія ${line} (${direction})` : `Лінія ${line}`,
+    boardedChipTitle: (line: string) => `У транспорті ${line}`,
+    boardedInVehicle: 'У транспорті',
+    boardedDetectedTitle: 'Ти їдеш в одному з цих транспортних засобів?',
+    boardedDetectedSub: 'Обери транспорт як старт, щоб побачити пересадки по дорозі.',
+    boardedPickOnMap: 'Обрати на мапі',
+    boardedDismissA11y: 'Сховати підказку транспорту',
     gpsBlockedTitle: 'Старт із GPS недоступний',
     gpsBlockedBody: (city: string, supported: string) =>
       `Ти поза зоною ${supported} (${city}), тож маршрути з GPS не працюватимуть. Вибери початок вручну.`,
@@ -616,7 +625,7 @@ export const uk: Strings = {
     offlineMapSize: (mb: number) => `${mb} МБ`,
     offlineMapDeleteCityA11y: (name: string) => `Видалити мапу ${name}`,
     offlineMapFailTitle: 'Не вдалося завантажити мапу',
-    offlineMapFailBody: "Перевір з'єднання і спробуй ще раз. Решта застосунку працює як звичайно.",
+    offlineMapFailBody: "Перевір з\x27єднання і спробуй ще раз. Решта застосунку працює як звичайно.",
     offlineMapCooldownTitle: 'Мапу вже завантажували',
     offlineMapCooldownBody: (days: number) =>
       days <= 1
@@ -1150,6 +1159,11 @@ export const uk: Strings = {
     changeFromA11y: (t: string) => `Змінити старт, зараз ${t}`,
     changeFromAnchorA11y: (t: string, stop: string) =>
       `Змінити старт, зараз ${t}, відправлення з зупинки ${stop}`,
+    boardedOriginLabel: (line: string, direction: string) =>
+      direction ? `У транспорті ${line} (${direction})` : `У транспорті ${line}`,
+    changeFromBoardedA11y: (line: string, direction: string) =>
+      `Старт у транспорті ${line}${direction ? `, напрямок ${direction}` : ''}. Натисни, щоб змінити.`,
+    dismissBoardedA11y: 'Повернутися до GPS замість старту з транспорту',
     dismissAnchorA11y: 'Прибрати прив’язку зупинки і шукати з GPS',
     swapA11y: 'Обернути маршрут: поміняти старт і ціль',
     changeToA11y: (t: string) => `Змінити ціль, зараз ${t}`,
@@ -1234,6 +1248,10 @@ export const uk: Strings = {
     lineAlertsError: 'Не вдалося перевірити порушення руху.',
   },
   search: {
+    nearbyVehiclesSection: 'Транспорт поруч (сісти як старт)',
+    vehicleDirectionTo: (dir: string) => `напрямок ${dir}`,
+    pickOnLiveMap: 'Обрати транспорт на мапі наживо',
+    pickOnLiveMapSub: 'Переглянь транспорт поруч і вибери вручну',
     suggestedPlaces: 'Рекомендовані місця',
     emptyTitle: 'Куди їдемо?',
     emptyHint: 'Введи зупинку, адресу або місце. Твій вибір з’явиться тут.',
@@ -1252,6 +1270,11 @@ export const uk: Strings = {
     noResultsHint: (id: string) =>
       `Спробуй: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Працює й без польських літер і з помилками.`,
     noResultsFor: (q: string) => `Нічого не підходить до „${q}”`,
+    timetableDownloadingHint:
+      'Результати з’являться після завершення завантаження розкладу.',
+    timetableMissingTitle: 'На пристрої немає розкладу',
+    timetableMissingHint: (city: string) =>
+      `Завантаж розклад для ${city}, щоб шукати зупинки й адреси.`,
   },
   places: {
     editAction: 'Редагувати',
@@ -1413,6 +1436,8 @@ export const uk: Strings = {
       n <= 0 ? 'прямо' : isOne(n) ? '1 пересадка' : isFew(n) ? `${n} пересадки` : `${n} пересадок`,
     connections: (n: number) =>
       isOne(n) ? '1 сполучення' : isFew(n) ? `${n} сполучення` : `${n} сполучень`,
+    inVehicleNow: 'Їдеш',
+    boardedBadge: 'У транспорті',
     walkAll: 'цілком пішки',
     walkLeg: 'пішки',
     walkTo: (stop: string) => `Пішки до: ${stop}`,
@@ -1426,6 +1451,16 @@ export const uk: Strings = {
     ) =>
       `${dep}, час їзди ${formatDuration(dur)}, відправлення ${depAt}, прибуття ${arrAt}, ${via}${lines ? `, лінії ${lines}` : ''}`,
     walkRoute: 'піший маршрут',
+    riskyTransferA11y: (stop: string, min: number) =>
+      min <= 0
+        ? `Ризикована пересадка на зупинці ${stop}, менше хвилини запасу`
+        : `Ризикована пересадка на зупинці ${stop}, ${min} хв запасу`,
+    longWalkA11y: (min: number) => `Потрібно довше йти пішки до мети: ${min} хв`,
+    onTimeBadge: 'вчасно',
+    plannedShort: (time: string) => `(план. ${time})`,
+    fromStopLabel: (stop: string) => `від: ${stop}`,
+    exitStopLabel: (stop: string) => `вихід: ${stop}`,
+    finalWalkPill: (min: number) => `${min}' до мети`,
   },
   vehiclePos: {
     noRoute: 'Немає даних про маршрут',
@@ -1475,7 +1510,6 @@ export const uk: Strings = {
     stationsCountShort: (n: number) =>
       isOne(n) ? `${n} станція` : isFew(n) ? `${n} станції` : `${n} станцій`,
     directRide: (mins: number) => `Без проміжних зупинок · ~${formatDuration(mins)}`,
-    expandPill: (open: boolean) => (open ? 'Згорнути' : 'Показати'),
     arrTime: (time: string) => `приб. ${time}`,
     depTime: (time: string) => `відпр. ${time}`,
     dwellMin: (min: number) => `зупинка ${min} хв`,
@@ -1561,6 +1595,18 @@ export const uk: Strings = {
     strefa_ciszy: (_n?: number) => 'Тиха зона',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Зручності: ${list}`,
+  },
+  stationAmenities: {
+    toilets: 'Туалет',
+    gastronomy: 'Заклади харчування',
+    shop: 'Магазин',
+    cafe: 'Кавʼярня',
+    bakery: 'Пекарня',
+    pharmacy: 'Аптека',
+    atm: 'Банкомат',
+    luggage: 'Камера схову',
+    more: (n: number) => `+${n}`,
+    a11y: (list: string) => `На вокзалі: ${list}`,
   },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
@@ -1818,6 +1864,63 @@ export const uk: Strings = {
     protectionWatching: 'Стежить',
     protectionSlack: (n: number) => `+${n} хв запасу`,
     transferAlert: 'Пересадка!',
+  },
+  liveMap: {
+    title: 'Мапа наживо',
+    backA11y: 'Назад',
+    recenterA11y: 'Центрувати мапу на моїй позиції',
+    filterAll: 'Усі',
+    filterTram: 'Трамваї',
+    filterBus: 'Автобуси',
+    filterTrain: 'Потяги',
+    loadingVehicles: 'Завантажую позиції транспорту…',
+    noVehiclesTitle: 'Немає транспорту на мапі',
+    noVehiclesBody: 'Для обраного фільтра зараз немає активних рейсів наживо.',
+    offlineTilesNote: 'Немає офлайн-мапи та мережі: видно лише позиції транспорту.',
+    vehiclesCount: (n: number) =>
+      isOne(n) ? '1 одиниця наживо' : isFew(n) ? `${n} одиниці наживо` : `${n} одиниць наживо`,
+    vehicleTowards: (dir: string) => `Напрямок: ${dir}`,
+    nextStop: (stop: string) => `Наступна зупинка: ${stop}`,
+    distanceAway: (m: number) =>
+      m < 1000 ? `${Math.round(m)} м звідси` : `${(m / 1000).toFixed(1)} км звідси`,
+    delayOnTime: 'Вчасно',
+    delayLate: (min: number) => `+${min} хв запізнення`,
+    delayEarly: (min: number) => `На ${min} хв раніше`,
+    delayUnknown: 'Немає даних про запізнення',
+    unmatchedTitle: 'Не можна обрати як старт',
+    unmatchedBody:
+      'Цей транспорт не зіставлено з рейсом у завантаженому розкладі, тому пересадки недоступні.',
+    boardCta: 'Їхати цим транспортом',
+    closeSheetA11y: 'Закрити деталі',
+    stopBoardTitle: 'Табло відправлень',
+    vehicleBoardTitle: 'Наступні зупинки',
+    scheduledOnly: 'За розкладом',
+    stopNoDepartures: 'Немає найближчих відправлень у цьому часовому вікні.',
+    stopBoardUnavailable: 'Завантажте розклад міста, щоб переглянути табло відправлень.',
+    stopCodeLabel: (code: string) => `Платформа ${code}`,
+    departInMin: (min: number) => (min <= 0 ? 'зараз' : `за ${min} хв`),
+    vehicleNoStops: 'Немає списку наступних зупинок для цього рейсу.',
+    filterDisruptions: 'Перешкоди',
+    disruptionsCount: (n: number) =>
+      isOne(n) ? '1 перешкода' : isFew(n) ? `${n} перешкоди` : `${n} перешкод`,
+    disruptionSheetTitle: 'Порушення руху',
+    disruptionCorridor: (from: string, to: string) => `Ділянка: ${from} → ${to}`,
+    disruptionReplacement: (line: string) => `Замісний маршрут: ${line}`,
+    disruptionOpenArticleCta: 'Детальніше про повідомлення',
+    disruptionSeverityBlocking: 'Перекрито',
+    disruptionSeverityMajor: 'Об\'їзд',
+    disruptionSeverityMinor: 'Зміна',
+    disruptionSeverityInfo: 'Інфо',
+    disruptionFallbackAccident: 'аварія',
+    disruptionFallbackFailure: 'несправність',
+    disruptionFallbackWorks: 'ремонт',
+    disruptionFallbackEvent: 'подія',
+    disruptionFallbackWeather: 'погода',
+    disruptionFallbackFare: 'тариф',
+    disruptionFallbackOther: 'перешкода',
+    mapErrorTitle: 'Не вдалося завантажити карту',
+    mapErrorBody: 'Перевірте з\'єднання та перезавантажте карту.',
+    mapRetryCta: 'Оновити карту',
   },
   widgets: {
     journeyTitle: 'Твої напрямки',
