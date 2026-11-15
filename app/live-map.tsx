@@ -349,6 +349,7 @@ export default function LiveVehiclesMapScreen() {
         lon: v.lon,
         bearing: routeBearing ?? observedBearing,
         delaySec: v.delaySec ?? null,
+        updatedAt: v.updatedAt,
       });
     }
     for (const key of motionRef.current.keys()) {
