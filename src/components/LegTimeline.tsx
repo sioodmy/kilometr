@@ -453,12 +453,14 @@ const TransitLegCard = memo(function TransitLegCard({
   onToggle,
   userLocation,
   allowLive,
+  boardedDepartAt,
 }: {
   leg: Leg;
   expanded: boolean;
   onToggle: (id: string) => void;
   userLocation: CurrentLocation | null;
   allowLive: boolean;
+  boardedDepartAt?: string;
 }) {
   // `t`, nie `s`: modułowy StyleSheet nazywa się już `s`.
   const t = useStrings();
@@ -484,9 +486,24 @@ const TransitLegCard = memo(function TransitLegCard({
     if (physicalStops.length === segmentStops.length) return leg.stopsCount;
     return Math.max(0, physicalStops.length - 1);
   }, [leg]);
+  const isBoardedLeg = Boolean(boardedDepartAt);
   const durationMin = useMemo(
-    () => legDurationMin({ ...leg, stopsCount }),
-    [leg.departAt, leg.arriveAt, leg.scheduledDepartureSec, leg.scheduledArrivalSec, stopsCount],
+    () =>
+      legDurationMin({
+        ...leg,
+        departAt: boardedDepartAt ?? leg.departAt,
+        scheduledDepartureSec: isBoardedLeg ? undefined : leg.scheduledDepartureSec,
+        stopsCount,
+      }),
+    [
+      boardedDepartAt,
+      isBoardedLeg,
+      leg.departAt,
+      leg.arriveAt,
+      leg.scheduledDepartureSec,
+      leg.scheduledArrivalSec,
+      stopsCount,
+    ],
   );
   const chevron = useSharedValue(expanded ? 1 : 0);
 
@@ -511,7 +528,7 @@ const TransitLegCard = memo(function TransitLegCard({
     leg.fromStop,
     leg.mode,
   );
-  const stopHint = isTrain ? null : (leg.stopHint ?? resolvedHint);
+  const stopHint = isTrain || isBoardedLeg ? null : (leg.stopHint ?? resolvedHint);
   const departurePlatform = useMemo(
     () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
     [t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],
@@ -771,15 +788,17 @@ const TransitLegCard = memo(function TransitLegCard({
         {/* 1. Przystanek początkowy (bez prefixu "z") + godzina odjazdu po prawej */}
         <View style={s.cardStartRow}>
           <View style={s.stopTitleWrap}>
-            <Text style={s.cardStopName}>{leg.fromStop}</Text>
-            {departurePlatform && !stopHint ? (
+            <Text style={s.cardStopName}>
+              {isBoardedLeg ? t.home.boardedInVehicle : leg.fromStop}
+            </Text>
+            {!isBoardedLeg && departurePlatform && !stopHint ? (
               <View style={s.platformBadge}>
                 <Text style={s.platformBadgeText}>{departurePlatform}</Text>
               </View>
             ) : null}
           </View>
           <Text style={s.cardTime} numberOfLines={1}>
-            {leg.departAt}
+            {boardedDepartAt ?? leg.departAt}
           </Text>
         </View>
 
@@ -876,13 +895,14 @@ const TransitLegCard = memo(function TransitLegCard({
                   </Text>
                 ) : null}
 
-                {delayMin !== 0 && scheduledDeparture != null ? (
+                {delayMin !== 0 && (isBoardedLeg || scheduledDeparture != null) ? (
                   <Text
                     style={[s.delayLabel, { color: delayMin > 0 ? scheme.error : scheme.warning }]}
                     numberOfLines={1}
                   >
-                    {t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))}
-                    {' · '}
+                    {!isBoardedLeg && scheduledDeparture != null
+                      ? `${t.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))} · `
+                      : ''}
                     {leg.delayConfidence === 'estimated'
                       ? t.routeDetails.estimatedDelay(delayMin)
                       : delayMin > 0
@@ -1000,7 +1020,15 @@ function isWalkingNow(legs: Leg[], nowSec: number): boolean {
 }
 
 /** Vertical timeline bez railu po lewej stronie, wyśrodkowane dojścia pieszo. */
-export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observeOnly?: boolean }) {
+export function LegTimeline({
+  legs,
+  observeOnly = false,
+  boardedDepartAt,
+}: {
+  legs: Leg[];
+  observeOnly?: boolean;
+  boardedDepartAt?: string;
+}) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [walking, setWalking] = useState(() => isWalkingNow(legs, nowSecOfDay()));
@@ -1039,6 +1067,10 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
         : legs,
     [legs],
   );
+
+  const firstTransitId = boardedDepartAt
+    ? displayLegs.find((l) => l.mode !== 'walk')?.id
+    : undefined;
 
   return (
     <View style={s.list}>
@@ -1108,6 +1140,7 @@ export function LegTimeline({ legs, observeOnly = false }: { legs: Leg[]; observ
               expanded={expandedId === leg.id}
               userLocation={observeOnly || expandedId !== leg.id ? null : location}
               allowLive={!observeOnly || leg.live}
+              boardedDepartAt={leg.id === firstTransitId ? boardedDepartAt : undefined}
               onToggle={toggleLeg}
             />
             {uncertainTransfer && (

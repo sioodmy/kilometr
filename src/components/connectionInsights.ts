@@ -39,7 +39,7 @@ export interface ConnectionInsights {
   finalWalkM: number;
   firstBoardingStop?: string;
   lastTransitStop?: string;
-  /** Minuty marszu do celu (końcowy odcinek lub cała trasa piesza). */
+  /** Minuty marszu do celu (końcowy odcinek lub całą trasa piesza). */
   destinationWalkMin: number;
   hasLongDestinationWalk: boolean;
   riskyTransfers: TransferRiskInfo[];
@@ -189,9 +189,13 @@ export function analyzeConnection(
     const curIdx = transitIndices[i];
     const leg = legs[curIdx];
     const legInterval = legTimes[curIdx];
+    const effectiveDepSec =
+      connection.boarded && i === 0 && connection.departureSec > 0
+        ? Math.max(legInterval.depSec, connection.departureSec)
+        : legInterval.depSec;
     const durationMin = Math.max(
       1,
-      Math.round((legInterval.arrSec - legInterval.depSec) / 60) ||
+      Math.round((legInterval.arrSec - effectiveDepSec) / 60) ||
         (leg.stopsCount || 1) * 2,
     );
     let transferWalkMinAfter = 0;
