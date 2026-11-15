@@ -11,20 +11,27 @@ import type { Connection, RouteQuery, Suggestion } from '../types/models';
  * wprowadzała w błąd (a komunikat „Offline” na ekranie głównym był
  * mylący: brak rozkładu to nie brak internetu).
  */
-let localTimetableCache: { value: boolean; at: number } | null = null;
+let localTimetableCache: { cityId: string; value: boolean; at: number } | null = null;
 const LOCAL_TIMETABLE_TTL_MS = 30_000;
 
 /** Presence zamiast COUNT(*): heartbeat co 60 s nie może skanować stop_times. */
 export async function hasLocalTimetable(): Promise<boolean> {
   const now = Date.now();
-  if (localTimetableCache && now - localTimetableCache.at < LOCAL_TIMETABLE_TTL_MS) {
+  const cityId = getActiveCityIdSync();
+  if (
+    localTimetableCache &&
+    localTimetableCache.cityId === cityId &&
+    now - localTimetableCache.at < LOCAL_TIMETABLE_TTL_MS
+  ) {
     return localTimetableCache.value;
   }
   try {
     const { getGtfsPresence } = await import('./gtfsDatabase');
     const presence = await getGtfsPresence();
     const value = presence.stops > 0 && presence.hasStopTimes;
-    localTimetableCache = { value, at: now };
+    if (getActiveCityIdSync() === cityId) {
+      localTimetableCache = { cityId, value, at: now };
+    }
     return value;
   } catch {
     return false;
@@ -174,7 +181,7 @@ export async function findCachedConnection(id: string): Promise<Connection | nul
  */
 export function rehydrateConnections(list: Connection[], savedAtMs = Date.now()): Connection[] {
   // departureSec to pora dnia na DZIEŃ ZAPISU. Absolutny odjazd liczymy więc od
-  // północy dnia zapisu (start + departureSec), a nie od „teraz": inaczej cache
+  // północy dnia zapisu (start + departureSec), a nie od „teraz”: inaczej cache
   // zapisany przed północą pokazywał „za 23 h" zamiast „40 min temu".
   const baseMs = dayStartMs(savedAtMs);
   const nowMs = Date.now();

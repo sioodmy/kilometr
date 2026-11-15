@@ -151,7 +151,22 @@ export default function HomeScreen() {
   // Prawdziwa pustka vs ładowanie: pusty stan pokazujemy dopiero, gdy świeży
   // ranking (albo błąd GPS) potwierdzi brak danych: inaczej migałby przed GPS.
   const [smartReady, setSmartReady] = useState(false);
-  const [sheetMode, setSheetMode] = useState<'destination' | 'start' | null>(null);
+  const [sheetMode, setSheetModeRaw] = useState<'destination' | 'start' | null>(null);
+  const sheetCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearSheetCloseTimer = useCallback(() => {
+    if (sheetCloseTimerRef.current) {
+      clearTimeout(sheetCloseTimerRef.current);
+      sheetCloseTimerRef.current = null;
+    }
+  }, []);
+  const setSheetMode = useCallback(
+    (next: 'destination' | 'start' | null) => {
+      clearSheetCloseTimer();
+      setSheetModeRaw(next);
+    },
+    [clearSheetCloseTimer],
+  );
+  useEffect(() => () => clearSheetCloseTimer(), [clearSheetCloseTimer]);
   const [returnToDestinationAfterStart, setReturnToDestinationAfterStart] = useState(false);
   // Cel zapamiętany przy blokadzie startu z GPS: po ręcznym starcie wracamy
   // do niego, zamiast kazać użytkownikowi wpisywać go od nowa.
@@ -392,7 +407,7 @@ export default function HomeScreen() {
       sub.remove();
       clearInterval(timer);
     };
-  }, []);
+  }, [cityId]);
 
   const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
@@ -1349,9 +1364,13 @@ export default function HomeScreen() {
     setSwitchingCityId(id);
     try {
       await setCity(id);
-      await refreshDataStatus()
-        .then(setDataStatus)
-        .catch(() => {});
+      const st = await refreshDataStatus().catch(() => null);
+      if (st) {
+        setDataStatus(st);
+        if (st.state === 'empty' && getActiveCityIdSync() === id) {
+          void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+        }
+      }
       const def = defaultLocationForCity(id);
       if (!isCustomStart) {
         setLocTitle(def.title);
@@ -1824,8 +1843,10 @@ export default function HomeScreen() {
                 if (!goToRoutes(s)) return;
                 // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
                 // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
-                setTimeout(() => {
-                  setSheetMode(null);
+                clearSheetCloseTimer();
+                sheetCloseTimerRef.current = setTimeout(() => {
+                  sheetCloseTimerRef.current = null;
+                  setSheetModeRaw(null);
                   setQuery('');
                 }, 350);
               }

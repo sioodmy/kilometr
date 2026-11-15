@@ -1242,6 +1242,10 @@ export const pl = {
     noResultsHint: (id: string) =>
       `Spróbuj: ${id === 'krakow' ? '„rynek”, „grodzka”, „wawel”, „balice”' : id === 'gzm' ? '„katowice”, „gliwice”, „rynek”, „tychy”' : id === 'warszawa' ? '„metro”, „młociny”, „centralny”, „śródmieście”' : id === 'poznan' ? '„rynek”, „garbary”, „rondo”, „malta”' : id === 'trojmiasto' ? '„oliwa”, „wrzeszcz”, „orłowo”, „przymorze”' : id === 'lodz' ? '„piotrkowska”, „manufaktura”, „fabryczna”, „kaliska”' : id === 'szczecin' ? '„brama portowa”, „dąbie”, „police”, „pogodno”' : id === 'kielce' ? '„sienkiewicza”, „rynek”, „kadzielnia”, „herby”' : id === 'olsztyn' ? '„stare miasto”, „dworzec”, „jaroty”, „barczewo”' : id === 'bialystok' ? '„rynek kościuszki”, „lipowa”, „branicki”, „opera”' : id === 'opole' ? '„rynek”, „ozimska”, „solaris”, „dworzec”' : id === 'rzeszow' ? '„rynek”, „dworzec”, „rejtana”, „3 maja”' : id === 'lublin' ? '„krakowskie”, „zamek”, „felicity”, „świdnik”' : id === 'radom' ? '„żeromskiego”, „południe”, „gołębiów”, „idalin”' : '„arkady”, „biskupin”, „zoo”, „swojczycka”'}. Działa też bez polskich znaków i z literówkami.`,
     noResultsFor: (q: string) => `Nic nie pasuje do „${q}”`,
+    timetableDownloadingHint: 'Wyniki pojawią się po zakończeniu pobierania rozkładu.',
+    timetableMissingTitle: 'Brak rozkładu na telefonie',
+    timetableMissingHint: (city: string) =>
+      `Pobierz rozkład dla ${city}, aby szukać przystanków i adresów.`,
   },
   places: {
     editAction: 'Edytuj',
