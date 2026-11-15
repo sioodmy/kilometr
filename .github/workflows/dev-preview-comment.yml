@@ -35,6 +35,7 @@ jobs:
       github.event.comment.body == 'build machen !!!' &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Validate PR is dev -> main from this repo
         id: pr

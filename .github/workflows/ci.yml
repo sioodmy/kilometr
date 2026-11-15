@@ -1,143 +1,102 @@
 name: CI
 
 on:
-  pull_request:
-    branches:
-      - dev
-      - main
-      - nightly
-      - prod
   push:
-    branches:
-      - dev
-      - main
-      - nightly
-      - prod
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [dev, main, nightly, prod]
+  pull_request:
+    branches: [dev, main, nightly, prod]
 
 permissions:
   contents: read
-  id-token: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_name == 'dev' }}
 
 jobs:
-  typecheck:
-    name: App Typecheck
+  static-app:
+    name: App Static Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
 
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-
-      - name: Cache npm
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            npm-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: nix develop .#ci -c npm ci
-
-      - name: Run TypeScript typecheck
-        run: nix develop .#ci -c npm run typecheck
-
-      - name: Check Android version codes
-        run: nix develop .#ci -c node --test scripts/check-android-version-code.test.mjs
-
-      - name: Check widget translations
-        run: nix develop .#ci -c npm run check:widget-strings
-
-      - name: Check iOS translations
-        run: nix develop .#ci -c npm run check:ios-strings
-
-      - name: Run ESLint
-        run: nix develop .#ci -c npm run lint
-
-      - name: Check Android permissions
+      - name: TypeScript & ESLint
         run: |
-          nix develop .#ci -c bash -c '
-            set -euo pipefail
-            npm run check:permission-gate
-            npx expo config --type introspect --json > "$RUNNER_TEMP/expo-config.json"
-            npm run check:android-permissions -- "$RUNNER_TEMP/expo-config.json" --expo-config
-          '
+          set -euo pipefail
+          npm run typecheck
+          npm run lint
 
-  fdroid-config:
-    name: F-Droid Prebuild
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
-
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-
-      - name: Cache npm
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            npm-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: nix develop .#ci -c npm ci
-
-      - name: Check F-Droid
-        run: nix develop .#ci -c npm run check:fdroid
-
-      - name: Prepare unsigned F-Droid project
-        run: nix develop .#ci -c bash -c "APP_VERSION=v1.5.4 npm run prebuild:fdroid"
-
-      - name: Check F-Droid after prebuild
-        run: nix develop .#ci -c bash -c "FDROID_BUILD=1 npm run check:fdroid"
-
-      - name: Check F-Droid manifest
-        env:
-          FDROID_BUILD: '1'
-          APP_VERSION: v1.5.4
+      - name: Node config & CI helper unit tests
         run: |
-          nix develop .#ci -c bash -c '
-            set -euo pipefail
-            npx expo config --type introspect --json > "$RUNNER_TEMP/fdroid-config.json"
-            npm run check:android-permissions -- "$RUNNER_TEMP/fdroid-config.json" --expo-config
-          '
+          set -euo pipefail
+          node --test \
+            scripts/check-android-version-code.test.mjs \
+            .github/scripts/resolve-play-version.test.mjs
 
-  logic-tests:
-    name: Logic Tests
+      - name: Localization & permission gates
+        run: |
+          set -euo pipefail
+          npm run check:widget-strings
+          npm run check:ios-strings
+          npm run check:permission-gate
+          npx expo config --type introspect --json > "$RUNNER_TEMP/expo-config.json"
+          npm run check:android-permissions -- "$RUNNER_TEMP/expo-config.json" --expo-config
+
+  static-subprojects:
+    name: Subprojects & Dead Code
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
-
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-
-      - name: Cache npm
-        uses: actions/cache@v5
+      - name: Setup Node.js & install root dependencies
+        uses: ./.github/actions/setup-node-ci
         with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            npm-${{ runner.os }}-
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            landing/package-lock.json
+            cloudflare/package-lock.json
 
-      - name: Install dependencies
-        run: nix develop .#ci -c npm ci
+      - name: Server build, typecheck & routing test
+        run: |
+          set -euo pipefail
+          npm --prefix server ci
+          npm --prefix server run build
+          npm --prefix server run typecheck:scripts
+          npm --prefix server test
+
+      - name: Landing typecheck & Vite build
+        run: |
+          set -euo pipefail
+          npm --prefix landing ci
+          npm --prefix landing run build
+
+      - name: Cloudflare Worker typecheck
+        run: |
+          set -euo pipefail
+          npm --prefix cloudflare ci
+          npm --prefix cloudflare run typecheck
+
+      - name: Dead code check (Knip)
+        run: npm run check:dead-code
+
+  rust-raptor:
+    name: Rust RAPTOR Engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust RAPTOR target
         uses: actions/cache@v5
@@ -147,201 +106,233 @@ jobs:
           restore-keys: |
             rust-raptor-ci-${{ runner.os }}-
 
-      - name: Run Rust RAPTOR unit tests
-        run: nix develop .#ci -c cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+      - name: Cargo check & tests
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+          cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
 
-      - name: Run logic tests (RAPTOR routing engine)
-        run: nix develop .#ci -c npm run check:routing
-
-      - name: Run logic tests (Arrive by)
-        run: nix develop .#ci -c npm run check:arrival
-
-      - name: Run logic tests (Duplicate connections)
-        run: nix develop .#ci -c npm run check:connections
-
-      - name: Run logic tests (Live transit matchers & geo)
-        run: nix develop .#ci -c npm run check:live
-
-      - name: Run logic tests (Polinka cable car)
-        run: nix develop .#ci -c npm run check:polinka
-
-      - name: Run logic tests (Backup format)
-        run: nix develop .#ci -c npm run check:backup
-
-      - name: Run logic tests (Journey sharing)
-        run: nix develop .#ci -c npm run check:sharing
-
-      - name: Run logic tests (Storage)
-        run: nix develop .#ci -c npm run check:storage
-
-      - name: Run logic tests (GTFS import)
-        run: nix develop .#ci -c npm run check:gtfs-import
-
-      - name: Run logic tests (KV migration)
-        run: nix develop .#ci -c npm run check:kv-migration
-
-      - name: Run logic tests (Offline cache)
-        run: nix develop .#ci -c npm run check:offline-cache
-
-      - name: Run logic tests (Tile pack validation)
-        run: nix develop .#ci -c npm run check:tile-pack
-
-      - name: Run logic tests (Places per city)
-        run: nix develop .#ci -c npm run check:places
-
-      - name: Run logic tests (Address search)
-        run: nix develop .#ci -c npm run check:search
-
-      - name: Run logic tests (Offline address index)
-        run: nix develop .#ci -c npm run check:addresses
-
-      - name: Run logic tests (Warsaw city)
-        run: nix develop .#ci -c npm run check:warsaw
-
-      - name: Run logic tests (Poznań city)
-        run: nix develop .#ci -c npm run check:poznan
-
-      - name: Run logic tests (Tricity)
-        run: nix develop .#ci -c npm run check:trojmiasto
-
-      - name: Run logic tests (Łódź city)
-        run: nix develop .#ci -c npm run check:lodz
-
-      - name: Run logic tests (Szczecin city)
-        run: nix develop .#ci -c npm run check:szczecin
-
-      - name: Run logic tests (Kielce city)
-        run: nix develop .#ci -c npm run check:kielce
-
-      - name: Run logic tests (Olsztyn city)
-        run: nix develop .#ci -c npm run check:olsztyn
-
-      - name: Run logic tests (Białystok city)
-        run: nix develop .#ci -c npm run check:bialystok
-
-      - name: Run logic tests (Opole city)
-        run: nix develop .#ci -c npm run check:opole
-
-      - name: Run logic tests (Rzeszów city)
-        run: nix develop .#ci -c npm run check:rzeszow
-
-      - name: Run logic tests (Lublin city)
-        run: nix develop .#ci -c npm run check:lublin
-
-      - name: Run logic tests (Radom city)
-        run: nix develop .#ci -c npm run check:radom
-
-      - name: Run logic tests (Home pull gesture)
-        run: nix develop .#ci -c npm run check:pull
-
-      - name: Run logic tests (Notifications)
-        run: nix develop .#ci -c npm run check:notifications
-
-      - name: Run logic tests (Departure alarm)
-        run: nix develop .#ci -c npm run check:alarm
-
-      - name: Run logic tests (Notification lifecycle)
-        run: nix develop .#ci -c npm run check:notification-runtime
-
-      - name: Run iOS notification tests
-        run: nix develop .#ci -c npm run check:ios
-
-      - name: Run widget snapshot tests
-        run: nix develop .#ci -c npm run check:ios-widgets
-
-      - name: Run logic tests (Smart rank)
-        run: nix develop .#ci -c npm run check:smart-rank
-
-      - name: Run logic tests (Navigation target)
-        run: nix develop .#ci -c npm run check:navigation-target
-
-      - name: Check navigation map loading and GPS camera
-        run: nix develop .#ci -c npm run check:nav-map
-
-      - name: Run logic tests (Navigation)
-        run: nix develop .#ci -c npm run check:nav
-
-      - name: Run logic tests (Minimap)
-        run: nix develop .#ci -c npm run check:minimap
-
-      - name: Run logic tests (Geometry cache)
-        run: nix develop .#ci -c npm run check:geometry-cache
-
-      - name: Run logic tests (Map colors)
-        run: nix develop .#ci -c npm run check:map-colors
-
-      - name: Run logic tests (Personalization)
-        run: nix develop .#ci -c npm run check:personalization
-
-      - name: Run logic tests (Transfer protection)
-        run: nix develop .#ci -c npm run check:transfers
-
-      - name: Run logic tests (Connection times)
-        run: nix develop .#ci -c npm run check:connection-times
-
-      - name: Run logic tests (RT reliability)
-        run: nix develop .#ci -c npm run check:rt-reliability
-
-      - name: Run logic tests (POIs)
-        run: nix develop .#ci -c npm run check:pois
-
-      - name: Run logic tests (Line timetable)
-        run: nix develop .#ci -c npm run check:line-timetable
-
-      - name: Run logic tests (News parser)
-        run: nix develop .#ci -c npm run check:news
-
-      - name: Run logic tests (National rail & delays)
-        run: nix develop .#ci -c npm run check:rail-delays
-
-  verify-subprojects:
-    name: Lint & Typecheck Subprojects
+  fdroid-audit:
+    name: F-Droid Prebuild & Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
 
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: F-Droid baseline checks
+        run: npm run check:fdroid
 
-      - name: Cache npm
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: npm-subprojects-${{ runner.os }}-${{ hashFiles('package-lock.json', 'server/package-lock.json', 'landing/package-lock.json', 'cloudflare/package-lock.json') }}
-          restore-keys: |
-            npm-subprojects-${{ runner.os }}-
-
-      - name: Install shared app dependencies
-        run: nix develop .#ci -c npm ci
-
-      - name: Build & typecheck server
+      - name: Verify prebuild:fdroid & permission allowlist
+        env:
+          APP_VERSION: v1.5.4
         run: |
-          nix develop .#ci -c bash -c '
-            set -euo pipefail
-            npm --prefix server ci
-            npm --prefix server run build
-            npm --prefix server run typecheck:scripts
-          '
+          set -euo pipefail
+          npm run prebuild:fdroid
+          FDROID_BUILD=1 npm run check:fdroid
+          FDROID_BUILD=1 npx expo config --type introspect --json > "$RUNNER_TEMP/fdroid-config.json"
+          npm run check:android-permissions -- "$RUNNER_TEMP/fdroid-config.json" --expo-config
 
-      - name: Build & typecheck landing
+  test-unit:
+    name: Unit & Cloudflare Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
+
+      - name: Run test/*.test.ts suite
+        run: npm run test:unit
+
+      - name: Run Cloudflare offline checks
         run: |
-          nix develop .#ci -c bash -c '
-            set -euo pipefail
-            npm --prefix landing ci
-            npm --prefix landing run build
-          '
+          set -euo pipefail
+          for script in check:pois check:polska check:news check:stop-hints; do
+            echo "::group::$script"
+            npm run -s "$script"
+            echo "::endgroup::"
+          done
 
-      - name: Typecheck Cloudflare
+  test-routing:
+    name: Routing, Search & Cities
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
+
+      - name: Routing & search checks
         run: |
-          nix develop .#ci -c bash -c '
-            set -euo pipefail
-            npm --prefix cloudflare ci
-            npm --prefix cloudflare run typecheck
-          '
+          set -euo pipefail
+          for script in \
+            check:routing \
+            check:arrival \
+            check:connections \
+            check:boarded-routing \
+            check:smart-rank \
+            check:polinka \
+            check:places \
+            check:polish-inflections \
+            check:search \
+            check:search-speed \
+            check:addresses
+          do
+            echo "::group::$script"
+            npm run -s "$script"
+            echo "::endgroup::"
+          done
 
-      - name: Check unused code and dependencies
-        run: nix develop .#ci -c npm run check:dead-code
+      - name: City transit adapter checks
+        run: |
+          set -euo pipefail
+          for script in \
+            check:warsaw \
+            check:poznan \
+            check:trojmiasto \
+            check:lodz \
+            check:szczecin \
+            check:kielce \
+            check:olsztyn \
+            check:bialystok \
+            check:opole \
+            check:rzeszow \
+            check:lublin \
+            check:radom
+          do
+            echo "::group::$script"
+            npm run -s "$script"
+            echo "::endgroup::"
+          done
+
+  test-platform:
+    name: Navigation, Live & Platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
+
+      - name: Live tracking & transfer checks
+        run: |
+          set -euo pipefail
+          for script in \
+            check:live \
+            check:rt-reliability \
+            check:live-map-board \
+            check:onboard-gps \
+            check:onboard-detector \
+            check:transfers \
+            check:connection-times
+          do
+            echo "::group::$script"
+            npm run -s "$script"
+            echo "::endgroup::"
+          done
+
+      - name: Navigation, map & badge checks
+        run: |
+          set -euo pipefail
+          for script in \
+            check:nav \
+            check:navigation-target \
+            check:nav-map \
+            check:minimap \
+            check:geometry-cache \
+            check:geometry-detour \
+            check:map-colors \
+            check:line-badge \
+            check:line-timetable \
+            check:widget-badge \
+            check:personalization
+          do
+            echo "::group::$script"
+            npm run -s "$script"
+            echo "::endgroup::"
+          done
+
+      - name: Notifications, storage, sharing & iOS checks
+        run: |
+          set -euo pipefail
+          for script in \
+            check:notifications \
+            check:alarm \
+            check:notification-runtime \
+            check:ios \
+            check:ios-widgets \
+            check:storage \
+            check:kv-migration \
+            check:offline-cache \
+            check:backup \
+            check:sharing \
+            check:pull
+          do
+            echo "::group::$script"
+            npm run -s "$script"
+            echo "::endgroup::"
+          done
+
+  ci:
+    name: CI Gate
+    needs:
+      - static-app
+      - static-subprojects
+      - rust-raptor
+      - fdroid-audit
+      - test-unit
+      - test-routing
+      - test-platform
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarize & verify all CI checks
+        env:
+          RES_STATIC_APP: ${{ needs.static-app.result }}
+          RES_SUBPROJECTS: ${{ needs.static-subprojects.result }}
+          RES_RUST: ${{ needs.rust-raptor.result }}
+          RES_FDROID: ${{ needs.fdroid-audit.result }}
+          RES_UNIT: ${{ needs.test-unit.result }}
+          RES_ROUTING: ${{ needs.test-routing.result }}
+          RES_PLATFORM: ${{ needs.test-platform.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### CI Summary"
+            echo ""
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| App Static Checks | \`$RES_STATIC_APP\` |"
+            echo "| Subprojects & Dead Code | \`$RES_SUBPROJECTS\` |"
+            echo "| Rust RAPTOR Engine | \`$RES_RUST\` |"
+            echo "| F-Droid Prebuild & Audit | \`$RES_FDROID\` |"
+            echo "| Unit & Cloudflare Tests | \`$RES_UNIT\` |"
+            echo "| Routing, Search & Cities | \`$RES_ROUTING\` |"
+            echo "| Navigation, Live & Platform | \`$RES_PLATFORM\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for res in \
+            "$RES_STATIC_APP" \
+            "$RES_SUBPROJECTS" \
+            "$RES_RUST" \
+            "$RES_FDROID" \
+            "$RES_UNIT" \
+            "$RES_ROUTING" \
+            "$RES_PLATFORM"
+          do
+            if [ "$res" != "success" ]; then
+              echo "::error::Co najmniej jeden etap CI nie zakończył się sukcesem (status: $res)."
+              exit 1
+            fi
+          done

@@ -38,7 +38,7 @@ export interface VehicleStopEta {
   isNext: boolean;
 }
 
-export interface LiveVehicleRouteStop {
+interface LiveVehicleRouteStop {
   stopId: string;
   stopName: string;
   lat: number;

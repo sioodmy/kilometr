@@ -47,7 +47,7 @@ export interface LiveMapDisruptionItem {
   stopPoints?: [number, number][];
 }
 
-export interface LiveMapSelectedRouteStop {
+interface LiveMapSelectedRouteStop {
   id: string;
   name: string;
   lat: number;
