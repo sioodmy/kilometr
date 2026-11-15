@@ -194,7 +194,7 @@ export async function refreshDataStatus(): Promise<DataStatus> {
         source,
       });
       // Dokończenie przerwanego importu: wagi + warmup w tle.
-      void ensureSearchReady();
+      void ensureSearchReady(refreshCityId);
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
       // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
@@ -279,29 +279,32 @@ async function isTimetableExpiring(): Promise<boolean> {
   return end <= soonKey;
 }
 
-/** Po starcie rozgrzewa równolegle routing, adresy i wagi przystanków. */
-async function ensureSearchReady(): Promise<void> {
-  const weights = (async () => {
-    try {
-      if (await needsStopWeights()) {
-        await computeStopWeights();
-      }
-    } catch (err) {
-      console.warn('[DataManager] stop weights failed:', err);
+/**
+ * Po starcie rozgrzewa po kolei: wagi przystanków, routing i indeks adresów,
+ * żeby 618k adresów w dużych miastach nie blokowało pojedynczego uchwytu SQLite.
+ */
+async function ensureSearchReady(cityId: string): Promise<void> {
+  try {
+    if (getActiveCityIdSync() !== cityId) return;
+    if (await needsStopWeights()) {
+      await computeStopWeights();
     }
-  })();
-  const warmup = (async () => {
-    try {
-      const { warmupRouting } = await import('./routing/engine');
-      await warmupRouting();
-    } catch (err) {
-      console.warn('[DataManager] routing warmup failed:', err);
-    }
-  })();
-  const addresses = warmupAddressIndex().catch((err: unknown) => {
+  } catch (err) {
+    console.warn('[DataManager] stop weights failed:', err);
+  }
+  try {
+    if (getActiveCityIdSync() !== cityId) return;
+    const { warmupRouting } = await import('./routing/engine');
+    await warmupRouting();
+  } catch (err) {
+    console.warn('[DataManager] routing warmup failed:', err);
+  }
+  try {
+    if (getActiveCityIdSync() !== cityId) return;
+    await warmupAddressIndex();
+  } catch (err) {
     console.warn('[DataManager] address warmup failed:', err);
-  });
-  await Promise.all([weights, warmup, addresses]);
+  }
 }
 
 export let importInProgress = false;
@@ -310,10 +313,10 @@ export let importInProgress = false;
  * Czeka, aż trwający import GTFS się zakończy. Rozwiązuje się natychmiast,
  * gdy nic nie jest importowane.
  *
- * Silnik routingu używa tego zamiast pytać „coś się ładuje?" i oddawać pustą
+ * Silnik routingu używa tego zamiast pytać „coś się ładuje?” i oddawać pustą
  * listę: `LocalGtfsStore.load()` w trakcie importu nie ma prawidłowych
  * przystanków, więc planer zwracał zero połączeń i ekran pokazywał „nie
- * znaleziono połączeń" zamiast „rozkład się importuje".
+ * znaleziono połączeń” zamiast „rozkład się importuje”.
  */
 export function awaitImportSettled(timeoutMs = 180000): Promise<void> {
   if (!importInProgress) return Promise.resolve();
@@ -383,7 +386,7 @@ export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
       const detail = 'prebuilt sync failed';
       const Terr = dataTr();
       console.warn('[DataManager] import failed:', detail);
-      emit({ state: 'error', message: Terr.prepareFail, hint: Terr.retryHint, detail });
+      emitForCity(importCityId, { state: 'error', message: Terr.prepareFail, hint: Terr.retryHint, detail });
       throw new Error(detail);
     }
     const gate = await getTimetableDownloadGate();
@@ -475,17 +478,17 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
     return 'cooldown';
   }
 
-  emit({ state: 'downloading', progress: 0 });
+  emitForCity(cityId, { state: 'downloading', progress: 0 });
   await downloadPrebuiltDb(
     manifest,
     (written, total) => {
-      emit({ state: 'downloading', progress: total > 0 ? written / total : 0 });
+      emitForCity(cityId, { state: 'downloading', progress: total > 0 ? written / total : 0 });
     },
     cityId,
   );
   if (getActiveCityIdSync() !== cityId) return 'upToDate';
   const T = dataTr();
-  emit({ state: 'importing', step: T.stepVerify, progress: 0.97 });
+  emitForCity(cityId, { state: 'importing', step: T.stepVerify, progress: 0.97 });
   await setMetaIfActive('gtfs_last_check', new Date().toISOString());
   await setMetaIfActive('gtfs_remote_version', manifest.version);
   if (getActiveCityIdSync() === cityId) await markTimetableDownloaded();

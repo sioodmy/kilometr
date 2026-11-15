@@ -22,6 +22,7 @@ interface AddressRow {
 
 /** u32::MAX w Rust: brak kolumny stop_m (stara baza) → kara wyłączona. */
 const STOP_M_UNKNOWN = 4294967295;
+const ADDRESS_BATCH_SIZE = 5000;
 
 /** Opcjonalne kolumny adresów; stop_m/stop_w tylko w bazach z nowego buildu. */
 async function addressColumns(db: Database): Promise<{ stopCol: string; weightCol: string }> {
@@ -69,12 +70,12 @@ export async function warmupAddressIndex(): Promise<boolean> {
     let count = 0;
     while (current()) {
       const rows = await db.getAllAsync<AddressRow>(
-        `SELECT rowid, osm_id, street, house, locality, lat, lon${stopCol}${weightCol} FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT 2000`,
+        `SELECT rowid, osm_id, street, house, locality, lat, lon${stopCol}${weightCol} FROM addresses WHERE rowid > ? ORDER BY rowid LIMIT ${ADDRESS_BATCH_SIZE}`,
         after,
       );
       if (!current() || db !== (await openGtfsDbHandle()) || !current()) return false;
       if (!rows.length) break;
-      const writer = new BinaryWriter(200_000).u8Val(1).u32(rows.length);
+      const writer = new BinaryWriter(500_000).u8Val(1).u32(rows.length);
       for (const row of rows) {
         const stopM =
           stopCol && row.stop_m != null && Number.isFinite(row.stop_m)
@@ -97,6 +98,10 @@ export async function warmupAddressIndex(): Promise<boolean> {
       if (!accepted(writer)) return false;
       after = rows[rows.length - 1].rowid;
       count += rows.length;
+      if (rows.length === ADDRESS_BATCH_SIZE) {
+        // Oddaje kolejkę JS i SQLite między paczkami dużych miast (np. GZM 618k adresów).
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
     }
     if (!current() || !accepted(new BinaryWriter().u8Val(2))) return false;
     readyDb = db;
