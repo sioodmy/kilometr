@@ -141,6 +141,8 @@ export interface VehiclePosition {
   line: string;
   lat: number;
   lon: number;
+  /** Kierunek jazdy w stopniach (0-360), jesli podany przez feed live */
+  bearing?: number;
   /**
    * `null` = brak wiarygodnego pomiaru, co jest INNYM stanem niż 0.
    * Zero znaczy „na czas”; `null` znaczy „nie wiadomo” (np. dopasowanie

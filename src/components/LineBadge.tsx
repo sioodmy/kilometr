@@ -3,19 +3,9 @@ import { BusFront, CableCar, TrainFront, TramFront } from './icons';
 import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegMode } from '../types/models';
-import {
-  getContrastForeground,
-  getLineColors,
-  inferTransitMode,
-  normalizeLineName,
-} from '../services/lineIdentity';
+import { resolveLineBadgeIdentity } from '../services/lineIdentity';
 import { getActiveCityIdSync } from '../services/cityStore';
-import {
-  getRailAgencyColor,
-  inferRailAgency,
-  inferRailAgencyFromLine,
-  railBadgeLine,
-} from '../services/railIdentity';
+import { inferRailAgency, railBadgeLine } from '../services/railIdentity';
 import { RailIcon, isRailAgency } from './RailIcon';
 
 // Kolor i typ linii żyją w serwisie: korzysta z nich również silnik
@@ -37,22 +27,15 @@ export function resolveLegBadgeColors({
 }): { bg: string; fg: string } {
   const resolvedMode = leg?.mode ?? mode;
   const displayLine = leg ? railBadgeLine(leg) : line;
-  const normalizedLine = normalizeLineName(displayLine, resolvedMode, compact);
-  const resolved = inferTransitMode(resolvedMode, normalizedLine || displayLine, cityId);
-  const railAgency =
-    resolved === 'train'
-      ? leg
-        ? inferRailAgency(leg, cityId)
-        : inferRailAgencyFromLine(line, cityId) ??
-          inferRailAgencyFromLine(normalizedLine || displayLine, cityId)
-      : undefined;
-  const agencyBg = railAgency ? getRailAgencyColor(railAgency) : undefined;
-  const railHex = leg?.railColor?.replace('#', '') ?? '';
-  return agencyBg
-    ? { bg: agencyBg, fg: getContrastForeground(agencyBg) }
-    : /^[0-9a-f]{6}$/i.test(railHex)
-      ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
-      : getLineColors(normalizedLine || line, resolved === 'train' ? 'train' : mode, cityId);
+  const { bg, fg } = resolveLineBadgeIdentity({
+    mode: resolvedMode,
+    line: displayLine,
+    compact,
+    cityId,
+    railAgencyOverride: leg ? inferRailAgency(leg, cityId) : undefined,
+    railColorOverride: leg?.railColor,
+  });
+  return { bg, fg };
 }
 
 export function LineBadge({
@@ -74,10 +57,22 @@ export function LineBadge({
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
   const cityId = getActiveCityIdSync();
-  const resolvedMode = leg?.mode ?? mode;
+  const inputMode = leg?.mode ?? mode;
   const displayLine = leg ? railBadgeLine(leg) : line;
-  const normalizedLine = normalizeLineName(displayLine, resolvedMode, compact);
-  const resolved = inferTransitMode(resolvedMode, normalizedLine || displayLine, cityId);
+  const {
+    bg,
+    fg,
+    resolvedMode: resolved,
+    normalizedLine,
+    railAgency,
+  } = resolveLineBadgeIdentity({
+    mode: inputMode,
+    line: displayLine,
+    compact,
+    cityId,
+    railAgencyOverride: leg ? inferRailAgency(leg, cityId) : undefined,
+    railColorOverride: leg?.railColor,
+  });
   if (resolved === 'walk') {
     return (
       <View
@@ -98,14 +93,6 @@ export function LineBadge({
 
   // Przewoźnik kolejowy jedzie własną ikoną zamiast glifu pociągu; barwa
   // dopasowana do brandingu przewoźnika lub z tablicy zbiorkom.live.
-  const railAgency =
-    resolved === 'train'
-      ? leg
-        ? inferRailAgency(leg, cityId)
-        : inferRailAgencyFromLine(line, cityId) ??
-          inferRailAgencyFromLine(normalizedLine || displayLine, cityId)
-      : undefined;
-  const { bg, fg } = resolveLegBadgeColors({ leg, mode, line, compact, cityId });
   // Zestaw ikon nie ma osobnego glifu trolejbusu ani metra, więc trolejbus
   // jedzie ikoną autobusu na własnym zielonym tle, a metro ikoną pociągu
   // na barwie linii ze schematu (M1/M2): kolor niesie tożsamość.

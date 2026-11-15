@@ -1,6 +1,6 @@
 // Pelnoekranowa mapa pojazdow, przystankow i utrudnien na zywo w stylu zbiorkom.live:
-// pigulki linii z ikona srodka transportu i strzalka kierunku, klikalne przystanki
-// z tablica odjazdow, korytarze utrudnien z komunikatow oraz reczny wybor startu.
+// pigulki linii z ikona srodka transportu i strzalka kierunku, trasa wybranego pojazdu,
+// klikalne przystanki z tablica odjazdow, korytarze utrudnien oraz reczny wybor startu.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -42,6 +42,7 @@ import {
 import { SpringPressable } from '../src/components/SpringPressable';
 import type {
   LiveMapDisruptionItem,
+  LiveMapSelectedRoute,
   LiveMapStopItem,
   LiveMapVehicleItem,
 } from '../src/map/liveVehiclesMapDocument';
@@ -55,14 +56,17 @@ import { useStrings } from '../src/i18n';
 import { setPendingBoardedOrigin } from '../src/services/boardedOriginSelection';
 import { useActiveCity } from '../src/services/cityStore';
 import { useCurrentLocation } from '../src/services/currentLocation';
-import { inferTransitMode } from '../src/services/lineIdentity';
+import { resolveLineBadgeIdentity } from '../src/services/lineIdentity';
 import {
   buildLiveMapStops,
-  getLiveMapModeColors,
+  buildSelectedVehicleRoute,
   getStopDepartureBoard,
   getVehicleUpcomingBoard,
   loadLiveMapSchedule,
+  resolveNationalTrainVehicleRoute,
   type LiveMapScheduleContext,
+  type LiveVehicleRoute,
+  type VehicleStopEta,
 } from '../src/services/liveMapBoard';
 import {
   buildLiveMapDisruptions,
@@ -84,6 +88,12 @@ import {
   buildBoardedOriginFromVehicle,
   resolveVehicleBearing,
 } from '../src/services/onboardDetector';
+import {
+  ensureRailTrackShapes,
+  getCachedRailTrackBearing,
+  projectRouteTangent,
+  resolveLiveVehicleRouteGeometry,
+} from '../src/services/routeGeometry';
 import { gtfsStore } from '../src/services/routing/store';
 import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
@@ -130,38 +140,6 @@ function ModeGlyph({
   return <BusFront size={size} color={color} />;
 }
 
-function MapLinePill({
-  mode,
-  line,
-  bg,
-  fg,
-  large = false,
-}: {
-  mode: Exclude<LegMode, 'walk'>;
-  line: string;
-  bg: string;
-  fg: string;
-  large?: boolean;
-}) {
-  return (
-    <View
-      style={[
-        styles.mapPill,
-        large && styles.mapPillLarge,
-        { backgroundColor: bg },
-      ]}
-    >
-      <ModeGlyph mode={mode} size={large ? 16 : 13} color={fg} />
-      <Text
-        style={[styles.mapPillText, large && styles.mapPillTextLarge, { color: fg }]}
-        numberOfLines={1}
-      >
-        {line || '?'}
-      </Text>
-    </View>
-  );
-}
-
 function getDisruptionTone(severity: DisruptionAlert['severity']) {
   if (severity === 'blocking' || severity === 'major') {
     return { bg: scheme.errorContainer, fg: scheme.onErrorContainer };
@@ -187,6 +165,7 @@ export default function LiveVehiclesMapScreen() {
   const [filter, setFilter] = useState<ModeFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
+  const [routeStopFallback, setRouteStopFallback] = useState<LiveMapStopItem | null>(null);
   const [selectedDisruptionId, setSelectedDisruptionId] = useState<string | null>(null);
   const [showDisruptions, setShowDisruptions] = useState(true);
   const [newsItems, setNewsItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
@@ -197,12 +176,29 @@ export default function LiveVehiclesMapScreen() {
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [railShapeVersion, setRailShapeVersion] = useState(0);
+  const [asyncRouteData, setAsyncRouteData] = useState<{
+    key: string;
+    coords?: [number, number][];
+    nationalRoute?: LiveVehicleRoute;
+    upcoming?: VehicleStopEta[];
+  } | null>(null);
   // Bez sieci pierwszy poll live nigdy nie kończy się sukcesem, więc bez
   // timeoutu spinner "Ładowanie pojazdów" wisiałby w nieskończoność.
   const [liveWaitExpired, setLiveWaitExpired] = useState(false);
   const offlinePillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const motionRef = useRef(
-    new Map<string, { lat: number; lon: number; bearing?: number }>(),
+    new Map<
+      string,
+      {
+        lat: number;
+        lon: number;
+        bearing?: number;
+        tripId?: string;
+        routeBearing?: number;
+        checkedGtfs?: boolean;
+      }
+    >(),
   );
 
   useFocusEffect(
@@ -318,42 +314,166 @@ export default function LiveVehiclesMapScreen() {
 
   useEffect(() => () => clearOfflineTimer(), [clearOfflineTimer]);
 
+  useEffect(() => {
+    const railCandidates: Array<{
+      vehicleId: string;
+      line: string;
+      matchedTripId?: string;
+      lat: number;
+      lon: number;
+      currentStopName?: string;
+      nextStopName?: string;
+    }> = [];
+    for (const v of vehicles) {
+      if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) continue;
+      const id = resolveLineBadgeIdentity({ mode: v.type, line: v.line, cityId });
+      if (id.resolvedMode !== 'train') continue;
+      railCandidates.push({
+        vehicleId: v.vehicleId,
+        line: v.line,
+        matchedTripId: v.matchedTripId,
+        lat: v.lat,
+        lon: v.lon,
+        currentStopName: v.currentStopName,
+        nextStopName: v.nextStopName,
+      });
+    }
+    if (railCandidates.length === 0) return;
+    const ctrl = new AbortController();
+    void ensureRailTrackShapes(railCandidates, ctrl.signal).then((resolved) => {
+      if (!ctrl.signal.aborted && resolved) {
+        setRailShapeVersion((n) => n + 1);
+      }
+    });
+    return () => ctrl.abort();
+  }, [cityId, vehicles]);
+
   const mapItems = useMemo<LiveMapVehicleItem[]>(() => {
+    void railShapeVersion;
     const out: LiveMapVehicleItem[] = [];
     const seen = new Set<string>();
+    const identityCache = new Map<string, ReturnType<typeof resolveLineBadgeIdentity>>();
+    const angleDiff = (a: number, b: number): number => {
+      const d = Math.abs(a - b) % 360;
+      return d > 180 ? 360 - d : d;
+    };
+
     for (const v of vehicles) {
       if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) continue;
       seen.add(v.vehicleId);
 
       const prevMotion = motionRef.current.get(v.vehicleId);
+      const movedFar = prevMotion
+        ? distanceMeters(prevMotion.lat, prevMotion.lon, v.lat, v.lon) >= 12
+        : true;
       let observedBearing = prevMotion?.bearing;
-      if (!prevMotion) {
-        motionRef.current.set(v.vehicleId, { lat: v.lat, lon: v.lon });
-      } else if (distanceMeters(prevMotion.lat, prevMotion.lon, v.lat, v.lon) >= 12) {
-        observedBearing = Math.round(bearingDegrees(prevMotion.lat, prevMotion.lon, v.lat, v.lon));
+      if (prevMotion && movedFar) {
+        observedBearing = Math.round(bearingDegrees(prevMotion.lat, prevMotion.lon, v.lat, v.lon)) % 360;
+      }
+
+      const idKey = `${v.type ?? ''}\0${v.line ?? ''}`;
+      let identity = identityCache.get(idKey);
+      if (!identity) {
+        identity = resolveLineBadgeIdentity({ mode: v.type, line: v.line, cityId });
+        identityCache.set(idKey, identity);
+      }
+
+      const resolvedMode: Exclude<LegMode, 'walk'> =
+        identity.resolvedMode === 'walk' ? 'bus' : identity.resolvedMode;
+
+      const canReuseRouteBearing =
+        Boolean(prevMotion) &&
+        !movedFar &&
+        prevMotion?.tripId === v.matchedTripId &&
+        Boolean(prevMotion?.checkedGtfs) === gtfsLoaded;
+
+      const routeBearing = canReuseRouteBearing
+        ? prevMotion?.routeBearing
+        : gtfsLoaded
+          ? resolveVehicleBearing(v, gtfsStore)
+          : undefined;
+
+      if (!prevMotion || movedFar || prevMotion.tripId !== v.matchedTripId || prevMotion.checkedGtfs !== gtfsLoaded) {
         motionRef.current.set(v.vehicleId, {
-          lat: v.lat,
-          lon: v.lon,
+          lat: movedFar ? v.lat : prevMotion?.lat ?? v.lat,
+          lon: movedFar ? v.lon : prevMotion?.lon ?? v.lon,
           bearing: observedBearing,
+          tripId: v.matchedTripId,
+          routeBearing,
+          checkedGtfs: gtfsLoaded,
         });
       }
 
-      const inferred = inferTransitMode(v.type, v.line, cityId);
-      const resolvedMode: Exclude<LegMode, 'walk'> = inferred === 'walk' ? 'bus' : inferred;
       if (!matchesFilter(resolvedMode, filter)) continue;
 
-      const { bg, fg } = getLiveMapModeColors(resolvedMode, v.line, cityId);
-      const routeBearing = gtfsLoaded ? resolveVehicleBearing(v, gtfsStore) : undefined;
+      const rawFeedB = typeof v.bearing === 'number' && Number.isFinite(v.bearing)
+        ? ((v.bearing % 360) + 360) % 360
+        : undefined;
+      const feedBearing =
+        rawFeedB === 0 && observedBearing !== undefined && angleDiff(0, observedBearing) > 35
+          ? undefined
+          : rawFeedB;
+      const liveHeading = feedBearing ?? observedBearing;
+
+      let selectedRouteBearing: number | undefined;
+      if (v.vehicleId === selectedId && asyncRouteData?.key.startsWith(`${v.vehicleId}|`)) {
+        const geom = asyncRouteData.coords ?? asyncRouteData.nationalRoute?.coords;
+        if (geom && geom.length >= 2) {
+          const tan = projectRouteTangent(
+            geom,
+            v.lat,
+            v.lon,
+            resolvedMode === 'train' ? 2500 : 250,
+            resolvedMode === 'train' ? 40 : 25,
+          );
+          if (tan) selectedRouteBearing = Math.round(tan.heading) % 360;
+        }
+      }
+
+      const railShapeBearing =
+        selectedRouteBearing === undefined && resolvedMode === 'train'
+          ? getCachedRailTrackBearing(
+              {
+                vehicleId: v.vehicleId,
+                line: v.line,
+                matchedTripId: v.matchedTripId,
+                lat: v.lat,
+                lon: v.lon,
+                currentStopName: v.currentStopName,
+                nextStopName: v.nextStopName,
+              },
+              routeBearing ?? liveHeading,
+            )
+          : undefined;
+
+      let finalBearing: number | undefined;
+      let bearingExact = false;
+      if (selectedRouteBearing !== undefined) {
+        finalBearing = selectedRouteBearing;
+        bearingExact = true;
+      } else if (railShapeBearing !== undefined) {
+        finalBearing = railShapeBearing;
+        bearingExact = true;
+      } else if (routeBearing !== undefined) {
+        finalBearing =
+          liveHeading !== undefined && angleDiff(routeBearing, liveHeading) <= 105
+            ? liveHeading
+            : routeBearing;
+      } else {
+        finalBearing = liveHeading;
+      }
 
       out.push({
         id: v.vehicleId,
-        line: v.line || '?',
+        line: identity.normalizedLine || v.line || '?',
         mode: resolvedMode,
-        bg,
-        fg,
+        bg: identity.bg,
+        fg: identity.fg,
+        railAgency: identity.railAgency,
         lat: v.lat,
         lon: v.lon,
-        bearing: routeBearing ?? observedBearing,
+        bearing: finalBearing,
+        bearingExact,
         delaySec: v.delaySec ?? null,
         updatedAt: v.updatedAt,
       });
@@ -362,7 +482,7 @@ export default function LiveVehiclesMapScreen() {
       if (!seen.has(key)) motionRef.current.delete(key);
     }
     return out;
-  }, [cityId, filter, gtfsLoaded, vehicles]);
+  }, [asyncRouteData, cityId, filter, gtfsLoaded, railShapeVersion, selectedId, vehicles]);
 
   const mapStops = useMemo<LiveMapStopItem[]>(() => {
     if (!gtfsLoaded) return [];
@@ -417,9 +537,13 @@ export default function LiveVehiclesMapScreen() {
     const trip = selectedVehicle.matchedTripId
       ? gtfsStore.trips.get(selectedVehicle.matchedTripId)
       : undefined;
-    const inferred = inferTransitMode(selectedVehicle.type, selectedVehicle.line, cityId);
-    const mode: Exclude<LegMode, 'walk'> = inferred === 'walk' ? 'bus' : inferred;
-    const { bg, fg } = getLiveMapModeColors(mode, selectedVehicle.line, cityId);
+    const identity = resolveLineBadgeIdentity({
+      mode: selectedVehicle.type,
+      line: selectedVehicle.line,
+      cityId,
+    });
+    const mode: Exclude<LegMode, 'walk'> =
+      identity.resolvedMode === 'walk' ? 'bus' : identity.resolvedMode;
     const direction = selectedOrigin?.direction || trip?.trip_headsign || '';
     const nextStop = selectedVehicle.nextStopName || '';
     const distM = userLoc
@@ -427,32 +551,156 @@ export default function LiveVehiclesMapScreen() {
       : null;
     const delayMin =
       selectedVehicle.delaySec != null ? Math.round(selectedVehicle.delaySec / 60) : null;
-    return { mode, bg, fg, direction, nextStop, distM, delayMin };
+    return {
+      mode,
+      bg: identity.bg,
+      fg: identity.fg,
+      line: identity.normalizedLine || selectedVehicle.line || '?',
+      direction,
+      nextStop,
+      distM,
+      delayMin,
+    };
   }, [cityId, gtfsLoaded, selectedOrigin, selectedVehicle, userLoc]);
 
+  const localVehicleRoute = useMemo(() => {
+    if (!selectedVehicle || !gtfsLoaded) return null;
+    const motion = motionRef.current.get(selectedVehicle.vehicleId);
+    return buildSelectedVehicleRoute(
+      selectedVehicle,
+      gtfsStore,
+      scheduleCtx?.dayIndex ?? null,
+      cityId,
+      motion?.routeBearing ?? motion?.bearing,
+    );
+  }, [cityId, gtfsLoaded, scheduleCtx?.dayIndex, selectedVehicle]);
+
+  const selectedVehicleRouteKey = selectedVehicle
+    ? `${selectedVehicle.vehicleId}|${selectedVehicle.matchedTripId ?? ''}|${selectedVehicle.line}|${selectedVehicle.type ?? ''}`
+    : '';
+
+  const selectedVehicleRef = useRef(selectedVehicle);
+  selectedVehicleRef.current = selectedVehicle;
+  const localVehicleRouteRef = useRef(localVehicleRoute);
+  localVehicleRouteRef.current = localVehicleRoute;
+  const nowSecRef = useRef(nowSec);
+  nowSecRef.current = nowSec;
+
+  useEffect(() => {
+    if (!selectedVehicleRouteKey) {
+      setAsyncRouteData(null);
+      return;
+    }
+    const veh = selectedVehicleRef.current;
+    if (!veh) {
+      setAsyncRouteData(null);
+      return;
+    }
+
+    const ctrl = new AbortController();
+    const localRoute = localVehicleRouteRef.current;
+
+    if (localRoute) {
+      setAsyncRouteData(null);
+      if (
+        localRoute.mode === 'train' ||
+        localRoute.mode === 'bus' ||
+        localRoute.mode === 'trolleybus'
+      ) {
+        void resolveLiveVehicleRouteGeometry({
+          mode: localRoute.mode,
+          line: localRoute.line,
+          tripId: localRoute.tripId,
+          color: localRoute.color,
+          stops: localRoute.stops.map((st) => ({
+            id: st.stopId,
+            name: st.stopName,
+            lat: st.lat,
+            lon: st.lon,
+          })),
+          signal: ctrl.signal,
+        })
+          .then((coords) => {
+            if (ctrl.signal.aborted || !coords || coords.length < 2) return;
+            setAsyncRouteData({ key: selectedVehicleRouteKey, coords });
+          })
+          .catch(() => {});
+      }
+    } else {
+      setAsyncRouteData(null);
+      void resolveNationalTrainVehicleRoute(veh, cityId, nowSecRef.current, ctrl.signal)
+        .then((res) => {
+          if (ctrl.signal.aborted || !res) return;
+          setAsyncRouteData({
+            key: selectedVehicleRouteKey,
+            nationalRoute: res.route,
+            upcoming: res.upcoming,
+          });
+        })
+        .catch(() => {});
+    }
+
+    return () => ctrl.abort();
+  }, [cityId, gtfsLoaded, selectedVehicleRouteKey]);
+
+  const selectedRoute = useMemo<LiveMapSelectedRoute | null>(() => {
+    const activeRoute =
+      localVehicleRoute ??
+      (asyncRouteData?.key === selectedVehicleRouteKey ? asyncRouteData.nationalRoute : null);
+    if (!activeRoute) return null;
+    const coords =
+      asyncRouteData?.key === selectedVehicleRouteKey && asyncRouteData.coords
+        ? asyncRouteData.coords
+        : activeRoute.coords;
+    return {
+      color: activeRoute.color,
+      coords,
+      stops: activeRoute.stops.map((st) => ({
+        id: st.stopId,
+        name: st.stopName,
+        lat: st.lat,
+        lon: st.lon,
+        passed: st.passed,
+        isNext: st.isNext,
+      })),
+    };
+  }, [asyncRouteData, localVehicleRoute, selectedVehicleRouteKey]);
+
   const vehicleBoard = useMemo(() => {
-    if (!selectedVehicle || !gtfsLoaded) return [];
-    return getVehicleUpcomingBoard(selectedVehicle, gtfsStore, nowSec);
-  }, [gtfsLoaded, nowSec, selectedVehicle]);
+    if (!selectedVehicle) return [];
+    const localBoard = gtfsLoaded
+      ? getVehicleUpcomingBoard(selectedVehicle, gtfsStore, nowSec)
+      : [];
+    if (localBoard.length > 0) return localBoard;
+    if (asyncRouteData?.key === selectedVehicleRouteKey && asyncRouteData.upcoming) {
+      return asyncRouteData.upcoming;
+    }
+    return [];
+  }, [asyncRouteData, gtfsLoaded, nowSec, selectedVehicle, selectedVehicleRouteKey]);
 
   const selectedStop = useMemo(() => {
     if (!selectedStopId) return null;
     const item = stopsById.get(selectedStopId);
     if (item) return item;
     const raw = gtfsStore.stops.get(selectedStopId);
-    if (!raw) return null;
-    const { bg, fg } = getLiveMapModeColors('bus', undefined, cityId);
-    return {
-      id: raw.stop_id,
-      name: raw.stop_name || raw.stop_id,
-      code: raw.stop_code?.trim() || undefined,
-      lat: raw.stop_lat,
-      lon: raw.stop_lon,
-      mode: 'bus' as const,
-      bg,
-      fg,
-    };
-  }, [cityId, selectedStopId, stopsById]);
+    if (raw) {
+      const { bg, fg } = resolveLineBadgeIdentity({ mode: 'bus', cityId });
+      return {
+        id: raw.stop_id,
+        name: raw.stop_name || raw.stop_id,
+        code: raw.stop_code?.trim() || undefined,
+        lat: raw.stop_lat,
+        lon: raw.stop_lon,
+        mode: 'bus' as const,
+        bg,
+        fg,
+      };
+    }
+    if (routeStopFallback && routeStopFallback.id === selectedStopId) {
+      return routeStopFallback;
+    }
+    return null;
+  }, [cityId, routeStopFallback, selectedStopId, stopsById]);
 
   const stopDepartures = useMemo(() => {
     if (!selectedStopId || !gtfsLoaded) return [];
@@ -481,6 +729,7 @@ export default function LiveVehiclesMapScreen() {
     (vehicleId: string) => {
       void Haptics.selectionAsync().catch(() => {});
       setSelectedStopId(null);
+      setRouteStopFallback(null);
       setSelectedDisruptionId(null);
       setSelectedId(vehicleId);
       const found = vehicles.find((v) => v.vehicleId === vehicleId);
@@ -494,10 +743,30 @@ export default function LiveVehiclesMapScreen() {
   const handleSelectStop = useCallback(
     (stopId: string) => {
       void Haptics.selectionAsync().catch(() => {});
+      const routeStop = selectedRoute?.stops.find((item) => item.id === stopId);
+      if (routeStop && !stopsById.has(stopId) && !gtfsStore.stops.has(stopId)) {
+        const mode = selectedMeta?.mode ?? 'train';
+        const { bg, fg } = resolveLineBadgeIdentity({
+          mode,
+          line: selectedMeta?.line,
+          cityId,
+        });
+        setRouteStopFallback({
+          id: routeStop.id,
+          name: routeStop.name,
+          lat: routeStop.lat,
+          lon: routeStop.lon,
+          mode,
+          bg,
+          fg,
+        });
+      } else {
+        setRouteStopFallback(null);
+      }
       setSelectedId(null);
       setSelectedDisruptionId(null);
       setSelectedStopId(stopId);
-      const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId);
+      const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId) ?? routeStop;
       if (st) {
         const lat = 'lat' in st ? st.lat : st.stop_lat;
         const lon = 'lon' in st ? st.lon : st.stop_lon;
@@ -506,7 +775,7 @@ export default function LiveVehiclesMapScreen() {
         }
       }
     },
-    [stopsById],
+    [cityId, selectedMeta, selectedRoute, stopsById],
   );
 
   const handleSelectDisruption = useCallback(
@@ -514,6 +783,7 @@ export default function LiveVehiclesMapScreen() {
       void Haptics.selectionAsync().catch(() => {});
       setSelectedId(null);
       setSelectedStopId(null);
+      setRouteStopFallback(null);
       setSelectedDisruptionId(disruptionId);
       const found = disruptionMarkers.find((d) => d.id === disruptionId);
       if (found) {
@@ -526,6 +796,7 @@ export default function LiveVehiclesMapScreen() {
   const handleClearSelection = useCallback(() => {
     setSelectedId(null);
     setSelectedStopId(null);
+    setRouteStopFallback(null);
     setSelectedDisruptionId(null);
     setSheetHeight(0);
   }, []);
@@ -620,6 +891,7 @@ export default function LiveVehiclesMapScreen() {
           disruptions={mapDisruptionItems}
           selectedId={selectedId}
           selectedStopId={selectedStopId}
+          selectedRoute={selectedRoute}
           selectedDisruptionId={selectedDisruptionId}
           showDisruptions={showDisruptions}
           userLat={userLoc?.lat ?? null}
@@ -1003,12 +1275,7 @@ export default function LiveVehiclesMapScreen() {
                     style={[styles.depRow, idx > 0 && styles.depRowBorder]}
                     scaleDelta={0.015}
                   >
-                    <MapLinePill
-                      mode={dep.mode}
-                      line={dep.line}
-                      bg={dep.bg}
-                      fg={dep.fg}
-                    />
+                    <LineBadge mode={dep.mode} line={dep.line} />
                     <View style={styles.depInfo}>
                       <Text style={styles.depHeadsign} numberOfLines={1}>
                         {dep.headsign}
@@ -1042,18 +1309,17 @@ export default function LiveVehiclesMapScreen() {
         >
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
-            <MapLinePill
+            <LineBadge
               mode={selectedMeta.mode}
               line={selectedVehicle.line}
-              bg={selectedMeta.bg}
-              fg={selectedMeta.fg}
-              large
+              size="large"
+              maxWidth={136}
             />
             <View style={styles.sheetTitleWrap}>
               <Text style={styles.sheetTitle} numberOfLines={1}>
                 {selectedMeta.direction
                   ? s.liveMap.vehicleTowards(selectedMeta.direction)
-                  : selectedVehicle.line}
+                  : selectedMeta.line}
               </Text>
               <View style={styles.metaRow}>
                 {selectedMeta.delayMin === 0 ? (
@@ -1373,31 +1639,6 @@ const styles = StyleSheet.create({
     borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  mapPill: {
-    minHeight: 28,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: shape.small,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  mapPillLarge: {
-    minHeight: 34,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: shape.medium,
-    gap: 6,
-  },
-  mapPillText: {
-    ...type.labelLarge,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  mapPillTextLarge: {
-    ...type.titleSmall,
-    fontWeight: '800',
   },
   sheetTitleWrap: {
     flex: 1,

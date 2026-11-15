@@ -2,6 +2,7 @@
 // live pojazdów) oraz lista pobliskich pojazdów do ręcznego wyboru jako start.
 
 import { bearingDegrees, distanceMeters } from '../gtfs/geo';
+import type { GtfsStopTime } from '../gtfs/types';
 import type { CurrentLocation } from './currentLocation';
 import type { TrackedVehicle } from './liveTracker';
 import { projectRoutePoint } from './routeGeometry';
@@ -58,9 +59,27 @@ interface TripPolylineCache {
   cumDist: number[];
 }
 
+interface CachedTripEntry {
+  timesRef: GtfsStopTime[];
+  poly: TripPolylineCache | null;
+}
+
+const tripPolylineCache = new WeakMap<LocalGtfsStore, Map<string, CachedTripEntry>>();
+
 function buildTripPolyline(tripId: string, store: LocalGtfsStore): TripPolylineCache | null {
   const times = store.stopTimes.get(tripId);
   if (!times || times.length < 2) return null;
+
+  let storeCache = tripPolylineCache.get(store);
+  if (!storeCache) {
+    storeCache = new Map();
+    tripPolylineCache.set(store, storeCache);
+  }
+  const existing = storeCache.get(tripId);
+  if (existing && existing.timesRef === times) {
+    return existing.poly;
+  }
+
   const coords: [number, number][] = [];
   const stopIds: string[] = [];
   const stopNames: string[] = [];
@@ -75,7 +94,9 @@ function buildTripPolyline(tripId: string, store: LocalGtfsStore): TripPolylineC
     stopIds.push(stop.stop_id);
     stopNames.push(stop.stop_name || stop.stop_id);
   }
-  return coords.length >= 2 ? { coords, stopIds, stopNames, cumDist } : null;
+  const poly = coords.length >= 2 ? { coords, stopIds, stopNames, cumDist } : null;
+  storeCache.set(tripId, { timesRef: times, poly });
+  return poly;
 }
 
 function resolveMode(
@@ -129,9 +150,14 @@ function localSegmentBearing(poly: TripPolylineCache, alongM: number): number | 
   return null;
 }
 
+function normStopHint(name?: string): string {
+  return (name ?? '').trim().toLowerCase();
+}
+
 /**
  * Zwraca kierunek jazdy pojazdu na podstawie geometrii dopasowanego kursu GTFS (stopnie 0-360),
- * lub `undefined`, gdy kurs nie ma dopasowanej trasy w bazie.
+ * lub `undefined`, gdy kurs nie ma dopasowanej trasy w bazie. Uwzglednia `nextStopName`
+ * przy petlach i odcinkach dwukierunkowych.
  */
 export function resolveVehicleBearing(
   vehicle: TrackedVehicle,
@@ -141,10 +167,38 @@ export function resolveVehicleBearing(
   if (!tripId) return undefined;
   const poly = buildTripPolyline(tripId, store);
   if (!poly) return undefined;
+
+  const nextHint = normStopHint(vehicle.nextStopName);
+  if (nextHint) {
+    let bestIdx = -1;
+    let bestOffset = Infinity;
+    for (let i = 0; i < poly.stopNames.length; i++) {
+      const sName = normStopHint(poly.stopNames[i]);
+      if (!sName || (sName !== nextHint && !sName.includes(nextHint) && !nextHint.includes(sName))) {
+        continue;
+      }
+      const a = i > 0 ? poly.coords[i - 1] : poly.coords[0];
+      const b = i > 0 ? poly.coords[i] : poly.coords[1];
+      if (!a || !b || distanceMeters(a[0], a[1], b[0], b[1]) < 5) continue;
+      const segProj = projectRoutePoint([a, b], vehicle.lat, vehicle.lon);
+      if (!segProj || segProj.offsetM > 550) continue;
+      const score = segProj.offsetM + (i === 0 ? 200 : 0);
+      if (score < bestOffset) {
+        bestOffset = score;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0) {
+      const a = bestIdx > 0 ? poly.coords[bestIdx - 1] : poly.coords[0];
+      const b = bestIdx > 0 ? poly.coords[bestIdx] : poly.coords[1];
+      return Math.round(bearingDegrees(a[0], a[1], b[0], b[1])) % 360;
+    }
+  }
+
   const proj = projectRoutePoint(poly.coords, vehicle.lat, vehicle.lon);
   if (!proj) return undefined;
   const deg = localSegmentBearing(poly, proj.alongM);
-  return deg === null ? undefined : Math.round(deg);
+  return deg === null ? undefined : Math.round(deg) % 360;
 }
 
 /**

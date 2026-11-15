@@ -1,5 +1,6 @@
-// Komponent pelnoekranowej mapy pojazdow i przystankow na zywo w stylu zbiorkom.live.
-// Przesyla paczki pozycji, warstwe przystankow, korytarze utrudnien, pozycje uzytkownika oraz wybor przez mostek WebView.
+// Komponent pełnoekranowej mapy pojazdów i przystanków na żywo w stylu zbiorkom.live.
+// Przesyła paczki pozycji, warstwę przystanków, trasę wybranego pojazdu, korytarze utrudnień,
+// pozycję użytkownika oraz wybór przez mostek WebView.
 
 import React, {
   forwardRef,
@@ -17,6 +18,7 @@ import {
   type LiveMapDisruptionItem,
   type LiveMapInMessage,
   type LiveMapOutMessage,
+  type LiveMapSelectedRoute,
   type LiveMapStopItem,
   type LiveMapVehicleItem,
 } from '../map/liveVehiclesMapDocument';
@@ -25,9 +27,9 @@ import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import { scheme } from '../theme/tokens';
 
 export interface LiveVehiclesMapHandle {
-  /** Plynnie centruje mape na zadanej pozycji. */
+  /** Płynnie centruje mapę na zadanej pozycji. */
   centerOn: (lat: number, lon: number, zoom?: number) => void;
-  /** Wymusza przeladowanie WebView po bledzie renderera. */
+  /** Wymusza przeładowanie WebView po błędzie renderera. */
   reload: () => void;
 }
 
@@ -37,6 +39,7 @@ interface LiveVehiclesMapProps {
   disruptions?: LiveMapDisruptionItem[];
   selectedId: string | null;
   selectedStopId?: string | null;
+  selectedRoute?: LiveMapSelectedRoute | null;
   selectedDisruptionId?: string | null;
   showDisruptions?: boolean;
   userLat?: number | null;
@@ -52,7 +55,7 @@ interface LiveVehiclesMapProps {
   onReady?: () => void;
 }
 
-/** Mapa wszystkich aktywnych pojazdow live, przystankow i korytarzy utrudnien. */
+/** Mapa wszystkich aktywnych pojazdów live, przystanków i korytarzy utrudnień. */
 export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMapProps>(
   function LiveVehiclesMap(
     {
@@ -61,6 +64,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       disruptions = [],
       selectedId,
       selectedStopId = null,
+      selectedRoute = null,
       selectedDisruptionId = null,
       showDisruptions = true,
       userLat = null,
@@ -93,6 +97,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     selectedIdRef.current = selectedId;
     const selectedStopIdRef = useRef(selectedStopId);
     selectedStopIdRef.current = selectedStopId;
+    const selectedRouteRef = useRef(selectedRoute);
+    selectedRouteRef.current = selectedRoute;
     const selectedDisruptionIdRef = useRef(selectedDisruptionId);
     selectedDisruptionIdRef.current = selectedDisruptionId;
     const showDisruptionsRef = useRef(showDisruptions);
@@ -131,6 +137,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         disruptions: disruptionsRef.current,
         selectedId: selectedIdRef.current,
         selectedStopId: selectedStopIdRef.current,
+        selectedRoute: selectedRouteRef.current ?? null,
         selectedDisruptionId: selectedDisruptionIdRef.current,
         showDisruptions: showDisruptionsRef.current,
         userPos: userPosRef.current,
@@ -160,8 +167,18 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
 
     useEffect(() => {
       if (!readyRef.current) return;
-      send({ t: 'vehicles', vehicles, selectedId });
-    }, [selectedId, send, vehicles]);
+      send({ t: 'vehicles', vehicles, selectedId: selectedIdRef.current });
+    }, [send, vehicles]);
+
+    useEffect(() => {
+      if (!readyRef.current) return;
+      send({ t: 'selected', id: selectedId });
+    }, [selectedId, send]);
+
+    useEffect(() => {
+      if (!readyRef.current) return;
+      send({ t: 'selectedRoute', route: selectedRoute ?? null });
+    }, [selectedRoute, send]);
 
     useEffect(() => {
       if (!readyRef.current) return;
@@ -210,6 +227,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
             selectedDisruptionId: selectedDisruptionIdRef.current,
             visible: showDisruptionsRef.current,
           });
+          send({ t: 'selectedRoute', route: selectedRouteRef.current ?? null });
           send({ t: 'stops', stops: stopsRef.current, selectedStopId: selectedStopIdRef.current });
           send({ t: 'vehicles', vehicles: vehiclesRef.current, selectedId: selectedIdRef.current });
           if (userPosRef.current) {

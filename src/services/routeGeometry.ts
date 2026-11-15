@@ -183,7 +183,7 @@ export function buildMapRoute(connection: Connection): MapRoute {
   };
 }
 
-// ─── Geometria z OSRM ────────────────────────────────────────────────────────
+// ─── Geometria z OSRM ─────────────────────────────────────────────────────────
 
 function waypointKey(coords: Coord[]): string {
   // 5 m ≈ 4–5 miejsc po przecinku - tyle wystarczy, żeby klucz był stabilny.
@@ -606,24 +606,27 @@ export function straightGeometry(leg: MapLeg): Coord[] {
   return legWaypoints(leg);
 }
 
-// ─── Geometria torów z bazy ogólnopolskiej (shapes PLK) ─────────────────────
+// ─── Geometria torów z bazy ogólnopolskiej (shapes PLK) ──────────────────────
 
 /** Cache shape'ów w pamięci: unpack raz, tnie każde otwarcie mapy od nowa. */
 const shapeCache = new Map<string, Coord[] | null>();
-const SHAPE_CACHE_MAX = 24;
+const SHAPE_CACHE_MAX = 64;
 
 async function loadShape(shapeId: string): Promise<Coord[] | null> {
-  if (shapeCache.has(shapeId)) return shapeCache.get(shapeId) ?? null;
+  const key = shapeId.replace(/^pl:/, '');
+  if (!key) return null;
+  if (shapeCache.has(key)) return shapeCache.get(key) ?? null;
   try {
     const { getNationalDb } = await import('./gtfsDatabase');
     const db = await getNationalDb();
     const row = await db.getFirstAsync<{ pts: Uint8Array | ArrayBuffer }>(
-      'SELECT pts FROM shapes WHERE shape_id = ?',
-      shapeId,
+      'SELECT pts FROM shapes WHERE shape_id = ? OR shape_id = ? LIMIT 1',
+      key,
+      `pl:${key}`,
     );
     const raw = row?.pts;
-    if (!raw || (raw instanceof Uint8Array ? raw.byteLength : raw.byteLength) < 16) {
-      shapeCache.set(shapeId, null);
+    if (!raw || raw.byteLength < 16) {
+      shapeCache.set(key, null);
       return null;
     }
     const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
@@ -633,14 +636,13 @@ async function loadShape(shapeId: string): Promise<Coord[] | null> {
     for (let i = 0; i < n; i++) {
       coords[i] = [view.getFloat32(i * 8, true), view.getFloat32(i * 8 + 4, true)];
     }
-    shapeCache.set(shapeId, coords);
+    shapeCache.set(key, coords);
     if (shapeCache.size > SHAPE_CACHE_MAX) {
       const oldest = shapeCache.keys().next().value;
-      if (oldest !== undefined && oldest !== shapeId) shapeCache.delete(oldest);
+      if (oldest !== undefined && oldest !== key) shapeCache.delete(oldest);
     }
     return coords;
   } catch {
-    shapeCache.set(shapeId, null);
     return null;
   }
 }
@@ -695,38 +697,101 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
     const { getNationalDb } = await import('./gtfsDatabase');
     const db = await getNationalDb();
 
-    let shapeId: string | null = null;
+    const sliceForShape = async (sid: string): Promise<Coord[] | null> => {
+      if (signal?.aborted) return null;
+      const shape = await loadShape(sid);
+      if (!shape || shape.length < 2) return null;
+
+      let boardIdx = -1;
+      let boardDist = Infinity;
+      for (let i = 0; i < shape.length; i++) {
+        const d = distanceM(shape[i], [board.lat, board.lon]);
+        if (d < boardDist) {
+          boardDist = d;
+          boardIdx = i;
+        }
+      }
+      if (boardIdx < 0 || boardDist > 2500) return null;
+
+      let searchStart = boardIdx;
+      if (stops.length > 2) {
+        for (let s = 1; s < stops.length - 1; s++) {
+          const st = stops[s];
+          let midIdx = -1;
+          let midDist = Infinity;
+          for (let i = searchStart; i < shape.length; i++) {
+            const d = distanceM(shape[i], [st.lat, st.lon]);
+            if (d < midDist) {
+              midDist = d;
+              midIdx = i;
+            }
+          }
+          if (midIdx >= searchStart && midDist < 2500) {
+            searchStart = midIdx;
+          }
+        }
+      }
+
+      let alightIdx = -1;
+      let alightDist = Infinity;
+      for (let i = searchStart + 1; i < shape.length; i++) {
+        const d = distanceM(shape[i], [alight.lat, alight.lon]);
+        if (d < alightDist) {
+          alightDist = d;
+          alightIdx = i;
+        }
+      }
+      if (alightIdx < 0 || alightIdx <= boardIdx || alightDist > 2500) return null;
+
+      const slice = shape.slice(boardIdx, alightIdx + 1);
+      if (slice.length < 2) return null;
+      const clean: Coord[] = [];
+      for (const p of slice) {
+        if (
+          clean.length === 0 ||
+          clean[clean.length - 1][0] !== p[0] ||
+          clean[clean.length - 1][1] !== p[1]
+        ) {
+          clean.push(p);
+        }
+      }
+      if (clean.length < 2) return null;
+      return simplifyPolyline(clean, 2);
+    };
 
     // 1. Sprawdź tripId z nogi (jeśli jest).
     if (leg.tripId) {
       const cleanTripId = leg.tripId.replace(/^pl:/, '');
       const trip = await db.getFirstAsync<{ shape: string }>(
-        'SELECT shape FROM trips WHERE trip_id = ? OR trip_id = ? LIMIT 1',
+        'SELECT shape FROM trips WHERE trip_id = ? OR trip_id = ? OR trip_id = ? LIMIT 1',
         leg.tripId,
+        cleanTripId,
         'pl:' + cleanTripId,
       );
       if (trip?.shape) {
-        shapeId = trip.shape.replace(/^pl:/, '');
+        const sliced = await sliceForShape(trip.shape);
+        if (sliced) return sliced;
       }
     }
 
-    // 2. Jeśli brak shapeId, a mamy numer pociągu w leg.line:
-    if (!shapeId && leg.line) {
+    // 2. Jeśli brak dopasowania, sprawdź kandydatów po numerze pociągu w leg.line:
+    if (leg.line) {
       const numMatch = leg.line.match(/\b(\d{3,6}(?:\/\d+)?)\b/);
       if (numMatch) {
-        const trip = await db.getFirstAsync<{ shape: string }>(
-          'SELECT shape FROM trips WHERE (train_number = ? OR train_number LIKE ?) AND shape != "" LIMIT 1',
+        const candTrips = await db.getAllAsync<{ shape: string }>(
+          'SELECT DISTINCT shape FROM trips WHERE (train_number = ? OR train_number LIKE ?) AND shape != "" LIMIT 8',
           numMatch[1],
           numMatch[1] + '/%',
         );
-        if (trip?.shape) {
-          shapeId = trip.shape.replace(/^pl:/, '');
+        for (const cand of candTrips) {
+          const sliced = await sliceForShape(cand.shape);
+          if (sliced) return sliced;
         }
       }
     }
 
-    // 3. Jeśli nadal brak shapeId, znajdź kurs łączący stację początkową i końcową:
-    if (!shapeId) {
+    // 3. Jeśli nadal brak dopasowania, znajdź kurs łączący stację początkową i końcową:
+    {
       let boardStopRow = await db.getFirstAsync<{ stop_id: string }>(
         'SELECT stop_id FROM stops WHERE name = ? LIMIT 1',
         board.name,
@@ -767,80 +832,13 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
           alightStopRow.stop_id,
         );
         if (trip?.shape) {
-          shapeId = trip.shape.replace(/^pl:/, '');
+          const sliced = await sliceForShape(trip.shape);
+          if (sliced) return sliced;
         }
       }
     }
 
-    if (!shapeId) return null;
-    if (signal?.aborted) return null;
-
-    const shape = await loadShape(shapeId);
-    if (!shape || shape.length < 2) return null;
-
-    // Najbliższy punkt shape'u do stacji wsiadania.
-    let boardIdx = -1;
-    let boardDist = Infinity;
-    for (let i = 0; i < shape.length; i++) {
-      const d = distanceM(shape[i], [board.lat, board.lon]);
-      if (d < boardDist) {
-        boardDist = d;
-        boardIdx = i;
-      }
-    }
-    if (boardIdx < 0 || boardDist > 2500) return null;
-
-    // Sekwencja stacji pośrednich, by odnaleźć właściwy punkt końcowy za nimi.
-    let searchStart = boardIdx;
-    if (stops.length > 2) {
-      for (let s = 1; s < stops.length - 1; s++) {
-        const st = stops[s];
-        let midIdx = -1;
-        let midDist = Infinity;
-        for (let i = searchStart; i < shape.length; i++) {
-          const d = distanceM(shape[i], [st.lat, st.lon]);
-          if (d < midDist) {
-            midDist = d;
-            midIdx = i;
-          }
-        }
-        if (midIdx >= searchStart && midDist < 2500) {
-          searchStart = midIdx;
-        }
-      }
-    }
-
-    // Najbliższy punkt shape'u do stacji wysiadania (za stacjami pośrednimi/wsiadaniem).
-    let alightIdx = -1;
-    let alightDist = Infinity;
-    for (let i = searchStart + 1; i < shape.length; i++) {
-      const d = distanceM(shape[i], [alight.lat, alight.lon]);
-      if (d < alightDist) {
-        alightDist = d;
-        alightIdx = i;
-      }
-    }
-    if (alightIdx < 0 || alightIdx <= boardIdx || alightDist > 2500) return null;
-
-    const slice = shape.slice(boardIdx, alightIdx + 1);
-    if (slice.length < 2) return null;
-
-    // Usuwamy ewentualne sąsiadujące duplikaty.
-    const clean: Coord[] = [];
-    for (const p of slice) {
-      if (
-        clean.length === 0 ||
-        clean[clean.length - 1][0] !== p[0] ||
-        clean[clean.length - 1][1] !== p[1]
-      ) {
-        clean.push(p);
-      }
-    }
-    if (clean.length < 2) return null;
-
-    // Tolerancja 2 m zachowuje dokładny przebieg toru i rozjazdów,
-    // eliminując jedynie zbędne punkty współliniowe na prostych odcinkach.
-    return simplifyPolyline(clean, 2);
+    return null;
   } catch {
     return null;
   }
@@ -977,4 +975,321 @@ export function projectRoutePoint(coords: Coord[], lat: number, lon: number): Pr
     offsetM: distanceM([bestLat, bestLon], [lat, lon]),
     totalM: total,
   };
+}
+
+function pointAtAlong(coords: Coord[], cum: number[], alongM: number): Coord {
+  if (coords.length === 0) return [0, 0];
+  if (coords.length === 1 || alongM <= 0) return coords[0];
+  const total = cum[cum.length - 1];
+  if (alongM >= total) return coords[coords.length - 1];
+  let lo = 0;
+  let hi = cum.length - 2;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (cum[mid] <= alongM) lo = mid;
+    else hi = mid - 1;
+  }
+  const segLen = cum[lo + 1] - cum[lo];
+  const t = segLen > 0 ? Math.max(0, Math.min(1, (alongM - cum[lo]) / segLen)) : 0;
+  return [
+    coords[lo][0] + t * (coords[lo + 1][0] - coords[lo][0]),
+    coords[lo][1] + t * (coords[lo + 1][1] - coords[lo][1]),
+  ];
+}
+
+function sphericalBearingDeg(a: Coord, b: Coord): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const phi1 = toRad(a[0]);
+  const phi2 = toRad(b[0]);
+  const dLambda = toRad(b[1] - a[1]);
+  const y = Math.sin(dLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function angleDiffDegLocal(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/**
+ * Rzutuje pozycję na polilinię i wyznacza wygładzony azymut stycznej w oknie ~2*windowM,
+ * co eliminuje szum kwantyzacji Float32 (~1.5 m punkty PLK) i ostre załamania wierzchołków.
+ */
+export function projectRouteTangent(
+  coords: Coord[],
+  lat: number,
+  lon: number,
+  maxOffsetM?: number,
+  windowM = 35,
+): { heading: number; offsetM: number; alongM: number } | null {
+  if (!coords || coords.length < 2) return null;
+  const proj = projectRoutePoint(coords, lat, lon);
+  if (!proj) return null;
+  if (maxOffsetM !== undefined && proj.offsetM > maxOffsetM) return null;
+  if (proj.totalM < 8) {
+    return { heading: proj.heading, offsetM: proj.offsetM, alongM: proj.alongM };
+  }
+  const cum = cumulativeDistances(coords);
+  const pBack = pointAtAlong(coords, cum, Math.max(0, proj.alongM - windowM));
+  const pFwd = pointAtAlong(coords, cum, Math.min(proj.totalM, proj.alongM + windowM));
+  const heading =
+    distanceM(pBack, pFwd) >= 6 ? sphericalBearingDeg(pBack, pFwd) : proj.heading;
+  return { heading, offsetM: proj.offsetM, alongM: proj.alongM };
+}
+
+export interface RailTrackQueryVehicle {
+  vehicleId: string;
+  line: string;
+  matchedTripId?: string;
+  lat: number;
+  lon: number;
+  currentStopName?: string;
+  nextStopName?: string;
+}
+
+interface CachedRailTrack {
+  coords: Coord[];
+  reversed: boolean;
+  directionVerified: boolean;
+}
+
+const RAIL_TRACK_CACHE_MAX = 180;
+const railVehicleTrackCache = new Map<string, CachedRailTrack | null>();
+const railTrackInFlight = new Set<string>();
+
+function railTrackCacheKey(v: RailTrackQueryVehicle): string {
+  return `${v.vehicleId}|${v.matchedTripId ?? ''}|${v.line}`;
+}
+
+function setRailTrackCache(key: string, entry: CachedRailTrack | null): void {
+  railVehicleTrackCache.set(key, entry);
+  if (railVehicleTrackCache.size > RAIL_TRACK_CACHE_MAX) {
+    const oldest = railVehicleTrackCache.keys().next().value;
+    if (oldest !== undefined && oldest !== key) railVehicleTrackCache.delete(oldest);
+  }
+}
+
+/**
+ * Zwraca synchronicznie wyliczony azymut toru PLK dla pociągu, jeśli shape kursu
+ * znajduje się już w cache (wygładzony w oknie ~80 m po uproszczonym torze).
+ */
+export function getCachedRailTrackBearing(
+  vehicle: RailTrackQueryVehicle,
+  refBearing?: number,
+): number | undefined {
+  const entry = railVehicleTrackCache.get(railTrackCacheKey(vehicle));
+  if (!entry) return undefined;
+  const tan = projectRouteTangent(entry.coords, vehicle.lat, vehicle.lon, 2500, 40);
+  if (!tan) return undefined;
+  let heading = entry.reversed ? (tan.heading + 180) % 360 : tan.heading;
+  if (
+    !entry.directionVerified &&
+    typeof refBearing === 'number' &&
+    Number.isFinite(refBearing) &&
+    angleDiffDegLocal(heading, refBearing) > 130
+  ) {
+    heading = (heading + 180) % 360;
+  }
+  return Math.round(heading) % 360;
+}
+
+/**
+ * Asynchronicznie dociąga z bazy polska.db geometrię torów PLK dla widocznych pociągów.
+ * Zwraca true, jeśli co najmniej jeden nowy kurs trafił do cache.
+ */
+export async function ensureRailTrackShapes(
+  vehicles: RailTrackQueryVehicle[],
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const pending = vehicles.filter((v) => {
+    const key = railTrackCacheKey(v);
+    return !railVehicleTrackCache.has(key) && !railTrackInFlight.has(key);
+  });
+  if (pending.length === 0 || signal?.aborted) return false;
+
+  let db: Awaited<ReturnType<typeof import('./gtfsDatabase').getNationalDb>>;
+  try {
+    const { getNationalDb } = await import('./gtfsDatabase');
+    db = await getNationalDb();
+  } catch {
+    return false;
+  }
+  if (signal?.aborted) return false;
+
+  let resolvedAny = false;
+  for (const v of pending) {
+    if (signal?.aborted) break;
+    const key = railTrackCacheKey(v);
+    railTrackInFlight.add(key);
+    try {
+      let chosenShape: string | null = null;
+      let chosenStops: Array<{ name: string; lat: number; lon: number }> = [];
+
+      if (v.matchedTripId) {
+        const cleanId = v.matchedTripId.replace(/^pl:/, '');
+        const row = await db.getFirstAsync<{ trip_id: string; shape: string }>(
+          'SELECT trip_id, shape FROM trips WHERE trip_id = ? OR trip_id = ? OR trip_id = ? LIMIT 1',
+          v.matchedTripId,
+          cleanId,
+          `pl:${cleanId}`,
+        );
+        if (row?.shape) {
+          chosenShape = row.shape;
+          chosenStops = await db.getAllAsync<{ name: string; lat: number; lon: number }>(
+            'SELECT s.name, s.lat, s.lon FROM stop_times st JOIN stops s ON s.stop_id = st.stop_id WHERE st.trip_id = ? ORDER BY st.seq',
+            row.trip_id,
+          );
+        }
+      }
+
+      if (!chosenShape) {
+        const numMatch = `${v.line} ${v.vehicleId}`.match(/\b(\d{3,6}(?:\/\d+)?)\b/);
+        if (numMatch) {
+          const baseNum = numMatch[1].split('/')[0];
+          const candidates = await db.getAllAsync<{ trip_id: string; shape: string }>(
+            'SELECT trip_id, shape FROM trips WHERE (train_number = ? OR train_number LIKE ? OR train_number = ?) AND shape != "" LIMIT 12',
+            numMatch[1],
+            `${baseNum}/%`,
+            baseNum,
+          );
+          const nextHint = v.nextStopName?.trim().toLowerCase();
+          const curHint = v.currentStopName?.trim().toLowerCase();
+          let bestScore = Infinity;
+          for (const cand of candidates) {
+            if (signal?.aborted) break;
+            const stRows = await db.getAllAsync<{ name: string; lat: number; lon: number }>(
+              'SELECT s.name, s.lat, s.lon FROM stop_times st JOIN stops s ON s.stop_id = st.stop_id WHERE st.trip_id = ? ORDER BY st.seq',
+              cand.trip_id,
+            );
+            if (stRows.length < 2) continue;
+            const proj = projectRoutePoint(
+              stRows.map((r) => [r.lat, r.lon] as Coord),
+              v.lat,
+              v.lon,
+            );
+            if (!proj || proj.offsetM > 15000) continue;
+            let score = proj.offsetM;
+            if (nextHint && stRows.some((r) => r.name.toLowerCase().includes(nextHint))) {
+              score -= 3000;
+            }
+            if (curHint && stRows.some((r) => r.name.toLowerCase().includes(curHint))) {
+              score -= 1200;
+            }
+            if (score < bestScore) {
+              bestScore = score;
+              chosenShape = cand.shape;
+              chosenStops = stRows;
+            }
+          }
+        }
+      }
+
+      if (signal?.aborted) break;
+      if (!chosenShape) {
+        setRailTrackCache(key, null);
+        continue;
+      }
+
+      const rawCoords = await loadShape(chosenShape);
+      if (!rawCoords || rawCoords.length < 2) {
+        setRailTrackCache(key, null);
+        continue;
+      }
+
+      const simpleCoords = simplifyPolyline(rawCoords, 3);
+      const checkProj = projectRoutePoint(simpleCoords, v.lat, v.lon);
+      if (!checkProj || checkProj.offsetM > 3500) {
+        setRailTrackCache(key, null);
+        continue;
+      }
+
+      let reversed = false;
+      let directionVerified = false;
+      if (chosenStops.length >= 2) {
+        const nextHint = v.nextStopName?.trim().toLowerCase();
+        const nextIdx = nextHint
+          ? chosenStops.findIndex((s) => s.name.toLowerCase().includes(nextHint))
+          : -1;
+        if (nextIdx > 0) {
+          const pPrev = projectRoutePoint(
+            simpleCoords,
+            chosenStops[nextIdx - 1].lat,
+            chosenStops[nextIdx - 1].lon,
+          );
+          const pNext = projectRoutePoint(
+            simpleCoords,
+            chosenStops[nextIdx].lat,
+            chosenStops[nextIdx].lon,
+          );
+          if (pPrev && pNext && Math.abs(pNext.alongM - pPrev.alongM) > 150) {
+            reversed = pNext.alongM < pPrev.alongM;
+            directionVerified = true;
+          }
+        }
+        if (!directionVerified) {
+          const pStart = projectRoutePoint(simpleCoords, chosenStops[0].lat, chosenStops[0].lon);
+          const pEnd = projectRoutePoint(
+            simpleCoords,
+            chosenStops[chosenStops.length - 1].lat,
+            chosenStops[chosenStops.length - 1].lon,
+          );
+          if (pStart && pEnd && Math.abs(pEnd.alongM - pStart.alongM) > 300) {
+            reversed = pEnd.alongM < pStart.alongM;
+            directionVerified = true;
+          }
+        }
+      }
+
+      setRailTrackCache(key, { coords: simpleCoords, reversed, directionVerified });
+      resolvedAny = true;
+    } catch {
+      // Transient SQLite failure: retry on next poll
+    } finally {
+      railTrackInFlight.delete(key);
+    }
+  }
+  return resolvedAny;
+}
+
+/**
+ * Uzupełnia geometrię trasy wybranego pojazdu na mapie live (tory PLK dla pociągów
+ * lub przebieg ulicami z cache OSRM dla autobusów i trolejbusów).
+ */
+export async function resolveLiveVehicleRouteGeometry(params: {
+  mode: Exclude<Leg['mode'], 'walk'>;
+  line: string;
+  tripId?: string;
+  color: string;
+  stops: Array<{ id: string; name: string; lat: number; lon: number }>;
+  signal?: AbortSignal;
+}): Promise<Coord[] | null> {
+  if (params.stops.length < 2) return null;
+  const syntheticLeg: MapLeg = {
+    id: params.tripId ?? `live:${params.line}`,
+    mode: params.mode,
+    line: params.line,
+    direction: '',
+    color: params.color,
+    fromStop: params.stops[0].name,
+    toStop: params.stops[params.stops.length - 1].name,
+    departAt: '',
+    arriveAt: '',
+    stopsCount: params.stops.length,
+    live: true,
+    tripId: params.tripId,
+    approx: true,
+    stops: params.stops.map((st, idx) => ({
+      id: st.id,
+      legId: params.tripId ?? `live:${params.line}`,
+      lat: st.lat,
+      lon: st.lon,
+      name: st.name,
+      seq: idx,
+      role: idx === 0 ? 'board' : idx === params.stops.length - 1 ? 'alight' : 'intermediate',
+    })),
+  };
+  if (isApproxOnlyLeg(syntheticLeg)) return null;
+  const res = await fetchLegGeometry(syntheticLeg, params.signal).catch(() => null);
+  return res && res.coords.length >= 2 ? res.coords : null;
 }
