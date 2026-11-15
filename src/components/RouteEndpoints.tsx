@@ -32,7 +32,6 @@ export function RouteEndpoints({
   boarded?: {
     line: string;
     mode: BoardedTripOrigin['mode'];
-    label: string;
     onDismiss: () => void;
     dismissA11y: string;
   };
@@ -56,9 +55,7 @@ export function RouteEndpoints({
               exiting={SWAP_OUT}
             >
               <LineBadge mode={boarded.mode} line={boarded.line} compact />
-              <Text style={styles.originAnchor} numberOfLines={1}>
-                {boarded.label}
-              </Text>
+              <View style={styles.anchorSpacer} />
               <SpringPressable
                 onPress={boarded.onDismiss}
                 accessibilityRole="button"
@@ -148,26 +145,27 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHigh,
   },
   pressed: { backgroundColor: scheme.surfaceContainerHighest },
-  // Kotwica w linii z nazwa: rzad wyglada jak tekst pola, nie jak chip.
   anchorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexShrink: 1,
-    minWidth: 0,
+    gap: 8,
   },
   originAnchor: {
-    ...type.titleMedium,
+    ...type.bodyMedium,
     fontWeight: '600',
     color: scheme.primary,
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
+  },
+  anchorSpacer: {
+    flex: 1,
   },
   anchorX: {
-    width: 44,
-    height: 44,
-    marginVertical: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
 });

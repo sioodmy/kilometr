@@ -13,6 +13,7 @@ function alignClock(seconds: number, anchor: number): number {
 
 /** Pierwszy pojazd, bez czasu dojscia. Kotwica zachowuje date po polnocy. */
 export function boardingDepartureSec(connection: Connection): number {
+  if (connection.boarded) return connection.departureSec;
   let cursor = connection.departureSec;
   for (const leg of connection.legs) {
     const departure = alignClock(timeStringToSeconds(leg.departAt), cursor);
@@ -30,8 +31,9 @@ export function boardingDepartureSec(connection: Connection): number {
 export function boardingDepartureMs(connection: Connection, now = new Date()): number {
   const seconds = boardingDepartureSec(connection);
   const firstVehicle = connection.legs.find((leg) => leg.mode !== 'walk');
-  const anchor =
-    firstVehicle?.scheduledDepartureSec != null
+  const anchor = connection.boarded
+    ? connection.departureSec
+    : firstVehicle?.scheduledDepartureSec != null
       ? connection.departureSec - (firstVehicle.delaySec ?? 0)
       : connection.departureSec;
   return connection.serviceDate

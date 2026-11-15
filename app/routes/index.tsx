@@ -1157,7 +1157,7 @@ export default function RoutesScreen() {
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
       // zamontowaniu ekranu zmroził nam style dłużej niż minute, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
-      const past = item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
+      const past = !item.boarded && item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
       return (
         <Animated.View
           entering={
@@ -1198,9 +1198,18 @@ export default function RoutesScreen() {
           onTo={handleOpenTo}
           onSwap={handleReverse}
           fromLabel={
-            activeAnchor
-              ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
-              : s.routes.changeFromA11y(fromTitle)
+            boardedTrip
+              ? s.routes.changeFromBoardedA11y(
+                  boardedTrip.line,
+                  boardedTrip.direction ||
+                    (boardedTrip.boardStopId
+                      ? gtfsStore.stops.get(boardedTrip.boardStopId)?.stop_name
+                      : undefined) ||
+                    '',
+                )
+              : activeAnchor
+                ? s.routes.changeFromAnchorA11y(fromTitle, activeAnchor.stopName)
+                : s.routes.changeFromA11y(fromTitle)
           }
           anchor={
             activeAnchor
@@ -1216,14 +1225,6 @@ export default function RoutesScreen() {
               ? {
                   line: boardedTrip.line,
                   mode: boardedTrip.mode ?? 'bus',
-                  label: s.routes.boardedOriginLabel(
-                    boardedTrip.line,
-                    boardedTrip.direction ||
-                      (boardedTrip.boardStopId
-                        ? gtfsStore.stops.get(boardedTrip.boardStopId)?.stop_name
-                        : undefined) ||
-                      '',
-                  ),
                   onDismiss: handleDismissBoarded,
                   dismissA11y: s.routes.dismissBoardedA11y,
                 }

@@ -301,7 +301,9 @@ export const ConnectionCard = memo(function ConnectionCard({
   const firstVehicle = boarding[0];
   const notice = reliabilityNotice(boarding, s);
   const scheduledDeparture =
-    firstVehicle?.live && Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
+    !item.boarded &&
+    firstVehicle?.live &&
+    Math.round((firstVehicle.delaySec ?? 0) / 60) === item.delayMin
       ? scheduledLegTimes(firstVehicle, boardingDepartureSec(item)).departure
       : undefined;
   const minsAgo =
@@ -353,10 +355,10 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   const contextRightText = walkOnly
     ? s.connection.walkLeg
-    : item.boarded && insights.lastTransitStop
-      ? `${transferSummary} · ${s.connection.exitStopLabel(insights.lastTransitStop)}`
-      : transfers.length > 0
-        ? `${transferSummary} · ${transfers.join(' · ')}`
+    : transfers.length > 0
+      ? `${transferSummary} · ${transfers.join(' · ')}`
+      : item.boarded && insights.lastTransitStop
+        ? `${transferSummary} · ${s.connection.exitStopLabel(insights.lastTransitStop)}`
         : insights.firstBoardingStop
           ? `${transferSummary} · ${s.connection.fromStopLabel(insights.firstBoardingStop)}`
           : transferSummary;

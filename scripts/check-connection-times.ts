@@ -106,6 +106,30 @@ assert.equal((boardingDepartureMs(connection, before) - before.getTime()) / 6000
 assert.equal((boardingDepartureMs(delayed, before) - before.getTime()) / 60000, 10);
 assert.equal(connection.legs[1].departAt, '10:00');
 
+// Połączenie z pokładu pojazdu: punkt startu to "teraz" (connection.departureSec),
+// a nie miniony odjazd z ostatniego przystanku z legs[0].
+const boarded: Connection = {
+  ...connection,
+  boarded: true,
+  departureSec: 36900, // 10:15 (teraz)
+  arrivalSec: 37200, // 10:20
+  departAt: '10:15',
+  arriveAt: '10:20',
+  departInMin: 0,
+  durationMin: 5,
+  legs: [
+    {
+      ...connection.legs[1],
+      departAt: '10:01',
+      scheduledDepartureSec: 36000,
+      delaySec: 60,
+    },
+  ],
+};
+assert.equal(boardingDepartureSec(boarded), 36900);
+const atBoardedNow = new Date(2026, 9, 27, 10, 15);
+assert.equal(boardingDepartureMs(boarded, atBoardedNow), atBoardedNow.getTime());
+
 const transfer: Connection = {
   ...connection,
   transfers: 1,
@@ -295,5 +319,5 @@ assert.equal(uk.share.duration(125), "2 год 5 хв");
 assert.equal(pl.landing.journeyDemo.duration(125), "2h 5m");
 
 console.log(
-  'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, północ, pociągi i starsze plany',
+  'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, połączenia z pokładu, północ, pociągi i starsze plany',
 );
