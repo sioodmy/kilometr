@@ -1446,6 +1446,16 @@ export const pl = {
     ) =>
       `${dep}, czas jazdy ${formatDuration(dur)}, odjazd ${depAt}, przyjazd ${arrAt}, ${via}${lines ? `, linie ${lines}` : ''}`,
     walkRoute: 'trasa piesza',
+    riskyTransferA11y: (stop: string, min: number) =>
+      min <= 0
+        ? `Ryzykowna przesiadka na przystanku ${stop}, mniej niż minuta zapasu`
+        : `Ryzykowna przesiadka na przystanku ${stop}, ${min} min zapasu`,
+    longWalkA11y: (min: number) => `Wymaga dłuższego dojścia pieszo do celu: ${min} min`,
+    onTimeBadge: 'na czas',
+    plannedShort: (time: string) => `(plan. ${time})`,
+    fromStopLabel: (stop: string) => `z: ${stop}`,
+    exitStopLabel: (stop: string) => `wysiadka: ${stop}`,
+    finalWalkPill: (min: number) => `${min}' do celu`,
   },
   vehiclePos: {
     noRoute: 'Brak danych o trasie',

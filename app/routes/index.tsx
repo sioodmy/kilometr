@@ -29,7 +29,7 @@ import Animated, {
   LinearTransition,
   useReducedMotion,
 } from 'react-native-reanimated';
-import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
 import {
@@ -1845,9 +1845,10 @@ const styles = StyleSheet.create({
   },
   skelCard: {
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant + '44',
     padding: 14,
-    ...elev.level1,
   },
   skelRow: {
     flexDirection: 'row',

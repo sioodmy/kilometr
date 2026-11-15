@@ -1280,6 +1280,16 @@ export const en: Strings = {
     ) =>
       `${dep}, ride time ${formatDuration(dur)}, departure ${depAt}, arrival ${arrAt}, ${via}${lines ? `, lines ${lines}` : ''}`,
     walkRoute: 'walking route',
+    riskyTransferA11y: (stop: string, min: number) =>
+      min <= 0
+        ? `Risky transfer at ${stop}, less than 1 minute margin`
+        : `Risky transfer at ${stop}, ${min} min margin`,
+    longWalkA11y: (min: number) => `Requires longer walk to destination: ${min} min`,
+    onTimeBadge: 'on time',
+    plannedShort: (time: string) => `(sched. ${time})`,
+    fromStopLabel: (stop: string) => `from: ${stop}`,
+    exitStopLabel: (stop: string) => `exit: ${stop}`,
+    finalWalkPill: (min: number) => `${min}' to dest.`,
   },
   vehiclePos: {
     noRoute: 'No route data',
