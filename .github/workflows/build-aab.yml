@@ -62,10 +62,6 @@ permissions:
   contents: write
   actions: read
 
-concurrency:
-  group: build-play-aab
-  cancel-in-progress: false
-
 env:
   BUILD_NUMBER: ${{ github.run_attempt }}
   # Podpis release: hasła i alias muszą widzieć prebuild (wtyczka z bramką
@@ -80,6 +76,8 @@ jobs:
     name: Build & Sign Play AAB
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Tylko tutaj: workflow-level concurrency z tą samą nazwą grupy blokuje
+    # własny job (grupa zajęta przez run wywołujący).
     concurrency:
       group: build-play-aab
       cancel-in-progress: false
