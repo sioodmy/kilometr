@@ -71,6 +71,7 @@ export interface Connection {
   transfers: number;
   delayMin: number;
   live: boolean;
+  boarded?: boolean;
   legs: Leg[];
   interchange?: string;
 }

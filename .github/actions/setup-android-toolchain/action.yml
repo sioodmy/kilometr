@@ -1,0 +1,102 @@
+name: Setup Android & Rust Toolchain
+description: Installs Node.js, Java 17, Gradle cache, Android SDK/NDK/CMake, npm dependencies, and Rust Android targets.
+
+inputs:
+  arch:
+    description: Target ABI ('arm64-v8a' or 'all')
+    required: false
+    default: 'all'
+  rust-cache-scope:
+    description: Cache scope prefix for Rust RAPTOR target
+    required: false
+    default: 'android'
+  node-version:
+    description: Node.js version
+    required: false
+    default: '22'
+  rust-toolchain:
+    description: Rust toolchain version
+    required: false
+    default: 'stable'
+  compile-sdk:
+    description: Android compileSdk version (must match react-native libs.versions.toml)
+    required: false
+    default: '36'
+  build-tools:
+    description: Android build-tools version
+    required: false
+    default: '36.0.0'
+  ndk:
+    description: Android NDK version
+    required: false
+    default: '27.1.12297006'
+  cmake:
+    description: Android CMake version
+    required: false
+    default: '3.30.5'
+
+runs:
+  using: composite
+  steps:
+    - name: Export Android SDK versions
+      shell: bash
+      run: |
+        {
+          echo "ANDROID_COMPILE_SDK=${{ inputs.compile-sdk }}"
+          echo "ANDROID_BUILD_TOOLS=${{ inputs.build-tools }}"
+          echo "ANDROID_NDK=${{ inputs.ndk }}"
+          echo "ANDROID_CMAKE=${{ inputs.cmake }}"
+        } >> "$GITHUB_ENV"
+
+    - name: Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    - name: Setup Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Setup Gradle Cache
+      uses: gradle/actions/setup-gradle@v4
+
+    # Bez `packages` domyślnie: pakiet `tools` usunięto z repozytorium Google,
+    # więc sdkmanager kończy się błędem "Failed to find package 'tools'".
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        packages: platform-tools
+
+    - name: Install Android SDK platforms, build-tools, NDK and CMake
+      shell: bash
+      run: |
+        set -euo pipefail
+        yes | sdkmanager --licenses > /dev/null || true
+        sdkmanager \
+          "platform-tools" \
+          "platforms;android-${{ inputs.compile-sdk }}" \
+          "build-tools;${{ inputs.build-tools }}" \
+          "ndk;${{ inputs.ndk }}" \
+          "cmake;${{ inputs.cmake }}"
+
+    - name: Install Node dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Setup Rust toolchain and Android targets
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+        targets: ${{ inputs.arch == 'arm64-v8a' && 'aarch64-linux-android' || 'aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android' }}
+
+    - name: Cache Rust RAPTOR target
+      uses: actions/cache@v5
+      with:
+        path: modules/kilometr-raptor/rust/target
+        key: rust-raptor-${{ inputs.rust-cache-scope }}-${{ runner.os }}-${{ inputs.arch }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
+        restore-keys: |
+          rust-raptor-${{ inputs.rust-cache-scope }}-${{ runner.os }}-${{ inputs.arch }}-
+          rust-raptor-${{ inputs.rust-cache-scope }}-${{ runner.os }}-

@@ -499,7 +499,10 @@ export default function RouteDetailsScreen() {
                   }
                 }}
               />
-              <LegTimeline legs={item.legs} />
+              <LegTimeline
+                legs={item.legs}
+                boardedDepartAt={item.boarded ? item.departAt : undefined}
+              />
               <RouteMapCard
                 connection={item}
                 onOpenMap={(stageId) =>

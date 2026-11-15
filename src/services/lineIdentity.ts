@@ -371,7 +371,7 @@ export function mapLineColor(bg: string): string {
 }
 
 /** WCAG AA: ciemny albo biały tekst w zależności od luminancji tła. */
-export function getContrastForeground(bg: string): string {
+function getContrastForeground(bg: string): string {
   const lum = relativeLuminance(bg) ?? 0;
   const whiteContrast = 1.05 / (lum + 0.05);
   const blackContrast = (lum + 0.05) / 0.05;
@@ -436,4 +436,54 @@ export function getLineColors(
   const fg = getContrastForeground(bg);
 
   return { bg, fg, isTram, isTrain: false, isCable: false };
+}
+
+/**
+ * Pełna tożsamość pigułki linii (znormalizowany podpis, tryb, przewoźnik
+ * kolejowy oraz kolory tła i tekstu) współdzielona przez LineBadge i mapę live.
+ */
+export function resolveLineBadgeIdentity({
+  mode,
+  line,
+  compact,
+  cityId,
+  railAgencyOverride,
+  railColorOverride,
+}: {
+  mode?: LegMode;
+  line?: string;
+  compact?: boolean;
+  cityId?: string;
+  railAgencyOverride?: string;
+  railColorOverride?: string;
+}): {
+  bg: string;
+  fg: string;
+  resolvedMode: LegMode;
+  normalizedLine: string;
+  railAgency?: string;
+} {
+  const normalizedLine = normalizeLineName(line, mode, compact);
+  const resolvedMode = inferTransitMode(mode, normalizedLine || line, cityId);
+  const railAgency =
+    resolvedMode === 'train'
+      ? railAgencyOverride ??
+        inferRailAgencyFromLine(line, cityId) ??
+        inferRailAgencyFromLine(normalizedLine || line, cityId)
+      : undefined;
+  const agencyBg = railAgency ? getRailAgencyColor(railAgency) : undefined;
+  const railHex = railColorOverride?.replace('#', '') ?? '';
+  const colors = agencyBg
+    ? { bg: agencyBg, fg: getContrastForeground(agencyBg) }
+    : /^[0-9a-f]{6}$/i.test(railHex)
+      ? { bg: `#${railHex}`, fg: getContrastForeground(`#${railHex}`) }
+      : getLineColors(normalizedLine || line, resolvedMode === 'train' ? 'train' : mode, cityId);
+
+  return {
+    bg: colors.bg,
+    fg: colors.fg,
+    resolvedMode,
+    normalizedLine,
+    railAgency,
+  };
 }

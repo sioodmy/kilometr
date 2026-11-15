@@ -141,6 +141,8 @@ export interface VehiclePosition {
   line: string;
   lat: number;
   lon: number;
+  /** Kierunek jazdy w stopniach (0-360), jesli podany przez feed live */
+  bearing?: number;
   /**
    * `null` = brak wiarygodnego pomiaru, co jest INNYM stanem niż 0.
    * Zero znaczy „na czas”; `null` znaczy „nie wiadomo” (np. dopasowanie
@@ -229,6 +231,20 @@ export type RailAmenity =
   | 'miejsca_sypialne'
   | 'strefa_ciszy';
 
+/**
+ * Klucze udogodnień stacji kolejowej (OSM 50 m od dworca). Muszą się zgadzać
+ * z STATION_AMENITY_ORDER w build-polska.mjs i sekcją stationAmenities w i18n.
+ */
+export type StationAmenity =
+  | 'toilets'
+  | 'gastronomy'
+  | 'shop'
+  | 'cafe'
+  | 'bakery'
+  | 'pharmacy'
+  | 'atm'
+  | 'luggage';
+
 export interface Connection {
   id: string;
   serviceDate?: string;
@@ -246,9 +262,27 @@ export interface Connection {
   delayMin: number;
   /** any leg has live GPS? */
   live: boolean;
+  /** True gdy połączenie startuje z pokładu wybranego pojazdu. */
+  boarded?: boolean;
   legs: Leg[];
   /** interchange hint, e.g. "Przesiadka: Rondo" */
   interchange?: string;
+}
+
+/** Aktywny pojazd (kurs GTFS), z pokładu którego planujemy dalszą podróż. */
+export interface BoardedTripOrigin {
+  tripId: string;
+  routeId?: string;
+  line: string;
+  mode?: LegMode;
+  direction?: string;
+  /** Aktualny lub ostatni minięty przystanek na trasie kursu (opcjonalnie). */
+  boardStopId?: string;
+  /** Pozycja pojazdu/pasażera użyta do ustalenia postępu na kursie. */
+  currentLat?: number;
+  currentLon?: number;
+  /** Znane opóźnienie pojazdu w sekundach, gdy brak wpisu w liveTracker. */
+  delaySec?: number;
 }
 
 export interface RouteQuery {
@@ -290,4 +324,6 @@ export interface RouteQuery {
   anchorStopId?: string;
   anchorStopLat?: number;
   anchorStopLon?: number;
+  /** Aktywny pojazd (kurs), z którego kontynuujemy podróż bez szukania dojścia na start. */
+  boardedTrip?: BoardedTripOrigin;
 }

@@ -332,6 +332,13 @@ test('enrichAlertWithGtfs wylicza omijane przystanki między from_stop i to_stop
   ]);
   assert.equal(enriched.corridor.from_stop, 'Galeria Dominikańska');
   assert.equal(enriched.stop_coords['Plac Zgody'].stop_id, 's3');
+  assert.deepEqual(enriched.corridor.stops, [
+    'Galeria Dominikańska',
+    'Urząd Wojewódzki',
+    'Plac Zgody',
+    'Krakowska',
+    'Księże Małe',
+  ]);
 });
 
 test('sanitizeAnalysisText usuwa em dash i urzędowe przeprosiny', () => {
@@ -357,3 +364,18 @@ test('isComplexDisruptionText wykrywa wieloetapowe i wieloliniowe komunikaty', (
   assert.equal(isComplexDisruptionText('Wielkie zmiany', 'Dużo linii.', 6), true);
 });
 
+test('sanitizeAnalysisText czyści map_label i skraca do 3 słów', () => {
+  const dirty = {
+    is_transit_alert: true,
+    headline: 'Awaria',
+    map_label: '  Wykolejenie Tramwaju — Blokada Ruchu! ',
+  };
+  const clean = sanitizeAnalysisText(dirty);
+  assert.equal(clean.map_label, 'wykolejenie tramwaju');
+
+  const valid = sanitizeAnalysisText({ is_transit_alert: true, map_label: '  Wykolejenie. ' });
+  assert.equal(valid.map_label, 'wykolejenie');
+
+  const empty = sanitizeAnalysisText({ is_transit_alert: false, map_label: null });
+  assert.equal(empty.map_label, null);
+});

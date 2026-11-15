@@ -211,6 +211,7 @@ export default function RootLayout() {
               {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby
                 przeciąganie widoku i mapa skakałaby przy powrocie. */}
               <Stack.Screen name="map" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="live-map" options={{ gestureEnabled: false }} />
               <Stack.Screen
                 name="news"
                 options={{

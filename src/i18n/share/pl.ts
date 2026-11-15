@@ -55,6 +55,7 @@ export const pl = {
   follow: 'Przypnij do powiadomień',
   following: 'Zakończ obserwowanie',
   followHint: 'Przyjazd i przebieg podróży na ekranie blokady. Bez dostępu do Twojej lokalizacji.',
+  followActiveHint: 'Przypięto do ekranu blokady. Odświeża się w tle.',
   vehicleLive: 'Pozycja pojazdu z GPS',
   noVehicle:
     'Brak aktualnej pozycji GPS. Mapa pokazuje trasę, a godziny pochodzą z udostępnionego planu.',
@@ -63,6 +64,8 @@ export const pl = {
   planned: 'Plan podróży',
   map: 'Mapa podróży',
   fitMap: 'Pokaż całą trasę',
+  expandMap: 'Powiększ mapę',
+  closeMap: 'Zamknij mapę',
   mapUnavailable: 'Geometria trasy jest niedostępna. Spróbuj wczytać ją ponownie.',
   geometryLoading: 'Wczytuję przebieg trasy…',
   approximateGeometry: 'Przebieg przybliżony przez przystanki.',
@@ -86,6 +89,18 @@ export const pl = {
   planYourOwn: 'Zaplanuj w wyszukiwarce',
   inProgress: 'W trasie',
   upcoming: 'Przed odjazdem',
+  etaInMin: (min: number) => `za ${min} min`,
+  departsInMin: (min: number) => `odjazd za ${min} min`,
+  nextStopLabel: (stop: string) => `Następny przystanek: ${stop}`,
+  stopsToGo: (n: number) =>
+    n === 1
+      ? '1 przystanek do celu'
+      : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+        ? `${n} przystanki do celu`
+        : `${n} przystanków do celu`,
+  waitingAtStop: (stop: string) => `Oczekiwanie: ${stop}`,
+  transferAtStop: (stop: string) => `Przesiadka: ${stop}`,
+  walkingToStop: (stop: string) => `Dojście do: ${stop}`,
   arrTime: (time: string) => `przyj. ${time}`,
   depTime: (time: string) => `odj. ${time}`,
   dwellMin: (min: number) => `postój ${min} min`,

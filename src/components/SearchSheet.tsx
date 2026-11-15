@@ -1,31 +1,61 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, StyleSheet, Text, View } from 'react-native';
-import BottomSheet, {
-  BottomSheetFlatList,
-  BottomSheetTextInput,
+import {
+  ActivityIndicator,
+  BackHandler,
+  FlatList,
+  InteractionManager,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
-} from '@gorhom/bottom-sheet';
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   FadeIn,
   FadeOut,
+  runOnJS,
+  useAnimatedStyle,
   useReducedMotion,
+  useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, LocateFixed, Search, X } from './icons';
-import type { TextInput } from 'react-native-gesture-handler';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPinned, Search, X } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
+import {
+  getDataStatus,
+  importGtfsFromNetwork,
+  subscribeDataStatus,
+  type DataStatus,
+} from '../services/dataManager';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { frecency, matchSuggestions, rankWithFrecency } from '../services/searchFrecency';
 import { searchTransitLines, type TransitLine } from '../services/lineTimetable';
 import { LineBadge } from './LineBadge';
+import { SpringPressable } from './SpringPressable';
+import type { NearbyLiveVehicle } from '../services/onboardDetector';
 
 type Row =
   | { type: 'header'; label: string }
+  | { type: 'liveMap' }
+  | {
+      type: 'vehicle';
+      vehicle: NearbyLiveVehicle;
+      first: boolean;
+      last: boolean;
+    }
   | { type: 'line'; line: TransitLine }
   | {
       type: 'item';
@@ -55,6 +85,9 @@ export function SearchSheet({
   placeholder: placeholderProp,
   originTitle,
   onChangeOrigin,
+  nearbyVehicles,
+  onSelectVehicle,
+  onOpenLiveMap,
   closeOnSelect = true,
 }: {
   open?: boolean;
@@ -71,41 +104,130 @@ export function SearchSheet({
   placeholder?: string;
   originTitle?: string;
   onChangeOrigin?: () => void;
+  nearbyVehicles?: NearbyLiveVehicle[];
+  onSelectVehicle?: (vehicle: NearbyLiveVehicle) => void;
+  onOpenLiveMap?: () => void;
   closeOnSelect?: boolean;
 }) {
-  const ref = useRef<BottomSheet>(null);
   const inputRef = useRef<TextInput>(null);
   const [focused, setFocused] = useState(false);
+  const focusedRef = useRef(false);
   const s = useStrings();
   const { cityId } = useActiveCity();
+  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
   // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
   const cityLoc = s.city.loc(cityId);
   const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
   // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const { height: windowHeight } = useWindowDimensions();
+
+  const [overlayHeight, setOverlayHeight] = useState(windowHeight);
+  const maxOverlayHeightRef = useRef(windowHeight);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   // Stabilny ref do onClose (unikamy prze-subskrypcji przy każdym renderze)
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const closingRef = useRef(false);
+
+  const finishClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    Keyboard.dismiss();
+    closeRef.current();
+  }, []);
+
+  useEffect(() => {
+    setDataStatus(getDataStatus());
+    return subscribeDataStatus(setDataStatus);
+  }, []);
 
   // Android back / gest wstecz zamyka wyszukiwarkę zamiast wyjścia z apki
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeRef.current();
+      finishClose();
       return true;
     });
     return () => sub.remove();
-  }, []);
+  }, [finishClose]);
 
   useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 250);
-    return () => clearTimeout(t);
-  }, [placeholder]);
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setAndroidKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setAndroidKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
-  const handleClose = () => {
-    inputRef.current?.blur();
-    ref.current?.close();
-  };
+  // Pojedynczy fallback fokusu po zakończeniu przejść nawigacji (bez podwójnego żądania IME).
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!closingRef.current && !focusedRef.current) {
+        inputRef.current?.focus();
+      }
+    });
+    return () => task.cancel();
+  }, []);
+
+  const handleOverlayLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > maxOverlayHeightRef.current) {
+      maxOverlayHeightRef.current = h;
+    }
+    setOverlayHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
+  }, []);
+
+  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const windowShrank = maxOverlayHeightRef.current - overlayHeight > androidKeyboardHeight * 0.5;
+  const extraKeyboardInset =
+    Platform.OS === 'android' && androidKeyboardHeight > 0 && !windowShrank
+      ? androidKeyboardHeight
+      : 0;
+  const keyboardOpen = Platform.OS === 'android' && (androidKeyboardHeight > 0 || windowShrank);
+
+  const translateY = useSharedValue(0);
+
+  const dismissPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY(8)
+        .failOffsetX([-20, 20])
+        .onUpdate((e) => {
+          translateY.value = e.translationY > 0 ? e.translationY : 0;
+        })
+        .onEnd((e) => {
+          if (e.translationY > 110 || e.velocityY > 900) {
+            if (reducedMotion) {
+              runOnJS(finishClose)();
+              return;
+            }
+            translateY.value = withTiming(targetSheetHeight, { duration: 140 }, (finished) => {
+              if (finished) runOnJS(finishClose)();
+            });
+          } else {
+            translateY.value = withTiming(0, { duration: 140 });
+          }
+        }),
+    [finishClose, reducedMotion, targetSheetHeight, translateY],
+  );
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropAnimatedStyle = useAnimatedStyle(() => {
+    const progress = 1 - Math.min(1, translateY.value / Math.max(1, targetSheetHeight * 0.7));
+    return { opacity: progress * 0.6 };
+  });
 
   const trimmed = query.trim();
   const canSearchLines = !!onSelectLine;
@@ -134,13 +256,17 @@ export function SearchSheet({
     };
   }, [trimmed, cityId, canSearchLines]);
 
-  const handleLineSelect = (line: TransitLine) => {
-    inputRef.current?.blur();
-    onSelectLine?.(line);
-    if (closeOnSelect) {
-      ref.current?.close();
-    }
-  };
+  const handleLineSelect = useCallback(
+    (line: TransitLine) => {
+      onSelectLine?.(line);
+      if (closeOnSelect) {
+        finishClose();
+      } else {
+        Keyboard.dismiss();
+      }
+    },
+    [closeOnSelect, finishClose, onSelectLine],
+  );
 
   // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
   const personal = useMemo(() => {
@@ -173,10 +299,15 @@ export function SearchSheet({
       ),
     [results, personal],
   );
-  const ranked = useMemo(
-    () => rankWithFrecency([...personal, ...rest], recent, trimmed),
-    [personal, rest, recent, trimmed],
-  );
+  const ranked = useMemo(() => {
+    const ordered = rankWithFrecency([...personal, ...rest], recent, trimmed);
+    const seen = new Set<string>();
+    return ordered.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [personal, rest, recent, trimmed]);
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
@@ -196,25 +327,51 @@ export function SearchSheet({
       });
     };
     if (!trimmed) {
+      if (onOpenLiveMap) {
+        out.push({ type: 'liveMap' });
+      }
+      if (nearbyVehicles && nearbyVehicles.length > 0 && onSelectVehicle) {
+        const list = nearbyVehicles.slice(0, 4);
+        out.push({ type: 'header', label: s.search.nearbyVehiclesSection });
+        list.forEach((vehicle, index) => {
+          out.push({
+            type: 'vehicle',
+            vehicle,
+            first: index === 0,
+            last: index === list.length - 1,
+          });
+        });
+      }
       const now = Date.now();
-      const ordered = [...recent].sort(
-        (a, b) =>
-          Number(b.id === '__gps') - Number(a.id === '__gps') ||
-          frecency(b, now) - frecency(a, now),
-      );
+      const seen = new Set<string>();
+      const ordered = [...recent]
+        .sort(
+          (a, b) =>
+            Number(b.id === '__gps') - Number(a.id === '__gps') ||
+            frecency(b, now) - frecency(a, now),
+        )
+        .filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
       append(s.search.suggestedPlaces, ordered);
       return out;
     }
     if (lines.length) {
       out.push({ type: 'header', label: s.lineTimetable.title });
-      for (const line of lines) out.push({ type: 'line', line });
+      const seenRoutes = new Set<string>();
+      for (const line of lines) {
+        if (seenRoutes.has(line.routeId)) continue;
+        seenRoutes.add(line.routeId);
+        out.push({ type: 'line', line });
+      }
       hasItem = true;
     }
     append(s.search.resultsFor(trimmed, ranked.length), ranked);
     return out;
-  }, [trimmed, recent, ranked, s, lines]);
+  }, [trimmed, recent, ranked, s, lines, nearbyVehicles, onSelectVehicle, onOpenLiveMap]);
 
-  const reducedMotion = useReducedMotion();
   const lineEntering = reducedMotion
     ? undefined
     : FadeIn.duration(110).easing(Easing.out(Easing.quad));
@@ -234,26 +391,53 @@ export function SearchSheet({
 
   const first = trimmed ? ranked[0] : undefined;
 
-  const handleSelect = (item: Suggestion) => {
-    inputRef.current?.blur();
-    onSelect(item);
-    if (closeOnSelect) {
-      ref.current?.close();
-    }
-  };
+  const handleSelect = useCallback(
+    (item: Suggestion) => {
+      onSelect(item);
+      if (closeOnSelect) {
+        finishClose();
+      } else {
+        Keyboard.dismiss();
+      }
+    },
+    [closeOnSelect, finishClose, onSelect],
+  );
+
+  const handleVehicleSelect = useCallback(
+    (vehicle: NearbyLiveVehicle) => {
+      onSelectVehicle?.(vehicle);
+      if (closeOnSelect) {
+        finishClose();
+      } else {
+        Keyboard.dismiss();
+      }
+    },
+    [closeOnSelect, finishClose, onSelectVehicle],
+  );
+
+  const handleOpenLiveMap = useCallback(() => {
+    finishClose();
+    onOpenLiveMap?.();
+  }, [finishClose, onOpenLiveMap]);
 
   const keyExtractor = useCallback(
     (r: Row) =>
       r.type === 'header'
         ? r.label === s.lineTimetable.title
           ? 'h-lines'
-          : r.label === s.search.suggestedPlaces
-            ? 'h-suggested'
-            : 'h-results'
-        : r.type === 'line'
-          ? `line-${r.line.routeId}`
-          : r.item.id,
-    [s.lineTimetable.title, s.search.suggestedPlaces],
+          : r.label === s.search.nearbyVehiclesSection
+            ? 'h-vehicles'
+            : r.label === s.search.suggestedPlaces
+              ? 'h-suggested'
+              : 'h-results'
+        : r.type === 'liveMap'
+          ? 'live-map-picker'
+          : r.type === 'vehicle'
+            ? `veh-${r.vehicle.vehicle.vehicleId}`
+            : r.type === 'line'
+              ? `line-${r.line.routeId}`
+              : r.item.id,
+    [s.lineTimetable.title, s.search.nearbyVehiclesSection, s.search.suggestedPlaces],
   );
 
   const renderRow = useCallback(
@@ -262,6 +446,63 @@ export function SearchSheet({
         <Text style={styles.section} accessibilityRole="header">
           {row.label}
         </Text>
+      ) : row.type === 'liveMap' ? (
+        <SpringPressable
+          onPress={handleOpenLiveMap}
+          accessibilityRole="button"
+          accessibilityLabel={s.search.pickOnLiveMap}
+          style={styles.liveMapRow}
+          scaleDelta={0.02}
+        >
+          <View style={styles.liveMapIcon}>
+            <MapPinned size={20} color={scheme.onSecondaryContainer} />
+          </View>
+          <View style={styles.liveMapText}>
+            <Text style={styles.liveMapTitle} numberOfLines={1}>
+              {s.search.pickOnLiveMap}
+            </Text>
+            <Text style={styles.liveMapSub} numberOfLines={1}>
+              {s.search.pickOnLiveMapSub}
+            </Text>
+          </View>
+          <ChevronRight size={20} color={scheme.onSurfaceVariant} />
+        </SpringPressable>
+      ) : row.type === 'vehicle' ? (
+        <SpringPressable
+          onPress={() => handleVehicleSelect(row.vehicle)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            row.vehicle.direction
+              ? `${row.vehicle.line} ${s.search.vehicleDirectionTo(row.vehicle.direction)}`
+              : row.vehicle.line
+          }
+          style={[
+            styles.vehicleRow,
+            row.first && styles.vehicleFirst,
+            row.last && styles.vehicleLast,
+          ]}
+          scaleDelta={0.02}
+        >
+          <LineBadge line={row.vehicle.line} mode={row.vehicle.mode} />
+          <View style={styles.vehicleText}>
+            <Text style={styles.vehicleTitle} numberOfLines={1}>
+              {row.vehicle.direction
+                ? s.search.vehicleDirectionTo(row.vehicle.direction)
+                : row.vehicle.line}
+            </Text>
+            <Text style={styles.vehicleSub} numberOfLines={1}>
+              {[
+                row.vehicle.nextStopName
+                  ? s.liveMap.nextStop(row.vehicle.nextStopName)
+                  : null,
+                s.liveMap.distanceAway(row.vehicle.distanceM),
+              ]
+                .filter(Boolean)
+                .join(' \u00b7 ')}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+        </SpringPressable>
       ) : row.type === 'line' ? (
         <Animated.View entering={lineEntering} exiting={lineExiting}>
           <TouchableOpacity
@@ -290,178 +531,343 @@ export function SearchSheet({
           prominent={row.prominent}
         />
       ),
-    [handleLineSelect, handleSelect, lineEntering, lineExiting, s, trimmed],
+    [
+      handleLineSelect,
+      handleOpenLiveMap,
+      handleSelect,
+      handleVehicleSelect,
+      lineEntering,
+      lineExiting,
+      s,
+      trimmed,
+    ],
   );
 
+  const listContentStyle = useMemo(
+    () => [styles.list, { paddingBottom: keyboardOpen ? 16 : 24 + insets.bottom }],
+    [keyboardOpen, insets.bottom],
+  );
+
+  const timetableSyncing =
+    dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const timetableMissing = dataStatus.state === 'empty' || dataStatus.state === 'error';
+  const syncLabel =
+    dataStatus.state === 'downloading'
+      ? s.settings.dataDownloading(Math.round(dataStatus.progress * 100))
+      : dataStatus.state === 'importing'
+        ? s.settings.dataStep(dataStatus.step, Math.round(dataStatus.progress * 100))
+        : null;
+
   return (
-    <BottomSheet
-      ref={ref}
-      index={0}
-      snapPoints={['92%']}
-      topInset={insets.top}
-      bottomInset={insets.bottom}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
-      onChange={(idx) => {
-        if (idx === -1) {
-          onClose();
-        }
-      }}
-      backgroundStyle={styles.sheet}
-      handleIndicatorStyle={styles.handle}
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        styles.overlay,
+        { paddingTop: insets.top, paddingBottom: extraKeyboardInset },
+      ]}
+      onLayout={handleOverlayLayout}
+      accessibilityViewIsModal
     >
-      <View style={styles.container} accessibilityViewIsModal>
-        <View style={styles.head}>
-          {originTitle && onChangeOrigin && (
-            <TouchableOpacity
-              onPress={onChangeOrigin}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={styles.originHintRow}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={s.search.originA11y(originTitle)}
-            >
-              <LocateFixed size={16} color={scheme.onSurfaceVariant} />
-              <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
-              <Text style={styles.originHintTitle} numberOfLines={1}>
-                {originTitle}
-              </Text>
-              <Text style={styles.originHintChange}>{s.search.change}</Text>
-            </TouchableOpacity>
-          )}
+      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimatedStyle]}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={finishClose}
+          accessibilityRole="button"
+          accessibilityLabel={s.search.closeA11y}
+        />
+      </Animated.View>
 
-          <View style={[styles.inputBox, focused && styles.inputFocused]}>
-            <TouchableOpacity
-              onPress={handleClose}
-              style={styles.leadingBtn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={s.search.closeA11y}
-            >
-              <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
-            </TouchableOpacity>
-            <BottomSheetTextInput
-              ref={inputRef}
-              value={query}
-              onChangeText={onQuery}
-              placeholder={placeholder}
-              accessibilityLabel={placeholder}
-              placeholderTextColor={scheme.onSurfaceVariant}
-              style={styles.input}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              selectionColor={scheme.primary}
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="none"
-              blurOnSubmit={false}
-              onSubmitEditing={() =>
-                lines[0] ? handleLineSelect(lines[0]) : first && handleSelect(first)
-              }
-            />
-            {query ? (
-              <TouchableOpacity
-                onPress={() => {
-                  onQuery('');
-                  inputRef.current?.focus();
-                }}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.trailingBtn}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={s.search.clearA11y}
-              >
-                <X size={19} color={scheme.onSurfaceVariant} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-
-        <BottomSheetFlatList
-          data={rows}
-          keyExtractor={keyExtractor}
-          overScrollMode="never"
-          contentContainerStyle={styles.list}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          initialNumToRender={10}
-          maxToRenderPerBatch={8}
-          ListHeaderComponent={
-            <View style={{ gap: 6 }}>
-              {!trimmed && savedQuick.length > 0 && (
-                <View style={styles.quickRow}>
-                  {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
-                    <TouchableOpacity
-                      key={q.id}
-                      onPress={() => handleSelect(q)}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      activeOpacity={0.7}
-                      style={styles.quick}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.search.savedA11y(q.title)}
-                    >
-                      <Text style={styles.quickText} numberOfLines={1}>
-                        {q.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.kav}
+        pointerEvents="box-none"
+      >
+        <Animated.View style={[styles.sheet, { height: targetSheetHeight }, sheetAnimatedStyle]}>
+          <View style={styles.container}>
+            <GestureDetector gesture={dismissPanGesture}>
+              <View collapsable={false}>
+                <View style={styles.handleRow}>
+                  <View style={styles.handle} />
                 </View>
-              )}
-            </View>
-          }
-          renderItem={renderRow}
-          ListFooterComponent={
-            showLoading && rows.length > 0 ? (
-              <View style={styles.status} accessibilityLiveRegion="polite">
-                <ActivityIndicator size="small" color={scheme.primary} />
-                <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
-              </View>
-            ) : error && rows.length > 0 ? (
-              <Text style={styles.error} accessibilityRole="alert">
-                {s.search.errorHint}
-              </Text>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={styles.empty} accessibilityLiveRegion="polite">
-              <View style={styles.emptyIcon}>
-                {showLoading ? (
-                  <ActivityIndicator color={scheme.primary} />
-                ) : (
-                  <Search size={28} color={scheme.primary} />
+                {originTitle && onChangeOrigin && (
+                  <View style={styles.originWrap}>
+                    <TouchableOpacity
+                      onPress={onChangeOrigin}
+                      style={styles.originHintRow}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.search.originA11y(originTitle)}
+                    >
+                      <LocateFixed size={16} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
+                      <Text style={styles.originHintTitle} numberOfLines={1}>
+                        {originTitle}
+                      </Text>
+                      <Text style={styles.originHintChange}>{s.search.change}</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
-              <Text style={styles.emptyTitle}>
-                {showLoading
-                  ? s.search.searching(cityLoc)
-                  : error
-                    ? s.search.errorTitle
-                    : trimmed
-                      ? s.search.noResultsFor(trimmed)
-                      : s.search.emptyTitle}
-              </Text>
-              {!showLoading && (
-                <Text style={styles.emptySub}>
-                  {error
-                    ? s.search.errorHint
-                    : trimmed
-                      ? s.search.noResultsHint(cityId)
-                      : s.search.emptyHint}
-                </Text>
-              )}
+            </GestureDetector>
+
+            <View style={styles.head}>
+              <View style={[styles.inputBox, focused && styles.inputFocused]}>
+                <TouchableOpacity
+                  onPress={finishClose}
+                  style={styles.leadingBtn}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.search.closeA11y}
+                >
+                  <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
+                </TouchableOpacity>
+                <TextInput
+                  ref={inputRef}
+                  autoFocus
+                  value={query}
+                  onChangeText={onQuery}
+                  placeholder={placeholder}
+                  accessibilityLabel={placeholder}
+                  placeholderTextColor={scheme.onSurfaceVariant}
+                  style={styles.input}
+                  onFocus={() => {
+                    focusedRef.current = true;
+                    setFocused(true);
+                  }}
+                  onBlur={() => {
+                    focusedRef.current = false;
+                    setFocused(false);
+                  }}
+                  selectionColor={scheme.primary}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() =>
+                    lines[0] ? handleLineSelect(lines[0]) : first && handleSelect(first)
+                  }
+                />
+                {query ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      onQuery('');
+                      inputRef.current?.focus();
+                    }}
+                    style={styles.trailingBtn}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.search.clearA11y}
+                  >
+                    <X size={19} color={scheme.onSurfaceVariant} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
-          }
-        />
-      </View>
-    </BottomSheet>
+
+            <FlatList
+              data={rows}
+              keyExtractor={keyExtractor}
+              style={styles.flatList}
+              overScrollMode="never"
+              contentContainerStyle={listContentStyle}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              initialNumToRender={10}
+              maxToRenderPerBatch={8}
+              windowSize={7}
+              ListHeaderComponent={
+                <View style={styles.listHeader}>
+                  {syncLabel && rows.length > 0 && (
+                    <View style={styles.syncBanner} accessibilityLiveRegion="polite">
+                      <ActivityIndicator size="small" color={scheme.primary} />
+                      <Text style={styles.syncBannerText}>{syncLabel}</Text>
+                    </View>
+                  )}
+                  {!trimmed && savedQuick.length > 0 && (
+                    <View style={styles.quickRow}>
+                      {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
+                        <TouchableOpacity
+                          key={q.id}
+                          onPress={() => handleSelect(q)}
+                          activeOpacity={0.7}
+                          style={styles.quick}
+                          accessibilityRole="button"
+                          accessibilityLabel={s.search.savedA11y(q.title)}
+                        >
+                          <Text style={styles.quickText} numberOfLines={1}>
+                            {q.title}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              }
+              renderItem={renderRow}
+              ListFooterComponent={
+                showLoading && rows.length > 0 ? (
+                  <View style={styles.status} accessibilityLiveRegion="polite">
+                    <ActivityIndicator size="small" color={scheme.primary} />
+                    <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
+                  </View>
+                ) : error && rows.length > 0 ? (
+                  <Text style={styles.error} accessibilityRole="alert">
+                    {s.search.errorHint}
+                  </Text>
+                ) : null
+              }
+              ListEmptyComponent={
+                <View style={styles.empty} accessibilityLiveRegion="polite">
+                  <View style={styles.emptyIcon}>
+                    {showLoading || timetableSyncing ? (
+                      <ActivityIndicator color={scheme.primary} />
+                    ) : (
+                      <Search size={28} color={scheme.primary} />
+                    )}
+                  </View>
+                  <Text style={styles.emptyTitle}>
+                    {syncLabel
+                      ? syncLabel
+                      : showLoading
+                        ? s.search.searching(cityLoc)
+                        : error
+                          ? s.search.errorTitle
+                          : timetableMissing
+                            ? s.search.timetableMissingTitle
+                            : trimmed
+                              ? s.search.noResultsFor(trimmed)
+                              : s.search.emptyTitle}
+                  </Text>
+                  {!showLoading && (
+                    <Text style={styles.emptySub}>
+                      {timetableSyncing
+                        ? s.search.timetableDownloadingHint
+                        : error
+                          ? s.search.errorHint
+                          : timetableMissing
+                            ? s.search.timetableMissingHint(s.city.gen(cityId))
+                            : trimmed
+                              ? s.search.noResultsHint(cityId)
+                              : s.search.emptyHint}
+                    </Text>
+                  )}
+                  {timetableMissing && !showLoading && !error && (
+                    <TouchableOpacity
+                      onPress={() => void importGtfsFromNetwork().catch(() => {})}
+                      activeOpacity={0.75}
+                      style={styles.downloadBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.city.downloadAction}
+                    >
+                      <Text style={styles.downloadBtnText}>{s.city.downloadAction}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              }
+            />
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    zIndex: 100,
+    elevation: 24,
+  },
+  backdrop: {
+    backgroundColor: '#000000',
+  },
+  kav: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    maxHeight: '100%',
+    borderTopLeftRadius: shape.extraLarge,
+    borderTopRightRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainerLow,
+    overflow: 'hidden',
+  },
   container: { flex: 1 },
+  handleRow: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  handle: {
+    backgroundColor: scheme.outlineVariant,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
+  originWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  head: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 },
+  flatList: { flex: 1 },
+  listHeader: { gap: 6 },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainer,
+  },
+  syncBannerText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    flex: 1,
+  },
+  liveMapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 60,
+    marginTop: 4,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  liveMapIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveMapText: { flex: 1, gap: 2, minWidth: 0 },
+  liveMapTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
+  liveMapSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 60,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.small,
+  },
+  vehicleFirst: {
+    borderTopLeftRadius: shape.large,
+    borderTopRightRadius: shape.large,
+  },
+  vehicleLast: {
+    borderBottomLeftRadius: shape.large,
+    borderBottomRightRadius: shape.large,
+  },
+  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
+  vehicleTitle: { ...type.titleSmall, fontWeight: '600', color: scheme.onSurface },
+  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   lineResult: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -474,13 +880,6 @@ const styles = StyleSheet.create({
   lineText: { flex: 1, gap: 4 },
   lineTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
   lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
-  sheet: {
-    borderTopLeftRadius: shape.extraLarge,
-    borderTopRightRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainerLow,
-  },
-  handle: { backgroundColor: scheme.outlineVariant, width: 36 },
-  head: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 12 },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -597,5 +996,20 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  downloadBtn: {
+    marginTop: 4,
+    minHeight: 48,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadBtnText: {
+    ...type.labelLarge,
+    color: scheme.onPrimaryContainer,
+    fontWeight: '700',
   },
 });

@@ -367,9 +367,13 @@ export default function SettingsScreen() {
     setOutcome(null);
     try {
       await setCity(id);
-      await refreshDataStatus()
-        .then(setDataStatus)
-        .catch(() => {});
+      const st = await refreshDataStatus().catch(() => null);
+      if (st) {
+        setDataStatus(st);
+        if (st.state === 'empty') {
+          void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+        }
+      }
     } finally {
       setSwitchingCity(false);
       setSwitchingCityId(null);

@@ -1,25 +1,16 @@
-name: Build & Release APK
+name: Build & Release
 
-# Build APK uruchamia się WYŁĄCZNIE przy pushu do kanałów nightly/prod.
-# `main` i `dev` nie budują APK, promocja kodu robi się PR-ami, a build
-# startuje dopiero na wyraźnym kanale wydawniczym.
+# Unified Release DAG:
+#   prepare (~20s) ──┬──► build-apk (~25m) ──┐
+#                    ├──► build-aab (~25m) ──┼──► publish (~20s)
+#                    └──► build-ipa (~22m) ──┘
 #
 # Kanały:
-# - nightly: tylko APK + GitHub Release (prerelease).
-# - prod: APK + AAB (Google Play) + niepodpisane IPA + GitHub Release.
-#
-# Ręczne uruchomienie (workflow_dispatch) ma dwa tryby:
-#
-# - `release` (domyślny): jak push. Kanał wynika z gałęzi (nightly/prod),
-#   więc nie da się zbudować „prod” z nieaudytowanego brancha. Publikuje
-#   GitHub Release z APK jako assetem.
-# - `artifact-only`: buduje APK z DOWOLNEJ gałęzi i tylko dołącza go jako
-#   artefakt Actions. Nic nie publikuje, żadnego release ani tagu. Do tego
-#   służy, żeby pobrać APK do testów na urządzeniu bez zaśmiecania wydań.
-#
-# Podpis: APK używa tego samego klucza upload co AAB (sekrety
-# ANDROID_KEYSTORE_*). Kanał prod bez kompletu sekretów kończy się błędem,
-# bo publiczny debug keystore pozwala podrobić aktualizację aplikacji.
+# - nightly (push / release): tylko APK + GitHub Release (prerelease).
+# - prod (push / release): APK + Play AAB + niepodpisane iOS IPA budowane
+#   równolegle i publikowane atomowo w jednym GitHub Release `vX.Y.Z`.
+# - artifact-only (ręcznie): buduje wybrane cele z dowolnej gałęzi jako
+#   artefakty Actions, bez tworzenia tagu ani GitHub Release.
 on:
   push:
     branches:
@@ -28,196 +19,214 @@ on:
   workflow_dispatch:
     inputs:
       arch:
-        description: 'Architektura procesora (arm64-v8a to 99% nowoczesnych telefonów)'
+        description: 'Architektura Androida (auto = all na prod, arm64-v8a na nightly/test)'
         required: true
-        default: 'arm64-v8a'
+        default: 'auto'
         type: choice
         options:
+          - 'auto'
           - 'arm64-v8a'
           - 'all'
       mode:
-        description: 'Tryb: release (jak push, publikuje wydanie) albo artifact-only (tylko APK do pobrania)'
+        description: 'Tryb: release (publikuje wydanie nightly/prod) albo artifact-only (tylko artefakty)'
         required: true
         default: 'release'
         type: choice
         options:
           - 'release'
           - 'artifact-only'
+      target:
+        description: 'Platformy do zbudowania (auto = APK na nightly/test, APK + Play AAB + IPA na prod)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - 'auto'
+          - 'apk'
+          - 'all'
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
-  group: "build-apk-${{ github.ref_name }}"
+  group: "release-${{ github.ref_name }}"
   cancel-in-progress: false
 
-env:
-  # Wersje muszą być zgodne z node_modules/react-native/gradle/libs.versions.toml
-  # (compileSdk/targetSdk=36, buildTools=36.0.0, ndkVersion=27.1.12297006)
-  # oraz z CMAKE_VERSION używanym przez react-native (3.30.5).
-  ANDROID_COMPILE_SDK: '36'
-  ANDROID_BUILD_TOOLS: '36.0.0'
-  ANDROID_NDK: '27.1.12297006'
-  ANDROID_CMAKE: '3.30.5'
-
 jobs:
-  build-apk:
-    name: Build & Release APK
+  prepare:
+    name: Prepare Release & Gates
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
-      channel: ${{ steps.release.outputs.channel }}
-      publish: ${{ steps.release.outputs.publish }}
-    # URL rozkładu jest wpieczony w kodzie (src/services/gtfsConfig.ts,
-    # data.kilometr.app), więc build nie potrzebuje żadnego sekretu.
-    # Nadpisanie lokalnie: EXPO_PUBLIC_TIMETABLE_URL w .env.
-
+      channel: ${{ steps.plan.outputs.channel }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      apk_name: ${{ steps.plan.outputs.apk_name }}
+      arch: ${{ steps.plan.outputs.arch }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      publish: ${{ steps.plan.outputs.publish }}
+      build_number: ${{ steps.plan.outputs.build_number }}
+      signing_required: ${{ steps.plan.outputs.signing_required }}
+      build_apk: ${{ steps.plan.outputs.build_apk }}
+      build_aab: ${{ steps.plan.outputs.build_aab }}
+      build_ipa: ${{ steps.plan.outputs.build_ipa }}
     steps:
-      # Pełna historia + tagi: potrzebne do auto-semver i notek z conventional
-      # commitów (zakres od ostatniego tagu danej gałęzi).
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: 'npm'
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
 
-      # Bramka: APK pobiera bazę z R2 przy starcie, więc nie wypuszczamy
-      # wydania wskazującego na serwer bez realnego KD (MPK-only/atrapa).
-      # Manifest niedostępny = ostrzeżenie (R2 może leżeć); manifest
-      # osiągalny bez KD = twardy błąd.
-      - name: Verify timetable has real KD
-        env:
-          # Opcjonalne nadpisanie hosta rozkładu (repository variable), domyślnie produkcja.
-          TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
-        run: |
-          set -euo pipefail
-          URL="${TIMETABLE_URL:-https://data.kilometr.app}/wroclaw/manifest.json"
-          if ! curl -fsS --max-time 20 "$URL" -o /tmp/timetable-manifest.json; then
-            echo "::warning::Nie mogę pobrać manifestu rozkładu ($URL). Pomijam weryfikację KD."
-            exit 0
-          fi
-          node -e '
-            const m = require("/tmp/timetable-manifest.json");
-            const kd = (m.sources && m.sources.kd) || {};
-            const stations = Number(kd.stations || 0);
-            const trips = Number(kd.trips || 0);
-            if (kd.skippedReason || stations <= 0 || trips <= 0) {
-              console.error("::error::Manifest bez realnego KD (skippedReason=" + (kd.skippedReason || "null") + ", stations=" + stations + ", trips=" + trips + "). Nie buduję APK na bazie bez KD.");
-              process.exit(1);
-            }
-            console.log("KD OK: stations=" + stations + ", routes=" + (kd.routes || 0) + ", trips=" + trips + ", interchanges=" + (kd.interchanges || 0));
-          '
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Gradle Cache
-        uses: gradle/actions/setup-gradle@v4
-
-      # Uwaga: NIE podawaj `packages` domyślnie. Domyślna wartość akcji to
-      # "tools platform-tools", a pakiet `tools` został usunięty z repozytorium
-      # Google, sdkmanager kończy się błędem "Failed to find package 'tools'".
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools'
-
-      - name: Install Android SDK platforms, build-tools, NDK and CMake
-        run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-${ANDROID_COMPILE_SDK}" \
-            "build-tools;${ANDROID_BUILD_TOOLS}" \
-            "ndk;${ANDROID_NDK}" \
-            "cmake;${ANDROID_CMAKE}"
-
-      # Kanał decyduje o tagu, nazwie assetu, architekturze i fladze prerelease.
-      # prod: nowa wersja semver z conventional commitów, nie-prerelease (ląduje
-      # jako GitHub "latest"). nightly: unikalny tag z datą i SHA, prerelease.
-      # artifact-only (tylko ręcznie): z dowolnej gałęzi, bez wydania i tagu.
-      - name: Resolve channel, tag, version and asset name
-        id: release
+      - name: Resolve release plan
+        id: plan
         env:
           INPUT_ARCH: ${{ inputs.arch }}
           INPUT_MODE: ${{ inputs.mode }}
+          INPUT_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          # Kanał ZAWSZE z gałęzi. Nawet przy workflow_dispatch, dzięki temu
-          # nie da się odpalić builda „prod” z dev/feature brancha.
           CHANNEL="${GITHUB_REF_NAME}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ARCH="${INPUT_ARCH:-}"
+            RAW_ARCH="${INPUT_ARCH:-auto}"
             MODE="${INPUT_MODE:-release}"
+            TARGET="${INPUT_TARGET:-auto}"
           else
-            ARCH=""
+            RAW_ARCH="auto"
             MODE="release"
+            TARGET="auto"
           fi
 
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          BUILD_NUMBER="${GITHUB_RUN_ATTEMPT:-1}"
           PUBLISH="true"
 
-          # Numer podejścia zajmuje dwie ostatnie cyfry versionCode prod.
-          BUILD_NUMBER="${GITHUB_RUN_ATTEMPT:-1}"
-
           if [ "$MODE" = "artifact-only" ]; then
-            # Buduje z dowolnej gałęzi i tylko dołącza APK jako artefakt.
-            # żadnego tagu ani wydania, więc nie wolno zależeć od channela.
             CHANNEL="artifact-only"
             TAG="test-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
             APK_NAME="kilometr-test.apk"
             PRERELEASE="true"
             PUBLISH="false"
-            [ -n "$ARCH" ] || ARCH="arm64-v8a"
+            if [ "$RAW_ARCH" = "auto" ]; then ARCH="arm64-v8a"; else ARCH="$RAW_ARCH"; fi
           else
             case "$CHANNEL" in
               nightly|prod) ;;
-              *) echo "::error::Build APK dozwolony tylko z gałęzi nightly lub prod (jest: $CHANNEL). Do builda testowego wybierz tryb artifact-only."; exit 1 ;;
+              *)
+                echo "::error::Wydanie dozwolone tylko z gałęzi nightly lub prod (jest: $CHANNEL). Do builda testowego wybierz tryb artifact-only."
+                exit 1
+                ;;
             esac
 
             if [ "$CHANNEL" = "prod" ]; then
               TAG="$(node .github/scripts/next-version.mjs)"
               APK_NAME="kilometr-prod.apk"
               PRERELEASE="false"
-              [ -n "$ARCH" ] || ARCH="all"
+              if [ "$RAW_ARCH" = "auto" ]; then ARCH="all"; else ARCH="$RAW_ARCH"; fi
             else
               TAG="nightly-$(date -u +%Y%m%d-%H%M)-${SHORT_SHA}"
               APK_NAME="kilometr-nightly.apk"
               PRERELEASE="true"
-              [ -n "$ARCH" ] || ARCH="arm64-v8a"
+              if [ "$RAW_ARCH" = "auto" ]; then ARCH="arm64-v8a"; else ARCH="$RAW_ARCH"; fi
             fi
           fi
 
-          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
-          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
-          echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
-          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
-          SIGNING_REQUIRED=""
-          if [ "$CHANNEL" = "prod" ]; then SIGNING_REQUIRED="1"; fi
-          echo "signing_required=$SIGNING_REQUIRED" >> "$GITHUB_OUTPUT"
-          echo "Resolved: channel=$CHANNEL tag=$TAG apk=$APK_NAME arch=$ARCH prerelease=$PRERELEASE publish=$PUBLISH build=$BUILD_NUMBER"
+          BUILD_APK="true"
+          BUILD_AAB="false"
+          BUILD_IPA="false"
+          if [ "$TARGET" = "all" ] || { [ "$TARGET" = "auto" ] && [ "$CHANNEL" = "prod" ]; }; then
+            BUILD_AAB="true"
+            BUILD_IPA="true"
+          fi
 
-      # Ten sam klucz upload co AAB. Prod bez kompletu sekretów nie rusza
-      # dalej, bo debug keystore jest publiczny. Brak sekretów poza prod
-      # zostawia build na debug keystore i tylko ostrzega. Krok jest przed
-      # instalacją zależności, żeby prod padł od razu.
+          SIGNING_REQUIRED=""
+          if [ "$CHANNEL" = "prod" ]; then
+            SIGNING_REQUIRED="1"
+          fi
+
+          {
+            echo "channel=$CHANNEL"
+            echo "tag=$TAG"
+            echo "version=$TAG"
+            echo "apk_name=$APK_NAME"
+            echo "arch=$ARCH"
+            echo "prerelease=$PRERELEASE"
+            echo "publish=$PUBLISH"
+            echo "build_number=$BUILD_NUMBER"
+            echo "signing_required=$SIGNING_REQUIRED"
+            echo "build_apk=$BUILD_APK"
+            echo "build_aab=$BUILD_AAB"
+            echo "build_ipa=$BUILD_IPA"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Plan: channel=$CHANNEL tag=$TAG arch=$ARCH publish=$PUBLISH apk=$BUILD_APK aab=$BUILD_AAB ipa=$BUILD_IPA"
+
+      # Fail-fast przed uruchomieniem kosztownych runnerów Android + macOS.
+      - name: Verify signing secrets (prod / Play AAB)
+        env:
+          CHANNEL: ${{ steps.plan.outputs.channel }}
+          BUILD_AAB: ${{ steps.plan.outputs.build_aab }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" != "prod" ] && [ "$BUILD_AAB" != "true" ]; then
+            exit 0
+          fi
+          MISSING=""
+          for V in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS; do
+            [ -n "${!V:-}" ] || MISSING="$MISSING $V"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Kanał prod / Play AAB wymaga sekretów podpisu (brak:$MISSING). Ustaw ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD i ANDROID_KEYSTORE_ALIAS."
+            exit 1
+          fi
+
+      # Bramka KD: bez realnego KD w manifeście prod nie wypuszczamy wydania.
+      - name: Verify timetable has real KD
+        if: steps.plan.outputs.publish == 'true' || steps.plan.outputs.build_aab == 'true'
+        env:
+          TIMETABLE_URL: ${{ vars.TIMETABLE_URL }}
+        run: node .github/scripts/verify-kd-manifest.mjs
+
+      - name: Pre-build static gates
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run check:widget-strings
+          npm run check:ios-strings
+          npm run check:permission-gate
+          node --test \
+            scripts/check-android-version-code.test.mjs \
+            .github/scripts/resolve-play-version.test.mjs
+
+  build-apk:
+    name: Build Android APK
+    needs: prepare
+    if: needs.prepare.outputs.build_apk == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Android & Rust toolchain
+        uses: ./.github/actions/setup-android-toolchain
+        with:
+          arch: ${{ needs.prepare.outputs.arch }}
+          rust-cache-scope: apk
+
+      - name: Test Rust RAPTOR engine
+        run: cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
+
       - name: Decode upload keystore from secrets
         id: keystore
         env:
-          CHANNEL: ${{ steps.release.outputs.channel }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
@@ -229,7 +238,7 @@ jobs:
           done
           if [ -n "$MISSING" ]; then
             if [ "$CHANNEL" = "prod" ]; then
-              echo "::error::Kanał prod wymaga sekretów podpisu (brak:$MISSING). Ustaw ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD i ANDROID_KEYSTORE_ALIAS."
+              echo "::error::Kanał prod wymaga sekretów podpisu (brak:$MISSING)."
               exit 1
             fi
             echo "::warning::Brak sekretów podpisu (brak:$MISSING). APK dostanie debug keystore."
@@ -239,53 +248,22 @@ jobs:
           echo "path=$RUNNER_TEMP/upload-key.jks" >> "$GITHUB_OUTPUT"
           echo "Klucz upload zdekodowany: $RUNNER_TEMP/upload-key.jks"
 
-      - name: Install Node dependencies
-        run: npm ci
-
-      - name: Setup Rust toolchain and Android targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ steps.release.outputs.arch == 'arm64-v8a' && 'aarch64-linux-android' || 'aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android' }}
-
-      - name: Cache Rust RAPTOR target
-        uses: actions/cache@v5
-        with:
-          path: modules/kilometr-raptor/rust/target
-          key: rust-raptor-${{ runner.os }}-${{ steps.release.outputs.arch }}-${{ hashFiles('modules/kilometr-raptor/rust/Cargo.toml', 'modules/kilometr-raptor/rust/src/**') }}
-          restore-keys: |
-            rust-raptor-${{ runner.os }}-${{ steps.release.outputs.arch }}-
-            rust-raptor-${{ runner.os }}-
-
-      - name: Test Rust RAPTOR engine
-        run: cargo test --manifest-path modules/kilometr-raptor/rust/Cargo.toml
-
       - name: Expo Prebuild
         env:
-          # Wersja w metadanych APK (versionName/versionCode) zależy od tagu
-          # release'u; app.config.js czyta APP_VERSION. BUILD_NUMBER zajmuje
-          # dwie ostatnie cyfry versionCode (numer podejścia runu).
-          APP_VERSION: ${{ steps.release.outputs.version }}
-          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
           ANDROID_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
-          ANDROID_SIGNING_REQUIRED: ${{ steps.release.outputs.signing_required }}
+          ANDROID_SIGNING_REQUIRED: ${{ needs.prepare.outputs.signing_required }}
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Tune Gradle for CI
         run: |
           set -euo pipefail
           GP=android/gradle.properties
-          # Domyślne 2 GB JVM za mało dla równoległej kompilacji C++ (RN 0.86, new arch).
-          # org.gradle.parallel=true już jest w pliku generowanym przez prebuild.
-          #
-          # UWAGA: `expo prebuild` generuje gradle.properties BEZ znaku nowej linii na
-          # końcu, więc `cat >>` sklejałoby doklejaną właściwość z ostatnią istniejącą
-          # ("expo.inlineModules.watchedDirectories=[]org.gradle.jvmargs=..."). Gradle
-          # czyta wtedy tę wartość jako "[]org.gradle.jvmargs=..." i przekazuje ją do
-          # `node ... mirror-kotlin-inline-modules --watched-directories-serialized`,
-          # gdzie JSON.parse() pada -> build wywala się na
-          # "Process 'command 'node'' finished with non-zero exit value 1".
+          # expo prebuild generuje gradle.properties bez końcowej nowej linii;
+          # bez printf '\n' doklejka skleiłaby się z ostatnią właściwością.
           printf '\n' >> "$GP"
           cat >> "$GP" <<'EOF'
           org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
@@ -294,14 +272,9 @@ jobs:
 
       - name: Build Android Release APK
         env:
-          TARGET_ARCH: ${{ steps.release.outputs.arch }}
-          # Gradle regeneruje assets/app.config przy każdym buildzie i bez
-          # APP_VERSION wpisuje tam wersję z app.json. Constants.expoConfig.version
-          # musi zgadzać się z tagiem, bo runtime czyta z niego wersję.
-          APP_VERSION: ${{ steps.release.outputs.version }}
-          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
-          # Gradle czyta hasła dopiero w chwili builda; keyPassword może być
-          # puste, wtedy klucz użyje hasła keystore.
+          TARGET_ARCH: ${{ needs.prepare.outputs.arch }}
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
           ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
@@ -319,9 +292,6 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease -x lint --no-daemon --console=plain --stacktrace $ARCH_FLAG
 
-      # Debug keystore jest publiczny, więc sam podpis nic nie znaczy.
-      # apksigner liczy odcisk z certyfikatu w APK, keytool z keystore:
-      # zgodność obu dowodzi, że build nie wrócił po cichu do debug.
       - name: Verify APK signing certificate
         env:
           KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
@@ -329,7 +299,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -name '*.apk' | head -n 1 || true)"
           if [ -z "$APK" ]; then
             echo "::error::Nie znaleziono APK do weryfikacji podpisu"
             exit 1
@@ -342,8 +312,6 @@ jobs:
           fi
           EXPECTED="$(keytool -exportcert -alias "$KEY_ALIAS" -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" | openssl dgst -sha256 | sed 's/^.*= //')"
           ACTUAL="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
-          # apksigner podaje digest bez dwukropków, a ANDROID_APP_LINK_FINGERPRINTS
-          # wymaga formatu AA:BB:...:FF (uppercase).
           FORMATTED="$(printf '%s' "$ACTUAL" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
           echo "Odcisk SHA-256 w APK:      $ACTUAL"
           echo "Odcisk SHA-256 w keystore: $EXPECTED"
@@ -351,17 +319,23 @@ jobs:
             echo "::error::APK nie jest podpisany kluczem upload z sekretów ANDROID_KEYSTORE_*."
             exit 1
           fi
-          echo "Podpis APK zgodny z kluczem upload." >> "$GITHUB_STEP_SUMMARY"
-          echo "Odcisk certyfikatu do ANDROID_APP_LINK_FINGERPRINTS:" >> "$GITHUB_STEP_SUMMARY"
-          echo '`'"$FORMATTED"'`' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "Podpis APK zgodny z kluczem upload."
+            echo "Odcisk certyfikatu do ANDROID_APP_LINK_FINGERPRINTS: \`$FORMATTED\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Verify APK version matches release tag
+      - name: 'Gate: APK version, config, permissions & ABIs'
         env:
-          TAG: ${{ steps.release.outputs.tag }}
-          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+          TARGET_ARCH: ${{ needs.prepare.outputs.arch }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -name '*.apk' | head -n 1 || true)"
+          if [ -z "$APK" ]; then
+            echo "::error::Nie znaleziono APK do weryfikacji"
+            exit 1
+          fi
           AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
           APK_VERSION="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
@@ -376,46 +350,45 @@ jobs:
             echo "::error::versionCode APK ($APK_CODE) nie zgadza się z oczekiwanym ($EXPECTED_CODE)"
             exit 1
           fi
-          # app.config jest wersją widzianą przez Constants.expoConfig w runtime
-          # i to z niej kod rozpoznaje kanał builda.
-          EMBEDDED_VERSION="$(unzip -p "$APK" assets/app.config | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version||'')}catch{}})")"
-          echo "app.config version=$EMBEDDED_VERSION (tag=$TAG)"
-          if [ "$EMBEDDED_VERSION" != "$TAG" ]; then
-            echo "::error::Wersja w assets/app.config ($EMBEDDED_VERSION) nie zgadza się z tagiem ($TAG); Constants.expoConfig.version byłby błędny w runtime"
-            exit 1
-          fi
 
-      - name: 'Gate: tylko potrzebne uprawnienia Androida'
-        run: |
-          set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1)
-          if [ -z "$APK" ]; then
-            echo "::error::Nie znaleziono APK do kontroli uprawnień"
-            exit 1
-          fi
-          AAPT="${ANDROID_SDK_ROOT}/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
           "$AAPT" dump permissions "$APK" > "$RUNNER_TEMP/apk-permissions.txt"
           npm run check:android-permissions -- "$RUNNER_TEMP/apk-permissions.txt"
 
-      - name: Verify and stage APK
+          python3 - "$APK" <<'PY'
+          import json
+          import os
+          import sys
+          import zipfile
+
+          apk_path = sys.argv[1]
+          with zipfile.ZipFile(apk_path) as apk:
+              embedded = json.loads(apk.read('assets/app.config'))
+              assert embedded['version'] == os.environ['TAG'], (
+                  f"Nieprawidłowa wersja w assets/app.config: {embedded.get('version')} != {os.environ['TAG']}"
+              )
+              abis = {
+                  path.split('/')[1]
+                  for path in apk.namelist()
+                  if path.startswith('lib/') and path.endswith('/libkilometr_raptor.so')
+              }
+          expected = {'arm64-v8a'} if os.environ['TARGET_ARCH'] == 'arm64-v8a' else {'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'}
+          assert abis == expected, f'Niepełne architektury silnika RAPTOR w APK: {abis}, oczekiwano {expected}'
+          print(f'APK OK: versionName={os.environ["TAG"]}, arch={sorted(abis)}')
+          PY
+
+      - name: Stage APK
         env:
-          APK_NAME: ${{ steps.release.outputs.apk_name }}
-          CHANNEL: ${{ steps.release.outputs.channel }}
+          APK_NAME: ${{ needs.prepare.outputs.apk_name }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
         run: |
           set -euo pipefail
-          APK=$(ls -1 android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
-          if [ -z "$APK" ]; then
-            echo "Nie znaleziono żadnego APK w android/app/build/outputs/apk/release"
-            exit 1
-          fi
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -name '*.apk' | head -n 1 || true)"
           echo "Zbudowano: $APK ($(du -h "$APK" | cut -f1))"
           mkdir -p apk-dist
           cp "$APK" "apk-dist/$APK_NAME"
           (cd apk-dist && sha256sum "$APK_NAME" > "$APK_NAME.sha256")
 
-          # Kontrakt landingu: przycisk bierze app-release.apk z release "latest".
-          # Prod wystawia więc dodatkowo alias o tej nazwie, żeby landing działał
-          # zanim podłączymy dwie osobne opcje pobierania (nightly/prod).
+          # Kontrakt landingu: przycisk pobiera app-release.apk z wydania latest.
           if [ "$CHANNEL" = "prod" ]; then
             cp "apk-dist/$APK_NAME" "apk-dist/app-release.apk"
             (cd apk-dist && sha256sum app-release.apk > app-release.apk.sha256)
@@ -423,12 +396,10 @@ jobs:
 
           ls -lh apk-dist
 
-      # Budżet rozmiaru: ostrzega, gdy APK urośnie wyraźnie względem
-      # poprzedniego wydania tego kanału. Doradcze, nie blokuje publikacji.
-      - name: Budżet rozmiaru APK
+      - name: Check APK size budget
         env:
-          APK_NAME: ${{ steps.release.outputs.apk_name }}
-          CHANNEL: ${{ steps.release.outputs.channel }}
+          APK_NAME: ${{ needs.prepare.outputs.apk_name }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -456,8 +427,6 @@ jobs:
           if [ -n "$VIEW" ]; then
             PREVSIZE=$(ASSET="$ASSET" node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=(JSON.parse(s).assets||[]).find(x=>x.name===process.env.ASSET);console.log(a?a.size:0)}catch{console.log(0)}})" <<< "$VIEW")
           fi
-          # Starsze wydania prod nie mają kilometr-prod.apk, tylko alias
-          # app-release.apk (ta sama zawartość, inna nazwa).
           if { [ -z "${PREVSIZE:-}" ] || [ "$PREVSIZE" -le 0 ]; } && [ "$MODE" = "stable" ]; then
             ASSET="app-release.apk"
             if [ -n "$VIEW" ]; then
@@ -477,59 +446,112 @@ jobs:
             echo "::warning::APK urosło o ${PCT}% (+$((DIFF / 1048576)) MB) względem $PREV. Jeśli to nie nowe zasoby, sprawdź build."
           fi
 
-      # Notki i wydanie tylko w trybie release. artifact-only kończy na
-      # artefakcie Actions i nie tworzy tagu ani wydania.
-      - name: Generate Release Notes from Conventional Commits
-        if: steps.release.outputs.publish == 'true'
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kilometr-${{ needs.prepare.outputs.channel }}-apk
+          path: apk-dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize artifact-only build
+        if: needs.prepare.outputs.publish != 'true'
         env:
-          TAG: ${{ steps.release.outputs.tag }}
-          CHANNEL: ${{ steps.release.outputs.channel }}
-          APK_NAME: ${{ steps.release.outputs.apk_name }}
+          APK_NAME: ${{ needs.prepare.outputs.apk_name }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### APK testowy (bez wydania)"
+            echo ""
+            echo "Pobierz z sekcji Artifacts: \`kilometr-${{ needs.prepare.outputs.channel }}-apk\` (\`$APK_NAME\`)."
+            echo "Wersja w APK: \`${{ needs.prepare.outputs.version }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-aab:
+    name: Build Play AAB
+    needs: prepare
+    if: needs.prepare.outputs.build_aab == 'true'
+    uses: ./.github/workflows/build-aab.yml
+    with:
+      arch: ${{ needs.prepare.outputs.arch }}
+      release_tag: ${{ needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.tag || '' }}
+      checkout_ref: ${{ github.sha }}
+      caller_workflow: build-apk.yml
+      skip_prechecks: true
+      skip_publish: true
+    secrets: inherit
+
+  build-ipa:
+    name: Build iOS IPA
+    needs: prepare
+    if: needs.prepare.outputs.build_ipa == 'true'
+    uses: ./.github/workflows/build-ipa.yml
+    with:
+      release_tag: ${{ needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.tag || '' }}
+      artifact_only: ${{ needs.prepare.outputs.publish != 'true' }}
+      skip_publish: true
+    secrets: inherit
+
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, build-apk, build-aab, build-ipa]
+    # Jeśli APK przeszedł na prod, publikujemy wydanie nawet gdy iOS padnie
+    # (kontrakt README: błąd kompilacji iOS pozostawia dostępne APK).
+    if: always() && needs.prepare.outputs.publish == 'true' && needs.build-apk.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repo for release notes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: kilometr-${{ needs.prepare.outputs.channel }}-apk
+          path: release-dist/apk
+
+      - name: Download Play AAB artifact
+        if: needs.build-aab.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: kilometr-play-aab
+          path: release-dist/aab
+
+      - name: Download iOS IPA artifact
+        if: needs.build-ipa.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: kilometr-ios-unsigned
+          path: release-dist/ipa
+
+      - name: Generate Release Notes & Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          APK_NAME: ${{ needs.prepare.outputs.apk_name }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          AAB_RESULT: ${{ needs.build-aab.result }}
+          IPA_RESULT: ${{ needs.build-ipa.result }}
         run: |
           set -euo pipefail
           node .github/scripts/generate-release-notes.mjs \
             --tag "$TAG" \
             --channel "$CHANNEL" \
             --apk-name "$APK_NAME" \
-            --output "apk-dist/release-notes.md" \
-            --sha-file "apk-dist/${APK_NAME}.sha256"
-          echo "Wygenerowane Release Notes:"
-          cat apk-dist/release-notes.md
+            --output "release-dist/release-notes.md" \
+            --sha-file "release-dist/apk/${APK_NAME}.sha256"
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: kilometr-${{ steps.release.outputs.channel }}-apk
-          path: apk-dist/*
-
-      # W trybie artifact-only nie ma wydania, więc podpowiadamy w podsumowaniu
-      # runu, gdzie zabrać APK (Actions -> ten run -> Artifacts).
-      - name: Summarize artifact-only build
-        if: steps.release.outputs.publish != 'true'
-        env:
-          APK_NAME: ${{ steps.release.outputs.apk_name }}
-        run: |
-          set -euo pipefail
-          echo "### APK testowy (bez wydania)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Pobierz z dołu tej strony, sekcja Artifacts: \`kilometr-artifact-only-apk\`." >> "$GITHUB_STEP_SUMMARY"
-          echo "W środku: \`$APK_NAME\` oraz \`$APK_NAME.sha256\`." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Wersja w APK: \`${{ steps.release.outputs.version }}\`." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Publish GitHub Release
-        if: steps.release.outputs.publish == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.release.outputs.tag }}
-          CHANNEL: ${{ steps.release.outputs.channel }}
-          APK_NAME: ${{ steps.release.outputs.apk_name }}
-          PRERELEASE: ${{ steps.release.outputs.prerelease }}
-        run: |
-          set -euo pipefail
-          # Build -> zawsze nowy release z autogenerowanymi notkami. Bez
-          # artefaktów do ręcznego szukania: APK jest assetem release'u.
           if [ "$CHANNEL" = "prod" ]; then
             TITLE="Kilometr $TAG"
           else
@@ -542,25 +564,42 @@ jobs:
           fi
 
           ASSETS=(
-            "apk-dist/${APK_NAME}#${APK_NAME}"
-            "apk-dist/${APK_NAME}.sha256#${APK_NAME}.sha256"
+            "release-dist/apk/${APK_NAME}#${APK_NAME}"
+            "release-dist/apk/${APK_NAME}.sha256#${APK_NAME}.sha256"
           )
+
           if [ "$CHANNEL" = "prod" ]; then
             ASSETS+=(
-              "apk-dist/app-release.apk#app-release.apk"
-              "apk-dist/app-release.apk.sha256#app-release.apk.sha256"
+              "release-dist/apk/app-release.apk#app-release.apk"
+              "release-dist/apk/app-release.apk.sha256#app-release.apk.sha256"
+            )
+          fi
+
+          if [ "$AAB_RESULT" = "success" ] && [ -f "release-dist/aab/app-release.aab" ]; then
+            cp "release-dist/aab/app-release.aab" "release-dist/aab/kilometr-prod.aab"
+            (cd release-dist/aab && sha256sum kilometr-prod.aab > kilometr-prod.aab.sha256)
+            ASSETS+=(
+              "release-dist/aab/kilometr-prod.aab#kilometr-prod.aab"
+              "release-dist/aab/kilometr-prod.aab.sha256#kilometr-prod.aab.sha256"
+            )
+          fi
+
+          if [ "$IPA_RESULT" = "success" ] && [ -f "release-dist/ipa/kilometr-unsigned.ipa" ]; then
+            ASSETS+=(
+              "release-dist/ipa/kilometr-unsigned.ipa#kilometr-unsigned.ipa"
+              "release-dist/ipa/kilometr-unsigned.ipa.sha256#kilometr-unsigned.ipa.sha256"
             )
           fi
 
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG już istnieje, aktualizacja assetów i notek"
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes-file apk-dist/release-notes.md
+            gh release edit "$TAG" --title "$TITLE" --notes-file release-dist/release-notes.md
           else
             echo "Tworzenie nowego GitHub Release: $TAG"
             gh release create "$TAG" \
               --title "$TITLE" \
-              --notes-file apk-dist/release-notes.md \
+              --notes-file release-dist/release-notes.md \
               --target "${{ github.sha }}" \
               $PRERELEASE_FLAG \
               "${ASSETS[@]}"
@@ -570,33 +609,23 @@ jobs:
           gh release view "$TAG" --json tagName,isPrerelease,assets \
             --jq '{tag: .tagName, prerelease: .isPrerelease, assets: [.assets[] | .name]}'
 
-          URL="https://github.com/${GH_REPO}/releases/download/${TAG}/${APK_NAME}"
-          echo "APK do pobrania: $URL"
-          echo "### APK opublikowane ($CHANNEL)" >> "$GITHUB_STEP_SUMMARY"
-          echo "[${APK_NAME}]($URL)" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Release \`$TAG\` ($CHANNEL)"
+            echo ""
+            echo "| Artifact | Status |"
+            echo "| --- | --- |"
+            echo "| Android APK (\`$APK_NAME\`) | \`${{ needs.build-apk.result }}\` |"
+            echo "| Google Play AAB | \`$AAB_RESULT\` |"
+            echo "| iOS Unsigned IPA | \`$IPA_RESULT\` |"
+            echo ""
+            echo "[Pobierz $APK_NAME](https://github.com/${GH_REPO}/releases/download/${TAG}/${APK_NAME})"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  # IPA tylko na prod. Nightly kończy się na APK.
-  build-ios:
-    needs: build-apk
-    if: needs.build-apk.outputs.publish == 'true' && needs.build-apk.outputs.channel == 'prod'
-    uses: ./.github/workflows/build-ipa.yml
-    with:
-      release_tag: ${{ needs.build-apk.outputs.tag }}
-    permissions:
-      contents: write
-
-  # AAB dla Google Play tylko na prod, dołączony do tego samego wydania co APK.
-  build-aab:
-    needs: build-apk
-    if: needs.build-apk.outputs.publish == 'true' && needs.build-apk.outputs.channel == 'prod'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Start Play AAB build
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.build-apk.outputs.tag }}
-        run: gh workflow run build-aab.yml --ref prod --field arch=all --field release_tag="$RELEASE_TAG"
+          if [ "$AAB_RESULT" = "failure" ] || [ "$AAB_RESULT" = "cancelled" ]; then
+            echo "::error::Publikacja APK powiodła się, ale build Play AAB zakończył się statusem: $AAB_RESULT."
+            exit 1
+          fi
+          if [ "$IPA_RESULT" = "failure" ] || [ "$IPA_RESULT" = "cancelled" ]; then
+            echo "::error::Publikacja Androida powiodła się, ale build iOS IPA zakończył się statusem: $IPA_RESULT."
+            exit 1
+          fi
