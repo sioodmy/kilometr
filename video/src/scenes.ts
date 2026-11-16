@@ -1,15 +1,14 @@
 // Warstwy HTML nad mapą: napisy, telefon z ekranami aplikacji, powiadomienie,
 // obietnica i plansza końcowa.
 
+import { RAIL_ICON_SPECS } from '../../src/services/railIconPaths';
 import type { VideoData } from './data';
 import {
-  ATTRIBUTION,
   CLOSING,
   FOLLOW_END,
   FOLLOW_START,
-  LIVE_NOTE,
+  INTRO,
   NOTIFY,
-  PLATFORMS,
   PROMISE,
   S,
   SITE,
@@ -106,12 +105,15 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   const dest = data.journey.stops[data.journey.stops.length - 1];
   const pinDest = el('div', 'pin', labels, dest.name);
   const pinWarsaw = el('div', 'city', labels, data.rail.warsaw.name);
-  const badge = el('div', 'badge', labels, data.journey.line);
+  const badge = el('div', 'badge', labels);
+  const badgeIcon = el('span', 'badge-icon material', badge);
+  badgeIcon.textContent = '\ue571'; // Material Icons 'tram', tak samo jak w aplikacji.
+  const badgeText = el('span', 'badge-text', badge, data.journey.line);
+  let badgeIsRail = false;
   const cityLabels = data.cities.map((c) => (LABELLED.has(c.id) ? el('div', 'city', labels, c.name) : null));
 
   const copy = q<HTMLElement>(stage, '#copy');
   const title = q<HTMLElement>(copy, '#title');
-  const sub = q<HTMLElement>(copy, '#sub');
   let active = -1;
   let spans: HTMLElement[] = [];
 
@@ -143,7 +145,7 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   const luTop = el('div', 'lu-top', notif);
   const luIcon = el('img', 'lu-app-icon', luTop);
   luIcon.src = '/assets/icon.png';
-  el('span', 'lu-app', luTop, 'kilometr');
+  el('span', 'lu-app', luTop, 'Kilometr');
   const luChrono = el('span', 'lu-chrono', luTop, '4:12');
   const lineName = data.journey.line.startsWith('Tramwaj')
     ? data.journey.line
@@ -177,7 +179,7 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   const dTop = el('div', 'lu-top', delay);
   const dIcon = el('img', 'lu-app-icon', dTop);
   dIcon.src = '/assets/icon.png';
-  el('span', 'lu-app', dTop, 'kilometr');
+  el('span', 'lu-app', dTop, 'Kilometr');
   el('span', 'lu-chrono', dTop, 'teraz');
   el('div', 'lu-title delay-title', delay, 'Opóźnienie +10 minut');
   el('div', 'lu-text', delay, 'Ograniczenie prędkości pociągu');
@@ -193,39 +195,34 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
   const cut = Math.ceil(words.length / 2);
   const endTitle = el('div', 'end-title', end);
   const endSpans = lines(endTitle, [words.slice(0, cut).join(' '), words.slice(cut).join(' ')].filter(Boolean));
-  const meta = el('div', 'end-meta', end);
-  el('span', 'end-site', meta, SITE);
-  el('span', '', meta, PLATFORMS);
   const logoBg = q<SVGElement>(logo, '.logo-bg');
   const strokes = (['.logo-track', '.logo-up', '.logo-down'] as const).map((s) => q<SVGElement>(logo, s));
   const node = q<SVGElement>(logo, '.logo-node');
   const stop = q<SVGElement>(logo, '.logo-stop');
   const arrow = q<SVGElement>(logo, '.logo-arrow');
 
-  const attrib = q<HTMLElement>(stage, '#attrib');
-  el('span', '', attrib, ATTRIBUTION);
-  const liveNote = el('span', 'live-note', attrib, ` · ${LIVE_NOTE}`);
+  // Intro: znak i domena na starcie, żeby thumbnail na socialach był rozpoznawalny.
+  const intro = q<HTMLElement>(stage, '#intro');
+  const introInner = el('div', 'intro-inner', intro);
+  const introLogo = el('div', 'intro-logo', introInner);
+  introLogo.innerHTML = LOGO;
+  el('div', 'intro-name', introInner, 'Kilometr');
+  el('div', 'intro-site', introInner, SITE);
 
   const scrim = q<HTMLElement>(stage, '#scrim');
   const dim = q<HTMLElement>(stage, '#dim');
 
   return {
     update(t: number, marks: Marks, journeyStop: number, journeyProgress: number) {
-      // Napisy scen 1-6.
+      // Headingi scen 1-5.
       const idx = copies.findIndex((c) => t >= c.at && t < c.to);
       if (idx !== active) {
         active = idx;
-        if (idx >= 0) {
-          spans = lines(title, copies[idx].title);
-          sub.textContent = copies[idx].sub;
-        }
+        if (idx >= 0) spans = lines(title, copies[idx].title);
       }
       if (idx >= 0) {
         const c = copies[idx];
         reveal(spans, t, c.at);
-        const subK = easeOut(ramp(t, c.at + (idx === 0 ? 1.2 : 0.35), c.at + (idx === 0 ? 1.8 : 0.95)));
-        sub.style.opacity = String(subK);
-        sub.style.transform = `translateY(${(1 - subK) * 18}px)`;
         const out = ramp(t, c.to - 0.35, c.to);
         copy.style.opacity = String(1 - out);
         copy.style.transform = `translateY(${-out * 24}px)`;
@@ -248,7 +245,25 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
       );
       place(pinDest, marks.destination, visible(t, S.route + 1.0, S.live + 0.2, 0.35));
       place(pinWarsaw, marks.warsaw, visible(t, S.train + 0.6, S.poland + 0.3, 0.35));
-      badge.textContent = marks.railLabel ? data.rail.line : data.journey.line;
+      const rail = Boolean(marks.railLabel);
+      if (rail !== badgeIsRail) {
+        badgeIsRail = rail;
+        if (rail) {
+          badge.style.background = data.rail.color;
+          badge.style.color = '#fff';
+          badgeIcon.className = 'badge-icon';
+          badgeIcon.innerHTML =
+            `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">` +
+            RAIL_ICON_SPECS.IC.paths.map((d) => `<path d="${d}"/>`).join('') +
+            `</svg>`;
+        } else {
+          badge.style.background = '';
+          badge.style.color = '';
+          badgeIcon.className = 'badge-icon material';
+          badgeIcon.textContent = '\ue571';
+        }
+      }
+      badgeText.textContent = rail ? data.rail.trainNumber : data.journey.line;
       place(badge, marks.focus, visible(t, S.live + 0.4, S.poland + 0.4, 0.4));
       cityLabels.forEach((label, i) => {
         if (!label) return;
@@ -316,11 +331,12 @@ export function createScenes(stage: HTMLElement, data: VideoData, format: Format
       name.style.opacity = String(nameK);
       name.style.transform = `translateY(${(1 - nameK) * 20}px)`;
       reveal(endSpans, t, e + 1.15, 0.12, 0.55);
-      const metaK = easeOut(ramp(t, e + 1.6, e + 2.1));
-      meta.style.opacity = String(metaK);
 
-      show(attrib, visible(t, 0, S.promise + 0.15, 0.35));
-      show(liveNote, visible(t, S.live + 0.3, S.train, 0.35));
+      // Intro: pełny znak od pierwszej klatki, potem zoom z fade'em do sceny 1.
+      const iK = 1 - ramp(t, INTRO.fadeFrom, INTRO.end);
+      show(intro, iK);
+      intro.style.transform = `scale(${(1 + (1 - iK) * 0.1).toFixed(3)})`;
+      introInner.style.transform = `translateY(${((1 - iK) * -24).toFixed(1)}px)`;
     },
   };
 }
