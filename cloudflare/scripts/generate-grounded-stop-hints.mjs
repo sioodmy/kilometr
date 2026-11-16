@@ -434,6 +434,8 @@ async function processCity(city) {
         id = p[0].trim();
         name = (p[1] || '').replace(/"/g, '').trim();
         code = (p[2] || '').trim();
+        // Metro M1/M2 ma literowe kody peronów (A1-C21); pomijamy je, bo baza nie opisuje wnętrza stacji.
+        if (/^[A-Z]\d+$/.test(code)) continue;
         lat = parseFloat(p[4]);
         lon = parseFloat(p[5]);
         street = (p[12] || '').replace(/"/g, '').trim();

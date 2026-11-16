@@ -240,7 +240,7 @@ test('przy szybkim przejezdzie przez skrzyzowanie (zielone swiatlo) pojazd jedzi
   }
 });
 
-test('stepFrame filtruje pojazdy do widocznego viewportu, ale zachowuje wybrany pojazd', () => {
+test('stepFrame zostawia tylko wybrany pojazd, gdy coś jest zaznaczone', () => {
   const ctrl = createController();
   ctrl.ingest(
     [
@@ -264,7 +264,7 @@ test('stepFrame filtruje pojazdy do widocznego viewportu, ale zachowuje wybrany 
 
   assert.deepEqual(
     Array.from(frame.items, (x) => x.id),
-    ['in-view', 'selected-out'],
+    ['selected-out'],
   );
   assert.equal(frame.animating, false);
 });
@@ -295,6 +295,8 @@ test('buildLiveVehiclesMapDocument osadza skrypt ruchu, warstwy trasy pojazdu i 
   assert.ok(html.includes('live-selected-stop'));
   assert.ok(html.includes('drawOrbitDirectionArrow'));
   assert.ok(html.includes('RAIL_SPECS'));
+  assert.ok(html.includes('var MIN_VEHICLE_ZOOM = 13.4;'));
+  assert.ok(html.includes('minzoom: 13.4'));
 });
 
 test('dokladny kierunek z geometrii (bearingExact) aktualizuje stojacy pojazd i utrzymuje zakret', () => {

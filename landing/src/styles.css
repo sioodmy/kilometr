@@ -1,7 +1,32 @@
 @layer reset, base, layout, product, responsive;
-@import './components/journeyDemo.css';
+@import './components/showcaseDemo.css';
+@import './components/coverageSection.css';
 @import './components/landingSections.css';
 @import './components/installPage.css';
+
+@font-face {
+  font-family: 'Demo Roboto';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/roboto-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Demo Roboto';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/roboto-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+}
+@font-face {
+  font-family: 'Demo Roboto';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/roboto-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
 
 @layer reset {
   *,
@@ -588,140 +613,6 @@
     height: 15px;
     color: var(--accent);
   }
-  .coverage {
-    padding-bottom: clamp(88px, 11vw, 150px);
-  }
-  .coverage-copy {
-    max-width: 670px;
-  }
-  .coverage-copy .eyebrow {
-    margin-bottom: 20px;
-    color: var(--accent);
-  }
-  .coverage-copy .section-body {
-    margin-top: 26px;
-  }
-  .coverage-layout {
-    display: grid;
-    grid-template-columns: 0.95fr 1.05fr;
-    gap: 70px;
-    align-items: center;
-    margin-top: 44px;
-  }
-  .coverage-count {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 20px;
-  }
-  .city-list {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 7px 18px;
-  }
-  .city-list button {
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    background: transparent;
-    text-align: left;
-    min-height: 47px;
-    padding: 8px 11px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 5px;
-    font-size: 14px;
-    border-radius: 6px 6px 0 0;
-  }
-  .city-list button:hover {
-    background: var(--surface);
-  }
-  .city-list button[aria-pressed='true'] {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: var(--tint);
-    font-weight: 600;
-  }
-  .coverage-note {
-    font-size: 0.8125rem;
-    line-height: 1.75;
-    color: var(--subtle);
-    margin-top: 24px;
-  }
-  .coverage-map {
-    position: relative;
-    min-width: 0;
-  }
-  .coverage-map > svg {
-    width: 100%;
-    height: auto;
-  }
-  .coverage-map .map-outline {
-    fill: var(--map-land);
-    stroke: var(--map-outline);
-    stroke-width: 1;
-    stroke-linejoin: round;
-  }
-  .map-city {
-    fill: var(--muted);
-  }
-  .map-selected {
-    fill: var(--accent);
-  }
-  .map-ring {
-    fill: none;
-    stroke: var(--accent);
-    stroke-opacity: 0.35;
-    stroke-width: 1;
-  }
-  .city-detail {
-    display: flex;
-    align-items: flex-start;
-    gap: 13px;
-    min-height: 105px;
-    padding: 22px 26px;
-    margin: -10px 18px 0;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: var(--surface-raised);
-  }
-  .city-detail > svg {
-    color: var(--accent);
-    width: 21px;
-    height: 21px;
-    margin-top: 2px;
-    flex-shrink: 0;
-  }
-  .city-detail h3 {
-    font-size: 20px;
-    letter-spacing: -0.5px;
-    line-height: 1.4;
-  }
-  .city-detail p {
-    font-size: 12px;
-    margin-top: 4px;
-    color: var(--muted);
-  }
-  .city-detail ul {
-    display: flex;
-    flex-wrap: wrap;
-    list-style: none;
-    padding: 0;
-    gap: 8px 14px;
-    margin-top: 9px;
-  }
-  .city-detail li {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.5;
-  }
-  .city-detail li svg {
-    width: 12px;
-    height: 12px;
-    color: var(--accent);
-  }
   .principles {
     padding-block: 64px 90px;
     border-top: 1px solid var(--line);
@@ -1060,9 +951,6 @@
     .ticket-top {
       padding-inline: 18px;
     }
-    .coverage-layout {
-      gap: 30px;
-    }
     .principles-grid {
       grid-template-columns: 1fr 1fr;
       gap: 34px 54px;
@@ -1215,28 +1103,6 @@
     .offline-ticket {
       width: min(100%, 280px);
     }
-    .coverage-layout {
-      grid-template-columns: 1fr;
-      gap: 16px;
-      margin-top: 32px;
-    }
-    .coverage-copy .section-body {
-      max-width: 44ch;
-    }
-    .city-list {
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px 12px;
-    }
-    .city-list button {
-      font-size: 13px;
-    }
-    .coverage-map {
-      width: min(100%, 490px);
-      margin-inline: auto;
-    }
-    .city-detail {
-      margin-top: -20px;
-    }
     .principles {
       padding-block: 44px 65px;
     }
@@ -1331,9 +1197,6 @@
       font-size: 0.875rem;
       padding-inline: 21px;
     }
-    .city-list {
-      grid-template-columns: 1fr 1fr;
-    }
     .feature-text {
       padding: 30px 23px;
     }
@@ -1372,7 +1235,8 @@
     }
   }
   @media (forced-colors: active) {
-    .city-list button[aria-pressed='true'],
+    .cov-chip.is-active,
+    .cov-switch-btn.is-active,
     .feature-tabs button[aria-selected='true'] {
       outline: 2px solid Highlight;
     }

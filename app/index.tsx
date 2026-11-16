@@ -227,6 +227,9 @@ export default function HomeScreen() {
   const [citySheetOpen, setCitySheetOpen] = useState(false);
   const [switchingCity, setSwitchingCity] = useState(false);
   const [switchingCityId, setSwitchingCityId] = useState<CityId | null>(null);
+  // Ref, bo stan `switchingCity` jest o jeden render spóźniony: dwa szybkie
+  // tapy (albo GPS + tap) przechodziły oba i puszczały dwie podmiany bazy.
+  const switchingCityRef = useRef(false);
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -846,8 +849,12 @@ export default function HomeScreen() {
     setCurrentCoords({ lat: d.lat, lon: d.lon });
     setFirstConns({});
     setFirstLegs({});
+    // Pull ostatniego połączenia żyje na shared values, więc przetrwałby
+    // zmianę miasta: nowa historia odsłoniłaby od razu pół ekranu. Zwijamy.
+    pullOption.value = 0;
+    pullHeight.value = withTiming(0, { duration: 180 });
     refreshSavedRoutes();
-  }, [cityId, refreshSavedRoutes]);
+  }, [cityId, refreshSavedRoutes, pullHeight, pullOption]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy
   useEffect(() => {
@@ -1485,7 +1492,8 @@ export default function HomeScreen() {
 
   const handleCityChange = async (id: CityId) => {
     const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
-    if (id === cityId || switchingCity || dataBusy) return;
+    if (id === cityId || switchingCityRef.current || dataBusy) return;
+    switchingCityRef.current = true;
     setSwitchingCity(true);
     setSwitchingCityId(id);
     try {
@@ -1505,6 +1513,7 @@ export default function HomeScreen() {
       refreshPlaces();
       requestSmart(def.title, { lat: def.lat, lon: def.lon });
     } finally {
+      switchingCityRef.current = false;
       setSwitchingCity(false);
       setSwitchingCityId(null);
       setCitySheetOpen(false);

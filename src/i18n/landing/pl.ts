@@ -1,4 +1,3 @@
-import { previewRoute } from './journey';
 import { previewHome } from './home';
 
 export const pl = {
@@ -108,27 +107,81 @@ export const pl = {
     startFrom: (title: string) => `z: ${title}`,
     departIn: (n: number) => `za ${n} min`,
   },
-  journeyDemo: {
-    choose: 'Wybierasz',
-    ride: '...i jedziesz',
-    mock: 'Przykładowa podróż. Godziny według zegara urządzenia.',
-    route: previewRoute,
-    departIn: (n: number) => `za ${n} min`,
-    duration: (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
-    transfers: (n: number) =>
-      n <= 0
-        ? 'bezpośrednio'
-        : n === 1
-          ? '1 przesiadka'
-          : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
-            ? `${n} przesiadki`
-            : `${n} przesiadek`,
-    fromPrefix: 'z ',
-    toPrefix: 'do ',
-    stopsSummary: (n: number, mins: number, open: boolean) =>
-      `${n} ${n === 1 ? 'przystanek' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'przystanki' : 'przystanków'} • ~${mins} min • ${open ? 'zwiń' : 'rozwiń'} przystanki`,
-    expandA11y: (line: string, dir: string, expanded: boolean) =>
-      `${line} kierunek ${dir}. ${expanded ? 'Zwiń' : 'Rozwiń'} listę przystanków.`,
+  showcase: {
+    prevLabel: 'Poprzedni ekran',
+    nextLabel: 'Następny ekran',
+    tabsLabel: 'Ekrany aplikacji Kilometr',
+    stepCounter: (current: number, total: number) => `${current} / ${total}`,
+    slides: [
+      {
+        id: 'home',
+        shortLabel: 'Ekran główny',
+        title: 'Zapisane miejsca i odjazdy od razu na starcie',
+        body: 'Po otwarciu masz od razu odliczanie z ulubionych przystanków i wyszukiwarkę trasy, także między miastami. Bez reklam i wyskakujących ekranów przed sprawdzeniem odjazdu.',
+        imageAlt: 'Ekran główny aplikacji Kilometr z zapisanymi miejscami i najbliższymi odjazdami',
+      },
+      {
+        id: 'routes',
+        shortLabel: 'Połączenia',
+        title: 'Komunikacja miejska i kolej na jednej liście',
+        body: 'Jedno wyszukanie zestawia dojście piesze, tramwaje, autobusy oraz pociągi z widocznym paskiem przesiadek. Przy kursach z danymi na żywo widać też odchylenie względem rozkładu.',
+        imageAlt: 'Lista połączeń miejskich i kolejowych w aplikacji Kilometr',
+      },
+      {
+        id: 'trip',
+        shortLabel: 'Szczegóły kursu',
+        title: 'Wskazówka peronu, tor i świeżość pozycji',
+        body: 'Na dużych węzłach przesiadkowych zobaczysz krótką podpowiedź, na którą wyspę lub peron podejść. Dla pociągów aplikacja pokazuje też tor, wyposażenie składu i to, sprzed ilu sekund pochodzi odczyt.',
+        imageAlt: 'Szczegóły połączenia z podpowiedzią peronu i śledzeniem pociągu',
+      },
+      {
+        id: 'share',
+        shortLabel: 'Udostępnianie',
+        title: 'Karta trasy i link otwierany w przeglądarce',
+        body: 'Zamiast tłumaczyć przesiadki na zrzucie ekranu, wysyłasz czytelną kartę połączenia z przystankami i czasem dojścia albo link, który druga osoba otworzy w zwykłej przeglądarce.',
+        imageAlt: 'Ekran udostępniania karty połączenia i linku z podglądem',
+      },
+      {
+        id: 'alerts',
+        shortLabel: 'Komunikaty',
+        title: 'Konkretne objazdy zamiast ściany tekstu',
+        body: 'Komunikat od razu rozdziela czas trwania prac, listę linii i pominięte słupki przystankowe. Łatwo sprawdzisz, które kursy omijają przystanek, a które zatrzymują się na zastępczym.',
+        imageAlt: 'Szczegóły komunikatu o utrudnieniach i objazdach na liniach',
+      },
+    ],
+  },
+  coverage: {
+    eyebrow: 'Zasięg w Polsce',
+    title: 'Sprawdź swoje miasto i przewoźników',
+    body: (count: number) =>
+      `${count} miasta i aglomeracje w jednej aplikacji, w tym Metropolia GZM. Kliknij punkt na mapie albo wpisz nazwę, aby sprawdzić pozycje na żywo, komunikaty i przewoźników.`,
+    searchPlaceholder: 'Wpisz miasto, np. Wrocław, Katowice, Gdańsk...',
+    searchLabel: 'Wyszukaj obsługiwane miasto',
+    browseListLabel: 'Rozwiń listę miast',
+    clearSearch: 'Wyczyść wyszukiwanie',
+    mapAria: 'Klikalna mapa Polski z obsługiwanymi miastami',
+    mapHint: (count: number) => `${count} obsługiwane sieci · Kliknij punkt na mapie`,
+    citiesListLabel: 'Lista obsługiwanych miast',
+    emptyTitle: 'Nie znaleziono tego miasta',
+    emptyBody: 'Sprawdź pisownię albo wyczyść filtr, aby wybrać jedno z obsługiwanych miast.',
+    emptyReset: 'Pokaż wszystkie miasta',
+    liveLabel: 'Pozycje na żywo',
+    liveAvailable: 'Dostępne (GPS pojazdów)',
+    liveUnavailable: 'Brak danych GPS (rozkład statyczny)',
+    newsLabel: 'Komunikaty pasażerskie',
+    newsAvailable: 'Dostępne',
+    newsUnavailable: 'Brak komunikatów z miasta',
+    operatorsLabel: 'Przewoźnicy w sieci',
+    railGatewayNote: (stations: string) =>
+      `Połączenia dalekobieżne (PKP Intercity, POLREGIO) przez stację: ${stations}.`,
+    modes: {
+      bus: 'Autobusy',
+      tram: 'Tramwaje',
+      trolley: 'Trolejbusy',
+      metro: 'Metro',
+      rail: 'Kolej',
+      cable: 'Kolej linowa',
+    },
   },
   promise: {
     ads: 'Bez reklam.',
