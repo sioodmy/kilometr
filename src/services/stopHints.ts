@@ -141,8 +141,8 @@ export function resolveStopHint(
   mode?: string | null,
 ): string | null {
   if (!dataset) return null;
-  // Połączenia kolejowe (dworce PKP / pociągi) nie posiadają bazy mikrowskazówek
-  if (mode === 'train') return null;
+  // Pociągi (dworce PKP) i metro nie mają bazy mikrowskazówek peronowych
+  if (mode === 'train' || mode === 'subway') return null;
 
   // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101", Kraków "stop_322_117319")
   if (stopId) {
@@ -259,13 +259,14 @@ export function useStopHint(
   stopName?: string | null,
   mode?: string | null,
 ): string | null {
-  const isTrain =
+  const skipHints =
     mode === 'train' ||
+    mode === 'subway' ||
     Boolean(stopId && (stopId.startsWith('pl:') || stopId.startsWith('stop-pl:')));
-  const normCity = isTrain ? '' : (cityId || '').trim().toLowerCase();
+  const normCity = skipHints ? '' : (cityId || '').trim().toLowerCase();
   const dataset = useStopHints(normCity);
   return useMemo(
-    () => (isTrain ? null : resolveStopHint(dataset, stopCode, stopId, stopName, mode)),
-    [isTrain, dataset, stopCode, stopId, stopName, mode],
+    () => (skipHints ? null : resolveStopHint(dataset, stopCode, stopId, stopName, mode)),
+    [skipHints, dataset, stopCode, stopId, stopName, mode],
   );
 }
