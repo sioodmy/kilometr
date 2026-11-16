@@ -1,0 +1,465 @@
+@layer product {
+  .showcase-demo {
+    --sc-border: #5c7663;
+    padding-block: clamp(48px, 7vw, 96px) clamp(64px, 9vw, 120px);
+  }
+
+  .showcase-box {
+    position: relative;
+    overflow: hidden;
+    border-radius: 32px;
+    border: 1px solid #496050;
+    background: linear-gradient(155deg, #212e25 0%, #19231c 56%, #141c17 100%);
+    box-shadow:
+      0 30px 72px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    padding: clamp(18px, 3vw, 34px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(20px, 3vw, 32px);
+  }
+
+  .showcase-box::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      520px 420px at 80% 56%,
+      rgba(127, 219, 177, 0.12) 0%,
+      rgba(127, 219, 177, 0) 70%
+    );
+  }
+
+  /* Instagram Story top bar */
+  .showcase-story-chrome {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .showcase-progress-list {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    margin-block: -6px;
+  }
+
+  .showcase-progress-seg {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 18px 2px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .showcase-progress-track {
+    display: block;
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(238, 244, 238, 0.2);
+    overflow: hidden;
+    transition: height 160ms ease, background-color 160ms ease;
+  }
+
+  .showcase-progress-seg:hover .showcase-progress-track,
+  .showcase-progress-seg:focus-visible .showcase-progress-track {
+    height: 6px;
+    background: rgba(238, 244, 238, 0.34);
+  }
+
+  .showcase-progress-seg:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -8px;
+    border-radius: 10px;
+  }
+
+  .showcase-progress-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transform-origin: left center;
+    transform: scaleX(0);
+  }
+
+  .showcase-progress-seg.is-done .showcase-progress-fill {
+    transform: scaleX(1);
+  }
+
+  .showcase-progress-seg.is-active .showcase-progress-fill {
+    transform: scaleX(1);
+  }
+
+  .showcase-box.is-playing .showcase-progress-seg.is-active .showcase-progress-fill {
+    animation: showcase-story-progress 6.5s linear forwards;
+  }
+
+  @keyframes showcase-story-progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  .showcase-story-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .showcase-story-identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .showcase-story-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    flex-shrink: 0;
+  }
+
+  .showcase-story-tag {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .showcase-counter {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+
+  /* Main unified box body */
+  .showcase-body {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(290px, 0.96fr);
+    gap: clamp(24px, 4vw, 48px);
+    align-items: center;
+  }
+
+  .showcase-editorial {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 18px;
+    min-width: 0;
+    min-height: 250px;
+  }
+
+  .showcase-heading {
+    font-size: clamp(1.85rem, 3.1vw, 2.65rem);
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+    color: var(--text);
+  }
+
+  .showcase-slide-body {
+    font-size: 1.05rem;
+    line-height: 1.6;
+    color: var(--muted);
+    max-width: 44ch;
+  }
+
+  /* Story stage + click-through zones */
+  .showcase-stage {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-inline: 28px;
+    min-width: 0;
+    touch-action: pan-y;
+    user-select: none;
+  }
+
+  .showcase-tap {
+    position: absolute;
+    inset-block: 0;
+    z-index: 4;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+  }
+
+  .showcase-tap-prev {
+    left: 0;
+    width: 34%;
+    justify-content: flex-start;
+  }
+
+  .showcase-tap-next {
+    right: 0;
+    width: 66%;
+    justify-content: flex-end;
+  }
+
+  .showcase-tap-chevron {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--sc-border);
+    background: rgba(18, 25, 21, 0.86);
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    transition:
+      border-color 180ms ease,
+      color 180ms ease,
+      background-color 180ms ease,
+      transform 180ms ease;
+  }
+
+  .showcase-tap:hover .showcase-tap-chevron,
+  .showcase-tap:focus-visible .showcase-tap-chevron {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #1a261f;
+  }
+
+  .showcase-tap-prev:hover .showcase-tap-chevron {
+    transform: translateX(-2px);
+  }
+
+  .showcase-tap-next:hover .showcase-tap-chevron {
+    transform: translateX(2px);
+  }
+
+  .showcase-tap:focus-visible {
+    outline: none;
+  }
+
+  .showcase-tap:focus-visible .showcase-tap-chevron {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Realistic Google Pixel Hardware Frame (exact 9:20 inner screen) */
+  .showcase-phone {
+    position: relative;
+    z-index: 2;
+    width: 288px;
+    max-width: 100%;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+
+  .showcase-phone-chassis {
+    position: relative;
+    padding: 9px;
+    border-radius: 26px;
+    background: linear-gradient(
+      152deg,
+      #545962 0%,
+      #25282d 22%,
+      #16181c 58%,
+      #0c0d10 100%
+    );
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.16),
+      inset 0 1px 1px rgba(255, 255, 255, 0.24),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.8),
+      0 32px 68px rgba(0, 0, 0, 0.68),
+      0 12px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .showcase-hw-btn {
+    position: absolute;
+    width: 3px;
+    border-radius: 2px;
+  }
+
+  .showcase-hw-vol-up {
+    left: -3px;
+    top: 108px;
+    height: 44px;
+    background: linear-gradient(90deg, #4b5058, #1d2024);
+  }
+
+  .showcase-hw-vol-down {
+    left: -3px;
+    top: 162px;
+    height: 44px;
+    background: linear-gradient(90deg, #4b5058, #1d2024);
+  }
+
+  .showcase-hw-power {
+    right: -3px;
+    top: 126px;
+    height: 36px;
+    background: linear-gradient(90deg, #1d2024, #525760);
+  }
+
+  .showcase-phone-bezel {
+    position: relative;
+    padding: 4px;
+    border-radius: 20px;
+    background: #060708;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .showcase-earpiece {
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 2px;
+    border-radius: 999px;
+    background: #1b1e23;
+    z-index: 3;
+  }
+
+  .showcase-screen {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 9 / 20;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #111414;
+  }
+
+  .showcase-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.045) 0%,
+      rgba(255, 255, 255, 0) 38%
+    );
+  }
+
+  .showcase-punch {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 38%, #262e38 0%, #07080a 70%);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08),
+      inset 0 0 2px rgba(100, 140, 200, 0.25);
+    z-index: 4;
+  }
+
+  .showcase-shot {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    opacity: 0;
+    transition: opacity 220ms ease;
+    pointer-events: none;
+  }
+
+  .showcase-shot.is-active {
+    position: relative;
+    display: block;
+    height: auto;
+    opacity: 1;
+  }
+}
+
+@layer responsive {
+  @media (max-width: 960px) {
+    .showcase-body {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .showcase-editorial {
+      order: 2;
+      min-height: 0;
+    }
+
+    .showcase-stage {
+      order: 1;
+      padding-inline: 24px;
+    }
+
+    .showcase-phone {
+      width: 268px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .showcase-box {
+      border-radius: 24px;
+      padding: 16px;
+      gap: 16px;
+    }
+
+    .showcase-progress-list {
+      gap: 6px;
+    }
+
+    .showcase-heading {
+      font-size: clamp(1.5rem, 6vw, 1.95rem);
+    }
+
+    .showcase-slide-body {
+      font-size: 0.98rem;
+    }
+
+    .showcase-stage {
+      padding-inline: 0;
+    }
+
+    .showcase-phone {
+      width: 220px;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .showcase-phone {
+      width: 180px;
+    }
+
+    .showcase-tap-chevron {
+      width: 34px;
+      height: 34px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .showcase-box.is-playing .showcase-progress-seg.is-active .showcase-progress-fill {
+      animation: none;
+      transform: scaleX(1);
+    }
+
+    .showcase-shot {
+      transition: none;
+    }
+  }
+}
