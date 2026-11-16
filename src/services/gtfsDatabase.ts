@@ -576,6 +576,11 @@ export function endGtfsSwap(): void {
   release?.();
 }
 
+/** Czeka, aż trwająca podmiana pliku bazy miasta się skończy. */
+export async function waitForGtfsSwap(): Promise<void> {
+  while (swapGate) await swapGate;
+}
+
 /**
  * Zamyka uchwyt bazy (przed podmianą pliku .db na nowy z serwera).
  * Po replace plik trzeba otworzyć od nowa - zrobi to getGtfsDb().
@@ -583,8 +588,13 @@ export function endGtfsSwap(): void {
  * albo blokada na Androidzie.
  */
 export async function closeGtfsDb(): Promise<void> {
-  const entries = Array.from(dbPromises.entries());
-  dbPromises.clear();
+  // Tylko bazy miast. Baza krajowa ma własną bramkę podmiany
+  // (`beginNationalDbSwap`) i własne zamykanie; zamknięcie jej w trakcie
+  // podmiany pliku otwierało plik w połowie `move`.
+  const entries = Array.from(dbPromises.entries()).filter(
+    ([name]) => name !== NATIONAL_DB_FILE,
+  );
+  for (const [name] of entries) dbPromises.delete(name);
   const close = (async () => {
     for (const [, p] of entries) {
       try {
