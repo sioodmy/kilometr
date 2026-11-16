@@ -54,13 +54,13 @@ function contrastRatio(a: string, b: string): number {
 }
 
 interface StoreInternals {
-  loaded: boolean;
+  isLoaded: boolean;
   buildPatterns(byRoute: Map<string, GtfsTrip[]>): DayIndex;
 }
 
 function makeFixture(): { store: LocalGtfsStore; dayIndex: DayIndex; overnightMerged: { index: DayIndex; offsets: Map<string, number> } } {
   const store = new LocalGtfsStore();
-  (store as unknown as StoreInternals).loaded = true;
+  (store as unknown as StoreInternals).isLoaded = true;
 
   store.stops.set('S1', {
     stop_id: 'S1',

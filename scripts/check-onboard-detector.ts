@@ -32,7 +32,7 @@ const STEP_LAT = 0.0036; // ~400 m północ
 
 function buildStore(): LocalGtfsStore {
   const store = new LocalGtfsStore();
-  (store as unknown as { loaded: boolean }).loaded = true;
+  (store as unknown as { isLoaded: boolean }).isLoaded = true;
   const stops: Array<[string, number, number]> = [
     ['S0', lat0, lon0],
     ['S1', lat0 + STEP_LAT, lon0],
