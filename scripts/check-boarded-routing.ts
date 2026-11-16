@@ -32,7 +32,7 @@ const STEP_LAT = 0.0036; // ~400 m na północ przy 51°
 const STEP_LON_200 = 0.00286; // ~200 m na wschód przy 51°
 
 interface StoreInternals {
-  loaded: boolean;
+  isLoaded: boolean;
   buildFootpaths(): void;
   buildPatterns(byRoute: Map<string, GtfsTrip[]>): DayIndex;
 }
@@ -50,7 +50,7 @@ interface LineDef {
 
 function makeNet(stops: Array<[id: string, lat: number, lon: number]>, lines: LineDef[]) {
   const store = new LocalGtfsStore();
-  internals(store).loaded = true;
+  internals(store).isLoaded = true;
   for (const [id, lat, lon] of stops) {
     store.stops.set(id, {
       stop_id: id,

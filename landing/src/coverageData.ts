@@ -1,7 +1,7 @@
 import { CITIES, type CityId } from '../../src/cities';
 import type { RailAgency } from '../../src/services/railIconPaths';
 
-export type TransitModeKind = 'bus' | 'tram' | 'trolley' | 'metro' | 'rail' | 'cable';
+type TransitModeKind = 'bus' | 'tram' | 'trolley' | 'metro' | 'rail' | 'cable';
 
 export interface OperatorEntry {
   id: string;
