@@ -71,6 +71,11 @@ import { normalizeName } from './vehiclePosition';
  * dane). W tle wolniej, bo tam liczy się bateria.
  */
 const POLL_MS = 5000;
+/**
+ * Tempo polla, gdy otwarta jest mapa live. Użytkownik patrzy na ruch, więc
+ * prosimy o pozycje tak szybko, jak pozwala na to feed i inFlight.
+ */
+const MAP_POLL_MS = 2000;
 /** Tempo polla w tle: apka nieaktywna, ale śledzenie podróży potrzebuje danych. */
 const BACKGROUND_POLL_MS = 20000;
 /**
@@ -188,6 +193,8 @@ class LiveTracker {
   private wantPoll = false;
   /** Widoczne ekrany, które potrzebują świeżych danych live. */
   private consumers = 0;
+  /** Podzbiór konsumentów to mapa live: dla niej poll idzie w tempie MAP_POLL_MS. */
+  private mapConsumers = 0;
   /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
@@ -272,16 +279,25 @@ class LiveTracker {
   /**
    * Ekran zgłasza zapotrzebowanie na świeże dane, dopóki jest widoczny.
    * Licznik, bo podczas przejścia przez chwilę działa stary i nowy ekran.
+   * `fast` ustawia mapa live: szybkie odświeżanie na czas jej widoczności.
    */
-  acquire(): void {
+  acquire(fast = false): void {
     this.consumers += 1;
+    if (fast) this.mapConsumers += 1;
     this.start();
   }
 
   /** Zwolnienie ekranu; ostatni gasi poll, chyba że śledzenie podróży pinuje. */
-  release(): void {
+  release(fast = false): void {
     this.consumers = Math.max(0, this.consumers - 1);
-    if (this.consumers === 0) this.stop();
+    if (fast) this.mapConsumers = Math.max(0, this.mapConsumers - 1);
+    if (this.consumers === 0) {
+      this.stop();
+      // Pin w tle ma własne tempo; po wyjściu z mapy musi wrócić do wolniejszego.
+      if (this.pinned > 0) this.armTimer();
+    } else {
+      this.armTimer();
+    }
   }
 
   /**
@@ -445,12 +461,17 @@ class LiveTracker {
   private timerMs = 0;
 
   /**
-   * Tempo polla zależy od stanu aplikacji (na ekranie co 5 s, w tle co 20 s),
-   * więc przy każdej zmianie stanu przestawiamy interval. Wywołanie z tym
-   * samym tempem jest no-op (chyba że wymuszono od razu przez forceImmediate).
+   * Tempo polla zależy od stanu aplikacji i od tego, czy widoczna jest mapa
+   * live (na ekranie 5 s, mapa 2 s, w tle 20 s), więc przy każdej zmianie
+   * przestawiamy interval. To samo tempo jest no-op (chyba że forceImmediate).
    */
   private armTimer(forceImmediate = false): void {
-    const ms = AppState.currentState === 'active' ? POLL_MS : BACKGROUND_POLL_MS;
+    const ms =
+      AppState.currentState === 'active'
+        ? this.mapConsumers > 0
+          ? MAP_POLL_MS
+          : POLL_MS
+        : BACKGROUND_POLL_MS;
     if (this.timer && this.timerMs === ms && !forceImmediate) return;
     this.disarmTimer();
     void this.poll();

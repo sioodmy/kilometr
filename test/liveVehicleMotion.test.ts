@@ -240,7 +240,7 @@ test('przy szybkim przejezdzie przez skrzyzowanie (zielone swiatlo) pojazd jedzi
   }
 });
 
-test('stepFrame filtruje pojazdy do widocznego viewportu, ale zachowuje wybrany pojazd', () => {
+test('stepFrame zostawia tylko wybrany pojazd, gdy coś jest zaznaczone', () => {
   const ctrl = createController();
   ctrl.ingest(
     [
@@ -264,7 +264,7 @@ test('stepFrame filtruje pojazdy do widocznego viewportu, ale zachowuje wybrany 
 
   assert.deepEqual(
     Array.from(frame.items, (x) => x.id),
-    ['in-view', 'selected-out'],
+    ['selected-out'],
   );
   assert.equal(frame.animating, false);
 });
