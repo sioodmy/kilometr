@@ -16,6 +16,12 @@
         src: url('/landing/public/fonts/roboto-latin-ext.woff2') format('woff2');
         unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
       }
+      @font-face {
+        font-family: 'Material Icons';
+        font-weight: 400;
+        font-style: normal;
+        src: url('/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf') format('truetype');
+      }
       :root {
         --ink: #f4f8f6;
         --muted: #bfc9c5;
@@ -99,20 +105,6 @@
       .line > span {
         display: inline-block;
       }
-      #sub {
-        margin: 30px 0 0;
-        color: var(--muted);
-        line-height: 1.32;
-      }
-      .h #sub {
-        font-size: 34px;
-        max-width: 700px;
-      }
-      .v #sub {
-        font-size: 42px;
-        max-width: 880px;
-      }
-
       /* Etykiety na mapie */
       .pin,
       .badge,
@@ -143,6 +135,31 @@
         font-size: 32px;
         font-weight: 700;
         text-align: center;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .badge-icon {
+        display: inline-flex;
+        width: 32px;
+        height: 32px;
+        align-items: center;
+        justify-content: center;
+      }
+      .badge-icon.material {
+        font-family: 'Material Icons', sans-serif;
+        font-weight: 400;
+        font-style: normal;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        font-size: 32px;
+        -webkit-font-feature-settings: 'liga';
+      }
+      .badge-icon svg {
+        display: block;
+        width: 100%;
+        height: 100%;
       }
       .city {
         margin: -17px 0 0 16px;
@@ -589,35 +606,66 @@
       .v .end-title {
         font-size: 90px;
       }
-      .end-meta {
+      /* Intro: znak i domena na pierwszej klatce (thumbnail na socialach). */
+      #intro {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        visibility: hidden;
+        background: radial-gradient(circle at 50% 46%, #0a5343 0%, #053a30 42%, #02251f 100%);
+        color: var(--ink);
+        text-align: center;
+        transform-origin: center;
+        will-change: opacity, transform;
+      }
+      .intro-inner {
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        margin-top: 48px;
-        color: var(--muted);
-        font-size: 34px;
+        align-items: center;
+        will-change: transform;
       }
-      .end-site {
+      .intro-logo svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .h .intro-logo {
+        width: 220px;
+        height: 220px;
+      }
+      .v .intro-logo {
+        width: 280px;
+        height: 280px;
+      }
+      .intro-name {
+        margin-top: 30px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1;
+      }
+      .h .intro-name {
+        font-size: 96px;
+      }
+      .v .intro-name {
+        font-size: 112px;
+      }
+      .intro-site {
+        margin-top: 12px;
         color: var(--teal);
         font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+      .h .intro-site {
+        font-size: 46px;
+      }
+      .v .intro-site {
+        font-size: 54px;
       }
 
-      #attrib {
-        position: absolute;
-        color: rgba(224, 227, 225, 0.62);
-        visibility: hidden;
-      }
-      .h #attrib {
-        left: 120px;
-        bottom: 34px;
-        font-size: 18px;
-      }
-      .v #attrib {
-        left: 84px;
-        right: 84px;
-        top: 64px;
-        font-size: 22px;
-      }
     </style>
   </head>
   <body>
@@ -627,12 +675,12 @@
       <div id="dim"></div>
       <div id="scrim"></div>
       <div id="labels"></div>
-      <div id="copy"><h1 id="title"></h1><p id="sub"></p></div>
+      <div id="copy"><h1 id="title"></h1></div>
       <div id="phone"></div>
       <div id="notif"></div>
       <div id="promise"></div>
       <div id="end"></div>
-      <div id="attrib"></div>
+      <div id="intro"></div>
     </div>
     <script type="module" src="/video/.cache/main.js"></script>
   </body>

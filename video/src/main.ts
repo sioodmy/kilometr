@@ -98,6 +98,7 @@ async function main() {
     document.fonts.load('700 80px "Roboto Video"', 'ąęłńóśźżĄĘŁŃÓŚŹŻ'),
     document.fonts.load('400 32px "Roboto Video"', 'ąęłńóśźż'),
     document.fonts.load('500 26px "Roboto Video"', 'ąęłńóśźż'),
+    document.fonts.load('32px "Material Icons"', '\ue571'),
   ]);
 
   const stage = document.getElementById('stage');
