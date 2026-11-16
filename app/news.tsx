@@ -14,10 +14,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
-  FadeIn,
   FadeInDown,
-  FadeOutUp,
-  LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
   useReducedMotion,
@@ -266,6 +263,20 @@ export default function NewsScreen() {
     void load(true);
   }, [load]);
 
+  // Miasto zmienione (np. GPS przełączył w tle): lista starych komunikatów
+  // nie może zostać na ekranie pod nową nazwą miasta.
+  const prevCityRef = useRef(cityId);
+  useEffect(() => {
+    if (prevCityRef.current === cityId) return;
+    prevCityRef.current = cityId;
+    loadAbortRef.current?.abort();
+    setItems([]);
+    setMyLines([]);
+    setFilter('all');
+    setError(null);
+    setLoading(true);
+  }, [cityId]);
+
   useEffect(() => {
     let live = true;
     void markNewsSeen();
@@ -283,7 +294,7 @@ export default function NewsScreen() {
     return () => {
       live = false;
     };
-  }, [load, refreshMyLines]);
+  }, [cityId, load, refreshMyLines]);
 
   const openItem = useCallback(
     (item: MpkNewsItem) => {
@@ -336,40 +347,18 @@ export default function NewsScreen() {
   const filterEmpty = filter === 'myLines' && items.length > 0 && visibleItems.length === 0;
 
   const renderItem = useCallback<ListRenderItem<Row>>(
-    ({ item: row, index }) =>
+    ({ item: row }) =>
       row.kind === 'head' ? (
-        <Animated.View
-          layout={reduceMotion ? undefined : LinearTransition.duration(200)}
-          entering={reduceMotion ? undefined : FadeIn.duration(200)}
-        >
-          <Text style={styles.section} accessibilityRole="header">
-            {row.label}
-          </Text>
-        </Animated.View>
+        <Text style={styles.section} accessibilityRole="header">
+          {row.label}
+        </Text>
       ) : (
-        <Animated.View
-          layout={
-            reduceMotion
-              ? undefined
-              : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-          }
-          entering={
-            reduceMotion || index >= 6
-              ? undefined
-              : FadeInDown.delay(index * 35)
-                  .duration(220)
-                  .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-          }
-          exiting={
-            reduceMotion
-              ? undefined
-              : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
-          }
-        >
-          <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
-        </Animated.View>
+        // Bez layout/entering na wierszach: FlatList montuje je w trakcie
+        // przejścia ekranu, a Reanimated wtedy gubi powierzchnię (52 ostrzeżenia
+        // i karty rysowane nad safe area). Statyczna lista jest stabilna.
+        <NewsCard item={row.item} operator={operator} portal={portal} onOpen={openItem} />
       ),
-    [reduceMotion, operator, portal, openItem],
+    [operator, portal, openItem],
   );
 
   return (
