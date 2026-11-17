@@ -81,33 +81,60 @@ function getArg(prefix, fallback = null) {
   return match ? match.slice(prefix.length) : fallback;
 }
 
-/**
- * Rozpoznaje aliasy modelu DeepSeek (DeepSeek V4.1 Flash -> deepseek-flash)
- * i ustawia adaptacyjne poziomy reasoning_effort: low dla prostych komunikatów
- * oraz high dla wieloetapowych objazdów i korekty nazw GTFS.
- */
-export function resolveLlmPlan(modelRaw, env = process.env, explicitKey = null) {
-  const spec = String(modelRaw || env.LLM_MODEL || 'deepseek-flash').trim().toLowerCase();
-  const apiKey = explicitKey || env.DEEPSEEK_API_KEY || '';
+// OpenCode Console jest głównym dostawcą (deepseek-v4.1-flash), a natywne
+// DeepSeek API zostaje jako fallback: brak kredytów albo odrzucony klucz
+// OpenCode nie zatrzymuje wtedy synchronizacji.
+const LLM_PROVIDERS = {
+  opencode: {
+    endpoint: 'https://opencode.ai/inference/openai/v1/chat/completions',
+    keyEnv: 'OPENCODE_API_KEY',
+    models: { flash: 'deepseek-v4.1-flash', pro: 'deepseek-v4-pro' },
+  },
+  deepseek: {
+    endpoint: 'https://api.deepseek.com/chat/completions',
+    keyEnv: 'DEEPSEEK_API_KEY',
+    models: { flash: 'deepseek-flash', pro: 'deepseek-v4-pro' },
+  },
+};
 
-  let model = 'deepseek-flash';
-  if (spec === 'deepseek-chat' || spec === 'deepseek-v4-pro') {
-    model = spec;
-  } else if (
-    spec === '' ||
-    spec === 'auto' ||
-    spec === 'deepseek' ||
-    spec === 'deepseek-flash' ||
-    spec === 'deepseek-v4.1-flash' ||
-    spec === 'deepseekv4.1flash' ||
-    spec === 'deepseek-v41-flash-1017'
-  ) {
-    model = 'deepseek-flash';
+/**
+ * Wybiera dostawcę LLM (opencode -> deepseek) i model (flash/pro), ustawia
+ * adaptacyjne effort: low dla prostych komunikatów, high dla wieloetapowych
+ * objazdów i korekty nazw GTFS.
+ */
+export function resolveLlmPlan(modelRaw, env = process.env, explicitKey = null, providerRaw = null) {
+  const spec = String(modelRaw || env.LLM_MODEL || 'flash').trim().toLowerCase();
+  const tier = spec === 'deepseek-chat' || spec === 'deepseek-v4-pro' || spec === 'pro' ? 'pro' : 'flash';
+
+  const requested = String(providerRaw || env.LLM_PROVIDER || 'auto').trim().toLowerCase();
+  const primary =
+    requested === 'opencode' || requested === 'deepseek'
+      ? requested
+      : env.OPENCODE_API_KEY
+        ? 'opencode'
+        : 'deepseek';
+
+  const target = (provider) => ({
+    provider,
+    endpoint: LLM_PROVIDERS[provider].endpoint,
+    model: LLM_PROVIDERS[provider].models[tier],
+    apiKey: (provider === primary && explicitKey) || env[LLM_PROVIDERS[provider].keyEnv] || '',
+  });
+
+  let first = target(primary);
+  let alternate = target(primary === 'opencode' ? 'deepseek' : 'opencode');
+  // Wymuszony dostawca bez klucza nie może blokować uruchomienia, gdy drugi
+  // dostawca ma klucz.
+  if (!first.apiKey && alternate.apiKey) {
+    [first, alternate] = [alternate, first];
   }
 
   return {
-    model,
-    apiKey,
+    provider: first.provider,
+    endpoint: first.endpoint,
+    model: first.model,
+    apiKey: first.apiKey,
+    fallback: alternate.apiKey ? alternate : null,
     fastEffort: 'low',
     deepEffort: 'high',
   };
@@ -119,7 +146,14 @@ const LLM_PLAN = resolveLlmPlan(
   getArg('--model=', null),
   process.env,
   getArg('--key=', null),
+  getArg('--provider=', null),
 );
+// Kolejność prób: główny dostawca, potem fallback (jeśli ma klucz).
+const LLM_TARGETS = [
+  { provider: LLM_PLAN.provider, endpoint: LLM_PLAN.endpoint, model: LLM_PLAN.model, apiKey: LLM_PLAN.apiKey },
+  ...(LLM_PLAN.fallback ? [LLM_PLAN.fallback] : []),
+].filter((target) => target.apiKey);
+let llmTargetIndex = 0;
 const PUBLIC_TIMETABLE_URL = (
   getArg('--timetable-url=', process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app') || ''
 ).replace(/\/$/, '');
@@ -1171,22 +1205,18 @@ Te nazwy nie występują w treści źródłowej ani w trasie GTFS zmienianych li
 Przepisz cały JSON. Każdą nazwę własną skopiuj dokładnie z treści komunikatu lub z podanej wyżej listy przystanków GTFS albo usuń zdanie z tą nazwą. Nie twórz nowych form.`;
 }
 
-async function callDeepSeek(
-  item,
-  city,
-  apiKey,
-  model,
-  gtfsPromptBlock = '',
-  correction = [],
-  effort = 'low',
-  maxRetries = 3,
-) {
+function providerError(message) {
+  const err = new Error(message);
+  err.providerFatal = true;
+  return err;
+}
+
+async function callLlm(target, item, city, gtfsPromptBlock = '', correction = [], effort = 'low', maxRetries = 3) {
+  const label = target.provider === 'opencode' ? 'OpenCode' : 'DeepSeek';
   const prompt = buildPrompt(item, city, gtfsPromptBlock, correction);
-  const resolvedModel = model || 'deepseek-flash';
-  const url = 'https://api.deepseek.com/chat/completions';
 
   const body = {
-    model: resolvedModel,
+    model: target.model,
     messages: [
       { role: 'system', content: SYSTEM_INSTRUCTION },
       { role: 'user', content: prompt },
@@ -1194,15 +1224,15 @@ async function callDeepSeek(
     response_format: { type: 'json_object' },
   };
 
-  if (resolvedModel === 'deepseek-flash' || resolvedModel.startsWith('deepseek-v4')) {
-    if (effort === 'none') {
-      body.thinking = { type: 'disabled' };
-      body.temperature = 0.1;
-    } else {
-      body.reasoning_effort = effort === 'medium' ? 'high' : effort;
-    }
-  } else {
+  // Natywne DeepSeek API ma własny przełącznik thinking; OpenCode Console
+  // (OpenAI-compatible) przyjmuje tylko reasoning_effort low/high/max.
+  if (target.provider === 'deepseek' && target.model !== 'deepseek-flash' && !target.model.startsWith('deepseek-v4')) {
     body.temperature = 0.1;
+  } else if (effort === 'none') {
+    body.temperature = 0.1;
+    if (target.provider === 'deepseek') body.thinking = { type: 'disabled' };
+  } else {
+    body.reasoning_effort = effort === 'medium' ? 'high' : effort;
   }
 
   let attempt = 0;
@@ -1211,22 +1241,22 @@ async function callDeepSeek(
     const start = Date.now();
     let res;
     try {
-      res = await fetch(url, {
+      res = await fetch(target.endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${target.apiKey}`,
         },
         body: JSON.stringify(body),
       });
     } catch (netErr) {
       if (attempt <= maxRetries) {
         const delay = attempt * 2000;
-        console.warn(`[!] Błąd sieci DeepSeek: ${netErr.message}. Ponawiam (${attempt}/${maxRetries}) za ${delay}ms...`);
+        console.warn(`[!] Błąd sieci ${label}: ${netErr.message}. Ponawiam (${attempt}/${maxRetries}) za ${delay}ms...`);
         await sleep(delay);
         continue;
       }
-      throw netErr;
+      throw providerError(`${label}: błąd sieci: ${netErr.message}`);
     }
 
     const durationMs = Date.now() - start;
@@ -1234,7 +1264,7 @@ async function callDeepSeek(
     if (res.status === 429 || res.status >= 500) {
       if (attempt <= maxRetries) {
         const delay = attempt * 2500;
-        console.warn(`[!] DeepSeek API przeciążone (HTTP ${res.status}). Ponawiam (${attempt}/${maxRetries}) za ${delay}ms...`);
+        console.warn(`[!] ${label} API przeciążone (HTTP ${res.status}). Ponawiam (${attempt}/${maxRetries}) za ${delay}ms...`);
         await sleep(delay);
         continue;
       }
@@ -1242,24 +1272,49 @@ async function callDeepSeek(
 
     if (!res.ok) {
       const errorText = await res.text();
-      throw new Error(`DeepSeek API error (${res.status}): ${errorText}`);
+      throw providerError(`${label} API error (${res.status}): ${errorText}`);
     }
 
     const json = await res.json();
     const rawContent = json.choices?.[0]?.message?.content;
-    if (!rawContent || !rawContent.trim()) throw new Error('Brak treści JSON w odpowiedzi DeepSeek');
+    if (!rawContent || !rawContent.trim()) throw new Error(`Brak treści JSON w odpowiedzi ${label}`);
 
     const parsed = JSON.parse(rawContent);
     return {
       parsed,
-      modelUsed: `${resolvedModel}(${effort})`,
+      modelUsed: `${target.provider}/${target.model}(${effort})`,
       usage: json.usage || null,
       durationMs,
     };
   }
 }
 
-async function analyzeWithDeepSeek(item, city, gtfsCtx) {
+/**
+ * Woła pierwszego dostępnego dostawcę. Pierwszy błąd dostawcy (brak kredytów,
+ * zły klucz, awaria) przełącza całe uruchomienie na fallback, żeby nie bić
+ * w martwy endpoint przy każdym newsie.
+ */
+async function callLlmWithFallback(...args) {
+  for (;;) {
+    const target = LLM_TARGETS[llmTargetIndex];
+    try {
+      return await callLlm(target, ...args);
+    } catch (err) {
+      const next = LLM_TARGETS[llmTargetIndex + 1];
+      if (!err.providerFatal || !next) throw err;
+      console.warn(`[!] ${target.provider}/${target.model} niedostępny: ${err.message}`);
+      console.warn(`[!] Przechodzę na ${next.provider}/${next.model} do końca uruchomienia.`);
+      llmTargetIndex++;
+    }
+  }
+}
+
+function activeLlmLabel() {
+  const target = LLM_TARGETS[llmTargetIndex];
+  return target ? `${target.provider}/${target.model}` : 'brak dostawcy';
+}
+
+async function analyzeWithLlm(item, city, gtfsCtx) {
   const sourceText = `${item.title}\n${item.fullContent || item.content || ''}`;
   const complex = isComplexDisruptionText(
     item.title,
@@ -1268,30 +1323,14 @@ async function analyzeWithDeepSeek(item, city, gtfsCtx) {
   );
 
   const initialEffort = complex ? LLM_PLAN.deepEffort : LLM_PLAN.fastEffort;
-  let result = await callDeepSeek(
-    item,
-    city,
-    LLM_PLAN.apiKey,
-    LLM_PLAN.model,
-    gtfsCtx.promptBlock,
-    [],
-    initialEffort,
-  );
+  let result = await callLlmWithFallback(item, city, gtfsCtx.promptBlock, [], initialEffort);
 
   // Jeśli szybki przebieg (low) zgubił rozbicie line_changes na wielu liniach,
   // ponawiamy z głębokim rozumowaniem (high).
   if (initialEffort !== LLM_PLAN.deepEffort && needsEscalationAfterPrimary(result.parsed, sourceText)) {
-    console.log(`    [~] Eskalacja złożonej topologii do ${LLM_PLAN.model} (effort: ${LLM_PLAN.deepEffort})...`);
+    console.log(`    [~] Eskalacja złożonej topologii do ${activeLlmLabel()} (effort: ${LLM_PLAN.deepEffort})...`);
     try {
-      result = await callDeepSeek(
-        item,
-        city,
-        LLM_PLAN.apiKey,
-        LLM_PLAN.model,
-        gtfsCtx.promptBlock,
-        [],
-        LLM_PLAN.deepEffort,
-      );
+      result = await callLlmWithFallback(item, city, gtfsCtx.promptBlock, [], LLM_PLAN.deepEffort);
     } catch (escErr) {
       console.warn(`    [!] Eskalacja nieudana (${escErr.message}), zostaję przy pierwszym wyniku.`);
     }
@@ -1302,16 +1341,8 @@ async function analyzeWithDeepSeek(item, city, gtfsCtx) {
   if (analysis.is_transit_alert !== false) {
     const unknown = findUnknownNames(analysis, sourceText, gtfsCtx.allowedStops);
     if (unknown.length > 0) {
-      console.log(`    [!] Nazwy poza treścią/GTFS: ${unknown.join(', ')}. Korekta (${LLM_PLAN.model} high)...`);
-      result = await callDeepSeek(
-        item,
-        city,
-        LLM_PLAN.apiKey,
-        LLM_PLAN.model,
-        gtfsCtx.promptBlock,
-        unknown,
-        LLM_PLAN.deepEffort,
-      );
+      console.log(`    [!] Nazwy poza treścią/GTFS: ${unknown.join(', ')}. Korekta (${activeLlmLabel()} high)...`);
+      result = await callLlmWithFallback(item, city, gtfsCtx.promptBlock, unknown, LLM_PLAN.deepEffort);
       analysis = sanitizeAnalysisText(result.parsed);
       const still = findUnknownNames(analysis, sourceText, gtfsCtx.allowedStops);
       if (still.length > 0) {
@@ -1443,7 +1474,7 @@ async function processCity(city, limit, cache) {
         ...buildGtfsPromptContext(item, gtfsIndex),
         gtfsIndex,
       };
-      const outcome = await analyzeWithDeepSeek(item, city, gtfsCtx);
+      const outcome = await analyzeWithLlm(item, city, gtfsCtx);
       if (outcome.rejectedReason) {
         console.log(`    [ODRZUCONY]: ${outcome.rejectedReason}`);
         continue;
@@ -1513,8 +1544,11 @@ async function processCity(city, limit, cache) {
 async function main() {
   console.log(`=== Kilometr: Agregator i Silnik Topologii Utrudnień ===`);
   console.log(
-    `Model: ${LLM_PLAN.model} (adaptacyjny effort: ${LLM_PLAN.fastEffort}/${LLM_PLAN.deepEffort}) | Limit: ${LIMIT}`,
+    `Model: ${LLM_PLAN.provider}/${LLM_PLAN.model} (adaptacyjny effort: ${LLM_PLAN.fastEffort}/${LLM_PLAN.deepEffort}) | Limit: ${LIMIT}`,
   );
+  if (LLM_PLAN.fallback) {
+    console.log(`Fallback: ${LLM_PLAN.fallback.provider}/${LLM_PLAN.fallback.model}`);
+  }
 
   const cache = loadCache();
   const cachedCount = Object.keys(cache.entries).length;
@@ -1535,8 +1569,8 @@ async function main() {
   }
   console.log(`Miasta: ${targetCities.join(', ')}`);
 
-  if (!LLM_PLAN.apiKey && !DRY_RUN) {
-    console.error(`\n[!] Brak klucza DEEPSEEK_API_KEY.`);
+  if (LLM_TARGETS.length === 0 && !DRY_RUN) {
+    console.error(`\n[!] Brak klucza OPENCODE_API_KEY i DEEPSEEK_API_KEY.`);
     process.exit(1);
   }
 
