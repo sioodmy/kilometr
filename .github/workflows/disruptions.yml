@@ -15,11 +15,17 @@ on:
   workflow_dispatch:
     inputs:
       city:
-        description: 'Miasto (puste = wszystkie obsługiwane)'
+        description: 'Miasto (puste = lista domyślna z env)'
         required: false
         default: ''
         type: choice
         options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom]
+
+env:
+  # Miasta analizowane DeepSeekiem przy harmonogramie. Przełączasz tylko tutaj.
+  # Pełna lista: wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom
+  # Nadpisanie bez edycji pliku: Settings > Secrets and variables > Actions > Variables > DISRUPTION_CITIES.
+  DISRUPTION_DEFAULT_CITIES: wroclaw,gzm,krakow
 
 permissions:
   contents: read
@@ -33,8 +39,7 @@ jobs:
     name: Aggregate & Analyze Disruptions
     runs-on: ubuntu-latest
     env:
-      # Domyślna lista miast dla harmonogramu. Zmień tutaj albo w
-      # Settings > Secrets and variables > Actions > Variables (DISRUPTION_CITIES).
+      # Puste = lista z DISRUPTION_DEFAULT_CITIES (góra pliku).
       DISRUPTION_CITIES: ${{ vars.DISRUPTION_CITIES }}
     steps:
       - name: Checkout repo
@@ -57,7 +62,7 @@ jobs:
         run: |
           CITY="${{ inputs.city }}"
           if [ -z "$CITY" ]; then
-            CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom}"
+            CITY="${DISRUPTION_CITIES:-$DISRUPTION_DEFAULT_CITIES}"
           fi
           node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=10
         env:
