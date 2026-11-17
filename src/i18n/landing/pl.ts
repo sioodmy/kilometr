@@ -1,5 +1,3 @@
-import { previewHome } from './home';
-
 function countLabel(n: number, one: string, few: string, many: string): string {
   const mod10 = n % 10;
   const mod100 = n % 100;
@@ -32,6 +30,8 @@ export const pl = {
     accent: 'open-source',
     titleEnd: 'planer podróży',
     body: 'Zaplanuj trasę, sprawdź odjazdy i ruszaj w miasto. Komunikacja miejska w całej Polsce, także offline. Bez reklam i bez konta.',
+    phoneAlt:
+      'Ekran główny aplikacji Kilometr z zapisanymi miejscami i najbliższymi odjazdami',
   },
   install: {
     android: 'Android',
@@ -102,22 +102,6 @@ export const pl = {
       supportBody:
         'Chcesz pomóc nam pokryć tę opłatę? Możesz wesprzeć projekt. Każda wpłata pomaga nam rozwijać Kilometr i finansować jego publikację.',
     },
-  },
-  homePreview: {
-    screenLabel: 'Ekran główny Kilometr na iPhonie',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Gdzie jedziemy?',
-    savedTitle: 'Zapisane miejsca',
-    edit: 'Edytuj',
-    historyTitle: 'Ostatnie miejsca',
-    home: 'Dom',
-    school: 'Uczelnia',
-    gym: 'Siłownia',
-    stop: 'Przystanek',
-    searchLabel: 'Dokąd jedziesz?',
-    startFrom: (title: string) => `z: ${title}`,
-    departIn: (n: number) => `za ${n} min`,
   },
   showcase: {
     prevLabel: 'Poprzedni ekran',

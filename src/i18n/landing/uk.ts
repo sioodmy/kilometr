@@ -1,5 +1,4 @@
 import type { Strings } from './pl';
-import { previewHome } from './home';
 
 function countLabel(n: number, one: string, few: string, many: string): string {
   const mod10 = n % 10;
@@ -33,6 +32,7 @@ export const uk: Strings = {
     accent: 'планувальник подорожей',
     titleEnd: 'з відкритим кодом',
     body: 'Плануй маршрут, перевіряй відправлення та вирушай у місто. Громадський транспорт по всій Польщі, навіть офлайн. Без реклами та облікового запису.',
+    phoneAlt: 'Головний екран Kilometr зі збереженими місцями та найближчими відправленнями',
   },
   install: {
     android: 'Android',
@@ -103,22 +103,6 @@ export const uk: Strings = {
       supportBody:
         'Хочеш допомогти покрити цю плату? Можеш підтримати проєкт. Кожен внесок допомагає нам розвивати Kilometr і фінансувати його публікацію.',
     },
-  },
-  homePreview: {
-    screenLabel: 'Головний екран Kilometr на iPhone',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Куди їдемо?',
-    savedTitle: 'Збережені місця',
-    edit: 'Редагувати',
-    historyTitle: 'Останні місця',
-    home: 'Дім',
-    school: 'Університет',
-    gym: 'Спортзал',
-    stop: 'Зупинка',
-    searchLabel: 'Куди їдеш?',
-    startFrom: (title: string) => `з: ${title}`,
-    departIn: (n: number) => `за ${n} хв`,
   },
   showcase: {
     prevLabel: 'Попередній екран',

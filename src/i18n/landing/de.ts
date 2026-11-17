@@ -1,5 +1,4 @@
 import type { Strings } from './pl';
-import { previewHome } from './home';
 
 function countLabel(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -25,6 +24,7 @@ export const de: Strings = {
     accent: 'quelloffener',
     titleEnd: 'Reiseplaner',
     body: 'Plane deine Route, prüfe Abfahrten und fahr los. Nahverkehr in ganz Polen, auch offline. Ohne Werbung und ohne Konto.',
+    phoneAlt: 'Kilometr-Startseite mit gespeicherten Orten und nächsten Abfahrten',
   },
   install: {
     android: 'Android',
@@ -95,22 +95,6 @@ export const de: Strings = {
       supportBody:
         'Möchtest du uns helfen, diese Gebühr zu decken? Du kannst das Projekt unterstützen. Jede Spende hilft uns, Kilometr weiterzuentwickeln und die Veröffentlichung zu finanzieren.',
     },
-  },
-  homePreview: {
-    screenLabel: 'Kilometr-Startseite auf einem iPhone',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Wohin geht’s?',
-    savedTitle: 'Gespeicherte Orte',
-    edit: 'Bearbeiten',
-    historyTitle: 'Letzte Orte',
-    home: 'Zuhause',
-    school: 'Uni',
-    gym: 'Fitnessstudio',
-    stop: 'Haltestelle',
-    searchLabel: 'Wohin fährst du?',
-    startFrom: (title: string) => `ab: ${title}`,
-    departIn: (n: number) => `in ${n} Min.`,
   },
   showcase: {
     prevLabel: 'Vorheriger Bildschirm',

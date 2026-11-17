@@ -12,6 +12,7 @@ import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
 import { isFareBoundary } from '../gtfs/fareBoundary';
+import { numberedStopBases } from '../gtfs/stopGroups';
 
 /** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
  *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
@@ -882,7 +883,6 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
     `SELECT stop_id, code, name, lat, lon, weight FROM stops WHERE ${clauses.join(' AND ')} LIMIT 120`,
     ...params,
   );
-  const scored: StopSearchHit[] = [];
   const seen = new Set<string>();
   const uniqueRows = rows.filter((r) => {
     if (isFareBoundary(r.name)) return false;
@@ -890,13 +890,46 @@ export async function searchStops(query: string, limit = 8): Promise<StopSearchH
     seen.add(r.name);
     return true;
   });
+  const platformBases = numberedStopBases(uniqueRows.map((r) => r.name));
   const matches = fuzzyMatchBatch(q, uniqueRows.map((r) => r.name));
+  const scored: StopSearchHit[] = [];
+  // Słupki jednego przystanku (np. "GALERIA DOMINIKAŃSKA 01".."11") to jeden
+  // wynik: nazwa bez numeru, pozycja najtrafniejszego/najpopularniejszego słupka.
+  const grouped = new Map<string, { hit: StopSearchHit; representativeWeight: number }>();
   for (let i = 0; i < uniqueRows.length; i++) {
     const m = matches[i];
     if (!m?.matches) continue;
     const r = uniqueRows[i];
-    scored.push({ stop_id: r.stop_id, code: r.code, name: r.name, lat: r.lat, lon: r.lon, score: m.score, weight: r.weight ?? 0 });
+    const weight = r.weight ?? 0;
+    const hit: StopSearchHit = {
+      stop_id: r.stop_id,
+      code: r.code,
+      name: r.name,
+      lat: r.lat,
+      lon: r.lon,
+      score: m.score,
+      weight,
+    };
+    const base = platformBases.get(r.name);
+    if (!base) {
+      scored.push(hit);
+      continue;
+    }
+    const group = grouped.get(base);
+    if (!group) {
+      grouped.set(base, { hit: { ...hit, name: base }, representativeWeight: weight });
+      continue;
+    }
+    group.hit.weight += weight;
+    if (
+      hit.score > group.hit.score ||
+      (hit.score === group.hit.score && weight > group.representativeWeight)
+    ) {
+      group.hit = { ...hit, name: base, weight: group.hit.weight };
+      group.representativeWeight = weight;
+    }
   }
+  for (const { hit } of grouped.values()) scored.push(hit);
   scored.sort((a, b) => {
     if (Math.abs(a.score - b.score) > 12) return b.score - a.score;
     return b.weight - a.weight;
