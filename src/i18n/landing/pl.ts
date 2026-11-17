@@ -1,3 +1,15 @@
+function countLabel(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  const form =
+    n === 1
+      ? one
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? few
+        : many;
+  return `${n} ${form}`;
+}
+
 export const pl = {
   meta: {
     title: 'Kilometr',
@@ -150,11 +162,21 @@ export const pl = {
     emptyBody: 'Sprawdź pisownię albo wyczyść filtr, aby wybrać jedno z obsługiwanych miast.',
     emptyReset: 'Pokaż wszystkie miasta',
     liveLabel: 'Pozycje na żywo',
-    liveAvailable: 'Dostępne (GPS pojazdów)',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Dostępne (GPS pojazdów)'
+        : vehicles === 0
+          ? 'Dostępne (brak pojazdów teraz)'
+          : `Dostępne (${countLabel(vehicles, 'pojazd', 'pojazdy', 'pojazdów')} na żywo)`,
     liveUnavailable: 'Brak danych GPS (rozkład statyczny)',
     newsLabel: 'Komunikaty pasażerskie',
     newsAvailable: 'Dostępne',
     newsUnavailable: 'Brak komunikatów z miasta',
+    stopHintsLabel: 'Wskazówki przystankowe',
+    stopHintsValue: (stops: number) =>
+      `Dostępne (${countLabel(stops, 'przystanek', 'przystanki', 'przystanków')})`,
+    stopHintsUnavailable: 'Brak wskazówek dla przystanków',
+    statsUpdated: (date: string) => `Dane z ${date}`,
     operatorsLabel: 'Przewoźnicy w sieci',
     railGatewayNote: (stations: string) =>
       `Połączenia dalekobieżne (PKP Intercity, POLREGIO) przez stację: ${stations}.`,

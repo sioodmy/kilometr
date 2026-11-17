@@ -11,6 +11,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  MapPin,
   Megaphone,
   Minus,
   Radio,
@@ -19,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { RAIL_ICON_SPECS, type RailAgency } from '../../../src/services/railIconPaths';
-import { useStrings } from '../i18n';
+import { useStrings, useWebLocale } from '../i18n';
 import {
   COVERAGE_CITIES,
   filterCoveragePlaces,
@@ -28,6 +29,7 @@ import {
   type CoveragePlace,
   type OperatorEntry,
 } from '../coverageData';
+import { getCoverageStats, getCoverageStatsGeneratedAt } from '../coverageStats';
 import { POLAND_OUTLINE, projectPolandPoint } from '../mapProjection';
 
 const MAP_VIEWBOX_SIZE = 600;
@@ -103,6 +105,17 @@ function computeCalloutPosition(
 export function CoverageSection() {
   const s = useStrings();
   const c = s.coverage;
+  const locale = useWebLocale();
+
+  const statsDate = useMemo(() => {
+    const raw = getCoverageStatsGeneratedAt();
+    if (!raw) return null;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      date,
+    );
+  }, [locale]);
 
   const listboxId = useId();
   const inputId = useId();
@@ -156,6 +169,8 @@ export function CoverageSection() {
     () => COVERAGE_CITIES.find((place) => place.key === selectedKey) ?? COVERAGE_CITIES[0]!,
     [selectedKey],
   );
+
+  const stats = getCoverageStats(selectedPlace.key);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -454,9 +469,9 @@ export function CoverageSection() {
           </div>
 
           <div className="cov-spot-status">
-            <div className={`cov-stat${selectedPlace.live ? ' is-on' : ' is-off'}`}>
+            <div className={`cov-stat${stats.live.available ? ' is-on' : ' is-off'}`}>
               <span className="cov-stat-k">
-                {selectedPlace.live ? (
+                {stats.live.available ? (
                   <Radio size={15} strokeWidth={2} aria-hidden="true" />
                 ) : (
                   <Clock size={15} strokeWidth={2} aria-hidden="true" />
@@ -464,28 +479,32 @@ export function CoverageSection() {
                 <span>{c.liveLabel}</span>
               </span>
               <span className="cov-stat-v">
-                {selectedPlace.live ? (
-                  <Check size={15} strokeWidth={2.3} aria-hidden="true" />
-                ) : (
-                  <Minus size={15} strokeWidth={2} aria-hidden="true" />
-                )}
-                <span>{selectedPlace.live ? c.liveAvailable : c.liveUnavailable}</span>
-              </span>
-            </div>
-
-            <div className={`cov-stat${selectedPlace.news ? ' is-on' : ' is-off'}`}>
-              <span className="cov-stat-k">
-                <Megaphone size={15} strokeWidth={2} aria-hidden="true" />
-                <span>{c.newsLabel}</span>
-              </span>
-              <span className="cov-stat-v">
-                {selectedPlace.news ? (
+                {stats.live.available ? (
                   <Check size={15} strokeWidth={2.3} aria-hidden="true" />
                 ) : (
                   <Minus size={15} strokeWidth={2} aria-hidden="true" />
                 )}
                 <span>
-                  {selectedPlace.news
+                  {stats.live.available
+                    ? c.liveValue(stats.live.vehicles)
+                    : c.liveUnavailable}
+                </span>
+              </span>
+            </div>
+
+            <div className={`cov-stat${stats.news.available ? ' is-on' : ' is-off'}`}>
+              <span className="cov-stat-k">
+                <Megaphone size={15} strokeWidth={2} aria-hidden="true" />
+                <span>{c.newsLabel}</span>
+              </span>
+              <span className="cov-stat-v">
+                {stats.news.available ? (
+                  <Check size={15} strokeWidth={2.3} aria-hidden="true" />
+                ) : (
+                  <Minus size={15} strokeWidth={2} aria-hidden="true" />
+                )}
+                <span>
+                  {stats.news.available
                     ? selectedPlace.newsSource
                       ? `${c.newsAvailable} · ${selectedPlace.newsSource}`
                       : c.newsAvailable
@@ -493,7 +512,28 @@ export function CoverageSection() {
                 </span>
               </span>
             </div>
+
+            <div className={`cov-stat${stats.stopHints.available ? ' is-on' : ' is-off'}`}>
+              <span className="cov-stat-k">
+                <MapPin size={15} strokeWidth={2} aria-hidden="true" />
+                <span>{c.stopHintsLabel}</span>
+              </span>
+              <span className="cov-stat-v">
+                {stats.stopHints.available ? (
+                  <Check size={15} strokeWidth={2.3} aria-hidden="true" />
+                ) : (
+                  <Minus size={15} strokeWidth={2} aria-hidden="true" />
+                )}
+                <span>
+                  {stats.stopHints.available
+                    ? c.stopHintsValue(stats.stopHints.stops ?? 0)
+                    : c.stopHintsUnavailable}
+                </span>
+              </span>
+            </div>
           </div>
+
+          {statsDate && <p className="cov-stats-note">{c.statsUpdated(statsDate)}</p>}
 
           <div className="cov-ops">
             <p className="cov-ops-label">{c.operatorsLabel}</p>

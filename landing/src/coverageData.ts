@@ -20,8 +20,6 @@ export interface CoveragePlace {
   lon: number;
   aliases: readonly string[];
   operators: readonly OperatorEntry[];
-  live: boolean;
-  news: boolean;
   newsSource?: string;
   railGateways: readonly string[];
 }
@@ -186,8 +184,6 @@ export const COVERAGE_CITIES: readonly CoveragePlace[] = CITIES.map((city) => ({
   lon: city.center.lon,
   aliases: CITY_ALIASES[city.id] ?? [],
   operators: CITY_OPERATORS[city.id],
-  live: city.features.live,
-  news: city.features.news,
   newsSource: CITY_NEWS_SOURCES[city.id],
   railGateways: city.railGateways ?? [],
 }));
