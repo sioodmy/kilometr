@@ -3,9 +3,8 @@ import raw from './data/coverageStats.json';
 /** Liczby pokazywane w spotlightcie miasta; snapshot z GitHub Actions. */
 export interface CoverageCityStats {
   live: { available: boolean; vehicles: number | null };
-  news: { available: boolean; alerts: number | null };
+  news: { available: boolean };
   stopHints: { available: boolean; stops: number | null };
-  stops: number | null;
 }
 
 interface CoverageStatsFile {
@@ -15,9 +14,8 @@ interface CoverageStatsFile {
 
 const EMPTY_STATS: CoverageCityStats = {
   live: { available: false, vehicles: null },
-  news: { available: false, alerts: null },
+  news: { available: false },
   stopHints: { available: false, stops: null },
-  stops: null,
 };
 
 const file = raw as CoverageStatsFile;

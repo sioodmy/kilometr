@@ -11,7 +11,6 @@ import {
   Check,
   ChevronDown,
   Clock,
-  Database,
   MapPin,
   Megaphone,
   Minus,
@@ -530,21 +529,6 @@ export function CoverageSection() {
                     ? c.stopHintsValue(stats.stopHints.stops ?? 0)
                     : c.stopHintsUnavailable}
                 </span>
-              </span>
-            </div>
-
-            <div className={`cov-stat${stats.stops != null ? ' is-on' : ' is-off'}`}>
-              <span className="cov-stat-k">
-                <Database size={15} strokeWidth={2} aria-hidden="true" />
-                <span>{c.stopsLabel}</span>
-              </span>
-              <span className="cov-stat-v">
-                {stats.stops != null ? (
-                  <Check size={15} strokeWidth={2.3} aria-hidden="true" />
-                ) : (
-                  <Minus size={15} strokeWidth={2} aria-hidden="true" />
-                )}
-                <span>{stats.stops != null ? c.stopsValue(stats.stops) : c.stopsUnknown}</span>
               </span>
             </div>
           </div>

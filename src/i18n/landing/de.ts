@@ -179,18 +179,12 @@ export const de: Strings = {
           : `Verfügbar (${countLabel(vehicles, 'Fahrzeug', 'Fahrzeuge')} live)`,
     liveUnavailable: 'Kein Live-GPS (statischer Fahrplan)',
     newsLabel: 'Fahrgastmeldungen',
-    newsValue: (alerts: number) =>
-      alerts > 0
-        ? `Verfügbar (${countLabel(alerts, 'Meldung', 'Meldungen')})`
-        : 'Verfügbar (keine neuen Meldungen)',
+    newsAvailable: 'Verfügbar',
     newsUnavailable: 'Keine städtischen Meldungen',
     stopHintsLabel: 'Haltestellenhinweise',
     stopHintsValue: (stops: number) =>
       `Verfügbar (${countLabel(stops, 'Haltestelle', 'Haltestellen')})`,
     stopHintsUnavailable: 'Keine Haltestellenhinweise',
-    stopsLabel: 'Haltestellen in der Datenbank',
-    stopsValue: (stops: number) => countLabel(stops, 'Haltestelle', 'Haltestellen'),
-    stopsUnknown: 'Keine Daten',
     statsUpdated: (date: string) => `Datenstand: ${date}`,
     operatorsLabel: 'Verkehrsbetriebe',
     railGatewayNote: (stations: string) =>

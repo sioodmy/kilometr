@@ -192,10 +192,6 @@ export const pl = {
     stopHintsValue: (stops: number) =>
       `Dostępne (${countLabel(stops, 'przystanek', 'przystanki', 'przystanków')})`,
     stopHintsUnavailable: 'Brak wskazówek dla przystanków',
-    stopsLabel: 'Przystanki w bazie',
-    stopsValue: (stops: number) =>
-      countLabel(stops, 'przystanek', 'przystanki', 'przystanków'),
-    stopsUnknown: 'Brak danych',
     statsUpdated: (date: string) => `Dane z ${date}`,
     operatorsLabel: 'Przewoźnicy w sieci',
     railGatewayNote: (stations: string) =>

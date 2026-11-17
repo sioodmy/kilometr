@@ -1,8 +1,8 @@
 /**
  * Snapshot liczb dla sekcji pokrycia na landingu.
  *
- * Odpytuje zbiorkom.live (pojazdy live), publiczny Worker danych
- * (komunikaty, stop-hints, manifest z liczbą przystanków) i zapisuje
+ * Odpytuje zbiorkom.live (pojazdy live) i publiczny Worker danych
+ * (komunikaty, stop-hints) i zapisuje
  * `landing/src/data/coverageStats.json`. Deploy Pages uruchamia skrypt przed
  * buildem, więc strona dostaje świeży snapshot. Commitowany plik jest
  * fallbackiem, gdy źródła nie odpowiadają.
@@ -42,7 +42,6 @@ interface LiveStats {
 
 interface NewsStats {
   available: boolean;
-  alerts: number | null;
 }
 
 interface StopHintsStats {
@@ -54,7 +53,6 @@ interface CityStats {
   live: LiveStats;
   news: NewsStats;
   stopHints: StopHintsStats;
-  stops: number | null;
 }
 
 interface StatsFile {
@@ -88,7 +86,7 @@ async function fetchLiveVehicles(city: (typeof CITIES)[number]): Promise<number 
 
 async function fetchNews(cityId: string): Promise<NewsStats> {
   const data = await getJson(`${DATA_BASE}/${cityId}/disruptions.json`);
-  if (!data || typeof data !== 'object') return { available: false, alerts: null };
+  if (!data || typeof data !== 'object') return { available: false };
   const record = data as { alerts?: unknown; alerts_count?: unknown; generated_at?: unknown };
   const alerts = Array.isArray(record.alerts) ? record.alerts.length : null;
   // Worker zwraca pustą listę także dla miasta bez pliku w R2, ale prawdziwy
@@ -98,7 +96,7 @@ async function fetchNews(cityId: string): Promise<NewsStats> {
     typeof record.alerts_count === 'number' ||
     typeof record.generated_at === 'string' ||
     (alerts ?? 0) > 0;
-  return { available: feedExists, alerts };
+  return { available: feedExists };
 }
 
 async function fetchStopHints(cityId: string): Promise<number | null> {
@@ -108,38 +106,22 @@ async function fetchStopHints(cityId: string): Promise<number | null> {
   return stops && typeof stops === 'object' ? Object.keys(stops).length : null;
 }
 
-async function fetchDbStops(cityId: string): Promise<number | null> {
-  const data = await getJson(`${DATA_BASE}/${cityId}/manifest.json`);
-  if (!data || typeof data !== 'object') return null;
-  const stats = (data as { stats?: unknown }).stats;
-  if (!stats || typeof stats !== 'object') return null;
-  const stops = (stats as { stops?: unknown }).stops;
-  return typeof stops === 'number' && Number.isFinite(stops) ? stops : null;
-}
-
 async function collectCity(city: (typeof CITIES)[number]): Promise<CityStats> {
-  const [vehicles, news, hints, stops] = await Promise.all([
+  const [vehicles, news, hints] = await Promise.all([
     fetchLiveVehicles(city),
     fetchNews(city.id),
     fetchStopHints(city.id),
-    fetchDbStops(city.id),
   ]);
 
   return {
     live: { available: vehicles !== null, vehicles },
     news,
     stopHints: { available: (hints ?? 0) > 0, stops: hints },
-    stops,
   };
 }
 
 function hasData(stats: CityStats): boolean {
-  return (
-    stats.live.available ||
-    stats.news.available ||
-    stats.stopHints.available ||
-    stats.stops !== null
-  );
+  return stats.live.available || stats.news.available || stats.stopHints.available;
 }
 
 async function main(): Promise<void> {
@@ -154,8 +136,8 @@ async function main(): Promise<void> {
       cities[id] = stats;
       if (hasData(stats)) reachable++;
       console.log(
-        `${id}: live=${stats.live.vehicles ?? 'brak'} news=${stats.news.alerts ?? 'brak'} ` +
-          `hints=${stats.stopHints.stops ?? 'brak'} stops=${stats.stops ?? 'brak'}`,
+        `${id}: live=${stats.live.vehicles ?? 'brak'} news=${stats.news.available ? 'tak' : 'brak'} ` +
+          `hints=${stats.stopHints.stops ?? 'brak'}`,
       );
     }
   }

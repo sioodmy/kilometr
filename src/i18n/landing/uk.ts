@@ -187,18 +187,12 @@ export const uk: Strings = {
           : `Доступні (${countLabel(vehicles, 'транспортний засіб', 'транспортні засоби', 'транспортних засобів')} наживо)`,
     liveUnavailable: 'Без GPS наживо (статичний розклад)',
     newsLabel: 'Повідомлення пасажирам',
-    newsValue: (alerts: number) =>
-      alerts > 0
-        ? `Доступні (${countLabel(alerts, 'повідомлення', 'повідомлення', 'повідомлень')})`
-        : 'Доступні (немає нових повідомлень)',
+    newsAvailable: 'Доступні',
     newsUnavailable: 'Немає міських повідомлень',
     stopHintsLabel: 'Підказки до зупинок',
     stopHintsValue: (stops: number) =>
       `Доступні (${countLabel(stops, 'зупинка', 'зупинки', 'зупинок')})`,
     stopHintsUnavailable: 'Немає підказок до зупинок',
-    stopsLabel: 'Зупинки в базі',
-    stopsValue: (stops: number) => countLabel(stops, 'зупинка', 'зупинки', 'зупинок'),
-    stopsUnknown: 'Немає даних',
     statsUpdated: (date: string) => `Стан даних: ${date}`,
     operatorsLabel: 'Перевізники в місті',
     railGatewayNote: (stations: string) =>
