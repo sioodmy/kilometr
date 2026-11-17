@@ -7,6 +7,7 @@ import {
   type TouchEvent,
 } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Phone } from './Phone';
 import { useStrings } from '../i18n';
 
 const SCREENSHOTS = [
@@ -247,35 +248,26 @@ export function ShowcaseDemo() {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            <div className="showcase-phone" aria-label={activeSlide.imageAlt}>
-              <div className="showcase-phone-chassis">
-                <span className="showcase-hw-btn showcase-hw-vol-up" aria-hidden="true" />
-                <span className="showcase-hw-btn showcase-hw-vol-down" aria-hidden="true" />
-                <span className="showcase-hw-btn showcase-hw-power" aria-hidden="true" />
-                <div className="showcase-phone-bezel">
-                  <span className="showcase-earpiece" aria-hidden="true" />
-                  <div className="showcase-screen">
-                    <span className="showcase-punch" aria-hidden="true" />
-                    {slides.map((slide, index) => {
-                      const isCurrent = index === activeIndex;
-                      return (
-                        <img
-                          key={slide.id}
-                          src={SCREENSHOTS[index]}
-                          alt={isCurrent ? slide.imageAlt : ''}
-                          aria-hidden={!isCurrent}
-                          className={isCurrent ? 'showcase-shot is-active' : 'showcase-shot'}
-                          width={720}
-                          height={1600}
-                          loading={index === 0 ? 'eager' : 'lazy'}
-                          decoding="async"
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Phone className="showcase-phone" label={activeSlide.imageAlt}>
+              {slides.map((slide, index) => {
+                const isCurrent = index === activeIndex;
+                return (
+                  <img
+                    key={slide.id}
+                    src={SCREENSHOTS[index]}
+                    alt={isCurrent ? slide.imageAlt : ''}
+                    aria-hidden={!isCurrent}
+                    className={
+                      isCurrent ? 'phone-shot showcase-shot is-active' : 'phone-shot showcase-shot'
+                    }
+                    width={720}
+                    height={1600}
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    decoding="async"
+                  />
+                );
+              })}
+            </Phone>
 
             <button
               type="button"

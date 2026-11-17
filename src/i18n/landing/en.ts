@@ -1,5 +1,4 @@
 import type { Strings } from './pl';
-import { previewHome } from './home';
 
 export const en: Strings = {
   meta: {
@@ -21,6 +20,7 @@ export const en: Strings = {
     accent: 'open-source',
     titleEnd: 'journey planner',
     body: 'Plan your route, check departures and head into town. Public transport across Poland, even offline. No ads or account needed.',
+    phoneAlt: 'Kilometr home screen with saved places and upcoming departures',
   },
   install: {
     android: 'Android',
@@ -91,22 +91,6 @@ export const en: Strings = {
       supportBody:
         'Want to help us cover this fee? You can support the project. Every donation helps us develop Kilometr and fund its publication.',
     },
-  },
-  homePreview: {
-    screenLabel: 'Kilometr home screen on an iPhone',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Where to?',
-    savedTitle: 'Saved places',
-    edit: 'Edit',
-    historyTitle: 'Recent places',
-    home: 'Home',
-    school: 'University',
-    gym: 'Gym',
-    stop: 'Stop',
-    searchLabel: 'Where are you going?',
-    startFrom: (title: string) => `from: ${title}`,
-    departIn: (n: number) => `in ${n} min`,
   },
   showcase: {
     prevLabel: 'Previous screen',
