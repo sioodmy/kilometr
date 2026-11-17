@@ -308,6 +308,17 @@
 }
 
 @layer responsive {
+  /* Desktop: sekcja mieści się w jednym ekranie, telefon skaluje się od wysokości okna. */
+  @media (min-width: 961px) {
+    .showcase-demo {
+      padding-block: clamp(28px, 5svh, 72px);
+    }
+
+    .showcase-phone {
+      width: clamp(210px, calc((100svh - 320px) * 0.45 + 16px), 300px);
+    }
+  }
+
   @media (max-width: 960px) {
     .showcase-body {
       grid-template-columns: 1fr;
