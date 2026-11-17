@@ -4,10 +4,10 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Check, Wallpaper } from './icons';
 import { useStrings } from '../i18n';
 import {
+  getThemePresets,
   getWallpaperScheme,
   hasWallpaperColors,
   setThemeSetting,
-  THEME_PRESETS,
   THEME_SEEDS,
   useThemeSetting,
   type ThemeSetting,
@@ -21,6 +21,7 @@ export function PersonalizationCard() {
   const [error, setError] = useState(false);
   const [focused, setFocused] = useState<ThemeSetting | null>(null);
   const wallpaper = getWallpaperScheme();
+  const presets = getThemePresets();
 
   async function select(next: ThemeSetting) {
     if (saving || next === selected) return;
@@ -81,7 +82,7 @@ export function PersonalizationCard() {
         </Pressable>
         <View style={styles.grid}>
           {(Object.keys(THEME_SEEDS) as (keyof typeof THEME_SEEDS)[]).map((key) => {
-            const palette = THEME_PRESETS[key];
+            const palette = presets[key];
             const active = selected === key;
             return (
               <Pressable

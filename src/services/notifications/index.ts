@@ -18,6 +18,7 @@ export {
 export {
   getTrackedTripSync,
   acceptTransferAlternative,
+  refreshTrackedTrip,
   restoreTrackedTrip,
   startTracking,
   startTrackedTripListener,
