@@ -296,7 +296,8 @@ test('buildLiveVehiclesMapDocument osadza skrypt ruchu, warstwy trasy pojazdu i 
   assert.ok(html.includes('drawOrbitDirectionArrow'));
   assert.ok(html.includes('RAIL_SPECS'));
   assert.ok(html.includes('var MIN_VEHICLE_ZOOM = 13.4;'));
-  assert.ok(html.includes('minzoom: 13.4'));
+  // Wybrany pojazd ma znacznik także poniżej progu zoomu, więc warstwy nie mogą go odcinać przez minzoom.
+  assert.ok(html.includes('< MIN_VEHICLE_ZOOM && selectedId == null'));
 });
 
 test('dokladny kierunek z geometrii (bearingExact) aktualizuje stojacy pojazd i utrzymuje zakret', () => {
