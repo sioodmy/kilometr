@@ -1,6 +1,10 @@
 import type { Strings } from './pl';
 import { previewHome } from './home';
 
+function countLabel(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export const en: Strings = {
   meta: {
     title: 'Kilometr',
@@ -167,11 +171,27 @@ export const en: Strings = {
     emptyBody: 'Check your spelling or reset the filter to browse all supported cities.',
     emptyReset: 'Show all cities',
     liveLabel: 'Live locations',
-    liveAvailable: 'Available (vehicle GPS)',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Available (vehicle GPS)'
+        : vehicles === 0
+          ? 'Available (no vehicles right now)'
+          : `Available (${countLabel(vehicles, 'vehicle', 'vehicles')} live)`,
     liveUnavailable: 'No live GPS (static timetable)',
     newsLabel: 'Passenger alerts',
-    newsAvailable: 'Available',
+    newsValue: (alerts: number) =>
+      alerts > 0
+        ? `Available (${countLabel(alerts, 'alert', 'alerts')})`
+        : 'Available (no new alerts)',
     newsUnavailable: 'No municipal alerts feed',
+    stopHintsLabel: 'Stop hints',
+    stopHintsValue: (stops: number) =>
+      `Available (${countLabel(stops, 'stop', 'stops')})`,
+    stopHintsUnavailable: 'No stop hints',
+    stopsLabel: 'Stops in the database',
+    stopsValue: (stops: number) => countLabel(stops, 'stop', 'stops'),
+    stopsUnknown: 'No data',
+    statsUpdated: (date: string) => `Data as of ${date}`,
     operatorsLabel: 'Operators',
     railGatewayNote: (stations: string) =>
       `Intercity rail connections (PKP Intercity, POLREGIO) via: ${stations}.`,

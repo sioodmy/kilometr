@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStrings } from '../i18n';
+import './phone.css';
 
 const SCREENSHOTS = [
   './screenshots/mainscreen.png',
@@ -247,33 +248,33 @@ export function ShowcaseDemo() {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            <div className="showcase-phone" aria-label={activeSlide.imageAlt}>
-              <div className="showcase-phone-chassis">
-                <span className="showcase-hw-btn showcase-hw-vol-up" aria-hidden="true" />
-                <span className="showcase-hw-btn showcase-hw-vol-down" aria-hidden="true" />
-                <span className="showcase-hw-btn showcase-hw-power" aria-hidden="true" />
-                <div className="showcase-phone-bezel">
-                  <span className="showcase-earpiece" aria-hidden="true" />
-                  <div className="showcase-screen">
-                    <span className="showcase-punch" aria-hidden="true" />
-                    {slides.map((slide, index) => {
-                      const isCurrent = index === activeIndex;
-                      return (
-                        <img
-                          key={slide.id}
-                          src={SCREENSHOTS[index]}
-                          alt={isCurrent ? slide.imageAlt : ''}
-                          aria-hidden={!isCurrent}
-                          className={isCurrent ? 'showcase-shot is-active' : 'showcase-shot'}
-                          width={720}
-                          height={1600}
-                          loading={index === 0 ? 'eager' : 'lazy'}
-                          decoding="async"
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
+            <div className="phone showcase-phone" role="img" aria-label={activeSlide.imageAlt}>
+              <div className="iphone-hardware" aria-hidden="true">
+                <span className="iphone-button iphone-button-action" />
+                <span className="iphone-button iphone-button-volume-up" />
+                <span className="iphone-button iphone-button-volume-down" />
+                <span className="iphone-button iphone-button-power" />
+              </div>
+              <div className="phone-screen">
+                {slides.map((slide, index) => {
+                  const isCurrent = index === activeIndex;
+                  return (
+                    <img
+                      key={slide.id}
+                      src={SCREENSHOTS[index]}
+                      alt={isCurrent ? slide.imageAlt : ''}
+                      aria-hidden={!isCurrent}
+                      className={isCurrent ? 'showcase-shot is-active' : 'showcase-shot'}
+                      width={720}
+                      height={1600}
+                      loading={index === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                    />
+                  );
+                })}
+                <span className="iphone-island showcase-island" aria-hidden="true">
+                  <span className="iphone-camera" />
+                </span>
               </div>
             </div>
 

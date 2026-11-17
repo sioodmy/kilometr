@@ -1,6 +1,10 @@
 import type { Strings } from './pl';
 import { previewHome } from './home';
 
+function countLabel(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 export const de: Strings = {
   meta: {
     title: 'Kilometr',
@@ -167,11 +171,27 @@ export const de: Strings = {
     emptyBody: 'Prüfe die Schreibweise oder setze den Filter zurück, um alle Städte zu sehen.',
     emptyReset: 'Alle Städte zeigen',
     liveLabel: 'Live-Positionen',
-    liveAvailable: 'Verfügbar (Fahrzeug-GPS)',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Verfügbar (Fahrzeug-GPS)'
+        : vehicles === 0
+          ? 'Verfügbar (derzeit keine Fahrzeuge)'
+          : `Verfügbar (${countLabel(vehicles, 'Fahrzeug', 'Fahrzeuge')} live)`,
     liveUnavailable: 'Kein Live-GPS (statischer Fahrplan)',
     newsLabel: 'Fahrgastmeldungen',
-    newsAvailable: 'Verfügbar',
+    newsValue: (alerts: number) =>
+      alerts > 0
+        ? `Verfügbar (${countLabel(alerts, 'Meldung', 'Meldungen')})`
+        : 'Verfügbar (keine neuen Meldungen)',
     newsUnavailable: 'Keine städtischen Meldungen',
+    stopHintsLabel: 'Haltestellenhinweise',
+    stopHintsValue: (stops: number) =>
+      `Verfügbar (${countLabel(stops, 'Haltestelle', 'Haltestellen')})`,
+    stopHintsUnavailable: 'Keine Haltestellenhinweise',
+    stopsLabel: 'Haltestellen in der Datenbank',
+    stopsValue: (stops: number) => countLabel(stops, 'Haltestelle', 'Haltestellen'),
+    stopsUnknown: 'Keine Daten',
+    statsUpdated: (date: string) => `Datenstand: ${date}`,
     operatorsLabel: 'Verkehrsbetriebe',
     railGatewayNote: (stations: string) =>
       `Fernverkehr (PKP Intercity, POLREGIO) über den Bahnhof: ${stations}.`,

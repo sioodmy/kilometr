@@ -1,6 +1,18 @@
 import type { Strings } from './pl';
 import { previewHome } from './home';
 
+function countLabel(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  const form =
+    n === 1
+      ? one
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? few
+        : many;
+  return `${n} ${form}`;
+}
+
 export const uk: Strings = {
   meta: {
     title: 'Kilometr',
@@ -167,11 +179,27 @@ export const uk: Strings = {
     emptyBody: 'Перевір написання або скинь фільтр, щоб переглянути всі міста.',
     emptyReset: 'Показати всі міста',
     liveLabel: 'Позиції наживо',
-    liveAvailable: 'Доступні (GPS транспорту)',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Доступні (GPS транспорту)'
+        : vehicles === 0
+          ? 'Доступні (зараз немає транспорту)'
+          : `Доступні (${countLabel(vehicles, 'транспортний засіб', 'транспортні засоби', 'транспортних засобів')} наживо)`,
     liveUnavailable: 'Без GPS наживо (статичний розклад)',
     newsLabel: 'Повідомлення пасажирам',
-    newsAvailable: 'Доступні',
+    newsValue: (alerts: number) =>
+      alerts > 0
+        ? `Доступні (${countLabel(alerts, 'повідомлення', 'повідомлення', 'повідомлень')})`
+        : 'Доступні (немає нових повідомлень)',
     newsUnavailable: 'Немає міських повідомлень',
+    stopHintsLabel: 'Підказки до зупинок',
+    stopHintsValue: (stops: number) =>
+      `Доступні (${countLabel(stops, 'зупинка', 'зупинки', 'зупинок')})`,
+    stopHintsUnavailable: 'Немає підказок до зупинок',
+    stopsLabel: 'Зупинки в базі',
+    stopsValue: (stops: number) => countLabel(stops, 'зупинка', 'зупинки', 'зупинок'),
+    stopsUnknown: 'Немає даних',
+    statsUpdated: (date: string) => `Стан даних: ${date}`,
     operatorsLabel: 'Перевізники в місті',
     railGatewayNote: (stations: string) =>
       `Міжміські залізничні сполучення (PKP Intercity, POLREGIO) через станцію: ${stations}.`,
