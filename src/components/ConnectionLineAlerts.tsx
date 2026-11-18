@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   ReduceMotion,
   useAnimatedStyle,
@@ -15,6 +15,7 @@ import type { Connection, Leg } from '../types/models';
 import {
   fetchCityNews,
   getCachedNews,
+  isCachedNewsFresh,
   loadNewsCache,
   rememberNewsItemForDetail,
   type MpkNewsItem,
@@ -28,6 +29,12 @@ import {
 } from '../services/railTripAlerts';
 
 const MAX_ROWS = 4;
+
+/** Jak długo karta utrudnień na szczegółach wierzy cache'owi komunikatów. */
+const NEWS_FRESH_MS = 10 * 60_000;
+
+/** Tyle najpóźniej rusza praca odroczona po animacji otwarcia ekranu. */
+const OPEN_DEFER_MS = 600;
 
 type Status = 'loading' | 'error' | 'ready';
 
@@ -555,7 +562,26 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return set;
   }, [connection]);
 
+  // Zadanie po animacji otwarcia: InteractionManager potrafi nie domknąć
+  // się przy animacjach, więc timer krótszy od "nigdy" domyka zadanie sam.
+  const runAfterOpen = useCallback((fn: () => void) => {
+    let done = false;
+    const task = () => {
+      if (done) return;
+      done = true;
+      fn();
+    };
+    const handle = InteractionManager.runAfterInteractions(task);
+    const timer = setTimeout(task, OPEN_DEFER_MS);
+    return () => {
+      handle.cancel();
+      clearTimeout(timer);
+    };
+  }, []);
+
   // Uziemienie komunikatów w GTFS: linie -> route_id, przystanki -> stop_id.
+  // Po animacji: dziesiątki fuzzy dopasowań na wątku JS nie mogą blokować
+  // otwierania ekranu, wyrównane dodatkowo yieldem między alertami.
   useEffect(() => {
     const items = news.filter((n) => n.disruption);
     if (items.length === 0) {
@@ -563,21 +589,26 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       return;
     }
     let cancelled = false;
-    void (async () => {
-      const map = new Map<string, GroundedDisruption>();
-      for (const item of items) {
-        const g = await groundDisruption(item.disruption!);
-        if (cancelled) return;
-        map.set(item.id, g);
-      }
-      if (!cancelled) setGrounded(map);
-    })();
+    const cancelScheduled = runAfterOpen(() => {
+      void (async () => {
+        const map = new Map<string, GroundedDisruption>();
+        for (const item of items) {
+          const g = await groundDisruption(item.disruption!);
+          if (cancelled) return;
+          map.set(item.id, g);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        if (!cancelled) setGrounded(map);
+      })();
+    });
     return () => {
       cancelled = true;
+      cancelScheduled();
     };
-  }, [news]);
+  }, [news, runAfterOpen]);
 
-  // 1. Ładowanie komunikatów miejskich
+  // 1. Ładowanie komunikatów miejskich. Cache (pamięć/dysk) od razu, sieć
+  // dopiero po animacji: parse RSS/HTML na wątku JS nie konkuruje z otwarciem.
   useEffect(() => {
     if (lineKey === '') {
       setStatus('ready');
@@ -585,6 +616,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     }
 
     let cancelled = false;
+    let cancelScheduled: (() => void) | undefined;
 
     async function load() {
       const mem = getCachedNews();
@@ -600,22 +632,34 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         setStatus('ready');
       }
 
-      try {
-        const fresh = await fetchCityNews();
-        if (cancelled) return;
-        setNews(fresh);
-        setStatus('ready');
-      } catch {
-        if (cancelled) return;
-        if (!disk && !mem) setStatus('error');
-      }
+      // Świeży cache wystarcza: fetch przy każdym otwarciu wymieniał obiekty
+      // alertów i wymuszał przeliczenie grounding'u (fuzzy po wszystkich
+      // przystankach miasta) mimo że treść się nie zmieniła.
+      // Retry (attempt > 0) wymusza fetch, to prośba użytkownika.
+      if (attempt === 0 && isCachedNewsFresh(NEWS_FRESH_MS)) return;
+      if (cancelled) return;
+
+      cancelScheduled = runAfterOpen(() => {
+        void (async () => {
+          try {
+            const fresh = await fetchCityNews();
+            if (cancelled) return;
+            setNews(fresh);
+            setStatus('ready');
+          } catch {
+            if (cancelled) return;
+            if (!disk && !mem) setStatus('error');
+          }
+        })();
+      });
     }
 
-    load();
+    void load();
     return () => {
       cancelled = true;
+      cancelScheduled?.();
     };
-  }, [lineKey, attempt]);
+  }, [lineKey, attempt, runAfterOpen]);
 
   const trainAlertKey = useMemo(
     () =>

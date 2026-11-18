@@ -2448,7 +2448,21 @@ function activeCityId(): CityId {
 
 let cachedNewsItems: MpkNewsItem[] | null = null;
 let cachedNewsCity: string | null = null;
+// Kiedy dane w pamięci przyszły z sieci. 0 = tylko z dysku, wiek nieznany.
+let cachedNewsFetchedAt = 0;
 const newsCacheListeners = new Set<() => void>();
+
+/**
+ * Czy komunikaty aktywnego miasta w pamięci pochodzą z niedawnego pobrania.
+ * Karta utrudnień na szczegółach połączenia może wtedy pominąć fetch:
+ * każde otwarcie ekranu pobierało listę od nowa, wymieniało obiekty alertów
+ * i unieważniało cache grounding'u (sekundy fuzzy dopasowań na wątku JS).
+ */
+export function isCachedNewsFresh(maxAgeMs: number): boolean {
+  if (!cachedNewsItems || cachedNewsItems.length === 0) return false;
+  if (cachedNewsCity !== activeCityId()) return false;
+  return cachedNewsFetchedAt > 0 && Date.now() - cachedNewsFetchedAt <= maxAgeMs;
+}
 
 /** Powiadom karty (np. RailAlertsChip), gdy cache komunikatów się zmieni. */
 export function subscribeNewsCache(listener: () => void): () => void {
@@ -2667,6 +2681,7 @@ async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNe
   if (items.length === 0) return (await loadNewsCache(cityId)) ?? [];
   cachedNewsItems = items;
   cachedNewsCity = cityId;
+  cachedNewsFetchedAt = Date.now();
   void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
   notifyNewsCacheListeners();
   return items;
