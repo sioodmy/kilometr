@@ -7,3 +7,5 @@ Kilometr planuje podróże komunikacją miejską na telefonie. Po pobraniu rozk�
 • Kopia zapasowa ustawień i zapisanych miejsc do pliku.
 
 Bez reklam i konta. Dostępna po polsku, angielsku, niemiecku i ukraińsku.
+
+Rozkłady, komunikaty i pozycje pojazdów pochodzą od operatorów transportu publicznego, PKP Polskich Linii Kolejowych (https://portalpasazera.pl) i OpenStreetMap (https://www.openstreetmap.org/copyright). Pełna lista źródeł jest w aplikacji, w Ustawieniach w sekcji „Źródła danych”.
