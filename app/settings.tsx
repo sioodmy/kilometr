@@ -38,6 +38,7 @@ import {
   DatabaseBackup,
   ExternalLink,
   Footprints,
+  Landmark,
   MapPin,
   SlidersHorizontal,
   Navigation,
@@ -567,6 +568,13 @@ export default function SettingsScreen() {
                 title={s.settings.backupTitle}
                 detail={s.settings.backupSummary}
                 onPress={() => openSection('backup')}
+              />
+              <View style={styles.menuDivider} />
+              <SettingsLink
+                icon={Landmark}
+                title={s.dataSources.title}
+                detail={`${s.dataSources.menuDetail} · ${s.city.portal(cityId)}`}
+                onPress={() => router.push('/data-sources')}
               />
               <View style={styles.menuDivider} />
               <SettingsLink
