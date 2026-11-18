@@ -7,6 +7,9 @@ export type Format = 'h' | 'v';
 
 export const FPS = 30;
 export const DURATION = 27;
+
+/** Intro: znak i domena na pierwszej klatce (thumbnail), znika przed sceną 1. */
+export const INTRO = { fadeFrom: 0.95, end: 1.45 } as const;
 export const SIZE: Record<Format, { w: number; h: number }> = {
   h: { w: 1920, h: 1080 },
   v: { w: 1080, h: 1920 },
@@ -64,31 +67,15 @@ export interface Copy {
   at: number;
   to: number;
   title: string[];
-  sub: string;
 }
 
 export function copyFor(cities: number): Copy[] {
   return [
-    { at: 0.25, to: 4.0, title: ['Ze Sky Tower', 'pod Katedrę?'], sub: 'Kilometr sprawdza wszystkie kursy MPK Wrocław.' },
-    { at: 4.3, to: 8.2, title: ['Trasę liczy', 'Twój telefon.'], sub: 'Pełny rozkład jest zapisany w aplikacji.' },
-    {
-      at: 8.6,
-      to: 11.5,
-      title: ['Śledzenie kursu', 'w powiadomieniu.'],
-      sub: 'Na mapie widzisz tramwaj, a w powiadomieniu kolejny przystanek.',
-    },
-    {
-      at: 11.7,
-      to: 16.7,
-      title: ['To może teraz', 'do Warszawy?'],
-      sub: 'Pociągi dalekobieżne z opóźnieniami, udogodnieniami i komunikatami PKP.',
-    },
-    {
-      at: 17.1,
-      to: 20.7,
-      title: ['Komunikacja', `w ${cities} miastach.`],
-      sub: 'Do tego pociągi w całej Polsce, z opóźnieniami i komunikatami PKP.',
-    },
+    { at: 0.25, to: 4.0, title: ['Ze Sky Tower', 'pod Katedrę?'] },
+    { at: 4.3, to: 8.2, title: ['Trasę liczy', 'Twój telefon.'] },
+    { at: 8.6, to: 11.5, title: ['Śledzenie kursu', 'w powiadomieniu.'] },
+    { at: 11.7, to: 16.7, title: ['To może teraz', 'do Warszawy?'] },
+    { at: 17.1, to: 20.7, title: ['Komunikacja', `w ${cities} miastach.`] },
   ];
 }
 
@@ -96,6 +83,3 @@ export const PROMISE = [L.promise.ads, L.promise.free, L.promise.forever];
 export const CLOSING = L.footer.tagline;
 export const NOTIFY = pl.notification;
 export const SITE = 'kilometr.app';
-export const PLATFORMS = `${L.install.android} · ${L.install.ios}`;
-export const ATTRIBUTION = 'Mapa © OpenStreetMap, OpenFreeMap · Rozkład MPK: UM Wrocław';
-export const LIVE_NOTE = 'Pozycje pojazdów według rozkładu';

@@ -1,6 +1,10 @@
 # Cykliczna agregacja i topologiczna analiza komunikatów transportowych
 # (DeepSeek V4.1 Flash z kontekstem topologii GTFS) → Cloudflare R2.
 #
+# Model główny: OpenCode Console (deepseek-v4.1-flash) logowany przez OIDC
+# GitHub Actions. Gdy OpenCode odrzuci token albo skończą się kredyty,
+# skrypt zjeżdża na natywne DeepSeek API (sekret DEEPSEEK_API_KEY).
+#
 # Działa co 20 minut lub na żądanie (workflow_dispatch).
 # Pobiera feedy miejskie, dociąga topologię GTFS miasta z R2, filtruje spam,
 # wylicza strukturę objazdów/korytarzy (z zachowaniem cache w Actions)
@@ -15,14 +19,22 @@ on:
   workflow_dispatch:
     inputs:
       city:
-        description: 'Miasto (puste = wszystkie obsługiwane)'
+        description: 'Miasto (puste = lista domyślna z env)'
         required: false
         default: ''
         type: choice
         options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom]
 
+env:
+  # Miasta analizowane DeepSeekiem przy harmonogramie. Przełączasz tylko tutaj.
+  # Pełna lista: wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom
+  # Nadpisanie bez edycji pliku: Settings > Secrets and variables > Actions > Variables > DISRUPTION_CITIES.
+  DISRUPTION_DEFAULT_CITIES: wroclaw,gzm,krakow
+
 permissions:
   contents: read
+  # GitHub OIDC: bez tego kroku nie da się zalogować do OpenCode Console.
+  id-token: write
 
 concurrency:
   group: disruptions-sync
@@ -33,8 +45,7 @@ jobs:
     name: Aggregate & Analyze Disruptions
     runs-on: ubuntu-latest
     env:
-      # Domyślna lista miast dla harmonogramu. Zmień tutaj albo w
-      # Settings > Secrets and variables > Actions > Variables (DISRUPTION_CITIES).
+      # Puste = lista z DISRUPTION_DEFAULT_CITIES (góra pliku).
       DISRUPTION_CITIES: ${{ vars.DISRUPTION_CITIES }}
     steps:
       - name: Checkout repo
@@ -53,14 +64,43 @@ jobs:
           restore-keys: |
             disruptions-news-cache-
 
+      - name: Sign in to OpenCode (OIDC)
+        # Token OIDC GitHub -> OpenCode Console. Krok nie wywala runa: przy
+        # błędzie OPENCODE_API_KEY zostaje pusty, a skrypt użyje DeepSeek API.
+        env:
+          AUDIENCE: https://opencode.ai/console
+          OPENCODE_CLIENT_ID: sk_36a3c49c-648b-469f-b3d9-73ef59987a1e
+        run: |
+          if ! oidc=$(curl -sSf --oauth2-bearer "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value); then
+            echo "::warning::Brak tokenu OIDC GitHuba, analiza pójdzie przez DeepSeek API."
+            exit 0
+          fi
+          if ! token=$(curl -sSf https://opencode.ai/console/auth/oauth/token \
+            -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+            -d subject_token_type=urn:ietf:params:oauth:token-type:jwt \
+            -d client_id="$OPENCODE_CLIENT_ID" \
+            -d subject_token="$oidc" | jq -r .access_token); then
+            echo "::warning::OpenCode odrzucił token OIDC, analiza pójdzie przez DeepSeek API."
+            exit 0
+          fi
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "::warning::OpenCode nie zwrócił tokenu, analiza pójdzie przez DeepSeek API."
+            exit 0
+          fi
+          echo "::add-mask::$token"
+          echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
+
       - name: Przetwarzanie komunikatów (DeepSeek V4.1 Flash + GTFS)
         run: |
           CITY="${{ inputs.city }}"
           if [ -z "$CITY" ]; then
-            CITY="${DISRUPTION_CITIES:-wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom}"
+            CITY="${DISRUPTION_CITIES:-$DISRUPTION_DEFAULT_CITIES}"
           fi
           node cloudflare/scripts/process-news.mjs --city="$CITY" --limit=10
         env:
+          # OPENCODE_API_KEY ustawia krok logowania wyżej. DEEPSEEK_API_KEY jest
+          # fallbackiem: brak kredytów OpenCode nie zatrzymuje synchronizacji.
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           TIMETABLE_PUBLIC_URL: ${{ vars.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app' }}
 

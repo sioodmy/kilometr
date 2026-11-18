@@ -131,7 +131,7 @@ export interface LiveVehiclesMapDocumentOptions {
   userPos: [number, number] | null;
 }
 
-/** Poniżej tego zoomu pigułki pojazdów znikają, bo miasto ma ich wtedy zbyt dużo na płynny WebView. */
+/** Poniżej tego zoomu pigułki pojazdów znikają, bo miasto ma ich wtedy zbyt dużo na płynny WebView. Wybrany pojazd zostaje. */
 const MIN_VEHICLE_ZOOM = 13.4;
 
 const theme = () => ({
@@ -778,7 +778,8 @@ const runtime = [
   '  if (isMapMoving && !force) return false;',
   '  var src = map.getSource("live-vehicles");',
   '  if (!src) return false;',
-  '  if ((map.getZoom ? map.getZoom() : MIN_VEHICLE_ZOOM) < MIN_VEHICLE_ZOOM) {',
+  '  // Wybrany pojazd rysujemy zawsze, także przy oddalonym zoomie: inaczej trasa zostaje bez znacznika.',
+  '  if ((map.getZoom ? map.getZoom() : MIN_VEHICLE_ZOOM) < MIN_VEHICLE_ZOOM && selectedId == null) {',
   '    if (lastRenderedCount !== 0) {',
   '      lastRenderedCount = 0;',
   '      src.setData({ type: "FeatureCollection", features: [] });',
@@ -1077,7 +1078,6 @@ const runtime = [
   '      id: "live-veh-hit",',
   '      type: "circle",',
   '      source: "live-vehicles",',
-  '      minzoom: ' + MIN_VEHICLE_ZOOM + ',',
   '      paint: { "circle-radius": 22, "circle-opacity": 0, "circle-pitch-alignment": "viewport" },',
   '    });',
   '  }',
@@ -1086,7 +1086,6 @@ const runtime = [
   '      id: "live-veh-badges",',
   '      type: "symbol",',
   '      source: "live-vehicles",',
-  '      minzoom: ' + MIN_VEHICLE_ZOOM + ',',
   '      layout: {',
   '        "icon-image": ["get", "spriteId"],',
   '        "icon-allow-overlap": true,',

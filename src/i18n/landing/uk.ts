@@ -1,5 +1,16 @@
 import type { Strings } from './pl';
-import { previewHome } from './home';
+
+function countLabel(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  const form =
+    n === 1
+      ? one
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? few
+        : many;
+  return `${n} ${form}`;
+}
 
 export const uk: Strings = {
   meta: {
@@ -21,6 +32,7 @@ export const uk: Strings = {
     accent: 'планувальник подорожей',
     titleEnd: 'з відкритим кодом',
     body: 'Плануй маршрут, перевіряй відправлення та вирушай у місто. Громадський транспорт по всій Польщі, навіть офлайн. Без реклами та облікового запису.',
+    phoneAlt: 'Головний екран Kilometr зі збереженими місцями та найближчими відправленнями',
   },
   install: {
     android: 'Android',
@@ -92,22 +104,6 @@ export const uk: Strings = {
         'Хочеш допомогти покрити цю плату? Можеш підтримати проєкт. Кожен внесок допомагає нам розвивати Kilometr і фінансувати його публікацію.',
     },
   },
-  homePreview: {
-    screenLabel: 'Головний екран Kilometr на iPhone',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Куди їдемо?',
-    savedTitle: 'Збережені місця',
-    edit: 'Редагувати',
-    historyTitle: 'Останні місця',
-    home: 'Дім',
-    school: 'Університет',
-    gym: 'Спортзал',
-    stop: 'Зупинка',
-    searchLabel: 'Куди їдеш?',
-    startFrom: (title: string) => `з: ${title}`,
-    departIn: (n: number) => `за ${n} хв`,
-  },
   showcase: {
     prevLabel: 'Попередній екран',
     nextLabel: 'Наступний екран',
@@ -167,11 +163,21 @@ export const uk: Strings = {
     emptyBody: 'Перевір написання або скинь фільтр, щоб переглянути всі міста.',
     emptyReset: 'Показати всі міста',
     liveLabel: 'Позиції наживо',
-    liveAvailable: 'Доступні (GPS транспорту)',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Доступні (GPS транспорту)'
+        : vehicles === 0
+          ? 'Доступні (зараз немає транспорту)'
+          : `Доступні (${countLabel(vehicles, 'транспортний засіб', 'транспортні засоби', 'транспортних засобів')} наживо)`,
     liveUnavailable: 'Без GPS наживо (статичний розклад)',
     newsLabel: 'Повідомлення пасажирам',
     newsAvailable: 'Доступні',
     newsUnavailable: 'Немає міських повідомлень',
+    stopHintsLabel: 'Підказки до зупинок',
+    stopHintsValue: (stops: number) =>
+      `Доступні (${countLabel(stops, 'зупинка', 'зупинки', 'зупинок')})`,
+    stopHintsUnavailable: 'Немає підказок до зупинок',
+    statsUpdated: (date: string) => `Стан даних: ${date}`,
     operatorsLabel: 'Перевізники в місті',
     railGatewayNote: (stations: string) =>
       `Міжміські залізничні сполучення (PKP Intercity, POLREGIO) через станцію: ${stations}.`,

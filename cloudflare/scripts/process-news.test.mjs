@@ -257,6 +257,27 @@ test('resolveLlmPlan mapuje aliasy deepseekv4.1flash i deepseek-v4-pro', () => {
   assert.equal(pro.model, 'deepseek-v4-pro');
 });
 
+test('resolveLlmPlan preferuje OpenCode, a DeepSeek zostawia jako fallback', () => {
+  const plan = resolveLlmPlan(null, { OPENCODE_API_KEY: 'oc-key', DEEPSEEK_API_KEY: 'sk-ds' });
+  assert.equal(plan.provider, 'opencode');
+  assert.equal(plan.model, 'deepseek-v4.1-flash');
+  assert.equal(plan.endpoint, 'https://opencode.ai/inference/openai/v1/chat/completions');
+  assert.equal(plan.apiKey, 'oc-key');
+  assert.deepEqual(plan.fallback, {
+    provider: 'deepseek',
+    endpoint: 'https://api.deepseek.com/chat/completions',
+    model: 'deepseek-flash',
+    apiKey: 'sk-ds',
+  });
+});
+
+test('resolveLlmPlan mapuje tier pro na model OpenCode', () => {
+  const plan = resolveLlmPlan('deepseek-v4-pro', { OPENCODE_API_KEY: 'oc-key' });
+  assert.equal(plan.provider, 'opencode');
+  assert.equal(plan.model, 'deepseek-v4-pro');
+  assert.equal(plan.fallback, null);
+});
+
 test('enrichAlertWithGtfs wylicza omijane przystanki między from_stop i to_stop oraz współrzędne', () => {
   const gtfsIndex = {
     byLine: new Map([

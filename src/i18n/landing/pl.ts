@@ -1,4 +1,14 @@
-import { previewHome } from './home';
+function countLabel(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  const form =
+    n === 1
+      ? one
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? few
+        : many;
+  return `${n} ${form}`;
+}
 
 export const pl = {
   meta: {
@@ -20,6 +30,8 @@ export const pl = {
     accent: 'open-source',
     titleEnd: 'planer podróży',
     body: 'Zaplanuj trasę, sprawdź odjazdy i ruszaj w miasto. Komunikacja miejska w całej Polsce, także offline. Bez reklam i bez konta.',
+    phoneAlt:
+      'Ekran główny aplikacji Kilometr z zapisanymi miejscami i najbliższymi odjazdami',
   },
   install: {
     android: 'Android',
@@ -91,22 +103,6 @@ export const pl = {
         'Chcesz pomóc nam pokryć tę opłatę? Możesz wesprzeć projekt. Każda wpłata pomaga nam rozwijać Kilometr i finansować jego publikację.',
     },
   },
-  homePreview: {
-    screenLabel: 'Ekran główny Kilometr na iPhonie',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Gdzie jedziemy?',
-    savedTitle: 'Zapisane miejsca',
-    edit: 'Edytuj',
-    historyTitle: 'Ostatnie miejsca',
-    home: 'Dom',
-    school: 'Uczelnia',
-    gym: 'Siłownia',
-    stop: 'Przystanek',
-    searchLabel: 'Dokąd jedziesz?',
-    startFrom: (title: string) => `z: ${title}`,
-    departIn: (n: number) => `za ${n} min`,
-  },
   showcase: {
     prevLabel: 'Poprzedni ekran',
     nextLabel: 'Następny ekran',
@@ -166,11 +162,21 @@ export const pl = {
     emptyBody: 'Sprawdź pisownię albo wyczyść filtr, aby wybrać jedno z obsługiwanych miast.',
     emptyReset: 'Pokaż wszystkie miasta',
     liveLabel: 'Pozycje na żywo',
-    liveAvailable: 'Dostępne (GPS pojazdów)',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Dostępne (GPS pojazdów)'
+        : vehicles === 0
+          ? 'Dostępne (brak pojazdów teraz)'
+          : `Dostępne (${countLabel(vehicles, 'pojazd', 'pojazdy', 'pojazdów')} na żywo)`,
     liveUnavailable: 'Brak danych GPS (rozkład statyczny)',
     newsLabel: 'Komunikaty pasażerskie',
     newsAvailable: 'Dostępne',
     newsUnavailable: 'Brak komunikatów z miasta',
+    stopHintsLabel: 'Wskazówki przystankowe',
+    stopHintsValue: (stops: number) =>
+      `Dostępne (${countLabel(stops, 'przystanek', 'przystanki', 'przystanków')})`,
+    stopHintsUnavailable: 'Brak wskazówek dla przystanków',
+    statsUpdated: (date: string) => `Dane z ${date}`,
     operatorsLabel: 'Przewoźnicy w sieci',
     railGatewayNote: (stations: string) =>
       `Połączenia dalekobieżne (PKP Intercity, POLREGIO) przez stację: ${stations}.`,

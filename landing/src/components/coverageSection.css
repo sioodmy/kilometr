@@ -398,6 +398,13 @@
     color: var(--muted);
   }
 
+  .cov-stats-note {
+    margin: -8px 0 0;
+    font-size: 0.76rem;
+    color: var(--muted);
+    letter-spacing: -0.005em;
+  }
+
   .cov-ops {
     display: flex;
     flex-direction: column;
