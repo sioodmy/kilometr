@@ -22,6 +22,8 @@ const NEAREST_STATION_LON_DELTA = 0.0028; // ~190 m przy 52°N
 const LON_SCALE_SQ = 0.38; // cos(52°)^2
 
 const cache = new Map<string, StationAmenity[] | null>();
+// Kilka nóg tej samej stacji pyta naraz przy pierwszym otwarciu karty.
+const inflight = new Map<string, Promise<StationAmenity[] | null>>();
 
 /** Dekoduje maskę bitową udogodnień dworca na listę kluczy UI. */
 export function decodeStationAmenities(bits: number): StationAmenity[] {
@@ -43,6 +45,7 @@ function cacheSet(key: string, value: StationAmenity[] | null): void {
 /** Czyści cache po podmianie krajowej bazy kolejowej. */
 export function resetStationAmenitiesCache(): void {
   cache.clear();
+  inflight.clear();
 }
 
 function normalizeNationalStopId(stopId?: string): string | undefined {
@@ -70,7 +73,23 @@ export async function loadStationAmenities(
   if (!nationalStopId && !coordKey) return null;
 
   if (cache.has(cacheKey)) return cache.get(cacheKey) ?? null;
+  const pending = inflight.get(cacheKey);
+  if (pending) return pending;
 
+  const promise = loadStationAmenitiesUncached(cacheKey, nationalStopId, lat, lon);
+  inflight.set(cacheKey, promise);
+  void promise.finally(() => {
+    if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey);
+  });
+  return promise;
+}
+
+async function loadStationAmenitiesUncached(
+  cacheKey: string,
+  nationalStopId: string | undefined,
+  lat?: number,
+  lon?: number,
+): Promise<StationAmenity[] | null> {
   try {
     const db = await getNationalDb();
     let bits: number | null = null;

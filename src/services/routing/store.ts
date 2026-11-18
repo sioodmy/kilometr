@@ -117,17 +117,36 @@ export interface DayIndex {
   patterns: Map<string, Pattern>;
 }
 
+// Wartość bajtu dla każdego znaku hex. Slice+parseInt tworzył 4 podciągi na
+// każdą liczbę; przy wycinku 7 tys. kursów to miliony alokacji na JS thread.
+const HEX_DIGITS = new Int8Array(256);
+for (let i = 0; i < 10; i++) HEX_DIGITS[48 + i] = i;
+for (let i = 0; i < 6; i++) {
+  HEX_DIGITS[65 + i] = 10 + i;
+  HEX_DIGITS[97 + i] = 10 + i;
+}
+
 /** Odczytuje Int32 little-endian z SQLite hex(), bez natywnych buforów JNI. */
 function int32FromHex(hex: string): Int32Array {
-  const values = new Int32Array(hex.length / 8);
-  for (let i = 0; i < values.length; i++) {
+  const count = hex.length >>> 3;
+  const values = new Int32Array(count);
+  for (let i = 0; i < count; i++) {
     const offset = i * 8;
-    values[i] = Number.parseInt(hex.slice(offset, offset + 2), 16)
-      | (Number.parseInt(hex.slice(offset + 2, offset + 4), 16) << 8)
-      | (Number.parseInt(hex.slice(offset + 4, offset + 6), 16) << 16)
-      | (Number.parseInt(hex.slice(offset + 6, offset + 8), 16) << 24);
+    const b0 = (HEX_DIGITS[hex.charCodeAt(offset)] << 4) | HEX_DIGITS[hex.charCodeAt(offset + 1)];
+    const b1 =
+      (HEX_DIGITS[hex.charCodeAt(offset + 2)] << 4) | HEX_DIGITS[hex.charCodeAt(offset + 3)];
+    const b2 =
+      (HEX_DIGITS[hex.charCodeAt(offset + 4)] << 4) | HEX_DIGITS[hex.charCodeAt(offset + 5)];
+    const b3 =
+      (HEX_DIGITS[hex.charCodeAt(offset + 6)] << 4) | HEX_DIGITS[hex.charCodeAt(offset + 7)];
+    values[i] = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
   }
   return values;
+}
+
+/** Oddaje kolejkę JS między porcjami ciężkiej pracy (tap/animacja nie czekają). */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
@@ -600,7 +619,10 @@ export class LocalGtfsStore {
       const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
       if (this.generation !== genAtStart) return emptyIdx;
       const missing: string[] = [];
-      for (const r of rows) {
+      // Porcje po 128 kursów: dekodowanie hex + budowa obiektów na 7 tys.
+      // kursów blokowało JS thread na kilka sekund i zamrażało dotyk.
+      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+        const r = rows[rowIdx];
         const t = {
           trip_id: r.trip_id,
           route_id: r.route_id,
@@ -637,6 +659,7 @@ export class LocalGtfsStore {
           // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
           missing.push(r.trip_id);
         }
+        if ((rowIdx & 127) === 127) await yieldToEventLoop();
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
@@ -708,7 +731,7 @@ export class LocalGtfsStore {
       [...tripsByRouteId.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
     );
 
-    const idx = this.buildPatterns(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
+    const idx = await this.buildPatternsAsync(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
     this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
     this.rememberSlice(cacheKey, idx, genAtStart);
     if (genAtStart === this.generation) this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
@@ -887,16 +910,42 @@ export class LocalGtfsStore {
     }
   }
 
-  /** Buduje patterns/stopRoutes z mapy kursów (wspólne dla indeksu i wycinków). */
+  /**
+   * Buduje patterns/stopRoutes z mapy kursów (wspólne dla indeksu i wycinków).
+   * Wersja sync dla testów; buildSlice używa kroków z yieldami, bo na 7 tys.
+   * kursów sama pętla blokowała JS thread na kilka sekund.
+   */
   private buildPatterns(tripsByRouteId: Map<string, GtfsTrip[]>): DayIndex {
+    const steps = this.buildPatternSteps(tripsByRouteId);
+    let next = steps.next();
+    while (!next.done) next = steps.next();
+    return next.value;
+  }
+
+  /** Wersja przepuszczająca kolejkę JS między porcjami (dla buildSlice). */
+  private async buildPatternsAsync(tripsByRouteId: Map<string, GtfsTrip[]>): Promise<DayIndex> {
+    const steps = this.buildPatternSteps(tripsByRouteId);
+    let next = steps.next();
+    while (!next.done) {
+      await yieldToEventLoop();
+      next = steps.next();
+    }
+    return next.value;
+  }
+
+  private *buildPatternSteps(
+    tripsByRouteId: Map<string, GtfsTrip[]>,
+  ): Generator<void, DayIndex, void> {
     const stopRoutes = new Map<string, Set<string>>();
     const routeStops = new Map<string, string[]>();
     const routeTrips = new Map<string, GtfsTrip[]>();
     const patterns = new Map<string, Pattern>();
+    let routeIdx = 0;
 
     for (const [routeId, trips] of tripsByRouteId.entries()) {
       const patternGroups = new Map<string, GtfsTrip[]>();
-      for (const trip of trips) {
+      for (let tripIdx = 0; tripIdx < trips.length; tripIdx++) {
+        const trip = trips[tripIdx];
         const times = this.stopTimes.get(trip.trip_id);
         if (!times || times.length === 0) continue;
         const key = times.map((t) => t.stop_id).join(',');
@@ -906,6 +955,7 @@ export class LocalGtfsStore {
           patternGroups.set(key, group);
         }
         group.push(trip);
+        if ((tripIdx & 511) === 511) yield;
       }
 
       let patIdx = 0;
@@ -952,6 +1002,7 @@ export class LocalGtfsStore {
           routesSet.add(patternId);
         }
       }
+      if ((routeIdx++ & 15) === 15) yield;
     }
 
     return { stopRoutes, routeStops, routeTrips, patterns };

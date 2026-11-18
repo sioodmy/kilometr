@@ -52,6 +52,16 @@ interface StopIndex {
 // Indeks budowany raz na generację sklepu (reset() przy imporcie czyści dane).
 const indexCache = new WeakMap<LocalGtfsStore, { generation: number; stopCount: number; index: StopIndex }>();
 
+// Grounding tego samego alertu liczymy raz: karta połączenia i ekran
+// aktualności pytały o te same komunikaty przy każdym wejściu, a fuzzy
+// dopasowanie dziesiątek nazw przystanków blokowało JS na setki ms.
+// Klucz to tożsamość obiektu alertu (WeakMap), nie id: różne komunikaty
+// potrafią mieć to samo id, a wtedy cache oddawał wynik innego alertu.
+const groundCache = new WeakMap<
+  DisruptionAlert,
+  { generation: number; stopCount: number; value: GroundedDisruption }
+>();
+
 function buildStopIndex(store: LocalGtfsStore): StopIndex {
   const byName = new Map<string, string[]>();
   const names: string[] = [];
@@ -138,6 +148,15 @@ export function resolveGroundedStopSync(
  * (baza w imporcie) - alerty są dodatkiem, nie mogą blokować trasy.
  */
 export async function groundDisruption(alert: DisruptionAlert): Promise<GroundedDisruption> {
+  const cached = groundCache.get(alert);
+  if (
+    cached &&
+    cached.generation === gtfsStore.currentGeneration &&
+    cached.stopCount === gtfsStore.stops.size
+  ) {
+    return cached.value;
+  }
+
   try {
     await gtfsStore.load();
   } catch {
@@ -189,10 +208,16 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
     if (grounded) stops.push(grounded);
   }
 
-  return {
+  const value: GroundedDisruption = {
     routeIds: [...new Set(lines.flatMap((l) => l.route_ids))],
     stopIds: [...new Set(stops.map((s) => s.stop_id))],
     lines,
     stops,
   };
+  groundCache.set(alert, {
+    generation: gtfsStore.currentGeneration,
+    stopCount: gtfsStore.stops.size,
+    value,
+  });
+  return value;
 }

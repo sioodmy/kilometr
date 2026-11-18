@@ -2714,39 +2714,69 @@ export async function fetchDisruptionsFromWorker(
   }
 }
 
-/** Aktualności aktywnego miasta. Najpierw R2 disruptions.json, potem fallback. */
+/** Ile czekamy na bogate alerty z R2, zanim pokażemy feedy miasta. */
+const RICH_NEWS_WAIT_MS = 1500;
+
+/** Bezpośrednie źródła miasta: RSS/JSON/HTML scrapery. null = brak feedu. */
+function fetchCityFeed(cityId: string, signal?: AbortSignal): Promise<MpkNewsItem[] | null> {
+  if (cityId === 'krakow') return fetchZtpNews(signal, cityId);
+  if (cityId === 'gzm') return fetchGzmNews(signal, cityId);
+  if (cityId === 'warszawa') return fetchWtpNews(signal, cityId);
+  if (cityId === 'poznan') return fetchPoznanNews(signal, cityId);
+  if (cityId === 'trojmiasto') return fetchGdanskNews(signal, cityId);
+  if (cityId === 'lodz') return fetchLodzNews(signal, cityId);
+  if (cityId === 'szczecin') return fetchSzczecinNews(signal, cityId);
+  if (cityId === 'kielce') return fetchKielceNews(signal, cityId);
+  if (cityId === 'olsztyn') return fetchOlsztynNews(signal, cityId);
+  if (cityId === 'bialystok') return fetchBialystokNews(signal, cityId);
+  if (cityId === 'opole') return fetchOpoleNews(signal, cityId);
+  if (cityId === 'rzeszow') return fetchRzeszowNews(signal, cityId);
+  if (cityId === 'lublin') return fetchLublinNews(signal, cityId);
+  if (cityId === 'radom') return fetchRadomNews(signal, cityId);
+  if (cityId === 'wroclaw') return fetchMpkNews(signal);
+  // Miasta dodane w 2026 nie mają własnych źródeł komunikatów. null zamiast
+  // pustej listy, żeby fetchCityNews wiedział, że musi poczekać na R2.
+  // Scraper Wrocławia w Bydgoszczy dawał zmyślone dane.
+  return Promise.resolve(null);
+}
+
+/**
+ * Aktualności aktywnego miasta. Bogate alerty z R2 i feed miasta lecą
+ * równolegle: worker miał 12 s timeoutu, więc każde otwarcie aktualności bez
+ * cache czekało na niego, zanim w ogóle ruszył scraper. Po 1,5 s bierzemy
+ * feed miasta; jeśli R2 zdąży z treścią, wygrywa.
+ */
 export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const city = getCity(activeCityId());
+  let cityFailed = false;
+  const cityPromise = fetchCityFeed(city.id, signal).catch(() => {
+    cityFailed = true;
+    return null;
+  });
 
-  // 1. Sprawdź zcentralizowane alerty z Cloudflare R2 (wygenerowane przez potok LLM)
+  const richPromise = fetchDisruptionsFromWorker(city.id, signal).catch(() => null);
+  let richTimer: ReturnType<typeof setTimeout> | undefined;
+  const richDeadline = new Promise<null>((resolve) => {
+    richTimer = setTimeout(() => resolve(null), RICH_NEWS_WAIT_MS);
+  });
   try {
-    const richItems = await fetchDisruptionsFromWorker(city.id, signal);
+    const richItems = await Promise.race([richPromise, richDeadline]);
     if (richItems && richItems.length > 0) {
       return rememberNews(richItems, city.id);
     }
-  } catch {
-    // Płynny fallback do dotychczasowych scraperów miejskich
+  } finally {
+    if (richTimer) clearTimeout(richTimer);
   }
 
-  // 2. Bezpośredni fallback do feedów poszczególnych miast
-  if (city.id === 'krakow') return fetchZtpNews(signal, city.id);
-  if (city.id === 'gzm') return fetchGzmNews(signal, city.id);
-  if (city.id === 'warszawa') return fetchWtpNews(signal, city.id);
-  if (city.id === 'poznan') return fetchPoznanNews(signal, city.id);
-  if (city.id === 'trojmiasto') return fetchGdanskNews(signal, city.id);
-  if (city.id === 'lodz') return fetchLodzNews(signal, city.id);
-  if (city.id === 'szczecin') return fetchSzczecinNews(signal, city.id);
-  if (city.id === 'kielce') return fetchKielceNews(signal, city.id);
-  if (city.id === 'olsztyn') return fetchOlsztynNews(signal, city.id);
-  if (city.id === 'bialystok') return fetchBialystokNews(signal, city.id);
-  if (city.id === 'opole') return fetchOpoleNews(signal, city.id);
-  if (city.id === 'rzeszow') return fetchRzeszowNews(signal, city.id);
-  if (city.id === 'lublin') return fetchLublinNews(signal, city.id);
-  if (city.id === 'radom') return fetchRadomNews(signal, city.id);
-  if (city.id === 'wroclaw') return fetchMpkNews(signal);
-  // Miasta dodane w 2026 nie mają własnych źródeł komunikatów. Pusta lista
-  // zamiast scrapera Wrocławia: cudze komunikaty w Bydgoszczy to zmyślone
-  // dane, a UI i tak ma stan „brak komunikatów”.
+  const cityItems = await cityPromise;
+  if (cityItems !== null) return cityItems;
+
+  // Miasto bez własnego feedu (albo feed padł): R2 jest jedynym źródłem.
+  const richItems = await richPromise;
+  if (richItems && richItems.length > 0) {
+    return rememberNews(richItems, city.id);
+  }
+  if (cityFailed) throw new Error('news');
   return [];
 }
 

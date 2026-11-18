@@ -35,9 +35,10 @@ function decodeAmenities(bits: number): RailAmenity[] {
 }
 
 const cache = new Map<string, RailAmenities | null>();
+const inflight = new Map<string, Promise<RailAmenities | null>>();
 
 function cacheKey(leg: Leg): string {
-  return `${leg.railAgency ?? ''}|${leg.trainNumber ?? leg.line ?? ''}|${leg.trainName ?? ''}`;
+  return `${leg.tripId ?? ''}|${leg.railAgency ?? ''}|${leg.trainNumber ?? leg.line ?? ''}|${leg.trainName ?? ''}`;
 }
 
 /**
@@ -50,7 +51,25 @@ export async function loadRailAmenities(leg: Leg): Promise<RailAmenities | null>
   const key = cacheKey(leg);
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
+  const pending = inflight.get(key);
+  if (pending) return pending;
 
+  const promise = loadRailAmenitiesUncached(leg).then((result) => {
+    cache.set(key, result);
+    if (cache.size > 500) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+    return result;
+  });
+  inflight.set(key, promise);
+  void promise.finally(() => {
+    if (inflight.get(key) === promise) inflight.delete(key);
+  });
+  return promise;
+}
+
+async function loadRailAmenitiesUncached(leg: Leg): Promise<RailAmenities | null> {
   let result: RailAmenities | null = null;
   try {
     const db = await getNationalDb();
@@ -95,15 +114,11 @@ export async function loadRailAmenities(leg: Leg): Promise<RailAmenities | null>
     result = null;
   }
 
-  cache.set(key, result);
-  if (cache.size > 500) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
-  }
   return result;
 }
 
 /** Czyści cache po podmianie bazy kolejowej. */
 export function resetRailAmenitiesCache(): void {
   cache.clear();
+  inflight.clear();
 }

@@ -151,7 +151,22 @@ export default function RootLayout() {
       void cleanupExpiredTickets().catch(() => {});
       startTicketCompensationMonitor();
     }, 0);
-    return () => clearTimeout(timer);
+    // Baza kolejowa (61 MB) otwierała się leniwie przy pierwszym pociągu.
+    // Robimy to w tle po starcie, żeby ikony udogodnień nie czekały na plik.
+    const nationalTimer = setTimeout(() => {
+      void import('../src/services/gtfsDatabase')
+        .then(async (db) => {
+          if (!(await db.hasNationalDb())) return;
+          const handle = await db.getNationalDb();
+          await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
+          await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(nationalTimer);
+    };
   }, [ready]);
 
   useEffect(() => {
