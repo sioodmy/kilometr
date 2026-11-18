@@ -659,7 +659,11 @@ export class LocalGtfsStore {
           // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
           missing.push(r.trip_id);
         }
-        if ((rowIdx & 127) === 127) await yieldToEventLoop();
+        if ((rowIdx & 127) === 127) {
+          await yieldToEventLoop();
+          // Reset/import mógł wyczyścić mapy w trakcie porcji.
+          if (this.generation !== genAtStart) return emptyIdx;
+        }
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
@@ -732,6 +736,7 @@ export class LocalGtfsStore {
     );
 
     const idx = await this.buildPatternsAsync(mergePolinkaTrips(sortedByRoute, polinka.byRouteId));
+    if (this.generation !== genAtStart) return emptyIdx;
     this.registerSliceTrips(cacheKey, [...tripIds, ...polinka.tripIds]);
     this.rememberSlice(cacheKey, idx, genAtStart);
     if (genAtStart === this.generation) this.sliceHorizons.set(idx, { from: bFrom, to: bTo });
