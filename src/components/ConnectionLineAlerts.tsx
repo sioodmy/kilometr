@@ -15,6 +15,7 @@ import type { Connection, Leg } from '../types/models';
 import {
   fetchCityNews,
   getCachedNews,
+  isCachedNewsFresh,
   loadNewsCache,
   rememberNewsItemForDetail,
   type MpkNewsItem,
@@ -28,6 +29,9 @@ import {
 } from '../services/railTripAlerts';
 
 const MAX_ROWS = 4;
+
+/** Jak długo karta utrudnień na szczegółach wierzy cache'owi komunikatów. */
+const NEWS_FRESH_MS = 10 * 60_000;
 
 type Status = 'loading' | 'error' | 'ready';
 
@@ -569,6 +573,9 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         const g = await groundDisruption(item.disruption!);
         if (cancelled) return;
         map.set(item.id, g);
+        // Oddaj wątek między alertami: pojedynczy grounding to dziesiątki
+        // synchronicznych fuzzy dopasowań, które bez przerwy blokują JS.
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
       if (!cancelled) setGrounded(map);
     })();
@@ -599,6 +606,12 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         setNews(disk);
         setStatus('ready');
       }
+
+      // Świeży cache wystarcza: fetch przy każdym otwarciu wymieniał obiekty
+      // alertów i wymuszał przeliczenie grounding'u (fuzzy po wszystkich
+      // przystankach miasta) mimo że treść się nie zmieniła.
+      // Retry (attempt > 0) wymusza fetch, to prośba użytkownika.
+      if (attempt === 0 && isCachedNewsFresh(NEWS_FRESH_MS)) return;
 
       try {
         const fresh = await fetchCityNews();
