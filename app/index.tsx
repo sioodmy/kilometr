@@ -29,6 +29,7 @@ import {
 import { gtfsStore } from '../src/services/routing/store';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
+import { isIntercityRouteQuery } from '../src/services/api';
 import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import {
@@ -934,6 +935,18 @@ export default function HomeScreen() {
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
             boardedTrip: boardedOrigin ?? undefined,
+            // Podgląd „za X min" potrzebuje tylko najbliższego odjazdu.
+            // Godzina mieści się w wycinku live i nie budzi 3-godzinnej sieci.
+            searchAheadSec: isIntercityRouteQuery({
+              fromLat: currentCoords.lat,
+              fromLon: currentCoords.lon,
+              toLat: d.lat,
+              toLon: d.lon,
+              toId: d.id,
+              trainsEnabled: s.trainsEnabled,
+            })
+              ? undefined
+              : 3600,
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -997,6 +1010,16 @@ export default function HomeScreen() {
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
             boardedTrip: boardedOrigin ?? undefined,
+            searchAheadSec: isIntercityRouteQuery({
+              fromLat: currentCoords.lat,
+              fromLon: currentCoords.lon,
+              toLat: d.lat,
+              toLon: d.lon,
+              toId: d.id,
+              trainsEnabled: s.trainsEnabled,
+            })
+              ? undefined
+              : 3600,
           });
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;

@@ -510,6 +510,10 @@ export default function RoutesScreen() {
       maxWalkM: cfg.maxWalkM,
       // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
       walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
+      // Miasto: godzina w przód wystarcza na pierwsze odjazdy i mieści się
+      // w wycinku, który liveTracker i tak buduje na starcie. Kolej
+      // międzymiastowa ma własny horyzont w planIntercity.
+      searchAheadSec: intercityQuery ? undefined : 3600,
     };
   };
 
@@ -812,7 +816,14 @@ export default function RoutesScreen() {
         return;
       }
       const q = queryAt(depSec);
-      const c = await RoutingService.getConnections(q);
+      let c = await RoutingService.getConnections(q);
+      // Godzinne okno wystarcza na pierwsze odjazdy i mieści się w wycinku
+      // live. Gdy naprawdę nic nie ma w godzinę, dociągamy szerszy horyzont,
+      // żeby nie pokazać fałszywego „brak połączeń".
+      if (c.length === 0 && q.searchAheadSec === 3600) {
+        c = await RoutingService.getConnections({ ...q, searchAheadSec: undefined });
+        if (seq !== fetchSeq.current) return;
+      }
       if (seq !== fetchSeq.current) return;
       if (noTimetable()) {
         setItems([]);

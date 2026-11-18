@@ -89,8 +89,12 @@ const BACKGROUND_POLL_MS = 20000;
  * polli z rzędu zamiast gasić live po pierwszym potknięciu.
  */
 const GIVE_UP_MS = 150000;
-/** Ile sekund w tył i przód wokół „teraz" bierzemy kursy z rozkładu. */
-const WINDOW_SEC = MAX_DELAY_SEC + 3600;
+/**
+ * Ile sekund w tył bierzemy kursy z rozkładu. Musi być równe oknu planera
+ * (MAX_DELAY_SEC), żeby live i pierwsze wyszukiwanie dzieliły JEDEN wycinek
+ * zamiast budować dwa równolegle na starcie.
+ */
+const WINDOW_SEC = MAX_DELAY_SEC;
 const MAX_CORRIDOR_DIST_M = 350;
 const DELAY_CAP_SEC = MAX_DELAY_SEC;
 /** Ostatni udany snapshot na dysku, żeby restart apki nie startował od zera. */
