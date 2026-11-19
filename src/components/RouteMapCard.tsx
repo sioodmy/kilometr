@@ -23,7 +23,7 @@ import {
 import { acquireMapServerForRoute } from '../services/mapServerLease';
 import { buildMapRoute, resolveGeometry, type Coord } from '../services/routeGeometry';
 import { formatWalkDistance } from '../services/settings';
-import { scheme, shape, spacing, type } from '../theme/tokens';
+import { elev, scheme, shape, spacing, type } from '../theme/tokens';
 import { RouteMap, type RouteMapHandle } from './RouteMap';
 
 /**
@@ -115,7 +115,6 @@ export function RouteMapCard({
       measuredRef.current = true;
       if (y < windowHeight + 160 && y + h > -160) {
         InteractionManager.runAfterInteractions(mountMap);
-        // Fallback: zadania InteractionManagera potrafią nie domknąć się przy animacjach.
         setTimeout(mountMap, 600);
       }
     });
@@ -205,6 +204,9 @@ export function RouteMapCard({
     <View ref={cardRef} collapsable={false} onLayout={measureCard} style={styles.card}>
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
+          <View style={styles.headerIconBadge}>
+            <MapPin size={16} color={scheme.onSecondaryContainer} />
+          </View>
           <Text style={styles.title}>{s.map.title}</Text>
           {activeStage && (
             <View style={styles.stageCountChip}>
@@ -222,12 +224,12 @@ export function RouteMapCard({
           onFocus={() => setFocused('open')}
           onBlur={() => setFocused(null)}
           style={({ pressed }) => [
-            styles.button,
+            styles.expandButton,
             pressed && styles.pressed,
             focused === 'open' && styles.focused,
           ]}
         >
-          <Maximize2 size={21} color={scheme.onSurface} />
+          <Maximize2 size={18} color={scheme.onSurface} />
         </Pressable>
       </View>
 
@@ -321,171 +323,171 @@ export function RouteMapCard({
         </ScrollView>
       )}
 
-      <View style={styles.map}>
-        {!readyToMountMap ? (
-          <Pressable
-            onPress={mountMap}
-            accessibilityRole="button"
-            accessibilityLabel={s.compass.mapTapToLoad}
-            onFocus={() => setFocused('map')}
-            onBlur={() => setFocused(null)}
-            style={({ pressed }) => [
-              styles.status,
-              styles.placeholder,
-              pressed && styles.pressed,
-              focused === 'map' && styles.focused,
-            ]}
-          >
-            <MapPin size={22} color={scheme.onSurfaceVariant} />
-            <Text style={styles.statusText}>{s.compass.mapTapToLoad}</Text>
-          </Pressable>
-        ) : (
-          <>
-            {offlineBase !== undefined && (
-              <Pressable
-                onPress={openFullscreen}
-                accessibilityRole="button"
-                accessibilityLabel={s.compass.openMap}
-                style={StyleSheet.absoluteFill}
-              >
-                <View
+      <View style={styles.mapFrame}>
+        <View style={styles.map}>
+          {!readyToMountMap ? (
+            <Pressable
+              onPress={mountMap}
+              accessibilityRole="button"
+              accessibilityLabel={s.compass.mapTapToLoad}
+              onFocus={() => setFocused('map')}
+              onBlur={() => setFocused(null)}
+              style={({ pressed }) => [
+                styles.status,
+                styles.placeholder,
+                pressed && styles.pressed,
+                focused === 'map' && styles.focused,
+              ]}
+            >
+              <MapPin size={22} color={scheme.onSurfaceVariant} />
+              <Text style={styles.statusText}>{s.compass.mapTapToLoad}</Text>
+            </Pressable>
+          ) : (
+            <>
+              {offlineBase !== undefined && (
+                <Pressable
+                  onPress={openFullscreen}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.compass.openMap}
                   style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
                 >
-                  <RouteMap
-                    key={attempt}
-                    ref={mapRef}
-                    route={route}
-                    selectedLegId={activeStage?.legId ?? null}
-                    focusCoords={activeStage?.focusCoords ?? null}
-                    stopRange={activeStage?.stopRange ?? null}
-                    focusMaxZoom={activeStage?.focusMaxZoom ?? null}
-                    offlineBase={offlineBase}
-                    paddingTop={24}
-                    paddingBottom={24}
-                    paddingLeft={24}
-                    paddingRight={24}
-                    fitOnGeometry
-                    maxZoom={16}
-                    onReady={() => {
-                      geometry.current.forEach((coords, legId) =>
-                        mapRef.current?.setGeometry(legId, coords),
-                      );
-                      if (!activeStage) mapRef.current?.fit();
-                    }}
-                    onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
-                    onError={() => setStatus('error')}
-                  />
-                </View>
-              </Pressable>
-            )}
-            {status !== 'ready' && (
-              <View style={styles.status} accessibilityLiveRegion="polite">
-                {status === 'loading' && <ActivityIndicator color={scheme.primary} />}
-                <Text style={styles.statusText}>
-                  {status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}
-                </Text>
-                {status === 'error' && (
-                  <Pressable
-                    onPress={() => setAttempt((value) => value + 1)}
-                    accessibilityRole="button"
-                    onFocus={() => setFocused('retry')}
-                    onBlur={() => setFocused(null)}
-                    style={({ pressed }) => [
-                      styles.button,
-                      styles.retry,
-                      pressed && styles.pressed,
-                      focused === 'retry' && styles.focused,
-                    ]}
+                  <View
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
                   >
-                    <Text style={styles.statusText}>{s.compass.mapRetry}</Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
-          </>
+                    <RouteMap
+                      key={attempt}
+                      ref={mapRef}
+                      route={route}
+                      selectedLegId={activeStage?.legId ?? null}
+                      focusCoords={activeStage?.focusCoords ?? null}
+                      stopRange={activeStage?.stopRange ?? null}
+                      focusMaxZoom={activeStage?.focusMaxZoom ?? null}
+                      offlineBase={offlineBase}
+                      paddingTop={24}
+                      paddingBottom={24}
+                      paddingLeft={24}
+                      paddingRight={24}
+                      fitOnGeometry
+                      maxZoom={16}
+                      onReady={() => {
+                        geometry.current.forEach((coords, legId) =>
+                          mapRef.current?.setGeometry(legId, coords),
+                        );
+                        if (!activeStage) mapRef.current?.fit();
+                      }}
+                      onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
+                      onError={() => setStatus('error')}
+                    />
+                  </View>
+                </Pressable>
+              )}
+              {status !== 'ready' && (
+                <View style={styles.status} accessibilityLiveRegion="polite">
+                  {status === 'loading' && <ActivityIndicator color={scheme.primary} />}
+                  <Text style={styles.statusText}>
+                    {status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}
+                  </Text>
+                  {status === 'error' && (
+                    <Pressable
+                      onPress={() => setAttempt((value) => value + 1)}
+                      accessibilityRole="button"
+                      onFocus={() => setFocused('retry')}
+                      onBlur={() => setFocused(null)}
+                      style={({ pressed }) => [
+                        styles.button,
+                        styles.retry,
+                        pressed && styles.pressed,
+                        focused === 'retry' && styles.focused,
+                      ]}
+                    >
+                      <Text style={styles.statusText}>{s.compass.mapRetry}</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+
+        {activeStage && (
+          <View style={styles.stageFooter}>
+            <Pressable
+              onPress={() => handleStepStage(-1)}
+              accessibilityRole="button"
+              accessibilityLabel={s.map.backA11y}
+              hitSlop={6}
+              onFocus={() => setFocused('prev-stage')}
+              onBlur={() => setFocused(null)}
+              style={({ pressed }) => [
+                styles.stepBtn,
+                pressed && styles.pressed,
+                focused === 'prev-stage' && styles.focused,
+              ]}
+            >
+              <ChevronLeft size={18} color={scheme.onSurface} />
+            </Pressable>
+
+            <Pressable
+              onPress={openFullscreen}
+              accessibilityRole="button"
+              accessibilityLabel={s.compass.openMap}
+              style={styles.stageFooterBody}
+            >
+              <Text style={styles.stageFooterStops} numberOfLines={1}>
+                {activeStage.endpointRole === 'start'
+                  ? `${s.map.board}: ${activeStage.fromStop}`
+                  : activeStage.endpointRole === 'end'
+                    ? `${s.map.alight}: ${activeStage.toStop}`
+                    : `${activeStage.fromStop} \u2192 ${activeStage.toStop}`}
+              </Text>
+              <Text style={styles.stageFooterMeta} numberOfLines={1}>
+                {activeStage.endpointRole
+                  ? activeStage.departAt
+                  : `${activeStage.departAt} \u2192 ${activeStage.arriveAt}`}
+                {activeStage.stopsCount > 0
+                  ? ` \u2022 ${s.map.legStops(activeStage.stopsCount)}`
+                  : ''}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => handleStepStage(1)}
+              accessibilityRole="button"
+              accessibilityLabel={s.map.stagesTitle}
+              hitSlop={6}
+              onFocus={() => setFocused('next-stage')}
+              onBlur={() => setFocused(null)}
+              style={({ pressed }) => [
+                styles.stepBtn,
+                pressed && styles.pressed,
+                focused === 'next-stage' && styles.focused,
+              ]}
+            >
+              <ChevronRight size={18} color={scheme.onSurface} />
+            </Pressable>
+          </View>
         )}
       </View>
-
-      {activeStage && (
-        <View style={styles.stageFooter}>
-          <Pressable
-            onPress={() => handleStepStage(-1)}
-            accessibilityRole="button"
-            accessibilityLabel={s.map.backA11y}
-            hitSlop={6}
-            onFocus={() => setFocused('prev-stage')}
-            onBlur={() => setFocused(null)}
-            style={({ pressed }) => [
-              styles.stepBtn,
-              pressed && styles.pressed,
-              focused === 'prev-stage' && styles.focused,
-            ]}
-          >
-            <ChevronLeft size={18} color={scheme.onSurface} />
-          </Pressable>
-
-          <Pressable
-            onPress={openFullscreen}
-            accessibilityRole="button"
-            accessibilityLabel={s.compass.openMap}
-            style={styles.stageFooterBody}
-          >
-            <Text style={styles.stageFooterStops} numberOfLines={1}>
-              {activeStage.endpointRole === 'start'
-                ? `${s.map.board}: ${activeStage.fromStop}`
-                : activeStage.endpointRole === 'end'
-                  ? `${s.map.alight}: ${activeStage.toStop}`
-                  : `${activeStage.fromStop} \u2192 ${activeStage.toStop}`}
-            </Text>
-            <Text style={styles.stageFooterMeta} numberOfLines={1}>
-              {activeStage.endpointRole
-                ? activeStage.departAt
-                : `${activeStage.departAt} \u2192 ${activeStage.arriveAt}`}
-              {activeStage.stopsCount > 0
-                ? ` \u2022 ${s.map.legStops(activeStage.stopsCount)}`
-                : ''}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => handleStepStage(1)}
-            accessibilityRole="button"
-            accessibilityLabel={s.map.stagesTitle}
-            hitSlop={6}
-            onFocus={() => setFocused('next-stage')}
-            onBlur={() => setFocused(null)}
-            style={({ pressed }) => [
-              styles.stepBtn,
-              pressed && styles.pressed,
-              focused === 'next-stage' && styles.focused,
-            ]}
-          >
-            <ChevronRight size={18} color={scheme.onSurface} />
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    padding: 14,
+    gap: 10,
+    ...elev.level1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingLeft: 16,
-    paddingRight: 8,
-    paddingVertical: 6,
+    gap: 10,
   },
   headerTitleWrap: {
     flexDirection: 'row',
@@ -493,24 +495,40 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     flex: 1,
   },
+  headerIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
     ...type.titleSmall,
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   stageCountChip: {
     backgroundColor: scheme.primaryContainer,
     borderRadius: shape.full,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 2.5,
   },
   stageCountText: {
     ...type.labelSmall,
+    fontWeight: '700',
     color: scheme.onPrimaryContainer,
     fontVariant: ['tabular-nums'],
   },
+  expandButton: {
+    width: 38,
+    height: 38,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stageRail: {
-    paddingHorizontal: 12,
-    paddingBottom: 10,
     gap: 6,
     alignItems: 'center',
   },
@@ -522,7 +540,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 5,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerLow,
     borderWidth: 1.5,
     borderColor: 'transparent',
     maxWidth: 210,
@@ -541,11 +559,18 @@ const styles = StyleSheet.create({
   },
   stagePillLabel: {
     ...type.labelMedium,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
     flexShrink: 1,
   },
   stagePillLabelActive: {
     color: scheme.onPrimaryContainer,
+    fontWeight: '700',
+  },
+  mapFrame: {
+    borderRadius: shape.large,
+    overflow: 'hidden',
+    backgroundColor: scheme.surfaceContainerLow,
   },
   map: {
     height: 248,
@@ -585,17 +610,15 @@ const styles = StyleSheet.create({
   stageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    gap: 6,
-    backgroundColor: scheme.surfaceContainer,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+    backgroundColor: scheme.surfaceContainerLow,
   },
   stepBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
+    width: 38,
+    height: 38,
+    borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
@@ -607,6 +630,7 @@ const styles = StyleSheet.create({
   },
   stageFooterStops: {
     ...type.labelLarge,
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   stageFooterMeta: {
@@ -614,6 +638,6 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: 0.78 },
   focused: { borderWidth: 2, borderColor: scheme.primary },
 });
