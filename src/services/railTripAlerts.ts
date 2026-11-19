@@ -311,6 +311,31 @@ async function getDirectPkpAnnouncements(): Promise<DirectPkpAnnouncement[]> {
   return pkpDirectInFlight;
 }
 
+function legAlertCacheKey(leg: Leg, candidates = vehicleCandidatesForLeg(leg)): string {
+  return [leg.tripId ?? '', leg.trainNumber ?? '', ...candidates].join('|');
+}
+
+export function getCachedAlertsForLeg(leg: Leg): TrainAlertItem[] | undefined {
+  const hit = results.get(legAlertCacheKey(leg));
+  if (!hit || Date.now() - hit.at >= TTL_MS) return undefined;
+  return hit.alerts;
+}
+
+export function getCachedAlertsForConnection(connection?: Connection | null): TrainAlerts[] | null {
+  if (!connection) return [];
+  const legs = connection.legs.filter(
+    (l) => l.mode === 'train' && (l.tripId?.startsWith('pl:') || l.trainNumber),
+  );
+  if (legs.length === 0) return [];
+  const out: TrainAlerts[] = [];
+  for (const leg of legs.slice(0, 3)) {
+    const cached = getCachedAlertsForLeg(leg);
+    if (cached === undefined) return null;
+    if (cached.length > 0) out.push({ leg, alerts: cached });
+  }
+  return out;
+}
+
 /**
  * Alerty dla nogi kolejowej (bezpośrednio na urządzeniu, bez AI):
  * 1. Status odwołania lub objazdu z oficjalnego feedu PKP PLK (/api/rail/delays)
@@ -319,7 +344,7 @@ async function getDirectPkpAnnouncements(): Promise<DirectPkpAnnouncement[]> {
  */
 export async function alertsForLeg(leg: Leg): Promise<TrainAlertItem[]> {
   const candidates = vehicleCandidatesForLeg(leg);
-  const cacheKey = [leg.tripId ?? '', leg.trainNumber ?? '', ...candidates].join('|');
+  const cacheKey = legAlertCacheKey(leg, candidates);
   const hit = results.get(cacheKey);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.alerts;
 
@@ -445,10 +470,11 @@ export async function alertsForConnection(connection: Connection): Promise<Train
     (l) => l.mode === 'train' && (l.tripId?.startsWith('pl:') || l.trainNumber),
   );
   if (legs.length === 0) return [];
-  const out: TrainAlerts[] = [];
-  for (const leg of legs.slice(0, 3)) {
-    const alerts = await alertsForLeg(leg).catch(() => [] as ZbVehicleAlert[]);
-    if (alerts.length > 0) out.push({ leg, alerts });
-  }
-  return out;
+  const settled = await Promise.all(
+    legs.slice(0, 3).map(async (leg) => ({
+      leg,
+      alerts: await alertsForLeg(leg).catch(() => [] as ZbVehicleAlert[]),
+    })),
+  );
+  return settled.filter((item) => item.alerts.length > 0);
 }

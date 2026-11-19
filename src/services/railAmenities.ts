@@ -37,8 +37,14 @@ function decodeAmenities(bits: number): RailAmenity[] {
 const cache = new Map<string, RailAmenities | null>();
 const inflight = new Map<string, Promise<RailAmenities | null>>();
 
-function cacheKey(leg: Leg): string {
+function cacheKey(leg: Pick<Leg, 'tripId' | 'railAgency' | 'trainNumber' | 'line' | 'trainName'>): string {
   return `${leg.tripId ?? ''}|${leg.railAgency ?? ''}|${leg.trainNumber ?? leg.line ?? ''}|${leg.trainName ?? ''}`;
+}
+
+export function getCachedRailAmenities(
+  leg: Pick<Leg, 'tripId' | 'railAgency' | 'trainNumber' | 'line' | 'trainName'>,
+): RailAmenities | null | undefined {
+  return cache.get(cacheKey(leg));
 }
 
 /**

@@ -54,6 +54,24 @@ function normalizeNationalStopId(stopId?: string): string | undefined {
   return clean.startsWith('pl:') ? clean : undefined;
 }
 
+function stationCacheKey(stopId?: string, lat?: number, lon?: number): string {
+  const nationalStopId = normalizeNationalStopId(stopId);
+  const coordKey =
+    lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
+      ? `${lat.toFixed(4)},${lon.toFixed(4)}`
+      : '';
+  return !nationalStopId && !coordKey ? '' : `${nationalStopId ?? ''}|${coordKey}`;
+}
+
+export function getCachedStationAmenities(
+  stopId?: string,
+  lat?: number,
+  lon?: number,
+): StationAmenity[] | null | undefined {
+  const key = stationCacheKey(stopId, lat, lon);
+  return key ? cache.get(key) : undefined;
+}
+
 /**
  * Pobiera udogodnienia stacji kolejowej (OSM 50 m) z krajowej bazy `polska`.
  * Szuka po `stop_id` (`pl:...`), a dla pociągów miejskich po najbliższej stacji
@@ -65,12 +83,8 @@ export async function loadStationAmenities(
   lon?: number,
 ): Promise<StationAmenity[] | null> {
   const nationalStopId = normalizeNationalStopId(stopId);
-  const coordKey =
-    lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)
-      ? `${lat.toFixed(4)},${lon.toFixed(4)}`
-      : '';
-  const cacheKey = `${nationalStopId ?? ''}|${coordKey}`;
-  if (!nationalStopId && !coordKey) return null;
+  const cacheKey = stationCacheKey(stopId, lat, lon);
+  if (!cacheKey) return null;
 
   if (cache.has(cacheKey)) return cache.get(cacheKey) ?? null;
   const pending = inflight.get(cacheKey);

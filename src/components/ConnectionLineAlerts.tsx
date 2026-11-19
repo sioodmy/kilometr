@@ -24,6 +24,7 @@ import { groundDisruption, type GroundedDisruption } from '../services/disruptio
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 import {
   alertsForConnection,
+  getCachedAlertsForConnection,
   type TrainAlertItem,
   type TrainAlerts,
 } from '../services/railTripAlerts';
@@ -518,7 +519,9 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   const s = useStrings();
   const router = useRouter();
   const [news, setNews] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
-  const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
+  const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>(
+    () => getCachedAlertsForConnection(connection) ?? [],
+  );
   const [status, setStatus] = useState<Status>(() => (getCachedNews() ? 'ready' : 'loading'));
   const [attempt, setAttempt] = useState(0);
   const [grounded, setGrounded] = useState<Map<string, GroundedDisruption>>(new Map());
@@ -677,17 +680,26 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       return;
     }
 
+    const cached = getCachedAlertsForConnection(connection);
+    if (cached) {
+      setTrainAlerts(cached);
+      return;
+    }
+
     let alive = true;
-    void alertsForConnection(connection).then((res) => {
-      if (alive) {
-        setTrainAlerts(res);
-      }
+    const cancelScheduled = runAfterOpen(() => {
+      void alertsForConnection(connection).then((res) => {
+        if (alive) {
+          setTrainAlerts(res);
+        }
+      });
     });
 
     return () => {
       alive = false;
+      cancelScheduled();
     };
-  }, [connection?.id, trainAlertKey]);
+  }, [connection?.id, trainAlertKey, runAfterOpen]);
 
   const matchedMpk = useMemo(() => {
     if (lineSet.size === 0 && routeStopIds.size === 0 && routeIdSet.size === 0) return [];
