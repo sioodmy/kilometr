@@ -1481,10 +1481,6 @@ const s = StyleSheet.create({
   },
   walkCard: {
     flex: 1,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
     gap: 3,
   },
   walkPillTitle: {
