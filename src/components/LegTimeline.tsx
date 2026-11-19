@@ -1362,8 +1362,8 @@ const s = StyleSheet.create({
     alignSelf: 'flex-start',
     maxWidth: '100%',
     backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: shape.full,
   },
   stopsSummaryLabel: {
@@ -1386,7 +1386,7 @@ const s = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.medium,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   liveSensorsCol: {
     width: 19,
@@ -1481,10 +1481,6 @@ const s = StyleSheet.create({
   },
   walkCard: {
     flex: 1,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
     gap: 3,
   },
   walkPillTitle: {
