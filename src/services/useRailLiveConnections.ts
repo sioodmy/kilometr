@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection } from '../types/models';
 import { applyLiveDelays } from './routing/engine';
 import {
