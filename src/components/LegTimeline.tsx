@@ -466,6 +466,8 @@ const TransitLegCard = memo(function TransitLegCard({
 }) {
   const t = useStrings();
   const router = useRouter();
+  const [hasExpanded, setHasExpanded] = useState(expanded);
+  if (expanded && !hasExpanded) setHasExpanded(true);
   const { bg: accent } = getLineColors(leg.line, leg.mode);
   const scheduled = scheduledLegTimes(leg, timeStringToSeconds(leg.departAt));
   const scheduledDeparture = scheduled.departure;
@@ -558,12 +560,13 @@ const TransitLegCard = memo(function TransitLegCard({
       setLoading(false);
       return;
     }
-    if (!leg.tripId) {
+    const hasInlineStops = Boolean(leg.intermediateStops && leg.intermediateStops.length >= 2);
+    if (!leg.tripId || (!expanded && hasInlineStops)) {
       setStops(buildFallbackStops(leg));
       setLoading(false);
       return;
     }
-    setLoading(!(leg.intermediateStops && leg.intermediateStops.length >= 2));
+    setLoading(!hasInlineStops);
     let promise = stopsPromise.get(leg.tripId);
     if (!promise) {
       promise = RoutingService.getTripStops(leg.tripId)
@@ -594,7 +597,7 @@ const TransitLegCard = memo(function TransitLegCard({
     return () => {
       mounted = false;
     };
-  }, [cacheKey, leg]);
+  }, [cacheKey, expanded, leg]);
 
   const [track, setTrack] = useState<TrainTrack | null>(null);
   useEffect(() => {
@@ -612,6 +615,10 @@ const TransitLegCard = memo(function TransitLegCard({
   }, [expanded, isTrain, leg, stops]);
 
   useEffect(() => {
+    if (leg.tripId?.startsWith('pl:')) {
+      setVehicle(null);
+      return;
+    }
     const updateVehicle = () => {
       const now = Date.now();
       setLastOk(liveTracker.getLastOk());
@@ -943,30 +950,32 @@ const TransitLegCard = memo(function TransitLegCard({
                 accessibilityElementsHidden={!expanded}
                 importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
               >
-                <View
-                  style={s.stopsContent}
-                  onLayout={(e) => {
-                    const h = Math.round(e.nativeEvent.layout.height);
-                    if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
-                      measuredHeight.value = h;
-                      if (expanded) {
-                        stopsHeightAnim.value = withTiming(h, motion.state);
+                {expanded || hasExpanded ? (
+                  <View
+                    style={s.stopsContent}
+                    onLayout={(e) => {
+                      const h = Math.round(e.nativeEvent.layout.height);
+                      if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
+                        measuredHeight.value = h;
+                        if (expanded) {
+                          stopsHeightAnim.value = withTiming(h, motion.state);
+                        }
                       }
-                    }
-                  }}
-                >
-                  <LegStopsList
-                    leg={leg}
-                    accent={accent}
-                    userLocation={userLocation}
-                    allowLive={allowLive}
-                    stops={stops}
-                    vehicle={vehicle}
-                    loading={loading}
-                    active={expanded}
-                    track={track}
-                  />
-                </View>
+                    }}
+                  >
+                    <LegStopsList
+                      leg={leg}
+                      accent={accent}
+                      userLocation={userLocation}
+                      allowLive={allowLive}
+                      stops={stops}
+                      vehicle={vehicle}
+                      loading={loading}
+                      active={expanded}
+                      track={track}
+                    />
+                  </View>
+                ) : null}
               </Animated.View>
             </View>
 

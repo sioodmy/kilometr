@@ -85,7 +85,13 @@ function useStopHints(cityId: string) {
 
   useEffect(() => {
     if (!normCity) {
-      setData(null);
+      setData((prev) => (prev === null ? prev : null));
+      return;
+    }
+
+    const currentCached = cache.get(normCity);
+    if (currentCached !== undefined) {
+      setData((prev) => (prev === currentCached ? prev : currentCached));
       return;
     }
 
@@ -93,7 +99,7 @@ function useStopHints(cityId: string) {
     const abortController = new AbortController();
     const apply = (next: StopHintsDataset) => {
       cache.set(normCity, next);
-      if (!cancelled) setData(next);
+      if (!cancelled) setData((prev) => (prev === next ? prev : next));
     };
 
     // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache.
@@ -114,14 +120,12 @@ function useStopHints(cityId: string) {
       if (bundled) {
         apply(bundled);
       } else {
-        setData(null);
+        setData((prev) => (prev === null ? prev : null));
       }
       const remote = await fetchRemoteStopHints(normCity, abortController.signal);
       if (remote) apply(remote);
     };
 
-    const currentCached = cache.get(normCity) ?? null;
-    setData(currentCached);
     void load();
 
     return () => {
@@ -168,7 +172,7 @@ export function resolveStopHint(
     snake = normalizeSnake(cleanName);
     const code = (
       stopCode ||
-      stopName.match(/(?:peron|słupek|stanowisko)\s*(\\d+)/i)?.[1] ||
+      stopName.match(/(?:peron|słupek|stanowisko)\s*(\d+)/i)?.[1] ||
       ''
     ).trim();
 

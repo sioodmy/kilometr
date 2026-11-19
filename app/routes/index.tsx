@@ -1154,6 +1154,7 @@ export default function RoutesScreen() {
 
   const openConnection = useCallback(
     (item: Connection) => {
+      rememberPlannedConnection(item);
       closePreview();
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
     },

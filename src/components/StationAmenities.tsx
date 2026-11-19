@@ -14,7 +14,7 @@ import {
 import { scheme } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { StationAmenity } from '../types/models';
-import { loadStationAmenities } from '../services/stationAmenities';
+import { getCachedStationAmenities, loadStationAmenities } from '../services/stationAmenities';
 
 const ICONS: Record<StationAmenity, ComponentType<{ size?: number; color?: string }>> = {
   toilets: Wc,
@@ -44,10 +44,17 @@ export function StationAmenities({
   lon?: number;
 }) {
   const t = useStrings();
-  const [keys, setKeys] = useState<StationAmenity[] | null>(null);
+  const [keys, setKeys] = useState<StationAmenity[] | null>(
+    () => getCachedStationAmenities(stopId, lat, lon) ?? null,
+  );
 
   useEffect(() => {
     let alive = true;
+    const cached = getCachedStationAmenities(stopId, lat, lon);
+    if (cached !== undefined) {
+      setKeys(cached);
+      return;
+    }
     setKeys(null);
     void loadStationAmenities(stopId, lat, lon).then((next) => {
       if (alive) setKeys(next);
