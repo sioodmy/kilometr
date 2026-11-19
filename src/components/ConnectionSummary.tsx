@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   interpolate,
@@ -8,17 +8,15 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowDown, ArrowRight, Check, ChevronRight, Clock3, Footprints } from './icons';
+import { ArrowDown, ArrowRight, Clock3 } from './icons';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { motion } from '../theme/motion';
 import type { Connection } from '../types/models';
 import { RollingTime } from './RollingTime';
-import { getLineColors, LineBadge } from './LineBadge';
 import { LiveSensors } from './LiveDot';
-import { boardingDepartureSec, legDurationMin } from '../services/routing/connectionTimes';
+import { boardingDepartureSec } from '../services/routing/connectionTimes';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
-import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { nowSecOfDay } from '../services/vehiclePosition';
 
 export function ConnectionSummary({
@@ -36,7 +34,6 @@ export function ConnectionSummary({
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const { width, fontScale } = useWindowDimensions();
-  const walkMps = useWalkSpeedMps();
   const stacked = ((availableWidth ?? width - 32) - 44) / fontScale < 280;
   const boarding = item.legs.filter((leg) => leg.mode !== 'walk');
   const firstVehicle = boarding[0];
@@ -76,41 +73,6 @@ export function ConnectionSummary({
     if (diffMin <= 0) return s.common.departNow;
     return s.common.departIn(diffMin);
   }, [item.boarded, item.departAt, firstVehicle, departureSec, nowSec, s]);
-
-  const isRealtimeOnTime =
-    !offline && Boolean(firstVehicle?.live) && departureDelay === 0 && arrivalDelay === 0;
-
-  const displayLegs = useMemo(
-    () =>
-      item.legs.length > 1
-        ? item.legs.filter(
-            (leg) =>
-              !(
-                leg.mode === 'walk' &&
-                (leg.walkM ?? 0) <= 0 &&
-                (leg.departAt === leg.arriveAt || leg.fromStop === leg.toStop)
-              ),
-          )
-        : item.legs,
-    [item.legs],
-  );
-
-  const segmentProportions = useMemo(() => {
-    const entries = displayLegs.map((leg) => {
-      const mins =
-        leg.mode === 'walk'
-          ? Math.max(1, walkMinutesFor(leg.walkM ?? 200, walkMps))
-          : Math.max(2, legDurationMin(leg));
-      const color =
-        leg.mode === 'walk' ? scheme.outlineVariant : getLineColors(leg.line, leg.mode).bg;
-      return { id: leg.id, mins, color, isWalk: leg.mode === 'walk' };
-    });
-    const total = entries.reduce((acc, e) => acc + e.mins, 0) || 1;
-    return entries.map((e) => ({
-      ...e,
-      weight: Math.max(0.08, e.mins / total),
-    }));
-  }, [displayLegs, walkMps]);
 
   const targetY = insets.top + 64;
   const deltaY = fromY != null ? fromY - targetY : 0;
@@ -163,15 +125,6 @@ export function ConnectionSummary({
                 numberOfLines={1}
               >
                 {countdownLabel}
-              </Text>
-            </View>
-          ) : null}
-
-          {isRealtimeOnTime ? (
-            <View style={styles.onTimePill}>
-              <Check size={12} color={scheme.success} />
-              <Text style={styles.onTimeText} numberOfLines={1}>
-                {s.routeDetails.onTime}
               </Text>
             </View>
           ) : null}
@@ -274,45 +227,6 @@ export function ConnectionSummary({
           </Text>
         </View>
       </View>
-
-      {/* 3. Dolny łańcuch etapów (LineBadges + dojścia) z paskiem proporcji czasu */}
-      {displayLegs.length > 0 && (
-        <View style={styles.stripBox}>
-          <View style={styles.chainRow}>
-            {displayLegs.map((leg, idx) => (
-              <Fragment key={leg.id}>
-                {idx > 0 && <ChevronRight size={13} color={scheme.outline} />}
-                {leg.mode === 'walk' ? (
-                  <View style={styles.walkChip}>
-                    <Footprints size={12} color={scheme.onSurfaceVariant} />
-                    <Text style={styles.walkChipText}>
-                      {formatWalkTime(walkMinutesFor(leg.walkM ?? 200, walkMps))}
-                    </Text>
-                  </View>
-                ) : (
-                  <LineBadge leg={leg} compact />
-                )}
-              </Fragment>
-            ))}
-          </View>
-
-          <View style={styles.proportionBar}>
-            {segmentProportions.map((seg) => (
-              <View
-                key={seg.id}
-                style={[
-                  styles.proportionSegment,
-                  {
-                    flex: seg.weight,
-                    backgroundColor: seg.color,
-                    opacity: seg.isWalk ? 0.55 : 1,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-      )}
     </>
   );
 
@@ -376,20 +290,6 @@ const styles = StyleSheet.create({
   },
   countdownTextBoarded: {
     color: scheme.onTertiaryContainer,
-  },
-  onTimePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: scheme.surfaceContainerLow,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: shape.full,
-  },
-  onTimeText: {
-    ...type.labelSmall,
-    fontWeight: '700',
-    color: scheme.success,
   },
   metaPill: {
     backgroundColor: scheme.surfaceContainerLow,
@@ -476,54 +376,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   connectorBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
   },
   connectorBadgeStacked: {
     marginVertical: -2,
-  },
-  stripBox: {
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  chainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  walkChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: shape.small,
-  },
-  walkChipText: {
-    ...type.labelSmall,
-    fontWeight: '700',
-    color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
-  },
-  proportionBar: {
-    flexDirection: 'row',
-    height: 5,
-    borderRadius: shape.full,
-    overflow: 'hidden',
-    gap: 3,
-  },
-  proportionSegment: {
-    height: '100%',
-    borderRadius: shape.full,
   },
 });
