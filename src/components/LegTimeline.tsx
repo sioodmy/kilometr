@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import {
   ArrowRight,
   BusFront,
@@ -446,6 +447,57 @@ const LiveDataAge = memo(function LiveDataAge({ timestamp }: { timestamp: number
   );
 });
 
+// Szyna M3 w wersji wavy: sinus o fali 40 i grubym obrysie zamiast prostej kreski.
+const RAIL_WAVE_WIDTH = 18;
+const RAIL_WAVE_AMP = 3.5;
+const RAIL_WAVE_PERIOD = 40;
+const RAIL_WAVE_STROKE = 6;
+
+function railWavePath(height: number): string {
+  const cx = RAIL_WAVE_WIDTH / 2;
+  const p = RAIL_WAVE_PERIOD;
+  const q = p / 8;
+  const a = RAIL_WAVE_AMP;
+  const k = (Math.PI / 4) * a;
+  const periods = Math.ceil(height / p) + 1;
+  let d = `M ${cx} 0`;
+  for (let i = 0; i < periods; i += 1) {
+    const y = i * p;
+    d +=
+      ` C ${cx + k} ${y + q} ${cx + a} ${y + q} ${cx + a} ${y + 2 * q}` +
+      ` C ${cx + a} ${y + 3 * q} ${cx + k} ${y + 3 * q} ${cx} ${y + 4 * q}` +
+      ` C ${cx - k} ${y + 5 * q} ${cx - a} ${y + 5 * q} ${cx - a} ${y + 6 * q}` +
+      ` C ${cx - a} ${y + 7 * q} ${cx - k} ${y + 7 * q} ${cx} ${y + 8 * q}`;
+  }
+  return d;
+}
+
+const RailWave = memo(function RailWave({ color }: { color: string }) {
+  const [height, setHeight] = useState(0);
+  const path = useMemo(() => (height > 0 ? railWavePath(height) : ''), [height]);
+  return (
+    <View
+      style={s.railSpine}
+      onLayout={(e) => {
+        const next = Math.round(e.nativeEvent.layout.height);
+        setHeight((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+      }}
+    >
+      {height > 0 ? (
+        <Svg width={RAIL_WAVE_WIDTH} height={height}>
+          <Path
+            d={path}
+            stroke={color}
+            strokeWidth={RAIL_WAVE_STROKE}
+            strokeLinecap="round"
+            fill="none"
+          />
+        </Svg>
+      ) : null}
+    </View>
+  );
+});
+
 // Karta jednego przejazdu M3 Expressive z pionową szyną w kolorze linii
 const TransitLegCard = memo(function TransitLegCard({
   leg,
@@ -783,7 +835,7 @@ const TransitLegCard = memo(function TransitLegCard({
             <View style={[s.railNodeOuter, { borderColor: accent }]}>
               <View style={[s.railNodeInner, { backgroundColor: accent }]} />
             </View>
-            <View style={[s.railSpine, { backgroundColor: accent }]} />
+            <RailWave color={accent} />
             <View style={[s.railNodeEnd, { backgroundColor: accent }]} />
           </View>
 
@@ -1240,10 +1292,10 @@ const s = StyleSheet.create({
   },
   railSpine: {
     flex: 1,
-    width: 3,
-    borderRadius: shape.full,
+    width: RAIL_WAVE_WIDTH,
     marginVertical: 3,
     opacity: 0.85,
+    overflow: 'hidden',
   },
   railNodeEnd: {
     width: 14,
@@ -1362,8 +1414,8 @@ const s = StyleSheet.create({
     alignSelf: 'flex-start',
     maxWidth: '100%',
     backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: shape.full,
   },
   stopsSummaryLabel: {
@@ -1386,7 +1438,7 @@ const s = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.medium,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   liveSensorsCol: {
     width: 19,
