@@ -1307,6 +1307,7 @@ export const pl = {
     emptyTitle: 'Brak zapisanych miejsc',
     emptyBody: 'Dodaj dom, pracę lub ulubione punkty, aby jednym dotknięciem sprawdzać połączenia.',
     addNew: 'Dodaj nowe miejsce',
+    addShort: 'Dodaj',
     removeTitle: (name: string) => `Usunąć „${name}”?`,
     removeGeneric: 'Usunąć to miejsce?',
     removeConfirm: 'Usuń',

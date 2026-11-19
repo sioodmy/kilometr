@@ -1166,6 +1166,7 @@ export const de: Strings = {
     emptyBody:
       'Füge Zuhause, Arbeit oder Lieblingsorte hinzu, um Verbindungen mit einem Tipp zu prüfen.',
     addNew: 'Neuen Ort hinzufügen',
+    addShort: 'Hinzufügen',
     removeTitle: (name: string) => `„${name}“ entfernen?`,
     removeGeneric: 'Diesen Ort entfernen?',
     removeConfirm: 'Entfernen',

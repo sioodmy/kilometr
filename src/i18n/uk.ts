@@ -1318,6 +1318,7 @@ export const uk: Strings = {
     emptyTitle: 'Немає збережених місць',
     emptyBody: 'Додай дім, роботу чи улюблені точки, щоб перевіряти сполучення одним дотиком.',
     addNew: 'Додати нове місце',
+    addShort: 'Додати',
     removeTitle: (name: string) => `Видалити „${name}”?`,
     removeGeneric: 'Видалити це місце?',
     removeConfirm: 'Видалити',
