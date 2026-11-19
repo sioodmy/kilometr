@@ -195,3 +195,15 @@ test('zbiera przystanki z corridor oraz from_stop, to_stop i transfer_stops', as
   assert.deepEqual([...g.stopIds].sort(), ['s1', 's2', 's3']);
 });
 
+test('cache po treści: wymiana obiektu alertu nie liczy grounding od zera', async () => {
+  const base = { id: 'cache1', all_lines: ['3'], stops: [{ name: 'Księże Małe', action: 'omitted', lines: [], details: '' }] };
+  const g1 = await groundDisruption(alert(base));
+  // fetchCityNews na ekranie szczegółów tworzy świeże obiekty przy każdym
+  // pobraniu: ten sam id i treść, inna tożsamość. Wynik musi przyjść z cache.
+  const g2 = await groundDisruption(alert(base));
+  assert.equal(g2, g1);
+  // Inna treść pod tym samym id to inny komunikat: grounding liczy na nowo.
+  const g3 = await groundDisruption(alert({ ...base, all_lines: ['5'], stops: [] }));
+  assert.deepEqual(g3.routeIds, ['r5']);
+});
+

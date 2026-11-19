@@ -33,16 +33,26 @@ function presetScheme(seed: string): Record<SchemeKey, string> {
   return result;
 }
 
-export const THEME_PRESETS = Object.fromEntries(
-  Object.entries(THEME_SEEDS).map(([key, seed]) => [key, presetScheme(seed)]),
-) as Record<keyof typeof THEME_SEEDS, Record<SchemeKey, string>>;
+type ThemePresets = Record<keyof typeof THEME_SEEDS, Record<SchemeKey, string>>;
+let presets: ThemePresets | null = null;
+
+/**
+ * Palety presetów. Liczone przy pierwszym użyciu (ekran personalizacji),
+ * nie przy starcie: HCT dla sześciu seedów to zbędne millisekundy bootu.
+ */
+export function getThemePresets(): ThemePresets {
+  presets ??= Object.fromEntries(
+    Object.entries(THEME_SEEDS).map(([key, seed]) => [key, presetScheme(seed)]),
+  ) as ThemePresets;
+  return presets;
+}
 
 function isThemeSetting(value: unknown): value is ThemeSetting {
   return typeof value === 'string' && (value === 'system' || Object.hasOwn(THEME_SEEDS, value));
 }
 
 function applySetting(next: ThemeSetting): void {
-  applyScheme(next === 'system' ? wallpaperScheme : THEME_PRESETS[next]);
+  applyScheme(next === 'system' ? wallpaperScheme : getThemePresets()[next]);
   setting = next;
   for (const listener of listeners) listener();
 }

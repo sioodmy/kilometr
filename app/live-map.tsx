@@ -203,7 +203,7 @@ export default function LiveVehiclesMapScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      liveTracker.acquire();
+      liveTracker.acquire(true);
       let cancelled = false;
       const newsController = new AbortController();
       setLiveWaitExpired(false);
@@ -266,7 +266,7 @@ export default function LiveVehiclesMapScreen() {
         clearTimeout(liveWaitTimer);
         unsubNews();
         unsub();
-        liveTracker.release();
+        liveTracker.release(true);
       };
     }, [city.features.news, cityId]),
   );

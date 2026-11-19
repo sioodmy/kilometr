@@ -54,7 +54,7 @@ const {
 const {
   initTheme,
   setThemeSetting,
-  THEME_PRESETS,
+  getThemePresets,
   hasWallpaperColors,
 }: typeof import('../src/theme/personalization') = require('../src/theme/personalization');
 
@@ -92,9 +92,10 @@ async function main() {
     card: { color: scheme.primary, backgroundColor: scheme.surface },
   });
   await setThemeSetting('rose');
-  assert.equal(early.card.color, THEME_PRESETS.rose.primary);
-  assert.equal(late.card.color, THEME_PRESETS.rose.primary);
-  assert.equal(early.card.borderColor, THEME_PRESETS.rose.primary + '80');
+  const presets = getThemePresets();
+  assert.equal(early.card.color, presets.rose.primary);
+  assert.equal(late.card.color, presets.rose.primary);
+  assert.equal(early.card.borderColor, presets.rose.primary + '80');
   assert.equal(colors.primary, scheme.primary);
   await setThemeSetting('system');
   assert.deepEqual(scheme, defaultScheme);
@@ -109,7 +110,7 @@ async function main() {
   failWrite = false;
   stored = 'violet';
   await initTheme();
-  assert.deepEqual(scheme, THEME_PRESETS.violet);
+  assert.deepEqual(scheme, presets.violet);
 
   rn.Platform.OS = 'android';
   rn.Platform.Version = 36;
@@ -146,7 +147,7 @@ async function main() {
     ['onError', 'error'],
   ] as const;
   let minimum = Infinity;
-  for (const [name, palette] of Object.entries(THEME_PRESETS)) {
+  for (const [name, palette] of Object.entries(presets)) {
     for (const [text, background] of pairs) {
       const ratio = contrast(palette[text], palette[background]);
       assert.ok(ratio >= 4.5, `${name}: ${text}/${background} = ${ratio.toFixed(2)}`);

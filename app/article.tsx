@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { ChevronDown, ChevronLeft, ChevronUp, ExternalLink } from '../src/components/icons';
@@ -31,6 +31,10 @@ export default function ArticleScreen() {
   const s = useStrings();
   const { cityId } = useActiveCity();
   const router = useRouter();
+  // Inset z kontekstu od razu, nie z natywnego SafeAreaView: przy ciężkim
+  // pierwszym renderze (długi alert) natywny padding wpada dopiero po
+  // kolejnym commicie i header ląduje pod status barem.
+  const insets = useSafeAreaInsets();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/news'));
   const params = useLocalSearchParams<{
     id?: string;
@@ -138,7 +142,7 @@ export default function ArticleScreen() {
         : rawSource;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <View style={[styles.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
@@ -310,7 +314,7 @@ export default function ArticleScreen() {
           </Pressable>
         ) : null}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

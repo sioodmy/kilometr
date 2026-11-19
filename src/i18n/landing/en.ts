@@ -1,6 +1,8 @@
 import type { Strings } from './pl';
-import { previewRoute } from './journey';
-import { previewHome } from './home';
+
+function countLabel(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 export const en: Strings = {
   meta: {
@@ -22,6 +24,7 @@ export const en: Strings = {
     accent: 'open-source',
     titleEnd: 'journey planner',
     body: 'Plan your route, check departures and head into town. Public transport across Poland, even offline. No ads or account needed.',
+    phoneAlt: 'Kilometr home screen with saved places and upcoming departures',
   },
   install: {
     android: 'Android',
@@ -93,36 +96,91 @@ export const en: Strings = {
         'Want to help us cover this fee? You can support the project. Every donation helps us develop Kilometr and fund its publication.',
     },
   },
-  homePreview: {
-    screenLabel: 'Kilometr home screen on an iPhone',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Where to?',
-    savedTitle: 'Saved places',
-    edit: 'Edit',
-    historyTitle: 'Recent places',
-    home: 'Home',
-    school: 'University',
-    gym: 'Gym',
-    stop: 'Stop',
-    searchLabel: 'Where are you going?',
-    startFrom: (title: string) => `from: ${title}`,
-    departIn: (n: number) => `in ${n} min`,
+  showcase: {
+    prevLabel: 'Previous screen',
+    nextLabel: 'Next screen',
+    tabsLabel: 'Kilometr app screens',
+    stepCounter: (current: number, total: number) => `${current} / ${total}`,
+    slides: [
+      {
+        id: 'home',
+        shortLabel: 'Home screen',
+        title: 'Saved stops and route search on launch',
+        body: 'Opening the app shows live countdowns for your saved stops right above the route search, including intercity trips. No ads or popups in the way before you check a departure.',
+        imageAlt: 'Kilometr home screen showing saved places and live departures',
+      },
+      {
+        id: 'routes',
+        shortLabel: 'Connections',
+        title: 'City transit and trains in one list',
+        body: 'One search combines walking legs, trams, buses and trains on a shared transfer timeline. Where live feeds are available, you see delays relative to the scheduled timetable.',
+        imageAlt: 'Mixed urban transit and rail connection list in Kilometr',
+      },
+      {
+        id: 'trip',
+        shortLabel: 'Trip details',
+        title: 'Platform hints, train tracks and feed age',
+        body: 'At large hubs, a short hint tells you which island or platform to walk to. For trains you also see the track number, onboard amenities and how many seconds ago the position updated.',
+        imageAlt: 'Journey details screen with stop hint and live train tracking',
+      },
+      {
+        id: 'share',
+        shortLabel: 'Sharing',
+        title: 'Journey card and browser-ready link',
+        body: 'Instead of marking up screenshots to explain transfers, send a clean journey card with stops and walking times, or a link the other person can open directly in a browser.',
+        imageAlt: 'Journey share card and link preview screen in Kilometr',
+      },
+      {
+        id: 'alerts',
+        shortLabel: 'Service alerts',
+        title: 'Structured detours instead of a wall of text',
+        body: 'Alerts separate work duration, affected lines and skipped stop platforms at a glance. You can quickly tell which lines bypass your stop and which use a temporary one.',
+        imageAlt: 'Service alert details showing affected lines and detours',
+      },
+    ],
   },
-  journeyDemo: {
-    choose: 'You choose',
-    ride: '...and off you go',
-    mock: 'Example journey. Times follow your device clock.',
-    route: previewRoute,
-    departIn: (n) => `in ${n} min`,
-    duration: (n) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} min`),
-    transfers: (n) => (n === 0 ? 'direct' : n === 1 ? '1 transfer' : `${n} transfers`),
-    fromPrefix: 'from ',
-    toPrefix: 'to ',
-    stopsSummary: (n, mins, open) =>
-      `${n} ${n === 1 ? 'stop' : 'stops'} • ~${mins} min • ${open ? 'collapse' : 'expand'} stops`,
-    expandA11y: (line, dir, expanded) =>
-      `${line} towards ${dir}. ${expanded ? 'Collapse' : 'Expand'} the stop list.`,
+  coverage: {
+    eyebrow: 'Coverage in Poland',
+    title: 'Find your city and its operators',
+    body: (count: number) =>
+      `${count} cities and metropolitan networks in one app, including Metropolis GZM. Click a pin on the map or type a city name to check live vehicle tracking, passenger alerts and operators.`,
+    searchPlaceholder: 'Search city, e.g. Wrocław, Katowice, Gdańsk...',
+    searchLabel: 'Search supported city',
+    browseListLabel: 'Toggle city list',
+    clearSearch: 'Clear search',
+    mapAria: 'Clickable map of Poland showing supported cities',
+    mapHint: (count: number) => `${count} covered networks · Click a pin on the map`,
+    citiesListLabel: 'Supported cities list',
+    emptyTitle: 'No matching city found',
+    emptyBody: 'Check your spelling or reset the filter to browse all supported cities.',
+    emptyReset: 'Show all cities',
+    liveLabel: 'Live locations',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Available (vehicle GPS)'
+        : vehicles === 0
+          ? 'Available (no vehicles right now)'
+          : `Available (${countLabel(vehicles, 'vehicle', 'vehicles')} live)`,
+    liveUnavailable: 'No live GPS (static timetable)',
+    newsLabel: 'Passenger alerts',
+    newsAvailable: 'Available',
+    newsUnavailable: 'No municipal alerts feed',
+    stopHintsLabel: 'Stop hints',
+    stopHintsValue: (stops: number) =>
+      `Available (${countLabel(stops, 'stop', 'stops')})`,
+    stopHintsUnavailable: 'No stop hints',
+    statsUpdated: (date: string) => `Data as of ${date}`,
+    operatorsLabel: 'Operators',
+    railGatewayNote: (stations: string) =>
+      `Intercity rail connections (PKP Intercity, POLREGIO) via: ${stations}.`,
+    modes: {
+      bus: 'Buses',
+      tram: 'Trams',
+      trolley: 'Trolleybuses',
+      metro: 'Metro',
+      rail: 'Rail',
+      cable: 'Cable car',
+    },
   },
   promise: {
     ads: 'No ads.',

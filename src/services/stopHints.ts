@@ -85,7 +85,13 @@ function useStopHints(cityId: string) {
 
   useEffect(() => {
     if (!normCity) {
-      setData(null);
+      setData((prev) => (prev === null ? prev : null));
+      return;
+    }
+
+    const currentCached = cache.get(normCity);
+    if (currentCached !== undefined) {
+      setData((prev) => (prev === currentCached ? prev : currentCached));
       return;
     }
 
@@ -93,7 +99,7 @@ function useStopHints(cityId: string) {
     const abortController = new AbortController();
     const apply = (next: StopHintsDataset) => {
       cache.set(normCity, next);
-      if (!cancelled) setData(next);
+      if (!cancelled) setData((prev) => (prev === next ? prev : next));
     };
 
     // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache.
@@ -114,14 +120,12 @@ function useStopHints(cityId: string) {
       if (bundled) {
         apply(bundled);
       } else {
-        setData(null);
+        setData((prev) => (prev === null ? prev : null));
       }
       const remote = await fetchRemoteStopHints(normCity, abortController.signal);
       if (remote) apply(remote);
     };
 
-    const currentCached = cache.get(normCity) ?? null;
-    setData(currentCached);
     void load();
 
     return () => {
@@ -141,8 +145,8 @@ export function resolveStopHint(
   mode?: string | null,
 ): string | null {
   if (!dataset) return null;
-  // Połączenia kolejowe (dworce PKP / pociągi) nie posiadają bazy mikrowskazówek
-  if (mode === 'train') return null;
+  // Pociągi (dworce PKP) i metro nie mają bazy mikrowskazówek peronowych
+  if (mode === 'train' || mode === 'subway') return null;
 
   // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101", Kraków "stop_322_117319")
   if (stopId) {
@@ -168,7 +172,7 @@ export function resolveStopHint(
     snake = normalizeSnake(cleanName);
     const code = (
       stopCode ||
-      stopName.match(/(?:peron|słupek|stanowisko)\s*(\\d+)/i)?.[1] ||
+      stopName.match(/(?:peron|słupek|stanowisko)\s*(\d+)/i)?.[1] ||
       ''
     ).trim();
 
@@ -259,13 +263,14 @@ export function useStopHint(
   stopName?: string | null,
   mode?: string | null,
 ): string | null {
-  const isTrain =
+  const skipHints =
     mode === 'train' ||
+    mode === 'subway' ||
     Boolean(stopId && (stopId.startsWith('pl:') || stopId.startsWith('stop-pl:')));
-  const normCity = isTrain ? '' : (cityId || '').trim().toLowerCase();
+  const normCity = skipHints ? '' : (cityId || '').trim().toLowerCase();
   const dataset = useStopHints(normCity);
   return useMemo(
-    () => (isTrain ? null : resolveStopHint(dataset, stopCode, stopId, stopName, mode)),
-    [isTrain, dataset, stopCode, stopId, stopName, mode],
+    () => (skipHints ? null : resolveStopHint(dataset, stopCode, stopId, stopName, mode)),
+    [skipHints, dataset, stopCode, stopId, stopName, mode],
   );
 }

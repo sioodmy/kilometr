@@ -28,6 +28,7 @@ import { cleanupExpiredTickets } from '../src/services/ticketStorage';
 import {
   addTripResponseListener,
   getLastTripResponse,
+  refreshTrackedTrip,
   restoreTrackedTrip,
   setupNotifications,
   startTicketCompensationMonitor,
@@ -98,29 +99,37 @@ export default function RootLayout() {
     let isMounted = true;
 
     const initApp = async () => {
+      // Migracja najpierw: pozostałe odczyty muszą widzieć już przeniesione klucze.
       await migrateFromSqliteKv();
-      await initTheme();
-      // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
-      await loadActiveCity();
-      await loadSettings();
+      // Język przed kanałami powiadomień: nazwy kanałów biorą się ze słownika.
       await initLocale();
-      await loadNotificationPreferences();
-      await refreshDepartureAlarm();
-      void cleanupExpiredTickets();
-      try {
-        const seen = await hasSeenOnboarding();
-        if (isMounted) setNeedsOnboarding(!seen);
-      } catch (err) {
-        console.warn('[RootLayout] onboarding flag unreadable:', err);
-      }
+      // Reszta to niezależne odczyty i natywne mostki. Serializowane awaited
+      // sumowały czas dysku pod splash screenem, równoległe mieszczą się w jednym.
+      const [seen] = await Promise.all([
+        hasSeenOnboarding().catch((err) => {
+          console.warn('[RootLayout] onboarding flag unreadable:', err);
+          // Błąd odczytu nie może wysłać użytkownika drugi raz w onboarding.
+          return true;
+        }),
+        initTheme(),
+        // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
+        loadActiveCity(),
+        loadSettings(),
+        loadNotificationPreferences(),
+        refreshDepartureAlarm(),
+        setupNotifications().catch((err) => {
+          console.warn('[RootLayout] notifications:', err);
+        }),
+      ]);
+      if (isMounted) setNeedsOnboarding(!seen);
+      // Pin podróży bez pierwszego przeliczenia planu: to planer i sieć, splash
+      // nie ma na co czekać. Odświeżenie leci po pierwszej klatce (niżej).
+      await restoreTrackedTrip({ refresh: false }).catch((err) => {
+        console.warn('[RootLayout] restore tracked trip:', err);
+      });
     };
 
     void initApp()
-      .then(async () => {
-        await setupNotifications();
-        await restoreTrackedTrip();
-        startTicketCompensationMonitor();
-      })
       .catch((err) => console.warn('[RootLayout] init:', err))
       .finally(() => {
         if (isMounted) setReady(true);
@@ -132,6 +141,33 @@ export default function RootLayout() {
       isMounted = false;
     };
   }, []);
+
+  // Ciężka praca po splashu: odświeżenie śledzonej podróży i monitor zwrotów
+  // startują dopiero, gdy pierwsza klatka jest już na ekranie.
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setTimeout(() => {
+      void refreshTrackedTrip().catch(() => {});
+      void cleanupExpiredTickets().catch(() => {});
+      startTicketCompensationMonitor();
+    }, 0);
+    // Baza kolejowa (61 MB) otwierała się leniwie przy pierwszym pociągu.
+    // Robimy to w tle po starcie, żeby ikony udogodnień nie czekały na plik.
+    const nationalTimer = setTimeout(() => {
+      void import('../src/services/gtfsDatabase')
+        .then(async (db) => {
+          if (!(await db.hasNationalDb())) return;
+          const handle = await db.getNationalDb();
+          await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
+          await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(nationalTimer);
+    };
+  }, [ready]);
 
   useEffect(() => {
     if (ready && needsOnboarding)

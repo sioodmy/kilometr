@@ -17,6 +17,11 @@ export async function fetchDisruptionsFromWorker(): Promise<MpkNewsItem[]> {
   return [];
 }
 
+// Bez cache w wideo: subskrypcja jest no-op, ale musi zwrócić funkcję odpinającą.
+export function subscribeNewsCache(_listener: () => void): () => void {
+  return () => {};
+}
+
 export function rememberNewsItemForDetail() {}
 
 export async function findNewsItemForDetail() {

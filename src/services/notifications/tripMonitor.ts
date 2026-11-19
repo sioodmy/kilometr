@@ -762,7 +762,9 @@ async function stopTrackingNow(): Promise<void> {
 }
 
 /** Wznawia śledzenie po restarcie aplikacji (telefon zrestartowany, ubity proces). */
-export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
+export async function restoreTrackedTrip(
+  options: { refresh?: boolean } = {},
+): Promise<TrackedTrip | null> {
   if (tracked) return { ...tracked };
   // Użytkownik mógł w międzyczasie wcisnąć „Zakończ" pod powiadomieniem-
   // obsłużył to natywny odbiorca, więc myśląc o wznowieniu tylko byśmy
@@ -823,7 +825,9 @@ export async function restoreTrackedTrip(): Promise<TrackedTrip | null> {
     });
     notify();
     rescheduleTicker();
-    await refresh();
+    // Start aplikacji woła `refresh: false`: planer i sieć nie mogą trzymać
+    // splashu. Wołający bez opcji dostają pełne odświeżenie jak dotąd.
+    if (options.refresh !== false) await refresh();
     return tracked ? { ...tracked } : null;
   } catch {
     return null;

@@ -5,7 +5,13 @@ import {
 } from '../../../modules/kilometr-raptor';
 import { DayIndex, LocalGtfsStore as GtfsStore } from './store';
 import { JourneySegment, RawJourney, TransitModePreference } from './types';
-import { classifyTransitMode, getRaptorNet, packRaptorNet, type RaptorNet } from './network';
+import {
+  classifyTransitMode,
+  getRaptorNet,
+  getRaptorNetAsync,
+  packRaptorNet,
+  type RaptorNet,
+} from './network';
 
 export { classifyTransitMode };
 
@@ -477,7 +483,12 @@ export async function warmupRaptorNet(
   patternTimeOffsets?: Map<string, number>,
   timeOffsetSec = 0,
 ): Promise<void> {
-  const net = getRaptorNet(store, dayIndex, patternTimeOffsets, Math.round(timeOffsetSec));
+  const net = await getRaptorNetAsync(
+    store,
+    dayIndex,
+    patternTimeOffsets,
+    Math.round(timeOffsetSec),
+  );
   await warmupRaptorNetworkAsync(net.id, () => packRaptorNet(net));
 }
 
@@ -491,7 +502,7 @@ export async function runRaptorAsync(
   if (origins.length === 0 || destinations.length === 0) return [];
   const idx = options.dayIndex;
   if (!idx) return [];
-  const net = getRaptorNet(
+  const net = await getRaptorNetAsync(
     store,
     idx,
     options.patternTimeOffsets,

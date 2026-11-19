@@ -1,0 +1,7 @@
+{
+  "id": "app.kilometr",
+  "url": "https://github.com/sioodmy/kilometr",
+  "author": "sioodmy",
+  "name": "Kilometr",
+  "additionalSettings": "{\"apkFilterRegEx\":\"^kilometr-prod\\\\.apk$\",\"includePrereleases\":false}"
+}
