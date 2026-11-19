@@ -1149,6 +1149,7 @@ export const en: Strings = {
     emptyTitle: 'No saved places',
     emptyBody: 'Add home, work or favourite spots to check connections with one tap.',
     addNew: 'Add a new place',
+    addShort: 'Add',
     removeTitle: (name: string) => `Remove “${name}”?`,
     removeGeneric: 'Remove this place?',
     removeConfirm: 'Remove',
