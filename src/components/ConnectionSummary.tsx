@@ -276,8 +276,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: scheme.primaryContainer,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: shape.full,
   },
   countdownPillBoarded: {
@@ -293,8 +293,8 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     backgroundColor: scheme.surfaceContainerLow,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: shape.full,
   },
   metaPillText: {
@@ -307,8 +307,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     backgroundColor: scheme.secondaryContainer,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: shape.full,
   },
   durationText: {
@@ -328,10 +328,7 @@ const styles = StyleSheet.create({
   endpointBox: {
     flex: 1,
     minWidth: 0,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
+    paddingVertical: 4,
     gap: 4,
   },
   endpointTag: {
