@@ -13,6 +13,18 @@ const KEY = 'kilometr.activeCity.v1';
 let cachedId: CityId = DEFAULT_CITY_ID;
 let loaded = false;
 const listeners = new Set<(id: CityId) => void>();
+/** Zmiany miasta idą jedna po drugiej: dwie równoległe podmiany baz
+ *  zamykałyby bazę pod zapytaniami tej drugiej i mieszały dane miast. */
+let switchQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueSwitch<T>(task: () => Promise<T>): Promise<T> {
+  const run = switchQueue.then(task, task);
+  switchQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
 
 function notify(): void {
   for (const l of listeners) {
@@ -40,9 +52,12 @@ export async function loadActiveCity(): Promise<CityId> {
   // synchroniczni czytelnicy (`getActiveCityIdSync`) nie mogą zobaczyć nowego
   // miasta przy jeszcze starej bazie.
   if (id !== cachedId) {
-    await swapStores();
-    cachedId = id;
-    notify();
+    await enqueueSwitch(async () => {
+      if (id === cachedId) return;
+      await swapStores();
+      cachedId = id;
+      notify();
+    });
     return cachedId;
   }
   notify();
@@ -71,7 +86,10 @@ export function getActiveCitySync(): CityDef {
  */
 async function swapStores(): Promise<void> {
   try {
-    const { closeGtfsDb } = await import('./gtfsDatabase');
+    const { closeGtfsDb, waitForGtfsSwap } = await import('./gtfsDatabase');
+    // Import mógł w tej chwili podmieniać plik (close→move). Zamknięcie bazy
+    // w trakcie `move` zostawiało otwarty uchwyt do nieistniejącego pliku.
+    await waitForGtfsSwap();
     await closeGtfsDb();
   } catch (err) {
     console.warn('[CityStore] db switch failed:', err);
@@ -102,30 +120,34 @@ async function swapStores(): Promise<void> {
  * Kolejność swap -> `cachedId`: patrz `loadActiveCity` (żaden czytelnik nie
  * widzi nowego miasta przy starej bazie).
  */
-export async function setActiveCityId(id: CityId): Promise<CityDef> {
+export function setActiveCityId(id: CityId): Promise<CityDef> {
   // To samo miasto: bez zamykania bazy i resetu store (np. sugestia GPS równa
   // obecnemu wyborowi w onboardingu).
-  if (id === cachedId) return getCity(id);
-  await swapStores();
-  // Przypięty kurs planowano na bazie poprzedniego miasta, a jego przystanki
-  // i opóźnienia istnieją tylko tam; planer liczy już na nowej bazie, więc
-  // nie da się go odświeżyć. Zatrzymujemy go, żeby nie zostawić powiadomienia
-  // z nieaktualnym planem. Robimy to TYLKO przy jawnej zmianie miasta, nie
-  // przy starcie aplikacji: tam odtworzenie pinu należy do `restoreTrackedTrip`.
-  try {
-    const { stopTracking } = await import('./notifications/tripMonitor');
-    await stopTracking();
-  } catch (err) {
-    console.warn('[CityStore] tracked trip stop failed:', err);
-  }
-  cachedId = id;
-  notify();
-  try {
-    await kvSet(KEY, id);
-  } catch {
-    // ignoruj błąd zapisu
-  }
-  return getCity(id);
+  if (id === cachedId) return Promise.resolve(getCity(id));
+  return enqueueSwitch(async () => {
+    // Kolejna zmiana z kolejki mogła już ustawić to miasto.
+    if (id === cachedId) return getCity(id);
+    await swapStores();
+    // Przypięty kurs planowano na bazie poprzedniego miasta, a jego przystanki
+    // i opóźnienia istnieją tylko tam; planer liczy już na nowej bazie, więc
+    // nie da się go odświeżyć. Zatrzymujemy go, żeby nie zostawić powiadomienia
+    // z nieaktualnym planem. Robimy to TYLKO przy jawnej zmianie miasta, nie
+    // przy starcie aplikacji: tam odtworzenie pinu należy do `restoreTrackedTrip`.
+    try {
+      const { stopTracking } = await import('./notifications/tripMonitor');
+      await stopTracking();
+    } catch (err) {
+      console.warn('[CityStore] tracked trip stop failed:', err);
+    }
+    cachedId = id;
+    notify();
+    try {
+      await kvSet(KEY, id);
+    } catch {
+      // ignoruj błąd zapisu
+    }
+    return getCity(id);
+  });
 }
 
 /** Hook do ekranów: chipy miasta, onboarding, ustawienia. */

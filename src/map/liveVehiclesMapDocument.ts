@@ -131,6 +131,9 @@ export interface LiveVehiclesMapDocumentOptions {
   userPos: [number, number] | null;
 }
 
+/** Poniżej tego zoomu pigułki pojazdów znikają, bo miasto ma ich wtedy zbyt dużo na płynny WebView. Wybrany pojazd zostaje. */
+const MIN_VEHICLE_ZOOM = 13.4;
+
 const theme = () => ({
   surface: scheme.surface,
   onSurfaceVariant: scheme.onSurfaceVariant,
@@ -192,6 +195,7 @@ const runtime = [
   'var rafId = null;',
   'var lastFrameMs = 0;',
   'var lastRenderedCount = 0;',
+  'var MIN_VEHICLE_ZOOM = ' + MIN_VEHICLE_ZOOM + ';',
   'var ixTimer = null;',
   '',
   'function indexStops() {',
@@ -774,6 +778,14 @@ const runtime = [
   '  if (isMapMoving && !force) return false;',
   '  var src = map.getSource("live-vehicles");',
   '  if (!src) return false;',
+  '  // Wybrany pojazd rysujemy zawsze, także przy oddalonym zoomie: inaczej trasa zostaje bez znacznika.',
+  '  if ((map.getZoom ? map.getZoom() : MIN_VEHICLE_ZOOM) < MIN_VEHICLE_ZOOM && selectedId == null) {',
+  '    if (lastRenderedCount !== 0) {',
+  '      lastRenderedCount = 0;',
+  '      src.setData({ type: "FeatureCollection", features: [] });',
+  '    }',
+  '    return false;',
+  '  }',
   '  var bounds = paddedViewportBounds();',
   '  var frame = motion.stepFrame(nowMs, bounds, selectedId);',
   '  lastRenderedCount = frame.items.length;',
@@ -1178,7 +1190,7 @@ const runtime = [
   '    container: "map",',
   '    style: P.style,',
   '    center: P.center || [17.0385, 51.1079],',
-  '    zoom: P.userPos ? 14.2 : 12.6,',
+  '    zoom: P.userPos ? 14.2 : ' + MIN_VEHICLE_ZOOM + ',',
   '    minZoom: 5,',
   '    maxZoom: 19,',
   '    attributionControl: false,',

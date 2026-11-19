@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, Clock3, Footprints, MapPinned, Pin, Ticket, X } from './icons';
+import { SpringPressable } from './SpringPressable';
 import { LineBadge } from './LineBadge';
 import { transfersLabel } from './ConnectionCard';
 import { scheme, shape, type } from '../theme/tokens';
@@ -56,6 +57,179 @@ function routeDateLabel(route: SavedRoute, locale: string): string {
   return routeDateFormatter(locale, false).format(saved);
 }
 
+type SegmentPosition = 'single' | 'first' | 'middle' | 'last';
+
+function resolveSegment(index: number, total: number): SegmentPosition {
+  if (total <= 1) return 'single';
+  if (index === 0) return 'first';
+  if (index === total - 1) return 'last';
+  return 'middle';
+}
+
+interface SavedRouteCardProps {
+  route: SavedRoute;
+  segment: SegmentPosition;
+  active: boolean;
+  hasTicket: boolean;
+  locale: string;
+  onSelect: (route: SavedRoute) => void;
+  onRemove: (route: SavedRoute) => void;
+  onOpenTicket: (route: SavedRoute) => void;
+  onUnpin: (route: SavedRoute) => void;
+}
+
+/** Karta zapisanej trasy w zgrupowanym układzie M3 Expressive. */
+const SavedRouteCard = memo(function SavedRouteCard({
+  route,
+  segment,
+  active,
+  hasTicket,
+  locale,
+  onSelect,
+  onRemove,
+  onOpenTicket,
+  onUnpin,
+}: SavedRouteCardProps) {
+  const s = useStrings();
+  const conn = route.connection;
+  const transitLegs = conn.legs.filter((l) => l.mode !== 'walk' && l.line);
+  const walkOnly = transitLegs.length === 0;
+  const dateLabel = routeDateLabel(route, locale);
+
+  return (
+    <SpringPressable
+      onPress={() => onSelect(route)}
+      accessibilityRole="button"
+      accessibilityLabel={routeA11yLabel(
+        conn,
+        dateLabel,
+        {
+          active: active ? s.home.routeActive : null,
+          ticket: hasTicket ? s.home.ticketAttachedA11y : null,
+        },
+        s,
+      )}
+      scaleDelta={0.018}
+      opacityDelta={0.05}
+      style={[
+        styles.card,
+        (segment === 'first' || segment === 'single') && styles.cardTop,
+        (segment === 'last' || segment === 'single') && styles.cardBottom,
+        active && styles.cardActive,
+      ]}
+    >
+      {/* Nagłówek: Skąd -> Dokąd + akcje karty */}
+      <View style={styles.headerRow}>
+        <View style={styles.endpoints}>
+          <Text style={styles.endpointFrom} numberOfLines={1}>
+            {conn.fromTitle}
+          </Text>
+          <ArrowRight size={15} color={scheme.primary} style={styles.arrow} />
+          <Text style={styles.endpointTo} numberOfLines={1}>
+            {conn.toTitle}
+          </Text>
+        </View>
+        <View style={styles.actions}>
+          {hasTicket && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onOpenTicket(route);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={s.railTickets.showTicket}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionAccent,
+                pressed && styles.actionPressed,
+              ]}
+            >
+              <Ticket size={16} color={scheme.onPrimaryContainer} />
+            </Pressable>
+          )}
+          {active ? (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onUnpin(route);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={s.routes.stopTrackingTripA11y}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionAccent,
+                pressed && styles.actionPressed,
+              ]}
+            >
+              <Pin size={16} color={scheme.onPrimaryContainer} />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onRemove(route);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={s.home.removeRouteA11y(conn.toTitle)}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+            >
+              <X size={16} color={scheme.onSurfaceVariant} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Linie + status aktywnej trasy */}
+      <View style={styles.metaRow}>
+        {active && (
+          <View style={styles.activePill}>
+            <View style={styles.activeDot} />
+            <Text style={styles.activeText}>{s.home.routeActive}</Text>
+          </View>
+        )}
+        {walkOnly ? (
+          <View style={styles.walkRow}>
+            <Footprints size={16} color={scheme.onSurfaceVariant} />
+            <Text style={styles.walkText}>{s.connection.walkRoute}</Text>
+          </View>
+        ) : (
+          <View style={styles.badgeRow}>
+            {transitLegs.map((leg, legIdx) => (
+              <View key={`${leg.line}-${legIdx}`} style={styles.badgeWrap}>
+                <LineBadge mode={leg.mode} line={leg.line} />
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Data, godziny, czas i przesiadki */}
+      <View style={styles.footerRow}>
+        <View style={styles.timesPill}>
+          <Text style={styles.timesText} numberOfLines={1}>
+            {conn.departAt} – {conn.arriveAt}
+          </Text>
+        </View>
+        <View style={styles.durationChip}>
+          <Clock3 size={13} color={scheme.onSurfaceVariant} />
+          <Text style={styles.durationText}>{s.common.durMin(conn.durationMin)}</Text>
+        </View>
+        <Text style={styles.metaText} numberOfLines={1}>
+          {transfersLabel(conn.transfers)}
+        </Text>
+        {dateLabel ? (
+          <Text style={styles.dateText} numberOfLines={1}>
+            {dateLabel}
+          </Text>
+        ) : null}
+      </View>
+    </SpringPressable>
+  );
+});
+
 export const SavedRoutesList = memo(function SavedRoutesList({
   routes,
   activeId,
@@ -84,131 +258,20 @@ export const SavedRoutesList = memo(function SavedRoutesList({
 
   return (
     <View style={styles.list}>
-      {routes.map((route, index) => {
-        const conn = route.connection;
-        const transitLegs = conn.legs.filter((l) => l.mode !== 'walk' && l.line);
-        const walkOnly = transitLegs.length === 0;
-        const hasTicket = ticketIds?.has(route.id) ?? false;
-        const active = route.id === activeId;
-        const dateLabel = routeDateLabel(route, locale);
-
-        return (
-          <Pressable
-            key={route.id || `${conn.fromTitle}-${conn.toTitle}-${index}`}
-            onPress={() => onSelect(route)}
-            accessibilityRole="button"
-            accessibilityLabel={routeA11yLabel(conn, dateLabel, {
-              active: active ? s.home.routeActive : null,
-              ticket: hasTicket ? s.home.ticketAttachedA11y : null,
-            }, s)}
-            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          >
-            {/* Nagłówek: Skąd → Dokąd + akcje karty */}
-            <View style={styles.headerRow}>
-              <View style={styles.endpoints}>
-                <Text style={styles.endpointText} numberOfLines={1}>
-                  {conn.fromTitle}
-                </Text>
-                <ArrowRight size={14} color={scheme.onSurfaceVariant} style={styles.arrow} />
-                <Text style={styles.endpointText} numberOfLines={1}>
-                  {conn.toTitle}
-                </Text>
-              </View>
-              <View style={styles.actions}>
-                {hasTicket && (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onOpenTicket(route);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.railTickets.showTicket}
-                    style={({ pressed }) => [
-                      styles.actionBtn,
-                      styles.actionAccent,
-                      pressed && styles.actionPressed,
-                    ]}
-                  >
-                    <Ticket size={16} color={scheme.onPrimaryContainer} />
-                  </Pressable>
-                )}
-                {active ? (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onUnpin(route);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.routes.stopTrackingTripA11y}
-                    style={({ pressed }) => [
-                      styles.actionBtn,
-                      styles.actionAccent,
-                      pressed && styles.actionPressed,
-                    ]}
-                  >
-                    <Pin size={16} color={scheme.onPrimaryContainer} />
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onRemove(route);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.home.removeRouteA11y(conn.toTitle)}
-                    style={({ pressed }) => [
-                      styles.actionBtn,
-                      pressed && styles.actionPressed,
-                    ]}
-                  >
-                    <X size={16} color={scheme.onSurfaceVariant} />
-                  </Pressable>
-                )}
-              </View>
-            </View>
-
-            {/* Linie (karta z biletem ma akcje biletu w prawym górnym rogu) */}
-            <View style={styles.metaRow}>
-              {walkOnly ? (
-                <View style={styles.walkRow}>
-                  <Footprints size={16} color={scheme.onSurfaceVariant} />
-                  <Text style={styles.walkText}>{s.connection.walkRoute}</Text>
-                </View>
-              ) : (
-                <View style={styles.badgeRow}>
-                  {transitLegs.map((leg, legIdx) => (
-                    <View key={`${leg.line}-${legIdx}`} style={styles.badgeWrap}>
-                      <LineBadge mode={leg.mode} line={leg.line} />
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-
-            {/* Data, godziny, czas i przesiadki */}
-            <View style={styles.footerRow}>
-              {dateLabel ? (
-                <Text style={styles.dateText} numberOfLines={1}>
-                  {dateLabel}
-                </Text>
-              ) : null}
-              <Text style={styles.timesText} numberOfLines={1}>
-                {conn.departAt} – {conn.arriveAt}
-              </Text>
-              <View style={styles.durationChip}>
-                <Clock3 size={13} color={scheme.onSurfaceVariant} />
-                <Text style={styles.durationText}>{s.common.durMin(conn.durationMin)}</Text>
-              </View>
-              <Text style={styles.metaText} numberOfLines={1}>
-                {transfersLabel(conn.transfers)}
-              </Text>
-            </View>
-          </Pressable>
-        );
-      })}
+      {routes.map((route, index) => (
+        <SavedRouteCard
+          key={route.id || `${route.connection.fromTitle}-${route.connection.toTitle}-${index}`}
+          route={route}
+          segment={resolveSegment(index, routes.length)}
+          active={route.id === activeId}
+          hasTicket={ticketIds?.has(route.id) ?? false}
+          locale={locale}
+          onSelect={onSelect}
+          onRemove={onRemove}
+          onOpenTicket={onOpenTicket}
+          onUnpin={onUnpin}
+        />
+      ))}
     </View>
   );
 });
@@ -232,17 +295,27 @@ function routeA11yLabel(
 
 const styles = StyleSheet.create({
   list: {
-    gap: 10,
+    gap: 4,
   },
   card: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.small,
     padding: 16,
     gap: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
-  cardPressed: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    transform: [{ scale: 0.98 }],
+  cardTop: {
+    borderTopLeftRadius: shape.extraLarge,
+    borderTopRightRadius: shape.extraLarge,
+  },
+  cardBottom: {
+    borderBottomLeftRadius: shape.extraLarge,
+    borderBottomRightRadius: shape.extraLarge,
+  },
+  cardActive: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderColor: scheme.primaryContainer,
   },
   headerRow: {
     flexDirection: 'row',
@@ -257,9 +330,15 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 0,
   },
-  endpointText: {
+  endpointFrom: {
     ...type.titleMedium,
     fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
+  },
+  endpointTo: {
+    ...type.titleMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
     flexShrink: 1,
   },
@@ -284,12 +363,33 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primaryContainer,
   },
   actionPressed: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
+  },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: scheme.primary,
+  },
+  activeText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -315,17 +415,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    columnGap: 8,
+    columnGap: 10,
     rowGap: 4,
   },
-  dateText: {
-    ...type.bodySmall,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
+  timesPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   timesText: {
-    ...type.bodySmall,
-    fontWeight: '600',
+    ...type.labelMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   durationChip: {
@@ -335,24 +436,32 @@ const styles = StyleSheet.create({
   },
   durationText: {
     ...type.bodySmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
   },
   metaText: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
+  dateText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    marginLeft: 'auto',
+  },
   emptyCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     padding: 20,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
   },
   emptyIcon: {
     width: 48,
     height: 48,
-    borderRadius: shape.full,
+    borderRadius: shape.large,
+    borderTopRightRadius: shape.small,
+    borderBottomLeftRadius: shape.small,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -363,8 +472,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   emptyTitle: {
-    ...type.titleSmall,
-    fontWeight: '600',
+    ...type.titleMedium,
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   emptyBody: {

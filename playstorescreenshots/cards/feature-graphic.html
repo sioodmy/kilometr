@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1024, initial-scale=1" />
+    <title>Kilometr Feature Graphic 1024x500</title>
+    <style>
+      @font-face {
+        font-family: 'Roboto Play';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Roboto Play';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin-ext.woff2') format('woff2');
+        unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+      }
+
+      :root {
+        --bg: #101713;
+        --surface: #19231c;
+        --surface-raised: #202d24;
+        --text: #eef4ee;
+        --muted: #b1bfb2;
+        --accent: #7fdbb1;
+        --line: #344438;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 1024px;
+        height: 500px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Roboto Play', Roboto, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1024px;
+        height: 500px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      /* Siatka linii z TransitBackdrop.tsx (z maską po prawej jak w social-preview.html) */
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        -webkit-mask-image: linear-gradient(90deg, transparent 10%, #000 58%);
+        mask-image: linear-gradient(90deg, transparent 10%, #000 58%);
+      }
+      .backdrop svg {
+        position: absolute;
+        left: 0;
+        top: -90px;
+        width: 1120px;
+        height: 920px;
+      }
+      .transit-network,
+      .transit-stations {
+        stroke: var(--accent);
+        stroke-width: 1.4;
+        opacity: 0.22;
+      }
+      .transit-stations {
+        fill: var(--bg);
+      }
+
+      /* Marka u góry po lewej jak .hero-brand */
+      .brand {
+        position: absolute;
+        left: 56px;
+        top: 56px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 4;
+      }
+      .brand svg {
+        width: 38px;
+        height: 38px;
+        display: block;
+      }
+      .brand span {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: var(--text);
+      }
+
+      /* Główny tekst Hero */
+      .hero-copy {
+        position: absolute;
+        left: 56px;
+        top: 162px;
+        width: 500px;
+        z-index: 4;
+      }
+      .hero-copy h1 {
+        margin: 0;
+        font-size: 60px;
+        font-weight: 700;
+        line-height: 1.07;
+        letter-spacing: -0.045em;
+        color: var(--text);
+      }
+      .hero-copy h1 span {
+        display: block;
+      }
+      .hero-copy h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .hero-body {
+        margin: 24px 0 0;
+        max-width: 492px;
+        font-size: 20px;
+        line-height: 1.48;
+        letter-spacing: -0.01em;
+        color: var(--muted);
+      }
+
+      /* Herby miast z Hero.tsx (grid minmax(0, 1fr) trzyma obrazki w środku kafelka) */
+      .hero-city {
+        position: absolute;
+        width: 72px;
+        z-index: 3;
+      }
+      .hero-city-mark {
+        width: 72px;
+        height: 66px;
+        padding: 11px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        display: grid;
+        grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+        place-items: center;
+        overflow: hidden;
+        box-shadow:
+          0 14px 28px rgba(0, 0, 0, 0.48),
+          inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      }
+      .hero-city-mark img {
+        min-width: 0;
+        min-height: 0;
+        max-width: 100%;
+        max-height: 100%;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+
+      .city-wroclaw {
+        left: 582px;
+        top: 66px;
+        transform: rotate(-8deg);
+      }
+      .city-krakow {
+        left: 928px;
+        top: 132px;
+        transform: rotate(9deg);
+      }
+      .city-warszawa {
+        left: 594px;
+        top: 260px;
+        transform: rotate(7deg);
+      }
+      .city-poznan {
+        left: 926px;
+        top: 340px;
+        transform: rotate(-7deg);
+      }
+
+      /* Telefon Pixel z prawdziwym ekranem aplikacji */
+      .phone {
+        position: absolute;
+        left: 682px;
+        top: 36px;
+        width: 232px;
+        height: 502px;
+        --bezel: 7px;
+        --frame: #1c1e22;
+        --frame-hi: #4a4e55;
+        --frame-lo: #0b0c0e;
+        z-index: 2;
+      }
+      .phone .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 26px;
+        background: linear-gradient(152deg, var(--frame-hi) 0%, var(--frame) 22%, #14161a 55%, var(--frame-lo) 100%);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.14),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18),
+          0 24px 54px rgba(0, 0, 0, 0.65);
+      }
+      .phone .btn {
+        position: absolute;
+        background: #2b2e34;
+      }
+      .phone .btn-vol-up {
+        left: -2.5px;
+        top: 84px;
+        width: 2.5px;
+        height: 26px;
+        border-radius: 2px 0 0 2px;
+      }
+      .phone .btn-vol-down {
+        left: -2.5px;
+        top: 118px;
+        width: 2.5px;
+        height: 36px;
+        border-radius: 2px 0 0 2px;
+      }
+      .phone .btn-power {
+        right: -2.5px;
+        top: 110px;
+        width: 2.5px;
+        height: 44px;
+        border-radius: 0 2px 2px 0;
+      }
+      .phone .bezel {
+        position: absolute;
+        inset: var(--bezel);
+        border-radius: 20px;
+        overflow: hidden;
+        background: #000;
+      }
+      .phone .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .phone .screen img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+      }
+      .phone .punch {
+        position: absolute;
+        left: 50%;
+        top: 4px;
+        width: 9px;
+        height: 9px;
+        margin-left: -4.5px;
+        border-radius: 50%;
+        background: #050607;
+        box-shadow: 0 0 0 1px #2a2e33;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas">
+      <div class="backdrop" aria-hidden="true">
+        <svg viewBox="0 0 1400 1150" fill="none">
+          <g class="transit-network">
+            <path d="M-80 150H160Q180 150 195 165L385 355Q400 370 420 370H980Q1000 370 1015 355L1240 130Q1255 115 1275 115H1480" />
+            <path d="M-80 510H200Q220 510 235 495L430 300Q445 285 465 285H955Q975 285 990 300L1230 540Q1245 555 1265 555H1480" />
+            <path d="M180-60V195Q180 215 195 230L430 465Q445 480 445 500V770Q445 790 460 805L710 1055Q725 1070 745 1070H1480" />
+            <path d="M1245-60V210Q1245 230 1230 245L1030 445Q1015 460 1015 480V790Q1015 810 1000 825L780 1045Q765 1060 765 1080V1320" />
+            <path d="M-80 800H210Q230 800 245 785L360 670Q375 655 395 655H1010Q1030 655 1045 640L1150 535Q1165 520 1185 520H1480" />
+          </g>
+          <g class="transit-stations">
+            <circle cx="180" cy="150" r="4.5" />
+            <circle cx="285" cy="255" r="4.5" />
+            <circle cx="530" cy="370" r="4.5" />
+            <circle cx="1100" cy="270" r="4.5" />
+            <circle cx="330" cy="400" r="4.5" />
+            <circle cx="1070" cy="380" r="4.5" />
+            <circle cx="445" cy="580" r="4.5" />
+            <circle cx="1015" cy="715" r="4.5" />
+            <circle cx="1170" cy="520" r="4.5" />
+            <circle cx="550" cy="820" r="4.5" />
+          </g>
+        </svg>
+      </div>
+
+      <div class="brand">
+        <svg viewBox="0 0 1024 1024" aria-hidden="true">
+          <rect width="1024" height="1024" rx="232" fill="#00a884" />
+          <g transform="translate(512 512) scale(0.82) translate(-512 -512)">
+            <g fill="none" stroke="#04362c" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M352 180 L352 794" />
+              <path d="M352 512 C390 380 480 300 600 220" />
+              <path d="M352 512 C400 664 510 754 672 754" />
+            </g>
+            <g transform="translate(605 215) rotate(-35)">
+              <path d="M-18 -68 L96 0 L-18 68 L8 0 Z" fill="#04362c" stroke="#04362c" stroke-width="40" stroke-linejoin="round" />
+            </g>
+            <circle cx="352" cy="512" r="102" fill="#04362c" />
+            <circle cx="352" cy="512" r="50" fill="#00a884" />
+            <circle cx="672" cy="754" r="32" fill="#04362c" />
+          </g>
+        </svg>
+        <span>Kilometr</span>
+      </div>
+
+      <div class="hero-copy">
+        <h1>
+          <span>Twój <em>open-source</em></span>
+          <span>planer podróży</span>
+        </h1>
+        <p class="hero-body">
+          Komunikacja miejska i kolej w całej Polsce. Rozkłady, przesiadki i odjazdy na żywo, także offline.
+        </p>
+      </div>
+
+      <div class="hero-city city-wroclaw">
+        <div class="hero-city-mark">
+          <img src="/landing/public/cities/wroclaw.webp" alt="" />
+        </div>
+      </div>
+      <div class="hero-city city-krakow">
+        <div class="hero-city-mark">
+          <img src="/landing/public/cities/krakow.webp" alt="" />
+        </div>
+      </div>
+      <div class="hero-city city-warszawa">
+        <div class="hero-city-mark">
+          <img src="/landing/public/cities/warszawa.webp" alt="" />
+        </div>
+      </div>
+      <div class="hero-city city-poznan">
+        <div class="hero-city-mark">
+          <img src="/landing/public/cities/poznan.webp" alt="" />
+        </div>
+      </div>
+
+      <div class="phone">
+        <div class="shell">
+          <div class="btn btn-vol-up"></div>
+          <div class="btn btn-vol-down"></div>
+          <div class="btn btn-power"></div>
+          <div class="bezel">
+            <div class="screen">
+              <img src="/playstorescreenshots/playstore/mainscreen.png" alt="Ekran główny Kilometr" />
+              <div class="punch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

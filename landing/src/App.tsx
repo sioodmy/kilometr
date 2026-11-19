@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowUpRight, ChevronDown, Coffee } from 'lucide-react';
 import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } from './i18n';
 import { Hero } from './components/Hero';
-import { JourneyDemo } from './components/JourneyDemo';
+import { ShowcaseDemo } from './components/ShowcaseDemo';
+import { CoverageSection } from './components/CoverageSection';
 import { TransitBackdrop } from './components/TransitBackdrop';
 import { PromiseSection } from './components/Promise';
 import { InformationPage } from './components/InformationPage';
@@ -39,8 +40,9 @@ function Landing() {
       <div className="landing-story">
         <TransitBackdrop />
         <Hero />
-        <JourneyDemo />
+        <ShowcaseDemo />
       </div>
+      <CoverageSection />
       <PromiseSection />
       <section
         id="pobierz"

@@ -26,7 +26,6 @@ import { downloadPrebuiltDb, fetchManifest } from './timetableSync';
 import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
 import { getActiveCityIdSync } from './cityStore';
 import { kvGet, kvRemove, kvSet } from './storage';
-import { warmupAddressIndex } from './addressIndex';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -280,8 +279,10 @@ async function isTimetableExpiring(): Promise<boolean> {
 }
 
 /**
- * Po starcie rozgrzewa po kolei: wagi przystanków, routing i indeks adresów,
- * żeby 618k adresów w dużych miastach nie blokowało pojedynczego uchwytu SQLite.
+ * Po starcie rozgrzewa wagi przystanków i routing. Indeks adresów NIE jest
+ * tu budowany: przy 144k+ adresów zjadał kilkanaście sekund JS threadu zaraz
+ * po starcie i każdy dotyk czekał w kolejce. searchAddresses() dociąga go
+ * leniwie przy pierwszym wpisaniu litery w wyszukiwarkę.
  */
 async function ensureSearchReady(cityId: string): Promise<void> {
   try {
@@ -298,12 +299,6 @@ async function ensureSearchReady(cityId: string): Promise<void> {
     await warmupRouting();
   } catch (err) {
     console.warn('[DataManager] routing warmup failed:', err);
-  }
-  try {
-    if (getActiveCityIdSync() !== cityId) return;
-    await warmupAddressIndex();
-  } catch (err) {
-    console.warn('[DataManager] address warmup failed:', err);
   }
 }
 

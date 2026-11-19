@@ -57,8 +57,7 @@
 - Build: `npm --prefix landing run build` zapisuje stronę do `docs/`; archiwalne `docs/screenshots/` pozostają na miejscu.
 - Adresy pobierania i Ko-fi: `landing/src/data.ts`.
 - Teksty: `src/i18n/landing/`, dołączone również do typowanego słownika aplikacji. Nazwy miast zachowują polską pisownię we wszystkich wersjach językowych.
-- Podgląd telefonu renderuje `landing/src/components/Phone.tsx`. Układ w `phone.css` odwzorowuje ekran główny i komponenty RN; `phoneIcons.ts` zawiera ścieżki ikon, które różnią się między zainstalowanymi wersjami Lucide.
-- Dane podglądu są w `src/i18n/landing/home.ts`, a teksty w czterech słownikach landingu. Używaj publicznych miejsc, bez prywatnych adresów. Kolory linii pochodzą ze wspólnego `getLineColors`.
+- Podgląd telefonu w hero i sekcji z ekranami używa tej samej obudowy iPhone'a z `landing/src/components/Phone.tsx` (`phone.css`) i zrzutów z `landing/public/screenshots/`.
 - `social-preview.png` jest osobną grafiką do udostępniania strony. Po zmianie prezentacji trzeba odświeżyć ją osobno.
 - Strona nie ładuje dotychczasowego Google Analytics. Przechowuje tylko ustawienia języka i motywu, zgodnie z opisem pod `#polityka`.
 - Workflow nadal wdraża GitHub Pages wyłącznie z `main`. Zmiany współdzielonych słowników lub rejestru miast również wyzwalają przebudowę. Link APK prowadzi do stabilnego wydania GitHuba, niezależnie od nazwy załącznika.

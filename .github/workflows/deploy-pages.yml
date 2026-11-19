@@ -2,7 +2,8 @@ name: Deploy Landing Page to GitHub Pages
 
 on:
   schedule:
-    - cron: '23 6 * * *'
+    # Co 6 godzin: landing pokazuje snapshot liczb live, stop-hints i przystanków.
+    - cron: '23 */6 * * *'
   workflow_dispatch:
   push:
     branches:
@@ -13,6 +14,7 @@ on:
       - 'src/cities.ts'
       - 'src/sharing/**'
       - 'scripts/export-share-timetables.ts'
+      - 'scripts/collect-coverage-stats.ts'
       - 'docs/**'
       - '.github/workflows/deploy-pages.yml'
 
@@ -44,6 +46,13 @@ jobs:
 
       - name: Install landing dependencies
         run: npm --prefix landing ci
+
+      # Liczby w sekcji pokrycia nie są zaszyte w kodzie: skrypt odpytuje
+      # zbiorkom.live i Worker danych. Gdy źródła padną, build korzysta
+      # z commitowanego snapshotu w landing/src/data/coverageStats.json.
+      - name: Refresh coverage stats (best effort)
+        continue-on-error: true
+        run: npx tsx scripts/collect-coverage-stats.ts
 
       - name: Export share timetables (best effort)
         continue-on-error: true

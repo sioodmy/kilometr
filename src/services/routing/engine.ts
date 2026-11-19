@@ -177,7 +177,10 @@ export async function warmupRouting(): Promise<void> {
     await gtfsStore.load();
     const now = new Date();
     const currentSec = warsawNow(now).sec;
-    const slices = await buildSearchSlices(currentSec);
+    // Tylko godzina w przód, dokładnie jak liveTracker i pierwsze wyszukiwanie
+    // „Teraz". Trzygodzinny wycinek na starcie ważył 6 s JS i nie był nikomu
+    // potrzebny, zanim użytkownik przewinął listę albo wybrał późniejszą porę.
+    const slices = await buildSearchSlices(currentSec, false, gtfsStore, 3600);
     await warmupRaptorNet(gtfsStore, slices.searchIndex, slices.patternOffsets);
   } catch (err) {
     console.warn('[Routing] warmup failed:', err);

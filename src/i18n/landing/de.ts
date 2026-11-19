@@ -1,6 +1,8 @@
 import type { Strings } from './pl';
-import { previewRoute } from './journey';
-import { previewHome } from './home';
+
+function countLabel(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 export const de: Strings = {
   meta: {
@@ -22,6 +24,7 @@ export const de: Strings = {
     accent: 'quelloffener',
     titleEnd: 'Reiseplaner',
     body: 'Plane deine Route, prüfe Abfahrten und fahr los. Nahverkehr in ganz Polen, auch offline. Ohne Werbung und ohne Konto.',
+    phoneAlt: 'Kilometr-Startseite mit gespeicherten Orten und nächsten Abfahrten',
   },
   install: {
     android: 'Android',
@@ -93,36 +96,91 @@ export const de: Strings = {
         'Möchtest du uns helfen, diese Gebühr zu decken? Du kannst das Projekt unterstützen. Jede Spende hilft uns, Kilometr weiterzuentwickeln und die Veröffentlichung zu finanzieren.',
     },
   },
-  homePreview: {
-    screenLabel: 'Kilometr-Startseite auf einem iPhone',
-    statusTime: '21:36',
-    places: previewHome,
-    title: 'Wohin geht’s?',
-    savedTitle: 'Gespeicherte Orte',
-    edit: 'Bearbeiten',
-    historyTitle: 'Letzte Orte',
-    home: 'Zuhause',
-    school: 'Uni',
-    gym: 'Fitnessstudio',
-    stop: 'Haltestelle',
-    searchLabel: 'Wohin fährst du?',
-    startFrom: (title: string) => `ab: ${title}`,
-    departIn: (n: number) => `in ${n} Min.`,
+  showcase: {
+    prevLabel: 'Vorheriger Bildschirm',
+    nextLabel: 'Nächster Bildschirm',
+    tabsLabel: 'Kilometr App-Ansichten',
+    stepCounter: (current: number, total: number) => `${current} / ${total}`,
+    slides: [
+      {
+        id: 'home',
+        shortLabel: 'Startseite',
+        title: 'Gespeicherte Halte und Suche direkt beim Start',
+        body: 'Beim Öffnen siehst du sofort den Countdown deiner gespeicherten Haltestellen direkt über der Routensuche, auch über Stadtgrenzen hinweg. Keine Werbung oder Pop-ups vor der Abfahrtsprüfung.',
+        imageAlt: 'Kilometr-Startseite mit gespeicherten Orten und nächsten Abfahrten',
+      },
+      {
+        id: 'routes',
+        shortLabel: 'Verbindungen',
+        title: 'Stadtverkehr und Bahn in einer Liste',
+        body: 'Eine Suche kombiniert Fußwege, Straßenbahnen, Busse und Züge auf einer gemeinsamen Zeitleiste mit Umstiegen. Wo Live-Daten vorliegen, siehst du Abweichungen vom Fahrplan.',
+        imageAlt: 'Liste von Stadt- und Bahnverbindungen in Kilometr',
+      },
+      {
+        id: 'trip',
+        shortLabel: 'Fahrtinfos',
+        title: 'Steighinweis, Gleisangabe und Datenalter',
+        body: 'An großen Umsteigeknoten zeigt ein kurzer Hinweis, welche Insel oder welchen Steig du ansteuerst. Bei Zügen siehst du zusätzlich Gleis, Ausstattung und wie alt die Positionsmeldung in Sekunden ist.',
+        imageAlt: 'Verbindungsdetails mit Bahnsteighinweis und Live-Zugverfolgung',
+      },
+      {
+        id: 'share',
+        shortLabel: 'Teilen',
+        title: 'Verbindungskarte und Link für den Browser',
+        body: 'Statt Umstiege auf Screenshots zu erklären, verschickst du eine übersichtliche Verbindungskarte mit Halten und Fußwegen oder einen Link, der direkt im Browser aufgeht.',
+        imageAlt: 'Ansicht zum Teilen einer Verbindungskarte und eines Links',
+      },
+      {
+        id: 'alerts',
+        shortLabel: 'Meldungen',
+        title: 'Klare Umleitungen statt Textwand',
+        body: 'Meldungen trennen Bauzeit, betroffene Linien und entfallende Haltesteige direkt sichtbar. So erkennst du sofort, welche Linien ausfallen und welche am Ersatzhalt abfahren.',
+        imageAlt: 'Details zu Verkehrsmeldungen und Umleitungen auf Linien',
+      },
+    ],
   },
-  journeyDemo: {
-    choose: 'Du wählst',
-    ride: '...und fährst los',
-    mock: 'Beispielfahrt. Die Zeiten folgen deiner Geräteuhr.',
-    route: previewRoute,
-    departIn: (n) => `in ${n} Min.`,
-    duration: (n) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 > 0 ? ` ${n % 60}m` : ''}` : `${n} Min.`),
-    transfers: (n) => (n === 0 ? 'direkt' : n === 1 ? '1 Umstieg' : `${n} Umstiege`),
-    fromPrefix: 'ab ',
-    toPrefix: 'bis ',
-    stopsSummary: (n, mins, open) =>
-      `${n} ${n === 1 ? 'Haltestelle' : 'Haltestellen'} • ~${mins} Min. • ${open ? 'ein' : 'aus'}klappen`,
-    expandA11y: (line, dir, expanded) =>
-      `${line} Richtung ${dir}. Haltestellenliste ${expanded ? 'ein' : 'aus'}klappen.`,
+  coverage: {
+    eyebrow: 'Abdeckung in Polen',
+    title: 'Prüfe deine Stadt und Verkehrsbetriebe',
+    body: (count: number) =>
+      `${count} Städte und Ballungsräume in einer App, einschließlich der Metropole GZM. Wähle einen Punkt auf der Karte oder suche nach deiner Stadt, um Live-Positionen, Meldungen und Betreiber zu prüfen.`,
+    searchPlaceholder: 'Stadt suchen, z. B. Wrocław, Katowice, Gdańsk...',
+    searchLabel: 'Unterstützte Stadt suchen',
+    browseListLabel: 'Städteliste umschalten',
+    clearSearch: 'Suche löschen',
+    mapAria: 'Klickbare Karte Polens mit unterstützten Städten',
+    mapHint: (count: number) => `${count} unterstützte Netze · Punkt auf der Karte wählen`,
+    citiesListLabel: 'Liste unterstützter Städte',
+    emptyTitle: 'Keine passende Stadt gefunden',
+    emptyBody: 'Prüfe die Schreibweise oder setze den Filter zurück, um alle Städte zu sehen.',
+    emptyReset: 'Alle Städte zeigen',
+    liveLabel: 'Live-Positionen',
+    liveValue: (vehicles: number | null) =>
+      vehicles == null
+        ? 'Verfügbar (Fahrzeug-GPS)'
+        : vehicles === 0
+          ? 'Verfügbar (derzeit keine Fahrzeuge)'
+          : `Verfügbar (${countLabel(vehicles, 'Fahrzeug', 'Fahrzeuge')} live)`,
+    liveUnavailable: 'Kein Live-GPS (statischer Fahrplan)',
+    newsLabel: 'Fahrgastmeldungen',
+    newsAvailable: 'Verfügbar',
+    newsUnavailable: 'Keine städtischen Meldungen',
+    stopHintsLabel: 'Haltestellenhinweise',
+    stopHintsValue: (stops: number) =>
+      `Verfügbar (${countLabel(stops, 'Haltestelle', 'Haltestellen')})`,
+    stopHintsUnavailable: 'Keine Haltestellenhinweise',
+    statsUpdated: (date: string) => `Datenstand: ${date}`,
+    operatorsLabel: 'Verkehrsbetriebe',
+    railGatewayNote: (stations: string) =>
+      `Fernverkehr (PKP Intercity, POLREGIO) über den Bahnhof: ${stations}.`,
+    modes: {
+      bus: 'Busse',
+      tram: 'Straßenbahnen',
+      trolley: 'Oberleitungsbusse',
+      metro: 'U-Bahn',
+      rail: 'Bahn',
+      cable: 'Seilbahn',
+    },
   },
   promise: {
     ads: 'Keine Werbung.',

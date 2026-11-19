@@ -61,10 +61,12 @@ export default function RouteDetailsScreen() {
   const router = useRouter();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId, action: routeAction } = useLocalSearchParams<{
+  const { id: routeId, action: routeAction, fromY } = useLocalSearchParams<{
     id: string;
     action?: string;
+    fromY?: string;
   }>();
+  const cardFromY = fromY ? Number(fromY) : undefined;
   const id = normalizeConnectionId(routeId ?? '');
   const openTicket = routeAction === 'ticket';
   const { trip: trackedTrip } = useTrackedTrip();
@@ -208,7 +210,7 @@ export default function RouteDetailsScreen() {
           await stopTracking();
         }
       } catch (err) {
-        console.warn("Failed to unpin route:", err);
+        console.warn('Failed to unpin route:', err);
       }
     } else {
       try {
@@ -218,11 +220,10 @@ export default function RouteDetailsScreen() {
           void toggleTracking();
         }
       } catch (err) {
-        console.warn("Failed to pin route:", err);
+        console.warn('Failed to pin route:', err);
       }
     }
   };
-
 
   // Nagłówek przełącza śledzenie, karta włącza ochronę. Monitor trzyma jedną podróż.
   const toggleTracking = async (enableProtection = false) => {
@@ -285,7 +286,6 @@ export default function RouteDetailsScreen() {
   };
 
   useEffect(() => {
-    // Brak id to nie „wczytujemy”: inaczej ekran zostawał ze spinnerem w nieskończoność.
     if (!id) {
       setLoadFailed(true);
       return;
@@ -324,7 +324,7 @@ export default function RouteDetailsScreen() {
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
-            style={styles.iconBtn}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
@@ -352,7 +352,7 @@ export default function RouteDetailsScreen() {
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
-            style={styles.iconBtn}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
@@ -369,8 +369,6 @@ export default function RouteDetailsScreen() {
 
   const noLegs = item.legs.length === 0;
 
-  // Treść komunikatu o źródle danych. Kolejność ma znaczenie: połączenie
-  // wzięte z dysku jest starsze od czegokolwiek, co pokaże feed live.
   const dataNote = offline
     ? s.routeDetails.offlineNote
     : liveStale && !item.live
@@ -387,13 +385,13 @@ export default function RouteDetailsScreen() {
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
-            style={styles.iconBtn}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
             <ChevronLeft size={23} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle} accessibilityRole="header">
+          <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
             {s.routeDetails.title}
           </Text>
           {!noLegs && (
@@ -401,9 +399,9 @@ export default function RouteDetailsScreen() {
               onPress={() => setSharing(true)}
               accessibilityRole="button"
               accessibilityLabel={s.share.title}
-              style={({ pressed }) => [styles.trackBtn, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [styles.trackBtn, pressed && styles.pressed]}
             >
-              <Share2 size={21} color={scheme.onSurfaceVariant} />
+              <Share2 size={20} color={scheme.onSurface} />
             </Pressable>
           )}
           {item.legs.some((leg) => leg.mode !== 'walk') && (
@@ -421,13 +419,13 @@ export default function RouteDetailsScreen() {
               style={({ pressed }) => [
                 styles.trackBtn,
                 currentAlarm && styles.trackBtnActive,
-                pressed && { opacity: 0.75 },
+                pressed && styles.pressed,
                 alarmFocused && styles.alarmFocused,
               ]}
             >
               <AlarmClock
-                size={21}
-                color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                size={20}
+                color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurface}
               />
             </Pressable>
           )}
@@ -443,13 +441,13 @@ export default function RouteDetailsScreen() {
               style={({ pressed }) => [
                 styles.trackBtn,
                 isPinned && styles.trackBtnActive,
-                pressed && { opacity: 0.7 },
+                pressed && styles.pressed,
               ]}
               hitSlop={8}
             >
               <Pin
-                size={21}
-                color={isPinned ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                size={20}
+                color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
               />
             </Pressable>
           )}
@@ -460,11 +458,13 @@ export default function RouteDetailsScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
         >
-          <ConnectionSummary item={item} offline={offline} />
+          <ConnectionSummary item={item} offline={offline} fromY={cardFromY} />
 
           {dataNote && (
             <View style={styles.offlineBanner}>
-              <CloudOff size={16} color={scheme.onSurfaceVariant} />
+              <View style={styles.offlineIconWrap}>
+                <CloudOff size={15} color={scheme.onSecondaryContainer} />
+              </View>
               <Text style={styles.offlineBannerText}>{dataNote}</Text>
             </View>
           )}
@@ -543,47 +543,75 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: 8,
+    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   iconBtn: {
     width: 48,
     height: 48,
-    borderRadius: shape.medium,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { flex: 1, ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
+  headerTitle: {
+    flex: 1,
+    ...type.titleMedium,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    paddingHorizontal: 4,
+  },
   trackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: 48,
     height: 48,
-    borderRadius: shape.medium,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerLow,
   },
-  trackBtnActive: { backgroundColor: scheme.primaryContainer },
-  body: { paddingHorizontal: 16, gap: 18, paddingBottom: 40 },
+  trackBtnActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: shape.full,
+  },
+  pressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.97 }],
+  },
+  body: { paddingHorizontal: 16, gap: 14, paddingBottom: 40 },
   alarmFocused: { borderWidth: 2, borderColor: scheme.primary },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.medium,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    borderRadius: shape.large,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
   },
-  offlineBannerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1 },
+  offlineIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.small,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offlineBannerText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    flex: 1,
+    lineHeight: 18,
+  },
   emptyCard: {
     alignItems: 'center',
     gap: 8,
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
+    borderRadius: shape.extraLarge,
     padding: 20,
   },
   emptyTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
   emptyText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  detailsContent: { gap: 18 },
+  detailsContent: { gap: 14 },
 });

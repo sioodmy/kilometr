@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <script>
+      (function () {
+        var h = location.hash ? location.hash.slice(1) : '';
+        var nextHash = h && h.indexOf('=') === -1 ? '#t=' + h : location.hash;
+        location.replace('../' + location.search + nextHash);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

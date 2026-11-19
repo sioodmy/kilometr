@@ -1,0 +1,1201 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=5400, initial-scale=1" />
+    <title>Kilometr Google Play Store</title>
+    <style>
+      @font-face {
+        font-family: 'Roboto Play';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Roboto Play';
+        font-weight: 400 700;
+        src: url('/landing/public/fonts/roboto-latin-ext.woff2') format('woff2');
+        unicode-range: U+0100-02FF, U+0304, U+0308, U+0329, U+1E00-1EFF;
+      }
+
+      :root {
+        --bg: #101413;
+        --surface: #1b2120;
+        --surface-high: #252b2a;
+        --surface-notif: #2b322f;
+        --ink: #f4f8f6;
+        --muted: #bfc9c5;
+        --teal: #5cdbbe;
+        --teal-hi: #7df8de;
+        --teal-deep: #005047;
+        --teal-badge: #006a60;
+        --bus: #a5cce8;
+        --rail: #0057b8;
+        --outline: #3f4946;
+        --warn-bg: #633f00;
+        --warn-fg: #ffddb5;
+        --success: #7dd895;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0a0d0c;
+        font-family: 'Roboto Play', Roboto, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #strip {
+        position: relative;
+        width: 5400px;
+        height: 1920px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      #backdrop {
+        position: absolute;
+        inset: 0;
+        width: 5400px;
+        height: 1920px;
+        pointer-events: none;
+      }
+
+      .scrim-top {
+        position: absolute;
+        top: 0;
+        height: 500px;
+        width: 1080px;
+        background: linear-gradient(180deg, rgba(16, 20, 19, 0.94) 0%, rgba(16, 20, 19, 0.78) 62%, rgba(16, 20, 19, 0) 100%);
+        pointer-events: none;
+      }
+      .scrim-bottom {
+        position: absolute;
+        bottom: 0;
+        height: 490px;
+        width: 1080px;
+        background: linear-gradient(0deg, rgba(16, 20, 19, 0.95) 0%, rgba(16, 20, 19, 0.82) 64%, rgba(16, 20, 19, 0) 100%);
+        pointer-events: none;
+      }
+
+      .brand-row {
+        position: absolute;
+        left: 84px;
+        top: 64px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        z-index: 5;
+      }
+      .brand-row svg {
+        width: 44px;
+        height: 44px;
+        display: block;
+      }
+      .brand-name {
+        color: var(--ink);
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      .brand-end {
+        position: absolute;
+        left: 5232px;
+        top: 64px;
+        z-index: 5;
+      }
+      .brand-end svg {
+        width: 48px;
+        height: 48px;
+        display: block;
+      }
+
+      .copy {
+        position: absolute;
+        width: 912px;
+        z-index: 5;
+      }
+      .copy h1 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 90px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1.04;
+      }
+      .copy h1 .teal {
+        color: var(--teal);
+        display: block;
+      }
+      .copy p {
+        margin: 24px 0 0;
+        color: var(--muted);
+        font-size: 35px;
+        font-weight: 400;
+        line-height: 1.32;
+        max-width: 860px;
+      }
+
+      /* Ramka Google Pixel: proporcje ekranu 9:20 (549 x 1220) + bezel 14px = 577 x 1248 */
+      .phone {
+        position: absolute;
+        box-sizing: border-box;
+        --bezel: 14px;
+        --frame: #1c1e22;
+        --frame-hi: #4a4e55;
+        --frame-lo: #0b0c0e;
+        z-index: 3;
+      }
+      .phone .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 52px;
+        background: linear-gradient(152deg, var(--frame-hi) 0%, var(--frame) 22%, #14161a 55%, var(--frame-lo) 100%);
+        box-shadow:
+          0 0 0 1.5px rgba(255, 255, 255, 0.14),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.68),
+          0 38px 90px rgba(0, 0, 0, 0.68),
+          0 12px 32px rgba(0, 0, 0, 0.45);
+      }
+      .phone .shell::before {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        border-radius: 50px;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 16%);
+        opacity: 0.5;
+      }
+      .phone .btn {
+        position: absolute;
+        z-index: 2;
+        background: linear-gradient(90deg, #3a3e45, #1a1c20 55%, #0e1012);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+          0 1px 2px rgba(0, 0, 0, 0.4);
+      }
+      .phone .btn-vol-up {
+        left: -5px;
+        top: 204px;
+        width: 5px;
+        height: 64px;
+        border-radius: 3px 0 0 3px;
+      }
+      .phone .btn-vol-down {
+        left: -5px;
+        top: 284px;
+        width: 5px;
+        height: 90px;
+        border-radius: 3px 0 0 3px;
+      }
+      .phone .btn-power {
+        right: -5px;
+        top: 268px;
+        width: 5px;
+        height: 112px;
+        border-radius: 0 3px 3px 0;
+      }
+      .phone .bezel {
+        position: absolute;
+        inset: var(--bezel);
+        border-radius: 40px;
+        overflow: hidden;
+        background: #000;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+          0 0 0 1px rgba(0, 0, 0, 0.8);
+      }
+      .phone .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #111414;
+      }
+      .phone .screen img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+      }
+      .phone .punch {
+        position: absolute;
+        left: 50%;
+        top: 10px;
+        width: 20px;
+        height: 20px;
+        margin-left: -10px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 40% 35%, #1a1d22 0%, #000 55%, #050607 100%);
+        box-shadow:
+          0 0 0 2px #0c0d0f,
+          0 0 0 3.5px #2a2e33;
+        z-index: 4;
+      }
+
+      /* Wyłamane karty UI i mostki między kartami */
+      .ui-float {
+        position: absolute;
+        z-index: 10;
+        background: var(--surface);
+        border: 1.5px solid var(--outline);
+        border-radius: 28px;
+        color: var(--ink);
+        box-shadow:
+          0 28px 64px rgba(0, 0, 0, 0.72),
+          0 8px 20px rgba(0, 0, 0, 0.44);
+      }
+
+      .line-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 14px;
+        border-radius: 12px;
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .line-151 { background: #c8c4f7; color: #18143b; }
+      .line-2 { background: #bcd5f3; color: #0e243c; }
+      .line-12 { background: #92d896; color: #0b2d12; }
+      .line-ic { background: var(--rail); color: #ffffff; }
+      .line-bus-sm {
+        padding: 8px 14px;
+        border-radius: 11px;
+        font-size: 23px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      /* Karta 1: wyciągnięty kafelek odjazdu PWr 151 */
+      .w-quick {
+        left: 604px;
+        top: 632px;
+        width: 416px;
+        padding: 24px 26px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .w-quick-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .w-quick-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: var(--teal-deep);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--teal-hi);
+        flex-shrink: 0;
+      }
+      .w-quick-name {
+        font-size: 31px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.1;
+      }
+      .w-quick-city {
+        margin-top: 4px;
+        font-size: 22px;
+        color: var(--muted);
+      }
+      .w-quick-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+      }
+      .w-quick-time {
+        font-size: 25px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      /* MOST 1 -> 2 (x = 1080 przecina dokładnie na środku ikony zamiany) */
+      .bridge-12 {
+        left: 650px;
+        top: 1126px;
+        width: 860px;
+        padding: 24px 30px;
+        display: grid;
+        grid-template-columns: 1fr 58px 1fr;
+        align-items: center;
+        gap: 14px;
+      }
+      .b12-col {
+        min-width: 0;
+      }
+      .b12-col.right {
+        padding-left: 16px;
+      }
+      .b12-label {
+        font-size: 21px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .b12-val {
+        font-size: 31px;
+        font-weight: 700;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .b12-swap {
+        width: 56px;
+        height: 56px;
+        border-radius: 17px;
+        background: var(--surface-high);
+        border: 1px solid var(--outline);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--teal);
+        margin: 0 auto;
+      }
+
+      /* MOST 2 -> 3 (x = 2160 przecina dokładnie na pionowym separatorze .b23-div) */
+      .bridge-23 {
+        left: 1730px;
+        top: 636px;
+        width: 860px;
+        padding: 26px 30px;
+        display: grid;
+        grid-template-columns: 386px 28px 1fr;
+        align-items: center;
+      }
+      .b23-left {
+        padding-right: 14px;
+      }
+      .b23-top {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .b23-eta {
+        font-size: 38px;
+        font-weight: 700;
+        color: var(--teal);
+        letter-spacing: -0.02em;
+      }
+      .b23-live {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: #0d4b2b;
+        color: #9df4b7;
+        font-size: 21px;
+        font-weight: 600;
+      }
+      .b23-sub {
+        margin-top: 10px;
+        font-size: 25px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .b23-div {
+        width: 1.5px;
+        height: 108px;
+        background: var(--outline);
+        margin: 0 auto;
+      }
+      .b23-right {
+        padding-left: 12px;
+      }
+      .b23-rtop {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .b23-via {
+        font-size: 22px;
+        color: var(--muted);
+      }
+      .b23-dur {
+        padding: 5px 14px;
+        border-radius: 999px;
+        background: #334b46;
+        color: #cde8e1;
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .b23-legs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .leg-walk {
+        display: inline-flex;
+        align-items: center;
+        padding: 7px 12px;
+        border-radius: 11px;
+        background: var(--surface-high);
+        color: var(--muted);
+        font-size: 21px;
+        font-weight: 600;
+      }
+      .b23-bar {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+        height: 7px;
+      }
+      .b23-bar span {
+        border-radius: 999px;
+        display: block;
+        height: 100%;
+      }
+
+      /* Karta 3: lewa kolumna z podpowiedzią peronu + kartą pociągu IC */
+      .w-hint {
+        left: 2212px;
+        top: 906px;
+        width: 404px;
+        padding: 22px 24px;
+      }
+      .w-hint-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 21px;
+        font-weight: 600;
+        color: var(--teal);
+        margin-bottom: 10px;
+      }
+      .w-hint-text {
+        font-size: 24px;
+        line-height: 1.35;
+        color: var(--ink);
+      }
+
+      .w-train {
+        left: 2212px;
+        top: 1158px;
+        width: 404px;
+        padding: 22px 24px;
+      }
+      .w-train-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .w-train-plat {
+        padding: 6px 13px;
+        border-radius: 10px;
+        background: #213733;
+        color: #bfe8de;
+        font-size: 21px;
+        font-weight: 600;
+      }
+      .w-train-name {
+        margin-top: 12px;
+        font-size: 25px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .w-train-icons {
+        margin-top: 14px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        color: var(--muted);
+      }
+      .w-train-live {
+        margin-top: 14px;
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--success);
+      }
+
+      /* MOST 3 -> 4 (x = 3240 przecina dokładnie na środku trackera Live Update, z dala od 09:23 na Karcie 4) */
+      .bridge-34 {
+        left: 2826px;
+        top: 966px;
+        width: 828px;
+        padding: 22px 28px;
+        background: var(--surface-notif);
+        border: 1.5px solid #444f4b;
+        border-radius: 28px;
+      }
+      .lu-grid {
+        display: grid;
+        grid-template-columns: 368px 44px 1fr;
+        align-items: center;
+      }
+      .lu-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #c5cdc9;
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .lu-head svg {
+        width: 22px;
+        height: 22px;
+      }
+      .lu-main {
+        margin-top: 8px;
+        font-size: 27px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .lu-sub {
+        margin-top: 4px;
+        font-size: 21px;
+        color: #c5cdc9;
+      }
+      .lu-mid-track {
+        position: relative;
+        height: 104px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .lu-track-line {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--teal);
+      }
+      .lu-tracker {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: var(--teal-badge);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+      }
+      .lu-right {
+        padding-left: 16px;
+      }
+      .lu-arr {
+        font-size: 21px;
+        color: #c5cdc9;
+      }
+      .lu-arr-time {
+        margin-top: 4px;
+        font-size: 33px;
+        font-weight: 700;
+        color: var(--teal-hi);
+      }
+      .lu-actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 16px;
+        font-size: 21px;
+        font-weight: 600;
+        color: var(--teal);
+      }
+
+      /* Karta 4: wyeksponowana karta JourneyShareCard */
+      .w-share {
+        left: 3804px;
+        top: 264px;
+        width: 452px;
+        border-radius: 30px;
+        overflow: hidden;
+        border: 1.5px solid #2b6b61;
+        padding: 0;
+      }
+      .w-share-top {
+        background: var(--teal-deep);
+        padding: 24px 26px 26px;
+      }
+      .w-share-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 20px;
+        font-weight: 600;
+        color: #8ce9d4;
+      }
+      .w-share-kicker {
+        margin-top: 20px;
+        font-size: 23px;
+        color: #c8f5ea;
+      }
+      .w-share-time {
+        margin-top: 4px;
+        font-size: 76px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        color: var(--teal-hi);
+      }
+      .w-share-dest {
+        margin-top: 10px;
+        font-size: 32px;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: -0.01em;
+      }
+      .w-share-bot {
+        background: #232a28;
+        padding: 22px 26px 24px;
+      }
+      .w-share-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 22px;
+        color: var(--muted);
+      }
+      .w-share-row strong {
+        color: var(--ink);
+        font-size: 24px;
+      }
+      .w-share-orig {
+        margin-top: 6px;
+        font-size: 27px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .w-share-leg {
+        margin-top: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .w-share-note {
+        margin-top: 12px;
+        font-size: 20px;
+        color: var(--muted);
+      }
+
+      /* MOST 4 -> 5 (x = 4320 przecina dokładnie na pionowej linii oddzielającej lewe chipy od prawych) */
+      .bridge-45 {
+        left: 3890px;
+        top: 1212px;
+        width: 860px;
+        padding: 24px 28px;
+        display: grid;
+        grid-template-columns: 388px 28px 1fr;
+        align-items: center;
+      }
+      .b45-meta {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .tag-alert {
+        padding: 6px 13px;
+        border-radius: 999px;
+        background: #273e3a;
+        color: #c7eae2;
+        font-size: 19px;
+        font-weight: 600;
+      }
+      .tag-plan {
+        padding: 6px 13px;
+        border-radius: 999px;
+        background: var(--surface-high);
+        color: var(--muted);
+        font-size: 19px;
+        font-weight: 500;
+      }
+      .b45-chips {
+        display: flex;
+        gap: 12px;
+      }
+      .c-105 { background: #ffbd4a; color: #2b1a00; }
+      .c-128 { background: #f2a2ef; color: #360835; }
+      .c-184 { background: #bbc3ff; color: #151b4b; }
+      .c-193 { background: #bed3fb; color: #0c2242; }
+      .c-199 { background: #74dd87; color: #052e0d; }
+      .c-442 { background: #89e5a6; color: #052f14; }
+      .b45-rtitle {
+        font-size: 21px;
+        color: var(--muted);
+        margin-bottom: 14px;
+      }
+
+      /* Karta 5: wyłamane karty objazdu po lewej */
+      .w-detour {
+        left: 4372px;
+        top: 1410px;
+        width: 404px;
+        padding: 20px 22px;
+        background: var(--teal-deep);
+        border-color: #206b60;
+      }
+      .w-detour-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 23px;
+        font-weight: 700;
+        color: #c8f5ea;
+      }
+      .w-detour-body {
+        margin-top: 10px;
+        font-size: 22px;
+        line-height: 1.36;
+        color: #e6fbf5;
+      }
+
+      .w-skip {
+        left: 4372px;
+        top: 1656px;
+        width: 404px;
+        padding: 18px 22px;
+      }
+      .w-skip-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .w-skip-badge {
+        padding: 6px 13px;
+        border-radius: 999px;
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+        font-size: 19px;
+        font-weight: 600;
+      }
+      .w-skip-dir {
+        margin-top: 10px;
+        font-size: 20px;
+        color: var(--muted);
+      }
+      .w-skip-stop {
+        margin-top: 6px;
+        font-size: 22px;
+        color: #ffb4ab;
+        text-decoration: line-through;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="strip">
+      <svg id="backdrop" viewBox="0 0 5400 1920" fill="none" aria-hidden="true">
+        <g stroke="#171e1c" stroke-width="4">
+          <path d="M-40 310 H1260 L1520 570 H2600 L2820 350 H4120 L4380 610 H5440" />
+          <path d="M-40 940 H840 L1140 1240 H2260 L2540 960 H3720 L4020 1260 H5440" />
+          <path d="M-40 1560 H1340 L1580 1320 H2980 L3280 1620 H4480 L4760 1340 H5440" />
+          <path d="M440 0 V880 L680 1120 V1920" />
+          <path d="M1620 0 V740 L1880 1000 V1920" />
+          <path d="M2760 0 V640 L2560 840 V1920" />
+          <path d="M3880 0 V920 L4140 1180 V1920" />
+          <path d="M4980 0 V820 L4740 1060 V1920" />
+        </g>
+
+        <g fill="#151b19">
+          <rect x="64" y="420" width="120" height="84" rx="8" />
+          <rect x="880" y="340" width="140" height="96" rx="8" />
+          <rect x="1160" y="1380" width="150" height="110" rx="8" />
+          <rect x="2060" y="1420" width="130" height="86" rx="8" />
+          <rect x="2230" y="470" width="140" height="90" rx="8" />
+          <rect x="3310" y="1430" width="130" height="88" rx="8" />
+          <rect x="4410" y="490" width="130" height="94" rx="8" />
+          <rect x="5190" y="1440" width="136" height="100" rx="8" />
+        </g>
+
+        <path
+          d="M-40 1380 H720 Q760 1380 790 1350 L1180 960 Q1210 930 1250 930 H2080 Q2120 930 2150 960 L2480 1290 Q2510 1320 2550 1320 H3420 Q3460 1320 3490 1290 L3860 920 Q3890 890 3930 890 H5440"
+          stroke="#a5cce8"
+          stroke-opacity="0.24"
+          stroke-width="4"
+          stroke-linecap="round"
+        />
+
+        <path
+          d="M-40 760 H620 Q660 760 690 790 L1020 1120 Q1050 1150 1090 1150 H1760 Q1800 1150 1830 1120 L2260 690 Q2290 660 2330 660 H3520 Q3560 660 3590 690 L3980 1080 Q4010 1110 4050 1110 H4820 Q4860 1110 4890 1080 L5260 710 H5440"
+          stroke="#5cdbbe"
+          stroke-opacity="0.34"
+          stroke-width="6"
+          stroke-linecap="round"
+        />
+
+        <g fill="#101413" stroke="#5cdbbe" stroke-width="4">
+          <circle cx="620" cy="760" r="10" />
+          <circle cx="1080" cy="1148" r="11" />
+          <circle cx="1800" cy="1145" r="10" />
+          <circle cx="2330" cy="660" r="10" />
+          <circle cx="3240" cy="660" r="11" />
+          <circle cx="4320" cy="1110" r="11" />
+          <circle cx="5260" cy="710" r="11" />
+        </g>
+      </svg>
+
+      <div class="scrim-top" style="left: 0"></div>
+      <div class="scrim-bottom" style="left: 1080px"></div>
+      <div class="scrim-top" style="left: 2160px"></div>
+      <div class="scrim-bottom" style="left: 3240px"></div>
+      <div class="scrim-top" style="left: 4320px"></div>
+
+      <!-- KARTA 1 -->
+      <div class="brand-row">
+        <svg viewBox="0 0 1024 1024" aria-hidden="true">
+          <rect width="1024" height="1024" rx="232" fill="#00a884" />
+          <g transform="translate(512 512) scale(0.82) translate(-512 -512)">
+            <g fill="none" stroke="#04362c" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M352 180 L352 794" />
+              <path d="M352 512 C390 380 480 300 600 220" />
+              <path d="M352 512 C400 664 510 754 672 754" />
+            </g>
+            <g transform="translate(605 215) rotate(-35)">
+              <path d="M-18 -68 L96 0 L-18 68 L8 0 Z" fill="#04362c" stroke="#04362c" stroke-width="40" stroke-linejoin="round" />
+            </g>
+            <circle cx="352" cy="512" r="102" fill="#04362c" />
+            <circle cx="352" cy="512" r="50" fill="#00a884" />
+            <circle cx="672" cy="754" r="32" fill="#04362c" />
+          </g>
+        </svg>
+        <span class="brand-name">Kilometr</span>
+      </div>
+
+      <div class="copy" style="left: 84px; top: 148px">
+        <h1>
+          Zapisane miejsca
+          <span class="teal">i odjazdy na żywo</span>
+        </h1>
+        <p>Odliczanie do najbliższych kursów i wyszukiwarka trasy na ekranie głównym.</p>
+      </div>
+
+      <div class="phone" style="left: 84px; top: 504px; width: 577px; height: 1248px">
+        <div class="shell">
+          <div class="btn btn-vol-up"></div>
+          <div class="btn btn-vol-down"></div>
+          <div class="btn btn-power"></div>
+          <div class="bezel">
+            <div class="screen">
+              <img src="/playstorescreenshots/playstore/mainscreen.png" alt="Ekran główny Kilometr" />
+              <div class="punch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-float w-quick">
+        <div class="w-quick-left">
+          <div class="w-quick-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z" />
+            </svg>
+          </div>
+          <div>
+            <div class="w-quick-name">PWr</div>
+            <div class="w-quick-city">Wrocław</div>
+          </div>
+        </div>
+        <div class="w-quick-right">
+          <span class="line-pill line-151">151</span>
+          <span class="w-quick-time">za 1 min</span>
+        </div>
+      </div>
+
+      <div class="ui-float bridge-12">
+        <div class="b12-col">
+          <div class="b12-label">Skąd</div>
+          <div class="b12-val">PL. GRUNWALDZKI</div>
+        </div>
+        <div class="b12-swap">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 16V4m0 0L3 8m4-4l4 4" />
+            <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
+        </div>
+        <div class="b12-col right">
+          <div class="b12-label">Dokąd</div>
+          <div class="b12-val">Poznań Główny</div>
+        </div>
+      </div>
+
+      <!-- KARTA 2 -->
+      <div class="phone" style="left: 1378px; top: 96px; width: 577px; height: 1248px">
+        <div class="shell">
+          <div class="btn btn-vol-up"></div>
+          <div class="btn btn-vol-down"></div>
+          <div class="btn btn-power"></div>
+          <div class="bezel">
+            <div class="screen">
+              <img src="/playstorescreenshots/playstore/listapolaczen.png" alt="Lista połączeń miejskich i kolejowych" />
+              <div class="punch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="copy" style="left: 1164px; top: 1502px">
+        <h1>
+          Miasto i kolej
+          <span class="teal">na jednej liście</span>
+        </h1>
+        <p>Czas dojścia, przesiadki, pasek odcinków i opóźnienia względem rozkładu.</p>
+      </div>
+
+      <div class="ui-float bridge-23">
+        <div class="b23-left">
+          <div class="b23-top">
+            <span class="b23-eta">za 32 min</span>
+            <span class="b23-live">na czas</span>
+          </div>
+          <div class="b23-sub">09:46 &rarr; 12:29</div>
+        </div>
+        <div class="b23-div"></div>
+        <div class="b23-right">
+          <div class="b23-rtop">
+            <span class="b23-via">1 przesiadka · Dworzec Gł.</span>
+            <span class="b23-dur">2h 45m</span>
+          </div>
+          <div class="b23-legs">
+            <span class="leg-walk">1'</span>
+            <span class="line-pill line-2">2</span>
+            <span class="leg-walk">4'</span>
+            <span class="line-pill line-ic">IC 264</span>
+          </div>
+          <div class="b23-bar">
+            <span style="width: 8%; background: #4a5450"></span>
+            <span style="width: 24%; background: #a5cce8"></span>
+            <span style="width: 9%; background: #4a5450"></span>
+            <span style="width: 59%; background: #0057b8"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- KARTA 3 -->
+      <div class="copy" style="left: 2244px; top: 108px">
+        <h1>
+          Peron, przesiadki
+          <span class="teal">i śledzenie kursu</span>
+        </h1>
+        <p>Wskazówka przystankowa, tor pociągu, udogodnienia w składzie oraz mapa trasy.</p>
+      </div>
+
+      <div class="phone" style="left: 2568px; top: 536px; width: 577px; height: 1248px">
+        <div class="shell">
+          <div class="btn btn-vol-up"></div>
+          <div class="btn btn-vol-down"></div>
+          <div class="btn btn-power"></div>
+          <div class="bezel">
+            <div class="screen">
+              <img src="/playstorescreenshots/playstore/polaczenie.png" alt="Szczegóły połączenia i wskazówka peronu" />
+              <div class="punch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-float w-hint">
+        <div class="w-hint-head">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" />
+          </svg>
+          <span>Wskazówka przystankowa</span>
+        </div>
+        <div class="w-hint-text">Peron 1 · Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.</div>
+      </div>
+
+      <div class="ui-float w-train">
+        <div class="w-train-top">
+          <span class="line-pill line-ic">IC 6142</span>
+          <span class="w-train-plat">Peron 3, Tor 6</span>
+        </div>
+        <div class="w-train-name">Fredro · Warszawa Wschodnia</div>
+        <div class="w-train-icons">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 7V3h-2v4h-4V3H8v4H6v7.5L9.5 18v3h5v-3l3.5-3.5V7h-2z"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3a4.237 4.237 0 00-6 0zm-4-4l2 2a7.074 7.074 0 0110 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm5.8-10l2.4-2.4.8.8c1.3 1.3 3 2.1 5.1 2.1V9c-1.5 0-2.7-.6-3.6-1.5l-1.9-1.9c-.5-.4-1-.6-1.6-.6s-1.1.2-1.4.6L7.8 8.4c-.4.4-.6.9-.6 1.4 0 .6.2 1.1.6 1.4L11 14v5h2v-6.2l-2.2-2.3zM19 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z"/></svg>
+        </div>
+        <div class="w-train-live">Na czas · Dane sprzed 3s</div>
+      </div>
+
+      <!-- MOST 3 -> 4 (y = 966 nie zasłania 09:23 na Karcie 4 ani wskazówki na Karcie 3) -->
+      <div class="ui-float bridge-34">
+        <div class="lu-grid">
+          <div>
+            <div class="lu-head">
+              <svg viewBox="0 0 1024 1024" aria-hidden="true">
+                <rect width="1024" height="1024" rx="232" fill="#00a884" />
+                <g transform="translate(512 512) scale(0.82) translate(-512 -512)">
+                  <g fill="none" stroke="#04362c" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M352 180 L352 794" />
+                    <path d="M352 512 C390 380 480 300 600 220" />
+                    <path d="M352 512 C400 664 510 754 672 754" />
+                  </g>
+                  <circle cx="352" cy="512" r="102" fill="#04362c" />
+                  <circle cx="352" cy="512" r="50" fill="#00a884" />
+                </g>
+              </svg>
+              <span>Kilometr · Podróż na żywo</span>
+            </div>
+            <div class="lu-main">IC 6142 Fredro</div>
+            <div class="lu-sub">Wrocław Główny · Peron 3, Tor 6</div>
+          </div>
+          <div class="lu-mid-track">
+            <div class="lu-track-line"></div>
+            <div class="lu-tracker">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff">
+                <path d="M12 2c-4 0-8 .5-8 4v9.5C4 17.43 5.57 19 7.5 19L6 20.5v.5h2.23l2-2H14l2 2h2v-.5L16.5 19c1.93 0 3.5-1.57 3.5-3.5V6c0-3.5-3.58-4-8-4zM7.5 17c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm3.5-7H6V6h5v4zm5.5 7c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-7h-5V6h5v4z" />
+              </svg>
+            </div>
+          </div>
+          <div class="lu-right">
+            <div class="lu-arr">Warszawa Zachodnia</div>
+            <div class="lu-arr-time">14:34 · Na czas</div>
+            <div class="lu-actions">
+              <span>Mapa trasy</span>
+              <span>Udostępnij</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KARTA 4 -->
+      <div class="phone" style="left: 3334px; top: 96px; width: 577px; height: 1248px">
+        <div class="shell">
+          <div class="btn btn-vol-up"></div>
+          <div class="btn btn-vol-down"></div>
+          <div class="btn btn-power"></div>
+          <div class="bezel">
+            <div class="screen">
+              <img src="/playstorescreenshots/playstore/sharing.png" alt="Udostępnianie połączenia" />
+              <div class="punch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-float w-share">
+        <div class="w-share-top">
+          <div class="w-share-meta">
+            <span>Kilometr</span>
+            <span>Wrocław · 16 lis 2026</span>
+          </div>
+          <div class="w-share-kicker">Na miejscu</div>
+          <div class="w-share-time">09:23</div>
+          <div class="w-share-dest">KARŁOWICZA</div>
+        </div>
+        <div class="w-share-bot">
+          <div class="w-share-row">
+            <span>Wyjazd · 09:15</span>
+            <strong>8 min</strong>
+          </div>
+          <div class="w-share-orig">PL. GRUNWALDZKI</div>
+          <div class="w-share-leg">
+            <span class="leg-walk">pieszo</span>
+            <span style="color: var(--muted)">&rarr;</span>
+            <span class="line-pill line-12">12</span>
+          </div>
+          <div class="w-share-note">Bez przesiadek · podgląd też w przeglądarce</div>
+        </div>
+      </div>
+
+      <div class="copy" style="left: 3324px; top: 1502px">
+        <h1>
+          Karta połączenia
+          <span class="teal">i link z podglądem</span>
+        </h1>
+        <p>Wysyłasz wyjazd, linię i godzinę przyjazdu. Link działa również bez aplikacji.</p>
+      </div>
+
+      <!-- MOST 4 -> 5 -->
+      <div class="ui-float bridge-45">
+        <div>
+          <div class="b45-meta">
+            <span class="tag-alert">Zmiana przystankowa</span>
+            <span class="tag-plan">Prace planowe</span>
+          </div>
+          <div class="b45-chips">
+            <span class="line-bus-sm c-105">105</span>
+            <span class="line-bus-sm c-128">128</span>
+            <span class="line-bus-sm c-184">184</span>
+          </div>
+        </div>
+        <div class="b23-div"></div>
+        <div>
+          <div class="b45-rtitle">Od 9.11.2026 · ok. 1,5 tygodnia</div>
+          <div class="b45-chips">
+            <span class="line-bus-sm c-193">193</span>
+            <span class="line-bus-sm c-199">199</span>
+            <span class="line-bus-sm c-442">442</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- KARTA 5 -->
+      <div class="brand-end">
+        <svg viewBox="0 0 1024 1024" aria-hidden="true">
+          <rect width="1024" height="1024" rx="232" fill="#00a884" />
+          <g transform="translate(512 512) scale(0.82) translate(-512 -512)">
+            <g fill="none" stroke="#04362c" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M352 180 L352 794" />
+              <path d="M352 512 C390 380 480 300 600 220" />
+              <path d="M352 512 C400 664 510 754 672 754" />
+            </g>
+            <circle cx="352" cy="512" r="102" fill="#04362c" />
+            <circle cx="352" cy="512" r="50" fill="#00a884" />
+            <circle cx="672" cy="754" r="32" fill="#04362c" />
+          </g>
+        </svg>
+      </div>
+
+      <div class="copy" style="left: 4404px; top: 108px">
+        <h1>
+          Komunikaty
+          <span class="teal">i zmiany na liniach</span>
+        </h1>
+        <p>Czas trwania prac, lista linii, pominięte przystanki i objazdy.</p>
+      </div>
+
+      <div class="phone" style="left: 4724px; top: 536px; width: 577px; height: 1248px">
+        <div class="shell">
+          <div class="btn btn-vol-up"></div>
+          <div class="btn btn-vol-down"></div>
+          <div class="btn btn-power"></div>
+          <div class="bezel">
+            <div class="screen">
+              <img src="/playstorescreenshots/playstore/alert.png" alt="Szczegóły utrudnień na liniach" />
+              <div class="punch"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-float w-detour">
+        <div class="w-detour-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z" />
+          </svg>
+          <span>Jak jechać w zamian</span>
+        </div>
+        <div class="w-detour-body">Linie 128 i 442 zatrzymają się na P+R 04, pozostałe linie ominą przystanek 01 przed pętlą.</div>
+      </div>
+
+      <div class="ui-float w-skip">
+        <div class="w-skip-top">
+          <span class="line-bus-sm c-128">128</span>
+          <span class="w-skip-badge">Pomija przystanki</span>
+        </div>
+        <div class="w-skip-dir">Kierunek: Zajezdnia Płaszów</div>
+        <div class="w-skip-stop">Prądnik Czerwony P+R 01</div>
+      </div>
+    </div>
+  </body>
+</html>

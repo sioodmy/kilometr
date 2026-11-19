@@ -43,7 +43,7 @@ test('resolveStopHint: Poznan slugified stopName + stopCode matching and geohash
   assert.match(hintPst, /PST/i);
 });
 
-test('resolveStopHint: returns null for train mode and PKP rail stations', () => {
+test('resolveStopHint: returns null for train/subway modes and PKP rail stations', () => {
   // 1. Z feedu krajowego z prefiksem pl: lub stop-pl:
   const railHintPl = resolveStopHint(STOP_HINTS_POZNAN, '73', 'pl:5100028', 'Poznań Główny');
   assert.equal(railHintPl, null, 'Stacje PKP z id pl: nie powinny zwracać wskazówek miejskich');
@@ -78,6 +78,21 @@ test('resolveStopHint: returns null for train mode and PKP rail stations', () =>
     'train',
   );
   assert.equal(trainKrkHint, null, 'Pociąg z Krakowa Głównego nie powinien mieć wskazówek');
+
+  // 3. Metro (mode === "subway") nie ma wskazówek peronowych
+  const metroHint = resolveStopHint(
+    STOP_HINTS_WARSZAWA,
+    'C15',
+    '1003M:P2',
+    'Dworzec Wileński',
+    'subway',
+  );
+  assert.equal(metroHint, null, 'Stacje metra nie powinny mieć wskazówek');
+  assert.equal(
+    STOP_HINTS_WARSZAWA.stops['1003M:P2'],
+    undefined,
+    'Baza nie powinna zawierać wpisów dla peronów metra',
+  );
 });
 
 test('isTrainLeg correctly identifies train legs', () => {

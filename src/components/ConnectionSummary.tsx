@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -10,12 +10,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowDown, ArrowRight, Clock3 } from './icons';
 import { useStrings } from '../i18n';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { motion } from '../theme/motion';
 import type { Connection } from '../types/models';
 import { RollingTime } from './RollingTime';
-import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
-import { secondsToTimeString } from '../gtfs/geo';
+import { LiveSensors } from './LiveDot';
+import { boardingDepartureSec } from '../services/routing/connectionTimes';
+import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
+import { nowSecOfDay } from '../services/vehiclePosition';
 
 export function ConnectionSummary({
   item,
@@ -39,22 +41,38 @@ export function ConnectionSummary({
   const departureSec = boardingDepartureSec(item);
   const departure =
     item.boarded || !firstVehicle ? item.departAt : secondsToTimeString(departureSec);
-  const scheduled =
-    !item.boarded && firstVehicle
-      ? scheduledLegTimes(firstVehicle, departureSec).departure
-      : undefined;
   const departureDelay =
     !item.boarded && firstVehicle?.live && !offline
       ? Math.round((firstVehicle.delaySec ?? 0) / 60)
       : 0;
-  // Przyjazd ma osobne opoznienie: pociag zbiera je po drodze, wiec koncowa
-  // godzina nie moze zostac na wartosci ze stacji poczatkowej.
   const arrivalDelaySec =
     lastVehicle?.live && !offline ? (lastVehicle.arrivalDelaySec ?? lastVehicle.delaySec ?? 0) : 0;
   const arrivalDelay = Math.round(arrivalDelaySec / 60);
-  const scheduledArrival =
-    item.arrivalSec != null ? item.arrivalSec - arrivalDelaySec : undefined;
   const Direction = stacked ? ArrowDown : ArrowRight;
+
+  // Odliczanie czasu do odjazdu pierwszego pojazdu (lub wyjścia)
+  const [nowSec, setNowSec] = useState(() => nowSecOfDay());
+  useEffect(() => {
+    const timer = setInterval(() => setNowSec(nowSecOfDay()), 15_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setNowSec(nowSecOfDay());
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, []);
+
+  const countdownLabel = useMemo(() => {
+    if (item.boarded) return s.connection.inVehicleNow;
+    const targetSec = firstVehicle ? departureSec : timeStringToSeconds(item.departAt);
+    let diffSec = targetSec - nowSec;
+    if (diffSec < -43200) diffSec += 86400;
+    const diffMin = Math.round(diffSec / 60);
+    if (diffMin < -2 || diffMin > 180) return null;
+    if (diffMin <= 0) return s.common.departNow;
+    return s.common.departIn(diffMin);
+  }, [item.boarded, item.departAt, firstVehicle, departureSec, nowSec, s]);
 
   const targetY = insets.top + 64;
   const deltaY = fromY != null ? fromY - targetY : 0;
@@ -91,9 +109,45 @@ export function ConnectionSummary({
 
   const innerContent = (
     <>
-      <View style={[styles.endpoints, stacked && styles.endpointsStacked]}>
-        <View style={styles.endpoint}>
-          <Text style={styles.label}>
+      {/* 1. Górny pasek statusu M3 Expressive: odliczanie live, punktualność, przesiadki i czas podróży */}
+      <View style={styles.topBar}>
+        <View style={styles.topPillsLeft}>
+          {countdownLabel ? (
+            <View style={[styles.countdownPill, item.boarded && styles.countdownPillBoarded]}>
+              {!offline && item.live ? (
+                <LiveSensors
+                  color={item.boarded ? scheme.onTertiaryContainer : scheme.onPrimaryContainer}
+                  size={13}
+                />
+              ) : null}
+              <Text
+                style={[styles.countdownText, item.boarded && styles.countdownTextBoarded]}
+                numberOfLines={1}
+              >
+                {countdownLabel}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.metaPill}>
+            <Text style={styles.metaPillText} numberOfLines={1}>
+              {boarding.length === 0
+                ? s.connection.walkAll
+                : s.connection.transfers(item.transfers)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.durationPill}>
+          <Clock3 size={14} color={scheme.onSecondaryContainer} />
+          <Text style={styles.durationText}>{s.common.durMin(item.durationMin)}</Text>
+        </View>
+      </View>
+
+      {/* 2. Dwie karty punktów końcowych połączone okrągłym łącznikiem kierunku */}
+      <View style={[styles.endpointsWrap, stacked && styles.endpointsWrapStacked]}>
+        <View style={styles.endpointBox}>
+          <Text style={styles.endpointTag} numberOfLines={1}>
             {item.boarded
               ? s.connection.inVehicleNow
               : firstVehicle
@@ -101,16 +155,25 @@ export function ConnectionSummary({
                 : s.routeDetails.departure}
           </Text>
           <RollingTime value={departure} style={styles.time} />
-          {departureDelay !== 0 && scheduled != null && (
-            <View style={styles.delayDetails} accessibilityLiveRegion="polite">
-              <Text style={styles.label}>
-                {s.routeDetails.scheduledTime(secondsToTimeString(scheduled))}
-              </Text>
+          {departureDelay !== 0 && (
+            <View
+              style={[
+                styles.delayBadge,
+                departureDelay > 0 ? styles.delayBadgeLate : styles.delayBadgeEarly,
+              ]}
+              accessibilityLiveRegion="polite"
+            >
               <Text
                 style={[
-                  styles.status,
-                  { color: departureDelay > 0 ? scheme.error : scheme.warning },
+                  styles.delayBadgeText,
+                  {
+                    color:
+                      departureDelay > 0
+                        ? scheme.onErrorContainer
+                        : scheme.onWarningContainer,
+                  },
                 ]}
+                numberOfLines={1}
               >
                 {departureDelay > 0
                   ? s.routeDetails.late(departureDelay)
@@ -118,43 +181,51 @@ export function ConnectionSummary({
               </Text>
             </View>
           )}
-          <Text style={styles.place}>
+          <Text style={styles.place} numberOfLines={2}>
             {item.boarded ? item.fromTitle : (firstVehicle?.fromStop ?? item.fromTitle)}
           </Text>
         </View>
-        <View style={[styles.direction, stacked && styles.directionStacked]}>
-          <Direction size={30} color={scheme.primary} />
+
+        <View style={[styles.connectorBadge, stacked && styles.connectorBadgeStacked]}>
+          <Direction size={18} color={scheme.onSecondaryContainer} />
         </View>
-        <View style={styles.endpoint}>
-          <Text style={styles.label}>{s.routeDetails.arrival}</Text>
+
+        <View style={styles.endpointBox}>
+          <Text style={styles.endpointTag} numberOfLines={1}>
+            {s.routeDetails.arrival}
+          </Text>
           <RollingTime value={item.arriveAt} style={styles.time} />
           {arrivalDelay !== 0 &&
-            (item.boarded || arrivalDelay !== departureDelay) &&
-            scheduledArrival != null && (
-            <View style={styles.delayDetails} accessibilityLiveRegion="polite">
-              <Text style={styles.label}>
-                {s.routeDetails.scheduledTime(secondsToTimeString(scheduledArrival))}
-              </Text>
-              <Text
-                style={[styles.status, { color: arrivalDelay > 0 ? scheme.error : scheme.warning }]}
+            (item.boarded || arrivalDelay !== departureDelay) && (
+              <View
+                style={[
+                  styles.delayBadge,
+                  arrivalDelay > 0 ? styles.delayBadgeLate : styles.delayBadgeEarly,
+                ]}
+                accessibilityLiveRegion="polite"
               >
-                {arrivalDelay > 0
-                  ? s.routeDetails.late(arrivalDelay)
-                  : s.routeDetails.early(-arrivalDelay)}
-              </Text>
-            </View>
-          )}
-          <Text style={styles.place}>{item.toTitle}</Text>
+                <Text
+                  style={[
+                    styles.delayBadgeText,
+                    {
+                      color:
+                        arrivalDelay > 0
+                          ? scheme.onErrorContainer
+                          : scheme.onWarningContainer,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {arrivalDelay > 0
+                    ? s.routeDetails.late(arrivalDelay)
+                    : s.routeDetails.early(-arrivalDelay)}
+                </Text>
+              </View>
+            )}
+          <Text style={styles.place} numberOfLines={2}>
+            {item.toTitle}
+          </Text>
         </View>
-      </View>
-      <View style={styles.facts}>
-        <View style={styles.fact}>
-          <Clock3 size={17} color={scheme.primary} />
-          <Text style={styles.duration}>{s.common.durMin(item.durationMin)}</Text>
-        </View>
-        <Text style={styles.label}>
-          {boarding.length === 0 ? s.connection.walkAll : s.connection.transfers(item.transfers)}
-        </Text>
       </View>
     </>
   );
@@ -178,31 +249,135 @@ export function ConnectionSummary({
 
 const styles = StyleSheet.create({
   summary: {
-    padding: 22,
-    backgroundColor: scheme.surfaceContainerLow,
+    padding: 14,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
+    ...elev.level1,
   },
   content: {
-    gap: 22,
+    gap: 10,
   },
-  endpoints: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  endpointsStacked: { flexDirection: 'column' },
-  endpoint: { flex: 1, minWidth: 0, gap: 6 },
-  delayDetails: { gap: 4 },
-  label: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  time: {
-    fontSize: 38,
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  topPillsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    flex: 1,
+  },
+  countdownPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: scheme.primaryContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+  },
+  countdownPillBoarded: {
+    backgroundColor: scheme.tertiaryContainer,
+  },
+  countdownText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+  },
+  countdownTextBoarded: {
+    color: scheme.onTertiaryContainer,
+  },
+  metaPill: {
+    backgroundColor: scheme.surfaceContainerLow,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+  },
+  metaPillText: {
+    ...type.labelSmall,
     fontWeight: '600',
-    letterSpacing: -1.5,
+    color: scheme.onSurfaceVariant,
+  },
+  durationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: scheme.secondaryContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+  },
+  durationText: {
+    ...type.labelLarge,
+    fontWeight: '800',
+    color: scheme.onSecondaryContainer,
+    fontVariant: ['tabular-nums'],
+  },
+  endpointsWrap: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  endpointsWrapStacked: {
+    flexDirection: 'column',
+  },
+  endpointBox: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  endpointTag: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  time: {
+    fontSize: 32,
+    lineHeight: 36,
+    fontWeight: '800',
+    letterSpacing: -1.1,
     color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
   },
-  place: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, lineHeight: 23 },
-  direction: { paddingTop: 31 },
-  directionStacked: { paddingTop: 0 },
-  facts: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 18, rowGap: 8 },
-  fact: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
-  duration: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
-  status: { ...type.bodySmall, flexShrink: 1 },
+  delayBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: shape.small,
+  },
+  delayBadgeLate: {
+    backgroundColor: scheme.errorContainer,
+  },
+  delayBadgeEarly: {
+    backgroundColor: scheme.warningContainer,
+  },
+  delayBadgeText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  place: {
+    ...type.bodyMedium,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    lineHeight: 19,
+    marginTop: 2,
+  },
+  connectorBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  connectorBadgeStacked: {
+    marginVertical: -2,
+  },
 });

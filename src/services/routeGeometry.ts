@@ -60,7 +60,7 @@ interface CacheEntry {
   c: Coord[];
 }
 
-// ─── Model trasy ─────────────────────────────────────────────────────────────
+// ─── Model trasy ───────────────────────────────────────────────────────────
 
 function legStops(leg: Leg): MapStop[] {
   const stops: MapStop[] = [];
@@ -183,7 +183,7 @@ export function buildMapRoute(connection: Connection): MapRoute {
   };
 }
 
-// ─── Geometria z OSRM ─────────────────────────────────────────────────────────
+// ─── Geometria z OSRM ──────────────────────────────────────────────────────
 
 function waypointKey(coords: Coord[]): string {
   // 5 m ≈ 4–5 miejsc po przecinku - tyle wystarczy, żeby klucz był stabilny.
@@ -611,6 +611,8 @@ export function straightGeometry(leg: MapLeg): Coord[] {
 /** Cache shape'ów w pamięci: unpack raz, tnie każde otwarcie mapy od nowa. */
 const shapeCache = new Map<string, Coord[] | null>();
 const SHAPE_CACHE_MAX = 64;
+const railSliceCache = new Map<string, Coord[]>();
+const RAIL_SLICE_CACHE_MAX = 128;
 
 async function loadShape(shapeId: string): Promise<Coord[] | null> {
   const key = shapeId.replace(/^pl:/, '');
@@ -693,6 +695,10 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
   const alight = stops[stops.length - 1];
   if (!board || !alight) return null;
 
+  const sliceKey = `${leg.tripId ?? ''}|${leg.line ?? ''}|${board.lat.toFixed(4)},${board.lon.toFixed(4)}|${alight.lat.toFixed(4)},${alight.lon.toFixed(4)}|${stops.length}`;
+  const cachedSlice = railSliceCache.get(sliceKey);
+  if (cachedSlice) return cachedSlice;
+
   try {
     const { getNationalDb } = await import('./gtfsDatabase');
     const db = await getNationalDb();
@@ -756,7 +762,13 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
         }
       }
       if (clean.length < 2) return null;
-      return simplifyPolyline(clean, 2);
+      const simplified = simplifyPolyline(clean, 2);
+      railSliceCache.set(sliceKey, simplified);
+      if (railSliceCache.size > RAIL_SLICE_CACHE_MAX) {
+        const oldest = railSliceCache.keys().next().value;
+        if (oldest !== undefined && oldest !== sliceKey) railSliceCache.delete(oldest);
+      }
+      return simplified;
     };
 
     // 1. Sprawdź tripId z nogi (jeśli jest).

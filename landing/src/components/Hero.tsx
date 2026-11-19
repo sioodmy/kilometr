@@ -99,7 +99,16 @@ export function Hero() {
         </div>
       </div>
       <div className="product-stage">
-        <Phone className="hero-phone" />
+        <Phone className="hero-phone" label={s.hero.phoneAlt}>
+          <img
+            className="phone-shot"
+            src="./screenshots/mainscreen.png"
+            alt=""
+            width={720}
+            height={1600}
+            fetchPriority="high"
+          />
+        </Phone>
       </div>
     </section>
   );

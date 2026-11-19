@@ -469,6 +469,8 @@ export const LIVE_VEHICLE_MOTION_SCRIPT = [
   '      var st = states[order[i]];',
   '      if (!st) continue;',
   '      var isSel = selectedId != null && st.id === selectedId;',
+  '      // Wybrany pojazd: reszta znika, bo zasłania jego trasę. Wracają po odkliknięciu.',
+  '      if (selectedId != null && !isSel) continue;',
   '      if (bounds && !isSel) {',
   '        if (st.lat < bounds.minLat || st.lat > bounds.maxLat || st.lon < bounds.minLon || st.lon > bounds.maxLon) {',
   '          if (st.targetLat < bounds.minLat || st.targetLat > bounds.maxLat || st.targetLon < bounds.minLon || st.targetLon > bounds.maxLon) {',

@@ -17,7 +17,11 @@ import {
 import { scheme } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { RailAmenity } from '../types/models';
-import { loadRailAmenities, type RailAmenities as Amenities } from '../services/railAmenities';
+import {
+  getCachedRailAmenities,
+  loadRailAmenities,
+  type RailAmenities as Amenities,
+} from '../services/railAmenities';
 
 const ICONS: Record<RailAmenity, ComponentType<{ size?: number; color?: string }>> = {
   klimatyzacja: AcUnit,
@@ -54,10 +58,30 @@ export function RailAmenities({
   trainName?: string;
 }) {
   const t = useStrings();
-  const [data, setData] = useState<Amenities | null>(null);
+  const [data, setData] = useState<Amenities | null>(
+    () =>
+      getCachedRailAmenities({
+        tripId,
+        railAgency: agency,
+        trainNumber,
+        line,
+        trainName,
+      }) ?? null,
+  );
 
   useEffect(() => {
     let alive = true;
+    const cached = getCachedRailAmenities({
+      tripId,
+      railAgency: agency,
+      trainNumber,
+      line,
+      trainName,
+    });
+    if (cached !== undefined) {
+      setData(cached);
+      return;
+    }
     setData(null);
     void loadRailAmenities({
       id: '',

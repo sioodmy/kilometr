@@ -316,7 +316,7 @@ assert.equal(en.share.duration(125), "2h 5m");
 assert.equal(de.share.duration(125), "2h 5m");
 assert.equal(uk.share.duration(125), "2 год 5 хв");
 
-assert.equal(pl.landing.journeyDemo.duration(125), "2h 5m");
+assert.equal(pl.landing.showcase.stepCounter(1, 5), "1 / 5");
 
 console.log(
   'PASS: godziny live, wzrost i spadek opóźnienia, brak kumulacji, rozkład offline, przesiadki, odjazd bez dojścia, połączenia z pokładu, północ, pociągi i starsze plany',
