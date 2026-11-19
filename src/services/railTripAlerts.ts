@@ -315,7 +315,7 @@ function legAlertCacheKey(leg: Leg, candidates = vehicleCandidatesForLeg(leg)): 
   return [leg.tripId ?? '', leg.trainNumber ?? '', ...candidates].join('|');
 }
 
-export function getCachedAlertsForLeg(leg: Leg): TrainAlertItem[] | undefined {
+function getCachedAlertsForLeg(leg: Leg): TrainAlertItem[] | undefined {
   const hit = results.get(legAlertCacheKey(leg));
   if (!hit || Date.now() - hit.at >= TTL_MS) return undefined;
   return hit.alerts;
