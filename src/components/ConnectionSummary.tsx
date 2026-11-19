@@ -16,7 +16,7 @@ import type { Connection } from '../types/models';
 import { RollingTime } from './RollingTime';
 import { getLineColors, LineBadge } from './LineBadge';
 import { LiveSensors } from './LiveDot';
-import { boardingDepartureSec, legDurationMin, scheduledLegTimes } from '../services/routing/connectionTimes';
+import { boardingDepartureSec, legDurationMin } from '../services/routing/connectionTimes';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { nowSecOfDay } from '../services/vehiclePosition';
@@ -44,10 +44,6 @@ export function ConnectionSummary({
   const departureSec = boardingDepartureSec(item);
   const departure =
     item.boarded || !firstVehicle ? item.departAt : secondsToTimeString(departureSec);
-  const scheduled =
-    !item.boarded && firstVehicle
-      ? scheduledLegTimes(firstVehicle, departureSec).departure
-      : undefined;
   const departureDelay =
     !item.boarded && firstVehicle?.live && !offline
       ? Math.round((firstVehicle.delaySec ?? 0) / 60)
@@ -55,8 +51,6 @@ export function ConnectionSummary({
   const arrivalDelaySec =
     lastVehicle?.live && !offline ? (lastVehicle.arrivalDelaySec ?? lastVehicle.delaySec ?? 0) : 0;
   const arrivalDelay = Math.round(arrivalDelaySec / 60);
-  const scheduledArrival =
-    item.arrivalSec != null ? item.arrivalSec - arrivalDelaySec : undefined;
   const Direction = stacked ? ArrowDown : ArrowRight;
 
   // Odliczanie czasu do odjazdu pierwszego pojazdu (lub wyjścia)
@@ -208,7 +202,7 @@ export function ConnectionSummary({
                 : s.routeDetails.departure}
           </Text>
           <RollingTime value={departure} style={styles.time} />
-          {departureDelay !== 0 && scheduled != null && (
+          {departureDelay !== 0 && (
             <View
               style={[
                 styles.delayBadge,
@@ -228,7 +222,6 @@ export function ConnectionSummary({
                 ]}
                 numberOfLines={1}
               >
-                {s.routeDetails.scheduledTime(secondsToTimeString(scheduled))} {'\u00b7'}{' '}
                 {departureDelay > 0
                   ? s.routeDetails.late(departureDelay)
                   : s.routeDetails.early(-departureDelay)}
@@ -250,8 +243,7 @@ export function ConnectionSummary({
           </Text>
           <RollingTime value={item.arriveAt} style={styles.time} />
           {arrivalDelay !== 0 &&
-            (item.boarded || arrivalDelay !== departureDelay) &&
-            scheduledArrival != null && (
+            (item.boarded || arrivalDelay !== departureDelay) && (
               <View
                 style={[
                   styles.delayBadge,
@@ -271,7 +263,6 @@ export function ConnectionSummary({
                   ]}
                   numberOfLines={1}
                 >
-                  {s.routeDetails.scheduledTime(secondsToTimeString(scheduledArrival))} {'\u00b7'}{' '}
                   {arrivalDelay > 0
                     ? s.routeDetails.late(arrivalDelay)
                     : s.routeDetails.early(-arrivalDelay)}

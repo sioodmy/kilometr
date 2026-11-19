@@ -805,7 +805,7 @@ const TransitLegCard = memo(function TransitLegCard({
                   <MapPin size={13} color={scheme.primary} style={s.stopHintIcon} />
                   <Text style={s.cardStopHint}>
                     {!/^(słupek|peron|stanowisko|tor)\b/i.test(stopHint) && hintPlatform ? (
-                      <Text style={s.hintPlatformBold}>{hintPlatform} \u2022 </Text>
+                      <Text style={s.hintPlatformBold}>{`${hintPlatform} \u2022 `}</Text>
                     ) : null}
                     {stopHint}
                   </Text>
@@ -859,24 +859,24 @@ const TransitLegCard = memo(function TransitLegCard({
                     ) : null}
                   </View>
                 )}
+              </View>
 
-                <View style={s.cardTopSpacer} />
-
-                <View style={s.stopsSummaryPill}>
-                  <Text style={s.stopsSummaryLabel} numberOfLines={1}>
-                    {stopsCount <= 0
-                      ? t.leg.directRide(durationMin)
-                      : isTrain
-                        ? t.leg.stationsCountShort(stopsCount)
-                        : t.leg.stopsCountShort(stopsCount)}
+              <View style={s.stopsSummaryPill}>
+                <Text style={s.stopsSummaryLabel} numberOfLines={1}>
+                  {stopsCount <= 0
+                    ? t.leg.directRide(durationMin)
+                    : isTrain
+                      ? t.leg.stationsCountShort(stopsCount)
+                      : t.leg.stopsCountShort(stopsCount)}
+                </Text>
+                {stopsCount > 0 ? (
+                  <Text style={s.stopsSummaryMeta}>
+                    {`\u00b7 ~${t.common.durMin(durationMin)}`}
                   </Text>
-                  {stopsCount > 0 ? (
-                    <Text style={s.stopsSummaryMeta}>\u00b7 ~{t.common.durMin(durationMin)}</Text>
-                  ) : null}
-                  <Animated.View style={chevronStyle}>
-                    <ChevronDown size={16} color={scheme.onSurfaceVariant} />
-                  </Animated.View>
-                </View>
+                ) : null}
+                <Animated.View style={chevronStyle}>
+                  <ChevronDown size={16} color={scheme.onSurfaceVariant} />
+                </Animated.View>
               </View>
 
               {leg.live || notice || (delayMin !== 0 && scheduledDeparture != null) ? (
@@ -927,7 +927,7 @@ const TransitLegCard = memo(function TransitLegCard({
 
                       {leg.live && liveTimestamp ? (
                         <>
-                          <Text style={s.liveDotSep}>\u00b7</Text>
+                          <Text style={s.liveDotSep}>{'\u00b7'}</Text>
                           <LiveDataAge timestamp={liveTimestamp} />
                         </>
                       ) : null}
@@ -1337,9 +1337,6 @@ const s = StyleSheet.create({
   lineLinkPressed: {
     opacity: 0.72,
   },
-  cardTopSpacer: {
-    flex: 1,
-  },
   badgeWrap: {
     alignItems: 'center',
   },
@@ -1353,6 +1350,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     backgroundColor: scheme.surfaceContainerHigh,
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -1363,6 +1362,7 @@ const s = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     fontSize: 11.5,
     fontWeight: '700',
+    flexShrink: 1,
   },
   stopsSummaryMeta: {
     ...type.labelSmall,

@@ -546,7 +546,7 @@ export function RouteTravelDeck({
                 <Text style={styles.modalHeading}>{s.railTickets.deckSheetTitle}</Text>
                 {trainSummary && (
                   <Text style={styles.modalSubheading} numberOfLines={1}>
-                    {trainSummary.fromStation} \u2192 {trainSummary.toStation}
+                    {trainSummary.fromStation}{' \u2192 '}{trainSummary.toStation}
                   </Text>
                 )}
               </View>
