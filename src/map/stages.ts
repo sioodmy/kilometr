@@ -39,20 +39,39 @@ export interface MapStage {
 
 const enrichedCache = new Map<string, Connection>();
 
+function connectionNeedsStopFetch(conn: Connection): boolean {
+  return conn.legs.some(
+    (l) => l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2),
+  );
+}
+
 /**
  * Dociąga brakujące `intermediateStops` z bazy GTFS dla wszystkich nóg
  * komunikacji i przycina je do odcinka pasażera (`findUserSegment`).
  */
 async function enrichConnectionStops(conn: Connection): Promise<Connection> {
-  const cached = enrichedCache.get(conn.id);
-  if (cached) return cached;
-
-  const needsFetch = conn.legs.some(
-    (l) => l.mode !== 'walk' && l.tripId && (!l.intermediateStops || l.intermediateStops.length < 2),
-  );
-  if (!needsFetch) {
+  if (!connectionNeedsStopFetch(conn)) {
     enrichedCache.set(conn.id, conn);
     return conn;
+  }
+
+  const cached = enrichedCache.get(conn.id);
+  if (cached) {
+    // Zachowaj świeże dane live (opóźnienia, perony, tory) z bieżącego obiektu
+    // połączenia, a ze starszego cache przejmij tylko dociągnięte przystanki pośrednie.
+    const legs = conn.legs.map((leg, idx) => {
+      if (leg.intermediateStops && leg.intermediateStops.length >= 2) return leg;
+      const cachedLeg =
+        cached.legs.find((c) => c.id === leg.id || (c.tripId && c.tripId === leg.tripId)) ??
+        cached.legs[idx];
+      if (cachedLeg?.intermediateStops && cachedLeg.intermediateStops.length >= 2) {
+        return { ...leg, intermediateStops: cachedLeg.intermediateStops };
+      }
+      return leg;
+    });
+    const merged: Connection = { ...conn, legs };
+    enrichedCache.set(conn.id, merged);
+    return merged;
   }
 
   const legs: Leg[] = await Promise.all(
@@ -87,18 +106,23 @@ async function enrichConnectionStops(conn: Connection): Promise<Connection> {
  * minimapy w szczegółach trasy, jak i pełnoekranowej mapy).
  */
 export function useEnrichedConnection(connection: Connection | null): Connection | null {
-  const [enriched, setEnriched] = useState<Connection | null>(() =>
-    connection ? (enrichedCache.get(connection.id) ?? connection) : null,
-  );
+  const [enriched, setEnriched] = useState<Connection | null>(() => {
+    if (!connection) return null;
+    if (!connectionNeedsStopFetch(connection)) {
+      enrichedCache.set(connection.id, connection);
+      return connection;
+    }
+    return enrichedCache.get(connection.id) ?? connection;
+  });
 
   useEffect(() => {
     if (!connection) {
       setEnriched(null);
       return;
     }
-    const hit = enrichedCache.get(connection.id);
-    if (hit) {
-      setEnriched(hit);
+    if (!connectionNeedsStopFetch(connection)) {
+      enrichedCache.set(connection.id, connection);
+      setEnriched(connection);
       return;
     }
     setEnriched(connection);

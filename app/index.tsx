@@ -12,11 +12,27 @@ import {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeOutUp, LinearTransition, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+  runOnJS,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { motion } from '../src/theme/motion';
 import * as Haptics from 'expo-haptics';
-import { Bell, Download, History, MapPin, MapPinned, Settings2, X } from '../src/components/icons';
+import {
+  Bell,
+  ChevronDown,
+  Download,
+  History,
+  MapPin,
+  MapPinned,
+  Settings2,
+  X,
+} from '../src/components/icons';
 import { LineBadge } from '../src/components/LineBadge';
 import { consumePendingBoardedOrigin } from '../src/services/boardedOriginSelection';
 import { useCurrentLocation } from '../src/services/currentLocation';
@@ -29,6 +45,7 @@ import {
 import { gtfsStore } from '../src/services/routing/store';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
+import { isIntercityRouteQuery } from '../src/services/api';
 import { defaultLocationForCity } from '../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import {
@@ -452,7 +469,7 @@ export default function HomeScreen() {
       } else if (st.state === 'ready') {
         void checkTimetableForUpdates().catch((e) => console.warn('Timetable refresh failed:', e));
         // Rozkład kolejowy odświeżamy lazy i cicho: tylko gdy już jest
-        // pobrany (nowa wersja) - pierwsze pobranie robi użytkownik.
+        // pobrany (nowa wersja); pierwsze pobranie robi użytkownik.
         import('../src/services/nationalTimetable')
           .then((m) => m.ensureNationalTimetable())
           .catch(() => {});
@@ -507,7 +524,7 @@ export default function HomeScreen() {
     }, [refreshSavedRoutes, refreshTicketIds]),
   );
 
-  // Kolejność „Twoich tras”: aktywnie śledzona podróż → trasy z biletem → reszta
+  // Kolejność „Twoich tras”: aktywnie śledzona podróż -> trasy z biletem -> reszta
   // historii. Śledzony kurs może nie być zapisany (start śledzenia bez pinezki),
   // więc wpięcie go na listę syntetycznym wpisem gwarantuje mu pierwsze miejsce.
   const orderedSavedRoutes = useMemo(() => {
@@ -554,7 +571,7 @@ export default function HomeScreen() {
         console.warn('Failed to delete saved route:', err);
       }
     },
-    [trackedConnId],
+    [trackedConnId, refreshTicketIds],
   );
 
   // Odpięcie aktywnego kursu: zatrzymuje monitor i powiadomienia, trasa zostaje w historii.
@@ -708,14 +725,14 @@ export default function HomeScreen() {
     handleSelectSavedRoute,
   ]);
 
-  const refreshPlaces = () => {
+  const refreshPlaces = useCallback(() => {
     const requestedCity = getActiveCityIdSync();
     FavoritesService.list()
       .then((places) => {
         if (requestedCity === getActiveCityIdSync()) setSaved(places);
       })
       .catch(() => {});
-  };
+  }, []);
 
   // Świeży ranking zapisujemy do cache, żeby następny start namalował
   // gołe ostatnie miejsca natychmiast (bez czekania na GPS).
@@ -816,7 +833,7 @@ export default function HomeScreen() {
     };
     // Zmiana miasta to nowy kontekst: GPS, historia i cache ulubionych należą
     // do poprzedniego miasta, więc efekt startuje od nowa.
-  }, [cityId]);
+  }, [cityId, refreshPlaces, requestSmart]);
 
   // Sam reset stanu per-miasto. Ekran główny zostaje zamontowany, gdy Settings
   // jest wypchnięty na stos (native stack nie robi unmount), więc bez tego
@@ -872,14 +889,32 @@ export default function HomeScreen() {
         requestSmart(originStopRef.current, currentCoords);
       }
     }
-  }, [dataStatus.state, isCustomStart, locTitle, currentCoords, requestSmart]);
+  }, [dataStatus.state, isCustomStart, locTitle, currentCoords, refreshPlaces, requestSmart]);
 
-  // Po jednej trasie do każdego ostatniego miejsca, sekwencyjnie od góry do dołu
-  // (kolejność = kolejność wyświetlania, najlepszy na górze). Każdy wynik
-  // doklejamy od razu: prawa strona wiersza pojawia się z animacją.
+  // Lista celów do wyliczenia najbliższego odjazdu: smart history + zapisane miejsca,
+  // które nie załapały się do bieżącego smart rankingu.
+  const warmupTargets = useMemo(() => {
+    const list: { id: string; title: string; lat: number; lon: number }[] = smart.map((d) => ({
+      id: d.id,
+      title: d.title,
+      lat: d.lat,
+      lon: d.lon,
+    }));
+    const seen = new Set(list.map((d) => d.id));
+    for (const p of saved) {
+      if (!seen.has(p.placeId)) {
+        list.push({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon });
+        seen.add(p.placeId);
+      }
+    }
+    return list;
+  }, [smart, saved]);
+
+  // Po jednej trasie do każdego celu (ostatnie miejsca + zapisane miejsca),
+  // sekwencyjnie od góry do dołu. Każdy wynik doklejamy od razu.
   // Przerwanie własnym szukaniem: podbicie routeSearchGen unieważnia pętlę.
   useEffect(() => {
-    if (smart.length === 0) {
+    if (warmupTargets.length === 0) {
       setFirstConns({});
       setFirstLegs({});
       return;
@@ -888,16 +923,13 @@ export default function HomeScreen() {
     let cancelled = false;
     // Prawe strony czyścimy TYLKO przy zmianie originu (inne współrzędne /
     // tytuł startu), żeby stare odjazdy nie wisiały przy nowej lokalizacji.
-    // Przy samej zamianie listy (cache → świeży ranking, reorder) przycinamy
-    // jedynie wpisy znikniętych celów, a reszta dokleja się po kolei bez
-    // mrugnięcia całością naraz.
     const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}|${boardedOrigin ? `${boardedOrigin.tripId}:${boardedOrigin.boardStopId ?? ''}` : ''}`;
     if (lastOriginRef.current !== originKey) {
       lastOriginRef.current = originKey;
       setFirstConns({});
       setFirstLegs({});
     } else {
-      const ids = new Set(smart.map((d) => d.id));
+      const ids = new Set(warmupTargets.map((d) => d.id));
       const prune = <T,>(prev: Record<string, T>): Record<string, T> => {
         let changed = false;
         const next = { ...prev };
@@ -914,7 +946,7 @@ export default function HomeScreen() {
     }
     const s = getSettingsSync();
     void (async () => {
-      for (const d of smart) {
+      for (const d of warmupTargets) {
         if (cancelled || routeSearchGen.current !== gen) return;
         try {
           const conns = await RoutingService.getConnections({
@@ -934,6 +966,18 @@ export default function HomeScreen() {
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
             boardedTrip: boardedOrigin ?? undefined,
+            // Podgląd „za X min" potrzebuje tylko najbliższego odjazdu.
+            // Godzina mieści się w wycinku live i nie budzi 3-godzinnej sieci.
+            searchAheadSec: isIntercityRouteQuery({
+              fromLat: currentCoords.lat,
+              fromLon: currentCoords.lon,
+              toLat: d.lat,
+              toLon: d.lon,
+              toId: d.id,
+              trainsEnabled: s.trainsEnabled,
+            })
+              ? undefined
+              : 3600,
           });
           if (cancelled || routeSearchGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -958,7 +1002,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [smart, currentCoords, locTitle, warmupNonce, boardedOrigin]);
+  }, [warmupTargets, currentCoords, locTitle, warmupNonce, boardedOrigin]);
 
   // Prawe strony wierszy liczymy raz: po odjeździe kursu trzeba je przeliczyć,
   // żeby pokazywały następny pojazd, a nie „X min temu". Ticker (homeTick) co
@@ -966,9 +1010,9 @@ export default function HomeScreen() {
   // im świeżą trasę per cel (bez mielenia spacerów i całej listy naraz).
   const quickRefreshGen = useRef(0);
   useEffect(() => {
-    if (sheetMode !== null || smart.length === 0) return;
+    if (sheetMode !== null || warmupTargets.length === 0) return;
     const now = new Date();
-    const expired = smart.filter((d) => {
+    const expired = warmupTargets.filter((d) => {
       const c = firstConns[d.id];
       if (!c || c.departureSec <= 0 || boardingDepartureMs(c, now) > now.getTime()) return false;
       return c.legs.some((l) => l.mode !== 'walk' && l.line);
@@ -997,6 +1041,16 @@ export default function HomeScreen() {
             maxWalkM: s.maxWalkM,
             walkSpeedMps: profileWalkSpeedMps(s.walkPace),
             boardedTrip: boardedOrigin ?? undefined,
+            searchAheadSec: isIntercityRouteQuery({
+              fromLat: currentCoords.lat,
+              fromLon: currentCoords.lon,
+              toLat: d.lat,
+              toLon: d.lon,
+              toId: d.id,
+              trainsEnabled: s.trainsEnabled,
+            })
+              ? undefined
+              : 3600,
           });
           if (quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
@@ -1080,7 +1134,7 @@ export default function HomeScreen() {
 
     void mergeWidgetSnapshot({ origin: locTitle, quick, places });
     // firstConns zmienia referencję razem z nextDepart, więc snapshot idzie po świeżych danych.
-  }, [firstConns, locTitle, s, saved, smart, smartReady]);
+  }, [firstConns, locTitle, s, saved, smart, smartReady, isCustomStart, currentCoords.lat, currentCoords.lon]);
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
   const recentFromSmart: Suggestion[] = useMemo(() => {
@@ -1113,7 +1167,7 @@ export default function HomeScreen() {
   // `smart` z rankera jest już posortowane malejąco po wyniku: nie odwracamy.
   const smartOrdered = smart;
 
-  // Ikonki jak w wyszukiwarce: zapisane miejsce → jego ikona,
+  // Ikonki jak w wyszukiwarce: zapisane miejsce -> jego ikona,
   // inaczej rodzaj z historii wyszukiwania, inaczej zegar (w liście).
   const smartIcons = useMemo(() => {
     const map: Record<string, SuggestionIconMeta | undefined> = {};
@@ -1152,11 +1206,11 @@ export default function HomeScreen() {
         },
       ],
     );
-  }, [gpsCity, cityGen, s]);
+  }, [gpsCity, cityGen, s, setSheetMode]);
 
   // Reset startu na GPS: natychmiast czyści stan w UI do domyślnego/ostatniego GPS,
   // a świeży fix dociąga się w tle bez blokowania interfejsu.
-  const resetToGps = () => {
+  const resetToGps = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const gen = ++startSelGen.current;
     pendingDestinationRef.current = null;
@@ -1205,7 +1259,7 @@ export default function HomeScreen() {
       .catch((err) => {
         console.warn('[resetToGps] błąd pobierania pozycji GPS:', err);
       });
-  };
+  }, [blockGpsStart, gpsLocation, gpsUnsupported, requestSmart]);
 
   const handleStartSelect = async (sel: Suggestion) => {
     setQuery('');
@@ -1392,6 +1446,23 @@ export default function HomeScreen() {
     ],
   );
 
+  const handleSelectSavedPlace = useCallback(
+    (p: SavedPlace) => {
+      goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon });
+    },
+    [goToRoutes],
+  );
+
+  const handleAddSavedPlace = useCallback(() => {
+    setEditingPlace(null);
+    setAddPlaceOpen(true);
+  }, []);
+
+  const handleEditSavedPlace = useCallback((p: SavedPlace) => {
+    setEditingPlace(p);
+    setAddPlaceOpen(true);
+  }, []);
+
   // Tap w prawą część wiersza: od razu do ekranu tego konkretnego połączenia
   // (detail czyta je z podręcznego cache RoutingService: ten sam proces).
   const goToConnection = useCallback(
@@ -1490,35 +1561,38 @@ export default function HomeScreen() {
     [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
   );
 
-  const handleCityChange = async (id: CityId) => {
-    const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
-    if (id === cityId || switchingCityRef.current || dataBusy) return;
-    switchingCityRef.current = true;
-    setSwitchingCity(true);
-    setSwitchingCityId(id);
-    try {
-      await setCity(id);
-      const st = await refreshDataStatus().catch(() => null);
-      if (st) {
-        setDataStatus(st);
-        if (st.state === 'empty' && getActiveCityIdSync() === id) {
-          void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+  const handleCityChange = useCallback(
+    async (id: CityId) => {
+      const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+      if (id === cityId || switchingCityRef.current || dataBusy) return;
+      switchingCityRef.current = true;
+      setSwitchingCity(true);
+      setSwitchingCityId(id);
+      try {
+        await setCity(id);
+        const st = await refreshDataStatus().catch(() => null);
+        if (st) {
+          setDataStatus(st);
+          if (st.state === 'empty' && getActiveCityIdSync() === id) {
+            void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
+          }
         }
+        const def = defaultLocationForCity(id);
+        if (!isCustomStart) {
+          setLocTitle(def.title);
+          setCurrentCoords({ lat: def.lat, lon: def.lon });
+        }
+        refreshPlaces();
+        requestSmart(def.title, { lat: def.lat, lon: def.lon });
+      } finally {
+        switchingCityRef.current = false;
+        setSwitchingCity(false);
+        setSwitchingCityId(null);
+        setCitySheetOpen(false);
       }
-      const def = defaultLocationForCity(id);
-      if (!isCustomStart) {
-        setLocTitle(def.title);
-        setCurrentCoords({ lat: def.lat, lon: def.lon });
-      }
-      refreshPlaces();
-      requestSmart(def.title, { lat: def.lat, lon: def.lon });
-    } finally {
-      switchingCityRef.current = false;
-      setSwitchingCity(false);
-      setSwitchingCityId(null);
-      setCitySheetOpen(false);
-    }
-  };
+    },
+    [cityId, dataStatus.state, isCustomStart, refreshPlaces, requestSmart, setCity],
+  );
 
   // Miasto z GPS ma już bazę: przełączamy od razu. Ref blokuje powrót sporu,
   // gdy użytkownik ręcznie wróci do starego miasta, stojąc w nowym.
@@ -1659,7 +1733,7 @@ export default function HomeScreen() {
           requestSmart(originStopRef.current, currentCoords);
         }
       }),
-    [currentCoords, locTitle, applySmart, requestSmart],
+    [currentCoords, locTitle, applySmart, refreshPlaces, refreshSavedRoutes, requestSmart],
   );
 
   return (
@@ -1694,8 +1768,8 @@ export default function HomeScreen() {
             <View style={styles.topBar}>
               <View style={styles.cityContextWrap}>
                 {gpsDownloadCityId ? (
-                  <Pressable
-                    style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
+                  <SpringPressable
+                    style={styles.cityPill}
                     onPress={() => void handleGpsCityDownload(gpsDownloadCityId)}
                     disabled={switchingCityId === gpsDownloadCityId}
                     accessibilityRole="button"
@@ -1704,26 +1778,37 @@ export default function HomeScreen() {
                     )}
                     accessibilityState={{ busy: switchingCityId === gpsDownloadCityId }}
                     hitSlop={8}
+                    scaleDelta={0.03}
                   >
-                    {switchingCityId === gpsDownloadCityId ? (
-                      <ActivityIndicator size="small" color={scheme.primary} />
-                    ) : (
-                      <Download size={16} color={scheme.primary} />
-                    )}
-                    <Text style={styles.cityName}>{s.city.name(gpsDownloadCityId)}</Text>
-                  </Pressable>
+                    <View style={styles.cityPinIcon}>
+                      {switchingCityId === gpsDownloadCityId ? (
+                        <ActivityIndicator size="small" color={scheme.onPrimaryContainer} />
+                      ) : (
+                        <Download size={15} color={scheme.onPrimaryContainer} />
+                      )}
+                    </View>
+                    <Text style={styles.cityName} numberOfLines={1}>
+                      {s.city.name(gpsDownloadCityId)}
+                    </Text>
+                  </SpringPressable>
                 ) : (
-                  <Pressable
-                    style={({ pressed }) => [styles.cityContext, pressed && { opacity: 0.7 }]}
+                  <SpringPressable
+                    style={styles.cityPill}
                     onPress={() => setCitySheetOpen(true)}
                     accessibilityRole="button"
                     accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
                     accessibilityHint={s.city.settingsHint}
                     hitSlop={8}
+                    scaleDelta={0.03}
                   >
-                    <MapPin size={16} color={scheme.primary} />
-                    <Text style={styles.cityName}>{s.city.name(cityId)}</Text>
-                  </Pressable>
+                    <View style={styles.cityPinIcon}>
+                      <MapPin size={15} color={scheme.onPrimaryContainer} />
+                    </View>
+                    <Text style={styles.cityName} numberOfLines={1}>
+                      {s.city.name(cityId)}
+                    </Text>
+                    <ChevronDown size={16} color={scheme.onSurfaceVariant} />
+                  </SpringPressable>
                 )}
                 {gpsOutsideAll && (
                   <Text style={styles.outsideArea}>{s.home.outsideAreaShort}</Text>
@@ -1731,9 +1816,9 @@ export default function HomeScreen() {
               </View>
               <View style={styles.topActions}>
                 {getCity(cityId).features.news && (
-                  <Pressable
-                    style={styles.iconBtn}
-                    hitSlop={10}
+                  <SpringPressable
+                    style={[styles.iconBtn, styles.iconBtnStart]}
+                    hitSlop={8}
                     onPress={() => {
                       setNewsAlert(false);
                       void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
@@ -1743,17 +1828,21 @@ export default function HomeScreen() {
                     }}
                     accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
                     accessibilityRole="button"
+                    scaleDelta={0.05}
                   >
-                    <Bell size={20} color={scheme.onSurfaceVariant} />
+                    <Bell size={20} color={newsAlert ? scheme.primary : scheme.onSurfaceVariant} />
                     {newsAlert && (
                       <View style={styles.alertBadge}>
                         <Text style={styles.alertMark}>!</Text>
                       </View>
                     )}
-                  </Pressable>
+                  </SpringPressable>
                 )}
                 <SpringPressable
-                  style={styles.iconBtn}
+                  style={[
+                    styles.iconBtn,
+                    !getCity(cityId).features.news ? styles.iconBtnStart : styles.iconBtnMid,
+                  ]}
                   onPress={() =>
                     router.push({ pathname: '/live-map', params: { returnTo: 'home' } })
                   }
@@ -1763,19 +1852,23 @@ export default function HomeScreen() {
                 >
                   <MapPinned size={20} color={scheme.onSurfaceVariant} />
                 </SpringPressable>
-                <Pressable
-                  style={styles.iconBtn}
+                <SpringPressable
+                  style={[styles.iconBtn, styles.iconBtnEnd]}
                   onPress={() => router.push('/settings')}
                   accessibilityRole="button"
                   accessibilityLabel={s.settings.title}
+                  scaleDelta={0.05}
                 >
                   <Settings2 size={20} color={scheme.onSurfaceVariant} />
-                </Pressable>
+                </SpringPressable>
               </View>
             </View>
-            <Text style={styles.headerTitle} accessibilityRole="header">
-              {s.home.title}
-            </Text>
+
+            <View style={styles.heroBlock}>
+              <Text style={styles.headerTitle} accessibilityRole="header">
+                {s.home.title}
+              </Text>
+            </View>
 
             {onboardCandidates.length > 0 && !boardedOrigin && (
               <Animated.View
@@ -1890,37 +1983,28 @@ export default function HomeScreen() {
               </View>
               <SavedPlacesRow
                 places={saved}
-                onSelect={(p) =>
-                  goToRoutes({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon })
-                }
-                onAdd={() => {
-                  setEditingPlace(null);
-                  setAddPlaceOpen(true);
-                }}
-                onEdit={(p) => {
-                  setEditingPlace(p);
-                  setAddPlaceOpen(true);
-                }}
+                departures={liveDepartures}
+                lineBadges={firstLegs}
+                onSelect={handleSelectSavedPlace}
+                onAdd={handleAddSavedPlace}
+                onEdit={handleEditSavedPlace}
               />
             </View>
 
-            <View style={{ height: 20 }} />
+            <View style={styles.sectionSpacer} />
 
-            {/* 2-tab layout: Ostatnie połączenia / Twoje trasy */}
+            {/* M3 Expressive Segmented Switcher: Ostatnie połączenia / Twoje trasy */}
             <View style={styles.tabContainer} accessibilityRole="tablist">
-              <Pressable
+              <SpringPressable
                 onPress={() => handleTabSwitch('recent')}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: homeTab === 'recent' }}
                 accessibilityLabel={s.home.tabRecent}
-                style={({ pressed }) => [
-                  styles.tabBtn,
-                  homeTab === 'recent' && styles.tabBtnActive,
-                  pressed && styles.tabBtnPressed,
-                ]}
+                scaleDelta={0.02}
+                style={[styles.tabBtn, homeTab === 'recent' && styles.tabBtnActive]}
               >
                 <History
-                  size={16}
+                  size={17}
                   color={
                     homeTab === 'recent' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
                   }
@@ -1936,21 +2020,18 @@ export default function HomeScreen() {
                 >
                   {s.home.tabRecent}
                 </Text>
-              </Pressable>
+              </SpringPressable>
 
-              <Pressable
+              <SpringPressable
                 onPress={() => handleTabSwitch('saved')}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: homeTab === 'saved' }}
                 accessibilityLabel={s.home.tabSaved}
-                style={({ pressed }) => [
-                  styles.tabBtn,
-                  homeTab === 'saved' && styles.tabBtnActive,
-                  pressed && styles.tabBtnPressed,
-                ]}
+                scaleDelta={0.02}
+                style={[styles.tabBtn, homeTab === 'saved' && styles.tabBtnActive]}
               >
                 <MapPinned
-                  size={16}
+                  size={17}
                   color={
                     homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
                   }
@@ -1966,14 +2047,31 @@ export default function HomeScreen() {
                 >
                   {s.home.tabSaved}
                 </Text>
-              </Pressable>
+                {orderedSavedRoutes.length > 0 && (
+                  <View
+                    style={[
+                      styles.tabCountBadge,
+                      homeTab === 'saved' && styles.tabCountBadgeActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabCountText,
+                        homeTab === 'saved' && styles.tabCountTextActive,
+                      ]}
+                    >
+                      {orderedSavedRoutes.length}
+                    </Text>
+                  </View>
+                )}
+              </SpringPressable>
             </View>
 
             {homeTab === 'recent' ? (
               smartOrdered.length === 0 && smartReady ? (
                 <View style={styles.emptyCard}>
                   <View style={styles.emptyIcon}>
-                    <History size={20} color={scheme.onSecondaryContainer} />
+                    <History size={22} color={scheme.onSecondaryContainer} />
                   </View>
                   <View style={styles.emptyText}>
                     <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
@@ -2183,34 +2281,92 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
-  body: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, flexGrow: 1 },
-  topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, marginBottom: 16 },
-  cityContextWrap: { flex: 1, minWidth: 0, justifyContent: 'center' },
-  cityContext: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    minHeight: 48,
+  body: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 28, flexGrow: 1 },
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 54,
+    marginBottom: 14,
   },
-  cityName: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  outsideArea: { ...type.bodySmall, color: scheme.warning, marginTop: -2 },
-  topActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerLow,
+  cityContextWrap: { flex: 1, minWidth: 0, justifyContent: 'center', gap: 4 },
+  cityPill: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    minHeight: 44,
+    paddingLeft: 8,
+    paddingRight: 14,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cityPinIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cityName: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    flexShrink: 1,
+  },
+  outsideArea: {
+    ...type.labelSmall,
+    color: scheme.warning,
+    paddingLeft: 6,
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginLeft: 'auto',
+  },
+  iconBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnStart: {
+    borderTopLeftRadius: shape.extraLarge,
+    borderBottomLeftRadius: shape.extraLarge,
+  },
+  iconBtnMid: {
+    borderRadius: shape.extraSmall,
+  },
+  iconBtnEnd: {
+    borderTopRightRadius: shape.extraLarge,
+    borderBottomRightRadius: shape.extraLarge,
+  },
+  heroBlock: {
+    marginBottom: 2,
+  },
+  headerTitle: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    letterSpacing: -1,
   },
   onboardCard: {
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.extraLarge,
+    borderWidth: 1.5,
+    borderColor: scheme.primaryContainer,
     padding: 16,
     gap: 12,
-    marginBottom: 18,
+    marginTop: 14,
+    marginBottom: 4,
   },
   onboardHeader: {
     flexDirection: 'row',
@@ -2219,10 +2375,10 @@ const styles = StyleSheet.create({
   },
   onboardTitles: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   onboardTitle: {
-    ...type.titleSmall,
+    ...type.titleMedium,
     color: scheme.onSurface,
     fontWeight: '700',
   },
@@ -2231,11 +2387,12 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
   },
   onboardDismiss: {
-    width: 44,
-    height: 44,
-    marginTop: -6,
-    marginRight: -6,
+    width: 40,
+    height: 40,
+    marginTop: -4,
+    marginRight: -4,
     borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2247,8 +2404,8 @@ const styles = StyleSheet.create({
   onboardChip: {
     minHeight: 44,
     maxWidth: 220,
-    paddingHorizontal: 12,
-    borderRadius: shape.large,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2257,13 +2414,13 @@ const styles = StyleSheet.create({
   onboardChipText: {
     ...type.labelLarge,
     color: scheme.onPrimaryContainer,
-    fontWeight: '600',
+    fontWeight: '700',
     flexShrink: 1,
   },
   onboardMapChip: {
     minHeight: 44,
     paddingHorizontal: 14,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2276,10 +2433,10 @@ const styles = StyleSheet.create({
   },
   alertBadge: {
     position: 'absolute',
-    top: -3,
-    right: -3,
-    width: 20,
-    height: 20,
+    top: -2,
+    right: -2,
+    width: 19,
+    height: 19,
     borderRadius: 10,
     backgroundColor: scheme.error,
     borderWidth: 2,
@@ -2287,32 +2444,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  alertMark: { fontSize: 11, fontWeight: '800', color: scheme.onError, lineHeight: 13 },
-  headerTitle: { fontSize: 32, fontWeight: '500', color: scheme.onSurface, letterSpacing: -0.8 },
+  alertMark: { fontSize: 10, fontWeight: '800', color: scheme.onError, lineHeight: 12 },
   tabContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    padding: 4,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    padding: 5,
+    gap: 4,
     marginBottom: 12,
   },
   tabBtn: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 60,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: shape.full,
-    gap: 4,
+    minHeight: 48,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: shape.large,
+    gap: 8,
   },
   tabBtnActive: {
     backgroundColor: scheme.secondaryContainer,
-  },
-  tabBtnPressed: {
-    transform: [{ scale: 0.97 }],
-    opacity: 0.9,
+    borderRadius: shape.full,
   },
   tabLabel: {
     ...type.labelLarge,
@@ -2325,63 +2480,96 @@ const styles = StyleSheet.create({
   },
   tabLabelInactive: {
     color: scheme.onSurfaceVariant,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  savedSection: { marginTop: 20 },
+  tabCountBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabCountBadgeActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  tabCountText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+  },
+  tabCountTextActive: {
+    color: scheme.onPrimaryContainer,
+  },
+  savedSection: { marginTop: 18 },
+  sectionSpacer: { height: 22 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    minHeight: 48,
-    marginBottom: 4,
+    minHeight: 44,
+    marginBottom: 8,
   },
-  section: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface, flex: 1 },
+  section: {
+    ...type.titleMedium,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    color: scheme.onSurface,
+    flex: 1,
+  },
   editSaved: {
-    minWidth: 64,
-    minHeight: 48,
-    paddingHorizontal: 12,
+    minHeight: 36,
+    paddingHorizontal: 14,
     justifyContent: 'center',
-    borderRadius: shape.medium,
-    borderWidth: 2,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: 1.5,
     borderColor: 'transparent',
   },
   editSavedFocused: { borderColor: scheme.primary },
   editSavedPressed: { backgroundColor: scheme.surfaceContainerHigh },
-  editSavedLabel: { ...type.labelLarge, color: scheme.primary },
+  editSavedLabel: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.primary,
+  },
   emptyCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 14,
     padding: 20,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
   },
-  emptyText: { flex: 1, gap: 6 },
+  emptyText: { flex: 1, gap: 4 },
   emptyIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: shape.full,
+    width: 48,
+    height: 48,
+    borderRadius: shape.large,
+    borderTopRightRadius: shape.small,
+    borderBottomLeftRadius: shape.small,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { ...type.titleMedium, color: scheme.onSurface },
-  emptyBody: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  emptyTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface },
+  emptyBody: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   importCardError: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.medium,
+    marginTop: 14,
+    padding: 14,
+    backgroundColor: scheme.errorContainer,
+    borderRadius: shape.large,
   },
   importTitleError: {
     ...type.bodyMedium,
-    color: scheme.error,
+    color: scheme.onErrorContainer,
     fontWeight: '700',
   },
   importSubError: {
     ...type.labelSmall,
-    color: scheme.onSurfaceVariant,
+    color: scheme.onErrorContainer,
     marginTop: 2,
   },
 });

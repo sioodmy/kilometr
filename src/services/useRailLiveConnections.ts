@@ -16,6 +16,24 @@ import { liveTracker } from './liveTracker';
 
 const RAIL_LIVE_MAX_AGE_MS = 120_000;
 
+let sharedRailData = new Map<string, ZbRailDeparture>();
+let sharedNational: NationalRailLive | null = null;
+let sharedNationalUpdates = new Map<string, NationalRailLegUpdate>();
+
+function mergeMap<V>(prev: Map<string, V>, incoming: Map<string, V>): Map<string, V> {
+  if (incoming.size === 0) return prev;
+  if (prev.size === 0) return new Map(incoming);
+  let changed = false;
+  const next = new Map(prev);
+  for (const [k, v] of incoming) {
+    if (next.get(k) !== v) {
+      next.set(k, v);
+      changed = true;
+    }
+  }
+  return changed ? next : prev;
+}
+
 /**
  * Dokłada live do nóg kolejowych:
  * - oficjalny feed PKP PLK via mkuran.pl (główne źródło opóźnień, peronów i torów w całym kraju),
@@ -28,10 +46,10 @@ export function useRailLiveConnections(
   tripDelays: Map<string, number>,
   enabled = true,
 ): Connection[] {
-  const [railData, setRailData] = useState<Map<string, ZbRailDeparture>>(new Map());
-  const [national, setNational] = useState<NationalRailLive | null>(null);
+  const [railData, setRailData] = useState<Map<string, ZbRailDeparture>>(() => sharedRailData);
+  const [national, setNational] = useState<NationalRailLive | null>(() => sharedNational);
   const [nationalUpdates, setNationalUpdates] = useState<Map<string, NationalRailLegUpdate>>(
-    new Map(),
+    () => sharedNationalUpdates,
   );
   const connectionsRef = useRef(connections);
   connectionsRef.current = connections;
@@ -84,14 +102,24 @@ export function useRailLiveConnections(
       liveTracker.setNationalWatch(watchLegs);
     }
     const load = () => {
-      void fetchZbRailDepartures(trainLegs).then((data) => {
-        if (active && data.size > 0) setRailData(data);
-      });
-      void fetchNationalRailUpdates(watchLegs).then((data) => {
-        if (active && data.size > 0) setNationalUpdates(data);
-      });
-      void fetchNationalRailLive(watchLegs).then((data) => {
-        if (active && data.delays.size > 0) setNational(data);
+      void Promise.all([
+        fetchZbRailDepartures(trainLegs).catch(() => null),
+        fetchNationalRailUpdates(watchLegs).catch(() => null),
+        fetchNationalRailLive(watchLegs).catch(() => null),
+      ]).then(([zbData, updData, liveData]) => {
+        if (!active) return;
+        if (zbData && zbData.size > 0) {
+          sharedRailData = mergeMap(sharedRailData, zbData);
+          setRailData(sharedRailData);
+        }
+        if (updData && updData.size > 0) {
+          sharedNationalUpdates = mergeMap(sharedNationalUpdates, updData);
+          setNationalUpdates(sharedNationalUpdates);
+        }
+        if (liveData && liveData.delays.size > 0) {
+          sharedNational = liveData;
+          setNational(liveData);
+        }
       });
     };
     load();

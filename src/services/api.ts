@@ -364,6 +364,7 @@ function toPlanOptions(query: RouteQuery, onProgress?: (partial: Connection[]) =
     trainMinTransferSec: query.trainMinTransferSec,
     maxWalkM: query.maxWalkM,
     walkSpeedMps: query.walkSpeedMps,
+    searchAheadSec: query.searchAheadSec,
     anchorStopId: query.anchorStopId,
     anchorStopLat: query.anchorStopLat,
     anchorStopLon: query.anchorStopLon,

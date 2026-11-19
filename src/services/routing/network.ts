@@ -191,14 +191,25 @@ function isFifo(a: TripRow, b: TripRow): boolean {
   return true;
 }
 
-function compile(
+/** Oddaje kolejkę JS między porcjami kompilacji sieci. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Kompilacja sieci RAPTOR w krokach. Na wycinku 5 tys. kursów sama pętla
+ * blokowała JS na kilka sekund; buildSlice i pierwszy plan mają ustąpić
+ * miejsca dotykowi i animacjom.
+ */
+function* compileSteps(
   store: LocalGtfsStore,
   idx: DayIndex,
   offsets: Map<string, number> | undefined,
   defaultOffset: number,
-): RaptorNet {
+): Generator<void, RaptorNet, void> {
   const base = getRaptorBase(store);
   const patterns: CompiledPattern[] = [];
+  let patternIdx = 0;
   for (const [pid, pat] of idx.patterns) {
     const seq: string[] = pat.stopSequence;
     const positions = seq.flatMap((id, i) => isFareBoundary(store.stops.get(id)?.stop_name ?? '') ? [] : [i]);
@@ -211,7 +222,8 @@ function compile(
     for (let i = 0; i < n; i++) stops[i] = stopIdx(base, seq[positions[i]]);
 
     const rows: TripRow[] = [];
-    for (const trip of pat.trips) {
+    for (let tripIdx = 0; tripIdx < pat.trips.length; tripIdx++) {
+      const trip = pat.trips[tripIdx];
       const times = store.stopTimes.get(trip.trip_id);
       if (!times || times.length < seq.length) continue;
       const dep: number[] = new Array(n);
@@ -224,6 +236,7 @@ function compile(
         dep[i] = Math.max(a, d);
       }
       rows.push({ id: trip.trip_id, dep, arr });
+      if ((tripIdx & 255) === 255) yield;
     }
     if (!rows.length) continue;
     rows.sort((a, b) => a.dep[0] - b.dep[0]);
@@ -231,7 +244,8 @@ function compile(
     // Wyprzedzanie w obrębie wzorca (szybszy kurs w innej porze dnia) psuje
     // wyszukiwanie binarne po kursach, więc takie kursy idą do osobnej grupy.
     const groups: TripRow[][] = [];
-    for (const row of rows) {
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx];
       let placed = false;
       for (const g of groups) {
         if (isFifo(g[g.length - 1], row)) {
@@ -241,17 +255,20 @@ function compile(
         }
       }
       if (!placed) groups.push([row]);
+      if ((rowIdx & 511) === 511) yield;
     }
 
-    groups.forEach((g, gi) => {
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
       const dep = new Int32Array(g.length * n);
       const arr = new Int32Array(g.length * n);
-      g.forEach((row, j) => {
+      for (let j = 0; j < g.length; j++) {
+        const row = g[j];
         for (let i = 0; i < n; i++) {
           dep[j * n + i] = row.dep[i];
           arr[j * n + i] = row.arr[i];
         }
-      });
+      }
       patterns.push({
         id: gi === 0 ? pid : `${pid}#${gi}`,
         routeId: pat.routeId,
@@ -264,7 +281,9 @@ function compile(
         arr,
         offset,
       });
-    });
+      if ((gi & 3) === 3) yield;
+    }
+    if ((patternIdx++ & 15) === 15) yield;
   }
 
   const spCount = base.stopIds.length;
@@ -276,7 +295,8 @@ function compile(
   const spPat = new Int32Array(spStart[spCount]);
   const spPos = new Int32Array(spStart[spCount]);
   const tripLoc = new Map<string, [number, number]>();
-  patterns.forEach((p, pi) => {
+  for (let pi = 0; pi < patterns.length; pi++) {
+    const p = patterns[pi];
     for (let i = 0; i < p.n; i++) {
       const s = p.stops[i];
       const w = fill[s]++;
@@ -284,7 +304,8 @@ function compile(
       spPos[w] = i;
     }
     if (p.offset === 0) p.tripIds.forEach((id, j) => tripLoc.set(id, [pi, j]));
-  });
+    if ((pi & 63) === 63) yield;
+  }
 
   const id = nextNetId++;
   if (nextNetId > 0x7fff_ff00) {
@@ -292,6 +313,33 @@ function compile(
   }
 
   return { id, base, patterns, spCount, spStart, spPat, spPos, tripLoc };
+}
+
+function compile(
+  store: LocalGtfsStore,
+  idx: DayIndex,
+  offsets: Map<string, number> | undefined,
+  defaultOffset: number,
+): RaptorNet {
+  const steps = compileSteps(store, idx, offsets, defaultOffset);
+  let next = steps.next();
+  while (!next.done) next = steps.next();
+  return next.value;
+}
+
+async function compileAsync(
+  store: LocalGtfsStore,
+  idx: DayIndex,
+  offsets: Map<string, number> | undefined,
+  defaultOffset: number,
+): Promise<RaptorNet> {
+  const steps = compileSteps(store, idx, offsets, defaultOffset);
+  let next = steps.next();
+  while (!next.done) {
+    await yieldToEventLoop();
+    next = steps.next();
+  }
+  return next.value;
 }
 
 /**
@@ -365,10 +413,12 @@ export function packRaptorNet(net: RaptorNet): Uint8Array {
 }
 
 let netCache = new WeakMap<DayIndex, { net: RaptorNet; base: RaptorBase; key: string }>();
+let netBuilds = new WeakMap<DayIndex, Map<string, Promise<RaptorNet>>>();
 
 export function clearRaptorNetCache(): void {
   baseCache = new WeakMap<LocalGtfsStore, RaptorBase>();
   netCache = new WeakMap<DayIndex, { net: RaptorNet; base: RaptorBase; key: string }>();
+  netBuilds = new WeakMap<DayIndex, Map<string, Promise<RaptorNet>>>();
   clearRaptorNetworks();
 }
 
@@ -390,4 +440,39 @@ export function getRaptorNet(
   const net = compile(store, idx, offsets, defaultOffset);
   netCache.set(idx, { net, base, key });
   return net;
+}
+
+/**
+ * Async wariant dla UI: kompilacja oddaje kolejkę JS i dzieli się z równoległym
+ * warmupem lub planem tego samego wycinka, zamiast liczyć sieć dwa razy.
+ */
+export async function getRaptorNetAsync(
+  store: LocalGtfsStore,
+  idx: DayIndex,
+  offsets?: Map<string, number>,
+  defaultOffset = 0,
+): Promise<RaptorNet> {
+  const base = getRaptorBase(store);
+  const key = `${defaultOffset}|${offsets ? offsets.size : -1}`;
+  const hit = netCache.get(idx);
+  if (hit && hit.base === base && hit.key === key) return hit.net;
+
+  let builds = netBuilds.get(idx);
+  if (!builds) {
+    builds = new Map();
+    netBuilds.set(idx, builds);
+  }
+  const pending = builds.get(key);
+  if (pending) return pending;
+
+  const promise = compileAsync(store, idx, offsets, defaultOffset)
+    .then((net) => {
+      netCache.set(idx, { net, base, key });
+      return net;
+    })
+    .finally(() => {
+      if (builds!.get(key) === promise) builds!.delete(key);
+    });
+  builds.set(key, promise);
+  return promise;
 }

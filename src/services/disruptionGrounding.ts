@@ -52,6 +52,67 @@ interface StopIndex {
 // Indeks budowany raz na generację sklepu (reset() przy imporcie czyści dane).
 const indexCache = new WeakMap<LocalGtfsStore, { generation: number; stopCount: number; index: StopIndex }>();
 
+// Grounding tego samego alertu liczymy raz: karta połączenia i ekran
+// aktualności pytały o te same komunikaty przy każdym wejściu, a fuzzy
+// dopasowanie dziesiątek nazw przystanków blokowało JS na setki ms.
+// Klucz to tożsamość obiektu alertu (WeakMap), nie id: różne komunikaty
+// potrafią mieć to samo id, a wtedy cache oddawał wynik innego alertu.
+const groundCache = new WeakMap<
+  DisruptionAlert,
+  { generation: number; stopCount: number; value: GroundedDisruption }
+>();
+
+// Drugi poziom: cache po treści. fetchCityNews na każdym otwarciu ekranu
+// szczegółów wymienia obiekty alertów na świeże, więc WeakMap nierelewantny,
+// a grounding przelicza te same dane od zera (sekundy fuzzy na wątku JS).
+// Fingerprint obejmuje tylko pola, których używa grounding.
+function alertFingerprint(a: DisruptionAlert): string {
+  return JSON.stringify([
+    a.all_lines,
+    a.line_changes ?? null,
+    a.temporary_lines ?? null,
+    a.impacted_lines ?? null,
+    a.corridor ?? null,
+    a.stops ?? null,
+  ]);
+}
+const CONTENT_CACHE_MAX = 200;
+const groundByContent = new Map<
+  string,
+  { fingerprint: string; generation: number; stopCount: number; value: GroundedDisruption }
+>();
+
+// Te same nazwy przystanków powtarzają się między alertami (korytarz objazdu
+// i komunikat o linii wspominają te same słupki): wynik zapytania cache'ujemy
+// po znormalizowanej nazwie, walidacja po generacji sklepu jak w indexCache.
+const QUERY_CACHE_MAX = 1000;
+const stopQueryCache = new WeakMap<
+  LocalGtfsStore,
+  {
+    generation: number;
+    stopCount: number;
+    hits: Map<string, GroundedStop | null>;
+  }
+>();
+
+function ensureStopQueryCache(store: LocalGtfsStore): Map<string, GroundedStop | null> {
+  const cached = stopQueryCache.get(store);
+  if (
+    cached &&
+    cached.generation === store.currentGeneration &&
+    cached.stopCount === store.stops.size
+  ) {
+    return cached.hits;
+  }
+  const hits = new Map<string, GroundedStop | null>();
+  stopQueryCache.set(store, {
+    generation: store.currentGeneration,
+    stopCount: store.stops.size,
+    hits,
+  });
+  return hits;
+}
+
 function buildStopIndex(store: LocalGtfsStore): StopIndex {
   const byName = new Map<string, string[]>();
   const names: string[] = [];
@@ -92,6 +153,12 @@ function groundStopName(raw: string, index: StopIndex, store: LocalGtfsStore): G
   const query = normalizePolish(raw);
   if (!query) return null;
 
+  const hits = ensureStopQueryCache(store);
+  const hit = hits.get(query);
+  if (hit !== undefined) {
+    return hit;
+  }
+
   let stopId: string | null = null;
 
   const exact = index.byName.get(query);
@@ -112,18 +179,26 @@ function groundStopName(raw: string, index: StopIndex, store: LocalGtfsStore): G
     }
   }
 
-  if (!stopId) return null;
+  if (!stopId) {
+    hits.set(query, null);
+    return null;
+  }
   const stop = store.stops.get(stopId);
-  if (!stop) return null;
-  return {
+  if (!stop) {
+    hits.set(query, null);
+    return null;
+  }
+  const value: GroundedStop = {
     raw,
     stop_id: stopId,
     name: stop.stop_name,
     lat: stop.stop_lat,
     lon: stop.stop_lon,
   };
+  if (hits.size > QUERY_CACHE_MAX) hits.clear();
+  hits.set(query, value);
+  return value;
 }
-
 /** Synchroniczne dopasowanie pojedynczej nazwy przystanku do załadowanego sklepu GTFS. */
 export function resolveGroundedStopSync(
   raw: string,
@@ -138,6 +213,31 @@ export function resolveGroundedStopSync(
  * (baza w imporcie) - alerty są dodatkiem, nie mogą blokować trasy.
  */
 export async function groundDisruption(alert: DisruptionAlert): Promise<GroundedDisruption> {
+  const cached = groundCache.get(alert);
+  if (
+    cached &&
+    cached.generation === gtfsStore.currentGeneration &&
+    cached.stopCount === gtfsStore.stops.size
+  ) {
+    return cached.value;
+  }
+
+  const fingerprint = alertFingerprint(alert);
+  const byContent = groundByContent.get(alert.id);
+  if (
+    byContent &&
+    byContent.fingerprint === fingerprint &&
+    byContent.generation === gtfsStore.currentGeneration &&
+    byContent.stopCount === gtfsStore.stops.size
+  ) {
+    groundCache.set(alert, {
+      generation: gtfsStore.currentGeneration,
+      stopCount: gtfsStore.stops.size,
+      value: byContent.value,
+    });
+    return byContent.value;
+  }
+
   try {
     await gtfsStore.load();
   } catch {
@@ -189,10 +289,23 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
     if (grounded) stops.push(grounded);
   }
 
-  return {
+  const value: GroundedDisruption = {
     routeIds: [...new Set(lines.flatMap((l) => l.route_ids))],
     stopIds: [...new Set(stops.map((s) => s.stop_id))],
     lines,
     stops,
   };
+  groundCache.set(alert, {
+    generation: gtfsStore.currentGeneration,
+    stopCount: gtfsStore.stops.size,
+    value,
+  });
+  if (groundByContent.size > CONTENT_CACHE_MAX) groundByContent.clear();
+  groundByContent.set(alert.id, {
+    fingerprint,
+    generation: gtfsStore.currentGeneration,
+    stopCount: gtfsStore.stops.size,
+    value,
+  });
+  return value;
 }

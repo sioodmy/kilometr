@@ -18,8 +18,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
+  AlertCircle,
   ChevronRight,
   ExternalLink,
+  FileDoc,
   FileUp,
   ScanLine,
   ShieldAlert,
@@ -29,7 +31,7 @@ import {
   X,
 } from './icons';
 import { useStrings } from '../i18n';
-import { elev, scheme, shape } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
 import { checkTicketCompensation } from '../services/notifications';
@@ -51,7 +53,6 @@ import {
 } from '../services/ticketStorage';
 import { TicketInspectionModal } from './TicketInspectionModal';
 import { M3Dialog } from './M3Dialog';
-import { AlertCircle, FileDoc } from './icons';
 
 /** YYYY-MM-DD -> DD.MM.YYYY do wyświetlania dat w komunikatach. */
 function formatDateForDisplay(date?: string): string {
@@ -137,8 +138,6 @@ export function RouteTravelDeck({
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [rejection, setRejection] = useState<TicketImportRejected | null>(null);
-  // Import trwa, a systemowy picker wraca do apki jako 'active'. Bez tej flagi
-  // przeładowanie z dysku mogłoby nadpisać świeżo dodany bilet stanem sprzed importu.
   const importInFlight = useRef(false);
   const autoInspectDone = useRef(false);
 
@@ -149,14 +148,11 @@ export function RouteTravelDeck({
 
   useEffect(() => {
     let active = true;
-    // Nowe połączenie: nie pokazuj biletu z poprzedniej karty.
     setTicket(null);
     autoInspectDone.current = false;
     const loadTicket = () => {
       void getTicketForConnection(connection.id, connection).then((t) => {
         if (!active) return;
-        // Podczas importu picker wraca do apki: nie nadpisuj świeżego biletu
-        // pustym odczytem sprzed zapisu.
         setTicket((prev) => {
           if (importInFlight.current && t === null && prev !== null) return prev;
           return t;
@@ -177,7 +173,6 @@ export function RouteTravelDeck({
     };
   }, [connection.id, connection.serviceDate]);
 
-  // Deep link / akcja „Bilet" z powiadomienia: otwórz kontrolę raz po wczytaniu.
   useEffect(() => {
     if (!autoInspectTicket || !ticket || autoInspectDone.current) return;
     autoInspectDone.current = true;
@@ -193,12 +188,10 @@ export function RouteTravelDeck({
     return null;
   }
 
-  // Stan ostrzeżenia ochrony przesiadek (zagrożenie przesiadki / opóźnienie)
   const isWarning = transferActive && transferNeedsAttention(transferState);
   const isSafe = transferActive && transferState?.status === 'safe';
   const slackMin = Math.max(0, Math.floor((transferState?.slackSec ?? 0) / 60));
 
-  // --- Handlery biletu ---
   const ticketHasBarcode = (t: AttachedRailTicket) =>
     Boolean(t.barcodeUri || (t.barcodeUris && t.barcodeUris.length > 0));
 
@@ -287,8 +280,6 @@ export function RouteTravelDeck({
         const imported = result.ticket;
         setTicket(imported);
         setTicketSheetOpen(false);
-        // Połączenie z biletem trafia do „Twoich tras”: bilet jest powodem,
-        // dla którego user wróci do tej trasy (kontrola, historia przejazdu).
         try {
           await RoutingService.saveRoute(connection);
         } catch (err) {
@@ -296,14 +287,12 @@ export function RouteTravelDeck({
         }
         void checkTicketCompensation();
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        // Jeśli bilet ma wyekstrahowany kod, natychmiast pokaż podgląd do wglądu
         if (ticketHasBarcode(imported)) {
           setInspectionOpen(true);
         } else {
           Alert.alert(s.railTickets.attachedTitle, s.railTickets.importSuccess);
         }
       } else if (result.status === 'rejected') {
-        // Sheet pod M3Dialog chowałby błąd: zamykamy najpierw.
         setTicketSheetOpen(false);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
         setRejection(result);
@@ -318,7 +307,6 @@ export function RouteTravelDeck({
     }
   };
 
-  // Treść dialogu odrzucenia zależna od powodu (M3 Expressive)
   const rejectionContent = (() => {
     if (!rejection) return null;
     switch (rejection.reason) {
@@ -353,7 +341,6 @@ export function RouteTravelDeck({
     }
   })();
 
-  // --- Dane tekstowe segmentu biletu ---
   const meta = ticket?.metadata;
   const rawTrainNum = meta?.trainNumber || trainSummary?.trainNumber;
   const resolvedTrainNum = rawTrainNum
@@ -370,13 +357,12 @@ export function RouteTravelDeck({
   const seatParts: string[] = [];
   if (meta?.wagon) seatParts.push(s.railTickets.wagonShort(meta.wagon));
   if (meta?.seat) seatParts.push(s.railTickets.seatShort(meta.seat));
-  const seatLabel = seatParts.length > 0 ? seatParts.join(' · ') : null;
+  const seatLabel = seatParts.length > 0 ? seatParts.join(' \u00b7 ') : null;
 
   const ticketSubtitle = ticket
     ? (seatLabel ?? (meta?.passenger ? meta.passenger : s.railTickets.showShort))
     : s.railTickets.buyOrAdd;
 
-  // --- Dane tekstowe segmentu ochrony przesiadek ---
   const transferTitle = s.travelDeck.protection;
   const transferSubtitle = !transferActive
     ? s.travelDeck.protectionEnable
@@ -391,14 +377,17 @@ export function RouteTravelDeck({
       layout={LinearTransition.springify().damping(28).stiffness(320)}
       style={styles.container}
     >
-      <View style={styles.deckPill}>
+      <View style={styles.deckGrid}>
         {/* SEGMENT 1: BILET KOLEJOWY (tylko trasy z pociągiem) */}
         {showTicketSegment && (
           <DeckSegmentButton
             onPress={handleTicketPress}
             onLongPress={handleTicketLongPress}
             accessibilityLabel={`${ticketTitle}, ${ticketSubtitle}`}
-            style={[styles.segment, styles.ticketSegment]}
+            style={[
+              styles.segmentCard,
+              ticket ? styles.segmentCardTicketAttached : styles.segmentCardDefault,
+            ]}
           >
             <View
               style={[
@@ -408,21 +397,18 @@ export function RouteTravelDeck({
             >
               {ticket ? (
                 ticketHasBarcode(ticket) ? (
-                  <ScanLine size={16} color={scheme.onPrimaryContainer} />
+                  <ScanLine size={18} color={scheme.onPrimaryContainer} />
                 ) : (
-                  <TrainFront size={16} color={scheme.onPrimaryContainer} />
+                  <TrainFront size={18} color={scheme.onPrimaryContainer} />
                 )
               ) : (
-                <TrainFront size={16} color={scheme.onSurfaceVariant} />
+                <TrainFront size={18} color={scheme.onSecondaryContainer} />
               )}
             </View>
 
             <View style={styles.segmentTextCol}>
               <Text
-                style={[
-                  styles.segmentTitle,
-                  ticket && styles.segmentTitleActive,
-                ]}
+                style={[styles.segmentTitle, ticket && styles.segmentTitleAttached]}
                 numberOfLines={1}
               >
                 {ticketTitle}
@@ -437,12 +423,12 @@ export function RouteTravelDeck({
                 {ticketSubtitle}
               </Text>
             </View>
-          </DeckSegmentButton>
-        )}
 
-        {/* DELIKATNY SEPARATOR (gdy oba segmenty są widoczne) */}
-        {showTicketSegment && showTransferSegment && (
-          <View style={styles.divider} />
+            <ChevronRight
+              size={16}
+              color={ticket ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            />
+          </DeckSegmentButton>
         )}
 
         {/* SEGMENT 2: OCHRONA PRZESIADEK (trasy z co najmniej 1 przesiadką) */}
@@ -452,9 +438,10 @@ export function RouteTravelDeck({
             disabled={trackingBusy}
             accessibilityLabel={`${transferTitle}, ${transferSubtitle}`}
             style={[
-              styles.segment,
-              styles.transferSegment,
-              isWarning && styles.transferSegmentWarning,
+              styles.segmentCard,
+              !transferActive && styles.segmentCardDefault,
+              transferActive && !isWarning && styles.segmentCardTransferActive,
+              isWarning && styles.segmentCardWarning,
             ]}
           >
             <View
@@ -469,11 +456,11 @@ export function RouteTravelDeck({
               {trackingBusy ? (
                 <ActivityIndicator size="small" color={scheme.primary} />
               ) : !transferActive ? (
-                <ShieldOff size={16} color={scheme.onSurfaceVariant} />
+                <ShieldOff size={18} color={scheme.onSurfaceVariant} />
               ) : isWarning ? (
-                <ShieldAlert size={16} color={scheme.onWarningContainer} />
+                <ShieldAlert size={18} color={scheme.onWarningContainer} />
               ) : (
-                <ShieldCheck size={16} color={scheme.onPrimaryContainer} />
+                <ShieldCheck size={18} color={scheme.onPrimaryContainer} />
               )}
             </View>
 
@@ -559,7 +546,7 @@ export function RouteTravelDeck({
                 <Text style={styles.modalHeading}>{s.railTickets.deckSheetTitle}</Text>
                 {trainSummary && (
                   <Text style={styles.modalSubheading} numberOfLines={1}>
-                    {trainSummary.fromStation} → {trainSummary.toStation}
+                    {trainSummary.fromStation}{' \u2192 '}{trainSummary.toStation}
                   </Text>
                 )}
               </View>
@@ -592,7 +579,7 @@ export function RouteTravelDeck({
                   <Text style={styles.actionTitlePrimary}>{s.railTickets.buyKoleo}</Text>
                   <Text style={styles.actionDescPrimary}>{s.railTickets.koleoDesc}</Text>
                 </View>
-                <ExternalLink size={16} color={scheme.primary} />
+                <ExternalLink size={16} color={scheme.onPrimaryContainer} />
               </Pressable>
 
               <Pressable
@@ -608,9 +595,9 @@ export function RouteTravelDeck({
               >
                 <View style={styles.actionIconBoxSecondary}>
                   {importing ? (
-                    <ActivityIndicator size="small" color={scheme.secondary} />
+                    <ActivityIndicator size="small" color={scheme.onSecondaryContainer} />
                   ) : (
-                    <FileUp size={20} color={scheme.secondary} />
+                    <FileUp size={20} color={scheme.onSecondaryContainer} />
                   )}
                 </View>
                 <View style={{ flex: 1 }}>
@@ -631,57 +618,51 @@ export function RouteTravelDeck({
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    width: '100%',
   },
-  deckPill: {
+  deckGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-    paddingVertical: 5,
-    paddingHorizontal: 6,
-    minHeight: 52,
-    ...elev.level1,
+    alignItems: 'stretch',
+    gap: 10,
   },
-  segment: {
+  segmentCard: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: shape.full,
-    gap: 10,
+    minHeight: 62,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: shape.extraLarge,
+    gap: 11,
+    ...elev.level1,
   },
-  ticketSegment: {},
-  transferSegment: {},
-  transferSegmentWarning: {
+  segmentCardDefault: {
+    backgroundColor: scheme.surfaceContainer,
+  },
+  segmentCardTicketAttached: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  segmentCardTransferActive: {
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  segmentCardWarning: {
     backgroundColor: scheme.warningContainer,
-    borderRadius: shape.full,
-  },
-  divider: {
-    width: StyleSheet.hairlineWidth,
-    height: 28,
-    backgroundColor: scheme.outlineVariant,
-    marginHorizontal: 2,
   },
   iconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: shape.full,
+    width: 38,
+    height: 38,
+    borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
   },
   ticketBadgeEmpty: {
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.secondaryContainer,
   },
   ticketBadgeAttached: {
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: scheme.primary + '2E',
   },
   transferBadgeInactive: {
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   transferBadgeSafe: {
     backgroundColor: scheme.primaryContainer,
@@ -690,17 +671,23 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.secondaryContainer,
   },
   transferBadgeWarning: {
-    backgroundColor: scheme.onWarningContainer + '26',
+    backgroundColor: scheme.onWarningContainer + '24',
   },
   segmentTextCol: {
     flex: 1,
+    minWidth: 0,
     justifyContent: 'center',
+    gap: 1,
   },
   segmentTitle: {
-    fontSize: 13,
-    fontFamily: 'Manrope_700Bold',
+    ...type.labelLarge,
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontWeight: '800',
     color: scheme.onSurface,
-    letterSpacing: -0.2,
+  },
+  segmentTitleAttached: {
+    color: scheme.onPrimaryContainer,
   },
   segmentTitleActive: {
     color: scheme.onSurface,
@@ -709,26 +696,28 @@ const styles = StyleSheet.create({
     color: scheme.onWarningContainer,
   },
   segmentSubtitle: {
-    fontSize: 11,
-    fontFamily: 'Manrope_500Medium',
+    ...type.labelSmall,
+    fontSize: 11.5,
+    lineHeight: 15,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
-    marginTop: 1,
   },
   segmentSubtitleActive: {
     color: scheme.primary,
-    fontFamily: 'Manrope_600SemiBold',
+    fontWeight: '700',
   },
   segmentSubtitleTicketAttached: {
-    color: scheme.primary,
-    fontFamily: 'Manrope_600SemiBold',
+    color: scheme.onPrimaryContainer,
+    opacity: 0.9,
+    fontWeight: '700',
   },
   segmentSubtitleWarning: {
     color: scheme.onWarningContainer,
-    fontFamily: 'Manrope_700Bold',
+    fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: scheme.scrim + '88',
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -740,30 +729,27 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     gap: 16,
     ...elev.level3,
-    shadowColor: '#000000',
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   modalHeading: {
+    ...type.titleMedium,
     fontSize: 18,
-    fontFamily: 'Manrope_700Bold',
+    fontWeight: '800',
     color: scheme.onSurface,
   },
   modalSubheading: {
-    fontSize: 13,
-    fontFamily: 'Manrope_500Medium',
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     marginTop: 2,
   },
   modalCloseBtn: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -776,57 +762,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: shape.large,
+    borderRadius: shape.extraLarge,
     gap: 14,
-    borderWidth: 1,
   },
   koleoTile: {
     backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
   },
   pdfTile: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderColor: scheme.outlineVariant,
   },
   tilePressed: {
-    opacity: 0.75,
+    opacity: 0.8,
   },
   actionIconBoxPrimary: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
+    width: 42,
+    height: 42,
+    borderRadius: shape.medium,
     backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionIconBoxSecondary: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
+    width: 42,
+    height: 42,
+    borderRadius: shape.medium,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionTitlePrimary: {
-    fontSize: 15,
-    fontFamily: 'Manrope_700Bold',
+    ...type.titleSmall,
+    fontWeight: '800',
     color: scheme.onPrimaryContainer,
   },
   actionDescPrimary: {
-    fontSize: 12,
-    fontFamily: 'Manrope_500Medium',
+    ...type.bodySmall,
     color: scheme.onPrimaryContainer,
-    opacity: 0.85,
+    opacity: 0.88,
     marginTop: 2,
   },
   actionTitleSecondary: {
-    fontSize: 15,
-    fontFamily: 'Manrope_700Bold',
+    ...type.titleSmall,
+    fontWeight: '800',
     color: scheme.onSurface,
   },
   actionDescSecondary: {
-    fontSize: 12,
-    fontFamily: 'Manrope_500Medium',
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     marginTop: 2,
   },

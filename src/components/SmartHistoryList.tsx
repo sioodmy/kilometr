@@ -1,5 +1,7 @@
+import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { History } from './icons';
+import { SpringPressable } from './SpringPressable';
 import { scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';
@@ -11,7 +13,112 @@ export interface SmartLineBadge {
   line?: string;
 }
 
-export function SmartHistoryList({
+type SegmentPosition = 'single' | 'first' | 'middle' | 'last';
+
+function resolveSegment(index: number, total: number): SegmentPosition {
+  if (total <= 1) return 'single';
+  if (index === 0) return 'first';
+  if (index === total - 1) return 'last';
+  return 'middle';
+}
+
+interface SmartHistoryRowProps {
+  item: SmartDestination;
+  segment: SegmentPosition;
+  compact: boolean;
+  departInMin?: number;
+  badge?: SmartLineBadge;
+  meta?: SuggestionIconMeta;
+  onSelect: (d: SmartDestination) => void;
+  onOpenConnection?: (d: SmartDestination) => void;
+}
+
+/** Pojedynczy wiersz historii M3 Expressive w zgrupowanym kontenerze segmentowym. */
+const SmartHistoryRow = memo(function SmartHistoryRow({
+  item,
+  segment,
+  compact,
+  departInMin,
+  badge,
+  meta,
+  onSelect,
+  onOpenConnection,
+}: SmartHistoryRowProps) {
+  const s = useStrings();
+  const departLabel = formatDepartIn(departInMin, s);
+  const urgent = departInMin !== undefined && departInMin >= 0 && departInMin <= 5;
+  const Icon = meta?.Icon ?? History;
+
+  return (
+    <SpringPressable
+      onPress={() => onSelect(item)}
+      accessibilityRole="button"
+      accessibilityLabel={s.home.searchToA11y(item.title)}
+      scaleDelta={0.018}
+      opacityDelta={0.05}
+      style={[
+        styles.card,
+        (segment === 'first' || segment === 'single') && styles.cardTop,
+        (segment === 'last' || segment === 'single') && styles.cardBottom,
+        compact && styles.cardCompact,
+      ]}
+    >
+      <View style={styles.iconSlide}>
+        <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
+          <Icon size={20} color={meta?.fg ?? scheme.onSecondaryContainer} />
+        </View>
+      </View>
+
+      <View style={styles.mid}>
+        <Text style={styles.title} numberOfLines={compact ? undefined : 1}>
+          {item.title}
+        </Text>
+        <Text style={styles.sub} numberOfLines={compact ? undefined : 1}>
+          {item.address}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.rightSlide,
+          compact && styles.rightSlideCompact,
+          compact && !departLabel && styles.hidden,
+        ]}
+      >
+        {departLabel ? (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              if (onOpenConnection) onOpenConnection(item);
+              else onSelect(item);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={s.home.openConnA11y(item.title, departLabel)}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.departPill,
+              urgent && styles.departPillUrgent,
+              compact && styles.departPillCompact,
+              pressed && styles.departPillPressed,
+            ]}
+          >
+            {badge?.line ? <LineBadge mode={badge.mode} line={badge.line} compact /> : null}
+            <Text
+              style={[styles.depart, urgent && styles.departUrgent]}
+              numberOfLines={1}
+            >
+              {departLabel}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.rightPlaceholder} />
+        )}
+      </View>
+    </SpringPressable>
+  );
+});
+
+export const SmartHistoryList = memo(function SmartHistoryList({
   items,
   departures,
   lineBadges,
@@ -39,7 +146,7 @@ export function SmartHistoryList({
   if (items.length === 0) return null;
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={styles.wrap}>
       {!hideHeader && (
         <View style={styles.header}>
           <History size={16} color={scheme.primary} />
@@ -47,84 +154,30 @@ export function SmartHistoryList({
         </View>
       )}
       <View style={styles.list}>
-        {items.map((d) => {
-          const departInMin = departures?.[d.id];
-          const departLabel = formatDepartIn(departInMin, s);
-          const meta = icons?.[d.id];
-          const Icon = meta?.Icon ?? History;
-          const badge = lineBadges?.[d.id];
-          // Stałe sloty zapobiegają przesuwaniu tekstu po wczytaniu ikon i odjazdów.
-          return (
-            <Pressable
-              key={d.id}
-              onPress={() => onSelect(d)}
-              accessibilityRole="button"
-              accessibilityLabel={s.home.searchToA11y(d.title)}
-              style={({ pressed }) => [
-                styles.card,
-                compact && styles.cardCompact,
-                pressed && styles.cardPressed,
-              ]}
-            >
-              <View style={styles.iconSlide}>
-                <View
-                  style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}
-                >
-                  <Icon size={19} color={meta?.fg ?? scheme.onSecondaryContainer} />
-                </View>
-              </View>
-              <View style={styles.mid}>
-                <Text style={styles.title} numberOfLines={compact ? undefined : 2}>
-                  {d.title}
-                </Text>
-                <Text style={styles.sub} numberOfLines={compact ? undefined : 2}>
-                  {d.address}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.rightSlide,
-                  compact && styles.rightSlideCompact,
-                  compact && !departLabel && styles.hidden,
-                ]}
-              >
-                {departLabel ? (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      if (onOpenConnection) onOpenConnection(d);
-                      else onSelect(d);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.home.openConnA11y(d.title, departLabel)}
-                    hitSlop={8}
-                    style={({ pressed }) => [styles.rightTouch, pressed && { opacity: 0.6 }]}
-                  >
-                    <View style={[styles.right, compact && styles.rightCompact]}>
-                      <View style={styles.badgeSlot}>
-                        {badge?.line ? <LineBadge mode={badge.mode} line={badge.line} /> : null}
-                      </View>
-                      <Text style={styles.depart}>{departLabel}</Text>
-                    </View>
-                  </Pressable>
-                ) : (
-                  <View style={styles.rightPlaceholder} />
-                )}
-              </View>
-            </Pressable>
-          );
-        })}
+        {items.map((d, idx) => (
+          <SmartHistoryRow
+            key={d.id}
+            item={d}
+            segment={resolveSegment(idx, items.length)}
+            compact={compact}
+            departInMin={departures?.[d.id]}
+            badge={lineBadges?.[d.id]}
+            meta={icons?.[d.id]}
+            onSelect={onSelect}
+            onOpenConnection={onOpenConnection}
+          />
+        ))}
       </View>
     </View>
   );
-}
+});
 
 /**
  * „za X min” do najszybszego połączenia; powyżej 59 min pokazuje pełną godzinę
  * odjazdu (np. „13:20”), a wartości ujemne określają, ile minut temu coś odjechało.
  * Ujemne bez tej gałęzi obcinały się do zera i raportowały „za chwilę”.
  */
-function formatDepartIn(departInMin: number | undefined, s: Strings): string | null {
+export function formatDepartIn(departInMin: number | undefined, s: Strings): string | null {
   if (departInMin === undefined || !Number.isFinite(departInMin)) return null;
   const m = Math.round(departInMin);
   if (m > 180) return null;
@@ -141,56 +194,78 @@ function formatDepartIn(departInMin: number | undefined, s: Strings): string | n
 }
 
 const styles = StyleSheet.create({
-  list: { gap: 10 },
+  wrap: { gap: 10 },
+  list: { gap: 4 },
   cardCompact: { flexWrap: 'wrap' },
-  rightSlideCompact: { width: '100%', maxWidth: '100%', paddingLeft: 56 },
-  rightCompact: { flexDirection: 'row', justifyContent: 'flex-start', gap: 12 },
+  rightSlideCompact: { width: '100%', maxWidth: '100%', paddingLeft: 60, alignItems: 'flex-start' },
   hidden: { display: 'none' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 2 },
-  headerText: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
+  headerText: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
   iconSlide: { flexShrink: 0, justifyContent: 'center' },
-  rightSlide: { flexShrink: 0, width: '32%', maxWidth: '40%', justifyContent: 'center' },
-  rightPlaceholder: { minHeight: 44 },
+  rightSlide: { flexShrink: 0, maxWidth: '46%', justifyContent: 'center', alignItems: 'flex-end' },
+  rightPlaceholder: { minHeight: 40, minWidth: 8 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.extraLarge,
+    gap: 14,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.small,
     paddingVertical: 14,
-    paddingHorizontal: 14,
-    minHeight: 84,
+    paddingHorizontal: 16,
+    minHeight: 78,
   },
-  cardPressed: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    transform: [{ scale: 0.98 }],
+  cardTop: {
+    borderTopLeftRadius: shape.extraLarge,
+    borderTopRightRadius: shape.extraLarge,
+  },
+  cardBottom: {
+    borderBottomLeftRadius: shape.extraLarge,
+    borderBottomRightRadius: shape.extraLarge,
   },
   icon: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     borderRadius: shape.large,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mid: { flex: 1, justifyContent: 'center', gap: 4, minWidth: 0 },
-  title: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface },
+  mid: { flex: 1, justifyContent: 'center', gap: 3, minWidth: 0 },
+  title: {
+    ...type.bodyLarge,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+    color: scheme.onSurface,
+  },
   sub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  rightTouch: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  right: {
-    flexDirection: 'column',
+  departPill: {
+    minHeight: 42,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    minWidth: 0,
-    width: '100%',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
-  badgeSlot: { height: 28, alignItems: 'center', justifyContent: 'center' },
+  departPillUrgent: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  departPillCompact: {
+    alignSelf: 'flex-start',
+  },
+  departPillPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.96 }],
+  },
   depart: {
-    ...type.titleSmall,
-    lineHeight: 20,
+    ...type.labelLarge,
+    fontWeight: '700',
     color: scheme.onSurface,
     flexShrink: 1,
-    textAlign: 'center',
+  },
+  departUrgent: {
+    color: scheme.onPrimaryContainer,
   },
 });

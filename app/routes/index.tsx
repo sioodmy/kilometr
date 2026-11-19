@@ -49,7 +49,7 @@ import {
 import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import { stopTracking } from '../../src/services/notifications';
-import { isIntercityRouteQuery } from '../../src/services/api';
+import { isIntercityRouteQuery, rememberPlannedConnection } from '../../src/services/api';
 import { nationalTimetableReady } from '../../src/services/nationalTimetable';
 import { IntercityDownloadCard } from '../../src/components/IntercityDownloadCard';
 import {
@@ -510,6 +510,10 @@ export default function RoutesScreen() {
       maxWalkM: cfg.maxWalkM,
       // Tempo z profilu wybranego w ustawieniach (wolno/normalnie/szybko).
       walkSpeedMps: profileWalkSpeedMps(cfg.walkPace),
+      // Miasto: godzina w przód wystarcza na pierwsze odjazdy i mieści się
+      // w wycinku, który liveTracker i tak buduje na starcie. Kolej
+      // międzymiastowa ma własny horyzont w planIntercity.
+      searchAheadSec: intercityQuery ? undefined : 3600,
     };
   };
 
@@ -812,7 +816,28 @@ export default function RoutesScreen() {
         return;
       }
       const q = queryAt(depSec);
-      const c = await RoutingService.getConnections(q);
+      // Zanim planer policzy świeże wyniki, pokaż ostatnią listę z dysku.
+      // Karty są klikalne od razu, a szczegóły znajdują je w pamięci procesu.
+      if (items.length === 0) {
+        const cached = await loadCachedConnections(q);
+        if (seq !== fetchSeq.current) return;
+        if (cached) {
+          const seeded = applyLiveList(
+            rehydrateConnections(cached.list, cached.savedAt),
+            depSec,
+          );
+          for (const connection of seeded) rememberPlannedConnection(connection);
+          setItems(seeded);
+        }
+      }
+      let c = await RoutingService.getConnections(q);
+      // Godzinne okno wystarcza na pierwsze odjazdy i mieści się w wycinku
+      // live. Gdy naprawdę nic nie ma w godzinę, dociągamy szerszy horyzont,
+      // żeby nie pokazać fałszywego „brak połączeń".
+      if (c.length === 0 && q.searchAheadSec === 3600) {
+        c = await RoutingService.getConnections({ ...q, searchAheadSec: undefined });
+        if (seq !== fetchSeq.current) return;
+      }
       if (seq !== fetchSeq.current) return;
       if (noTimetable()) {
         setItems([]);
@@ -1129,6 +1154,7 @@ export default function RoutesScreen() {
 
   const openConnection = useCallback(
     (item: Connection) => {
+      rememberPlannedConnection(item);
       closePreview();
       router.push({ pathname: '/routes/[id]', params: { id: item.id } });
     },
@@ -1451,7 +1477,7 @@ export default function RoutesScreen() {
             reduceMotion ? undefined : LinearTransition.springify().damping(26).stiffness(320)
           }
           accessibilityState={{ busy: loading }}
-          pointerEvents={loading ? 'none' : 'auto'}
+          pointerEvents={loading && items.length === 0 ? 'none' : 'auto'}
           refreshControl={
             arrivalMode || noMoreEarlier || offline ? undefined : (
               <RefreshControl
@@ -1488,6 +1514,14 @@ export default function RoutesScreen() {
           renderItem={renderConnection}
           ListHeaderComponent={
             <>
+              {loading && displayed.length > 0 && (
+                <View style={styles.countRow}>
+                  <View style={styles.offlineChip}>
+                    <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+                    <Text style={styles.offlineText}>{s.routes.searching}</Text>
+                  </View>
+                </View>
+              )}
               {(offline || liveStale) && (
                 <View style={styles.countRow}>
                   {offline && (

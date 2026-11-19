@@ -326,4 +326,9 @@ export interface RouteQuery {
   anchorStopLon?: number;
   /** Aktywny pojazd (kurs), z którego kontynuujemy podróż bez szukania dojścia na start. */
   boardedTrip?: BoardedTripOrigin;
+  /**
+   * Jak daleko w przód szukać wsiadania (sekundy). Default 10800 w planerze.
+   * Krótszy horyzont daje mniejszy wycinek i szybszy pierwszy wynik.
+   */
+  searchAheadSec?: number;
 }

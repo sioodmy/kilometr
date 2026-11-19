@@ -7,3 +7,5 @@ Kilometr plans public transport journeys on your phone. Download timetables to f
 • Back up settings and saved places to a file.
 
 No ads or account. Available in Polish, English, German and Ukrainian.
+
+Timetables, service updates and vehicle positions come from public transport operators, PKP Polskie Linie Kolejowe (https://portalpasazera.pl) and OpenStreetMap (https://www.openstreetmap.org/copyright). The full source list is in the app, under Settings, Data sources.
