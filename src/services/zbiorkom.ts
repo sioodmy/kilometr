@@ -46,10 +46,12 @@ export interface ZbKdVehicle {
   currentStopName?: string;
   nextStopName?: string;
   stops: ZbUpcomingStop[];
+  /** Model pojazdu z feedu (np. "48WEc Pesa Elf 2"). */
+  model?: string;
 }
 
 interface ZbPositionJson {
-  vehicle?: { id?: string; type?: string; agency?: string };
+  vehicle?: { id?: string; type?: string; agency?: string; model?: string };
   routeName?: string;
   brigade?: string;
   location?: [number, number];
@@ -398,6 +400,7 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
       timestamp: p.timestamp,
       headsign: p.headsign,
       brigade: p.brigade,
+      model: p.vehicle?.model?.trim() || undefined,
       upcomingStops: p.upcomingStops?.flatMap((s) => {
         const at = s.scheduledDeparture ?? s.scheduledArrival;
         return s.name && at != null && Number.isFinite(at)
@@ -550,6 +553,7 @@ function toRailVehicles(positions: ZbPositionJson[]): ZbKdVehicle[] {
       currentStopName: stops[0]?.name,
       nextStopName: stops[1]?.name,
       stops,
+      model: p.vehicle?.model?.trim() || undefined,
     });
   }
   return out;
