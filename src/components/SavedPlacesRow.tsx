@@ -7,6 +7,7 @@ import {
   Briefcase,
   BusFront,
   CarFront,
+  ChevronRight,
   Church,
   Clapperboard,
   Coffee,
@@ -56,7 +57,7 @@ import {
 import { SpringPressable } from './SpringPressable';
 import { LineBadge } from './LineBadge';
 import { formatDepartIn, type SmartLineBadge } from './SmartHistoryList';
-import { scheme, shape, type, type SchemeKey } from '../theme/tokens';
+import { elev, scheme, shape, type, type SchemeKey } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
 import { useStrings } from '../i18n';
 
@@ -130,8 +131,8 @@ function placeIconTone(icon: SavedPlaceIcon): { bg: SchemeKey; fg: SchemeKey } {
 function tileMetrics(width: number, fontScale: number) {
   const scale = Math.max(1, Math.min(fontScale, 1.35));
   return {
-    height: Math.round(134 * scale),
-    width: Math.min(width - 64, Math.round(170 * scale)),
+    height: Math.round(138 * scale),
+    width: Math.min(width - 56, Math.round(172 * scale)),
     textLines: fontScale > 1.2 ? 2 : 1,
   };
 }
@@ -148,7 +149,7 @@ interface SavedPlaceCardProps {
   onEdit?: (p: SavedPlace) => void;
 }
 
-/** Kafelek miejsca: liściasty znaczek u góry, nazwa i odjazd przyklejone do dołu. */
+/** Kafelek miejsca M3 Expressive: liściasty znaczek u góry, nazwa i odjazd na dole. */
 const SavedPlaceCard = memo(function SavedPlaceCard({
   place,
   tileHeight,
@@ -184,7 +185,8 @@ const SavedPlaceCard = memo(function SavedPlaceCard({
       }}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      scaleDelta={0.03}
+      scaleDelta={0.025}
+      haptic="selection"
       style={[
         styles.tile,
         flexGrid ? styles.tileFlex : { width: tileWidth },
@@ -228,7 +230,7 @@ interface AddTileProps {
   onAdd: () => void;
 }
 
-/** Kafelek "Dodaj": cichszy kontener, ten sam rytm co kafelki miejsc. */
+/** Kafelek „Dodaj”: otwarty slot z przerywanym konturem, ten sam rytm co zapisane miejsca. */
 const AddTile = memo(function AddTile({ tileHeight, tileWidth, flexGrid, onAdd }: AddTileProps) {
   const s = useStrings();
   const [focused, setFocused] = useState(false);
@@ -240,7 +242,8 @@ const AddTile = memo(function AddTile({ tileHeight, tileWidth, flexGrid, onAdd }
       accessibilityLabel={s.places.addNew}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      scaleDelta={0.03}
+      scaleDelta={0.025}
+      haptic="selection"
       style={[
         styles.tile,
         styles.tileAdd,
@@ -253,7 +256,7 @@ const AddTile = memo(function AddTile({ tileHeight, tileWidth, flexGrid, onAdd }
         <Plus size={22} color={scheme.onSecondaryContainer} />
       </View>
       <View style={styles.footer}>
-        <Text style={styles.name} numberOfLines={1}>
+        <Text style={styles.nameAdd} numberOfLines={1}>
           {s.places.addShort}
         </Text>
         <View style={styles.metaSlot} />
@@ -300,6 +303,7 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
         accessibilityRole="button"
         accessibilityLabel={s.places.addNew}
         scaleDelta={0.02}
+        haptic="selection"
         style={[styles.emptyCard, focusedAdd && styles.focused]}
       >
         <View style={[styles.iconBox, styles.iconBoxEmpty]}>
@@ -308,6 +312,9 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
         <View style={styles.emptyText}>
           <Text style={styles.emptyTitle}>{s.places.addNew}</Text>
           <Text style={styles.emptyBody}>{s.places.emptyBody}</Text>
+        </View>
+        <View style={styles.emptyArrow}>
+          <ChevronRight size={18} color={scheme.onSurfaceVariant} />
         </View>
       </SpringPressable>
     );
@@ -377,19 +384,20 @@ const styles = StyleSheet.create({
   scroller: {
     flexGrow: 0,
     flexShrink: 0,
-    marginHorizontal: -20,
+    marginHorizontal: -16,
   },
   scrollRow: {
     gap: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   tile: {
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 15,
     justifyContent: 'space-between',
+    ...elev.level1,
   },
   tileFlex: {
     flex: 1,
@@ -397,13 +405,18 @@ const styles = StyleSheet.create({
   },
   tileAdd: {
     backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: scheme.outlineVariant,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.extraLarge,
-    borderTopRightRadius: shape.medium,
-    borderBottomLeftRadius: shape.medium,
+    width: 46,
+    height: 46,
+    borderRadius: 22,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 10,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -420,12 +433,18 @@ const styles = StyleSheet.create({
   },
   name: {
     ...type.titleMedium,
-    fontWeight: '600',
-    letterSpacing: -0.2,
+    fontWeight: '700',
+    letterSpacing: -0.25,
     color: scheme.onSurface,
   },
+  nameAdd: {
+    ...type.titleMedium,
+    fontWeight: '700',
+    letterSpacing: -0.25,
+    color: scheme.onSurfaceVariant,
+  },
   metaSlot: {
-    height: 26,
+    height: 28,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -434,23 +453,23 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
   },
   livePill: {
-    height: 26,
+    height: 28,
     maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
+    gap: 6,
+    paddingHorizontal: 10,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   livePillUrgent: {
     backgroundColor: scheme.primaryContainer,
   },
   liveText: {
     ...type.labelSmall,
-    fontSize: 11,
     fontWeight: '700',
     color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
     flexShrink: 1,
   },
   liveTextUrgent: {
@@ -462,12 +481,22 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 16,
     borderRadius: shape.extraLarge,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    backgroundColor: scheme.surfaceContainer,
+    ...elev.level1,
   },
-  emptyText: { flex: 1, gap: 3 },
-  emptyTitle: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
+  emptyText: { flex: 1, gap: 3, minWidth: 0 },
+  emptyTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface },
   emptyBody: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
-  focused: { borderColor: scheme.primary },
+  emptyArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  focused: { borderWidth: 1.5, borderColor: scheme.primary },
 });

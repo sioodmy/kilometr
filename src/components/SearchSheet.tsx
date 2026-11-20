@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
-  FlatList,
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,8 +17,12 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  FadeIn,
+  FadeOut,
   cancelAnimation,
+  interpolate,
   runOnJS,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -26,9 +30,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, LocateFixed, MapPinned, Search, X } from './icons';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPin, MapPinned, Search, X } from './icons';
 import { motion } from '../theme/motion';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import {
@@ -64,7 +68,7 @@ type Row =
       prominent: boolean;
     };
 
-const QUICK_CHIPS = 3;
+const QUICK_CHIPS = 4;
 const PERSONAL_MAX = 3;
 /** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
 const PERSONAL_MIN_SCORE = 85;
@@ -131,12 +135,23 @@ export function SearchSheet({
   const closingRef = useRef(false);
 
   const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.93));
   const targetHeightRef = useRef(targetSheetHeight);
   targetHeightRef.current = targetSheetHeight;
 
   const translateY = useSharedValue(reducedMotion ? 0 : targetSheetHeight);
   const backdropProgress = useSharedValue(reducedMotion ? 1 : 0);
+  const listScrollY = useSharedValue(0);
+
+  const handleListScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      listScrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const headDividerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(listScrollY.value, [2, 18], [0, 1], 'clamp'),
+  }));
 
   useEffect(() => {
     if (reducedMotion) {
@@ -496,7 +511,7 @@ export function SearchSheet({
           haptic="selection"
         >
           <View style={styles.liveMapIcon}>
-            <MapPinned size={20} color={scheme.onSecondaryContainer} />
+            <MapPinned size={20} color={scheme.onPrimaryContainer} />
           </View>
           <View style={styles.liveMapText}>
             <Text style={styles.liveMapTitle} numberOfLines={1}>
@@ -506,7 +521,9 @@ export function SearchSheet({
               {s.search.pickOnLiveMapSub}
             </Text>
           </View>
-          <ChevronRight size={20} color={scheme.onSurfaceVariant} />
+          <View style={styles.rowArrowWell}>
+            <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+          </View>
         </SpringPressable>
       ) : row.type === 'vehicle' ? (
         <SpringPressable
@@ -555,11 +572,13 @@ export function SearchSheet({
           <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
           <View style={styles.lineText}>
             <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
-            <Text style={styles.lineSubtitle}>
+            <Text style={styles.lineSubtitle} numberOfLines={2}>
               {row.line.longName || s.lineTimetable.searchHint}
             </Text>
           </View>
-          <ChevronRight size={22} color={scheme.onPrimaryContainer} />
+          <View style={styles.lineArrowWell}>
+            <ChevronRight size={18} color={scheme.onSurface} />
+          </View>
         </SpringPressable>
       ) : (
         <SuggestionRow
@@ -574,7 +593,7 @@ export function SearchSheet({
   );
 
   const listContentStyle = useMemo(
-    () => [styles.list, { paddingBottom: keyboardOpen ? 16 : 24 + insets.bottom }],
+    () => [styles.list, { paddingBottom: keyboardOpen ? 16 : 28 + insets.bottom }],
     [keyboardOpen, insets.bottom],
   );
 
@@ -629,12 +648,16 @@ export function SearchSheet({
                       accessibilityRole="button"
                       accessibilityLabel={s.search.originA11y(originTitle)}
                     >
-                      <LocateFixed size={16} color={scheme.onSurfaceVariant} />
+                      <View style={styles.originIconWell}>
+                        <LocateFixed size={14} color={scheme.onPrimaryContainer} />
+                      </View>
                       <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
                       <Text style={styles.originHintTitle} numberOfLines={1}>
                         {originTitle}
                       </Text>
-                      <Text style={styles.originHintChange}>{s.search.change}</Text>
+                      <View style={styles.originChangePill}>
+                        <Text style={styles.originHintChange}>{s.search.change}</Text>
+                      </View>
                     </SpringPressable>
                   </View>
                 )}
@@ -647,10 +670,11 @@ export function SearchSheet({
                   onPress={() => requestClose()}
                   style={styles.leadingBtn}
                   scaleDelta={0.06}
+                  haptic="selection"
                   accessibilityRole="button"
                   accessibilityLabel={s.search.closeA11y}
                 >
-                  <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
+                  <ArrowLeft size={21} color={scheme.onSurface} />
                 </SpringPressable>
                 <TextInput
                   ref={inputRef}
@@ -679,28 +703,38 @@ export function SearchSheet({
                   }
                 />
                 {query ? (
-                  <SpringPressable
-                    onPress={() => {
-                      onQuery('');
-                      inputRef.current?.focus();
-                    }}
-                    style={styles.trailingBtn}
-                    scaleDelta={0.06}
-                    haptic="selection"
-                    accessibilityRole="button"
-                    accessibilityLabel={s.search.clearA11y}
+                  <Animated.View
+                    entering={reducedMotion ? undefined : FadeIn.duration(120)}
+                    exiting={reducedMotion ? undefined : FadeOut.duration(100)}
                   >
-                    <X size={19} color={scheme.onSurfaceVariant} />
-                  </SpringPressable>
+                    <SpringPressable
+                      onPress={() => {
+                        onQuery('');
+                        inputRef.current?.focus();
+                      }}
+                      hitSlop={6}
+                      style={styles.trailingBtn}
+                      scaleDelta={0.08}
+                      haptic="selection"
+                      accessibilityRole="button"
+                      accessibilityLabel={s.search.clearA11y}
+                    >
+                      <X size={17} color={scheme.onSurfaceVariant} />
+                    </SpringPressable>
+                  </Animated.View>
                 ) : null}
               </View>
             </View>
+            <Animated.View style={[styles.headDivider, headDividerStyle]} pointerEvents="none" />
 
-            <FlatList
+            <Animated.FlatList
               data={rows}
               keyExtractor={keyExtractor}
               style={styles.flatList}
+              onScroll={handleListScroll}
+              scrollEventThrottle={16}
               overScrollMode="never"
+              showsVerticalScrollIndicator={false}
               contentContainerStyle={listContentStyle}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -717,7 +751,14 @@ export function SearchSheet({
                     </View>
                   )}
                   {!trimmed && savedQuick.length > 0 && (
-                    <View style={styles.quickRow}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      overScrollMode="never"
+                      style={styles.quickScroller}
+                      contentContainerStyle={styles.quickRow}
+                    >
                       {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
                         <SpringPressable
                           key={q.id}
@@ -728,12 +769,13 @@ export function SearchSheet({
                           accessibilityRole="button"
                           accessibilityLabel={s.search.savedA11y(q.title)}
                         >
+                          <MapPin size={14} color={scheme.primary} />
                           <Text style={styles.quickText} numberOfLines={1}>
                             {q.title}
                           </Text>
                         </SpringPressable>
                       ))}
-                    </View>
+                    </ScrollView>
                   )}
                 </View>
               }
@@ -742,21 +784,21 @@ export function SearchSheet({
                 showLoading && rows.length > 0 ? (
                   <View style={styles.status} accessibilityLiveRegion="polite">
                     <ActivityIndicator size="small" color={scheme.primary} />
-                    <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
+                    <Text style={styles.statusText}>{s.search.searching(cityLoc)}</Text>
                   </View>
                 ) : error && rows.length > 0 ? (
-                  <Text style={styles.error} accessibilityRole="alert">
-                    {s.search.errorHint}
-                  </Text>
+                  <View style={styles.errorBanner} accessibilityRole="alert">
+                    <Text style={styles.error}>{s.search.errorHint}</Text>
+                  </View>
                 ) : null
               }
               ListEmptyComponent={
-                <View style={styles.empty} accessibilityLiveRegion="polite">
+                <View style={styles.emptyCard} accessibilityLiveRegion="polite">
                   <View style={styles.emptyIcon}>
                     {showLoading || timetableSyncing ? (
-                      <ActivityIndicator color={scheme.primary} />
+                      <ActivityIndicator color={scheme.onPrimaryContainer} />
                     ) : (
-                      <Search size={28} color={scheme.primary} />
+                      <Search size={26} color={scheme.onPrimaryContainer} />
                     )}
                   </View>
                   <Text style={styles.emptyTitle}>
@@ -824,6 +866,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
   container: { flex: 1 },
@@ -842,92 +886,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 10,
   },
-  head: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 },
-  flatList: { flex: 1 },
-  listHeader: { gap: 6 },
-  syncBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginTop: 4,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainer,
-  },
-  syncBannerText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
-  },
-  liveMapRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 60,
-    marginTop: 4,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  liveMapIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveMapText: { flex: 1, gap: 2, minWidth: 0 },
-  liveMapTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
-  liveMapSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  vehicleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 60,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.small,
-  },
-  vehicleFirst: {
-    borderTopLeftRadius: shape.large,
-    borderTopRightRadius: shape.large,
-  },
-  vehicleLast: {
-    borderBottomLeftRadius: shape.large,
-    borderBottomRightRadius: shape.large,
-  },
-  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
-  vehicleTitle: { ...type.titleSmall, fontWeight: '600', color: scheme.onSurface },
-  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  lineResult: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    minHeight: 80,
-    borderRadius: shape.large,
-    backgroundColor: scheme.primaryContainer,
-  },
-  lineText: { flex: 1, gap: 4 },
-  lineTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
-  lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: shape.medium,
+    gap: 8,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingVertical: 6,
+    borderRadius: shape.full,
     maxWidth: '100%',
-    minHeight: 48,
+    minHeight: 44,
     backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  originIconWell: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   originHintLabel: {
-    ...type.bodySmall,
+    ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     fontWeight: '700',
   },
@@ -937,94 +920,234 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  originChangePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    flexShrink: 0,
+  },
   originHintChange: {
     ...type.labelSmall,
-    color: scheme.primary,
+    color: scheme.onPrimaryContainer,
     fontWeight: '700',
-    marginLeft: 2,
+  },
+  head: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 },
+  headDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: scheme.outlineVariant,
   },
   inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.extraLarge,
+    borderRadius: shape.full,
     borderWidth: 2,
-    borderColor: scheme.outline,
-    paddingLeft: 2,
-    paddingRight: 4,
-    minHeight: 64,
-    gap: 2,
+    borderColor: scheme.outlineVariant,
+    paddingLeft: 6,
+    paddingRight: 10,
+    minHeight: 58,
+    gap: 6,
   },
-  inputFocused: { borderColor: scheme.primary },
+  inputFocused: {
+    borderColor: scheme.primary,
+  },
   leadingBtn: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
   },
   trailingBtn: {
-    width: 48,
-    height: 48,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
   input: {
     flex: 1,
     ...type.bodyLarge,
+    fontWeight: '500',
     minWidth: 0,
     color: scheme.onSurface,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 4,
   },
-  list: { paddingHorizontal: 16, paddingBottom: 40, gap: 2 },
-  section: {
-    ...type.labelLarge,
+  flatList: { flex: 1 },
+  list: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 40, gap: 3 },
+  listHeader: { gap: 6 },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  syncBannerText: {
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    paddingHorizontal: 8,
-    paddingTop: 18,
-    paddingBottom: 8,
+    flex: 1,
+  },
+  quickScroller: {
+    marginHorizontal: -16,
   },
   quickRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 0,
-    paddingVertical: 6,
-    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   quick: {
-    backgroundColor: scheme.secondaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     borderRadius: shape.full,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 48,
-    maxWidth: '100%',
-    justifyContent: 'center',
+    minHeight: 42,
+    maxWidth: 220,
   },
   quickText: {
     ...type.labelLarge,
-    color: scheme.onSecondaryContainer,
+    color: scheme.onSurface,
     fontWeight: '600',
+    flexShrink: 1,
   },
-  empty: { paddingHorizontal: 16, paddingVertical: 28, alignItems: 'center', gap: 12 },
+  liveMapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 66,
+    marginTop: 4,
+    borderRadius: 24,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  liveMapIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  liveMapText: { flex: 1, gap: 2, minWidth: 0 },
+  liveMapTitle: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  liveMapSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  rowArrowWell: {
+    width: 32,
+    height: 32,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 64,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 6,
+  },
+  vehicleFirst: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  vehicleLast: {
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
+  vehicleTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
+  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  lineResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    minHeight: 76,
+    borderRadius: 24,
+    backgroundColor: scheme.primaryContainer,
+    marginBottom: 4,
+    ...elev.level1,
+  },
+  lineText: { flex: 1, gap: 3, minWidth: 0 },
+  lineTitle: {
+    ...type.titleMedium,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    color: scheme.onPrimaryContainer,
+  },
+  lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
+  lineArrowWell: {
+    width: 34,
+    height: 34,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  section: {
+    ...type.labelSmall,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    color: scheme.onSurfaceVariant,
+    paddingHorizontal: 10,
+    paddingTop: 18,
+    paddingBottom: 6,
+  },
+  emptyCard: {
+    marginTop: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    gap: 12,
+  },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: shape.large,
+    width: 56,
+    height: 56,
+    borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },
-  status: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 20,
+  emptyTitle: {
+    ...type.titleMedium,
+    fontWeight: '800',
+    color: scheme.onSurface,
+    textAlign: 'center',
   },
-  error: { ...type.bodyMedium, color: scheme.error, padding: 16 },
   emptySub: {
     ...type.bodyMedium,
     flexShrink: 1,
@@ -1032,19 +1155,44 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  status: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 18,
+  },
+  statusText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  errorBanner: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: scheme.errorContainer,
+  },
+  error: {
+    ...type.bodySmall,
+    fontWeight: '600',
+    color: scheme.onErrorContainer,
+    textAlign: 'center',
+  },
   downloadBtn: {
     marginTop: 4,
     minHeight: 48,
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     paddingVertical: 12,
     borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   downloadBtnText: {
     ...type.labelLarge,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
+    color: scheme.onPrimary,
+    fontWeight: '800',
   },
 });

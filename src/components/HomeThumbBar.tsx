@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -12,7 +15,7 @@ import { ChevronRight, Download, LocateFixed, MapPin, MapPinOff, Search, X } fro
 import { HomeDockChips, type DockChip } from './HomeDockChips';
 import { SpringPressable } from './SpringPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 
 interface HomeThumbBarProps {
@@ -44,6 +47,7 @@ export function HomeThumbBar({
   const reduceMotion = useReducedMotion();
   const [focused, setFocused] = useState<'search' | 'origin' | 'reset' | null>(null);
   const OriginIcon = isCustomStart ? MapPin : gpsUnsupported ? MapPinOff : LocateFixed;
+  const originNeedsPick = gpsUnsupported && !isCustomStart;
 
   const downloading = downloadProgress !== null;
   const clamped = Math.max(0, Math.min(1, downloadProgress ?? 0));
@@ -87,7 +91,7 @@ export function HomeThumbBar({
   }));
 
   return (
-    <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+    <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 14) }]}>
       <HomeDockChips chips={chips} />
       <View style={styles.bar}>
         {downloading ? (
@@ -104,9 +108,15 @@ export function HomeThumbBar({
             <Animated.View style={[styles.searchFill, fillStyle]} />
             <Animated.View style={[styles.shine, shineStyle]} pointerEvents="none" />
             <View style={styles.searchContent}>
-              <Download size={20} color={scheme.primary} />
-              <Text style={styles.searchLabel}>{s.home.updatingTimetable}</Text>
-              <Text style={styles.progressPct}>{pct}%</Text>
+              <View style={styles.searchIconWell}>
+                <Download size={19} color={scheme.onPrimaryContainer} />
+              </View>
+              <Text style={styles.searchLabel} numberOfLines={1}>
+                {s.home.updatingTimetable}
+              </Text>
+              <View style={styles.progressPill}>
+                <Text style={styles.progressPct}>{pct}%</Text>
+              </View>
             </View>
           </View>
         ) : (
@@ -115,54 +125,91 @@ export function HomeThumbBar({
             onFocus={() => setFocused('search')}
             onBlur={() => setFocused(null)}
             scaleDelta={0.02}
-            opacityDelta={0.06}
+            opacityDelta={0.05}
             haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={s.home.searchA11y}
-            style={[styles.search, focused === 'search' && styles.searchFocused]}
+            style={[styles.search, focused === 'search' && styles.focused]}
           >
-            <Search size={20} color={scheme.onSurfaceVariant} />
-            <Text style={styles.searchLabel}>{s.home.searchLabel}</Text>
+            <View style={styles.searchIconWell}>
+              <Search size={19} color={scheme.onPrimaryContainer} />
+            </View>
+            <Text style={styles.searchLabel} numberOfLines={1}>
+              {s.home.searchLabel}
+            </Text>
           </SpringPressable>
         )}
-        <View style={styles.originRow}>
+
+        <Animated.View
+          layout={reduceMotion ? undefined : LinearTransition.duration(180)}
+          style={styles.originRow}
+        >
           <SpringPressable
             onPress={onOpenStart}
             onFocus={() => setFocused('origin')}
             onBlur={() => setFocused(null)}
             scaleDelta={0.018}
-            opacityDelta={0.06}
+            opacityDelta={0.05}
             haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={
               isCustomStart ? s.home.startCustomA11y(startTitle) : s.home.startGpsA11y(startTitle)
             }
-            style={[styles.origin, focused === 'origin' && styles.focused]}
+            style={[
+              styles.origin,
+              originNeedsPick && styles.originWarning,
+              focused === 'origin' && styles.focused,
+            ]}
           >
-            <OriginIcon
-              size={18}
-              color={gpsUnsupported && !isCustomStart ? scheme.warning : scheme.onSurfaceVariant}
-            />
-            <Text style={[styles.originPlace, gpsUnsupported && !isCustomStart && styles.warning]}>
-              {gpsUnsupported && !isCustomStart ? s.home.pickStart : s.home.startFrom(startTitle)}
+            <View
+              style={[
+                styles.originIconWell,
+                originNeedsPick && styles.originIconWellWarning,
+                isCustomStart && styles.originIconWellCustom,
+              ]}
+            >
+              <OriginIcon
+                size={15}
+                color={
+                  originNeedsPick
+                    ? scheme.onWarningContainer
+                    : isCustomStart
+                      ? scheme.onPrimaryContainer
+                      : scheme.primary
+                }
+              />
+            </View>
+            <Text
+              style={[styles.originPlace, originNeedsPick && styles.originPlaceWarning]}
+              numberOfLines={1}
+            >
+              {originNeedsPick ? s.home.pickStart : s.home.startFrom(startTitle)}
             </Text>
-            <ChevronRight size={16} color={scheme.onSurfaceVariant} />
+            <ChevronRight
+              size={16}
+              color={originNeedsPick ? scheme.onWarningContainer : scheme.onSurfaceVariant}
+            />
           </SpringPressable>
           {isCustomStart && (
-            <SpringPressable
-              onPress={onResetStart}
-              onFocus={() => setFocused('reset')}
-              onBlur={() => setFocused(null)}
-              scaleDelta={0.06}
-              haptic="selection"
-              accessibilityRole="button"
-              accessibilityLabel={s.home.resetStartA11y}
-              style={[styles.reset, focused === 'reset' && styles.focused]}
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(140)}
+              exiting={reduceMotion ? undefined : FadeOut.duration(100)}
             >
-              <X size={18} color={scheme.onSurfaceVariant} />
-            </SpringPressable>
+              <SpringPressable
+                onPress={onResetStart}
+                onFocus={() => setFocused('reset')}
+                onBlur={() => setFocused(null)}
+                scaleDelta={0.06}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityLabel={s.home.resetStartA11y}
+                style={[styles.reset, focused === 'reset' && styles.focused]}
+              >
+                <X size={18} color={scheme.onSurfaceVariant} />
+              </SpringPressable>
+            </Animated.View>
           )}
-        </View>
+        </Animated.View>
       </View>
     </View>
   );
@@ -170,30 +217,35 @@ export function HomeThumbBar({
 
 const styles = StyleSheet.create({
   dock: {
-    marginTop: 8,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    backgroundColor: scheme.surfaceContainerLow,
+    paddingTop: 14,
+    paddingHorizontal: 16,
+    backgroundColor: scheme.surfaceContainer,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level2,
   },
   bar: {
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
-    gap: 4,
+    gap: 10,
   },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    minHeight: 52,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
+    minHeight: 56,
+    paddingLeft: 9,
+    paddingRight: 18,
+    paddingVertical: 8,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
   searchContent: {
@@ -201,6 +253,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  searchIconWell: {
+    width: 38,
+    height: 38,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   searchFill: {
     position: 'absolute',
@@ -219,36 +280,78 @@ const styles = StyleSheet.create({
     width: 64,
     backgroundColor: 'rgba(255,255,255,0.13)',
   },
-  searchLabel: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, flex: 1 },
+  searchLabel: {
+    ...type.bodyLarge,
+    fontWeight: '700',
+    letterSpacing: -0.15,
+    color: scheme.onSurface,
+    flex: 1,
+  },
+  progressPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+  },
   progressPct: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
+    ...type.labelSmall,
+    fontWeight: '800',
+    color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
   },
-  originRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  originRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   origin: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minHeight: 48,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: shape.large,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    minHeight: 46,
+    paddingLeft: 8,
+    paddingRight: 14,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant,
   },
-  originPlace: { ...type.bodyMedium, color: scheme.onSurfaceVariant, flex: 1 },
-  warning: { color: scheme.warning },
-  reset: {
-    width: 48,
-    height: 48,
+  originWarning: {
+    backgroundColor: scheme.warningContainer,
+    borderColor: scheme.warning,
+  },
+  originIconWell: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    flexShrink: 0,
+  },
+  originIconWellCustom: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  originIconWellWarning: {
+    backgroundColor: scheme.warningContainer,
+  },
+  originPlace: {
+    ...type.bodyMedium,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    flex: 1,
+  },
+  originPlaceWarning: {
+    color: scheme.onWarningContainer,
+    fontWeight: '700',
+  },
+  reset: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant,
   },
   focused: { borderColor: scheme.primary },
-  searchFocused: { borderColor: scheme.primary },
 });
