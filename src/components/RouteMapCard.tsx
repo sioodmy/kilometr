@@ -23,7 +23,7 @@ import {
 import { acquireMapServerForRoute } from '../services/mapServerLease';
 import { buildMapRoute, resolveGeometry, type Coord } from '../services/routeGeometry';
 import { formatWalkDistance } from '../services/settings';
-import { elev, scheme, shape, spacing, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { RouteMap, type RouteMapHandle } from './RouteMap';
 
 /**
@@ -205,7 +205,7 @@ export function RouteMapCard({
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
           <View style={styles.headerIconBadge}>
-            <MapPin size={16} color={scheme.onSecondaryContainer} />
+            <MapPin size={17} color={scheme.onSecondaryContainer} />
           </View>
           <Text style={styles.title}>{s.map.title}</Text>
           {activeStage && (
@@ -220,7 +220,6 @@ export function RouteMapCard({
           onPress={openFullscreen}
           accessibilityRole="button"
           accessibilityLabel={s.compass.openMap}
-          hitSlop={6}
           onFocus={() => setFocused('open')}
           onBlur={() => setFocused(null)}
           style={({ pressed }) => [
@@ -285,7 +284,7 @@ export function RouteMapCard({
                 onBlur={() => setFocused(null)}
                 style={({ pressed }) => [
                   styles.stagePill,
-                  isSelected && [styles.stagePillActive, { borderColor: st.leg.color }],
+                  isSelected && styles.stagePillActive,
                   pressed && styles.pressed,
                   focused === focusKey && styles.focused,
                 ]}
@@ -339,8 +338,10 @@ export function RouteMapCard({
                 focused === 'map' && styles.focused,
               ]}
             >
-              <MapPin size={22} color={scheme.onSurfaceVariant} />
-              <Text style={styles.statusText}>{s.compass.mapTapToLoad}</Text>
+              <View style={styles.placeholderIcon}>
+                <MapPin size={22} color={scheme.onSecondaryContainer} />
+              </View>
+              <Text style={styles.placeholderTitle}>{s.compass.mapTapToLoad}</Text>
             </Pressable>
           ) : (
             <>
@@ -403,7 +404,7 @@ export function RouteMapCard({
                         focused === 'retry' && styles.focused,
                       ]}
                     >
-                      <Text style={styles.statusText}>{s.compass.mapRetry}</Text>
+                      <Text style={styles.retryText}>{s.compass.mapRetry}</Text>
                     </Pressable>
                   )}
                 </View>
@@ -418,7 +419,6 @@ export function RouteMapCard({
               onPress={() => handleStepStage(-1)}
               accessibilityRole="button"
               accessibilityLabel={s.map.backA11y}
-              hitSlop={6}
               onFocus={() => setFocused('prev-stage')}
               onBlur={() => setFocused(null)}
               style={({ pressed }) => [
@@ -427,7 +427,7 @@ export function RouteMapCard({
                 focused === 'prev-stage' && styles.focused,
               ]}
             >
-              <ChevronLeft size={18} color={scheme.onSurface} />
+              <ChevronLeft size={19} color={scheme.onSurface} />
             </Pressable>
 
             <Pressable
@@ -457,7 +457,6 @@ export function RouteMapCard({
               onPress={() => handleStepStage(1)}
               accessibilityRole="button"
               accessibilityLabel={s.map.stagesTitle}
-              hitSlop={6}
               onFocus={() => setFocused('next-stage')}
               onBlur={() => setFocused(null)}
               style={({ pressed }) => [
@@ -466,7 +465,7 @@ export function RouteMapCard({
                 focused === 'next-stage' && styles.focused,
               ]}
             >
-              <ChevronRight size={18} color={scheme.onSurface} />
+              <ChevronRight size={19} color={scheme.onSurface} />
             </Pressable>
           </View>
         )}
@@ -479,8 +478,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     padding: 14,
-    gap: 10,
+    gap: 12,
     ...elev.level1,
   },
   header: {
@@ -492,27 +493,29 @@ const styles = StyleSheet.create({
   headerTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 10,
     flex: 1,
   },
   headerIconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: shape.medium,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    ...type.titleSmall,
-    fontWeight: '700',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
   },
   stageCountChip: {
     backgroundColor: scheme.primaryContainer,
     borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
   },
   stageCountText: {
     ...type.labelSmall,
@@ -521,10 +524,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   expandButton: {
-    width: 38,
-    height: 38,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerLow,
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -536,21 +541,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    minHeight: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    maxWidth: 210,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    maxWidth: 224,
   },
   stagePillActive: {
     backgroundColor: scheme.primaryContainer,
+    borderWidth: 1.5,
     borderColor: scheme.primary,
   },
   stageIndex: {
     ...type.labelSmall,
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
@@ -568,9 +575,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   mapFrame: {
-    borderRadius: shape.large,
+    borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   map: {
     height: 248,
@@ -584,12 +593,26 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    padding: 16,
+    gap: 10,
+    padding: 18,
     backgroundColor: scheme.surfaceContainerLowest,
   },
   placeholder: {
     backgroundColor: scheme.surfaceContainerLow,
+  },
+  placeholderIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderTitle: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    textAlign: 'center',
   },
   statusText: {
     ...type.bodySmall,
@@ -604,29 +627,38 @@ const styles = StyleSheet.create({
     borderRadius: shape.full,
   },
   retry: {
-    paddingHorizontal: 16,
-    backgroundColor: scheme.surfaceContainerHigh,
+    paddingHorizontal: 18,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  retryText: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
   },
   stageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     gap: 8,
     backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
   },
   stepBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   stageFooterBody: {
     flex: 1,
     paddingHorizontal: 4,
-    gap: 1,
+    gap: 2,
   },
   stageFooterStops: {
     ...type.labelLarge,
