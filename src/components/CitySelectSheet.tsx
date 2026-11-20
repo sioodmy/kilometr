@@ -16,18 +16,24 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, MapPinOff, Search, X } from './icons';
+import { SpringPressable } from './SpringPressable';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, type Strings, useStrings } from '../i18n';
 import { CITIES, type CityDef, type CityId } from '../cities';
 import { normalizePolish } from '../gtfs/geo';
+
+const MAX_RUBBER_UP = 18;
 
 const CITY_ALIASES: Record<string, string[]> = {
   wroclaw: ['wrocław', 'wroclaw', 'dolny śląsk', 'dolnyslask', 'breslau'],
@@ -294,9 +300,8 @@ export interface CitySelectSheetProps {
 }
 
 /**
- * Arkusz wyboru miasta: montuje się natychmiast bez animacji wejścia,
- * a gest zamykania w dół siedzi wyłącznie na uchwycie i nagłówku,
- * żeby FlatList przewijał się natywnie bez blokady gestów.
+ * Arkusz wyboru miasta M3 Expressive: sprężyste wejście i wyjście, a gest
+ * zamykania siedzi na uchwycie i nagłówku, żeby FlatList przewijał się natywnie.
  */
 export function CitySelectSheet({
   selectedCityId,
@@ -325,20 +330,54 @@ export function CitySelectSheet({
   switchingRef.current = switchingCity;
   const closingRef = useRef(false);
 
+  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const targetHeightRef = useRef(targetSheetHeight);
+  targetHeightRef.current = targetSheetHeight;
+
+  const translateY = useSharedValue(reduceMotion ? 0 : targetSheetHeight);
+  const backdropProgress = useSharedValue(reduceMotion ? 1 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      translateY.value = 0;
+      backdropProgress.value = 1;
+      return;
+    }
+    translateY.value = withSpring(0, motion.spring.spatialDefault);
+    backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
+  }, [backdropProgress, reduceMotion, translateY]);
+
   const finishClose = useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    Keyboard.dismiss();
     closeRef.current();
   }, []);
 
+  const requestClose = useCallback(
+    (immediate = false) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      Keyboard.dismiss();
+      if (immediate || reduceMotion) {
+        finishClose();
+        return;
+      }
+      cancelAnimation(translateY);
+      cancelAnimation(backdropProgress);
+      backdropProgress.value = withTiming(0, motion.exit);
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
+        if (finished) runOnJS(finishClose)();
+      });
+    },
+    [backdropProgress, finishClose, reduceMotion, translateY],
+  );
+
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      finishClose();
+      requestClose();
       return true;
     });
     return () => sub.remove();
-  }, [finishClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -362,15 +401,11 @@ export function CitySelectSheet({
     setOverlayHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
 
-  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
   const windowShrank = maxOverlayHeightRef.current - overlayHeight > androidKeyboardHeight * 0.5;
   const extraKeyboardInset =
     Platform.OS === 'android' && androidKeyboardHeight > 0 && !windowShrank
       ? androidKeyboardHeight
       : 0;
-
-  const translateY = useSharedValue(0);
 
   const dismissPanGesture = useMemo(
     () =>
@@ -378,22 +413,39 @@ export function CitySelectSheet({
         .activeOffsetY(8)
         .failOffsetX([-20, 20])
         .onUpdate((e) => {
-          translateY.value = e.translationY > 0 ? e.translationY : 0;
+          'worklet';
+          if (e.translationY >= 0) {
+            translateY.value = e.translationY;
+          } else {
+            translateY.value = -Math.min(MAX_RUBBER_UP, Math.sqrt(-e.translationY) * 2.2);
+          }
         })
         .onEnd((e) => {
-          if (e.translationY > 110 || e.velocityY > 900) {
+          'worklet';
+          if (e.translationY > 96 || e.velocityY > 760) {
             if (reduceMotion) {
-              runOnJS(finishClose)();
+              runOnJS(requestClose)(true);
               return;
             }
-            translateY.value = withTiming(targetSheetHeight, { duration: 140 }, (finished) => {
-              if (finished) runOnJS(finishClose)();
-            });
+            const remaining = Math.max(0, targetSheetHeight - Math.max(0, translateY.value));
+            const speed = Math.max(1200, e.velocityY);
+            const duration = Math.max(100, Math.min(180, Math.round((remaining / speed) * 1000)));
+            backdropProgress.value = withTiming(0, { duration, easing: motion.exit.easing });
+            translateY.value = withTiming(
+              targetSheetHeight,
+              { duration, easing: motion.exit.easing },
+              (finished) => {
+                if (finished) runOnJS(requestClose)(true);
+              },
+            );
           } else {
-            translateY.value = withTiming(0, { duration: 140 });
+            translateY.value = withSpring(0, {
+              ...motion.spring.spatialDefault,
+              velocity: e.velocityY,
+            });
           }
         }),
-    [finishClose, reduceMotion, targetSheetHeight, translateY],
+    [backdropProgress, reduceMotion, requestClose, targetSheetHeight, translateY],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -401,8 +453,9 @@ export function CitySelectSheet({
   }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => {
-    const progress = 1 - Math.min(1, translateY.value / Math.max(1, targetSheetHeight * 0.7));
-    return { opacity: progress * 0.6 };
+    const dragFactor =
+      1 - Math.min(1, Math.max(0, translateY.value) / Math.max(1, targetSheetHeight * 0.72));
+    return { opacity: backdropProgress.value * dragFactor * 0.58 };
   });
 
   const entries = useMemo(() => getCityEntries(s), [s]);
@@ -434,13 +487,13 @@ export function CitySelectSheet({
     (city: CityDef) => {
       if (switchingRef.current) return;
       if (city.id === selectedRef.current) {
-        finishClose();
+        requestClose();
         return;
       }
       selectRef.current(city.id);
-      finishClose();
+      requestClose();
     },
-    [finishClose],
+    [requestClose],
   );
 
   const renderItem = useCallback(
@@ -485,7 +538,7 @@ export function CitySelectSheet({
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimatedStyle]}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={finishClose}
+          onPress={() => requestClose()}
           accessibilityRole="button"
           accessibilityLabel={s.city.closeSheetA11y}
         />
@@ -514,15 +567,16 @@ export function CitySelectSheet({
               </View>
             </GestureDetector>
 
-            <Pressable
-              onPress={finishClose}
+            <SpringPressable
+              onPress={() => requestClose()}
               hitSlop={8}
-              style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedFade]}
+              scaleDelta={0.06}
+              style={styles.closeBtn}
               accessibilityRole="button"
               accessibilityLabel={s.city.closeSheetA11y}
             >
               <X size={20} color={scheme.onSurfaceVariant} />
-            </Pressable>
+            </SpringPressable>
 
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
@@ -537,17 +591,24 @@ export function CitySelectSheet({
                 autoCapitalize="none"
                 returnKeyType="search"
                 clearButtonMode="never"
+                onSubmitEditing={() => {
+                  if (filteredCities.length > 0) {
+                    handleCityPress(filteredCities[0].city);
+                  }
+                }}
               />
               {query.length > 0 ? (
-                <Pressable
+                <SpringPressable
                   onPress={() => setQuery('')}
                   hitSlop={8}
+                  scaleDelta={0.06}
+                  haptic="selection"
                   style={styles.searchClearBtn}
                   accessibilityRole="button"
                   accessibilityLabel={s.city.searchClearA11y}
                 >
                   <X size={16} color={scheme.onSurfaceVariant} />
-                </Pressable>
+                </SpringPressable>
               ) : null}
             </View>
 
@@ -558,6 +619,7 @@ export function CitySelectSheet({
               keyboardDismissMode="on-drag"
               overScrollMode="never"
               showsVerticalScrollIndicator
+              removeClippedSubviews={Platform.OS === 'android'}
               initialNumToRender={12}
               maxToRenderPerBatch={12}
               updateCellsBatchingPeriod={16}
@@ -636,9 +698,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressedFade: {
-    opacity: 0.7,
-  },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -685,7 +744,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   cityItemPressed: {
-    opacity: 0.75,
+    backgroundColor: scheme.surfaceContainerHigh,
+    transform: [{ scale: 0.992 }],
   },
   cityItemContent: {
     flex: 1,
