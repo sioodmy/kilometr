@@ -18,6 +18,8 @@ export interface CoveragePlace {
   regionLabel?: string;
   lat: number;
   lon: number;
+  populationK: number;
+  pinRadius: number;
   aliases: readonly string[];
   operators: readonly OperatorEntry[];
   newsSource?: string;
@@ -237,6 +239,153 @@ const CITY_OPERATORS: Record<CityId, readonly OperatorEntry[]> = {
   slubice: [{ id: 'slubice-transit', name: "Transhand Słubice", shortCode: "TH", kind: 'municipal', modes: ['bus'] }],
 };
 
+// Przybliżona liczba mieszkańców (w tysiącach) dla proporcjonalnej wielkości pinów na mapie.
+const CITY_POPULATION_K: Record<CityId, number> = {
+  gzm: 2100,
+  warszawa: 1860,
+  trojmiasto: 1000,
+  krakow: 807,
+  wroclaw: 674,
+  lodz: 652,
+  poznan: 540,
+  szczecin: 389,
+  lublin: 330,
+  bydgoszcz: 328,
+  bialystok: 292,
+  czestochowa: 206,
+  rzeszow: 197,
+  radom: 196,
+  torun: 195,
+  kielce: 182,
+  olsztyn: 167,
+  bielskobiala: 166,
+  zielonagora: 139,
+  rybnik: 131,
+  opole: 126,
+  gorzow: 115,
+  elblag: 113,
+  plock: 111,
+  koszalin: 106,
+  tarnow: 103,
+  walbrzych: 100,
+  kalisz: 93,
+  legnica: 92,
+  grudziadz: 89,
+  jaworzno: 87,
+  slupsk: 86,
+  jastrzebie: 82,
+  siedlce: 75,
+  pila: 70,
+  konin: 68,
+  suwalki: 68,
+  piotrkow: 67,
+  stargard: 67,
+  pruszkow: 65,
+  gniezno: 64,
+  ostrowiec: 63,
+  pabianice: 61,
+  lomza: 60,
+  leszno: 60,
+  elk: 60,
+  chelm: 58,
+  tomaszow: 58,
+  zamosc: 58,
+  tczew: 57,
+  mielec: 57,
+  przemysl: 56,
+  stalowawola: 56,
+  zgierz: 54,
+  kedzierzynkozle: 54,
+  belchatow: 53,
+  raciborz: 49,
+  ostroleka: 48,
+  zawiercie: 46,
+  starogard: 45,
+  skierniewice: 45,
+  zabki: 45,
+  wodzislaw: 45,
+  starachowice: 44,
+  radomsko: 44,
+  tarnobrzeg: 44,
+  krosno: 44,
+  otwock: 44,
+  kolobrzeg: 44,
+  skarzysko: 42,
+  kutno: 41,
+  nysa: 41,
+  minskmazowiecki: 40,
+  swinoujscie: 39,
+  zdunskawola: 39,
+  sieradz: 39,
+  szczecinek: 38,
+  boleslawiec: 37,
+  malbork: 37,
+  olesnica: 37,
+  nowasol: 36,
+  oswiecim: 36,
+  czechowicedziedzice: 35,
+  grodzisk: 35,
+  chrzanow: 34,
+  sochaczew: 34,
+  cieszyn: 33,
+  jaslo: 33,
+  olkusz: 33,
+  nowytarg: 33,
+  ilawa: 32,
+  krasnik: 32,
+  ostroda: 32,
+  wrzesnia: 32,
+  zywiec: 30,
+  myszkow: 30,
+  zgorzelec: 29,
+  augustow: 29,
+  bochnia: 29,
+  nowydwormaz: 29,
+  krotoszyn: 28,
+  gizycko: 27,
+  wieliczka: 27,
+  ketrzyn: 26,
+  jarocin: 26,
+  gorlice: 26,
+  zakopane: 25,
+  pszczyna: 25,
+  swiecie: 25,
+  wagrowiec: 25,
+  walcz: 24,
+  zagan: 24,
+  bielskpodlaski: 24,
+  koscierzyna: 23,
+  sandomierz: 22,
+  bartoszyce: 22,
+  polkowice: 21,
+  wielun: 21,
+  mragowo: 21,
+  dzialdowo: 21,
+  gostyn: 20,
+  chodziez: 18,
+  oborniki: 18,
+  brzesko: 16,
+  kozienice: 16,
+  slubice: 16,
+  lidzbarkwarminski: 15,
+  jedrzejow: 15,
+  zabkowice: 14,
+  kartuzy: 14,
+  strzelin: 12,
+  srodaslaska: 10,
+};
+
+const MIN_POP_LOG = Math.log10(10);
+const MAX_POP_LOG = Math.log10(2100);
+
+function computePinRadius(populationK: number): number {
+  const t = Math.max(
+    0,
+    Math.min(1, (Math.log10(Math.max(10, populationK)) - MIN_POP_LOG) / (MAX_POP_LOG - MIN_POP_LOG)),
+  );
+  return Number((2.2 + 5.0 * Math.pow(t, 1.35)).toFixed(2));
+}
+
 const CITY_NEWS_SOURCES: Partial<Record<CityId, string>> = {
   wroclaw: 'MPK Wrocław · wroclaw.pl',
   krakow: 'ZTP Kraków',
@@ -282,17 +431,22 @@ const REGION_SUBTITLES: Partial<Record<CityId, string>> = {
   trojmiasto: 'Gdańsk · Gdynia · Sopot',
 };
 
-export const COVERAGE_CITIES: readonly CoveragePlace[] = CITIES.map((city) => ({
-  key: city.id,
-  name: DISPLAY_NAMES[city.id] ?? city.name,
-  regionLabel: REGION_SUBTITLES[city.id],
-  lat: city.center.lat,
-  lon: city.center.lon,
-  aliases: CITY_ALIASES[city.id] ?? [],
-  operators: CITY_OPERATORS[city.id],
-  newsSource: CITY_NEWS_SOURCES[city.id],
-  railGateways: city.railGateways ?? [],
-}));
+export const COVERAGE_CITIES: readonly CoveragePlace[] = CITIES.map((city) => {
+  const populationK = CITY_POPULATION_K[city.id];
+  return {
+    key: city.id,
+    name: DISPLAY_NAMES[city.id] ?? city.name,
+    regionLabel: REGION_SUBTITLES[city.id],
+    lat: city.center.lat,
+    lon: city.center.lon,
+    populationK,
+    pinRadius: computePinRadius(populationK),
+    aliases: CITY_ALIASES[city.id] ?? [],
+    operators: CITY_OPERATORS[city.id],
+    newsSource: CITY_NEWS_SOURCES[city.id],
+    railGateways: city.railGateways ?? [],
+  };
+});
 
 export function normalizeCoverageQuery(value: string): string {
   return value
@@ -303,19 +457,35 @@ export function normalizeCoverageQuery(value: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-export function filterCoveragePlaces(query: string): readonly CoveragePlace[] {
-  const q = normalizeCoverageQuery(query);
-  if (!q) return COVERAGE_CITIES;
-  return COVERAGE_CITIES.filter((place) => {
-    if (normalizeCoverageQuery(place.name).includes(q)) return true;
-    if (place.regionLabel && normalizeCoverageQuery(place.regionLabel).includes(q)) return true;
-    if (place.aliases.some((a) => normalizeCoverageQuery(a).includes(q))) return true;
-    return place.operators.some(
+function getPlaceMatchRank(place: CoveragePlace, q: string): number {
+  const normName = normalizeCoverageQuery(place.name);
+  if (normName.startsWith(q)) return 0;
+
+  const secondary = place.regionLabel ? [place.regionLabel, ...place.aliases] : place.aliases;
+  const normSecondary = secondary.map(normalizeCoverageQuery);
+  if (normSecondary.some((s) => s.startsWith(q))) return 1;
+  if (normName.includes(q)) return 2;
+  if (normSecondary.some((s) => s.includes(q))) return 3;
+
+  if (
+    place.operators.some(
       (op) =>
         normalizeCoverageQuery(op.name).includes(q) ||
         normalizeCoverageQuery(op.shortCode).includes(q),
-    );
-  });
+    )
+  ) {
+    return 4;
+  }
+  return -1;
+}
+
+export function filterCoveragePlaces(query: string): readonly CoveragePlace[] {
+  const q = normalizeCoverageQuery(query);
+  if (!q) return COVERAGE_CITIES;
+  return COVERAGE_CITIES.map((place) => ({ place, rank: getPlaceMatchRank(place, q) }))
+    .filter((item) => item.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || b.place.populationK - a.place.populationK)
+    .map((item) => item.place);
 }
 
 export function findMatchedAlias(place: CoveragePlace, query: string): string | null {

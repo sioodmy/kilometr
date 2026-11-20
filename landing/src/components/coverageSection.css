@@ -63,18 +63,21 @@
 
   .cov-pin-halo {
     fill: rgba(127, 219, 177, 0.14);
+    pointer-events: none;
   }
 
   .cov-pin-ring {
     fill: none;
     stroke: rgba(127, 219, 177, 0.52);
     stroke-width: 1.4;
+    pointer-events: none;
   }
 
   .cov-pin-dot {
     fill: #9bb8a5;
     stroke: var(--bg);
-    stroke-width: 1.6;
+    stroke-width: 1.8;
+    paint-order: stroke;
     transition:
       r var(--duration-fast) var(--ease-out),
       fill var(--duration-fast) var(--ease-out),
@@ -89,13 +92,13 @@
   .cov-pin:focus-visible .cov-pin-dot {
     fill: var(--accent);
     stroke: var(--text);
-    stroke-width: 2;
+    stroke-width: 2.6;
   }
 
   .cov-pin.is-selected .cov-pin-dot {
     fill: var(--accent);
     stroke: var(--bg);
-    stroke-width: 2;
+    stroke-width: 2.2;
   }
 
   .cov-pin.is-dimmed .cov-pin-dot {
