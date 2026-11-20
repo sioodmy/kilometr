@@ -1,27 +1,19 @@
 // Geometria przebiegu trasy do narysowania na mapie.
 //
 // RAPTOR zna tylko przystanki kursu, a mapa potrzebuje realnego przebiegu
-// po ulicach. Dlatego:
+// po torach, drogach, buspasach i chodnikach. Dlatego:
 //  1. budujemy model trasy natychmiast (prostymi odcinkami między przystankami),
-//     żeby ekran nie czekał na sieć,
-//  2. w tle dokładamy geometrię z OSRM (dokładny przebieg przez wszystkie
-//     przystanki w jednym zapytaniu na nogę) i podmieniamy nogi w locie,
+//     żeby ekran nie czekał na kafelki ani sieć,
+//  2. w tle wyznaczamy geometrię lokalnie w silniku Rust z kafelków MVT
+//     (dla kolei najpierw tniemy oficjalny shape PLK z bazy polska.db,
+//     a tramwaj, metro i kolej bez shape idą wyłącznie po szynach;
+//     autobusy i trolejbusy idą lokalnie po drogach i buspasach z Viterbi,
+//     a OSRM jest tylko awaryjnym fallbackiem z twardą filtracją objazdów i pętli),
 //  3. wynik trzymamy w cache, więc drugie otwarcie mapy jest natychmiastowe
 //     i działa offline.
-//
-// Spacer idzie tym samym kanałem co kurs, ale po profilu pieszym: bez niego
-// noga piesza dostawałaby dwa punkty i rysowała się w linii prostej przez
-// budynki. Bez routera zostaje wersja prosta, wolna, ale zawsze pokazuje trasę.
-//
-// Kolej korzysta z torów w kafelkach mapy. Pozostałe nogi szynowe
-// zostają przy geometrii przybliżonej, bez routera samochodowego.
-// W przypadku autobusów router samochodowy OSRM bywa wyprowadzany w pole
-// przez zakazy wjazdu dla aut (buspasy, strefy piesze, bramki autobusowe,
-// np. I Obwodnica w Krakowie). Odcinki z nienaturalnymi objazdami są
-// automatycznie wykrywane i zastępowane czystą prostą między przystankami.
 
 import { OSRM_BASE_URL } from '../config';
-import { routeFootLocal, routeRailLocal } from './footRouter';
+import { routeFootLocal, routeTransitLocal } from './footRouter';
 import { kvGet, kvSet } from './storage';
 import { getLineColors, mapLineColor } from './lineIdentity';
 import { shortDistanceMeters, timeStringToSeconds } from '../gtfs/geo';
@@ -29,27 +21,30 @@ import { putCacheRecord, selectEvictions, type GeometryCacheRecord } from './geo
 import type { Connection, Leg } from '../types/models';
 import type { MapLeg, MapRoute, MapStop, MapStopRole } from '../map/types';
 import { isFareBoundary } from '../gtfs/fareBoundary';
-const CACHE_KEY = 'kilometr.map_geometry.v3';
+const CACHE_KEY = 'kilometr.map_geometry.v4';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 60;
-const PINS_KEY = 'kilometr.map_geometry.pins.v3';
+const PINS_KEY = 'kilometr.map_geometry.pins.v4';
 /** Ile tras trzymamy przypiętych. Powyżej tego najstarsze wypadają. */
 const PINS_MAX = 40;
-/** OSRM demo jest wolne przy dużej liczbie waypointów, dzielimy nogi na porcje. */
+/** Awaryjny fallback OSRM jest wolny przy dużej liczbie waypointów, dzielimy go na porcje. */
 const WAYPOINTS_PER_REQUEST = 20;
 const REQUEST_TIMEOUT_MS = 8000;
 
-/** Rozdziela cache dróg, chodników i torów. */
-type RouteProfile = 'driving' | 'foot' | 'rail';
+/** Rozdziela cache dróg autobusowych, chodników i sieci szynowych. */
+type RouteProfile = 'bus' | 'tram' | 'subway' | 'rail' | 'foot';
 
-/** Tryby bez obsługi geometrii nie mogą trafić do routera samochodowego. */
+/** Tylko kolejka linowa zostaje przy prostej linii między stacjami. */
 function isApproxOnlyLeg(leg: MapLeg): boolean {
-  return leg.mode === 'tram' || leg.mode === 'cable' || leg.mode === 'subway';
+  return leg.mode === 'cable';
 }
 
 function legProfile(leg: MapLeg): RouteProfile {
   if (leg.mode === 'train') return 'rail';
-  return leg.mode === 'walk' ? 'foot' : 'driving';
+  if (leg.mode === 'tram') return 'tram';
+  if (leg.mode === 'subway') return 'subway';
+  if (leg.mode === 'walk') return 'foot';
+  return 'bus';
 }
 
 export type Coord = [number, number];
@@ -391,6 +386,33 @@ export function removeSpurs(pts: Coord[]): Coord[] {
 }
 
 /**
+ * Usuwa krótkie zamknięte pętelki (np. nawrotkę wokół wysepki albo zbędne kółko
+ * w awaryjnej odpowiedzi OSRM), zachowując właściwy przebieg trasy.
+ */
+export function removeSelfLoops(pts: Coord[], maxLoopMeters = 350): Coord[] {
+  if (pts.length < 5) return pts;
+  const res = [...pts];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < res.length - 3; i++) {
+      let loopDist = 0;
+      for (let j = i + 1; j < res.length; j++) {
+        loopDist += distanceM(res[j - 1], res[j]);
+        if (loopDist > maxLoopMeters) break;
+        if (j >= i + 3 && distanceM(res[i], res[j]) < 18) {
+          res.splice(i + 1, j - i);
+          changed = true;
+          break;
+        }
+      }
+      if (changed) break;
+    }
+  }
+  return res;
+}
+
+/**
  * Odległość w metrach między dwoma punktami geograficznymi.
  * Krótkie odcinki: jedno equirect w `src/gtfs/geo.ts` (`shortDistanceMeters`).
  */
@@ -466,21 +488,14 @@ export function isOsrmLegDetour(
   return false;
 }
 
-async function fetchChunk(
+async function fetchOsrmBusChunk(
   points: Coord[],
-  profile: RouteProfile,
   signal?: AbortSignal,
 ): Promise<Coord[] | null> {
   if (points.length < 2) return null;
-  if (profile === 'foot') {
-    return routeFootLocal(points, signal);
-  }
-  if (profile === 'rail') {
-    return routeRailLocal(points, signal);
-  }
   const coordsParam = points.map(([lat, lon]) => `${lon.toFixed(6)},${lat.toFixed(6)}`).join(';');
-  const bearingsParam = profile === 'driving' ? computeBearingsParam(points) : null;
-  const baseUrl = `${OSRM_BASE_URL}/route/v1/${profile}/${coordsParam}?overview=false&steps=true&geometries=geojson`;
+  const bearingsParam = computeBearingsParam(points);
+  const baseUrl = `${OSRM_BASE_URL}/route/v1/driving/${coordsParam}?overview=false&steps=true&geometries=geojson`;
   const url = bearingsParam ? `${baseUrl}&bearings=${bearingsParam}` : baseUrl;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
@@ -526,15 +541,15 @@ async function fetchChunk(
         }
       }
 
-      const unspurred = removeSpurs(stepCoords);
+      const cleaned = removeSelfLoops(removeSpurs(stepCoords));
       const detour = isOsrmLegDetour(
         p1,
         p2,
         legs[i].distance ?? 0,
-        unspurred,
-        hasUturn && unspurred.length === stepCoords.length,
+        cleaned,
+        hasUturn && cleaned.length === stepCoords.length,
       );
-      const legPoints = detour ? [p1, p2] : sanitizeLegCoords(unspurred, p1, p2);
+      const legPoints = detour ? [p1, p2] : sanitizeLegCoords(cleaned, p1, p2);
 
       if (out.length === 0) {
         out.push(...legPoints);
@@ -544,7 +559,7 @@ async function fetchChunk(
       }
     }
 
-    const finalOut = removeSpurs(out);
+    const finalOut = removeSelfLoops(removeSpurs(out));
     return finalOut.length >= 2 ? finalOut : null;
   } catch {
     return null;
@@ -555,21 +570,22 @@ async function fetchChunk(
 }
 
 /**
- * Dobiera router do trybu transportu. Brak pełnego przebiegu zostawia
- * geometrię przybliżoną, bez zapisywania niekompletnego wyniku w cache.
+ * Dobiera router do trybu transportu. Tryby szynowe (kolej, tramwaj, metro)
+ * jadą wyłącznie po torach i nigdy nie spadają do routera samochodowego.
+ * Autobusy idą najpierw lokalnym routerem po kafelkach (drogi + buspasy),
+ * a OSRM stanowi wyłącznie awaryjny fallback poza zasięgiem kafelków.
  */
 async function fetchLegGeometry(
   leg: MapLeg,
   signal?: AbortSignal,
-): Promise<{ coords: Coord[]; fromCache: boolean } | null> {
+): Promise<{ coords: Coord[]; fromCache: boolean; usedRemoteOsrm?: boolean } | null> {
   if (isApproxOnlyLeg(leg)) return null;
-  // Pociągi ogólnopolskie i regionalne mają geometrię torów w bazie `polska` (shapes PLK):
-  // router po kafelkach obejmuje tylko pakiet miasta, a OSRM nie jeździ po
-  // torach. Zwracamy wycinek shape'u bezpośrednio w osi właściwego toru.
+  // Pociągi ogólnopolskie i regionalne mają najpierw kształt PLK z bazy polska.db.
+  // Gdy brakuje shape'u (albo nie pasuje do stacji pośrednich), spadamy na lokalny
+  // router kolejowy po torach w kafelkach MVT.
   if (leg.mode === 'train') {
     const coords = await nationalRailShape(leg, signal);
     if (coords && coords.length > 1) return { coords, fromCache: true };
-    if (leg.tripId?.startsWith('pl:')) return null;
   }
   const points = legWaypoints(leg).filter(
     (p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1],
@@ -577,27 +593,41 @@ async function fetchLegGeometry(
   if (points.length < 2) return null;
 
   const profile = legProfile(leg);
-  // Profil wchodzi do klucza: te same dwa punkty pieszo i autem to dwie
-  // różne trasy, więc jedna nie może podmienić drugiej w cache.
+  // Profil wchodzi do klucza: te same przystanki tramwajem, autobusem i pieszo
+  // mają osobne przebiegi, więc nie mogą się wzajemnie nadpisywać w cache.
   const key = `${profile}:${waypointKey(points)}`;
   const cache = await readCache();
   const hit = cache.get(key);
   if (hit) return { coords: hit.c, fromCache: true };
 
-  const chunks: Coord[] = [];
-  const chunkSize = profile === 'rail' ? points.length : WAYPOINTS_PER_REQUEST;
-  for (let i = 0; i < points.length - 1; i += chunkSize - 1) {
-    if (signal?.aborted) return null;
-    const slice = points.slice(i, i + chunkSize);
-    const part = await fetchChunk(slice, profile, signal);
-    if (!part) return null;
-    // Sklej bez powtórzenia punktu granicznego.
-    chunks.push(...(chunks.length > 0 ? part.slice(1) : part));
+  let resolved: Coord[] | null = null;
+  let usedRemoteOsrm = false;
+
+  if (profile === 'foot') {
+    resolved = await routeFootLocal(points, signal);
+  } else if (profile === 'rail' || profile === 'tram' || profile === 'subway') {
+    resolved = await routeTransitLocal(points, profile, signal);
+  } else {
+    // Autobus / trolejbus: najpierw lokalny router drogowo-buspasowy (Viterbi).
+    resolved = await routeTransitLocal(points, 'bus', signal);
+    if (!resolved && !signal?.aborted) {
+      usedRemoteOsrm = true;
+      const chunks: Coord[] = [];
+      for (let i = 0; i < points.length - 1; i += WAYPOINTS_PER_REQUEST - 1) {
+        if (signal?.aborted) return null;
+        const slice = points.slice(i, i + WAYPOINTS_PER_REQUEST);
+        const part = await fetchOsrmBusChunk(slice, signal);
+        if (!part) return null;
+        chunks.push(...(chunks.length > 0 ? part.slice(1) : part));
+      }
+      resolved = chunks;
+    }
   }
-  if (chunks.length < 2) return null;
+
+  if (!resolved || resolved.length < 2) return null;
   if (signal?.aborted) return null;
-  void writeCache(key, chunks);
-  return { coords: chunks, fromCache: false };
+  void writeCache(key, resolved);
+  return { coords: resolved, fromCache: false, usedRemoteOsrm };
 }
 
 /** Prosty odcinek przez przystanki, natychmiastowa wersja trasy. */
@@ -703,7 +733,18 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
     const { getNationalDb } = await import('./gtfsDatabase');
     const db = await getNationalDb();
 
-    const sliceForShape = async (sid: string): Promise<Coord[] | null> => {
+    const saveRailSlice = (coords: Coord[]): Coord[] => {
+      railSliceCache.set(sliceKey, coords);
+      if (railSliceCache.size > RAIL_SLICE_CACHE_MAX) {
+        const oldest = railSliceCache.keys().next().value;
+        if (oldest !== undefined && oldest !== sliceKey) railSliceCache.delete(oldest);
+      }
+      return coords;
+    };
+
+    const sliceForShape = async (
+      sid: string,
+    ): Promise<{ coords: Coord[]; score: number } | null> => {
       if (signal?.aborted) return null;
       const shape = await loadShape(sid);
       if (!shape || shape.length < 2) return null;
@@ -720,7 +761,10 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
       if (boardIdx < 0 || boardDist > 2500) return null;
 
       let searchStart = boardIdx;
-      if (stops.length > 2) {
+      let worstDist = boardDist;
+      let missedMid = 0;
+      const midCount = Math.max(0, stops.length - 2);
+      if (midCount > 0) {
         for (let s = 1; s < stops.length - 1; s++) {
           const st = stops[s];
           let midIdx = -1;
@@ -734,9 +778,14 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
           }
           if (midIdx >= searchStart && midDist < 2500) {
             searchStart = midIdx;
+            if (midDist > worstDist) worstDist = midDist;
+          } else {
+            missedMid++;
           }
         }
       }
+      const maxMissed = midCount <= 3 ? 0 : Math.floor(midCount * 0.2);
+      if (missedMid > maxMissed) return null;
 
       let alightIdx = -1;
       let alightDist = Infinity;
@@ -748,6 +797,7 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
         }
       }
       if (alightIdx < 0 || alightIdx <= boardIdx || alightDist > 2500) return null;
+      if (alightDist > worstDist) worstDist = alightDist;
 
       const slice = shape.slice(boardIdx, alightIdx + 1);
       if (slice.length < 2) return null;
@@ -762,13 +812,19 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
         }
       }
       if (clean.length < 2) return null;
-      const simplified = simplifyPolyline(clean, 2);
-      railSliceCache.set(sliceKey, simplified);
-      if (railSliceCache.size > RAIL_SLICE_CACHE_MAX) {
-        const oldest = railSliceCache.keys().next().value;
-        if (oldest !== undefined && oldest !== sliceKey) railSliceCache.delete(oldest);
+      return { coords: simplifyPolyline(clean, 2), score: worstDist + missedMid * 2000 };
+    };
+
+    const pickBestCandidate = async (shapeIds: string[]): Promise<Coord[] | null> => {
+      let best: { coords: Coord[]; score: number } | null = null;
+      for (const sid of shapeIds) {
+        const match = await sliceForShape(sid);
+        if (match && (!best || match.score < best.score)) {
+          best = match;
+          if (best.score < 80) break;
+        }
       }
-      return simplified;
+      return best ? saveRailSlice(best.coords) : null;
     };
 
     // 1. Sprawdź tripId z nogi (jeśli jest).
@@ -782,7 +838,7 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
       );
       if (trip?.shape) {
         const sliced = await sliceForShape(trip.shape);
-        if (sliced) return sliced;
+        if (sliced) return saveRailSlice(sliced.coords);
       }
     }
 
@@ -795,14 +851,12 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
           numMatch[1],
           numMatch[1] + '/%',
         );
-        for (const cand of candTrips) {
-          const sliced = await sliceForShape(cand.shape);
-          if (sliced) return sliced;
-        }
+        const best = await pickBestCandidate(candTrips.map((c) => c.shape));
+        if (best) return best;
       }
     }
 
-    // 3. Jeśli nadal brak dopasowania, znajdź kurs łączący stację początkową i końcową:
+    // 3. Jeśli nadal brak dopasowania, wybierz najlepszy kurs łączący stację początkową i końcową:
     {
       let boardStopRow = await db.getFirstAsync<{ stop_id: string }>(
         'SELECT stop_id FROM stops WHERE name = ? LIMIT 1',
@@ -833,20 +887,18 @@ async function nationalRailShape(leg: MapLeg, signal?: AbortSignal): Promise<Coo
       }
 
       if (boardStopRow && alightStopRow) {
-        const trip = await db.getFirstAsync<{ shape: string }>(
-          `SELECT t.shape
+        const candTrips = await db.getAllAsync<{ shape: string }>(
+          `SELECT DISTINCT t.shape
            FROM stop_times st1
            JOIN stop_times st2 ON st1.trip_id = st2.trip_id
            JOIN trips t ON t.trip_id = st1.trip_id
            WHERE st1.stop_id = ? AND st2.stop_id = ? AND st1.seq < st2.seq AND t.shape != ''
-           LIMIT 1`,
+           LIMIT 12`,
           boardStopRow.stop_id,
           alightStopRow.stop_id,
         );
-        if (trip?.shape) {
-          const sliced = await sliceForShape(trip.shape);
-          if (sliced) return sliced;
-        }
+        const best = await pickBestCandidate(candTrips.map((c) => c.shape));
+        if (best) return best;
       }
     }
 
@@ -869,8 +921,9 @@ export async function loadTrainTrackShape(leg: Leg, signal?: AbortSignal): Promi
 }
 
 /**
- * Uzupełnia geometrię nóg po kolei. Nogi piesze liczy lokalnie w Rust,
- * kolejowe liczy po torach, a autobusowe dociąga z OSRM.
+ * Uzupełnia geometrię nóg po kolei. Piesze, szynowe (kolej, tramwaj, metro)
+ * oraz autobusowe liczy lokalnie w Rust z kafelków MVT (kolej najpierw z shapes PLK);
+ * publiczny OSRM jest tylko awaryjnym fallbackiem dla autobusów.
  */
 export async function resolveGeometry(
   route: MapRoute,
@@ -887,8 +940,8 @@ export async function resolveGeometry(
     const result = await fetchLegGeometry(leg, signal).catch(() => null);
     if (signal?.aborted) return;
     if (result && result.coords.length > 1) onLeg(leg.id, result.coords);
-    // Pauza chroni publiczny OSRM; lokalne shape'y PLK jej nie potrzebują.
-    if (leg.mode !== 'walk' && leg.mode !== 'train') {
+    // Pauza chroni publiczny OSRM wyłącznie wtedy, gdy faktycznie poszło zapytanie sieciowe.
+    if (result?.usedRemoteOsrm) {
       await new Promise((r) => setTimeout(r, 350));
     }
   }
@@ -1265,8 +1318,8 @@ export async function ensureRailTrackShapes(
 }
 
 /**
- * Uzupełnia geometrię trasy wybranego pojazdu na mapie live (tory PLK dla pociągów
- * lub przebieg ulicami z cache OSRM dla autobusów i trolejbusów).
+ * Uzupełnia geometrię trasy wybranego pojazdu na mapie live (tory PLK / kafelki MVT
+ * dla pociągów, tramwajów i metra oraz lokalny przebieg po drogach i buspasach dla autobusów).
  */
 export async function resolveLiveVehicleRouteGeometry(params: {
   mode: Exclude<Leg['mode'], 'walk'>;
