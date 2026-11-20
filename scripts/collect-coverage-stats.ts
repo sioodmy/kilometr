@@ -1,8 +1,8 @@
 /**
  * Snapshot liczb dla sekcji pokrycia na landingu.
  *
- * Odpytuje zbiorkom.live (pojazdy live) i publiczny Worker danych
- * (komunikaty, stop-hints) i zapisuje
+ * Odpytuje zbiorkom.live, KiedyPrzyjedzie.pl (pojazdy live) i publiczny
+ * Worker danych (komunikaty, stop-hints) i zapisuje
  * `landing/src/data/coverageStats.json`. Deploy Pages uruchamia skrypt przed
  * buildem, więc strona dostaje świeży snapshot. Commitowany plik jest
  * fallbackiem, gdy źródła nie odpowiadają.
@@ -22,8 +22,8 @@ const OUTPUT = resolve(
 );
 
 /**
- * Ten sam filtr agencji co `src/services/zbiorkom.ts`: te miasta mają w feedzie
- * też przewoźników podmiejskich, których aplikacja nie pokazuje.
+ * Ten sam filtr agencji co `src/services/zbiorkom.ts`: miasta wspóldzielące
+ * slug zbiorkom z aglomeracją wymagają dokładnego filtra przewoźnika.
  */
 const ZBIORKOM_AGENCIES: Partial<Record<CityId, string>> = {
   warszawa: 'default',
@@ -33,6 +33,16 @@ const ZBIORKOM_AGENCIES: Partial<Record<CityId, string>> = {
   bialystok: 'default',
   rzeszow: 'default',
   rybnik: 'default',
+  jastrzebie: 'JASTRZEBIE',
+  grodzisk: 'GPA',
+  pruszkow: 'PRUSZKOW',
+  sochaczew: 'SOCHACZEW',
+  minskmazowiecki: 'MINSK',
+  otwock: 'OTWOCK',
+  nowydwormaz: 'NDM',
+  zabki: 'ZABKI',
+  pabianice: 'PABIANICE',
+  zgierz: 'ZGIERZ',
 };
 
 interface LiveStats {
@@ -73,15 +83,27 @@ async function getJson(url: string, timeoutMs = 12_000): Promise<unknown | null>
   }
 }
 
-async function fetchLiveVehicles(city: (typeof CITIES)[number]): Promise<number | null> {
+async function fetchLiveStatus(city: (typeof CITIES)[number]): Promise<LiveStats> {
+  if (!city.features.live) return { available: false, vehicles: null };
+
+  if (city.kpPrefix) {
+    const data = await getJson(`https://${city.kpPrefix}.kiedyprzyjedzie.pl/stops`);
+    if (!data || typeof data !== 'object') return { available: false, vehicles: null };
+    const stops = (data as { stops?: unknown }).stops;
+    const ok = Array.isArray(stops) && stops.length > 0;
+    return { available: ok, vehicles: null };
+  }
+
+  if (!city.zbiorkomSlug) return { available: false, vehicles: null };
   const agencies = ZBIORKOM_AGENCIES[city.id];
   const url =
     `${ZBIORKOM_BASE}/api6-open/${city.zbiorkomSlug}/positions/${city.zbiorkomBbox}` +
     (agencies ? `?agencies=${encodeURIComponent(agencies)}` : '');
   const data = await getJson(url);
-  if (!data || typeof data !== 'object') return null;
+  if (!data || typeof data !== 'object') return { available: false, vehicles: null };
   const positions = (data as { positions?: unknown }).positions;
-  return Array.isArray(positions) ? positions.length : null;
+  const count = Array.isArray(positions) ? positions.length : null;
+  return { available: count !== null, vehicles: count };
 }
 
 async function fetchNews(cityId: string): Promise<NewsStats> {
@@ -107,14 +129,14 @@ async function fetchStopHints(cityId: string): Promise<number | null> {
 }
 
 async function collectCity(city: (typeof CITIES)[number]): Promise<CityStats> {
-  const [vehicles, news, hints] = await Promise.all([
-    fetchLiveVehicles(city),
+  const [live, news, hints] = await Promise.all([
+    fetchLiveStatus(city),
     fetchNews(city.id),
     fetchStopHints(city.id),
   ]);
 
   return {
-    live: { available: vehicles !== null, vehicles },
+    live,
     news,
     stopHints: { available: (hints ?? 0) > 0, stops: hints },
   };
@@ -128,7 +150,7 @@ async function main(): Promise<void> {
   const cities: Record<string, CityStats> = {};
   let reachable = 0;
 
-  // Mała paczka równoległych żądań: nie zalewamy zbiorkom.live i Workera.
+  // Mała paczka równoległych żądań: nie zalewamy zbiorkom.live, KP i Workera.
   for (let i = 0; i < CITIES.length; i += 6) {
     const chunk = CITIES.slice(i, i + 6);
     const results = await Promise.all(chunk.map(async (city) => [city.id, await collectCity(city)] as const));
@@ -136,7 +158,8 @@ async function main(): Promise<void> {
       cities[id] = stats;
       if (hasData(stats)) reachable++;
       console.log(
-        `${id}: live=${stats.live.vehicles ?? 'brak'} news=${stats.news.available ? 'tak' : 'brak'} ` +
+        `${id}: live=${stats.live.available ? (stats.live.vehicles ?? 'kp') : 'brak'} ` +
+          `news=${stats.news.available ? 'tak' : 'brak'} ` +
           `hints=${stats.stopHints.stops ?? 'brak'}`,
       );
     }

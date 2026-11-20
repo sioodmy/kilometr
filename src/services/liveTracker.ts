@@ -22,6 +22,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline, shiftWarsawDate, warsawNow } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
+import { fetchKpCityRows } from './kpLive';
 import {
   fetchZbBialystokRows,
   fetchZbGzmRails,
@@ -867,6 +868,7 @@ class LiveTracker {
       else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
       else if (id === 'lublin') rows = await fetchZbLublinRows();
       else if (id === 'radom') rows = await fetchZbRadomRows();
+      else if (getCity(id).kpPrefix && getCity(id).features.live) rows = await fetchKpCityRows(getCity(id));
       else if (isNewLiveCity(id)) rows = await fetchZbNewCityRows(id);
       else rows = await fetchZbWroclawRows();
       this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);

@@ -34,11 +34,10 @@ on:
   workflow_dispatch:
     inputs:
       city:
-        description: 'Miasto (puste = wszystkie)'
+        description: 'Miasto (puste = wszystkie, np. grudziadz, tarnow, polska)'
         required: false
         default: ''
-        type: choice
-        options: ['', wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom, bydgoszcz, torun, elblag, gorzow, czestochowa, zielonagora, rybnik, slupsk, walbrzych, kalisz, siedlce, lomza, krosno, jaslo, olkusz, chrzanow, bochnia, ilawa, polska]
+        type: string
 
 permissions:
   contents: read
@@ -60,9 +59,9 @@ jobs:
       DB_NAME: ${{ matrix.city == 'polska' && 'kilometr-gtfs-polska.db' || 'kilometr-gtfs.db' }}
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 8
       matrix:
-        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw", "krakow", "gzm", "warszawa", "poznan", "trojmiasto", "lodz", "szczecin", "kielce", "olsztyn", "bialystok", "opole", "rzeszow", "lublin", "radom", "bydgoszcz", "torun", "elblag", "gorzow", "czestochowa", "zielonagora", "rybnik", "slupsk", "walbrzych", "kalisz", "siedlce", "lomza", "krosno", "jaslo", "olkusz", "chrzanow", "bochnia", "ilawa", "polska"]') }}
+        city: ${{ (github.event_name == 'workflow_dispatch' && inputs.city != '') && fromJSON(format('["{0}"]', inputs.city)) || fromJSON('["wroclaw","krakow","gzm","warszawa","poznan","trojmiasto","lodz","szczecin","kielce","olsztyn","bialystok","opole","rzeszow","lublin","radom","bydgoszcz","torun","elblag","gorzow","czestochowa","zielonagora","rybnik","slupsk","walbrzych","kalisz","siedlce","lomza","krosno","jaslo","olkusz","chrzanow","bochnia","ilawa","bielskobiala","koszalin","piotrkow","tomaszow","skarzysko","oswiecim","swinoujscie","zakopane","plock","tarnow","legnica","jastrzebie","pila","konin","suwalki","ostrowiec","stalowawola","przemysl","elk","leszno","chelm","mielec","tczew","ostroleka","starachowice","kutno","kolobrzeg","radomsko","boleslawiec","cieszyn","zywiec","krasnik","grodzisk","pruszkow","sochaczew","minskmazowiecki","otwock","nowydwormaz","zabki","pabianice","zgierz","grudziadz","stargard","gniezno","jaworzno","kedzierzynkozle","zamosc","raciborz","belchatow","tarnobrzeg","skierniewice","zawiercie","starogard","zdunskawola","nysa","malbork","sieradz","szczecinek","nowasol","olesnica","czechowicedziedzice","ostroda","nowytarg","augustow","ketrzyn","zgorzelec","polkowice","gorlice","jarocin","wrzesnia","walcz","gizycko","zagan","koscierzyna","krotoszyn","sandomierz","bartoszyce","wielun","mragowo","swiecie","wagrowiec","bielskpodlaski","dzialdowo","brzesko","gostyn","chodziez","lidzbarkwarminski","pszczyna","wodzislaw","zabkowice","strzelin","srodaslaska","jedrzejow","kozienice","oborniki","wieliczka","myszkow","slubice","kartuzy","polska"]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
