@@ -11,24 +11,23 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronRight, LocateFixed, MapPinned, Search, X } from './icons';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
@@ -70,7 +69,9 @@ const PERSONAL_MAX = 3;
 /** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
 const PERSONAL_MIN_SCORE = 85;
 const SAME_PLACE_M = 60;
+const MAX_RUBBER_UP = 18;
 
+/** Arkusz wyszukiwarki M3 Expressive ze sprężystym wejściem, płynnym wyjściem i gestem ściągania. */
 export function SearchSheet({
   query,
   loading,
@@ -115,10 +116,8 @@ export function SearchSheet({
   const s = useStrings();
   const { cityId } = useActiveCity();
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
-  // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
   const cityLoc = s.city.loc(cityId);
   const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
-  // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const { height: windowHeight } = useWindowDimensions();
@@ -127,31 +126,64 @@ export function SearchSheet({
   const maxOverlayHeightRef = useRef(windowHeight);
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
-  // Stabilny ref do onClose (unikamy prze-subskrypcji przy każdym renderze)
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const closingRef = useRef(false);
 
+  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const targetHeightRef = useRef(targetSheetHeight);
+  targetHeightRef.current = targetSheetHeight;
+
+  const translateY = useSharedValue(reducedMotion ? 0 : targetSheetHeight);
+  const backdropProgress = useSharedValue(reducedMotion ? 1 : 0);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      translateY.value = 0;
+      backdropProgress.value = 1;
+      return;
+    }
+    translateY.value = withSpring(0, motion.spring.spatialDefault);
+    backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
+  }, [backdropProgress, reducedMotion, translateY]);
+
   const finishClose = useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    Keyboard.dismiss();
     closeRef.current();
   }, []);
+
+  const requestClose = useCallback(
+    (immediate = false) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      Keyboard.dismiss();
+      if (immediate || reducedMotion) {
+        finishClose();
+        return;
+      }
+      cancelAnimation(translateY);
+      cancelAnimation(backdropProgress);
+      backdropProgress.value = withTiming(0, motion.exit);
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
+        if (finished) runOnJS(finishClose)();
+      });
+    },
+    [backdropProgress, finishClose, reducedMotion, translateY],
+  );
 
   useEffect(() => {
     setDataStatus(getDataStatus());
     return subscribeDataStatus(setDataStatus);
   }, []);
 
-  // Android back / gest wstecz zamyka wyszukiwarkę zamiast wyjścia z apki
+  // Android back / gest wstecz płynnie zamyka wyszukiwarkę zamiast wyjścia z apki.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      finishClose();
+      requestClose();
       return true;
     });
     return () => sub.remove();
-  }, [finishClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -185,8 +217,6 @@ export function SearchSheet({
     setOverlayHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
 
-  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
   const windowShrank = maxOverlayHeightRef.current - overlayHeight > androidKeyboardHeight * 0.5;
   const extraKeyboardInset =
     Platform.OS === 'android' && androidKeyboardHeight > 0 && !windowShrank
@@ -194,30 +224,45 @@ export function SearchSheet({
       : 0;
   const keyboardOpen = Platform.OS === 'android' && (androidKeyboardHeight > 0 || windowShrank);
 
-  const translateY = useSharedValue(0);
-
   const dismissPanGesture = useMemo(
     () =>
       Gesture.Pan()
         .activeOffsetY(8)
         .failOffsetX([-20, 20])
         .onUpdate((e) => {
-          translateY.value = e.translationY > 0 ? e.translationY : 0;
+          'worklet';
+          if (e.translationY >= 0) {
+            translateY.value = e.translationY;
+          } else {
+            translateY.value = -Math.min(MAX_RUBBER_UP, Math.sqrt(-e.translationY) * 2.2);
+          }
         })
         .onEnd((e) => {
-          if (e.translationY > 110 || e.velocityY > 900) {
+          'worklet';
+          if (e.translationY > 96 || e.velocityY > 760) {
             if (reducedMotion) {
-              runOnJS(finishClose)();
+              runOnJS(requestClose)(true);
               return;
             }
-            translateY.value = withTiming(targetSheetHeight, { duration: 140 }, (finished) => {
-              if (finished) runOnJS(finishClose)();
-            });
+            const remaining = Math.max(0, targetSheetHeight - Math.max(0, translateY.value));
+            const speed = Math.max(1200, e.velocityY);
+            const duration = Math.max(100, Math.min(180, Math.round((remaining / speed) * 1000)));
+            backdropProgress.value = withTiming(0, { duration, easing: motion.exit.easing });
+            translateY.value = withTiming(
+              targetSheetHeight,
+              { duration, easing: motion.exit.easing },
+              (finished) => {
+                if (finished) runOnJS(requestClose)(true);
+              },
+            );
           } else {
-            translateY.value = withTiming(0, { duration: 140 });
+            translateY.value = withSpring(0, {
+              ...motion.spring.spatialDefault,
+              velocity: e.velocityY,
+            });
           }
         }),
-    [finishClose, reducedMotion, targetSheetHeight, translateY],
+    [backdropProgress, reducedMotion, requestClose, targetSheetHeight, translateY],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -225,8 +270,9 @@ export function SearchSheet({
   }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => {
-    const progress = 1 - Math.min(1, translateY.value / Math.max(1, targetSheetHeight * 0.7));
-    return { opacity: progress * 0.6 };
+    const dragFactor =
+      1 - Math.min(1, Math.max(0, translateY.value) / Math.max(1, targetSheetHeight * 0.72));
+    return { opacity: backdropProgress.value * dragFactor * 0.58 };
   });
 
   const trimmed = query.trim();
@@ -260,12 +306,12 @@ export function SearchSheet({
     (line: TransitLine) => {
       onSelectLine?.(line);
       if (closeOnSelect) {
-        finishClose();
+        requestClose();
       } else {
         Keyboard.dismiss();
       }
     },
-    [closeOnSelect, finishClose, onSelectLine],
+    [closeOnSelect, requestClose, onSelectLine],
   );
 
   // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
@@ -372,13 +418,7 @@ export function SearchSheet({
     return out;
   }, [trimmed, recent, ranked, s, lines, nearbyVehicles, onSelectVehicle, onOpenLiveMap]);
 
-  const lineEntering = reducedMotion
-    ? undefined
-    : FadeIn.duration(110).easing(Easing.out(Easing.quad));
-  const lineExiting = reducedMotion ? undefined : FadeOut.duration(70);
-
-  // Opóźnienie wskaźnika ładowania o 200 ms: zapobiega mignięciu
-  // spinnera na dole listy przy błyskawicznych (<2 ms) wyszukiwaniach offline.
+  // Opóźnienie wskaźnika ładowania o 200 ms zapobiega mignięciu przy błyskawicznych wynikach offline.
   const [showLoading, setShowLoading] = useState(false);
   useEffect(() => {
     if (!loading) {
@@ -395,30 +435,30 @@ export function SearchSheet({
     (item: Suggestion) => {
       onSelect(item);
       if (closeOnSelect) {
-        finishClose();
+        requestClose();
       } else {
         Keyboard.dismiss();
       }
     },
-    [closeOnSelect, finishClose, onSelect],
+    [closeOnSelect, requestClose, onSelect],
   );
 
   const handleVehicleSelect = useCallback(
     (vehicle: NearbyLiveVehicle) => {
       onSelectVehicle?.(vehicle);
       if (closeOnSelect) {
-        finishClose();
+        requestClose();
       } else {
         Keyboard.dismiss();
       }
     },
-    [closeOnSelect, finishClose, onSelectVehicle],
+    [closeOnSelect, requestClose, onSelectVehicle],
   );
 
   const handleOpenLiveMap = useCallback(() => {
-    finishClose();
+    requestClose(true);
     onOpenLiveMap?.();
-  }, [finishClose, onOpenLiveMap]);
+  }, [requestClose, onOpenLiveMap]);
 
   const keyExtractor = useCallback(
     (r: Row) =>
@@ -453,6 +493,7 @@ export function SearchSheet({
           accessibilityLabel={s.search.pickOnLiveMap}
           style={styles.liveMapRow}
           scaleDelta={0.02}
+          haptic="selection"
         >
           <View style={styles.liveMapIcon}>
             <MapPinned size={20} color={scheme.onSecondaryContainer} />
@@ -482,6 +523,7 @@ export function SearchSheet({
             row.last && styles.vehicleLast,
           ]}
           scaleDelta={0.02}
+          haptic="selection"
         >
           <LineBadge line={row.vehicle.line} mode={row.vehicle.mode} />
           <View style={styles.vehicleText}>
@@ -492,9 +534,7 @@ export function SearchSheet({
             </Text>
             <Text style={styles.vehicleSub} numberOfLines={1}>
               {[
-                row.vehicle.nextStopName
-                  ? s.liveMap.nextStop(row.vehicle.nextStopName)
-                  : null,
+                row.vehicle.nextStopName ? s.liveMap.nextStop(row.vehicle.nextStopName) : null,
                 s.liveMap.distanceAway(row.vehicle.distanceM),
               ]
                 .filter(Boolean)
@@ -504,43 +544,33 @@ export function SearchSheet({
           <ChevronRight size={18} color={scheme.onSurfaceVariant} />
         </SpringPressable>
       ) : row.type === 'line' ? (
-        <Animated.View entering={lineEntering} exiting={lineExiting}>
-          <TouchableOpacity
-            onPress={() => handleLineSelect(row.line)}
-            accessibilityRole="button"
-            accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
-            activeOpacity={0.7}
-            style={styles.lineResult}
-          >
-            <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
-            <View style={styles.lineText}>
-              <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
-              <Text style={styles.lineSubtitle}>
-                {row.line.longName || s.lineTimetable.searchHint}
-              </Text>
-            </View>
-            <ChevronRight size={22} color={scheme.onPrimaryContainer} />
-          </TouchableOpacity>
-        </Animated.View>
+        <SpringPressable
+          onPress={() => handleLineSelect(row.line)}
+          accessibilityRole="button"
+          accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
+          style={styles.lineResult}
+          scaleDelta={0.02}
+          haptic="selection"
+        >
+          <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
+          <View style={styles.lineText}>
+            <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
+            <Text style={styles.lineSubtitle}>
+              {row.line.longName || s.lineTimetable.searchHint}
+            </Text>
+          </View>
+          <ChevronRight size={22} color={scheme.onPrimaryContainer} />
+        </SpringPressable>
       ) : (
         <SuggestionRow
           item={row.item}
           query={trimmed}
-          onPress={() => handleSelect(row.item)}
+          onSelect={handleSelect}
           segment={row.first ? (row.last ? 'single' : 'first') : row.last ? 'last' : 'middle'}
           prominent={row.prominent}
         />
       ),
-    [
-      handleLineSelect,
-      handleOpenLiveMap,
-      handleSelect,
-      handleVehicleSelect,
-      lineEntering,
-      lineExiting,
-      s,
-      trimmed,
-    ],
+    [handleLineSelect, handleOpenLiveMap, handleSelect, handleVehicleSelect, s, trimmed],
   );
 
   const listContentStyle = useMemo(
@@ -571,7 +601,7 @@ export function SearchSheet({
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimatedStyle]}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={finishClose}
+          onPress={() => requestClose()}
           accessibilityRole="button"
           accessibilityLabel={s.search.closeA11y}
         />
@@ -591,10 +621,11 @@ export function SearchSheet({
                 </View>
                 {originTitle && onChangeOrigin && (
                   <View style={styles.originWrap}>
-                    <TouchableOpacity
+                    <SpringPressable
                       onPress={onChangeOrigin}
                       style={styles.originHintRow}
-                      activeOpacity={0.7}
+                      scaleDelta={0.015}
+                      haptic="selection"
                       accessibilityRole="button"
                       accessibilityLabel={s.search.originA11y(originTitle)}
                     >
@@ -604,7 +635,7 @@ export function SearchSheet({
                         {originTitle}
                       </Text>
                       <Text style={styles.originHintChange}>{s.search.change}</Text>
-                    </TouchableOpacity>
+                    </SpringPressable>
                   </View>
                 )}
               </View>
@@ -612,15 +643,15 @@ export function SearchSheet({
 
             <View style={styles.head}>
               <View style={[styles.inputBox, focused && styles.inputFocused]}>
-                <TouchableOpacity
-                  onPress={finishClose}
+                <SpringPressable
+                  onPress={() => requestClose()}
                   style={styles.leadingBtn}
-                  activeOpacity={0.7}
+                  scaleDelta={0.06}
                   accessibilityRole="button"
                   accessibilityLabel={s.search.closeA11y}
                 >
                   <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
-                </TouchableOpacity>
+                </SpringPressable>
                 <TextInput
                   ref={inputRef}
                   autoFocus
@@ -648,18 +679,19 @@ export function SearchSheet({
                   }
                 />
                 {query ? (
-                  <TouchableOpacity
+                  <SpringPressable
                     onPress={() => {
                       onQuery('');
                       inputRef.current?.focus();
                     }}
                     style={styles.trailingBtn}
-                    activeOpacity={0.7}
+                    scaleDelta={0.06}
+                    haptic="selection"
                     accessibilityRole="button"
                     accessibilityLabel={s.search.clearA11y}
                   >
                     <X size={19} color={scheme.onSurfaceVariant} />
-                  </TouchableOpacity>
+                  </SpringPressable>
                 ) : null}
               </View>
             </View>
@@ -672,8 +704,9 @@ export function SearchSheet({
               contentContainerStyle={listContentStyle}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              initialNumToRender={10}
-              maxToRenderPerBatch={8}
+              removeClippedSubviews={Platform.OS === 'android'}
+              initialNumToRender={12}
+              maxToRenderPerBatch={10}
               windowSize={7}
               ListHeaderComponent={
                 <View style={styles.listHeader}>
@@ -686,10 +719,11 @@ export function SearchSheet({
                   {!trimmed && savedQuick.length > 0 && (
                     <View style={styles.quickRow}>
                       {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
-                        <TouchableOpacity
+                        <SpringPressable
                           key={q.id}
                           onPress={() => handleSelect(q)}
-                          activeOpacity={0.7}
+                          scaleDelta={0.03}
+                          haptic="selection"
                           style={styles.quick}
                           accessibilityRole="button"
                           accessibilityLabel={s.search.savedA11y(q.title)}
@@ -697,7 +731,7 @@ export function SearchSheet({
                           <Text style={styles.quickText} numberOfLines={1}>
                             {q.title}
                           </Text>
-                        </TouchableOpacity>
+                        </SpringPressable>
                       ))}
                     </View>
                   )}
@@ -752,15 +786,16 @@ export function SearchSheet({
                     </Text>
                   )}
                   {timetableMissing && !showLoading && !error && (
-                    <TouchableOpacity
+                    <SpringPressable
                       onPress={() => void importGtfsFromNetwork().catch(() => {})}
-                      activeOpacity={0.75}
+                      scaleDelta={0.03}
+                      haptic="light"
                       style={styles.downloadBtn}
                       accessibilityRole="button"
                       accessibilityLabel={s.city.downloadAction}
                     >
                       <Text style={styles.downloadBtnText}>{s.city.downloadAction}</Text>
-                    </TouchableOpacity>
+                    </SpringPressable>
                   )}
                 </View>
               }

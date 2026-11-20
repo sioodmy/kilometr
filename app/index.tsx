@@ -17,7 +17,9 @@ import Animated, {
   FadeOutUp,
   LinearTransition,
   runOnJS,
+  useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { SpringPressable } from '../src/components/SpringPressable';
@@ -487,6 +489,22 @@ export default function HomeScreen() {
   }, [cityId]);
 
   const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
+  const [tabBarWidth, setTabBarWidth] = useState(0);
+  const tabPillProgress = useSharedValue(0);
+
+  useEffect(() => {
+    tabPillProgress.value = withSpring(homeTab === 'saved' ? 1 : 0, motion.spring.spatialFast);
+  }, [homeTab, tabPillProgress]);
+
+  const tabPillStyle = useAnimatedStyle(() => {
+    const innerWidth = Math.max(0, tabBarWidth - 10);
+    const segWidth = Math.max(0, (innerWidth - 4) / 2);
+    return {
+      width: segWidth,
+      opacity: segWidth > 0 ? 1 : 0,
+      transform: [{ translateX: tabPillProgress.value * (segWidth + 4) }],
+    };
+  }, [tabBarWidth]);
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
   // Połączenia z dołączonym biletem: ikona biletu i wyższa pozycja w „Twoich trasach”.
   const [ticketIds, setTicketIds] = useState<Set<string>>(() => new Set());
@@ -1545,7 +1563,7 @@ export default function HomeScreen() {
           'worklet';
           const opt = pullOption.value;
           pullOption.value = 0;
-          pullHeight.value = withTiming(0, { duration: 220 });
+          pullHeight.value = withSpring(0, motion.spring.spatialDefault);
           if (opt === 1) {
             runOnJS(openLastTrip)(false);
           } else if (opt === 2) {
@@ -1555,7 +1573,7 @@ export default function HomeScreen() {
         .onFinalize(() => {
           'worklet';
           pullOption.value = 0;
-          pullHeight.value = withTiming(0, { duration: 220 });
+          pullHeight.value = withSpring(0, motion.spring.spatialDefault);
         })
         .enabled(atTop && lastTrip != null && !sheetsOpen),
     [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
@@ -1994,14 +2012,19 @@ export default function HomeScreen() {
             <View style={styles.sectionSpacer} />
 
             {/* M3 Expressive Segmented Switcher: Ostatnie połączenia / Twoje trasy */}
-            <View style={styles.tabContainer} accessibilityRole="tablist">
+            <View
+              style={styles.tabContainer}
+              accessibilityRole="tablist"
+              onLayout={(e) => setTabBarWidth(e.nativeEvent.layout.width)}
+            >
+              <Animated.View style={[styles.tabPill, tabPillStyle]} pointerEvents="none" />
               <SpringPressable
                 onPress={() => handleTabSwitch('recent')}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: homeTab === 'recent' }}
                 accessibilityLabel={s.home.tabRecent}
                 scaleDelta={0.02}
-                style={[styles.tabBtn, homeTab === 'recent' && styles.tabBtnActive]}
+                style={styles.tabBtn}
               >
                 <History
                   size={17}
@@ -2028,7 +2051,7 @@ export default function HomeScreen() {
                 accessibilityState={{ selected: homeTab === 'saved' }}
                 accessibilityLabel={s.home.tabSaved}
                 scaleDelta={0.02}
-                style={[styles.tabBtn, homeTab === 'saved' && styles.tabBtnActive]}
+                style={styles.tabBtn}
               >
                 <MapPinned
                   size={17}
@@ -2103,7 +2126,11 @@ export default function HomeScreen() {
           </ScrollView>
         </SafeAreaView>
 
-        {!sheetMode && !manageSheetOpen && !addPlaceOpen && !citySheetOpen && (
+        <View
+          pointerEvents={sheetsOpen ? 'none' : 'auto'}
+          accessibilityElementsHidden={sheetsOpen}
+          importantForAccessibility={sheetsOpen ? 'no-hide-descendants' : 'auto'}
+        >
           <HomeThumbBar
             onOpenSearch={() => {
               pendingDestinationRef.current = null;
@@ -2128,7 +2155,7 @@ export default function HomeScreen() {
                 : null
             }
           />
-        )}
+        </View>
 
         {sheetMode && (
           <SearchSheet
@@ -2194,7 +2221,7 @@ export default function HomeScreen() {
                   sheetCloseTimerRef.current = null;
                   setSheetModeRaw(null);
                   setQuery('');
-                }, 350);
+                }, 240);
               }
             }}
             onClose={() => {
@@ -2465,7 +2492,11 @@ const styles = StyleSheet.create({
     borderRadius: shape.large,
     gap: 8,
   },
-  tabBtnActive: {
+  tabPill: {
+    position: 'absolute',
+    top: 5,
+    bottom: 5,
+    left: 5,
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.full,
   },

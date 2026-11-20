@@ -38,6 +38,7 @@ import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
+import { SpringPressable } from '../../src/components/SpringPressable';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
 import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
@@ -383,30 +384,35 @@ export default function RouteDetailsScreen() {
         accessibilityElementsHidden={sharing || alarmOpen}
       >
         <View style={styles.header}>
-          <Pressable
+          <SpringPressable
             onPress={goBack}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+            scaleDelta={0.06}
+            style={styles.iconBtn}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
             <ChevronLeft size={23} color={scheme.onSurface} />
-          </Pressable>
+          </SpringPressable>
           <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
             {s.routeDetails.title}
           </Text>
           {!noLegs && (
-            <Pressable
+            <SpringPressable
               onPress={() => setSharing(true)}
+              scaleDelta={0.05}
+              haptic="selection"
               accessibilityRole="button"
               accessibilityLabel={s.share.title}
-              style={({ pressed }) => [styles.trackBtn, pressed && styles.pressed]}
+              style={styles.trackBtn}
             >
               <Share2 size={20} color={scheme.onSurface} />
-            </Pressable>
+            </SpringPressable>
           )}
           {item.legs.some((leg) => leg.mode !== 'walk') && (
-            <Pressable
+            <SpringPressable
               onPress={() => setAlarmOpen(true)}
+              scaleDelta={0.05}
+              haptic="selection"
               accessibilityRole="button"
               onFocus={() => setAlarmFocused(true)}
               onBlur={() => setAlarmFocused(false)}
@@ -416,10 +422,9 @@ export default function RouteDetailsScreen() {
                   ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
                   : s.alarm.set
               }
-              style={({ pressed }) => [
+              style={[
                 styles.trackBtn,
                 currentAlarm && styles.trackBtnActive,
-                pressed && styles.pressed,
                 alarmFocused && styles.alarmFocused,
               ]}
             >
@@ -427,29 +432,27 @@ export default function RouteDetailsScreen() {
                 size={20}
                 color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurface}
               />
-            </Pressable>
+            </SpringPressable>
           )}
           {!noLegs && (
-            <Pressable
+            <SpringPressable
               onPress={() => void togglePin()}
               disabled={trackingBusy}
+              scaleDelta={0.05}
+              haptic="light"
               accessibilityRole="button"
               accessibilityState={{ selected: isPinned }}
               accessibilityLabel={
                 isPinned ? s.home.unpinRouteA11y(item.toTitle) : s.home.pinRouteA11y(item.toTitle)
               }
-              style={({ pressed }) => [
-                styles.trackBtn,
-                isPinned && styles.trackBtnActive,
-                pressed && styles.pressed,
-              ]}
+              style={[styles.trackBtn, isPinned && styles.trackBtnActive]}
               hitSlop={8}
             >
               <Pin
                 size={20}
                 color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
               />
-            </Pressable>
+            </SpringPressable>
           )}
         </View>
 

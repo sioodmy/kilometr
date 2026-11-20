@@ -13,9 +13,11 @@ import {
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCircle, Check, X } from './icons';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { JourneyTimeMode } from '../services/routing/types';
@@ -188,16 +190,21 @@ export function DepartureTimeSheet({
     height - insets.top - insets.bottom - 16,
     724 + Math.max(0, fontScale - 1) * 420,
   );
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const sheetRef = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+
+  const requestClose = useCallback(() => {
+    sheetRef.current?.close();
+  }, []);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeRef.current();
+      requestClose();
       return true;
     });
     return () => sub.remove();
-  }, []);
+  }, [requestClose]);
 
   const [openedAt] = useState(() => new Date());
   const [mode, setMode] = useState(initialMode);
@@ -294,7 +301,7 @@ export function DepartureTimeSheet({
       mode,
       label: selection,
     });
-    onClose();
+    requestClose();
   };
 
   const renderBackdrop = useCallback(
@@ -339,8 +346,10 @@ export function DepartureTimeSheet({
 
   return (
     <BottomSheet
+      ref={sheetRef}
       index={0}
-      snapPoints={[sheetHeight]}
+      snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       handleComponent={SheetHandle}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
@@ -356,7 +365,7 @@ export function DepartureTimeSheet({
             {s.timeSheet.title}
           </Text>
           <Pressable
-            onPress={onClose}
+            onPress={requestClose}
             accessibilityRole="button"
             accessibilityLabel={s.common.close}
             style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}

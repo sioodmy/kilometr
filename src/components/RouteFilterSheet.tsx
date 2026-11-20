@@ -4,12 +4,12 @@ import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetScrollView,
+  useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Animated, {
   interpolateColor,
-  ReduceMotion,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -26,6 +26,7 @@ import {
   TramFront,
   X,
 } from './icons';
+import { motion } from '../theme/motion';
 import { scheme, shape, spacing, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { LegMode } from '../types/models';
@@ -45,14 +46,8 @@ export interface RouteFilterSheetProps {
   onClose: () => void;
 }
 
-// Spring używany do przesuwania wskaźników i przełączników.
-// M3 expressive: szybki, ale z wyrazistym wygaszeniem.
-const springConfig = {
-  damping: 20,
-  stiffness: 420,
-  mass: 0.8,
-  reduceMotion: ReduceMotion.System,
-} as const;
+// Spring używany do przesuwania wskaźników i przełączników (M3 Expressive).
+const springConfig = motion.spring.spatialFast;
 
 export function RouteFilterSheet({
   availableModes,
@@ -79,14 +74,19 @@ export function RouteFilterSheet({
   const baseContentHeight = 470 + Math.max(0, fontScale - 1) * 200;
   const sheetHeight = Math.min(maxAvailable, Math.max(380, baseContentHeight));
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+
+  const requestClose = useCallback(() => {
+    sheetRef.current?.close();
+  }, []);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
+      requestClose();
       return true;
     });
     return () => back.remove();
-  }, [onClose]);
+  }, [requestClose]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -129,7 +129,7 @@ export function RouteFilterSheet({
 
   const handleDonePress = () => {
     void Haptics.selectionAsync().catch(() => {});
-    onClose();
+    requestClose();
   };
 
   const getModeLabel = (mode: LegMode) => {
@@ -182,6 +182,7 @@ export function RouteFilterSheet({
       ref={sheetRef}
       index={0}
       snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
@@ -221,7 +222,7 @@ export function RouteFilterSheet({
             )}
 
             <Pressable
-              onPress={onClose}
+              onPress={requestClose}
               style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={s.routesFilters.closeA11y}

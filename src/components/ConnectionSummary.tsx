@@ -5,7 +5,7 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowDown, ArrowRight, Clock3 } from './icons';
@@ -82,10 +82,7 @@ export function ConnectionSummary({
 
   useEffect(() => {
     if (hasTransform) {
-      progress.value = withTiming(1, {
-        duration: motion.enter.duration,
-        easing: motion.enter.easing,
-      });
+      progress.value = withSpring(1, motion.spring.spatialDefault);
     }
   }, [hasTransform, progress]);
 

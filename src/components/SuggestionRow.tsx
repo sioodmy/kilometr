@@ -1,11 +1,5 @@
-import { useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  useReducedMotion,
-} from 'react-native-reanimated';
 import {
   Church,
   Clock3,
@@ -32,7 +26,7 @@ import { useStrings } from '../i18n';
 import { normalizePolish } from '../gtfs/geo';
 
 /**
- * Rodzaje wierszy z motywem aplikacji. Trzymamy tu **nazwy ról**, a nie same
+ * Rodzaje wierszy z motywem aplikacji. Trzymamy tu nazwy ról, a nie same
  * kolory: na Androidzie 12+ paleta pochodzi z tapety i podmienia się po
  * imporcie modułu, więc kolory czytamy dopiero przy rysowaniu wiersza.
  */
@@ -40,12 +34,11 @@ const KIND_TONES: Record<string, { Icon: IconComponent; bg: SchemeKey; fg: Schem
   stop: { Icon: BusFront, bg: 'secondaryContainer', fg: 'onSecondaryContainer' },
   address: { Icon: MapPin, bg: 'tertiaryContainer', fg: 'onTertiaryContainer' },
   history: { Icon: Clock3, bg: 'surfaceContainerHighest', fg: 'onSurfaceVariant' },
-  // Nominatim category icons (M3 dark tonal containers)
   shop: { Icon: Store, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
   place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
 };
 
-/** Kategorie Nominatim, kolory stałe, bo są poza skalą motywu. */
+/** Kategorie Nominatim, kolory stałe poza skalą motywu. */
 const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
@@ -59,7 +52,7 @@ const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: strin
   church: { Icon: Church, bg: '#333816', fg: '#DCE775' },
 };
 
-/** Tytuł do wyświetlenia: przystanki w ALL CAPS (odróżnia je od adresów/POI). */
+/** Tytuł do wyświetlenia: przystanki w ALL CAPS odróżniają je od adresów i POI. */
 export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>): string {
   return item.kind === 'stop' ? item.title.toUpperCase() : item.title;
 }
@@ -137,15 +130,19 @@ function HighlightedTitle({ text, query }: { text: string; query?: string }) {
   return <Text style={[styles.title, styles.dim]}>{parts}</Text>;
 }
 
-export function SuggestionRow({
+/** Memoizowany wiersz podpowiedzi bez per-item layout entering, dla pełnej płynności listy. */
+export const SuggestionRow = memo(function SuggestionRow({
   item,
   onPress,
+  onSelect,
   query,
   segment,
   prominent = false,
 }: {
   item: Suggestion;
-  onPress: () => void;
+  onPress?: () => void;
+  /** Stabilny callback z przekazanym obiektem, unika tworzenia domknięć w renderItem. */
+  onSelect?: (item: Suggestion) => void;
   /** Zapytanie do podświetlenia pasującego fragmentu tytułu. */
   query?: string;
   segment?: 'first' | 'middle' | 'last' | 'single';
@@ -158,15 +155,12 @@ export function SuggestionRow({
   const iconBg = meta.bg;
   const iconFg = meta.fg;
 
-  const reducedMotion = useReducedMotion();
-  // Płynne wejście i przesunięcie pozycji (120Hz): 110-120ms to ~14 klatek
-  // animacji bez żadnego widocznego stroboskopu / flickera.
-  const rowEntering = reducedMotion
-    ? undefined
-    : FadeIn.duration(110).easing(Easing.out(Easing.quad));
-  const rowExiting = reducedMotion ? undefined : FadeOut.duration(70);
+  const handlePress = useCallback(() => {
+    if (onSelect) onSelect(item);
+    else onPress?.();
+  }, [item, onPress, onSelect]);
 
-  // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej)
+  // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej).
   let cleanAddress = (item.address || '')
     .replace(/\s*•\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
     .replace(/\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
@@ -181,48 +175,39 @@ export function SuggestionRow({
   const displayTitle = suggestionDisplayTitle(item);
 
   return (
-    <Animated.View
-      entering={rowEntering}
-      exiting={rowExiting}
-      style={styles.animatedContainer}
+    <Pressable
+      onPress={handlePress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      accessibilityRole="button"
+      accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
+      style={({ pressed }) => [
+        styles.row,
+        segment && styles.segment,
+        (segment === 'first' || segment === 'single') && styles.segmentTop,
+        (segment === 'last' || segment === 'single') && styles.segmentBottom,
+        prominent && styles.prominent,
+        pressed && styles.pressed,
+        focused && styles.focused,
+      ]}
     >
-      <Pressable
-        onPress={onPress}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        accessibilityRole="button"
-        accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
-        style={({ pressed }) => [
-          styles.row,
-          segment && styles.segment,
-          (segment === 'first' || segment === 'single') && styles.segmentTop,
-          (segment === 'last' || segment === 'single') && styles.segmentBottom,
-          prominent && styles.prominent,
-          pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
-          focused && styles.focused,
-        ]}
-      >
-        <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
-          <Icon size={19} color={iconFg} />
-        </View>
-        <View style={styles.mid}>
-          <HighlightedTitle text={displayTitle} query={query} />
-          {(segment ? cleanAddress : subtitle) ? (
-            <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
-              {segment ? cleanAddress : subtitle}
-            </Text>
-          ) : null}
-        </View>
-        {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
-      </Pressable>
-    </Animated.View>
+      <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
+        <Icon size={19} color={iconFg} />
+      </View>
+      <View style={styles.mid}>
+        <HighlightedTitle text={displayTitle} query={query} />
+        {(segment ? cleanAddress : subtitle) ? (
+          <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
+            {segment ? cleanAddress : subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
+    </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
-  animatedContainer: {
-    width: '100%',
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -252,6 +237,10 @@ const styles = StyleSheet.create({
   segmentBottom: { borderBottomLeftRadius: shape.large, borderBottomRightRadius: shape.large },
   segmentIcon: { borderRadius: shape.medium },
   prominent: { backgroundColor: scheme.secondaryContainer },
+  pressed: {
+    backgroundColor: scheme.surfaceContainerHighest,
+    transform: [{ scale: 0.992 }],
+  },
   focused: { borderColor: scheme.primary, borderWidth: 2 },
   distance: {
     ...type.labelMedium,

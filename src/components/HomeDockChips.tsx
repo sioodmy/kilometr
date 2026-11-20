@@ -1,18 +1,21 @@
 import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { ScrollView, StyleSheet, Text } from 'react-native';
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { Ticket } from './icons';
 import { LineBadge } from './LineBadge';
+import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Leg } from '../types/models';
 
 /**
  * Skróty nad search barem docka ekranu głównego: aktywnie przypięta podróż
- * i pociągi z zapisanym biletem odjeżdżające w ciągu 3 h. Kurs kolejowy
- * i jego bilet mieszkają w jednym pillu: tap w pill otwiera połączenie,
- * tap w segment biletu otwiera podgląd do kontroli. Listę buduje ekran
- * główny (app/index.tsx), tu tylko render i animacja rozwinięcia.
+ * i pociągi z zapisanym biletem odjeżdżające w ciągu 3 h.
  */
 export interface DockChip {
   id: string;
@@ -30,15 +33,10 @@ export interface DockChip {
 }
 
 const CHIP_H = 40;
-// Dolny odstęp do search bara jest częścią animowanej wysokości, żeby po
-// zwinięciu nie zostawał pusty prześwit. Chip jest centrowany w pasku,
-// więc po 12 dp oddycha z każdej strony.
 const ROW_H = CHIP_H + 24;
 
+/** Animowany pasek skrótów nad wyszukiwarką ze sprężystym pojawianiem M3 Expressive. */
 export function HomeDockChips({ chips }: { chips: DockChip[] }) {
-  // 1 = rozwinięte. Wartość startowa dopasowana do pierwszego renderu, żeby
-  // dock nie „wyrastał” po każdym powrocie z arkusza (komponent montuje
-  // się od nowa razem z całym paskiem).
   const open = useSharedValue(chips.length > 0 ? 1 : 0);
   const lastChipsRef = useRef(chips);
   if (chips.length > 0) {
@@ -48,14 +46,23 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
 
   useEffect(() => {
     const target = chips.length > 0 ? 1 : 0;
-    // Rozwinięcie emphasized (wejście M3), zwinięcie krótsze, jak zmiana stanu.
-    open.value = withTiming(target, target === 1 ? motion.enter : motion.state);
+    open.value = withSpring(
+      target,
+      target === 1 ? motion.spring.spatialDefault : motion.spring.effectsFast,
+    );
   }, [chips.length, open]);
 
-  const wrapStyle = useAnimatedStyle(() => ({
-    height: ROW_H * open.value,
-    opacity: open.value,
-  }));
+  const wrapStyle = useAnimatedStyle(() => {
+    const clamped = Math.max(0, open.value);
+    return {
+      height: ROW_H * clamped,
+      opacity: Math.min(1, clamped),
+      transform: [
+        { translateY: interpolate(open.value, [0, 1], [6, 0]) },
+        { scale: interpolate(open.value, [0, 1], [0.96, 1]) },
+      ],
+    };
+  });
 
   const isSingle = displayChips.length === 1;
 
@@ -86,17 +93,19 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
 function ChipView({ chip, fullWidth }: { chip: DockChip; fullWidth?: boolean }) {
   const ticket = chip.ticket;
   return (
-    <Pressable
+    <SpringPressable
       onPress={chip.onPress}
+      scaleDelta={fullWidth ? 0.018 : 0.03}
+      opacityDelta={0.08}
+      haptic="selection"
       accessibilityRole="button"
       accessibilityLabel={chip.a11yLabel}
-      style={({ pressed }) => [
+      style={[
         styles.chip,
         chip.pinned ? styles.chipPinned : styles.chipPlain,
         ticket && styles.chipWithTicket,
         fullWidth && styles.chipFullWidth,
         fullWidth && ticket && styles.chipFullWidthWithTicket,
-        pressed && (fullWidth ? styles.chipFullWidthPressed : styles.chipPressed),
       ]}
     >
       {chip.badgeLegs.map((leg, index) => (
@@ -125,20 +134,22 @@ function ChipView({ chip, fullWidth }: { chip: DockChip; fullWidth?: boolean }) 
         </Text>
       ) : null}
       {ticket && (
-        <Pressable
+        <SpringPressable
           onPress={(e) => {
             e.stopPropagation();
             ticket.onOpen();
           }}
           hitSlop={6}
+          scaleDelta={0.08}
+          haptic="light"
           accessibilityRole="button"
           accessibilityLabel={ticket.a11y}
-          style={({ pressed }) => [styles.ticketBtn, pressed && styles.ticketPressed]}
+          style={styles.ticketBtn}
         >
           <Ticket size={16} color={scheme.onPrimaryContainer} />
-        </Pressable>
+        </SpringPressable>
       )}
-    </Pressable>
+    </SpringPressable>
   );
 }
 
@@ -158,10 +169,8 @@ const styles = StyleSheet.create({
     height: CHIP_H,
     paddingLeft: 14,
     paddingRight: 18,
-    // 20 = promień search bara, żeby chipy i bar miały wspólny język kształtu.
     borderRadius: 20,
   },
-  // Pojedynczy pill rozciąga się na pełną szerokość i matchuje search bar poniżej.
   chipFullWidth: {
     width: '100%',
     paddingLeft: 16,
@@ -173,8 +182,6 @@ const styles = StyleSheet.create({
   chipPinned: { backgroundColor: scheme.secondaryContainer },
   chipPlain: { backgroundColor: scheme.surfaceContainerHighest },
   chipWithTicket: { paddingRight: 4 },
-  chipPressed: { transform: [{ scale: 0.96 }], opacity: 0.85 },
-  chipFullWidthPressed: { opacity: 0.85 },
   title: {
     ...type.labelMedium,
     fontWeight: '600',
@@ -199,5 +206,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ticketPressed: { opacity: 0.6 },
 });

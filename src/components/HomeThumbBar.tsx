@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ChevronRight, Download, LocateFixed, MapPin, MapPinOff, Search, X } from './icons';
 import { HomeDockChips, type DockChip } from './HomeDockChips';
+import { SpringPressable } from './SpringPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -23,10 +24,11 @@ interface HomeThumbBarProps {
   gpsUnsupported?: boolean;
   /** Skróty nad search barem: przypięta podróż i pociągi z biletem < 3 h. */
   chips?: DockChip[];
-  /** Postęp pobierania rozkładu; `null` = searchbar działa normalnie. */
+  /** Postęp pobierania rozkładu; `null` oznacza zwykły tryb wyszukiwarki. */
   downloadProgress?: number | null;
 }
 
+/** Dolny dock ekranu głównego ze sprężystą reakcją M3 Expressive na dotyk. */
 export function HomeThumbBar({
   onOpenSearch,
   startTitle,
@@ -48,7 +50,7 @@ export function HomeThumbBar({
   const pct = Math.round(clamped * 100);
 
   // Wypełnienie i połysk animują się na UI thread: postęp z sieci przychodzi
-  // skokami, a użytkownik ma widzieć, że pobieranie żyje, nie zamarło.
+  // skokami, a użytkownik widzi płynny ruch paska.
   const progress = useSharedValue(downloading ? clamped : 0);
   const shine = useSharedValue(0);
   const trackWidth = useSharedValue(0);
@@ -59,7 +61,7 @@ export function HomeThumbBar({
       return;
     }
     progress.value = withTiming(clamped, {
-      duration: reduceMotion ? 0 : 500,
+      duration: reduceMotion ? 0 : 420,
       easing: Easing.out(Easing.cubic),
     });
   }, [clamped, downloading, progress, reduceMotion]);
@@ -108,36 +110,34 @@ export function HomeThumbBar({
             </View>
           </View>
         ) : (
-          <Pressable
+          <SpringPressable
             onPress={onOpenSearch}
             onFocus={() => setFocused('search')}
             onBlur={() => setFocused(null)}
+            scaleDelta={0.02}
+            opacityDelta={0.06}
+            haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={s.home.searchA11y}
-            style={({ pressed }) => [
-              styles.search,
-              focused === 'search' && styles.searchFocused,
-              pressed && styles.searchPressed,
-            ]}
+            style={[styles.search, focused === 'search' && styles.searchFocused]}
           >
             <Search size={20} color={scheme.onSurfaceVariant} />
             <Text style={styles.searchLabel}>{s.home.searchLabel}</Text>
-          </Pressable>
+          </SpringPressable>
         )}
         <View style={styles.originRow}>
-          <Pressable
+          <SpringPressable
             onPress={onOpenStart}
             onFocus={() => setFocused('origin')}
             onBlur={() => setFocused(null)}
+            scaleDelta={0.018}
+            opacityDelta={0.06}
+            haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={
               isCustomStart ? s.home.startCustomA11y(startTitle) : s.home.startGpsA11y(startTitle)
             }
-            style={({ pressed }) => [
-              styles.origin,
-              focused === 'origin' && styles.focused,
-              pressed && styles.pressed,
-            ]}
+            style={[styles.origin, focused === 'origin' && styles.focused]}
           >
             <OriginIcon
               size={18}
@@ -147,22 +147,20 @@ export function HomeThumbBar({
               {gpsUnsupported && !isCustomStart ? s.home.pickStart : s.home.startFrom(startTitle)}
             </Text>
             <ChevronRight size={16} color={scheme.onSurfaceVariant} />
-          </Pressable>
+          </SpringPressable>
           {isCustomStart && (
-            <Pressable
+            <SpringPressable
               onPress={onResetStart}
               onFocus={() => setFocused('reset')}
               onBlur={() => setFocused(null)}
+              scaleDelta={0.06}
+              haptic="selection"
               accessibilityRole="button"
               accessibilityLabel={s.home.resetStartA11y}
-              style={({ pressed }) => [
-                styles.reset,
-                focused === 'reset' && styles.focused,
-                pressed && styles.pressed,
-              ]}
+              style={[styles.reset, focused === 'reset' && styles.focused]}
             >
               <X size={18} color={scheme.onSurfaceVariant} />
-            </Pressable>
+            </SpringPressable>
           )}
         </View>
       </View>
@@ -253,6 +251,4 @@ const styles = StyleSheet.create({
   },
   focused: { borderColor: scheme.primary },
   searchFocused: { borderColor: scheme.primary },
-  searchPressed: { backgroundColor: scheme.surfaceContainerHighest, borderRadius: shape.large },
-  pressed: { backgroundColor: scheme.surfaceContainerHighest },
 });
