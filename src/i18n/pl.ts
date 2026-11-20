@@ -2572,6 +2572,12 @@ export const pl = {
     hybrid: 'Hybrydowy',
     a11y: (details: string) => `Pojazd: ${details}`,
   },
+  doorSide: {
+    left: 'drzwi po lewej',
+    right: 'drzwi po prawej',
+    leftA11y: 'Drzwi otwierają się po lewej stronie w kierunku jazdy',
+    rightA11y: 'Drzwi otwierają się po prawej stronie w kierunku jazdy',
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
     fallbackLine: 'Pociąg',

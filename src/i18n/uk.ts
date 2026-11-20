@@ -2592,6 +2592,12 @@ export const uk: Strings = {
     hybrid: 'Гібридний',
     a11y: (details: string) => `Транспорт: ${details}`,
   },
+  doorSide: {
+    left: 'двері ліворуч',
+    right: 'двері праворуч',
+    leftA11y: 'Двері відчиняються ліворуч за напрямком руху',
+    rightA11y: 'Двері відчиняються праворуч за напрямком руху',
+  },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',

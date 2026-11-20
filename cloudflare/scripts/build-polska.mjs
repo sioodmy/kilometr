@@ -45,7 +45,7 @@ const UA = { 'User-Agent': 'KilometrTimetableBot/1.0 (build; contact: dev@kilome
 const PUBLIC_URL = process.env.TIMETABLE_PUBLIC_URL || 'https://data.kilometr.app';
 /** Rewizja schematu bazy: podbicie wymusza re-download na telefonach
  *  (wersja z fingerprintu feedu nie zmienia się, dopóki PLK nie ruszy rozkładu). */
-const SCHEMA_REV = 5;
+const SCHEMA_REV = 6;
 
 const FORCE = new Set(process.argv.slice(2)).has('--force');
 
@@ -231,6 +231,30 @@ function readStationAmenitiesFile() {
   return byStop;
 }
 
+/**
+ * Wczytuje cloudflare/data/station-platform-sides.json (azymuty peronów względem torów z OSM)
+ * i zwraca mapę `stop_id` -> słownik `{ key: bearing }`. Brak pliku nie przerywa buildu.
+ */
+function readPlatformSidesFile() {
+  const file = join(DATA, 'station-platform-sides.json');
+  if (!existsSync(file)) {
+    log('brak data/station-platform-sides.json - buduję bez stron drzwi');
+    return null;
+  }
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  const byStop = new Map();
+  for (const [rawId, entries] of Object.entries(raw.stations || {})) {
+    const id = rawId.startsWith('pl:') ? rawId.slice(3) : rawId;
+    if (!id || !entries || typeof entries !== 'object') continue;
+    const pairs = Object.entries(entries).filter(
+      ([k, v]) => typeof k === 'string' && k.length > 0 && Number.isInteger(v) && v >= -1 && v <= 359,
+    );
+    if (pairs.length > 0) byStop.set(id, pairs);
+  }
+  log(`strony peronów: ${byStop.size} stacji z pliku`);
+  return byStop;
+}
+
 /* ─── HTTP ──────────────────────────────────────────────────────────────── */
 
 async function headVersion(url) {
@@ -329,6 +353,12 @@ CREATE TABLE trip_amenities (
 CREATE TABLE station_amenities (
   stop_id TEXT PRIMARY KEY NOT NULL,
   bits INTEGER NOT NULL
+);
+CREATE TABLE platform_sides (
+  stop_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  bearing INTEGER NOT NULL,
+  PRIMARY KEY (stop_id, key)
 );
 `;
 
@@ -628,6 +658,28 @@ async function main() {
     }
     db.exec('COMMIT');
     log(`udogodnienia dworców: dopasowano ${matchedStations} stacji`);
+  }
+
+  // 5d. Strony peronów względem torów (OSM, do wyznaczania strony otwierania drzwi).
+  const platformSides = readPlatformSidesFile();
+  if (platformSides) {
+    const insPlatformSide = db.prepare(
+      'INSERT OR REPLACE INTO platform_sides (stop_id, key, bearing) VALUES (?, ?, ?)',
+    );
+    let matchedStations = 0;
+    let insertedRows = 0;
+    db.exec('BEGIN');
+    for (const [id] of stations) {
+      const pairs = platformSides.get(id);
+      if (!pairs) continue;
+      matchedStations++;
+      for (const [key, bearing] of pairs) {
+        insPlatformSide.run(`pl:${id}`, key, bearing);
+        insertedRows++;
+      }
+    }
+    db.exec('COMMIT');
+    log(`strony peronów: dopasowano ${matchedStations} stacji (${insertedRows} wpisów)`);
   }
 
   // 6. Wagi stacji (ranking wyszukiwarki: liczba odjazdów).

@@ -2084,6 +2084,12 @@ export const en: Strings = {
     hybrid: 'Hybrid',
     a11y: (details: string) => `Vehicle: ${details}`,
   },
+  doorSide: {
+    left: 'doors on left',
+    right: 'doors on right',
+    leftA11y: 'Doors open on the left in the direction of travel',
+    rightA11y: 'Doors open on the right in the direction of travel',
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',
