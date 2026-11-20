@@ -2456,6 +2456,21 @@ export const pl = {
     platformPole: (code: string) => `Słupek ${code}`,
     platformBay: (code: string) => `Stanowisko ${code}`,
     platformPst: (code: string) => `PST Słupek ${code}`,
+    intermediateStopsCount: (n: number) =>
+      `${n} ${n === 1 ? 'przystanek pośredni' : isFew(n) ? 'przystanki pośrednie' : 'przystanków pośrednich'}`,
+    intermediateStationsCount: (n: number) =>
+      `${n} ${n === 1 ? 'stacja pośrednia' : isFew(n) ? 'stacje pośrednie' : 'stacji pośrednich'}`,
+    noIntermediateStops: 'Bez przystanków pośrednich',
+    noIntermediateStations: 'Bez stacji pośrednich',
+    betweenStops: (from: string, to: string) => `między ${from} a ${to}`,
+    inTransitTo: (stop: string) => `W drodze do: ${stop}`,
+    atStopNow: 'Na przystanku',
+    atStationNow: 'Na stacji',
+    stationTransfer: 'Przesiadka na dworcu',
+    transferWalkMeters: (m: number) => `${m} m pieszo`,
+    walkStep: 'Dojście pieszo',
+    liveAgeShort: (s: number) => `${s} s temu`,
+    stopsLoading: 'Wczytuję trasę…',
   },
   compass: {
     fullscreen: 'Nawigacja na pełnym ekranie',
@@ -2529,6 +2544,7 @@ export const pl = {
     strefa_ciszy: (_n?: number) => 'Strefa ciszy',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Udogodnienia: ${list}`,
+    title: 'Udogodnienia składu',
   },
   stationAmenities: {
     toilets: 'Toaleta',
@@ -2541,6 +2557,8 @@ export const pl = {
     luggage: 'Przechowalnia bagażu',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Na dworcu: ${list}`,
+    summary: (n: number) =>
+      `Dworzec: ${n} ${n === 1 ? 'udogodnienie' : isFew(n) ? 'udogodnienia' : 'udogodnień'}`,
   },
   railAlerts: {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,

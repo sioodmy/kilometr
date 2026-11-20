@@ -1988,6 +1988,20 @@ export const de: Strings = {
     platformPole: (code: string) => `Mast ${code}`,
     platformBay: (code: string) => `Stand ${code}`,
     platformPst: (code: string) => `PST-Mast ${code}`,
+    intermediateStopsCount: (n: number) => `${n} ${n === 1 ? 'Zwischenhalt' : 'Zwischenhalte'}`,
+    intermediateStationsCount: (n: number) =>
+      `${n} ${n === 1 ? 'Zwischenbahnhof' : 'Zwischenbahnhöfe'}`,
+    noIntermediateStops: 'Keine Zwischenhalte',
+    noIntermediateStations: 'Keine Zwischenbahnhöfe',
+    betweenStops: (from: string, to: string) => `zwischen ${from} und ${to}`,
+    inTransitTo: (stop: string) => `Unterwegs nach: ${stop}`,
+    atStopNow: 'An der Haltestelle',
+    atStationNow: 'Am Bahnhof',
+    stationTransfer: 'Umstieg am Bahnhof',
+    transferWalkMeters: (m: number) => `${m} m zu Fuß`,
+    walkStep: 'Fußweg',
+    liveAgeShort: (s: number) => `vor ${s} s`,
+    stopsLoading: 'Halte werden geladen…',
   },
   compass: {
     fullscreen: 'Navigation im Vollbild',
@@ -2063,6 +2077,7 @@ export const de: Strings = {
     strefa_ciszy: (_n?: number) => 'Ruhebereich',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Ausstattung: ${list}`,
+    title: 'Zugausstattung',
   },
   stationAmenities: {
     toilets: 'Toiletten',
@@ -2075,6 +2090,7 @@ export const de: Strings = {
     luggage: 'Gepäckaufbewahrung',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Am Bahnhof: ${list}`,
+    summary: (n: number) => `Bahnhof: ${n} ${n === 1 ? 'Ausstattung' : 'Ausstattungen'}`,
   },
   railAlerts: {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,

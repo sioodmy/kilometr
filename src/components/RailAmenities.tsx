@@ -14,7 +14,7 @@ import {
   VolumeOff,
   Wifi,
 } from './icons';
-import { scheme } from '../theme/tokens';
+import { scheme, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { RailAmenity } from '../types/models';
 import {
@@ -41,7 +41,7 @@ const ICONS: Record<RailAmenity, ComponentType<{ size?: number; color?: string }
 const MAX_ICONS = 6;
 
 /**
- * Rząd ikon udogodnień składu nad numerem pociągu w karcie połączenia.
+ * Rząd ikon udogodnień składu w karcie połączenia kolejowego.
  * Puste, dopóki dane nie wrócą z bazy albo gdy vagonweb nie zna składu.
  */
 export function RailAmenities({
@@ -50,12 +50,14 @@ export function RailAmenities({
   trainNumber,
   line,
   trainName,
+  showLabel = false,
 }: {
   tripId?: string;
   agency?: string;
   trainNumber?: string;
   line?: string;
   trainName?: string;
+  showLabel?: boolean;
 }) {
   const t = useStrings();
   const [data, setData] = useState<Amenities | null>(
@@ -113,15 +115,22 @@ export function RailAmenities({
 
   return (
     <View
-      style={styles.row}
+      style={[styles.row, showLabel && styles.rowLabeled]}
       accessible
       accessibilityLabel={t.railAmenities.a11y(data.keys.map(label).join(', '))}
     >
-      {shown.map((key) => {
-        const Icon = ICONS[key];
-        return <Icon key={key} size={15} color={scheme.onSurfaceVariant} />;
-      })}
-      {hidden > 0 ? <Text style={styles.more}>{t.railAmenities.more(hidden)}</Text> : null}
+      <View style={styles.iconsGroup}>
+        {shown.map((key) => {
+          const Icon = ICONS[key];
+          return <Icon key={key} size={15} color={scheme.onSurfaceVariant} />;
+        })}
+        {hidden > 0 ? <Text style={styles.more}>{t.railAmenities.more(hidden)}</Text> : null}
+      </View>
+      {showLabel ? (
+        <Text style={styles.caption} numberOfLines={1}>
+          {t.railAmenities.title}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -132,11 +141,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 8,
-    minHeight: 20,
+    minHeight: 22,
+  },
+  rowLabeled: {
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  iconsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    flexShrink: 1,
   },
   more: {
-    fontSize: 11,
+    ...type.labelSmall,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
+  },
+  caption: {
+    ...type.labelSmall,
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    flexShrink: 0,
   },
 });

@@ -14,14 +14,15 @@ import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  ChevronLeft,
   AlarmClock,
+  ChevronLeft,
+  ChevronRight,
   CloudOff,
   Pin,
   RouteOff,
   Share2,
 } from '../../src/components/icons';
-import { scheme, shape, type } from '../../src/theme/tokens';
+import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
@@ -114,14 +115,12 @@ export default function RouteDetailsScreen() {
       : matchesRouteId(loadedItem?.id)
         ? loadedItem
         : (immediateItem ?? null);
+
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
-  // Subskrypcja zdarzeń live aktualizuje opóźnienia i stan feedu od razu po
-  // nowej paczce danych. Rzadszy timer co 30s wykrywa brak świeżości, gdy feed milczy.
   const [liveTick, setLiveTick] = useState(0);
   const lastLiveOk = useRef(0);
   useEffect(() => {
     const check = () => {
-      // Miasto bez feedu live nie pokazuje „braku danych” (features.live).
       setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
@@ -138,9 +137,7 @@ export default function RouteDetailsScreen() {
     };
   }, []);
 
-  // Po wejściu na ekran szczegółów połączenia lub powrocie z uśpienia (Android
-  // często usypia timery JS) natychmiast wymuszamy świeży poll pozycji live,
-  // bez czekania na interwał polling rate. Poll chodzi tylko, gdy ekran widać.
+  // Po wejściu na ekran lub powrocie z uśpienia wymuszamy świeży poll live.
   useFocusEffect(
     useCallback(() => {
       liveTracker.acquire();
@@ -325,23 +322,30 @@ export default function RouteDetailsScreen() {
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={23} color={scheme.onSurface} />
+            <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {s.routeDetails.title}
+          </Text>
         </View>
-        <View style={styles.loading}>
-          <Text style={styles.loadingText}>{s.routeDetails.loadFail}</Text>
-          <Pressable
-            onPress={goBack}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-          >
-            <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
-          </Pressable>
+        <View style={styles.stateWrap}>
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconCircle}>
+              <RouteOff size={24} color={scheme.onSecondaryContainer} />
+            </View>
+            <Text style={styles.emptyTitle}>{s.routeDetails.loadFail}</Text>
+            <Pressable
+              onPress={goBack}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
+            </Pressable>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -353,22 +357,26 @@ export default function RouteDetailsScreen() {
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={23} color={scheme.onSurface} />
+            <ChevronLeft size={22} color={scheme.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>{s.routeDetails.title}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {s.routeDetails.title}
+          </Text>
         </View>
-        <View style={styles.loading}>
-          <ActivityIndicator color={scheme.primary} />
+        <View style={styles.stateWrap}>
+          <ActivityIndicator size="large" color={scheme.primary} />
         </View>
       </SafeAreaView>
     );
   }
 
   const noLegs = item.legs.length === 0;
+  const hasTransitLeg = item.legs.some((leg) => leg.mode !== 'walk');
+  const hasHeaderActions = !noLegs || hasTransitLeg;
 
   const dataNote = offline
     ? s.routeDetails.offlineNote
@@ -387,72 +395,90 @@ export default function RouteDetailsScreen() {
           <SpringPressable
             onPress={goBack}
             scaleDelta={0.06}
-            style={styles.iconBtn}
+            style={styles.backBtn}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={23} color={scheme.onSurface} />
+            <ChevronLeft size={22} color={scheme.onSurface} />
           </SpringPressable>
-          <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
+
+          <Text
+            style={styles.headerTitle}
+            accessibilityRole="header"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
             {s.routeDetails.title}
           </Text>
-          {!noLegs && (
-            <SpringPressable
-              onPress={() => setSharing(true)}
-              scaleDelta={0.05}
-              haptic="selection"
-              accessibilityRole="button"
-              accessibilityLabel={s.share.title}
-              style={styles.trackBtn}
-            >
-              <Share2 size={20} color={scheme.onSurface} />
-            </SpringPressable>
-          )}
-          {item.legs.some((leg) => leg.mode !== 'walk') && (
-            <SpringPressable
-              onPress={() => setAlarmOpen(true)}
-              scaleDelta={0.05}
-              haptic="selection"
-              accessibilityRole="button"
-              onFocus={() => setAlarmFocused(true)}
-              onBlur={() => setAlarmFocused(false)}
-              accessibilityState={{ selected: currentAlarm != null }}
-              accessibilityLabel={
-                currentAlarm
-                  ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
-                  : s.alarm.set
-              }
-              style={[
-                styles.trackBtn,
-                currentAlarm && styles.trackBtnActive,
-                alarmFocused && styles.alarmFocused,
-              ]}
-            >
-              <AlarmClock
-                size={20}
-                color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurface}
-              />
-            </SpringPressable>
-          )}
-          {!noLegs && (
-            <SpringPressable
-              onPress={() => void togglePin()}
-              disabled={trackingBusy}
-              scaleDelta={0.05}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityState={{ selected: isPinned }}
-              accessibilityLabel={
-                isPinned ? s.home.unpinRouteA11y(item.toTitle) : s.home.pinRouteA11y(item.toTitle)
-              }
-              style={[styles.trackBtn, isPinned && styles.trackBtnActive]}
-              hitSlop={8}
-            >
-              <Pin
-                size={20}
-                color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
-              />
-            </SpringPressable>
+
+          {hasHeaderActions && (
+            <View style={styles.actionCluster}>
+              {!noLegs && (
+                <SpringPressable
+                  onPress={() => setSharing(true)}
+                  scaleDelta={0.06}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityLabel={s.share.title}
+                  style={styles.clusterBtn}
+                  hitSlop={4}
+                >
+                  <Share2 size={19} color={scheme.onSurface} />
+                </SpringPressable>
+              )}
+
+              {hasTransitLeg && (
+                <SpringPressable
+                  onPress={() => setAlarmOpen(true)}
+                  scaleDelta={0.06}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  onFocus={() => setAlarmFocused(true)}
+                  onBlur={() => setAlarmFocused(false)}
+                  accessibilityState={{ selected: currentAlarm != null }}
+                  accessibilityLabel={
+                    currentAlarm
+                      ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
+                      : s.alarm.set
+                  }
+                  style={[
+                    styles.clusterBtn,
+                    currentAlarm && styles.clusterBtnActive,
+                    alarmFocused && styles.alarmFocused,
+                  ]}
+                  hitSlop={4}
+                >
+                  <AlarmClock
+                    size={19}
+                    color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurface}
+                  />
+                </SpringPressable>
+              )}
+
+              {!noLegs && (
+                <SpringPressable
+                  onPress={() => void togglePin()}
+                  disabled={trackingBusy}
+                  scaleDelta={0.06}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isPinned }}
+                  accessibilityLabel={
+                    isPinned
+                      ? s.home.unpinRouteA11y(item.toTitle)
+                      : s.home.pinRouteA11y(item.toTitle)
+                  }
+                  style={[styles.clusterBtn, isPinned && styles.clusterBtnActive]}
+                  hitSlop={4}
+                >
+                  <Pin
+                    size={19}
+                    color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
+                  />
+                </SpringPressable>
+              )}
+            </View>
           )}
         </View>
 
@@ -461,12 +487,36 @@ export default function RouteDetailsScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
         >
-          <ConnectionSummary item={item} offline={offline} fromY={cardFromY} />
+          <ConnectionSummary item={item} offline={offline} fromY={cardFromY} showLegStrip />
+
+          {currentAlarm && (
+            <SpringPressable
+              onPress={() => setAlarmOpen(true)}
+              scaleDelta={0.02}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={`${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`}
+              style={styles.alarmBanner}
+            >
+              <View style={styles.alarmIconWrap}>
+                <AlarmClock size={18} color={scheme.onPrimaryContainer} />
+              </View>
+              <View style={styles.alarmTextCol}>
+                <Text style={styles.alarmEyebrow} numberOfLines={1}>
+                  {s.alarm.title}
+                </Text>
+                <Text style={styles.alarmTimeText} numberOfLines={1}>
+                  {s.alarm.ringsAt(currentAlarm.time)}
+                </Text>
+              </View>
+              <ChevronRight size={17} color={scheme.onPrimaryContainer} />
+            </SpringPressable>
+          )}
 
           {dataNote && (
             <View style={styles.offlineBanner}>
               <View style={styles.offlineIconWrap}>
-                <CloudOff size={15} color={scheme.onSecondaryContainer} />
+                <CloudOff size={16} color={scheme.onSecondaryContainer} />
               </View>
               <Text style={styles.offlineBannerText}>{dataNote}</Text>
             </View>
@@ -474,13 +524,15 @@ export default function RouteDetailsScreen() {
 
           {noLegs ? (
             <View style={styles.emptyCard}>
-              <RouteOff size={20} color={scheme.onSurfaceVariant} />
+              <View style={styles.emptyIconCircle}>
+                <RouteOff size={24} color={scheme.onSecondaryContainer} />
+              </View>
               <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
               <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
               <Pressable
                 onPress={goBack}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
               >
                 <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
               </Pressable>
@@ -531,72 +583,132 @@ export default function RouteDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: scheme.surface },
-  screen: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  loadingText: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  retryBtn: {
-    backgroundColor: scheme.primary,
-    borderRadius: shape.full,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    marginTop: 8,
+  safe: {
+    flex: 1,
+    backgroundColor: scheme.surface,
   },
-  retryText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
+  screen: {
+    flex: 1,
+  },
+  stateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
+    gap: 10,
+    paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerLow,
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
-    ...type.titleMedium,
-    fontWeight: '700',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
     color: scheme.onSurface,
-    paddingHorizontal: 4,
   },
-  trackBtn: {
+  actionCluster: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 48,
-    height: 48,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerLow,
-  },
-  trackBtnActive: {
-    backgroundColor: scheme.primaryContainer,
+    gap: 2,
+    padding: 3,
     borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  clusterBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clusterBtnActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  alarmFocused: {
+    borderWidth: 2,
+    borderColor: scheme.primary,
   },
   pressed: {
     opacity: 0.78,
     transform: [{ scale: 0.97 }],
   },
-  body: { paddingHorizontal: 16, gap: 14, paddingBottom: 40 },
-  alarmFocused: { borderWidth: 2, borderColor: scheme.primary },
+  body: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    gap: 14,
+    paddingBottom: 40,
+  },
+  alarmBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 56,
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    ...elev.level1,
+  },
+  alarmIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: scheme.primary + '26',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alarmTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  alarmEyebrow: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  alarmTimeText: {
+    fontSize: 14.5,
+    lineHeight: 19,
+    fontWeight: '800',
+    color: scheme.onPrimaryContainer,
+    fontVariant: ['tabular-nums'],
+  },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
+    gap: 12,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
   offlineIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: shape.small,
+    width: 32,
+    height: 32,
+    borderRadius: 11,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -608,13 +720,54 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   emptyCard: {
+    width: '100%',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 24,
+    ...elev.level1,
   },
-  emptyTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
-  emptyText: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  detailsContent: { gap: 14 },
+  emptyIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  emptyTitle: {
+    ...type.titleMedium,
+    fontWeight: '800',
+    color: scheme.onSurface,
+    textAlign: 'center',
+  },
+  emptyText: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryBtn: {
+    minHeight: 48,
+    minWidth: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: scheme.primary,
+    borderRadius: shape.full,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  retryText: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onPrimary,
+  },
+  detailsContent: {
+    gap: 14,
+  },
 });
