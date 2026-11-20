@@ -2,12 +2,12 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
-  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
 import { ArrowDown, ArrowRight, Footprints, TriangleAlert } from './icons';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
@@ -38,7 +38,7 @@ import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-const PRESS_SPRING = { damping: 24, stiffness: 420, reduceMotion: ReduceMotion.System };
+const PRESS_SPRING = motion.spring.press;
 const DASH_COUNT = 20;
 const DASH_INDICES = Array.from({ length: DASH_COUNT }, (_, i) => i);
 

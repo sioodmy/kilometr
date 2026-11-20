@@ -13,7 +13,7 @@ import {
   TramFront,
   TriangleAlert,
 } from './icons';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop } from '../types/models';
 import { getLineColors, LineBadge } from './LineBadge';
@@ -742,9 +742,9 @@ const TransitLegCard = memo(function TransitLegCard({
   );
 
   useEffect(() => {
-    chevron.value = withTiming(expanded ? 1 : 0, motion.state);
+    chevron.value = withSpring(expanded ? 1 : 0, motion.spring.spatialFast);
     const targetHeight = measuredHeight.value > 0 ? measuredHeight.value : estimatedInitialHeight;
-    stopsHeightAnim.value = withTiming(expanded ? targetHeight : 0, motion.state);
+    stopsHeightAnim.value = withSpring(expanded ? targetHeight : 0, motion.spring.spatialDefault);
   }, [expanded, chevron, stopsHeightAnim, measuredHeight, estimatedInitialHeight]);
 
   const chevronStyle = useAnimatedStyle(() => ({

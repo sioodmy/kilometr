@@ -27,8 +27,10 @@ import Animated, {
   Easing,
   FadeInDown,
   LinearTransition,
+  ReduceMotion,
   useReducedMotion,
 } from 'react-native-reanimated';
+import { SpringPressable } from '../../src/components/SpringPressable';
 import { scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
@@ -1187,11 +1189,12 @@ export default function RoutesScreen() {
       return (
         <Animated.View
           entering={
-            reduceMotion || index >= 5
+            reduceMotion || index >= 4
               ? undefined
-              : FadeInDown.delay(index * 35)
-                  .duration(220)
+              : FadeInDown.delay(index * 24)
+                  .duration(200)
                   .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                  .reduceMotion(ReduceMotion.System)
           }
         >
           <ConnectionCard
@@ -1259,13 +1262,11 @@ export default function RoutesScreen() {
         />
 
         <View style={styles.filterCardsRow}>
-          <Pressable
+          <SpringPressable
             onPress={() => setFiltersOpen(true)}
-            style={({ pressed }) => [
-              styles.actionCard,
-              hasActiveFilters && styles.actionCardActive,
-              pressed && styles.actionCardPressed,
-            ]}
+            scaleDelta={0.025}
+            haptic="selection"
+            style={[styles.actionCard, hasActiveFilters && styles.actionCardActive]}
             accessibilityRole="button"
             accessibilityLabel={s.routesFilters.filterA11y}
           >
@@ -1279,15 +1280,13 @@ export default function RoutesScreen() {
             >
               {s.routesFilters.filterButton}
             </Text>
-          </Pressable>
+          </SpringPressable>
 
-          <Pressable
+          <SpringPressable
             onPress={() => setTimeSheetOpen(true)}
-            style={({ pressed }) => [
-              styles.actionCard,
-              isCustomTime && styles.actionCardActive,
-              pressed && styles.actionCardPressed,
-            ]}
+            scaleDelta={0.025}
+            haptic="selection"
+            style={[styles.actionCard, isCustomTime && styles.actionCardActive]}
             accessibilityRole="button"
             accessibilityLabel={s.routesBar.timeA11y(timeDisplayLabel)}
           >
@@ -1308,7 +1307,7 @@ export default function RoutesScreen() {
             >
               {timeDisplayLabel}
             </Text>
-          </Pressable>
+          </SpringPressable>
         </View>
       </View>
     ),
@@ -1336,14 +1335,15 @@ export default function RoutesScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.topBar}>
         {/* Deep link z widgetu światkuje główny ekran; wstecz wtedy wraca do niego zamiast nic nie robić. */}
-        <Pressable
+        <SpringPressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          scaleDelta={0.06}
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel={s.map.backA11y}
         >
           <ChevronLeft size={23} color={scheme.onSurface} />
-        </Pressable>
+        </SpringPressable>
 
         <Text style={styles.screenTitle} numberOfLines={1}>
           {s.routes.title(operator)}
