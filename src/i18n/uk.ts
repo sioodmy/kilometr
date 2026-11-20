@@ -2465,6 +2465,29 @@ export const uk: Strings = {
     platformPole: (code: string) => `Стовп ${code}`,
     platformBay: (code: string) => `Місце ${code}`,
     platformPst: (code: string) => `PST-стовп ${code}`,
+    intermediateStopsCount: (n: number) =>
+      isOne(n)
+        ? `${n} проміжна зупинка`
+        : isFew(n)
+          ? `${n} проміжні зупинки`
+          : `${n} проміжних зупинок`,
+    intermediateStationsCount: (n: number) =>
+      isOne(n)
+        ? `${n} проміжна станція`
+        : isFew(n)
+          ? `${n} проміжні станції`
+          : `${n} проміжних станцій`,
+    noIntermediateStops: 'Без проміжних зупинок',
+    noIntermediateStations: 'Без проміжних станцій',
+    betweenStops: (from: string, to: string) => `між ${from} та ${to}`,
+    inTransitTo: (stop: string) => `У дорозі до: ${stop}`,
+    atStopNow: 'На зупинці',
+    atStationNow: 'На станції',
+    stationTransfer: 'Пересадка на вокзалі',
+    transferWalkMeters: (m: number) => `${m} м пішки`,
+    walkStep: 'Пішки',
+    liveAgeShort: (s: number) => `${s} с тому`,
+    stopsLoading: 'Завантаження зупинок…',
   },
   compass: {
     fullscreen: 'Навігація на весь екран',
@@ -2541,6 +2564,7 @@ export const uk: Strings = {
     strefa_ciszy: (_n?: number) => 'Тиха зона',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `Зручності: ${list}`,
+    title: 'Зручності потяга',
   },
   stationAmenities: {
     toilets: 'Туалет',
@@ -2553,6 +2577,8 @@ export const uk: Strings = {
     luggage: 'Камера схову',
     more: (n: number) => `+${n}`,
     a11y: (list: string) => `На вокзалі: ${list}`,
+    summary: (n: number) =>
+      `Вокзал: ${n} ${isOne(n) ? 'зручність' : isFew(n) ? 'зручності' : 'зручностей'}`,
   },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
