@@ -93,6 +93,7 @@
       ],
       "expo-sqlite",
       "./plugins/with-map-server",
+      "./plugins/with-portrait-optional",
       [
         "expo-notifications",
         {
