@@ -8,7 +8,25 @@ import {
   SchemeTonalSpot,
   SchemeVibrant,
 } from '@material/material-color-utilities';
-import { ArrowLeft, ArrowUpRight, Bell, Check, Copy, Map, Navigation, Route, Search, Settings } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Bell,
+  Briefcase,
+  BusFront,
+  Check,
+  ChevronRight,
+  Copy,
+  Home,
+  Map,
+  Navigation,
+  Route,
+  Search,
+  Settings,
+  TrainFront,
+  TramFront,
+  TriangleAlert,
+} from 'lucide-react';
 import { useStrings } from '../i18n';
 import { KOFI_URL } from '../data';
 import { Phone } from './Phone';
@@ -74,6 +92,69 @@ const PRESETS: { key: PresetKey; hex: string; hue: number; chroma: number }[] = 
 
 const SEED_TONE = 40;
 const CHROMA_MAX = 84;
+
+// Port kolorów pigułek linii z src/services/lineIdentity.ts (paleta M3 tone 80,
+// hash po nazwie linii, tekst biały/czarny wg luminancji). Kolor linii to
+// informacja o linii, nie element motywu, więc w makiecie pozostaje stały.
+const TRANSIT_PALETTE = [
+  '#71D8C2',
+  '#96CCFF',
+  '#FFB3B6',
+  '#EBB2FF',
+  '#FFB95A',
+  '#BAC3FF',
+  '#97D77D',
+  '#FFAEDE',
+  '#6DD5E6',
+  '#FFB596',
+  '#CBBEFF',
+  '#87CFFA',
+  '#CECC50',
+  '#FCABF7',
+  '#79D6D3',
+  '#AFCBD5',
+  '#F6BA8C',
+  '#7ADA9E',
+  '#ACC7FF',
+  '#FFB1C5',
+  '#98D3B9',
+  '#FFB4A7',
+  '#DAB9FF',
+  '#ABCAE5',
+];
+const TRAIN_BADGE_BG = '#FFB957';
+
+function relativeLuminance(hex: string): number {
+  const linear = [0, 2, 4].map((offset) => {
+    const value = Number.parseInt(hex.slice(1 + offset, 3 + offset), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function badgeColors(mode: 'tram' | 'bus' | 'train', line: string): { bg: string; fg: string } {
+  if (mode === 'train') return { bg: TRAIN_BADGE_BG, fg: '#000000' };
+  const key = `${mode}:${line.trim().toUpperCase()}`;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+  const bg = TRANSIT_PALETTE[Math.abs(hash * 7) % TRANSIT_PALETTE.length];
+  // Tak jak getContrastForeground w lineIdentity: biel albo czerń wg luminancji.
+  const lum = relativeLuminance(bg);
+  const whiteContrast = 1.05 / (lum + 0.05);
+  const blackContrast = (lum + 0.05) / 0.05;
+  return { bg, fg: whiteContrast >= blackContrast ? '#FFFFFF' : '#000000' };
+}
+
+function MockLineBadge({ mode, line }: { mode: 'tram' | 'bus' | 'train'; line: string }) {
+  const { bg, fg } = badgeColors(mode, line);
+  const Icon = mode === 'tram' ? TramFront : mode === 'train' ? TrainFront : BusFront;
+  return (
+    <span className="km-badge" style={{ background: bg, color: fg }}>
+      <Icon size={13} />
+      {line}
+    </span>
+  );
+}
 
 // Pary ról sprawdzane względem WCAG; minimalne współczynniki jak w M3.
 const PAIR_SPECS = [
@@ -227,25 +308,26 @@ function StudioPills({
 }
 
 const MOCK_DEPARTURES = [
-  { line: '0', destination: 'Pilczyce' },
-  { line: '10', destination: 'Biskupin' },
-  { line: '114', destination: 'Rynek' },
-];
+  { mode: 'tram', line: '0', destination: 'Pilczyce' },
+  { mode: 'tram', line: '10', destination: 'Biskupin' },
+  { mode: 'bus', line: '114', destination: 'Rynek' },
+  { mode: 'train', line: 'KD', destination: 'Środa Śląska' },
+] as const;
 
 function MockRow({
   badge,
   destination,
   right,
 }: {
-  badge: string;
+  badge: ReactNode;
   destination: string;
   right: ReactNode;
 }) {
   return (
     <div className="km-row">
-      <span className="km-badge">{badge}</span>
+      {badge}
       <span className="km-dest">{destination}</span>
-      {right}
+      <span className="km-right">{right}</span>
     </div>
   );
 }
@@ -340,7 +422,6 @@ export function ThemeStudioPage() {
           />
           <StudioPills
             label={t.variantLabel}
-            hint={t.variantHint}
             name="studio-variant"
             value={variant}
             onChange={(key) => setVariant(key as Variant)}
@@ -393,6 +474,8 @@ export function ThemeStudioPage() {
                     '--k-on-primary': scheme.onPrimary,
                     '--k-primary-container': scheme.primaryContainer,
                     '--k-on-primary-container': scheme.onPrimaryContainer,
+                    '--k-tertiary-container': scheme.tertiaryContainer,
+                    '--k-on-tertiary-container': scheme.onTertiaryContainer,
                     '--k-secondary-container': scheme.secondaryContainer,
                     '--k-on-secondary-container': scheme.onSecondaryContainer,
                     '--k-error-container': scheme.errorContainer,
@@ -417,23 +500,58 @@ export function ThemeStudioPage() {
                   <Search size={18} />
                   <span>{t.mock.search}</span>
                 </div>
+                <div className="km-alert">
+                  <TriangleAlert size={17} className="km-alert-icon" />
+                  <MockLineBadge mode="tram" line="10" />
+                  <span className="km-alert-text">{t.mock.detour}</span>
+                  <ChevronRight size={16} />
+                </div>
+                <div className="km-places">
+                  <span className="km-place">
+                    <span className="km-place-icon km-place-icon-home">
+                      <Home size={18} />
+                    </span>
+                    {t.mock.home}
+                  </span>
+                  <span className="km-place">
+                    <span className="km-place-icon km-place-icon-work">
+                      <Briefcase size={18} />
+                    </span>
+                    {t.mock.work}
+                  </span>
+                </div>
                 <div className="km-card">
                   <p className="km-card-title">{t.mock.departures}</p>
                   <div className="km-rows">
                     <MockRow
-                      badge={MOCK_DEPARTURES[0].line}
+                      badge={<MockLineBadge mode="tram" line="0" />}
                       destination={MOCK_DEPARTURES[0].destination}
                       right={<span className="km-now">{t.mock.now}</span>}
                     />
                     <MockRow
-                      badge={MOCK_DEPARTURES[1].line}
+                      badge={<MockLineBadge mode="tram" line="10" />}
                       destination={MOCK_DEPARTURES[1].destination}
-                      right={<span className="km-eta">{t.mock.minutes(8)}</span>}
+                      right={
+                        <>
+                          <span className="km-eta">{t.mock.minutes(8)}</span>
+                          <span className="km-delay">{t.mock.delay(2)}</span>
+                        </>
+                      }
                     />
                     <MockRow
-                      badge={MOCK_DEPARTURES[2].line}
+                      badge={<MockLineBadge mode="bus" line="114" />}
                       destination={MOCK_DEPARTURES[2].destination}
-                      right={<span className="km-cancelled">{t.mock.cancelled}</span>}
+                      right={<span className="km-eta">{t.mock.minutes(14)}</span>}
+                    />
+                    <MockRow
+                      badge={<MockLineBadge mode="train" line="KD" />}
+                      destination={MOCK_DEPARTURES[3].destination}
+                      right={
+                        <>
+                          <span className="km-eta">{t.mock.minutes(21)}</span>
+                          <span className="km-cancelled">{t.mock.cancelled}</span>
+                        </>
+                      }
                     />
                   </div>
                 </div>
@@ -452,34 +570,38 @@ export function ThemeStudioPage() {
         </section>
       </div>
 
-      <section className="studio-checks" aria-labelledby="studio-checks-title">
-        <h2 id="studio-checks-title">{t.complianceTitle}</h2>
-        <p className="studio-hint">{t.complianceHint}</p>
-        <ul className="studio-pairs">
-          {pairs.map((pair) => (
-            <li key={pair.key} className="studio-pair">
-              <span className="studio-pair-label">{t.pairs[pair.key]}</span>
-              <code>{t.ratio(pair.ratio)}</code>
-              <span className="studio-pair-status" data-state={pair.ratio >= pair.min ? 'pass' : 'fail'}>
-                {pair.ratio >= pair.min ? t.pass : t.fail}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="studio-roles" aria-labelledby="studio-roles-title">
-        <h2 id="studio-roles-title">{t.paletteTitle}</h2>
-        <ul className="studio-palette">
-          {(Object.keys(t.roleLabels) as (keyof typeof t.roleLabels)[]).map((role) => (
-            <li key={role} className="studio-role">
-              <span className="studio-role-swatch" style={{ background: scheme[role as SchemeKey] }} />
-              <span className="studio-role-name">{t.roleLabels[role]}</span>
-              <code className="studio-role-hex">{scheme[role as SchemeKey]}</code>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="studio-diagnostics">
+        <section className="studio-checks" aria-labelledby="studio-checks-title">
+          <h2 id="studio-checks-title">{t.complianceTitle}</h2>
+          <p className="studio-hint">{t.complianceHint}</p>
+          <ul className="studio-pairs">
+            {pairs.map((pair) => (
+              <li key={pair.key} className="studio-pair">
+                <span className="studio-pair-label">{t.pairs[pair.key]}</span>
+                <code>{t.ratio(pair.ratio)}</code>
+                <span
+                  className="studio-pair-status"
+                  data-state={pair.ratio >= pair.min ? 'pass' : 'fail'}
+                >
+                  {pair.ratio >= pair.min ? t.pass : t.fail}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="studio-roles" aria-labelledby="studio-roles-title">
+          <h2 id="studio-roles-title">{t.paletteTitle}</h2>
+          <ul className="studio-palette">
+            {(Object.keys(t.roleLabels) as (keyof typeof t.roleLabels)[]).map((role) => (
+              <li key={role} className="studio-role">
+                <span className="studio-role-swatch" style={{ background: scheme[role as SchemeKey] }} />
+                <span className="studio-role-name">{t.roleLabels[role]}</span>
+                <code className="studio-role-hex">{scheme[role as SchemeKey]}</code>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
 
       <section className="studio-output" aria-labelledby="studio-output-title">
         <h2 id="studio-output-title">{t.outputTitle}</h2>

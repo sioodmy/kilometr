@@ -194,15 +194,12 @@ export const en: Strings = {
   },
   themeStudio: {
     title: 'A theme as your supporter reward',
-    intro:
-      'You support Kilometr? Design your own app color scheme here. The sliders stay within Material 3 rules, contrast is checked live, and at the end you get a code to send us. We will add your theme to the app as a supporter reward.',
+    intro: 'You support Kilometr? Design your own app color scheme here and send the code.',
     controlsTitle: 'Source color',
-    controlsHint:
-      'The sliders compose a single source color. Material 3 derives the whole palette from it: buttons, cards, chips and surfaces.',
+    controlsHint: 'The sliders compose a source color; Material 3 derives the whole palette from it.',
     hueLabel: 'Hue',
     chromaLabel: 'Chroma',
     variantLabel: 'Palette character',
-    variantHint: 'How Material 3 spreads the source color across roles.',
     variants: {
       tonal: 'Tonal',
       expressive: 'Expressive',
@@ -222,18 +219,21 @@ export const en: Strings = {
     modeLabel: 'Phone theme',
     lightMode: 'Light',
     darkMode: 'Dark',
-    previewAria: 'Mockup of a Kilometr app screen in the generated color scheme',
+    previewAria: 'Kilometr screen mockup in your colors',
     mock: {
       departures: 'Next departures',
       search: 'Where are you going?',
       pin: 'Pin journey',
+      detour: 'Detour via Podwale street',
+      home: 'Home',
+      work: 'Work',
       now: 'now',
       minutes: (n: number) => `${n} min`,
+      delay: (n: number) => `+${n} min`,
       cancelled: 'cancelled',
     },
     complianceTitle: 'Live contrast check',
-    complianceHint:
-      'Pairs checked against WCAG 2.1 in the visible mode. Text needs 4.5:1, graphical elements 3:1.',
+    complianceHint: 'Role pairs measured against WCAG 2.1 in the visible mode. Text: 4.5:1, graphics: 3:1.',
     pairs: {
       button: 'Text on button',
       accentCard: 'Text on accent card',
@@ -261,11 +261,10 @@ export const en: Strings = {
       outline: 'Outline',
     },
     outputTitle: 'Theme code',
-    outputIntro:
-      'Your whole theme in one code. Copy it and paste it into a message on Ko-fi. We will rebuild this exact scheme from it.',
+    outputIntro: 'Copy the code and paste it into a message on Ko-fi.',
     copy: 'Copy code',
     copied: 'Copied',
-    copyFailed: 'Copy manually: click the code field and press Ctrl+C',
+    copyFailed: 'Select the code and press Ctrl+C',
     codeLabel: 'Your theme code',
     sendOn: 'Open Ko-fi',
     footerLink: 'Theme for supporters',

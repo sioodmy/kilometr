@@ -194,15 +194,12 @@ export const de: Strings = {
   },
   themeStudio: {
     title: 'Ein Farbschema als Dank für deine Unterstützung',
-    intro:
-      'Du unterstützt Kilometr? Gestalte hier dein eigenes Farbschema der App. Die Regler bleiben innerhalb der Material-3-Regeln, Kontraste werden live geprüft, und am Ende bekommst du einen Code zum Senden. Wir fügen dein Schema als Belohnung in die App ein.',
+    intro: 'Du unterstützt Kilometr? Gestalte hier dein eigenes Farbschema und schick den Code.',
     controlsTitle: 'Quellfarbe',
-    controlsHint:
-      'Die Regler ergeben eine einzige Quellfarbe. Material 3 leitet daraus die ganze Palette ab: Buttons, Karten, Chips und Flächen.',
+    controlsHint: 'Die Regler ergeben eine Quellfarbe; Material 3 leitet daraus die ganze Palette ab.',
     hueLabel: 'Farbton',
     chromaLabel: 'Sättigung',
     variantLabel: 'Palettencharakter',
-    variantHint: 'Wie Material 3 die Quellfarbe auf die Rollen verteilt.',
     variants: {
       tonal: 'Tonal',
       expressive: 'Expressiv',
@@ -222,18 +219,21 @@ export const de: Strings = {
     modeLabel: 'Handy-Design',
     lightMode: 'Hell',
     darkMode: 'Dunkel',
-    previewAria: 'Modell eines Kilometr-App-Bildschirms im erzeugten Farbschema',
+    previewAria: 'Kilometr-Bildschirmmodell in deinen Farben',
     mock: {
       departures: 'Nächste Abfahrten',
       search: 'Wohin fährst du?',
       pin: 'Reise anheften',
+      detour: 'Umleitung über die Podwale-Straße',
+      home: 'Zuhause',
+      work: 'Arbeit',
       now: 'jetzt',
       minutes: (n: number) => `${n} Min.`,
+      delay: (n: number) => `+${n} Min.`,
       cancelled: 'entfallen',
     },
     complianceTitle: 'Kontraste live',
-    complianceHint:
-      'Paare geprüft nach WCAG 2.1 im sichtbaren Modus. Text braucht 4,5:1, grafische Elemente 3:1.',
+    complianceHint: 'Rollenpaare nach WCAG 2.1 im sichtbaren Modus. Text: 4,5:1, Grafik: 3:1.',
     pairs: {
       button: 'Text auf Button',
       accentCard: 'Text auf Akzentkarte',
@@ -261,11 +261,10 @@ export const de: Strings = {
       outline: 'Kontur',
     },
     outputTitle: 'Schemacode',
-    outputIntro:
-      'Dein ganzes Schema in einem Code. Kopiere ihn und füge ihn in eine Nachricht auf Ko-fi ein. Wir bauen daraus genau dieses Farbschema wieder auf.',
+    outputIntro: 'Kopiere den Code und füge ihn in eine Nachricht auf Ko-fi ein.',
     copy: 'Code kopieren',
     copied: 'Kopiert',
-    copyFailed: 'Manuell kopieren: Klicke ins Codefeld und drücke Strg+C',
+    copyFailed: 'Code markieren und Strg+C drücken',
     codeLabel: 'Dein Schemacode',
     sendOn: 'Ko-fi öffnen',
     footerLink: 'Farbschema für Unterstützer',

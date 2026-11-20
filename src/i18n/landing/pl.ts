@@ -201,15 +201,12 @@ export const pl = {
   },
   themeStudio: {
     title: 'Motyw w nagrodę za wsparcie',
-    intro:
-      'Wspierasz rozwój Kilometru? Ułóż tu własną kolorystykę aplikacji. Suwaki trzymają się reguł Material 3, kontrasty sprawdzamy na żywo, a na końcu dostajesz kod do wysłania. Motyw dodamy do aplikacji jako nagrodę za wsparcie.',
+    intro: 'Wspierasz Kilometr? Ułóż tu własną kolorystykę aplikacji i wyślij kod.',
     controlsTitle: 'Kolor źródłowy',
-    controlsHint:
-      'Suwaki układają jeden kolor źródłowy. Material 3 wyprowadza z niego całą paletę: przyciski, karty, chipy i tła.',
+    controlsHint: 'Z suwaków powstaje kolor źródłowy, a Material 3 wyprowadza z niego całą paletę.',
     hueLabel: 'Barwa',
     chromaLabel: 'Nasycenie',
     variantLabel: 'Charakter palety',
-    variantHint: 'Sposób, w jaki Material 3 rozkłada kolor źródłowy na role.',
     variants: {
       tonal: 'Tonalna',
       expressive: 'Ekspresywna',
@@ -229,18 +226,21 @@ export const pl = {
     modeLabel: 'Tryb telefonu',
     lightMode: 'Jasny',
     darkMode: 'Ciemny',
-    previewAria: 'Makieta ekranu aplikacji Kilometr w wygenerowanej kolorystyce',
+    previewAria: 'Makieta ekranu Kilometr w wybranych kolorach',
     mock: {
       departures: 'Najbliższe odjazdy',
       search: 'Dokąd jedziesz?',
       pin: 'Przypnij podróż',
+      detour: 'Objazd przez ul. Podwale',
+      home: 'Dom',
+      work: 'Praca',
       now: 'teraz',
       minutes: (n: number) => `${n} min`,
+      delay: (n: number) => `+${n} min`,
       cancelled: 'odwołany',
     },
     complianceTitle: 'Kontrasty na żywo',
-    complianceHint:
-      'Pary sprawdzane względem WCAG 2.1 w widocznym trybie. Tekst wymaga 4,5:1, elementy graficzne 3:1.',
+    complianceHint: 'Pary ról liczone względem WCAG 2.1 w widocznym trybie. Tekst: 4,5:1, grafika: 3:1.',
     pairs: {
       button: 'Tekst na przycisku',
       accentCard: 'Tekst na karcie akcentu',
@@ -268,11 +268,10 @@ export const pl = {
       outline: 'Obrys',
     },
     outputTitle: 'Kod motywu',
-    outputIntro:
-      'Cały motyw zamknięty w jednym kodzie. Skopiuj go i wklej do wiadomości na Ko-fi. Odtworzymy z niego dokładnie tę samą kolorystykę.',
+    outputIntro: 'Skopiuj kod i wklej go do wiadomości na Ko-fi.',
     copy: 'Skopiuj kod',
     copied: 'Skopiowano',
-    copyFailed: 'Skopiuj ręcznie: kliknij pole z kodem i naciśnij Ctrl+C',
+    copyFailed: 'Zaznacz kod i naciśnij Ctrl+C',
     codeLabel: 'Kod twojego motywu',
     sendOn: 'Otwórz Ko-fi',
     footerLink: 'Motyw dla wspierających',

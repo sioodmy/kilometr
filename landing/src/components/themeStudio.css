@@ -193,12 +193,17 @@
     top: 24px;
   }
   .studio-phone {
-    max-width: 330px;
+    max-width: 340px;
     margin-top: 20px;
   }
 
-  .studio-checks,
-  .studio-roles,
+  .studio-diagnostics {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: clamp(24px, 4vw, 56px);
+    row-gap: clamp(40px, 6vw, 56px);
+    margin-top: clamp(40px, 6vw, 64px);
+  }
   .studio-output {
     margin-top: clamp(40px, 6vw, 64px);
   }
@@ -310,7 +315,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
     height: 100%;
     padding: 58px 16px 0;
     background: var(--k-surface, #111);
@@ -345,13 +350,73 @@
     color: var(--k-on-secondary-container);
     font-size: 0.9375rem;
   }
+  .km-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 16px;
+    background: var(--k-surface-container-high);
+    color: var(--k-on-surface);
+    font-size: 0.875rem;
+  }
+  .km-alert-icon {
+    color: var(--k-on-surface-variant);
+    flex-shrink: 0;
+  }
+  .km-alert-text {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .km-alert > svg:last-child {
+    color: var(--k-on-surface-variant);
+    flex-shrink: 0;
+  }
+  .km-places {
+    display: flex;
+    gap: 10px;
+  }
+  .km-place {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 48px;
+    padding: 0 16px 0 8px;
+    border-radius: 999px;
+    background: var(--k-surface-container);
+    color: var(--k-on-surface);
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  .km-place-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: var(--k-secondary-container);
+    color: var(--k-on-secondary-container);
+  }
+  .km-place-icon-home {
+    background: var(--k-primary-container);
+    color: var(--k-on-primary-container);
+  }
+  .km-place-icon-work {
+    background: var(--k-tertiary-container);
+    color: var(--k-on-tertiary-container);
+  }
   .km-card {
     border-radius: 28px;
     background: var(--k-surface-container);
     overflow: hidden;
   }
   .km-card-title {
-    padding: 16px 22px 4px;
+    padding: 16px 20px 6px;
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--k-on-surface-variant);
@@ -363,8 +428,8 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 14px;
-    padding: 10px 22px;
+    gap: 12px;
+    padding: 8px 20px;
   }
   .km-row + .km-row {
     border-top: 1px solid var(--k-outline-variant);
@@ -373,37 +438,57 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 44px;
-    height: 32px;
+    gap: 5px;
+    min-width: 38px;
+    min-height: 28px;
     padding: 0 8px;
-    border-radius: 10px;
-    background: var(--k-primary-container);
-    color: var(--k-on-primary-container);
-    font-size: 0.9375rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
     font-weight: 700;
+    flex-shrink: 0;
   }
   .km-dest {
     font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .km-right {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
   }
   .km-eta {
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--k-on-surface-variant);
+    font-variant-numeric: tabular-nums;
   }
   .km-now {
-    padding: 5px 12px;
+    align-self: flex-end;
+    padding: 4px 12px;
     border-radius: 999px;
     background: var(--k-primary);
     color: var(--k-on-primary);
     font-size: 0.8125rem;
     font-weight: 700;
   }
-  .km-cancelled {
-    padding: 5px 12px;
+  .km-delay {
+    padding: 2px 8px;
     border-radius: 999px;
     background: var(--k-error-container);
     color: var(--k-on-error-container);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .km-cancelled {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--k-error-container);
+    color: var(--k-on-error-container);
+    font-size: 0.75rem;
     font-weight: 600;
   }
   .km-pin {
@@ -419,12 +504,12 @@
     color: var(--k-on-primary);
     font-size: 0.9375rem;
     font-weight: 600;
+    margin-top: auto;
   }
   .km-navbar {
     display: flex;
     align-items: center;
     justify-content: space-around;
-    margin-top: auto;
     padding: 12px 0 18px;
     background: var(--k-surface-container);
     color: var(--k-on-surface-variant);
@@ -439,6 +524,9 @@
     .studio-grid {
       grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
       align-items: start;
+    }
+    .studio-diagnostics {
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
     }
   }
   @media (forced-colors: active) {
