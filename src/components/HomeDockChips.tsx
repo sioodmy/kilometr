@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
@@ -32,11 +33,12 @@ export interface DockChip {
   onPress: () => void;
 }
 
-const CHIP_H = 40;
-const ROW_H = CHIP_H + 24;
+const CHIP_H = 44;
+const ROW_H = CHIP_H + 14;
 
 /** Animowany pasek skrótów nad wyszukiwarką ze sprężystym pojawianiem M3 Expressive. */
 export function HomeDockChips({ chips }: { chips: DockChip[] }) {
+  const reduceMotion = useReducedMotion();
   const open = useSharedValue(chips.length > 0 ? 1 : 0);
   const lastChipsRef = useRef(chips);
   if (chips.length > 0) {
@@ -46,11 +48,15 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
 
   useEffect(() => {
     const target = chips.length > 0 ? 1 : 0;
+    if (reduceMotion) {
+      open.value = target;
+      return;
+    }
     open.value = withSpring(
       target,
       target === 1 ? motion.spring.spatialDefault : motion.spring.effectsFast,
     );
-  }, [chips.length, open]);
+  }, [chips.length, open, reduceMotion]);
 
   const wrapStyle = useAnimatedStyle(() => {
     const clamped = Math.max(0, open.value);
@@ -108,6 +114,7 @@ function ChipView({ chip, fullWidth }: { chip: DockChip; fullWidth?: boolean }) 
         fullWidth && ticket && styles.chipFullWidthWithTicket,
       ]}
     >
+      {chip.pinned && <View style={styles.liveDot} />}
       {chip.badgeLegs.map((leg, index) => (
         <LineBadge key={`${leg.id}-${index}`} leg={leg} compact />
       ))}
@@ -122,16 +129,14 @@ function ChipView({ chip, fullWidth }: { chip: DockChip; fullWidth?: boolean }) 
         {chip.title}
       </Text>
       {chip.timeLabel ? (
-        <Text
-          style={[
-            styles.time,
-            chip.pinned && styles.timePinned,
-            fullWidth && styles.timeFullWidth,
-          ]}
-          numberOfLines={1}
-        >
-          {chip.timeLabel}
-        </Text>
+        <View style={[styles.timePill, chip.pinned && styles.timePillPinned]}>
+          <Text
+            style={[styles.time, chip.pinned && styles.timePinned]}
+            numberOfLines={1}
+          >
+            {chip.timeLabel}
+          </Text>
+        </View>
       ) : null}
       {ticket && (
         <SpringPressable
@@ -159,51 +164,78 @@ const styles = StyleSheet.create({
     maxWidth: 600,
     alignSelf: 'center',
     overflow: 'hidden',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
-  row: { alignItems: 'center', gap: 12, paddingRight: 18 },
+  row: { alignItems: 'center', gap: 10, paddingRight: 16 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     height: CHIP_H,
     paddingLeft: 14,
-    paddingRight: 18,
-    borderRadius: 20,
+    paddingRight: 14,
+    borderRadius: shape.full,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   chipFullWidth: {
     width: '100%',
-    paddingLeft: 16,
-    paddingRight: 16,
+    paddingLeft: 14,
+    paddingRight: 12,
   },
   chipFullWidthWithTicket: {
-    paddingRight: 6,
+    paddingRight: 5,
   },
-  chipPinned: { backgroundColor: scheme.secondaryContainer },
-  chipPlain: { backgroundColor: scheme.surfaceContainerHighest },
-  chipWithTicket: { paddingRight: 4 },
+  chipPinned: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
+  chipPlain: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderColor: scheme.outlineVariant,
+  },
+  chipWithTicket: { paddingRight: 5 },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    flexShrink: 0,
+  },
   title: {
-    ...type.labelMedium,
-    fontWeight: '600',
+    ...type.labelLarge,
+    fontWeight: '700',
     color: scheme.onSurface,
-    maxWidth: 150,
+    maxWidth: 160,
   },
-  titlePinned: { color: scheme.onSecondaryContainer },
+  titlePinned: { color: scheme.onPrimaryContainer },
   titleFullWidth: {
     flex: 1,
     maxWidth: undefined,
   },
-  time: { ...type.labelMedium, fontWeight: '500', color: scheme.onSurfaceVariant },
-  timePinned: { color: scheme.onSecondaryContainer, opacity: 0.8 },
-  timeFullWidth: {
+  timePill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
     flexShrink: 0,
   },
+  timePillPinned: {
+    backgroundColor: scheme.surfaceContainerLow,
+  },
+  time: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  timePinned: { color: scheme.onSurface },
   ticketBtn: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
 });

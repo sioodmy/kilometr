@@ -1,8 +1,8 @@
 import React, { memo } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { History } from './icons';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ChevronRight, History } from './icons';
 import { SpringPressable } from './SpringPressable';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { LegMode, SmartDestination } from '../types/models';
 import type { SuggestionIconMeta } from './SuggestionRow';
 import { LineBadge } from './LineBadge';
@@ -54,8 +54,9 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
       onPress={() => onSelect(item)}
       accessibilityRole="button"
       accessibilityLabel={s.home.searchToA11y(item.title)}
-      scaleDelta={0.018}
+      scaleDelta={0.016}
       opacityDelta={0.05}
+      haptic="selection"
       style={[
         styles.card,
         (segment === 'first' || segment === 'single') && styles.cardTop,
@@ -86,7 +87,7 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
         ]}
       >
         {departLabel ? (
-          <Pressable
+          <SpringPressable
             onPress={(e) => {
               e.stopPropagation();
               if (onOpenConnection) onOpenConnection(item);
@@ -94,12 +95,13 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
             }}
             accessibilityRole="button"
             accessibilityLabel={s.home.openConnA11y(item.title, departLabel)}
-            hitSlop={8}
-            style={({ pressed }) => [
+            hitSlop={6}
+            scaleDelta={0.04}
+            haptic="light"
+            style={[
               styles.departPill,
               urgent && styles.departPillUrgent,
               compact && styles.departPillCompact,
-              pressed && styles.departPillPressed,
             ]}
           >
             {badge?.line ? <LineBadge mode={badge.mode} line={badge.line} compact /> : null}
@@ -109,9 +111,15 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
             >
               {departLabel}
             </Text>
-          </Pressable>
+            <ChevronRight
+              size={14}
+              color={urgent ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            />
+          </SpringPressable>
         ) : (
-          <View style={styles.rightPlaceholder} />
+          <View style={styles.rightPlaceholder}>
+            <ChevronRight size={17} color={scheme.onSurfaceVariant} />
+          </View>
         )}
       </View>
     </SpringPressable>
@@ -195,24 +203,34 @@ export function formatDepartIn(departInMin: number | undefined, s: Strings): str
 
 const styles = StyleSheet.create({
   wrap: { gap: 10 },
-  list: { gap: 4 },
+  list: { gap: 3 },
   cardCompact: { flexWrap: 'wrap' },
-  rightSlideCompact: { width: '100%', maxWidth: '100%', paddingLeft: 60, alignItems: 'flex-start' },
+  rightSlideCompact: { width: '100%', maxWidth: '100%', paddingLeft: 58, alignItems: 'flex-start' },
   hidden: { display: 'none' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 2 },
-  headerText: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
+  headerText: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface },
   iconSlide: { flexShrink: 0, justifyContent: 'center' },
-  rightSlide: { flexShrink: 0, maxWidth: '46%', justifyContent: 'center', alignItems: 'flex-end' },
-  rightPlaceholder: { minHeight: 40, minWidth: 8 },
+  rightSlide: { flexShrink: 0, maxWidth: '48%', justifyContent: 'center', alignItems: 'flex-end' },
+  rightPlaceholder: {
+    width: 30,
+    height: 30,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 13,
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.small,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    borderRadius: 8,
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    minHeight: 78,
+    paddingHorizontal: 14,
+    minHeight: 76,
+    ...elev.level1,
   },
   cardTop: {
     borderTopLeftRadius: shape.extraLarge,
@@ -223,9 +241,9 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: shape.extraLarge,
   },
   icon: {
-    width: 46,
-    height: 46,
-    borderRadius: shape.large,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -233,36 +251,37 @@ const styles = StyleSheet.create({
   mid: { flex: 1, justifyContent: 'center', gap: 3, minWidth: 0 },
   title: {
     ...type.bodyLarge,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: -0.2,
     color: scheme.onSurface,
   },
   sub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   departPill: {
-    minHeight: 42,
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: shape.large,
+    gap: 6,
+    paddingLeft: 10,
+    paddingRight: 8,
+    paddingVertical: 6,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   departPillUrgent: {
     backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
   },
   departPillCompact: {
     alignSelf: 'flex-start',
   },
-  departPillPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.96 }],
-  },
   depart: {
-    ...type.labelLarge,
+    ...type.labelMedium,
     fontWeight: '700',
     color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
     flexShrink: 1,
   },
   departUrgent: {

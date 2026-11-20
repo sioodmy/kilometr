@@ -112,22 +112,43 @@ function highlightRanges(title: string, query: string): [number, number][] {
   return merged;
 }
 
-function HighlightedTitle({ text, query }: { text: string; query?: string }) {
+function HighlightedTitle({
+  text,
+  query,
+  prominent,
+}: {
+  text: string;
+  query?: string;
+  prominent?: boolean;
+}) {
   const ranges = query ? highlightRanges(text, query) : [];
-  if (!ranges.length) return <Text style={styles.title}>{text}</Text>;
+  if (!ranges.length) {
+    return (
+      <Text style={[styles.title, prominent && styles.titleProminent]} numberOfLines={2}>
+        {text}
+      </Text>
+    );
+  }
   const parts: React.ReactNode[] = [];
   let pos = 0;
   ranges.forEach(([a, b], i) => {
     if (a > pos) parts.push(text.slice(pos, a));
     parts.push(
-      <Text key={i} style={styles.match}>
+      <Text key={i} style={[styles.match, prominent && styles.matchProminent]}>
         {text.slice(a, b)}
       </Text>,
     );
     pos = b;
   });
   if (pos < text.length) parts.push(text.slice(pos));
-  return <Text style={[styles.title, styles.dim]}>{parts}</Text>;
+  return (
+    <Text
+      style={[styles.title, prominent ? styles.dimProminent : styles.dim]}
+      numberOfLines={2}
+    >
+      {parts}
+    </Text>
+  );
 }
 
 /** Memoizowany wiersz podpowiedzi bez per-item layout entering, dla pełnej płynności listy. */
@@ -152,8 +173,8 @@ export const SuggestionRow = memo(function SuggestionRow({
   const s = useStrings();
   const meta = getSuggestionIconMeta(item);
   const Icon = meta.Icon;
-  const iconBg = meta.bg;
-  const iconFg = meta.fg;
+  const iconBg = prominent ? scheme.primaryContainer : meta.bg;
+  const iconFg = prominent ? scheme.onPrimaryContainer : meta.fg;
 
   const handlePress = useCallback(() => {
     if (onSelect) onSelect(item);
@@ -187,22 +208,34 @@ export const SuggestionRow = memo(function SuggestionRow({
         (segment === 'first' || segment === 'single') && styles.segmentTop,
         (segment === 'last' || segment === 'single') && styles.segmentBottom,
         prominent && styles.prominent,
-        pressed && styles.pressed,
+        pressed && (prominent ? styles.pressedProminent : styles.pressed),
         focused && styles.focused,
       ]}
     >
       <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
-        <Icon size={19} color={iconFg} />
+        <Icon size={20} color={iconFg} />
       </View>
       <View style={styles.mid}>
-        <HighlightedTitle text={displayTitle} query={query} />
+        <HighlightedTitle text={displayTitle} query={query} prominent={prominent} />
         {(segment ? cleanAddress : subtitle) ? (
-          <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
+          <Text
+            style={[styles.sub, prominent && styles.subProminent]}
+            numberOfLines={segment ? 2 : 1}
+          >
             {segment ? cleanAddress : subtitle}
           </Text>
         ) : null}
       </View>
-      {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
+      {segment && distanceText ? (
+        <View style={[styles.distancePill, prominent && styles.distancePillProminent]}>
+          <Text
+            style={[styles.distance, prominent && styles.distanceProminent]}
+            numberOfLines={1}
+          >
+            {distanceText}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 });
@@ -212,10 +245,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: shape.large,
-    minHeight: 56,
+    minHeight: 60,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   icon: {
     width: 44,
@@ -223,34 +258,65 @@ const styles = StyleSheet.create({
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   segment: {
-    borderRadius: 4,
+    borderRadius: 6,
     backgroundColor: scheme.surfaceContainer,
-    minHeight: 80,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    minHeight: 74,
     gap: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
-  segmentTop: { borderTopLeftRadius: shape.large, borderTopRightRadius: shape.large },
-  segmentBottom: { borderBottomLeftRadius: shape.large, borderBottomRightRadius: shape.large },
-  segmentIcon: { borderRadius: shape.medium },
-  prominent: { backgroundColor: scheme.secondaryContainer },
+  segmentTop: { borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  segmentBottom: { borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  segmentIcon: { borderRadius: 16 },
+  prominent: {
+    backgroundColor: scheme.secondaryContainer,
+  },
   pressed: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    transform: [{ scale: 0.992 }],
+    backgroundColor: scheme.surfaceContainerHigh,
+    transform: [{ scale: 0.988 }],
   },
-  focused: { borderColor: scheme.primary, borderWidth: 2 },
+  pressedProminent: {
+    opacity: 0.88,
+    transform: [{ scale: 0.988 }],
+  },
+  focused: { borderColor: scheme.primary },
+  distancePill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    flexShrink: 0,
+  },
+  distancePillProminent: {
+    backgroundColor: scheme.surfaceContainerLow,
+  },
   distance: {
-    ...type.labelMedium,
+    ...type.labelSmall,
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
-    maxWidth: '24%',
-    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
-  mid: { flex: 1, minWidth: 0, gap: 4 },
-  title: { ...type.bodyLarge, color: scheme.onSurface },
-  dim: { color: scheme.onSurfaceVariant },
-  match: { color: scheme.onSurface, fontWeight: '700' },
-  sub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  distanceProminent: {
+    color: scheme.onSurface,
+  },
+  mid: { flex: 1, minWidth: 0, gap: 3 },
+  title: {
+    ...type.bodyLarge,
+    fontWeight: '600',
+    letterSpacing: -0.15,
+    color: scheme.onSurface,
+  },
+  titleProminent: {
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  dim: { color: scheme.onSurfaceVariant, fontWeight: '500' },
+  dimProminent: { color: scheme.onSecondaryContainer, fontWeight: '500' },
+  match: { color: scheme.onSurface, fontWeight: '800' },
+  matchProminent: { color: scheme.onSecondaryContainer, fontWeight: '800' },
+  sub: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 17 },
+  subProminent: { color: scheme.onSecondaryContainer },
 });
