@@ -12,6 +12,7 @@ import {
   calcBearing,
   computeBearingsParam,
   removeSpurs,
+  removeSelfLoops,
   type Coord,
 } from '../src/services/routeGeometry';
 
@@ -198,6 +199,27 @@ console.log('=== Geometria tras: filtrowanie objazdów i ubytków OSRM ===');
   const cleaned = removeSpurs(spurCoords);
   assert(cleaned.length === 3, `removeSpurs: redukuje 19 punktów z anteną do 3 punktów na Hallera (len=${cleaned.length})`);
   assert(cleaned[0][0] === 51.090401 && cleaned[1][0] === 51.090333, 'removeSpurs: linia biegnie bezpośrednio wzdłuż Alei Hallera');
+}
+
+// 8. Eliminacja małych zamkniętych pętelek (removeSelfLoops)
+{
+  const withLoop: Coord[] = [
+    [51.0900, 16.9900],
+    [51.0900, 16.9910], // wejście w pętelkę
+    [51.0905, 16.9912],
+    [51.0905, 16.9918],
+    [51.0900, 16.9911], // domknięcie pętelki (<18m od [51.0900, 16.9910])
+    [51.0900, 16.9930], // dalszy przebieg prosto
+  ];
+  const stripped = removeSelfLoops(withLoop);
+  assert(
+    stripped.length === 3,
+    `removeSelfLoops: usuwa małą pętelkę wokół wysepki (len=${stripped.length})`,
+  );
+  assert(
+    stripped[0][1] === 16.9900 && stripped[1][1] === 16.9910 && stripped[2][1] === 16.9930,
+    'removeSelfLoops: zachowuje główny korytarz bez zawijasa',
+  );
 }
 
 if (failures.length > 0) {
