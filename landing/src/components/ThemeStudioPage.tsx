@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import {
   argbFromHex,
   hexFromArgb,
@@ -17,12 +18,16 @@ import {
   Check,
   ChevronRight,
   Copy,
+  Heart,
   Home,
   Map,
+  Moon,
   Navigation,
+  Palette,
   Route,
   Search,
   Settings,
+  Sun,
   TrainFront,
   TramFront,
   TriangleAlert,
@@ -62,6 +67,7 @@ const SCHEME_KEYS = [
   'surface',
   'onSurface',
   'onSurfaceVariant',
+  'surfaceContainerLow',
   'surfaceContainer',
   'surfaceContainerHigh',
   'surfaceContainerHighest',
@@ -92,6 +98,11 @@ const PRESETS: { key: PresetKey; hex: string; hue: number; chroma: number }[] = 
 
 const SEED_TONE = 40;
 const CHROMA_MAX = 84;
+
+// Tor suwaka odcienia w HCT, żeby kolor na torze zgadzał się z tym, co wyjdzie w schemacie.
+const HUE_TRACK = `linear-gradient(90deg, ${Array.from({ length: 13 }, (_, i) =>
+  hexFromArgb(Hct.from(i * 30, 48, 60).toInt()),
+).join(', ')})`;
 
 // Port kolorów pigułek linii z src/services/lineIdentity.ts (paleta M3 tone 80,
 // hash po nazwie linii, tekst biały/czarny wg luminancji). Kolor linii to
@@ -158,41 +169,18 @@ function MockLineBadge({ mode, line }: { mode: 'tram' | 'bus' | 'train'; line: s
 
 function buildScheme(seedHex: string, variant: Variant, isDark: boolean): Scheme {
   const material = new VARIANTS[variant](Hct.fromInt(argbFromHex(seedHex)), isDark, 0);
-  // Domyślny pusty string tylko dla typów: w 0.4.0 konstruktor zwraca wszystkie
-  // poniższe role, pętla nadpisuje każdą wartość.
-  const scheme: Scheme = {
-    primary: '',
-    onPrimary: '',
-    primaryContainer: '',
-    onPrimaryContainer: '',
-    secondary: '',
-    onSecondary: '',
-    secondaryContainer: '',
-    onSecondaryContainer: '',
-    tertiary: '',
-    onTertiary: '',
-    tertiaryContainer: '',
-    onTertiaryContainer: '',
-    error: '',
-    onError: '',
-    errorContainer: '',
-    onErrorContainer: '',
-    surface: '',
-    onSurface: '',
-    onSurfaceVariant: '',
-    surfaceContainer: '',
-    surfaceContainerHigh: '',
-    surfaceContainerHighest: '',
-    outline: '',
-    outlineVariant: '',
-  };
-  for (const key of SCHEME_KEYS) {
-    if (key in material) {
-      const value = material[key];
-      if (typeof value === 'number') scheme[key] = hexFromArgb(value);
-    }
-  }
+  const scheme = {} as Scheme;
+  for (const key of SCHEME_KEYS) scheme[key] = hexFromArgb(material[key]);
   return scheme;
+}
+
+/** Zamienia schemat na zmienne CSS: `--{prefix}-primary-container` itd. */
+function schemeVars(prefix: string, scheme: Scheme): CSSProperties {
+  const vars: Record<string, string> = {};
+  for (const key of SCHEME_KEYS) {
+    vars[`--${prefix}-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`] = scheme[key];
+  }
+  return vars;
 }
 
 /**
@@ -207,170 +195,51 @@ function encodeThemeCode(seedHex: string, variant: Variant): string {
   return `KM1.${base64}`;
 }
 
-function StudioSlider({
-  id,
-  label,
-  track,
-  onChange,
-  ...input
-}: {
-  id: string;
-  label: string;
-  track: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="studio-slider">
-      <label className="studio-slider-label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="studio-range"
-        type="range"
-        aria-orientation="horizontal"
-        style={{ '--studio-track': track } as CSSProperties}
-        onChange={(event) => onChange(Number(event.target.value))}
-        {...input}
-      />
-    </div>
-  );
+/** Kształt M3 Expressive (cookie, clover, sunny): okrąg z falą o `lobes` garbach. */
+function shapePath(lobes: number, depth: number): string {
+  const points: string[] = [];
+  for (let i = 0; i < 240; i++) {
+    const angle = (i / 240) * Math.PI * 2;
+    const radius = 100 * (1 - depth + depth * Math.cos(lobes * angle));
+    points.push(
+      `${(100 + radius * Math.cos(angle)).toFixed(2)} ${(100 + radius * Math.sin(angle)).toFixed(2)}`,
+    );
+  }
+  return `M${points.join('L')}Z`;
 }
 
-function StudioSegment({
-  label,
-  name,
-  options,
-  value,
-  onChange,
-  columns = 2,
-}: {
-  label: string;
-  name: string;
-  options: { key: string; text: string }[];
-  value: string;
-  onChange: (key: string) => void;
-  columns?: 2 | 4;
-}) {
-  return (
-    <fieldset className="studio-fieldset">
-      <legend>{label}</legend>
-      <div className="studio-segment" data-columns={columns} role="presentation">
-        {options.map((option) => (
-          <label key={option.key} className="studio-segment-option">
-            <input
-              type="radio"
-              className="sr-only"
-              name={name}
-              value={option.key}
-              checked={value === option.key}
-              onChange={() => onChange(option.key)}
-            />
-            <span className="studio-segment-label" data-checked={value === option.key}>
-              {option.text}
-            </span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
+const COOKIE = shapePath(9, 0.06);
+const CLOVER = shapePath(4, 0.16);
+const SUNNY = shapePath(8, 0.1);
+
+type Step = 'thanks' | 'studio';
+
+function readStep(): Step {
+  const state: unknown = window.history.state;
+  return typeof state === 'object' && state !== null && 'themeStep' in state && state.themeStep === 'studio'
+    ? 'studio'
+    : 'thanks';
 }
 
-const MOCK_DEPARTURES = [
-  { mode: 'tram', line: '0', destination: 'Pilczyce' },
-  { mode: 'tram', line: '10', destination: 'Biskupin' },
-  { mode: 'bus', line: '114', destination: 'Rynek' },
-  { mode: 'train', line: 'KD', destination: 'Środa Śląska' },
-] as const;
-
-function MockRow({
-  badge,
-  destination,
-  right,
-}: {
-  badge: ReactNode;
-  destination: string;
-  right: ReactNode;
-}) {
-  return (
-    <div className="km-row">
-      {badge}
-      <span className="km-dest">{destination}</span>
-      <span className="km-right">{right}</span>
-    </div>
-  );
-}
-
-export function ThemeStudioPage() {
-  const s = useStrings();
-  const t = s.themeStudio;
-  const [hue, setHue] = useState(PRESETS[0].hue);
-  const [chroma, setChroma] = useState(PRESETS[0].chroma);
-  const [variant, setVariant] = useState<Variant>('tonal');
-  const [mode, setMode] = useState<'dark' | 'light'>('dark');
-  const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
-  const codeField = useRef<HTMLInputElement>(null);
-
-  const seedHex = useMemo(
-    () => hexFromArgb(Hct.from(hue, chroma, SEED_TONE).toInt()),
-    [hue, chroma],
-  );
-  const scheme = useMemo(
-    () => buildScheme(seedHex, variant, mode === 'dark'),
-    [seedHex, variant, mode],
-  );
-  const code = useMemo(() => encodeThemeCode(seedHex, variant), [seedHex, variant]);
-
-  useEffect(() => {
-    setCopyState('idle');
-  }, [code]);
-
-  const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopyState('ok');
-    } catch {
-      codeField.current?.focus();
-      codeField.current?.select();
-      setCopyState('fail');
-    }
+// Przejście między ekranami: View Transitions, jeśli przeglądarka je ma i ruch jest dozwolony.
+function withTransition(update: () => void) {
+  const run = () => {
+    flushSync(update);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.getElementById('main')?.focus({ preventScroll: true });
   };
+  if (
+    'startViewTransition' in document &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+    document.startViewTransition(run);
+  else run();
+}
 
-  const hueTrack =
-    'linear-gradient(90deg, hsl(0 65% 45%), hsl(60 65% 45%), hsl(120 65% 45%), hsl(180 65% 45%), hsl(240 65% 45%), hsl(300 65% 45%), hsl(360 65% 45%))';
-  const chromaTrack = `linear-gradient(90deg, hsl(${hue} 0% 45%), hsl(${hue} 85% 45%))`;
-  const activePreset = PRESETS.find(
-    (preset) => preset.hue === Math.round(hue) && preset.chroma === Math.round(chroma),
-  );
-
-  const phoneScreen = (
-    <div
-      className="km-screen"
-      style={
-        {
-          '--k-primary': scheme.primary,
-          '--k-on-primary': scheme.onPrimary,
-          '--k-primary-container': scheme.primaryContainer,
-          '--k-on-primary-container': scheme.onPrimaryContainer,
-          '--k-tertiary-container': scheme.tertiaryContainer,
-          '--k-on-tertiary-container': scheme.onTertiaryContainer,
-          '--k-secondary-container': scheme.secondaryContainer,
-          '--k-on-secondary-container': scheme.onSecondaryContainer,
-          '--k-error-container': scheme.errorContainer,
-          '--k-on-error-container': scheme.onErrorContainer,
-          '--k-surface': scheme.surface,
-          '--k-on-surface': scheme.onSurface,
-          '--k-on-surface-variant': scheme.onSurfaceVariant,
-          '--k-surface-container': scheme.surfaceContainer,
-          '--k-surface-container-high': scheme.surfaceContainerHigh,
-          '--k-outline-variant': scheme.outlineVariant,
-        } as CSSProperties
-      }
-    >
+function MockScreen({ scheme }: { scheme: Scheme }) {
+  const t = useStrings().themeStudio;
+  return (
+    <div className="km-screen" style={schemeVars('k', scheme)}>
       <header className="km-topbar">
         <span className="km-brand">Kilometr</span>
         <span className="km-topbar-icons">
@@ -405,36 +274,20 @@ export function ThemeStudioPage() {
       <div className="km-card">
         <p className="km-card-title">{t.mock.departures}</p>
         <div className="km-rows">
-          <MockRow
-            badge={<MockLineBadge mode="tram" line="0" />}
-            destination={MOCK_DEPARTURES[0].destination}
-            right={<span className="km-now">{t.mock.now}</span>}
-          />
-          <MockRow
-            badge={<MockLineBadge mode="tram" line="10" />}
-            destination={MOCK_DEPARTURES[1].destination}
-            right={
-              <>
-                <span className="km-eta">{t.mock.minutes(8)}</span>
-                <span className="km-delay">{t.mock.delay(2)}</span>
-              </>
-            }
-          />
-          <MockRow
-            badge={<MockLineBadge mode="bus" line="114" />}
-            destination={MOCK_DEPARTURES[2].destination}
-            right={<span className="km-eta">{t.mock.minutes(14)}</span>}
-          />
-          <MockRow
-            badge={<MockLineBadge mode="train" line="KD" />}
-            destination={MOCK_DEPARTURES[3].destination}
-            right={
-              <>
-                <span className="km-eta">{t.mock.minutes(21)}</span>
-                <span className="km-cancelled">{t.mock.cancelled}</span>
-              </>
-            }
-          />
+          <MockRow badge={<MockLineBadge mode="tram" line="0" />} destination="Pilczyce">
+            <span className="km-now">{t.mock.now}</span>
+          </MockRow>
+          <MockRow badge={<MockLineBadge mode="tram" line="10" />} destination="Biskupin">
+            <span className="km-eta">{t.mock.minutes(8)}</span>
+            <span className="km-delay">{t.mock.delay(2)}</span>
+          </MockRow>
+          <MockRow badge={<MockLineBadge mode="bus" line="114" />} destination="Rynek">
+            <span className="km-eta">{t.mock.minutes(14)}</span>
+          </MockRow>
+          <MockRow badge={<MockLineBadge mode="train" line="KD" />} destination="Środa Śląska">
+            <span className="km-eta">{t.mock.minutes(21)}</span>
+            <span className="km-cancelled">{t.mock.cancelled}</span>
+          </MockRow>
         </div>
       </div>
       <span className="km-pin">
@@ -448,138 +301,350 @@ export function ThemeStudioPage() {
       </nav>
     </div>
   );
+}
+
+function MockRow({
+  badge,
+  destination,
+  children,
+}: {
+  badge: ReactNode;
+  destination: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="km-row">
+      {badge}
+      <span className="km-dest">{destination}</span>
+      <span className="km-right">{children}</span>
+    </div>
+  );
+}
+
+function ThanksScreen({ onContinue }: { onContinue: () => void }) {
+  const s = useStrings();
+  const t = s.themeStudio;
+  return (
+    <section className="thanks" aria-labelledby="thanks-title">
+      <a className="studio-home-link" href="#top">
+        <ArrowLeft size={18} aria-hidden="true" />
+        {s.footer.back}
+      </a>
+      <div className="thanks-body">
+        <div className="thanks-shapes" aria-hidden="true">
+          <svg className="thanks-shape thanks-shape-cookie" viewBox="0 0 200 200">
+            <path d={COOKIE} />
+          </svg>
+          <svg className="thanks-shape thanks-shape-clover" viewBox="0 0 200 200">
+            <path d={CLOVER} />
+          </svg>
+          <svg className="thanks-shape thanks-shape-sunny" viewBox="0 0 200 200">
+            <path d={SUNNY} />
+          </svg>
+          <Heart className="thanks-heart" fill="currentColor" strokeWidth={0} />
+        </div>
+        <div className="thanks-copy">
+          <h1 id="thanks-title">{t.thanksTitle}</h1>
+          <p className="thanks-text">{t.thanksBody}</p>
+          <button type="button" className="m3-button m3-button-filled thanks-cta" onClick={onContinue}>
+            <Palette size={22} aria-hidden="true" />
+            {t.thanksCta}
+          </button>
+          <p className="thanks-not-yet">
+            {t.notYet}{' '}
+            <a href={KOFI_URL} target="_blank" rel="noopener noreferrer">
+              {t.notYetLink}
+              <span className="sr-only"> {s.install.newTab}</span>
+            </a>
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Swatch({ scheme }: { scheme: Scheme }) {
+  return (
+    <span
+      className="studio-swatch-colors"
+      style={{
+        background: `conic-gradient(from 90deg, ${scheme.tertiary} 0 90deg, ${scheme.secondary} 90deg 180deg, ${scheme.primary} 180deg 360deg)`,
+      }}
+    />
+  );
+}
+
+export function ThemeStudioPage() {
+  const s = useStrings();
+  const t = s.themeStudio;
+  const [step, setStep] = useState<Step>(readStep);
+  const [hue, setHue] = useState(PRESETS[0].hue);
+  const [chroma, setChroma] = useState(PRESETS[0].chroma);
+  const [variant, setVariant] = useState<Variant>('tonal');
+  const [mode, setMode] = useState<'dark' | 'light'>('dark');
+  const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const codeField = useRef<HTMLInputElement>(null);
+
+  // Krok trzymamy w history.state, więc systemowy "wstecz" na telefonie wraca do podziękowania.
+  useEffect(() => {
+    const onPop = () => withTransition(() => setStep(readStep()));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const openStudio = () => {
+    window.history.pushState({ themeStep: 'studio' }, '', '#motyw');
+    withTransition(() => setStep('studio'));
+  };
+  const backToThanks = () => {
+    if (readStep() === 'studio') window.history.back();
+    else withTransition(() => setStep('thanks'));
+  };
+
+  const seedHex = useMemo(
+    () => hexFromArgb(Hct.from(hue, chroma, SEED_TONE).toInt()),
+    [hue, chroma],
+  );
+  const pageScheme = useMemo(() => buildScheme(seedHex, variant, true), [seedHex, variant]);
+  const previewScheme = useMemo(
+    () => (mode === 'dark' ? pageScheme : buildScheme(seedHex, variant, false)),
+    [pageScheme, seedHex, variant, mode],
+  );
+  const presetSchemes = useMemo(
+    () => PRESETS.map((preset) => buildScheme(preset.hex, variant, true)),
+    [variant],
+  );
+  const variantSchemes = useMemo(
+    () => (Object.keys(VARIANTS) as Variant[]).map((key) => [key, buildScheme(seedHex, key, true)] as const),
+    [seedHex],
+  );
+  const code = useMemo(() => encodeThemeCode(seedHex, variant), [seedHex, variant]);
+
+  useEffect(() => {
+    setCopyState('idle');
+  }, [code]);
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyState('ok');
+    } catch {
+      codeField.current?.focus();
+      codeField.current?.select();
+      setCopyState('fail');
+    }
+  };
+
+  const chromaTrack = `linear-gradient(90deg, ${hexFromArgb(Hct.from(hue, 0, 60).toInt())}, ${hexFromArgb(
+    Hct.from(hue, CHROMA_MAX, 60).toInt(),
+  )})`;
+  const activePreset = PRESETS.find(
+    (preset) => preset.hue === Math.round(hue) && preset.chroma === Math.round(chroma),
+  );
 
   return (
-    <main className="studio-page section-shell" id="main" tabIndex={-1}>
-      <header className="studio-hero">
-        <a className="studio-back text-link" href="#top">
-          <ArrowLeft size={17} aria-hidden="true" />
-          {s.footer.back}
-        </a>
-        <h1>{t.title}</h1>
-        <p className="studio-intro">{t.intro}</p>
-      </header>
+    <main className="studio" id="main" tabIndex={-1} style={schemeVars('s', pageScheme)}>
+      {step === 'thanks' ? (
+        <ThanksScreen onContinue={openStudio} />
+      ) : (
+        <div className="studio-shell">
+          <header className="studio-bar">
+            <button
+              type="button"
+              className="studio-icon-button"
+              onClick={backToThanks}
+              aria-label={t.back}
+            >
+              <ArrowLeft size={22} aria-hidden="true" />
+            </button>
+            <h1>{t.title}</h1>
+            <fieldset className="studio-mode">
+              <legend className="sr-only">{t.modeLabel}</legend>
+              {(
+                [
+                  ['dark', t.darkMode, Moon],
+                  ['light', t.lightMode, Sun],
+                ] as const
+              ).map(([key, label, Icon]) => (
+                <label key={key} className="studio-mode-option">
+                  <input
+                    type="radio"
+                    className="sr-only"
+                    name="studio-mode"
+                    checked={mode === key}
+                    onChange={() => setMode(key)}
+                  />
+                  <span className="studio-mode-chip">
+                    <Icon size={18} aria-hidden="true" />
+                    <span className="studio-mode-text">{label}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </header>
+          <p className="studio-intro">{t.intro}</p>
 
-      <div className="studio-workspace">
-        <section className="studio-panel" aria-labelledby="studio-controls-title">
-          <div className="studio-panel-head">
-            <h2 id="studio-controls-title">{t.controlsTitle}</h2>
-            <p className="studio-hint">{t.controlsHint}</p>
-            <div className="studio-live-swatch" aria-hidden="true">
-              <span className="studio-live-swatch-dot" style={{ background: seedHex }} />
+          <div className="studio-grid">
+            <section className="studio-preview" aria-label={t.previewTitle}>
+              <div className="studio-phone-crop">
+                <Phone className="studio-phone" label={t.previewAria}>
+                  <MockScreen scheme={previewScheme} />
+                </Phone>
+              </div>
+            </section>
+
+            <div className="studio-controls">
+              <section className="studio-card" aria-labelledby="studio-presets-title">
+                <h2 id="studio-presets-title">{t.presetsLabel}</h2>
+                <div className="studio-presets">
+                  {PRESETS.map((preset, index) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className="studio-preset"
+                      aria-pressed={preset.key === activePreset?.key}
+                      onClick={() => {
+                        setHue(preset.hue);
+                        setChroma(preset.chroma);
+                      }}
+                    >
+                      <span className="studio-swatch">
+                        <Swatch scheme={presetSchemes[index]} />
+                        <Check className="studio-swatch-check" size={22} aria-hidden="true" />
+                      </span>
+                      <span className="studio-preset-name">{t.presetNames[preset.key]}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="studio-card" aria-labelledby="studio-custom-title">
+                <div className="studio-card-head">
+                  <h2 id="studio-custom-title">{t.customTitle}</h2>
+                  <span className="studio-seed">
+                    <span className="studio-seed-dot" style={{ background: pageScheme.primary }} />
+                    {seedHex.toUpperCase()}
+                  </span>
+                </div>
+                <StudioSlider
+                  id="studio-hue"
+                  label={t.hueLabel}
+                  track={HUE_TRACK}
+                  max={360}
+                  value={hue}
+                  onChange={setHue}
+                />
+                <StudioSlider
+                  id="studio-chroma"
+                  label={t.chromaLabel}
+                  track={chromaTrack}
+                  max={CHROMA_MAX}
+                  value={chroma}
+                  onChange={setChroma}
+                />
+              </section>
+
+              <section className="studio-card" aria-labelledby="studio-variant-title">
+                <h2 id="studio-variant-title">{t.variantLabel}</h2>
+                <div className="studio-variants" role="radiogroup" aria-labelledby="studio-variant-title">
+                  {variantSchemes.map(([key, scheme]) => (
+                    <label key={key} className="studio-variant">
+                      <input
+                        type="radio"
+                        className="sr-only"
+                        name="studio-variant"
+                        checked={variant === key}
+                        onChange={() => setVariant(key)}
+                      />
+                      <span className="studio-variant-body">
+                        <span className="studio-variant-dots" aria-hidden="true">
+                          <span style={{ background: scheme.primary }} />
+                          <span style={{ background: scheme.secondary }} />
+                          <span style={{ background: scheme.tertiary }} />
+                        </span>
+                        {t.variants[key]}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <section className="studio-card studio-output" aria-labelledby="studio-output-title">
+                <h2 id="studio-output-title">{t.outputTitle}</h2>
+                <p className="studio-hint">{t.outputIntro}</p>
+                <input
+                  ref={codeField}
+                  className="studio-code"
+                  type="text"
+                  readOnly
+                  value={code}
+                  aria-label={t.codeLabel}
+                  onFocus={(event) => event.target.select()}
+                  onClick={(event) => event.currentTarget.select()}
+                />
+                <div className="studio-actions">
+                  <button type="button" className="m3-button m3-button-filled" onClick={copyCode}>
+                    {copyState === 'ok' ? (
+                      <Check size={20} aria-hidden="true" />
+                    ) : (
+                      <Copy size={20} aria-hidden="true" />
+                    )}
+                    {copyState === 'ok' ? t.copied : t.copy}
+                  </button>
+                  <a
+                    className="m3-button m3-button-tonal"
+                    href={KOFI_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t.sendOn}
+                    <ArrowUpRight size={20} aria-hidden="true" />
+                    <span className="sr-only">{s.install.newTab}</span>
+                  </a>
+                </div>
+                <p className="studio-copy-status" role="status">
+                  {copyState === 'fail' ? t.copyFailed : ''}
+                </p>
+              </section>
             </div>
           </div>
-
-          <p className="studio-presets-label" id="studio-presets-label">
-            {t.presetsLabel}
-          </p>
-          <div className="studio-preset-row" role="group" aria-labelledby="studio-presets-label">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.key}
-                type="button"
-                className="studio-preset"
-                aria-pressed={preset.key === activePreset?.key}
-                onClick={() => {
-                  setHue(preset.hue);
-                  setChroma(preset.chroma);
-                }}
-              >
-                <span className="studio-preset-dot" style={{ background: preset.hex }} />
-                <span className="studio-preset-name">{t.presetNames[preset.key]}</span>
-              </button>
-            ))}
-          </div>
-
-          <StudioSlider
-            id="studio-hue"
-            label={t.hueLabel}
-            track={hueTrack}
-            min={0}
-            max={360}
-            step={1}
-            value={hue}
-            onChange={setHue}
-          />
-          <StudioSlider
-            id="studio-chroma"
-            label={t.chromaLabel}
-            track={chromaTrack}
-            min={0}
-            max={CHROMA_MAX}
-            step={1}
-            value={chroma}
-            onChange={setChroma}
-          />
-          <StudioSegment
-            label={t.variantLabel}
-            name="studio-variant"
-            columns={2}
-            value={variant}
-            onChange={(key) => setVariant(key as Variant)}
-            options={(Object.keys(VARIANTS) as Variant[]).map((key) => ({
-              key,
-              text: t.variants[key],
-            }))}
-          />
-        </section>
-
-        <section className="studio-preview" aria-labelledby="studio-preview-title">
-          <div className="studio-preview-head">
-            <h2 id="studio-preview-title">{t.previewTitle}</h2>
-            <StudioSegment
-              label={t.modeLabel}
-              name="studio-mode"
-              columns={2}
-              value={mode}
-              onChange={(key) => setMode(key as 'dark' | 'light')}
-              options={[
-                { key: 'dark', text: t.darkMode },
-                { key: 'light', text: t.lightMode },
-              ]}
-            />
-          </div>
-          <div className="studio-phone-wrap">
-            <Phone className="studio-phone" label={t.previewAria}>
-              {phoneScreen}
-            </Phone>
-          </div>
-        </section>
-
-        <section className="studio-output" aria-labelledby="studio-output-title">
-          <h2 id="studio-output-title">{t.outputTitle}</h2>
-          <p className="studio-hint">{t.outputIntro}</p>
-          <div className="studio-code-row">
-            <input
-              id="studio-code"
-              ref={codeField}
-              className="studio-code"
-              type="text"
-              readOnly
-              value={code}
-              aria-label={t.codeLabel}
-              onFocus={(event) => event.target.select()}
-              onClick={(event) => event.currentTarget.select()}
-            />
-            <button type="button" className="button button-primary studio-copy" onClick={copyCode}>
-              {copyState === 'ok' ? (
-                <Check size={17} aria-hidden="true" />
-              ) : (
-                <Copy size={17} aria-hidden="true" />
-              )}
-              {copyState === 'ok' ? t.copied : t.copy}
-            </button>
-          </div>
-          <p className="studio-copy-status" role="status">
-            {copyState === 'ok' ? t.copied : copyState === 'fail' ? t.copyFailed : ''}
-          </p>
-          <a className="studio-kofi text-link" href={KOFI_URL} target="_blank" rel="noopener noreferrer">
-            {t.sendOn}
-            <ArrowUpRight size={15} aria-hidden="true" />
-            <span className="sr-only">{s.install.newTab}</span>
-          </a>
-        </section>
-      </div>
+        </div>
+      )}
     </main>
+  );
+}
+
+function StudioSlider({
+  id,
+  label,
+  track,
+  max,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  track: string;
+  max: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="studio-slider">
+      <label className="studio-slider-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="studio-range"
+        type="range"
+        min={0}
+        max={max}
+        step={1}
+        value={value}
+        style={{ '--studio-track': track } as CSSProperties}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
   );
 }

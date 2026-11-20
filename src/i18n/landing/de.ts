@@ -195,8 +195,14 @@ export const de: Strings = {
   themeStudio: {
     title: 'Deine Farbe in der App',
     intro: 'Wähle Farben, schau dir die Vorschau an und schick den fertigen Code über Ko-fi.',
-    controlsTitle: 'Farben',
-    controlsHint: 'Schiebe die Regler oder tippe eine fertige Farbe. Die Vorschau ändert sich sofort.',
+    thanksTitle: 'Danke!',
+    thanksBody:
+      'Deine Unterstützung hält Kilometr frei von Werbung und Tracking. Als Dankeschön stellst du dir dein eigenes App-Design zusammen.',
+    thanksCta: 'Dein Design wählen',
+    notYet: 'Noch nicht dabei?',
+    notYetLink: 'Auf Ko-fi unterstützen',
+    back: 'Zurück zum Dankeschön',
+    customTitle: 'Eigene Farbe',
     hueLabel: 'Farbe',
     chromaLabel: 'Intensität',
     variantLabel: 'Stil',

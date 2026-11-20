@@ -195,8 +195,14 @@ export const en: Strings = {
   themeStudio: {
     title: 'Your color in the app',
     intro: 'Pick colors, check the preview, then send the ready code on Ko-fi.',
-    controlsTitle: 'Colors',
-    controlsHint: 'Move the sliders or tap a ready color. The preview updates right away.',
+    thanksTitle: 'Thank you!',
+    thanksBody:
+      'Your support keeps Kilometr growing with no ads and no tracking. As a thank you, build your own app theme.',
+    thanksCta: 'Pick your theme',
+    notYet: 'Not a supporter yet?',
+    notYetLink: 'Support on Ko-fi',
+    back: 'Back to the thank you',
+    customTitle: 'Custom color',
     hueLabel: 'Color',
     chromaLabel: 'Intensity',
     variantLabel: 'Style',

@@ -202,8 +202,14 @@ export const pl = {
   themeStudio: {
     title: 'Twój kolor w aplikacji',
     intro: 'Wybierz kolory, zerknij na podgląd i wyślij gotowy kod na Ko-fi.',
-    controlsTitle: 'Kolory',
-    controlsHint: 'Przesuń suwaki albo kliknij gotowy kolor. Podgląd zmienia się od razu.',
+    thanksTitle: 'Dziękuję!',
+    thanksBody:
+      'Twoje wsparcie pozwala rozwijać Kilometr bez reklam i bez śledzenia. W podziękowaniu ułóż własny motyw aplikacji.',
+    thanksCta: 'Wybierz swój motyw',
+    notYet: 'Jeszcze nie wspierasz?',
+    notYetLink: 'Zrób to na Ko-fi',
+    back: 'Wróć do podziękowania',
+    customTitle: 'Własny kolor',
     hueLabel: 'Kolor',
     chromaLabel: 'Intensywność',
     variantLabel: 'Styl',
