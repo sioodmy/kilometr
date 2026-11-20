@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -9,11 +9,17 @@ import {
   Text,
   View,
 } from 'react-native';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetScrollView,
+  useBottomSheetSpringConfigs,
+} from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, Copy, Download, ImageUp, Link, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
 import { captureRef } from 'react-native-view-shot';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, getLocaleSync } from '../i18n';
 import { getActiveCityIdSync } from '../services/cityStore';
@@ -31,6 +37,19 @@ export function ShareConnectionSheet({
   const { share: s } = useStrings();
   const insets = useSafeAreaInsets();
   const sheet = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ['90%'], []);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        accessibilityLabel={s.close}
+      />
+    ),
+    [s.close],
+  );
   const card = useRef<View>(null);
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -112,21 +131,15 @@ export function ShareConnectionSheet({
     <BottomSheet
       ref={sheet}
       index={0}
-      snapPoints={['90%']}
+      snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       enableDynamicSizing={false}
       topInset={insets.top}
       enablePanDownToClose
       onClose={onClose}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
-      backdropComponent={(props) => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          accessibilityLabel={s.close}
-        />
-      )}
+      backdropComponent={renderBackdrop}
     >
       <View style={styles.container} accessibilityViewIsModal>
         <View style={styles.header}>
