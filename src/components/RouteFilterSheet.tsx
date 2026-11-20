@@ -9,6 +9,9 @@ import BottomSheet, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Animated, {
+  FadeIn,
+  FadeOut,
+  interpolate,
   interpolateColor,
   useAnimatedStyle,
   useReducedMotion,
@@ -22,10 +25,12 @@ import {
   CableCar,
   Check,
   Layers,
+  SlidersHorizontal,
   TrainFront,
   TramFront,
   X,
 } from './icons';
+import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
 import { scheme, shape, spacing, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -39,6 +44,7 @@ export interface RouteFilterSheetProps {
   selectedMode: RouteModeFilter;
   transfersFilter: RouteTransfersFilter;
   liveOnly: boolean;
+  resultCount?: number;
   onSelectMode: (mode: RouteModeFilter) => void;
   onSelectTransfers: (transfers: RouteTransfersFilter) => void;
   onToggleLiveOnly: () => void;
@@ -46,14 +52,23 @@ export interface RouteFilterSheetProps {
   onClose: () => void;
 }
 
-// Spring używany do przesuwania wskaźników i przełączników (M3 Expressive).
-const springConfig = motion.spring.spatialFast;
+const SPRING_FAST = motion.spring.spatialFast;
+const HANDLE_HEIGHT = 24;
+
+function SheetHandle() {
+  return (
+    <View style={styles.handleContainer}>
+      <View style={styles.handle} />
+    </View>
+  );
+}
 
 export function RouteFilterSheet({
   availableModes,
   selectedMode,
   transfersFilter,
   liveOnly,
+  resultCount,
   onSelectMode,
   onSelectTransfers,
   onToggleLiveOnly,
@@ -62,17 +77,13 @@ export function RouteFilterSheet({
 }: RouteFilterSheetProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
-  // Arkusz ma oddychać: sekcje, chipy i przycisk "Gotowe" dostają więcej
-  // przestrzeni niż w starym kompaktowym układzie, a przy powiększonej
-  // czcionce wysokość rośnie razem z treścią. Gdy zabraknie miejsca,
-  // środkowa część przewija się, footer zostaje na dole.
-  const HANDLE_HEIGHT = 28;
   const maxAvailable = windowHeight - insets.top - insets.bottom - 16;
-  const baseContentHeight = 470 + Math.max(0, fontScale - 1) * 200;
-  const sheetHeight = Math.min(maxAvailable, Math.max(380, baseContentHeight));
+  const baseContentHeight = 520 + Math.max(0, fontScale - 1) * 220;
+  const sheetHeight = Math.min(maxAvailable, Math.max(400, baseContentHeight));
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
 
@@ -94,11 +105,13 @@ export function RouteFilterSheet({
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.6}
+        opacity={0.58}
         pressBehavior="close"
+        accessibilityLabel={s.routesFilters.closeA11y}
+        accessibilityRole="button"
       />
     ),
-    [],
+    [s.routesFilters.closeA11y],
   );
 
   const activeCount =
@@ -108,7 +121,6 @@ export function RouteFilterSheet({
   const hasActiveFilters = activeCount > 0;
 
   const handleModePress = (mode: RouteModeFilter) => {
-    void Haptics.selectionAsync().catch(() => {});
     onSelectMode(selectedMode === mode ? 'all' : mode);
   };
 
@@ -123,12 +135,10 @@ export function RouteFilterSheet({
   };
 
   const handleResetPress = () => {
-    void Haptics.selectionAsync().catch(() => {});
     onReset();
   };
 
   const handleDonePress = () => {
-    void Haptics.selectionAsync().catch(() => {});
     requestClose();
   };
 
@@ -154,17 +164,17 @@ export function RouteFilterSheet({
   const renderModeIcon = (mode: LegMode, color: string) => {
     switch (mode) {
       case 'tram':
-        return <TramFront size={18} color={color} />;
+        return <TramFront size={17} color={color} />;
       case 'bus':
       case 'trolleybus':
-        return <BusFront size={18} color={color} />;
+        return <BusFront size={17} color={color} />;
       case 'train':
       case 'subway':
-        return <TrainFront size={18} color={color} />;
+        return <TrainFront size={17} color={color} />;
       case 'cable':
-        return <CableCar size={18} color={color} />;
+        return <CableCar size={17} color={color} />;
       default:
-        return <Layers size={18} color={color} />;
+        return <Layers size={17} color={color} />;
     }
   };
 
@@ -177,19 +187,24 @@ export function RouteFilterSheet({
     { key: 'direct', label: s.routesFilters.transfersDirect },
   ];
 
+  const doneLabel =
+    resultCount != null
+      ? `${s.routesFilters.done} · ${s.connection.connections(resultCount)}`
+      : s.routesFilters.done;
+
   return (
     <BottomSheet
       ref={sheetRef}
       index={0}
       snapPoints={snapPoints}
       animationConfigs={animationConfigs}
+      handleComponent={SheetHandle}
       topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       onClose={onClose}
       backgroundStyle={styles.sheet}
-      handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >
       <View
@@ -198,38 +213,53 @@ export function RouteFilterSheet({
       >
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.title} accessibilityRole="header">
+            <View style={styles.headerIconBadge}>
+              <SlidersHorizontal size={18} color={scheme.onPrimaryContainer} />
+            </View>
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
               {s.routesFilters.title}
             </Text>
             {hasActiveFilters && (
-              <View style={styles.countBadge}>
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(140)}
+                exiting={reduceMotion ? undefined : FadeOut.duration(100)}
+                style={styles.countBadge}
+              >
                 <Text style={styles.countBadgeText}>{activeCount}</Text>
-              </View>
+              </Animated.View>
             )}
           </View>
 
           <View style={styles.headerRight}>
             {hasActiveFilters && (
-              <Pressable
-                onPress={handleResetPress}
-                style={({ pressed }) => [styles.resetBtn, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={s.routesFilters.resetA11y}
-                hitSlop={8}
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(140)}
+                exiting={reduceMotion ? undefined : FadeOut.duration(100)}
               >
-                <Text style={styles.resetText}>{s.routesFilters.reset}</Text>
-              </Pressable>
+                <SpringPressable
+                  onPress={handleResetPress}
+                  scaleDelta={0.04}
+                  haptic="selection"
+                  style={styles.resetBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.routesFilters.resetA11y}
+                  hitSlop={4}
+                >
+                  <Text style={styles.resetText}>{s.routesFilters.reset}</Text>
+                </SpringPressable>
+              </Animated.View>
             )}
 
-            <Pressable
+            <SpringPressable
               onPress={requestClose}
-              style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
+              scaleDelta={0.06}
+              haptic="selection"
+              style={styles.closeBtn}
               accessibilityRole="button"
               accessibilityLabel={s.routesFilters.closeA11y}
-              hitSlop={8}
             >
-              <X size={22} color={scheme.onSurfaceVariant} />
-            </Pressable>
+              <X size={20} color={scheme.onSurface} />
+            </SpringPressable>
           </View>
         </View>
 
@@ -240,10 +270,10 @@ export function RouteFilterSheet({
           nestedScrollEnabled
           overScrollMode="never"
         >
-          <View style={styles.section}>
+          <View style={styles.sectionCard}>
             <View style={styles.sectionHead}>
               <View style={styles.sectionIcon}>
-                <Layers size={18} color={scheme.onPrimaryContainer} />
+                <Layers size={16} color={scheme.onSecondaryContainer} />
               </View>
               <Text style={styles.sectionTitle}>{s.routesFilters.vehiclesSection}</Text>
             </View>
@@ -252,9 +282,9 @@ export function RouteFilterSheet({
                 label={s.routesFilters.allVehicles}
                 icon={
                   <Layers
-                    size={18}
+                    size={17}
                     color={
-                      selectedMode === 'all' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                      selectedMode === 'all' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
                     }
                   />
                 }
@@ -269,7 +299,7 @@ export function RouteFilterSheet({
                     label={getModeLabel(mode)}
                     icon={renderModeIcon(
                       mode,
-                      active ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+                      active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
                     )}
                     active={active}
                     onPress={() => handleModePress(mode)}
@@ -279,10 +309,10 @@ export function RouteFilterSheet({
             </View>
           </View>
 
-          <View style={styles.section}>
+          <View style={styles.sectionCard}>
             <View style={styles.sectionHead}>
               <View style={styles.sectionIcon}>
-                <ArrowUpDown size={18} color={scheme.onPrimaryContainer} />
+                <ArrowUpDown size={16} color={scheme.onSecondaryContainer} />
               </View>
               <Text style={styles.sectionTitle}>{s.routesFilters.transfersSection}</Text>
             </View>
@@ -293,31 +323,26 @@ export function RouteFilterSheet({
             />
           </View>
 
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <View style={styles.sectionIcon}>
-                <Activity size={18} color={scheme.onPrimaryContainer} />
-              </View>
-              <Text style={styles.sectionTitle}>{s.routesFilters.liveSection}</Text>
-            </View>
-            <LiveToggle
-              title={s.routesFilters.liveOnly}
-              subtitle={s.routesFilters.liveOnlyHint}
-              active={liveOnly}
-              onPress={handleToggleLive}
-            />
-          </View>
+          <LiveToggle
+            sectionTitle={s.routesFilters.liveSection}
+            title={s.routesFilters.liveOnly}
+            subtitle={s.routesFilters.liveOnlyHint}
+            active={liveOnly}
+            onPress={handleToggleLive}
+          />
         </BottomSheetScrollView>
 
         <View style={styles.footer}>
-          <Pressable
+          <SpringPressable
             onPress={handleDonePress}
-            style={({ pressed }) => [styles.doneBtn, pressed && styles.doneBtnPressed]}
+            scaleDelta={0.02}
+            haptic="light"
+            style={styles.doneBtn}
             accessibilityRole="button"
-            accessibilityLabel={s.routesFilters.done}
+            accessibilityLabel={doneLabel}
           >
-            <Text style={styles.doneText}>{s.routesFilters.done}</Text>
-          </Pressable>
+            <Text style={styles.doneText}>{doneLabel}</Text>
+          </SpringPressable>
         </View>
       </View>
     </BottomSheet>
@@ -336,9 +361,11 @@ function ModeChip({
   onPress: () => void;
 }) {
   return (
-    <Pressable
+    <SpringPressable
       onPress={onPress}
-      style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && styles.pressed]}
+      scaleDelta={0.035}
+      haptic="selection"
+      style={[styles.chip, active && styles.chipActive]}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: active }}
       accessibilityLabel={label}
@@ -347,8 +374,8 @@ function ModeChip({
       <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
         {label}
       </Text>
-      {active && <Check size={16} color={scheme.onSecondaryContainer} />}
-    </Pressable>
+      {active && <Check size={15} color={scheme.onPrimaryContainer} />}
+    </SpringPressable>
   );
 }
 
@@ -367,10 +394,9 @@ function TransfersSegment({
   const progress = useSharedValue(activeIndex);
 
   useEffect(() => {
-    progress.value = reduceMotion ? activeIndex : withSpring(activeIndex, springConfig);
+    progress.value = reduceMotion ? activeIndex : withSpring(activeIndex, SPRING_FAST);
   }, [activeIndex, progress, reduceMotion]);
 
-  // Szerokość zewnętrzna minus 2px border i 8px paddingu wewnętrznego.
   const indicatorStyle = useAnimatedStyle(() => {
     const w =
       containerWidth.value > 0 ? (containerWidth.value - 10) / Math.max(1, options.length) : 0;
@@ -395,12 +421,12 @@ function TransfersSegment({
           <Pressable
             key={opt.key}
             onPress={() => onSelect(opt.key)}
-            style={({ pressed }) => [styles.segmentBtn, pressed && styles.pressed]}
+            style={styles.segmentBtn}
             accessibilityRole="radio"
             accessibilityState={{ selected: active }}
             accessibilityLabel={opt.label}
           >
-            <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+            <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>
               {opt.label}
             </Text>
           </Pressable>
@@ -411,11 +437,13 @@ function TransfersSegment({
 }
 
 function LiveToggle({
+  sectionTitle,
   title,
   subtitle,
   active,
   onPress,
 }: {
+  sectionTitle: string;
   title: string;
   subtitle: string;
   active: boolean;
@@ -425,40 +453,56 @@ function LiveToggle({
   const activeSV = useSharedValue(active ? 1 : 0);
 
   useEffect(() => {
-    activeSV.value = reduceMotion ? (active ? 1 : 0) : withSpring(active ? 1 : 0, springConfig);
+    activeSV.value = reduceMotion ? (active ? 1 : 0) : withSpring(active ? 1 : 0, SPRING_FAST);
   }, [active, activeSV, reduceMotion]);
 
   const containerStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       activeSV.value,
       [0, 1],
-      [scheme.surfaceContainerLow, scheme.surfaceContainerHigh],
+      [scheme.surfaceContainerLow, scheme.primaryContainer + '36'],
     ),
     borderColor: interpolateColor(activeSV.value, [0, 1], [scheme.outlineVariant, scheme.primary]),
   }));
 
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: activeSV.value * 22 }],
-    backgroundColor: interpolateColor(activeSV.value, [0, 1], [scheme.outline, scheme.onPrimary]),
+  const trackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      activeSV.value,
+      [0, 1],
+      [scheme.surfaceContainerHighest, scheme.primary],
+    ),
+    borderColor: interpolateColor(activeSV.value, [0, 1], [scheme.outline, scheme.primary]),
   }));
+
+  const thumbStyle = useAnimatedStyle(() => {
+    const size = interpolate(activeSV.value, [0, 1], [16, 24]);
+    const translateX = interpolate(activeSV.value, [0, 1], [5, 22]);
+    return {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      transform: [{ translateX }],
+      backgroundColor: interpolateColor(activeSV.value, [0, 1], [scheme.outline, scheme.onPrimary]),
+    };
+  });
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="switch"
       accessibilityState={{ checked: active }}
-      accessibilityLabel={`${title}, ${subtitle}`}
+      accessibilityLabel={`${sectionTitle}, ${title}, ${subtitle}`}
     >
       <Animated.View style={[styles.liveCard, containerStyle]}>
         <View style={styles.liveCardLeft}>
           <View style={[styles.liveIconCircle, active && styles.liveIconCircleActive]}>
-            <Activity size={20} color={active ? scheme.primary : scheme.onSurfaceVariant} />
+            <Activity
+              size={18}
+              color={active ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
+            />
           </View>
           <View style={styles.liveCardTexts}>
-            <Text
-              style={[styles.liveCardTitle, active && styles.liveCardTitleActive]}
-              numberOfLines={1}
-            >
+            <Text style={styles.liveCardTitle} numberOfLines={1}>
               {title}
             </Text>
             <Text style={styles.liveCardSub} numberOfLines={2}>
@@ -466,9 +510,11 @@ function LiveToggle({
             </Text>
           </View>
         </View>
-        <View style={[styles.switchTrack, active && styles.switchTrackActive]}>
-          <Animated.View style={[styles.switchThumb, thumbStyle]} />
-        </View>
+        <Animated.View style={[styles.switchTrack, trackStyle]}>
+          <Animated.View style={[styles.switchThumb, thumbStyle]}>
+            {active && <Check size={14} color={scheme.primary} />}
+          </Animated.View>
+        </Animated.View>
       </Animated.View>
     </Pressable>
   );
@@ -476,39 +522,57 @@ function LiveToggle({
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainer,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   sheetContainer: {
     overflow: 'hidden',
+  },
+  handleContainer: {
+    height: HANDLE_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
     width: 36,
     height: 4,
     borderRadius: 2,
-    marginTop: 10,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingLeft: spacing.xl,
-    paddingRight: spacing.md,
-    paddingBottom: spacing.md,
+    paddingLeft: 20,
+    paddingRight: 16,
+    paddingBottom: 14,
     gap: spacing.sm,
   },
   headerTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    flexShrink: 1,
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  headerIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    ...type.titleLarge,
+    fontSize: 20,
+    lineHeight: 26,
     color: scheme.onSurface,
-    fontWeight: '500',
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    flexShrink: 1,
   },
   countBadge: {
     minWidth: 24,
@@ -522,29 +586,33 @@ const styles = StyleSheet.create({
   countBadgeText: {
     ...type.labelMedium,
     color: scheme.onSecondaryContainer,
-    fontWeight: '700',
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 8,
   },
   resetBtn: {
-    minHeight: 48,
+    minHeight: 38,
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 14,
     borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
   },
   resetText: {
-    ...type.labelLarge,
-    color: scheme.primary,
-    fontWeight: '600',
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
   },
   closeBtn: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -552,24 +620,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.lg,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 20,
+    gap: 14,
   },
-  section: {
-    gap: spacing.sm,
+  sectionCard: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 14,
+    gap: 12,
   },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 9,
   },
   sectionIcon: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -577,7 +650,7 @@ const styles = StyleSheet.create({
     ...type.titleSmall,
     fontSize: 15,
     color: scheme.onSurface,
-    fontWeight: '600',
+    fontWeight: '700',
     flexShrink: 1,
   },
   pillsWrap: {
@@ -588,31 +661,32 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
+    gap: 7,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
-    minHeight: 48,
+    minHeight: 44,
   },
   chipActive: {
-    backgroundColor: scheme.secondaryContainer,
-    borderColor: scheme.secondaryContainer,
+    backgroundColor: scheme.primaryContainer,
+    borderWidth: 1,
+    borderColor: scheme.primary,
   },
   chipText: {
     ...type.labelLarge,
     color: scheme.onSurface,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   chipTextActive: {
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
   },
   segmentContainer: {
     flexDirection: 'row',
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.full,
     padding: 4,
     borderWidth: 1,
@@ -625,16 +699,17 @@ const styles = StyleSheet.create({
     left: 4,
     bottom: 4,
     borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
+    backgroundColor: scheme.primaryContainer,
     zIndex: 0,
   },
   segmentBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.full,
-    minHeight: 48,
+    minHeight: 44,
     zIndex: 1,
   },
   segmentText: {
@@ -644,32 +719,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   segmentTextActive: {
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
   },
   liveCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: shape.large,
-    borderWidth: 1,
-    minHeight: 72,
     gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+    minHeight: 74,
   },
   liveCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     flex: 1,
-    paddingRight: 4,
+    minWidth: 0,
   },
   liveIconCircle: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -678,64 +753,50 @@ const styles = StyleSheet.create({
   },
   liveCardTexts: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   liveCardTitle: {
     ...type.titleSmall,
     fontSize: 15,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  liveCardTitleActive: {
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   liveCardSub: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    lineHeight: 17,
   },
   switchTrack: {
-    width: 54,
+    width: 52,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: scheme.surfaceContainerHighest,
-    padding: 3,
+    borderRadius: shape.full,
+    borderWidth: 1.5,
     justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  switchTrackActive: {
-    backgroundColor: scheme.primary,
   },
   switchThumb: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-  },
-  pressed: {
-    opacity: 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   footer: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
-    backgroundColor: scheme.surfaceContainerLow,
   },
   doneBtn: {
-    minHeight: 56,
+    minHeight: 54,
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  doneBtnPressed: {
-    opacity: 0.85,
+    paddingHorizontal: 20,
   },
   doneText: {
     ...type.labelLarge,
-    fontSize: 16,
+    fontSize: 15,
     color: scheme.onPrimary,
-    fontWeight: '600',
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
 });

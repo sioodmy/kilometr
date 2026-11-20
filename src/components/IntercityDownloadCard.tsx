@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Download, Train } from './icons';
-import { scheme, shape, type } from '../theme/tokens';
+import { SpringPressable } from './SpringPressable';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
   downloadNationalTimetable,
@@ -35,7 +36,6 @@ export function IntercityDownloadCard({ onReady }: { onReady?: () => void }) {
     };
   }, []);
 
-  // Gotowa baza: karta znika, rodzic dostaje sygnał do ponownego wyszukiwania.
   useEffect(() => {
     if (state.phase === 'ready') onReady?.();
   }, [state.phase, onReady]);
@@ -56,21 +56,28 @@ export function IntercityDownloadCard({ onReady }: { onReady?: () => void }) {
     >
       <View style={styles.topRow}>
         <View style={styles.iconWrap}>
-          <Train size={22} color={scheme.onSecondaryContainer} />
+          <Train size={22} color={scheme.onPrimaryContainer} />
         </View>
         <View style={styles.titleWrap}>
           <Text style={styles.title}>{s.intercity.downloadTitle}</Text>
-          {sizeMb && !downloading ? <Text style={styles.size}>{s.intercity.downloadSize(sizeMb)}</Text> : null}
+          {sizeMb && !downloading ? (
+            <Text style={styles.size}>{s.intercity.downloadSize(sizeMb)}</Text>
+          ) : null}
         </View>
       </View>
 
-      <Text style={styles.body}>{failed ? s.intercity.downloadFailed : s.intercity.downloadBody}</Text>
+      <Text style={styles.body}>
+        {failed ? s.intercity.downloadFailed : s.intercity.downloadBody}
+      </Text>
 
       {downloading ? (
         <View style={styles.progressWrap} accessibilityLabel={s.intercity.downloading}>
           <View style={styles.progressTrack}>
             <Animated.View
-              style={[styles.progressFill, { width: `${Math.round(Math.max(0.02, state.progress) * 100)}%` }]}
+              style={[
+                styles.progressFill,
+                { width: `${Math.round(Math.max(0.02, state.progress) * 100)}%` },
+              ]}
             />
           </View>
           <Text style={styles.progressText}>
@@ -78,10 +85,12 @@ export function IntercityDownloadCard({ onReady }: { onReady?: () => void }) {
           </Text>
         </View>
       ) : (
-        <Pressable
+        <SpringPressable
           onPress={() => void downloadNationalTimetable()}
           disabled={busy}
-          style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }, busy && { opacity: 0.7 }]}
+          scaleDelta={0.025}
+          haptic="light"
+          style={[styles.cta, busy && styles.ctaBusy]}
           accessibilityRole="button"
           accessibilityLabel={s.intercity.downloadCta}
         >
@@ -91,7 +100,7 @@ export function IntercityDownloadCard({ onReady }: { onReady?: () => void }) {
             <Download size={16} color={scheme.onPrimary} />
           )}
           <Text style={styles.ctaText}>{s.intercity.downloadCta}</Text>
-        </Pressable>
+        </SpringPressable>
       )}
     </Animated.View>
   );
@@ -102,8 +111,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 18,
     gap: 14,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
   topRow: {
     flexDirection: 'row',
@@ -116,7 +128,7 @@ const styles = StyleSheet.create({
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: scheme.secondaryContainer,
+    backgroundColor: scheme.primaryContainer,
   },
   titleWrap: {
     flex: 1,
@@ -124,12 +136,13 @@ const styles = StyleSheet.create({
   },
   title: {
     ...type.titleMedium,
-    fontWeight: '500',
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   size: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   body: {
     ...type.bodyMedium,
@@ -153,6 +166,7 @@ const styles = StyleSheet.create({
   progressText: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   cta: {
     alignSelf: 'flex-start',
@@ -160,14 +174,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: scheme.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
     borderRadius: shape.full,
-    minHeight: 44,
+    minHeight: 46,
+  },
+  ctaBusy: {
+    opacity: 0.7,
   },
   ctaText: {
     ...type.labelLarge,
     color: scheme.onPrimary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

@@ -1,14 +1,15 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { ArrowDown, ArrowRight, Footprints, TriangleAlert } from './icons';
+import { ArrowDown, Footprints, TriangleAlert } from './icons';
 import { motion } from '../theme/motion';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
 import { DirectionsWalk } from './DirectionsWalk';
@@ -179,7 +180,7 @@ function JourneyStrip({
             if (step.kind === 'risk') {
               const critical = step.risk.level === 'critical';
               const fg = critical ? scheme.onErrorContainer : scheme.onWarningContainer;
-              const timeLabel = step.risk.slackMin <= 0 ? '<1\'' : `${step.risk.slackMin}'`;
+              const timeLabel = step.risk.slackMin <= 0 ? "<1'" : `${step.risk.slackMin}'`;
               return (
                 <View
                   key={step.key}
@@ -206,7 +207,7 @@ function JourneyStrip({
 
         {pinFinalWalk && (
           <View style={styles.pinnedFinalWalk}>
-            <DirectionsWalk size={13} color={scheme.warning} />
+            <DirectionsWalk size={13} color={scheme.onWarningContainer} />
             <Text style={styles.pinnedFinalWalkText} numberOfLines={1}>
               {s.connection.finalWalkPill(insights.finalWalkMin)}
             </Text>
@@ -279,11 +280,12 @@ export const ConnectionCard = memo(function ConnectionCard({
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
+  const cardRef = useRef<View>(null);
   const [focused, setFocused] = useState(false);
   const press = useSharedValue(0);
 
   const verticalTimes = (width - 64) / fontScale < 148;
-  const Direction = verticalTimes ? ArrowDown : ArrowRight;
   const walkMps = useWalkSpeedMps();
   const thresholds = useTransferThresholds();
   const now = useMemo(() => new Date(), [tick]);
@@ -335,7 +337,8 @@ export const ConnectionCard = memo(function ConnectionCard({
             : tr().common.departIn(effectiveMin);
 
   const showLiveOnTime = item.live && item.delayMin === 0 && !item.boarded && !dimmed && !walkOnly;
-  const showDelayPill = !notice && item.live && item.delayMin !== 0 && !item.boarded && !dimmed && !walkOnly;
+  const showDelayPill =
+    !notice && item.live && item.delayMin !== 0 && !item.boarded && !dimmed && !walkOnly;
 
   const departureColor =
     dimmed || historical
@@ -387,183 +390,220 @@ export const ConnectionCard = memo(function ConnectionCard({
     .filter(Boolean)
     .join('. ');
 
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    borderRadius: 24 - press.value * 10,
-    transform: [{ scale: 1 - press.value * 0.015 }],
-  }));
+  const animatedCardStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return {};
+    return {
+      borderRadius: shape.extraLarge - press.value * 8,
+      transform: [{ scale: 1 - press.value * 0.015 }],
+    };
+  });
 
   const setPress = useCallback(
     (value: number) => {
+      if (reduceMotion) return;
       press.value = withSpring(value, PRESS_SPRING);
     },
-    [press],
+    [press, reduceMotion],
   );
 
   const handlePress = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const node = cardRef.current;
+    if (!reduceMotion && node && typeof node.measureInWindow === 'function') {
+      node.measureInWindow((_x, y, _w, height) => {
+        if (Number.isFinite(y) && Number.isFinite(height) && height > 0) {
+          onPress(item, { y, height });
+        } else {
+          onPress(item);
+        }
+      });
+      return;
+    }
     onPress(item);
-  }, [item, onPress]);
+  }, [item, onPress, reduceMotion]);
 
   const showLongWalkStyle = insights.hasLongDestinationWalk && !dimmed && !item.boarded;
 
   return (
-    <ConnectionPeekTarget item={item} handlers={peek}>
-      <AnimatedPressable
-        collapsable={false}
-        onPress={handlePress}
-        onPressIn={() => setPress(1)}
-        onPressOut={() => setPress(0)}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityDesc}
-        accessibilityHint={peek ? s.connection.previewHint : undefined}
-        accessibilityActions={
-          peek
-            ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
-            : undefined
-        }
-        onAccessibilityTap={handlePress}
-        onAccessibilityAction={(event) => {
-          if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
-          if (event.nativeEvent.actionName === 'activate') handlePress();
-        }}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={[
-          styles.card,
-          showLongWalkStyle && styles.longWalkCard,
-          item.boarded && styles.boardedCard,
-          dimmed && styles.pastCard,
-          focused && styles.focused,
-          animatedCardStyle,
-        ]}
-      >
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Text style={[styles.departure, { color: departureColor }]}>
-              {walkOnly ? s.connection.walkRoute : departureText}
-            </Text>
+    <View ref={cardRef} collapsable={false}>
+      <ConnectionPeekTarget item={item} handlers={peek}>
+        <AnimatedPressable
+          collapsable={false}
+          onPress={handlePress}
+          onPressIn={() => setPress(1)}
+          onPressOut={() => setPress(0)}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityDesc}
+          accessibilityHint={peek ? s.connection.previewHint : undefined}
+          accessibilityActions={
+            peek
+              ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
+              : undefined
+          }
+          onAccessibilityTap={handlePress}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
+            if (event.nativeEvent.actionName === 'activate') handlePress();
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={[
+            styles.card,
+            showLongWalkStyle && styles.longWalkCard,
+            item.boarded && styles.boardedCard,
+            dimmed && styles.pastCard,
+            focused && styles.focused,
+            animatedCardStyle,
+          ]}
+        >
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <Text style={[styles.departure, { color: departureColor }]}>
+                {walkOnly ? s.connection.walkRoute : departureText}
+              </Text>
 
-            {showLiveOnTime && (
-              <View style={styles.onTimePill}>
-                <LiveSensors size={13} color={scheme.success} pulse={!dimmed} />
-                <Text style={styles.onTimePillText}>{s.connection.onTimeBadge}</Text>
-              </View>
-            )}
+              {showLiveOnTime && (
+                <View style={styles.onTimePill}>
+                  <LiveSensors size={13} color={scheme.onSuccessContainer} pulse={!dimmed} />
+                  <Text style={styles.onTimePillText}>{s.connection.onTimeBadge}</Text>
+                </View>
+              )}
 
-            {showDelayPill && (
-              <View
-                style={[
-                  styles.delayPill,
-                  item.delayMin > 0 ? styles.delayPillLate : styles.delayPillEarly,
-                ]}
-              >
-                <Text
+              {showDelayPill && (
+                <View
                   style={[
-                    styles.delayPillText,
-                    { color: item.delayMin > 0 ? scheme.onErrorContainer : scheme.onWarningContainer },
+                    styles.delayPill,
+                    item.delayMin > 0 ? styles.delayPillLate : styles.delayPillEarly,
                   ]}
                 >
-                  {item.delayMin > 0 ? `+${item.delayMin} min` : `${item.delayMin} min`}
+                  <Text
+                    style={[
+                      styles.delayPillText,
+                      {
+                        color:
+                          item.delayMin > 0 ? scheme.onErrorContainer : scheme.onWarningContainer,
+                      },
+                    ]}
+                  >
+                    {item.delayMin > 0 ? `+${item.delayMin} min` : `${item.delayMin} min`}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.headerRight}>
+              <RailAlertsChip connection={item} dimmed={dimmed} />
+              <View style={[styles.durationPill, dimmed && styles.durationPillDimmed]}>
+                <Text style={[styles.durationText, dimmed && styles.durationTextDimmed]}>
+                  {s.common.durMin(item.durationMin)}
                 </Text>
               </View>
-            )}
-          </View>
-
-          <View style={styles.headerRight}>
-            <RailAlertsChip connection={item} dimmed={dimmed} />
-            <View style={[styles.durationPill, dimmed && styles.durationPillDimmed]}>
-              <Text style={[styles.durationText, dimmed && styles.durationTextDimmed]}>
-                {s.common.durMin(item.durationMin)}
-              </Text>
             </View>
           </View>
-        </View>
 
-        <View style={[styles.timeRow, fontScale > 1.3 && styles.timeRowStacked]}>
-          <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-            <Text style={[styles.departClock, dimmed && styles.textDimmed]}>{departAt}</Text>
-            <Direction size={13} color={scheme.onSurfaceVariant} />
-            <Text style={[styles.arriveClock, dimmed && styles.textDimmed]}>{item.arriveAt}</Text>
-            {scheduledDeparture != null && item.live && item.delayMin !== 0 && (
-              <Text style={styles.plannedInline}>
-                {s.connection.plannedShort(secondsToTimeString(scheduledDeparture))}
-              </Text>
-            )}
-          </View>
-
-          <Text
-            style={styles.contextRight}
-            numberOfLines={fontScale > 1.3 ? 2 : 1}
-            ellipsizeMode="tail"
-          >
-            {contextRightText}
-          </Text>
-        </View>
-
-        {walkOnly ? (
-          <View
-            style={[
-              styles.walkOnlyBox,
-              insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyBoxLong,
-              dimmed && styles.stripSurfaceDimmed,
-            ]}
-          >
-            <View
-              style={[
-                styles.walkIconBadge,
-                insights.hasLongDestinationWalk && !dimmed && styles.walkIconBadgeLong,
-              ]}
-            >
-              <Footprints
-                size={16}
-                color={
-                  insights.hasLongDestinationWalk && !dimmed
-                    ? scheme.warning
-                    : scheme.onSurfaceVariant
-                }
-              />
+          <View style={[styles.timeRow, fontScale > 1.3 && styles.timeRowStacked]}>
+            <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
+              <Text style={[styles.departClock, dimmed && styles.textDimmed]}>{departAt}</Text>
+              {verticalTimes ? (
+                <ArrowDown size={13} color={scheme.onSurfaceVariant} />
+              ) : (
+                <View
+                  style={styles.miniBridge}
+                  accessible={false}
+                  importantForAccessibility="no-hide-descendants"
+                >
+                  <View style={styles.miniDotStart} />
+                  <View style={styles.miniTrack} />
+                  <View style={styles.miniDotEnd} />
+                </View>
+              )}
+              <Text style={[styles.arriveClock, dimmed && styles.textDimmed]}>{item.arriveAt}</Text>
+              {scheduledDeparture != null && item.live && item.delayMin !== 0 && (
+                <Text style={styles.plannedInline}>
+                  {s.connection.plannedShort(secondsToTimeString(scheduledDeparture))}
+                </Text>
+              )}
             </View>
+
             <Text
-              style={[
-                styles.walkOnlyLabel,
-                insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyLabelLong,
-              ]}
+              style={styles.contextRight}
+              numberOfLines={fontScale > 1.3 ? 2 : 1}
+              ellipsizeMode="tail"
             >
-              {s.connection.walkAll}
-              {walkM != null && walkM > 0 ? ` · ${formatDistance(walkM)}` : ''}
+              {contextRightText}
             </Text>
           </View>
-        ) : insights.transitLegs.length > 0 ? (
-          <JourneyStrip insights={insights} dimmed={dimmed} />
-        ) : null}
 
-        {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
-      </AnimatedPressable>
-    </ConnectionPeekTarget>
+          {walkOnly ? (
+            <View
+              style={[
+                styles.walkOnlyBox,
+                insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyBoxLong,
+                dimmed && styles.stripSurfaceDimmed,
+              ]}
+            >
+              <View
+                style={[
+                  styles.walkIconBadge,
+                  insights.hasLongDestinationWalk && !dimmed && styles.walkIconBadgeLong,
+                ]}
+              >
+                <Footprints
+                  size={16}
+                  color={
+                    insights.hasLongDestinationWalk && !dimmed
+                      ? scheme.onWarningContainer
+                      : scheme.onSurfaceVariant
+                  }
+                />
+              </View>
+              <Text
+                style={[
+                  styles.walkOnlyLabel,
+                  insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyLabelLong,
+                ]}
+              >
+                {s.connection.walkAll}
+                {walkM != null && walkM > 0 ? ` · ${formatDistance(walkM)}` : ''}
+              </Text>
+            </View>
+          ) : insights.transitLegs.length > 0 ? (
+            <JourneyStrip insights={insights} dimmed={dimmed} />
+          ) : null}
+
+          {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
+        </AnimatedPressable>
+      </ConnectionPeekTarget>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: scheme.outlineVariant + '44',
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     gap: 10,
+    ...elev.level1,
   },
   boardedCard: {
     backgroundColor: scheme.primaryContainer + '35',
-    borderColor: scheme.primary + '70',
+    borderWidth: 1.5,
+    borderColor: scheme.primary + '85',
   },
   longWalkCard: {
     backgroundColor: scheme.surfaceContainer,
-    borderColor: scheme.warning + '70',
+    borderWidth: 1.5,
+    borderColor: scheme.warning + '75',
   },
   pastCard: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderColor: 'transparent',
+    borderColor: scheme.outlineVariant + '55',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   focused: {
     borderWidth: 2,
@@ -592,10 +632,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   departure: {
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 25,
+    lineHeight: 29,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
   },
@@ -606,11 +646,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: shape.full,
-    backgroundColor: scheme.successContainer + '66',
+    backgroundColor: scheme.successContainer,
   },
   onTimePillText: {
     ...type.labelMedium,
-    color: scheme.success,
+    color: scheme.onSuccessContainer,
     fontWeight: '700',
   },
   delayPill: {
@@ -664,7 +704,7 @@ const styles = StyleSheet.create({
   timeRange: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     flexShrink: 0,
   },
   timeRangeStacked: {
@@ -672,10 +712,35 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 2,
   },
+  miniBridge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 1,
+  },
+  miniDotStart: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    borderWidth: 1.5,
+    borderColor: scheme.primary,
+  },
+  miniTrack: {
+    width: 14,
+    height: 1.5,
+    borderRadius: 1,
+    backgroundColor: scheme.outlineVariant,
+  },
+  miniDotEnd: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: scheme.primary,
+  },
   departClock: {
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
   },
@@ -706,10 +771,12 @@ const styles = StyleSheet.create({
   },
   stripSurface: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     paddingHorizontal: 10,
-    paddingVertical: 9,
-    gap: 8,
+    paddingVertical: 10,
+    gap: 9,
   },
   stripSurfaceDimmed: {
     opacity: 0.72,
@@ -732,16 +799,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: shape.small,
+    borderRadius: shape.full,
     minHeight: 26,
     backgroundColor: scheme.surfaceContainerHigh,
   },
   walkMinutes: {
     fontSize: 12,
     lineHeight: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
@@ -749,9 +816,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 4,
-    borderRadius: shape.small,
+    borderRadius: shape.full,
     minHeight: 26,
   },
   riskConnectorTight: {
@@ -770,13 +837,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     minHeight: 26,
-    borderRadius: shape.small,
+    borderRadius: shape.full,
     backgroundColor: scheme.warningContainer,
-    borderWidth: 1,
-    borderColor: scheme.warning + '70',
     flexShrink: 0,
   },
   pinnedFinalWalkText: {
@@ -792,12 +857,12 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   barSegment: {
-    height: 4,
+    height: 5,
     borderRadius: shape.full,
     minWidth: 10,
   },
   barLongWalk: {
-    height: 4,
+    height: 5,
     minWidth: 28,
     flexDirection: 'row',
     alignItems: 'center',
@@ -806,8 +871,8 @@ const styles = StyleSheet.create({
   },
   barDash: {
     width: 5,
-    height: 4,
-    borderRadius: 2,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: scheme.warning,
     flexShrink: 0,
   },
@@ -816,25 +881,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   walkOnlyBoxLong: {
-    backgroundColor: scheme.warningContainer + '42',
-    borderWidth: 1,
-    borderColor: scheme.warning + '38',
+    backgroundColor: scheme.warningContainer,
+    borderColor: scheme.warning + '50',
   },
   walkIconBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: shape.small,
+    width: 30,
+    height: 30,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   walkIconBadgeLong: {
-    backgroundColor: scheme.warningContainer,
+    backgroundColor: scheme.surfaceContainerLow + '40',
   },
   walkOnlyLabel: {
     ...type.labelLarge,
