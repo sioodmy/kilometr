@@ -156,18 +156,6 @@ function MockLineBadge({ mode, line }: { mode: 'tram' | 'bus' | 'train'; line: s
   );
 }
 
-// Pary ról sprawdzane względem WCAG; minimalne współczynniki jak w M3.
-const PAIR_SPECS = [
-  { key: 'button', fg: 'onPrimary', bg: 'primary', min: 4.5 },
-  { key: 'accentCard', fg: 'onPrimaryContainer', bg: 'primaryContainer', min: 4.5 },
-  { key: 'chip', fg: 'onSecondaryContainer', bg: 'secondaryContainer', min: 4.5 },
-  { key: 'body', fg: 'onSurface', bg: 'surface', min: 4.5 },
-  { key: 'helper', fg: 'onSurfaceVariant', bg: 'surface', min: 4.5 },
-  { key: 'card', fg: 'onSurface', bg: 'surfaceContainer', min: 4.5 },
-  { key: 'error', fg: 'onErrorContainer', bg: 'errorContainer', min: 4.5 },
-  { key: 'accent', fg: 'primary', bg: 'surface', min: 3 },
-] as const;
-
 function buildScheme(seedHex: string, variant: Variant, isDark: boolean): Scheme {
   const material = new VARIANTS[variant](Hct.fromInt(argbFromHex(seedHex)), isDark, 0);
   // Domyślny pusty string tylko dla typów: w 0.4.0 konstruktor zwraca wszystkie
@@ -205,20 +193,6 @@ function buildScheme(seedHex: string, variant: Variant, isDark: boolean): Scheme
     }
   }
   return scheme;
-}
-
-function channel(hex: string, offset: number): number {
-  const raw = Number.parseInt(hex.slice(1 + offset, 3 + offset), 16) / 255;
-  return raw <= 0.03928 ? raw / 12.92 : ((raw + 0.055) / 1.055) ** 2.4;
-}
-
-/** Współczynnik kontrastu WCAG 2.1 dla pary kolorów hex. */
-function contrastRatio(foreground: string, background: string): number {
-  const first = 0.2126 * channel(foreground, 0) + 0.7152 * channel(foreground, 2) + 0.0722 * channel(foreground, 4);
-  const second = 0.2126 * channel(background, 0) + 0.7152 * channel(background, 2) + 0.0722 * channel(background, 4);
-  const lighter = Math.max(first, second);
-  const darker = Math.min(first, second);
-  return (lighter + 0.05) / (darker + 0.05);
 }
 
 /**
@@ -267,28 +241,27 @@ function StudioSlider({
   );
 }
 
-function StudioPills({
+function StudioSegment({
   label,
-  hint,
   name,
   options,
   value,
   onChange,
+  columns = 2,
 }: {
   label: string;
-  hint?: string;
   name: string;
   options: { key: string; text: string }[];
   value: string;
   onChange: (key: string) => void;
+  columns?: 2 | 4;
 }) {
   return (
     <fieldset className="studio-fieldset">
       <legend>{label}</legend>
-      {hint ? <p className="studio-hint">{hint}</p> : null}
-      <div className="studio-pills">
+      <div className="studio-segment" data-columns={columns} role="presentation">
         {options.map((option) => (
-          <label key={option.key} className="studio-pill">
+          <label key={option.key} className="studio-segment-option">
             <input
               type="radio"
               className="sr-only"
@@ -297,7 +270,7 @@ function StudioPills({
               checked={value === option.key}
               onChange={() => onChange(option.key)}
             />
-            <span className="studio-pill-label" data-checked={value === option.key}>
+            <span className="studio-segment-label" data-checked={value === option.key}>
               {option.text}
             </span>
           </label>
@@ -351,15 +324,6 @@ export function ThemeStudioPage() {
     [seedHex, variant, mode],
   );
   const code = useMemo(() => encodeThemeCode(seedHex, variant), [seedHex, variant]);
-  const pairs = useMemo(
-    () =>
-      PAIR_SPECS.map((pair) => ({
-        key: pair.key,
-        ratio: contrastRatio(scheme[pair.fg], scheme[pair.bg]),
-        min: pair.min,
-      })),
-    [scheme],
-  );
 
   useEffect(() => {
     setCopyState('idle');
@@ -383,23 +347,150 @@ export function ThemeStudioPage() {
     (preset) => preset.hue === Math.round(hue) && preset.chroma === Math.round(chroma),
   );
 
+  const phoneScreen = (
+    <div
+      className="km-screen"
+      style={
+        {
+          '--k-primary': scheme.primary,
+          '--k-on-primary': scheme.onPrimary,
+          '--k-primary-container': scheme.primaryContainer,
+          '--k-on-primary-container': scheme.onPrimaryContainer,
+          '--k-tertiary-container': scheme.tertiaryContainer,
+          '--k-on-tertiary-container': scheme.onTertiaryContainer,
+          '--k-secondary-container': scheme.secondaryContainer,
+          '--k-on-secondary-container': scheme.onSecondaryContainer,
+          '--k-error-container': scheme.errorContainer,
+          '--k-on-error-container': scheme.onErrorContainer,
+          '--k-surface': scheme.surface,
+          '--k-on-surface': scheme.onSurface,
+          '--k-on-surface-variant': scheme.onSurfaceVariant,
+          '--k-surface-container': scheme.surfaceContainer,
+          '--k-surface-container-high': scheme.surfaceContainerHigh,
+          '--k-outline-variant': scheme.outlineVariant,
+        } as CSSProperties
+      }
+    >
+      <header className="km-topbar">
+        <span className="km-brand">Kilometr</span>
+        <span className="km-topbar-icons">
+          <Bell size={20} />
+          <Settings size={20} />
+        </span>
+      </header>
+      <div className="km-search">
+        <Search size={18} />
+        <span>{t.mock.search}</span>
+      </div>
+      <div className="km-alert">
+        <TriangleAlert size={17} className="km-alert-icon" />
+        <MockLineBadge mode="tram" line="10" />
+        <span className="km-alert-text">{t.mock.detour}</span>
+        <ChevronRight size={16} />
+      </div>
+      <div className="km-places">
+        <span className="km-place">
+          <span className="km-place-icon km-place-icon-home">
+            <Home size={18} />
+          </span>
+          {t.mock.home}
+        </span>
+        <span className="km-place">
+          <span className="km-place-icon km-place-icon-work">
+            <Briefcase size={18} />
+          </span>
+          {t.mock.work}
+        </span>
+      </div>
+      <div className="km-card">
+        <p className="km-card-title">{t.mock.departures}</p>
+        <div className="km-rows">
+          <MockRow
+            badge={<MockLineBadge mode="tram" line="0" />}
+            destination={MOCK_DEPARTURES[0].destination}
+            right={<span className="km-now">{t.mock.now}</span>}
+          />
+          <MockRow
+            badge={<MockLineBadge mode="tram" line="10" />}
+            destination={MOCK_DEPARTURES[1].destination}
+            right={
+              <>
+                <span className="km-eta">{t.mock.minutes(8)}</span>
+                <span className="km-delay">{t.mock.delay(2)}</span>
+              </>
+            }
+          />
+          <MockRow
+            badge={<MockLineBadge mode="bus" line="114" />}
+            destination={MOCK_DEPARTURES[2].destination}
+            right={<span className="km-eta">{t.mock.minutes(14)}</span>}
+          />
+          <MockRow
+            badge={<MockLineBadge mode="train" line="KD" />}
+            destination={MOCK_DEPARTURES[3].destination}
+            right={
+              <>
+                <span className="km-eta">{t.mock.minutes(21)}</span>
+                <span className="km-cancelled">{t.mock.cancelled}</span>
+              </>
+            }
+          />
+        </div>
+      </div>
+      <span className="km-pin">
+        <Navigation size={18} />
+        {t.mock.pin}
+      </span>
+      <nav className="km-navbar">
+        <Map size={22} />
+        <Route size={22} className="km-nav-active" />
+        <Settings size={22} />
+      </nav>
+    </div>
+  );
+
   return (
     <main className="studio-page section-shell" id="main" tabIndex={-1}>
-      <a className="text-link" href="#top">
-        <ArrowLeft size={17} aria-hidden="true" />
-        {s.footer.back}
-      </a>
-      <h1>{t.title}</h1>
-      <p className="studio-intro">{t.intro}</p>
+      <header className="studio-hero">
+        <a className="studio-back text-link" href="#top">
+          <ArrowLeft size={17} aria-hidden="true" />
+          {s.footer.back}
+        </a>
+        <h1>{t.title}</h1>
+        <p className="studio-intro">{t.intro}</p>
+      </header>
 
-      <div className="studio-grid">
-        <section className="studio-controls" aria-labelledby="studio-controls-title">
-          <h2 id="studio-controls-title">{t.controlsTitle}</h2>
-          <p className="studio-hint">{t.controlsHint}</p>
-          <p className="studio-seed">
-            <span className="studio-seed-dot" style={{ background: seedHex }} />
-            <code>{seedHex}</code>
+      <div className="studio-workspace">
+        <section className="studio-panel" aria-labelledby="studio-controls-title">
+          <div className="studio-panel-head">
+            <h2 id="studio-controls-title">{t.controlsTitle}</h2>
+            <p className="studio-hint">{t.controlsHint}</p>
+            <div className="studio-live-swatch" aria-hidden="true">
+              <span className="studio-live-swatch-dot" style={{ background: seedHex }} />
+            </div>
+          </div>
+
+          <p className="studio-presets-label" id="studio-presets-label">
+            {t.presetsLabel}
           </p>
+          <div className="studio-preset-row" role="group" aria-labelledby="studio-presets-label">
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                className="studio-preset"
+                aria-pressed={preset.key === activePreset?.key}
+                onClick={() => {
+                  setHue(preset.hue);
+                  setChroma(preset.chroma);
+                }}
+              >
+                <span className="studio-preset-dot" style={{ background: preset.hex }} />
+                <span className="studio-preset-name">{t.presetNames[preset.key]}</span>
+              </button>
+            ))}
+          </div>
+
           <StudioSlider
             id="studio-hue"
             label={t.hueLabel}
@@ -420,9 +511,10 @@ export function ThemeStudioPage() {
             value={chroma}
             onChange={setChroma}
           />
-          <StudioPills
+          <StudioSegment
             label={t.variantLabel}
             name="studio-variant"
+            columns={2}
             value={variant}
             onChange={(key) => setVariant(key as Variant)}
             options={(Object.keys(VARIANTS) as Variant[]).map((key) => ({
@@ -430,34 +522,15 @@ export function ThemeStudioPage() {
               text: t.variants[key],
             }))}
           />
-          <p className="studio-presets-label" id="studio-presets-label">
-            {t.presetsLabel}
-          </p>
-          <div className="studio-preset-row" role="group" aria-labelledby="studio-presets-label">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.key}
-                type="button"
-                className="studio-preset"
-                aria-pressed={preset.key === activePreset?.key}
-                onClick={() => {
-                  setHue(preset.hue);
-                  setChroma(preset.chroma);
-                }}
-              >
-                <span className="studio-preset-dot" style={{ background: preset.hex }} />
-                <span>{t.presetNames[preset.key]}</span>
-              </button>
-            ))}
-          </div>
         </section>
 
         <section className="studio-preview" aria-labelledby="studio-preview-title">
-          <div className="studio-sticky">
+          <div className="studio-preview-head">
             <h2 id="studio-preview-title">{t.previewTitle}</h2>
-            <StudioPills
+            <StudioSegment
               label={t.modeLabel}
               name="studio-mode"
+              columns={2}
               value={mode}
               onChange={(key) => setMode(key as 'dark' | 'light')}
               options={[
@@ -465,173 +538,48 @@ export function ThemeStudioPage() {
                 { key: 'light', text: t.lightMode },
               ]}
             />
+          </div>
+          <div className="studio-phone-wrap">
             <Phone className="studio-phone" label={t.previewAria}>
-              <div
-                className="km-screen"
-                style={
-                  {
-                    '--k-primary': scheme.primary,
-                    '--k-on-primary': scheme.onPrimary,
-                    '--k-primary-container': scheme.primaryContainer,
-                    '--k-on-primary-container': scheme.onPrimaryContainer,
-                    '--k-tertiary-container': scheme.tertiaryContainer,
-                    '--k-on-tertiary-container': scheme.onTertiaryContainer,
-                    '--k-secondary-container': scheme.secondaryContainer,
-                    '--k-on-secondary-container': scheme.onSecondaryContainer,
-                    '--k-error-container': scheme.errorContainer,
-                    '--k-on-error-container': scheme.onErrorContainer,
-                    '--k-surface': scheme.surface,
-                    '--k-on-surface': scheme.onSurface,
-                    '--k-on-surface-variant': scheme.onSurfaceVariant,
-                    '--k-surface-container': scheme.surfaceContainer,
-                    '--k-surface-container-high': scheme.surfaceContainerHigh,
-                    '--k-outline-variant': scheme.outlineVariant,
-                  } as CSSProperties
-                }
-              >
-                <header className="km-topbar">
-                  <span className="km-brand">Kilometr</span>
-                  <span className="km-topbar-icons">
-                    <Bell size={20} />
-                    <Settings size={20} />
-                  </span>
-                </header>
-                <div className="km-search">
-                  <Search size={18} />
-                  <span>{t.mock.search}</span>
-                </div>
-                <div className="km-alert">
-                  <TriangleAlert size={17} className="km-alert-icon" />
-                  <MockLineBadge mode="tram" line="10" />
-                  <span className="km-alert-text">{t.mock.detour}</span>
-                  <ChevronRight size={16} />
-                </div>
-                <div className="km-places">
-                  <span className="km-place">
-                    <span className="km-place-icon km-place-icon-home">
-                      <Home size={18} />
-                    </span>
-                    {t.mock.home}
-                  </span>
-                  <span className="km-place">
-                    <span className="km-place-icon km-place-icon-work">
-                      <Briefcase size={18} />
-                    </span>
-                    {t.mock.work}
-                  </span>
-                </div>
-                <div className="km-card">
-                  <p className="km-card-title">{t.mock.departures}</p>
-                  <div className="km-rows">
-                    <MockRow
-                      badge={<MockLineBadge mode="tram" line="0" />}
-                      destination={MOCK_DEPARTURES[0].destination}
-                      right={<span className="km-now">{t.mock.now}</span>}
-                    />
-                    <MockRow
-                      badge={<MockLineBadge mode="tram" line="10" />}
-                      destination={MOCK_DEPARTURES[1].destination}
-                      right={
-                        <>
-                          <span className="km-eta">{t.mock.minutes(8)}</span>
-                          <span className="km-delay">{t.mock.delay(2)}</span>
-                        </>
-                      }
-                    />
-                    <MockRow
-                      badge={<MockLineBadge mode="bus" line="114" />}
-                      destination={MOCK_DEPARTURES[2].destination}
-                      right={<span className="km-eta">{t.mock.minutes(14)}</span>}
-                    />
-                    <MockRow
-                      badge={<MockLineBadge mode="train" line="KD" />}
-                      destination={MOCK_DEPARTURES[3].destination}
-                      right={
-                        <>
-                          <span className="km-eta">{t.mock.minutes(21)}</span>
-                          <span className="km-cancelled">{t.mock.cancelled}</span>
-                        </>
-                      }
-                    />
-                  </div>
-                </div>
-                <span className="km-pin">
-                  <Navigation size={18} />
-                  {t.mock.pin}
-                </span>
-                <nav className="km-navbar">
-                  <Map size={22} />
-                  <Route size={22} className="km-nav-active" />
-                  <Settings size={22} />
-                </nav>
-              </div>
+              {phoneScreen}
             </Phone>
           </div>
         </section>
-      </div>
 
-      <div className="studio-diagnostics">
-        <section className="studio-checks" aria-labelledby="studio-checks-title">
-          <h2 id="studio-checks-title">{t.complianceTitle}</h2>
-          <p className="studio-hint">{t.complianceHint}</p>
-          <ul className="studio-pairs">
-            {pairs.map((pair) => (
-              <li key={pair.key} className="studio-pair">
-                <span className="studio-pair-label">{t.pairs[pair.key]}</span>
-                <code>{t.ratio(pair.ratio)}</code>
-                <span
-                  className="studio-pair-status"
-                  data-state={pair.ratio >= pair.min ? 'pass' : 'fail'}
-                >
-                  {pair.ratio >= pair.min ? t.pass : t.fail}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="studio-roles" aria-labelledby="studio-roles-title">
-          <h2 id="studio-roles-title">{t.paletteTitle}</h2>
-          <ul className="studio-palette">
-            {(Object.keys(t.roleLabels) as (keyof typeof t.roleLabels)[]).map((role) => (
-              <li key={role} className="studio-role">
-                <span className="studio-role-swatch" style={{ background: scheme[role as SchemeKey] }} />
-                <span className="studio-role-name">{t.roleLabels[role]}</span>
-                <code className="studio-role-hex">{scheme[role as SchemeKey]}</code>
-              </li>
-            ))}
-          </ul>
+        <section className="studio-output" aria-labelledby="studio-output-title">
+          <h2 id="studio-output-title">{t.outputTitle}</h2>
+          <p className="studio-hint">{t.outputIntro}</p>
+          <div className="studio-code-row">
+            <input
+              id="studio-code"
+              ref={codeField}
+              className="studio-code"
+              type="text"
+              readOnly
+              value={code}
+              aria-label={t.codeLabel}
+              onFocus={(event) => event.target.select()}
+              onClick={(event) => event.currentTarget.select()}
+            />
+            <button type="button" className="button button-primary studio-copy" onClick={copyCode}>
+              {copyState === 'ok' ? (
+                <Check size={17} aria-hidden="true" />
+              ) : (
+                <Copy size={17} aria-hidden="true" />
+              )}
+              {copyState === 'ok' ? t.copied : t.copy}
+            </button>
+          </div>
+          <p className="studio-copy-status" role="status">
+            {copyState === 'ok' ? t.copied : copyState === 'fail' ? t.copyFailed : ''}
+          </p>
+          <a className="studio-kofi text-link" href={KOFI_URL} target="_blank" rel="noopener noreferrer">
+            {t.sendOn}
+            <ArrowUpRight size={15} aria-hidden="true" />
+            <span className="sr-only">{s.install.newTab}</span>
+          </a>
         </section>
       </div>
-
-      <section className="studio-output" aria-labelledby="studio-output-title">
-        <h2 id="studio-output-title">{t.outputTitle}</h2>
-        <p className="studio-hint">{t.outputIntro}</p>
-        <div className="studio-code-row">
-          <input
-            id="studio-code"
-            ref={codeField}
-            className="studio-code"
-            type="text"
-            readOnly
-            value={code}
-            aria-label={t.codeLabel}
-            onFocus={(event) => event.target.select()}
-            onClick={(event) => event.currentTarget.select()}
-          />
-          <button type="button" className="button button-primary" onClick={copyCode}>
-            {copyState === 'ok' ? <Check size={17} aria-hidden="true" /> : <Copy size={17} aria-hidden="true" />}
-            {copyState === 'ok' ? t.copied : t.copy}
-          </button>
-        </div>
-        <p className="studio-copy-status" role="status">
-          {copyState === 'ok' ? t.copied : copyState === 'fail' ? t.copyFailed : ''}
-        </p>
-        <a className="text-link" href={KOFI_URL} target="_blank" rel="noopener noreferrer">
-          {t.sendOn}
-          <ArrowUpRight size={15} aria-hidden="true" />
-          <span className="sr-only">{s.install.newTab}</span>
-        </a>
-      </section>
     </main>
   );
 }
