@@ -1,8 +1,8 @@
-# Ręczny build pakietu kafelków mapy per-miasto → Cloudflare R2.
+# Ręczny build pakietu kafelków mapy per-miasto -> Cloudflare R2.
 #
 # Uruchamiaj rzadko i ręcznie: kafle OSM zmieniają się powoli, a pakiet waży
-# ~19–104 MB (KMTP v2 z kompresją gzip). Gdy go odpalasz z gałęzi innej niż domyślna,
-# wybierz tę gałąź w „Run workflow”. Miasto wybierasz inputem `city`.
+# ~1–104 MB (KMTP v2 z kompresją gzip). Gdy go odpalasz z gałęzi innej niż domyślna,
+# wybierz tę gałąź w „Run workflow”. Miasto wybierasz inputem `city` (albo `all`).
 #
 # Wymagane sekrety (te same co timetable.yml):
 #   CLOUDFLARE_API_TOKEN   token z uprawnieniem R2 write na bucket kilometr-timetable
@@ -14,17 +14,16 @@
 # Po wgraniu telefon pobiera pakiet z https://data.kilometr.app/maps/{miasto}-tiles.ktp
 # (Worker kilometr-timetable serwuje ten klucz z R2).
 
-name: Map tiles build → R2
+name: Map tiles build -> R2
 
 on:
   workflow_dispatch:
     inputs:
       city:
-        description: 'Miasto'
+        description: 'Miasto (np. wroclaw, grudziadz; albo all = wszystkie 132)'
         required: true
         default: 'wroclaw'
-        type: choice
-        options: [wroclaw, krakow, gzm, warszawa, poznan, trojmiasto, lodz, szczecin, kielce, olsztyn, bialystok, opole, rzeszow, lublin, radom, bydgoszcz, torun, elblag, gorzow, czestochowa, zielonagora, rybnik, slupsk, walbrzych, kalisz, siedlce, lomza, krosno, jaslo, olkusz, chrzanow, bochnia, ilawa]
+        type: string
 
 permissions:
   contents: read
@@ -35,8 +34,13 @@ concurrency:
 
 jobs:
   build-and-upload:
-    name: Build tile pack + upload R2 (${{ inputs.city }})
+    name: Build tile pack + upload R2 (${{ matrix.city }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        city: ${{ inputs.city == 'all' && fromJSON('["wroclaw","krakow","gzm","warszawa","poznan","trojmiasto","lodz","szczecin","kielce","olsztyn","bialystok","opole","rzeszow","lublin","radom","bydgoszcz","torun","elblag","gorzow","czestochowa","zielonagora","rybnik","slupsk","walbrzych","kalisz","siedlce","lomza","krosno","jaslo","olkusz","chrzanow","bochnia","ilawa","bielskobiala","koszalin","piotrkow","tomaszow","skarzysko","oswiecim","swinoujscie","zakopane","plock","tarnow","legnica","jastrzebie","pila","konin","suwalki","ostrowiec","stalowawola","przemysl","elk","leszno","chelm","mielec","tczew","ostroleka","starachowice","kutno","kolobrzeg","radomsko","boleslawiec","cieszyn","zywiec","krasnik","grodzisk","pruszkow","sochaczew","minskmazowiecki","otwock","nowydwormaz","zabki","pabianice","zgierz","grudziadz","stargard","gniezno","jaworzno","kedzierzynkozle","zamosc","raciborz","belchatow","tarnobrzeg","skierniewice","zawiercie","starogard","zdunskawola","nysa","malbork","sieradz","szczecinek","nowasol","olesnica","czechowicedziedzice","ostroda","nowytarg","augustow","ketrzyn","zgorzelec","polkowice","gorlice","jarocin","wrzesnia","walcz","gizycko","zagan","koscierzyna","krotoszyn","sandomierz","bartoszyce","wielun","mragowo","swiecie","wagrowiec","bielskpodlaski","dzialdowo","brzesko","gostyn","chodziez","lidzbarkwarminski","pszczyna","wodzislaw","zabkowice","strzelin","srodaslaska","jedrzejow","kozienice","oborniki","wieliczka","myszkow","slubice","kartuzy"]') || fromJSON(format('["{0}"]', inputs.city)) }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -46,34 +50,34 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build tile pack (${{ inputs.city }}, z0-14)
+      - name: Build tile pack (${{ matrix.city }}, z0-14)
         run: |
           mkdir -p dist
-          node scripts/build-tile-pack.mjs --city=${{ inputs.city }} dist/${{ inputs.city }}-tiles.ktp
+          node scripts/build-tile-pack.mjs --city=${{ matrix.city }} dist/${{ matrix.city }}-tiles.ktp
 
       - name: Summary
         run: |
-          SIZE=$(du -h "dist/${{ inputs.city }}-tiles.ktp" | cut -f1)
-          echo "### Pakiet kafelków (${{ inputs.city }}): ${SIZE}" >> "$GITHUB_STEP_SUMMARY"
+          SIZE=$(du -h "dist/${{ matrix.city }}-tiles.ktp" | cut -f1)
+          echo "### Pakiet kafelków (${{ matrix.city }}): ${SIZE}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          node -e "const fs=require('fs');const b=fs.readFileSync('dist/${{ inputs.city }}-tiles.ktp');console.log(JSON.stringify({wersja:b.readUInt32LE(4),kafelkow:b.readUInt32LE(8),maxzoom:b.readUInt32LE(12),rozmiarMB:+(b.length/1048576).toFixed(1)}))" >> "$GITHUB_STEP_SUMMARY"
+          node -e "const fs=require('fs');const b=fs.readFileSync('dist/${{ matrix.city }}-tiles.ktp');console.log(JSON.stringify({wersja:b.readUInt32LE(4),kafelkow:b.readUInt32LE(8),maxzoom:b.readUInt32LE(12),rozmiarMB:+(b.length/1048576).toFixed(1)}))" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Artefakt (7 dni, do ręcznego wgrania)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.city }}-tiles
-          path: dist/${{ inputs.city }}-tiles.ktp
+          name: ${{ matrix.city }}-tiles
+          path: dist/${{ matrix.city }}-tiles.ktp
           retention-days: 7
 
-      - name: Upload → R2
+      - name: Upload -> R2
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "Brak sekretu CLOUDFLARE_API_TOKEN - pomijam upload do R2. Pakiet jest w artefakcie."
             exit 0
           fi
-          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/maps/${{ inputs.city }}-tiles.ktp" \
-            --file="dist/${{ inputs.city }}-tiles.ktp" --content-type application/octet-stream
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/maps/${{ matrix.city }}-tiles.ktp" \
+            --file="dist/${{ matrix.city }}-tiles.ktp" --content-type application/octet-stream
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -83,7 +87,7 @@ jobs:
       - name: Verify public URL
         run: |
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-            "https://data.kilometr.app/maps/${{ inputs.city }}-tiles.ktp")
+            "https://data.kilometr.app/maps/${{ matrix.city }}-tiles.ktp")
           echo "HTTP ${CODE}"
           if [ "${CODE}" != "200" ]; then
             echo "::error::Endpoint mapy zwrocil ${CODE}. Jesli 404 not-found: zdeployuj Workera (cd cloudflare && npx wrangler deploy). Jesli not-built-yet: upload R2 sie nie udal."

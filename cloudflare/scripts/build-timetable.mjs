@@ -127,6 +127,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { ADDRESSES_DB_SCHEMA, addressSnapshotIsFresh, importAddresses, loadAddressSnapshot } from './build-addresses.mjs';
 import { importPois, loadPoiSnapshot } from './build-pois.mjs';
+import { getKpFingerprint, scrapeKpToGtfsDir } from './kp-gtfs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -165,6 +166,110 @@ const NEW_CITY_FEEDS = {
   chrzanow: { key: 'zkkm', label: 'ZKKM', url: 'https://data.odt.org.pl/gtfs/zkkm-gtfs.zip' },
   bochnia: { key: 'rpk', label: 'RPK', url: 'https://api.odt.org.pl/feed/21/GTFS_RPKBochnia.zip' },
   ilawa: { key: 'zkm', label: 'ZKM', url: 'https://api.odt.org.pl/feed/30/gtfs-ILAWA.zip' },
+  // Zbiorkom.live compiled municipal GTFS feeds (41 new cities)
+  bielskobiala: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/bielskoBiala/gtfs/default' },
+  koszalin: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/koszalin/gtfs/default' },
+  piotrkow: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/piotrkowTrybunalski/gtfs/default' },
+  tomaszow: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/tomaszowMazowiecki/gtfs/default' },
+  skarzysko: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/skarzyskoKamienna/gtfs/default' },
+  oswiecim: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/oswiecim/gtfs/default' },
+  swinoujscie: { key: 'ka', label: 'KA', url: 'https://api.zbiorkom.live/api6-open/swinoujscie/gtfs/default' },
+  zakopane: { key: 'km', label: 'KM', url: 'https://api.zbiorkom.live/api6-open/zakopane/gtfs/default' },
+  plock: { key: 'km', label: 'KM', url: 'https://api.zbiorkom.live/api6-open/plock/gtfs/default' },
+  tarnow: { key: 'ztk', label: 'ZTK', url: 'https://api.zbiorkom.live/api6-open/tarnow/gtfs/default' },
+  legnica: { key: 'mpk', label: 'MPK', url: 'https://api.zbiorkom.live/api6-open/legnica/gtfs/default' },
+  jastrzebie: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/rybnik/gtfs/JASTRZEBIE' },
+  pila: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/pila/gtfs/default' },
+  konin: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/konin/gtfs/default' },
+  suwalki: { key: 'pgk', label: 'PGK', url: 'https://api.zbiorkom.live/api6-open/suwalki/gtfs/default' },
+  ostrowiec: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/ostrowiecSwietokrzyski/gtfs/default' },
+  stalowawola: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/stalowaWola/gtfs/default' },
+  przemysl: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/przemysl/gtfs/default' },
+  elk: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/elk/gtfs/default' },
+  leszno: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/leszno/gtfs/default' },
+  chelm: { key: 'cla', label: 'CLA', url: 'https://api.zbiorkom.live/api6-open/chelm/gtfs/default' },
+  mielec: { key: 'mks', label: 'MKS', url: 'https://api.zbiorkom.live/api6-open/mielec/gtfs/default' },
+  tczew: { key: 'km', label: 'KM', url: 'https://api.zbiorkom.live/api6-open/tczew/gtfs/default' },
+  ostroleka: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/ostroleka/gtfs/default' },
+  starachowice: { key: 'zec', label: 'ZEC', url: 'https://api.zbiorkom.live/api6-open/starachowice/gtfs/default' },
+  kutno: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/kutno/gtfs/default' },
+  kolobrzeg: { key: 'km', label: 'KM', url: 'https://api.zbiorkom.live/api6-open/kolobrzeg/gtfs/default' },
+  radomsko: { key: 'mpk', label: 'MPK', url: 'https://api.zbiorkom.live/api6-open/radomsko/gtfs/default' },
+  boleslawiec: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/boleslawiec/gtfs/default' },
+  cieszyn: { key: 'zgk', label: 'ZGK', url: 'https://api.zbiorkom.live/api6-open/cieszyn/gtfs/default' },
+  zywiec: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/zywiec/gtfs/default' },
+  krasnik: { key: 'mpk', label: 'MPK', url: 'https://api.zbiorkom.live/api6-open/krasnik/gtfs/default' },
+  grodzisk: { key: 'gpa', label: 'GPA', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/GPA' },
+  pruszkow: { key: 'gpm', label: 'GPM', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/PRUSZKOW' },
+  zabki: { key: 'kmz', label: 'KMZ', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/ZABKI' },
+  sochaczew: { key: 'zkm', label: 'ZKM', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/SOCHACZEW' },
+  minskmazowiecki: { key: 'zkm', label: 'ZKM', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/MINSK' },
+  otwock: { key: 'mk', label: 'MK', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/OTWOCK' },
+  nowydwormaz: { key: 'ndm', label: 'NDM', url: 'https://api.zbiorkom.live/api6-open/warsaw/gtfs/NDM' },
+  pabianice: { key: 'mzk', label: 'MZK', url: 'https://api.zbiorkom.live/api6-open/lodz/gtfs/PABIANICE' },
+  zgierz: { key: 'muk', label: 'MUK', url: 'https://api.zbiorkom.live/api6-open/lodz/gtfs/ZGIERZ' },
+};
+
+// Pure kiedyprzyjedzie.pl cities without an official static GTFS feed (58 cities).
+const KP_CITY_FEEDS = {
+  grudziadz: { label: 'MZK Grudziądz', prefix: 'grudziadz' },
+  jaworzno: { label: 'PKM Jaworzno', prefix: 'jaworzno' },
+  stargard: { label: 'MPK Stargard', prefix: 'stargard' },
+  gniezno: { label: 'MPK Gniezno', prefix: 'gniezno' },
+  zamosc: { label: 'MZK Zamość', prefix: 'zamosc' },
+  kedzierzynkozle: { label: 'MZK Kędzierzyn-Koźle', prefix: 'mzkkk' },
+  belchatow: { label: 'MZK Bełchatów', prefix: 'belchatow' },
+  raciborz: { label: 'PK Racibórz', prefix: 'raciborz' },
+  tarnobrzeg: { label: 'PKS Tarnobrzeg', prefix: 'tarnobrzeg' },
+  skierniewice: { label: 'MZK Skierniewice', prefix: 'skierniewice' },
+  starogard: { label: 'MZK Starogard Gdański', prefix: 'starogard' },
+  zawiercie: { label: 'ZKM Zawiercie', prefix: 'zawiercie' },
+  nysa: { label: 'MZK Nysa', prefix: 'nysa' },
+  zdunskawola: { label: 'MPK Zduńska Wola', prefix: 'zdw' },
+  sieradz: { label: 'MPK Sieradz', prefix: 'sieradz' },
+  malbork: { label: 'MZK Malbork', prefix: 'malbork' },
+  szczecinek: { label: 'KM Szczecinek', prefix: 'szczecinek' },
+  nowasol: { label: 'MZK Nowa Sól', prefix: 'nowasol' },
+  olesnica: { label: 'KM Oleśnica', prefix: 'olesnica' },
+  czechowicedziedzice: { label: 'PKM Czechowice-Dziedzice', prefix: 'czechowice-dziedzice' },
+  ostroda: { label: 'ŻKM Ostróda', prefix: 'ostroda' },
+  nowytarg: { label: 'MZK Nowy Targ', prefix: 'nowytarg' },
+  augustow: { label: 'KM Augustów', prefix: 'augustow' },
+  ketrzyn: { label: 'KM Kętrzyn', prefix: 'ketrzyn' },
+  gorlice: { label: 'MZK Gorlice', prefix: 'gorlice' },
+  zgorzelec: { label: 'KM Zgorzelec', prefix: 'zgorzelec' },
+  jarocin: { label: 'JLA Jarocin', prefix: 'jarocin' },
+  polkowice: { label: 'ZKM Polkowice', prefix: 'polkowice' },
+  zagan: { label: 'MZK Żagań', prefix: 'zagan' },
+  wrzesnia: { label: 'WKP Września', prefix: 'wrzesnia' },
+  walcz: { label: 'ZKM Wałcz', prefix: 'walcz' },
+  gizycko: { label: 'GKP Giżycko', prefix: 'gizycko' },
+  krotoszyn: { label: 'MZK Krotoszyn', prefix: 'krotoszyn' },
+  koscierzyna: { label: 'KM Kościerzyna', prefix: 'miastokoscierzyna' },
+  sandomierz: { label: 'ZKM Sandomierz', prefix: 'sandomierz' },
+  bartoszyce: { label: 'KM Bartoszyce', prefix: 'bartoszyce' },
+  wielun: { label: 'KM Wieluń', prefix: 'wielun' },
+  mragowo: { label: 'KM Mrągowo', prefix: 'mragowo' },
+  wagrowiec: { label: 'ZKM Wągrowiec', prefix: 'wagrowiec' },
+  swiecie: { label: 'KM Świecie', prefix: 'swiecie' },
+  dzialdowo: { label: 'KM Działdowo', prefix: 'dzialdowo' },
+  bielskpodlaski: { label: 'KM Bielsk Podlaski', prefix: 'bielskpodlaski' },
+  gostyn: { label: 'KM Gostyń', prefix: 'gostyn' },
+  brzesko: { label: 'MPK Brzesko', prefix: 'brzesko' },
+  lidzbarkwarminski: { label: 'KM Lidzbark Warmiński', prefix: 'lidzbarkwarminski' },
+  chodziez: { label: 'MZK Chodzież', prefix: 'chodziez' },
+  pszczyna: { label: 'KP Pszczyna', prefix: 'pszczyna' },
+  wodzislaw: { label: 'KSP Wodzisław Śląski', prefix: 'powiatwodzislawski' },
+  zabkowice: { label: 'KM Ząbkowice Śląskie', prefix: 'zabkowice' },
+  strzelin: { label: 'KM Strzelin', prefix: 'strzelin' },
+  srodaslaska: { label: 'ŚKP Środa Śląska', prefix: 'srodaslaska' },
+  jedrzejow: { label: 'KM Jędrzejów', prefix: 'jedrzejow' },
+  kozienice: { label: 'KM Kozienice', prefix: 'kozienice' },
+  oborniki: { label: 'KM Oborniki', prefix: 'oborniki' },
+  wieliczka: { label: 'WST Wieliczka', prefix: 'wieliczka' },
+  myszkow: { label: 'Jedźmy Razem Myszków', prefix: 'jedzmyrazem' },
+  kartuzy: { label: 'Gryf Kartuzy', prefix: 'gryf' },
+  slubice: { label: 'KM Słubice', prefix: 'slubice' },
 };
 
 /**
@@ -196,6 +301,7 @@ const CITY =
   : CITY_ARG === 'radom' ? 'radom'
   : CITY_ARG === 'kalisz' ? 'kalisz'
   : NEW_CITY_FEEDS[CITY_ARG] ? CITY_ARG
+  : KP_CITY_FEEDS[CITY_ARG] ? CITY_ARG
   : 'wroclaw';
 /** Jawny --city przełącza output na dist/{miasto}/ (workflow); bez flagi legacy dist/. */
 /** Każde miasto ma własny podkatalog dist/{miasto}/ */
@@ -2292,6 +2398,7 @@ async function main() {
   let lublinFingerprint = '';
   let radomFingerprint = '';
   let newCityFingerprint = '';
+  let kpFingerprint = '';
   let kaliszFingerprint = '';
   if (CITY === 'krakow') {
     for (const f of ZTP_FEEDS) {
@@ -2369,6 +2476,11 @@ async function main() {
     gtfsSources = [{ label: f.label, url: f.url, prefix: '', headers: NEW_CITY_UA }];
     newCityFingerprint = await headVersion(f.url, NEW_CITY_UA);
     log(`${f.label}: ${newCityFingerprint || '?'}`);
+  } else if (KP_CITY_FEEDS[CITY]) {
+    const f = KP_CITY_FEEDS[CITY];
+    gtfsSources = [{ label: f.label, kpPrefix: f.prefix, prefix: '' }];
+    kpFingerprint = (await getKpFingerprint(f.prefix)) || '';
+    log(`${f.label} (${f.prefix}): ${kpFingerprint || '?'}`);
   } else if (CITY === 'kalisz') {
     for (const f of KALISZ_FEEDS) {
       gtfsSources.push({ label: f.label, url: f.url, prefix: `KAL:${f.prefix}`, headers: NEW_CITY_UA });
@@ -2637,6 +2749,15 @@ async function main() {
         process.exit(2);
       }
     }
+    if (KP_CITY_FEEDS[CITY] && remote.sources.kp?.fingerprint === kpFingerprint && kpFingerprint) {
+      const ageMs = remote.builtAt ? Date.now() - Date.parse(remote.builtAt) : Infinity;
+      if (Number.isFinite(ageMs) && ageMs < 10 * 86_400_000) {
+        log(`brak zmian (${KP_CITY_FEEDS[CITY].label}), skip buildu.`);
+        rmSync(work, { recursive: true, force: true });
+        process.exit(2);
+      }
+      log(`odświeżam kroczący kalendarz (${KP_CITY_FEEDS[CITY].label}, wiek > 10 dni).`);
+    }
     if (CITY === 'kalisz' && remote.sources.kalisz?.fingerprint === kaliszFingerprint && kaliszFingerprint) {
       if (!kaliszVersionReliable) {
         warn('feed bez Last-Modified/ETag, nie mogę wykryć zmian: przebudowuję zamiast skipować.');
@@ -2703,6 +2824,12 @@ async function main() {
   const NEEDED = ['stops.txt', 'routes.txt', 'calendar.txt', 'calendar_dates.txt', 'trips.txt', 'stop_times.txt', 'frequencies.txt'];
   const txtDirs = [];
   for (const [i, src] of gtfsSources.entries()) {
+    if (src.kpPrefix) {
+      const txtDir = join(work, `gtfs-${i}`);
+      await scrapeKpToGtfsDir(src.kpPrefix, txtDir, { log });
+      txtDirs.push({ dir: txtDir, prefix: src.prefix, label: src.label });
+      continue;
+    }
     const zipPath = join(work, `gtfs-${i}.zip`);
     log(`pobieranie ZIP ${src.label}…`);
     const feed = await fetchFeed(src);
@@ -4279,6 +4406,8 @@ async function main() {
               ? `${todayCompact()}-kalisz${createHash('sha256').update(`${kaliszFingerprint}`).digest('hex').slice(0, 8)}`
             : NEW_CITY_FEEDS[CITY]
               ? `${todayCompact()}-${CITY}${createHash('sha256').update(`${newCityFingerprint}`).digest('hex').slice(0, 8)}`
+            : KP_CITY_FEEDS[CITY]
+              ? `${todayCompact()}-${CITY}${createHash('sha256').update(`${kpFingerprint}`).digest('hex').slice(0, 8)}`
               : `${todayCompact()}-mpk${(mpk.effectiveDate || 'unknown').replace(/-/g, '')}-kd${String(kdVersion).slice(0, 8)}`;
   const version = `${transitVersion}-addr${addressMetadata?.fingerprint.slice(0, 8) ?? 'none'}-poi${poiMetadata?.fingerprint.slice(0, 8) ?? 'none'}`;
   const meta = db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
@@ -4287,7 +4416,7 @@ async function main() {
   meta.run('gtfs_source', 'network');
   meta.run('address_snapshot', JSON.stringify(addressMetadata));
   meta.run('poi_snapshot', JSON.stringify(poiMetadata));
-  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : CITY === 'kalisz' ? { kalisz: kaliszFingerprint } : NEW_CITY_FEEDS[CITY] ? { [NEW_CITY_FEEDS[CITY].key]: newCityFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
+  meta.run('feeds', JSON.stringify(CITY === 'krakow' ? { ztp: ztpFingerprint, kml: kmlVersion } : CITY === 'gzm' ? { ztm: gtmFingerprint, ks: ksVersion, icpr: icprVersion } : CITY === 'warszawa' ? { wtp: wawFingerprint, km: kmVersion, wkd: wkdVersion } : CITY === 'poznan' ? { ztm: poznanFingerprint, kw: kwVersion } : CITY === 'trojmiasto' ? { gdansk: gdaFingerprint, gdynia: gdyFingerprint, skmt: skmtVersion } : CITY === 'lodz' ? { mpk: lodzFingerprint, lka: lkaVersion } : CITY === 'szczecin' ? { zditm: szczecinFingerprint } : CITY === 'kielce' ? { ztm: kielceFingerprint } : CITY === 'olsztyn' ? { zdzit: olsztynFingerprint } : CITY === 'bialystok' ? { bkm: bialystokFingerprint } : CITY === 'opole' ? { mzk: opoleFingerprint } : CITY === 'rzeszow' ? { ztm: rzeszowFingerprint } : CITY === 'lublin' ? { zditm: lublinFingerprint } : CITY === 'radom' ? { mzdik: radomFingerprint } : CITY === 'kalisz' ? { kalisz: kaliszFingerprint } : NEW_CITY_FEEDS[CITY] ? { [NEW_CITY_FEEDS[CITY].key]: newCityFingerprint } : KP_CITY_FEEDS[CITY] ? { kp: kpFingerprint } : { mpk: mpk.effectiveDate, kd: kdVersion }));
   db.exec('VACUUM');
   const chk = db.prepare('PRAGMA integrity_check').get();
   const vals = chk ? Object.values(chk) : [];
@@ -4489,6 +4618,16 @@ async function main() {
           [NEW_CITY_FEEDS[CITY].key]: {
             kind: 'gtfs-zip', url: NEW_CITY_FEEDS[CITY].url,
             fingerprint: newCityFingerprint,
+            stops: counts.stops, routes: counts.routes,
+            trips: counts.trips, stopTimes: counts.stopTimes,
+          },
+        }
+      : KP_CITY_FEEDS[CITY]
+      ? {
+          kp: {
+            kind: 'kp-scrape', prefix: KP_CITY_FEEDS[CITY].prefix,
+            url: `https://${KP_CITY_FEEDS[CITY].prefix}.kiedyprzyjedzie.pl`,
+            fingerprint: kpFingerprint,
             stops: counts.stops, routes: counts.routes,
             trips: counts.trips, stopTimes: counts.stopTimes,
           },
