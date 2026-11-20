@@ -8,6 +8,7 @@ import { TransitBackdrop } from './components/TransitBackdrop';
 import { PromiseSection } from './components/Promise';
 import { InformationPage } from './components/InformationPage';
 import { InstallPage } from './components/InstallPage';
+import { ThemeStudioPage } from './components/ThemeStudioPage';
 import { PlatformLinks } from './components/PlatformLinks';
 import { GITHUB_URL, KOFI_URL } from './data';
 
@@ -75,7 +76,9 @@ export default function App() {
         ? 'android'
         : hash === '#ios'
           ? 'ios'
-          : null;
+          : hash === '#motyw'
+            ? 'themeStudio'
+            : null;
   useEffect(() => {
     const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);
@@ -150,6 +153,8 @@ export default function App() {
         </Suspense>
       ) : page === 'privacy' ? (
         <InformationPage />
+      ) : page === 'themeStudio' ? (
+        <ThemeStudioPage />
       ) : page ? (
         <InstallPage page={page} />
       ) : (
@@ -164,6 +169,7 @@ export default function App() {
           <p>{s.footer.tagline}</p>
           <nav aria-label={s.nav.label}>
             <a href="#polityka">{s.footer.privacy}</a>
+            <a href="#motyw">{s.themeStudio.footerLink}</a>
             <a href={GITHUB_URL}>
               {s.footer.github}
               <ArrowUpRight size={13} aria-hidden="true" />
