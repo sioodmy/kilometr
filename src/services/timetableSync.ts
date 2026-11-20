@@ -399,4 +399,6 @@ export async function downloadNationalDb(
   resetRailAmenitiesCache();
   const { resetStationAmenitiesCache } = await import('./stationAmenities');
   resetStationAmenitiesCache();
+  const { resetPlatformSidesCache } = await import('./trainDoorSide');
+  resetPlatformSidesCache();
 }

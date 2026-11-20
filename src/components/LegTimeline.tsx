@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BusFront,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Footprints,
   MapPin,
@@ -43,6 +44,7 @@ import {
   type LiveStopPosition,
 } from '../services/vehiclePosition';
 import { ensureTrainTrack, type TrainTrack } from '../services/trainTrack';
+import { loadTrainDoorSide, type DoorSide } from '../services/trainDoorSide';
 import { classifyVehicleModel } from '../services/vehicleInfo';
 import { useStrings, type Strings } from '../i18n';
 import { motion } from '../theme/motion';
@@ -755,7 +757,7 @@ const TransitLegCard = memo(function TransitLegCard({
 
   const [track, setTrack] = useState<TrainTrack | null>(null);
   useEffect(() => {
-    if (!expanded || !isTrain) return;
+    if (!isTrain) return;
     let mounted = true;
     void ensureTrainTrack(leg, stops, segment).then(
       (nextTrack) => {
@@ -766,7 +768,32 @@ const TransitLegCard = memo(function TransitLegCard({
     return () => {
       mounted = false;
     };
-  }, [expanded, isTrain, leg, stops, segment]);
+  }, [isTrain, leg, stops, segment]);
+
+  const [doorSide, setDoorSide] = useState<DoorSide | null>(null);
+  useEffect(() => {
+    if (!isTrain) {
+      setDoorSide(null);
+      return;
+    }
+    let mounted = true;
+    const lastStop = stops[segment.end];
+    void loadTrainDoorSide({
+      stopId: lastStop?.stopId ?? leg.toStopId,
+      lat: lastStop?.lat ?? leg.toLat,
+      lon: lastStop?.lon ?? leg.toLon,
+      platform: lastStop?.platform,
+      track: lastStop?.track,
+      trainTrack: track,
+      stops,
+      segment,
+    }).then((side) => {
+      if (mounted) setDoorSide((prev) => (prev === side ? prev : side));
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [isTrain, leg.toStopId, leg.toLat, leg.toLon, stops, segment, track]);
 
   useEffect(() => {
     if (leg.tripId?.startsWith('pl:')) {
@@ -1340,9 +1367,32 @@ const TransitLegCard = memo(function TransitLegCard({
 
         <View style={s.arrivalContentCol}>
           <Text style={s.endpointTitle}>{leg.toStop}</Text>
-          {arrivalPlatform ? (
-            <View style={s.platformBadge}>
-              <Text style={s.platformBadgeText}>{arrivalPlatform}</Text>
+          {arrivalPlatform || doorSide ? (
+            <View style={s.arrivalMetaRow}>
+              {arrivalPlatform ? (
+                <View style={s.platformBadge}>
+                  <Text style={s.platformBadgeText}>{arrivalPlatform}</Text>
+                </View>
+              ) : null}
+              {doorSide ? (
+                <View
+                  style={s.doorSideHint}
+                  accessible
+                  accessibilityLabel={
+                    doorSide === 'left' ? t.doorSide.leftA11y : t.doorSide.rightA11y
+                  }
+                >
+                  {doorSide === 'left' ? (
+                    <ChevronLeft size={12} color={scheme.onSurfaceVariant} />
+                  ) : null}
+                  <Text style={s.doorSideText} numberOfLines={1}>
+                    {doorSide === 'left' ? t.doorSide.left : t.doorSide.right}
+                  </Text>
+                  {doorSide === 'right' ? (
+                    <ChevronRight size={12} color={scheme.onSurfaceVariant} />
+                  ) : null}
+                </View>
+              ) : null}
             </View>
           ) : null}
           {showStationAmenities ? (
@@ -1773,6 +1823,25 @@ const s = StyleSheet.create({
     lineHeight: 15,
     fontWeight: '700',
     color: scheme.onSecondaryContainer,
+  },
+  arrivalMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
+  },
+  doorSideHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  doorSideText: {
+    ...type.labelSmall,
+    fontSize: 11.5,
+    lineHeight: 15,
+    fontWeight: '500',
+    color: scheme.onSurfaceVariant,
   },
   stopHintBox: {
     flexDirection: 'row',

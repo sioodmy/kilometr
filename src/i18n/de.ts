@@ -2104,6 +2104,12 @@ export const de: Strings = {
     hybrid: 'Hybrid',
     a11y: (details: string) => `Fahrzeug: ${details}`,
   },
+  doorSide: {
+    left: 'Türen links',
+    right: 'Türen rechts',
+    leftA11y: 'Ausstieg links in Fahrtrichtung',
+    rightA11y: 'Ausstieg rechts in Fahrtrichtung',
+  },
   railAlerts: {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',
