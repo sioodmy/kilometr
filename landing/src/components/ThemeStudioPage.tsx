@@ -326,10 +326,16 @@ function ThanksScreen({ onContinue }: { onContinue: () => void }) {
   const t = s.themeStudio;
   return (
     <section className="thanks" aria-labelledby="thanks-title">
-      <a className="studio-home-link" href="#top">
-        <ArrowLeft size={18} aria-hidden="true" />
-        {s.footer.back}
-      </a>
+      <header className="thanks-bar">
+        <a className="studio-home-link" href="#top">
+          <ArrowLeft size={18} aria-hidden="true" />
+          {s.footer.back}
+        </a>
+        <div className="brand thanks-brand">
+          <img src="./icon.png" alt="" width="28" height="28" />
+          <span>Kilometr</span>
+        </div>
+      </header>
       <div className="thanks-body">
         <div className="thanks-shapes" aria-hidden="true">
           <svg className="thanks-shape thanks-shape-cookie" viewBox="0 0 200 200">

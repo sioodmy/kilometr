@@ -75,35 +75,53 @@
   .thanks {
     display: flex;
     flex-direction: column;
-    width: min(1160px, calc(100% - 32px));
+    gap: clamp(32px, 5svh, 56px);
+    width: min(1288px, 100%);
     min-height: 100svh;
     margin-inline: auto;
-    padding-block: 8px 32px;
+    padding: clamp(20px, 3.5vw, 40px) clamp(20px, 5vw, 64px) clamp(40px, 6vw, 72px);
+  }
+  .thanks-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
   }
   .studio-home-link {
-    align-self: flex-start;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    min-height: 48px;
-    margin-left: -12px;
-    padding: 0 16px 0 12px;
-    border-radius: 24px;
-    color: var(--s-on-surface-variant);
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 20px 0 16px;
+    border: 1px solid color-mix(in srgb, var(--s-outline-variant) 75%, transparent);
+    border-radius: 999px;
+    background: var(--s-surface-container-high);
+    color: var(--s-on-surface);
     font-size: 0.9375rem;
     font-weight: 500;
-    transition: background 150ms;
+    transition:
+      background 150ms,
+      border-color 150ms,
+      border-radius 450ms var(--spring);
   }
   .studio-home-link:hover {
-    background: color-mix(in srgb, var(--s-on-surface) 8%, transparent);
-    color: var(--s-on-surface);
+    background: color-mix(in srgb, var(--s-on-surface) 8%, var(--s-surface-container-high));
+    border-color: var(--s-outline);
+  }
+  .studio-home-link:active {
+    border-radius: 12px;
+  }
+  .thanks-bar .thanks-brand {
+    display: none;
+    font-size: 1.125rem;
+    color: var(--s-on-surface-variant);
   }
   .thanks-body {
     flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: clamp(20px, 4svh, 40px);
+    gap: clamp(24px, 4svh, 40px);
   }
   .thanks-shapes {
     position: relative;
@@ -116,35 +134,40 @@
     overflow: visible;
     animation: shape-in 900ms var(--spring) both;
   }
+  /* Zębatki: 9 / 4 / 8 garbków kręcących się w tym samym tempie 4 s na ząb. */
   .thanks-shape-cookie {
-    top: 14%;
-    left: 4%;
-    width: 82%;
+    top: 12%;
+    left: 10%;
+    width: 76%;
     fill: var(--s-primary-container);
     animation:
       shape-in 900ms var(--spring) both,
-      shape-spin 60s linear infinite;
+      shape-spin 36s linear infinite;
   }
   .thanks-shape-clover {
     top: 0;
     right: 0;
-    width: 36%;
+    width: 34%;
     fill: var(--s-tertiary);
-    animation-delay: 120ms;
+    animation:
+      shape-in 900ms var(--spring) 120ms both,
+      shape-spin 16s linear infinite reverse;
   }
   .thanks-shape-sunny {
     bottom: 0;
     left: 0;
     width: 30%;
     fill: var(--s-secondary-container);
-    animation-delay: 220ms;
+    animation:
+      shape-in 900ms var(--spring) 220ms both,
+      shape-spin 32s linear infinite reverse;
   }
   .thanks-heart {
     position: absolute;
-    top: 55%;
-    left: 45%;
-    width: 34%;
-    height: 34%;
+    top: 50%;
+    left: 48%;
+    width: 32%;
+    height: 32%;
     translate: -50% -50%;
     color: var(--s-on-primary-container);
     animation: shape-in 700ms var(--spring) 300ms both;
@@ -768,7 +791,6 @@
   }
 }
 
-
 @layer responsive {
   @media (max-width: 559px) {
     .studio-mode-text {
@@ -781,6 +803,9 @@
     }
   }
   @media (min-width: 560px) {
+    .thanks-bar .thanks-brand {
+      display: inline-flex;
+    }
     .thanks-cta {
       width: auto;
     }
@@ -808,10 +833,11 @@
       flex-direction: row-reverse;
       align-items: center;
       justify-content: space-between;
-      gap: 48px;
+      gap: clamp(48px, 6vw, 88px);
+      padding-block: clamp(16px, 3svh, 40px);
     }
     .thanks-shapes {
-      width: min(40vw, 480px);
+      width: min(38vw, 440px);
       margin: 0;
     }
     .thanks-copy {
@@ -841,6 +867,7 @@
       animation: none;
     }
     .m3-button,
+    .studio-home-link,
     .studio-swatch,
     .studio-swatch-check,
     .studio-variant-body {
