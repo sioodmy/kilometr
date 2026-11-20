@@ -2580,6 +2580,18 @@ export const uk: Strings = {
     summary: (n: number) =>
       `Вокзал: ${n} ${isOne(n) ? 'зручність' : isFew(n) ? 'зручності' : 'зручностей'}`,
   },
+  vehicleInfo: {
+    lowFloor: 'Низькопідлоговий',
+    partialLowFloor: 'Частково низькопідлоговий',
+    highFloor: 'Високопідлоговий',
+    ac: 'Кондиціонер',
+    noAc: 'Без кондиціонера',
+    vintage: 'Старіший рухомий склад',
+    electric: 'Електричний',
+    hydrogen: 'Водневий',
+    hybrid: 'Гібридний',
+    a11y: (details: string) => `Транспорт: ${details}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Оповіщення для потяга ${line}`,
     fallbackLine: 'Потяг',

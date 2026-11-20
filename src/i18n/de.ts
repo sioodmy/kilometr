@@ -2092,6 +2092,18 @@ export const de: Strings = {
     a11y: (list: string) => `Am Bahnhof: ${list}`,
     summary: (n: number) => `Bahnhof: ${n} ${n === 1 ? 'Ausstattung' : 'Ausstattungen'}`,
   },
+  vehicleInfo: {
+    lowFloor: 'Niederflur',
+    partialLowFloor: 'Teil-Niederflur',
+    highFloor: 'Hochflur',
+    ac: 'Klimaanlage',
+    noAc: 'Keine Klima',
+    vintage: 'Älteres Fahrzeug',
+    electric: 'Elektrisch',
+    hydrogen: 'Wasserstoff',
+    hybrid: 'Hybrid',
+    a11y: (details: string) => `Fahrzeug: ${details}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Warnung für Zug ${line}`,
     fallbackLine: 'Zug',

@@ -2560,6 +2560,18 @@ export const pl = {
     summary: (n: number) =>
       `Dworzec: ${n} ${n === 1 ? 'udogodnienie' : isFew(n) ? 'udogodnienia' : 'udogodnień'}`,
   },
+  vehicleInfo: {
+    lowFloor: 'Niskopodłogowy',
+    partialLowFloor: 'Częściowo niskopodłogowy',
+    highFloor: 'Wysokopodłogowy',
+    ac: 'Klimatyzacja',
+    noAc: 'Bez klimatyzacji',
+    vintage: 'Starszy tabor',
+    electric: 'Elektryczny',
+    hydrogen: 'Wodorowy',
+    hybrid: 'Hybrydowy',
+    a11y: (details: string) => `Pojazd: ${details}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert dla pociągu ${line}`,
     fallbackLine: 'Pociąg',

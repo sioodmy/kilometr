@@ -154,6 +154,8 @@ export interface VehiclePosition {
   updatedAt: number;
   /** GTFS trip_id dopasowany przez backend (matcher) - do matchowania z Leg.tripId */
   matchedTripId?: string;
+  /** Model pojazdu z zbiorkom.live (np. "Konstal 105NWr", "Pesa Twist 146N") */
+  model?: string;
 }
 
 export type DelayConfidence = 'live' | 'estimated' | 'untracked' | 'scheduled';

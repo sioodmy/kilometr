@@ -2072,6 +2072,18 @@ export const en: Strings = {
     a11y: (list: string) => `At the station: ${list}`,
     summary: (n: number) => `Station: ${n} ${n === 1 ? 'amenity' : 'amenities'}`,
   },
+  vehicleInfo: {
+    lowFloor: 'Low-floor',
+    partialLowFloor: 'Partial low-floor',
+    highFloor: 'High-floor',
+    ac: 'Air conditioning',
+    noAc: 'No AC',
+    vintage: 'Older vehicle',
+    electric: 'Electric',
+    hydrogen: 'Hydrogen',
+    hybrid: 'Hybrid',
+    a11y: (details: string) => `Vehicle: ${details}`,
+  },
   railAlerts: {
     cardA11y: (line: string) => `Alert for train ${line}`,
     fallbackLine: 'Train',

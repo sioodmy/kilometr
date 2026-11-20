@@ -26,6 +26,7 @@ import { LineBadge, resolveLegBadgeColors } from './LineBadge';
 import { RailAmenities } from './RailAmenities';
 import { StationAmenities } from './StationAmenities';
 import { shouldShowStationAmenities } from './stationAmenitiesGate';
+import { VehicleSpecsStrip, formatVehicleSpecsA11y } from './VehicleSpecsStrip';
 import { LiveSensors } from './LiveDot';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
@@ -42,6 +43,7 @@ import {
   type LiveStopPosition,
 } from '../services/vehiclePosition';
 import { ensureTrainTrack, type TrainTrack } from '../services/trainTrack';
+import { classifyVehicleModel } from '../services/vehicleInfo';
 import { useStrings, type Strings } from '../i18n';
 import { motion } from '../theme/motion';
 import { isFareBoundary, parseFareBoundary } from '../gtfs/fareBoundary';
@@ -901,6 +903,10 @@ const TransitLegCard = memo(function TransitLegCard({
   const pingKey = vehicle?.updatedAt ?? (leg.live ? lastOk : undefined);
   const liveTimestamp = vehicle?.updatedAt ?? (leg.live && lastOk > 0 ? lastOk : undefined);
 
+  const vehicleSpecs = useMemo(
+    () => classifyVehicleModel(vehicle?.model, leg.mode),
+    [vehicle?.model, leg.mode],
+  );
   const directionLabel =
     leg.mode === 'train' ? railDirectionLabel(leg) || leg.direction : leg.direction;
   const isNationalRail =
@@ -908,6 +914,12 @@ const TransitLegCard = memo(function TransitLegCard({
     Boolean(leg.routeId?.startsWith('pl:')) ||
     Boolean(leg.fromStopId?.startsWith('pl:') || leg.fromStopId?.startsWith('stop-pl:'));
   const canOpenLine = Boolean(leg.routeId || leg.line || leg.tripId);
+  const lineCardBaseA11y = directionLabel
+    ? `${t.lineTimetable.open(leg.line ?? '')}, ${t.lineTimetable.direction}: ${directionLabel}`
+    : t.lineTimetable.open(leg.line ?? '');
+  const lineCardA11y = vehicleSpecs
+    ? `${lineCardBaseA11y}. ${formatVehicleSpecsA11y(vehicleSpecs, t)}`
+    : lineCardBaseA11y;
 
   const openLineTimetable = useCallback(() => {
     if (!canOpenLine) return;
@@ -1130,48 +1142,54 @@ const TransitLegCard = memo(function TransitLegCard({
         </View>
 
         <View style={s.bodyContentCol}>
-          {/* Karta linii / pociągu z przejściem do rozkładu */}
+          {/* Karta linii / pociągu z przejściem do rozkładu i parametrami konkretnego pojazdu */}
           {canOpenLine ? (
             <Pressable
               onPress={openLineTimetable}
               accessibilityRole="button"
-              accessibilityLabel={
-                directionLabel
-                  ? `${t.lineTimetable.open(leg.line ?? '')}, ${t.lineTimetable.direction}: ${directionLabel}`
-                  : t.lineTimetable.open(leg.line ?? '')
-              }
-              style={({ pressed }) => [s.lineCard, pressed && s.lineCardPressed]}
+              accessibilityLabel={lineCardA11y}
+              style={({ pressed }) => [
+                s.lineCard,
+                vehicleSpecs && s.lineCardWithSpecs,
+                pressed && s.lineCardPressed,
+              ]}
             >
-              <LineBadge leg={leg} />
-              <View style={s.lineTextCol}>
-                {directionLabel ? (
-                  <Text style={s.lineDirection} numberOfLines={1}>
-                    {directionLabel}
-                  </Text>
-                ) : null}
-                {agencySubtitle ? (
-                  <Text style={s.lineAgencySub} numberOfLines={1}>
-                    {agencySubtitle}
-                  </Text>
-                ) : null}
+              <View style={[s.lineCardHeader, vehicleSpecs && s.lineCardHeaderWithSpecs]}>
+                <LineBadge leg={leg} />
+                <View style={s.lineTextCol}>
+                  {directionLabel ? (
+                    <Text style={s.lineDirection} numberOfLines={1}>
+                      {directionLabel}
+                    </Text>
+                  ) : null}
+                  {agencySubtitle ? (
+                    <Text style={s.lineAgencySub} numberOfLines={1}>
+                      {agencySubtitle}
+                    </Text>
+                  ) : null}
+                </View>
+                <ChevronRight size={18} color={scheme.onSurfaceVariant} />
               </View>
-              <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+              {vehicleSpecs ? <VehicleSpecsStrip specs={vehicleSpecs} mode={leg.mode} /> : null}
             </Pressable>
           ) : (
-            <View style={s.lineCard}>
-              <LineBadge leg={leg} />
-              <View style={s.lineTextCol}>
-                {directionLabel ? (
-                  <Text style={s.lineDirection} numberOfLines={1}>
-                    {directionLabel}
-                  </Text>
-                ) : null}
-                {agencySubtitle ? (
-                  <Text style={s.lineAgencySub} numberOfLines={1}>
-                    {agencySubtitle}
-                  </Text>
-                ) : null}
+            <View style={[s.lineCard, vehicleSpecs && s.lineCardWithSpecs]}>
+              <View style={[s.lineCardHeader, vehicleSpecs && s.lineCardHeaderWithSpecs]}>
+                <LineBadge leg={leg} />
+                <View style={s.lineTextCol}>
+                  {directionLabel ? (
+                    <Text style={s.lineDirection} numberOfLines={1}>
+                      {directionLabel}
+                    </Text>
+                  ) : null}
+                  {agencySubtitle ? (
+                    <Text style={s.lineAgencySub} numberOfLines={1}>
+                      {agencySubtitle}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
+              {vehicleSpecs ? <VehicleSpecsStrip specs={vehicleSpecs} mode={leg.mode} /> : null}
             </View>
           )}
 
@@ -1782,14 +1800,26 @@ const s = StyleSheet.create({
     paddingBottom: 10,
   },
   lineCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
     minHeight: 48,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.large,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  lineCardWithSpecs: {
+    padding: 6,
+    gap: 6,
+  },
+  lineCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 32,
+  },
+  lineCardHeaderWithSpecs: {
+    paddingHorizontal: 4,
+    paddingTop: 2,
   },
   lineCardPressed: {
     opacity: 0.78,

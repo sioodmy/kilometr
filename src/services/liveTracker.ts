@@ -153,6 +153,8 @@ export interface RawVehicleRow {
   headsign?: string;
   brigade?: string;
   upcomingStops?: { name: string; schedSec: number }[];
+  /** Model pojazdu z feedu live (np. "Konstal 105NWr"). */
+  model?: string;
 }
 
 /**
@@ -1054,6 +1056,7 @@ class LiveTracker {
         currentStopName: veh.currentStopName,
         nextStopName: veh.nextStopName,
         updatedAt: veh.updatedAt,
+        model: veh.model,
       };
       // Najświeższy odczyt wygrywa: gdy pociąg zniknie z feedu, jego wpis
       // zniknie przy następnej przebudowie matchAll tak samo jak wpisy MPK.
@@ -1268,6 +1271,7 @@ class LiveTracker {
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
         updatedAt: at,
+        model: row.model ?? previous?.model,
       },
       score: bestTripId ? bestScore : Number.POSITIVE_INFINITY,
     };
@@ -1492,6 +1496,7 @@ class LiveTracker {
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
           nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
           updatedAt: sampleTime(row, now) ?? now,
+          model: row.model ?? previous?.model,
         },
         score: tripId && !delayOutOfRange ? score : Number.POSITIVE_INFINITY,
       });
