@@ -15,7 +15,7 @@ export function isProtectedTrainLeg(leg?: Pick<Leg, 'mode' | 'tripId'> | null): 
   return leg.mode === 'train' || Boolean(leg.tripId?.startsWith('pl:'));
 }
 
-export type TransferStatus =
+type TransferStatus =
   | 'preparing'
   | 'waiting'
   | 'safe'

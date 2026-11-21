@@ -306,11 +306,3 @@ export async function routeTransitLocal(
 
   return signal?.aborted || path.length < 2 ? null : path;
 }
-
-/** Wyznacza przebieg kolei z kafelków mapy, także z pobranego pakietu offline. */
-export async function routeRailLocal(
-  waypoints: ReadonlyArray<FootCoord>,
-  signal?: AbortSignal,
-): Promise<FootCoord[] | null> {
-  return routeTransitLocal(waypoints, 'rail', signal);
-}

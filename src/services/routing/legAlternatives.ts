@@ -9,7 +9,6 @@
 import {
   distanceMeters,
   secondsToTimeString,
-  shiftWarsawDate,
   timeStringToSeconds,
   warsawNow,
 } from '../../gtfs/geo';
@@ -120,7 +119,7 @@ export interface LegAlternativeStoreView {
 }
 
 /** Kandydat na przystanek wsiadania lub wysiadania wraz z kosztem dojścia. */
-export interface StopOption {
+interface StopOption {
   stopId: string;
   stop: GtfsStop;
   walkM: number;
@@ -170,7 +169,7 @@ function walkSecondsFromMeters(meters: number, walkSpeedMps: number): number {
 }
 
 /** Zwraca monotoniczne czasy [departSec, arriveSec] dla każdej nogi połączenia. */
-export function normalizeConnectionTimeline(
+function normalizeConnectionTimeline(
   connection: Connection,
 ): Array<{ departSec: number; arriveSec: number }> {
   const result: Array<{ departSec: number; arriveSec: number }> = [];
@@ -364,7 +363,7 @@ function transferWalkBetween(
  * Zbiera przystanki kandydackie wokół przystanku kotwicy (ten sam słupek + pobliskie
  * słupki tego samego węzła przesiadkowego), pilnując dopuszczalnego spaceru.
  */
-export function collectCandidateStops(params: {
+function collectCandidateStops(params: {
   anchorStopId: string;
   neighborStopId?: string;
   endpointCoords?: { lat: number; lon: number };
@@ -1250,28 +1249,3 @@ export function applyLegSwapToConnection(
   return draft;
 }
 
-/** Generuje deterministyczny podpis ograniczeń nogi do cache'owania alternatyw. */
-export function buildLegConstraintSignature(
-  connection: Connection,
-  legIndex: number,
-  anchorFromStopId: string,
-  anchorToStopId: string,
-): string {
-  const leg = connection.legs[legIndex];
-  const constraints = extractLegSwapConstraints(connection, legIndex);
-  return [
-    connection.serviceDate ?? '',
-    anchorFromStopId,
-    anchorToStopId,
-    leg.tripId ?? '',
-    leg.fromStopId ?? '',
-    leg.toStopId ?? '',
-    constraints.prevTransitLeg?.toStopId ?? '',
-    constraints.prevArriveSec ?? 'none',
-    constraints.nextTransitLeg?.fromStopId ?? '',
-    constraints.nextDepartSec ?? 'none',
-  ].join('|');
-}
-
-/** Przesuwa datę serwisu (pomocnik re-eksportowany dla testów i diagnostyki). */
-export { shiftWarsawDate };

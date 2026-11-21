@@ -91,7 +91,7 @@ function cleanSentence(parts) {
  * Generuje zweryfikowane, unikalne wskazówki lokalizacji dla wszystkich wejść metra w Warszawie
  * (GTFS `location_type=2`), oparte na OSM (ulice, POI) i GTFS (przystanki naziemne, windy).
  */
-export function generateWarsawMetroEntrances({ zipPath, poisFile, roadsFile, osmEntrances }) {
+export function generateWarsawMetroEntrances({ zipPath, poisFile, roadsFile }) {
   const res = spawnSync('unzip', ['-p', zipPath, 'stops.txt'], { maxBuffer: 64 * 1024 * 1024 });
   if (res.status !== 0) {
     throw new Error(`Nie udało się odczytać stops.txt z ${zipPath}`);
