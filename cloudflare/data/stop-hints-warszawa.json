@@ -1,14 +1,14 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "city": "warszawa",
-  "generatedAt": "2026-11-20T21:01:39.932Z",
+  "generatedAt": "2026-11-21T12:56:46.315Z",
   "stops": {
     "100101": "Przystanek autobusowy na ul. Targowej obok restauracji „Włoska Praga”.",
     "100201": "Przystanek autobusowy na ul. Targowej obok piekarni „SPC”.",
     "100202": "Przystanek autobusowy na ul. Targowej obok Muzeum Warszawskiej Pragi.",
     "100206": "Przystanek autobusowy na ul. Targowej obok oddziału banku Crédit Agricole.",
     "100301": "Przystanek autobusowy na ul. Targowej przy stacji metra Dworzec Wileński.",
-    "100302": "Przystanek autobusowy na ul. Targowej przy wejścia do metra.",
+    "100302": "Przystanek autobusowy na ul. Targowej przy wejściu do metra.",
     "100304": "Przystanek autobusowy przy al. „Solidarności” obok RTV Euro AGD.",
     "100307": "Peron tramwajowy na ul. Targowej przy stacji metra Dworzec Wileński.",
     "100402": "Peron tramwajowy na ul. Jagiellońskiej naprzeciwko kościoła Matki Bożej Loretańskiej.",
@@ -36,7 +36,7 @@
     "106701": "Peron tramwajowo-autobusowy na ul. Stalowej naprzeciwko sklepu Carrefour.",
     "106801": "Peron tramwajowy na ul. Wileńskiej obok Stokrotki.",
     "107402": "Przystanek autobusowy na ul. Namysłowskiej przy targowisku „Namysłowska”.",
-    "108502": "Peron tramwajowy na ul. Rembielińskiej przy wejścia do metra.",
+    "108502": "Peron tramwajowy na ul. Rembielińskiej przy wejściu do metra.",
     "108504": "Przystanek autobusowy na ul. Kondratowicza przy kościele Świętego Włodzimierza.",
     "108510": "Przystanek autobusowy na ul. Łabiszyńskiej obok Poczty Polskiej.",
     "108514": "Przystanek autobusowy na ul. Kondratowicza naprzeciwko teatru „Scena Metro”.",
@@ -49,8 +49,8 @@
     "113702": "Przystanek autobusowy na ul. Ossowskiego przy stacji metra Targówek Mieszkaniowy.",
     "114002": "Przystanek autobusowy na ul. Trockiej przy stacji metra Trocka.",
     "114003": "Przystanek autobusowy na ul. Unickiej przy stacji metra Trocka.",
-    "114102": "Przystanek autobusowy na ul. Rolanda przy wejścia do metra.",
-    "114602": "Przystanek autobusowy na ul. Kondratowicza przy wejścia do metra.",
+    "114102": "Przystanek autobusowy na ul. Rolanda przy wejściu do metra.",
+    "114602": "Przystanek autobusowy na ul. Kondratowicza przy wejściu do metra.",
     "114604": "Przystanek autobusowy na ul. Kondratowicza przy skwerze „Grzegorza Ciechowskiego”.",
     "115208": "Przystanek autobusowy na ul. Krasnobrodzkiej przy targowisku „Bazar”.",
     "115903": "Przystanek autobusowy na ul. Toruńskiej obok stacji kolejowej „Warszawa Toruńska”.",
@@ -59,7 +59,7 @@
     "122501": "Przystanek autobusowy na ul. Zdziarskiej naprzeciwko Lewiatana.",
     "122604": "Przystanek autobusowy na ul. Zdziarskiej obok Lewiatana.",
     "123101": "Przystanek autobusowy na ul. Sokolej przy stacji metra Stadion Narodowy.",
-    "123102": "Przystanek autobusowy na ul. Sokolej przy wejścia do metra.",
+    "123102": "Przystanek autobusowy na ul. Sokolej przy wejściu do metra.",
     "125102": "Przystanek autobusowy na ul. Świderskiej przy targowisku „Ryneczek Poraje”.",
     "125306": "Peron tramwajowy na ul. Światowida obok sklepu Carrefour.",
     "125401": "Przystanek autobusowy na ul. Modlińskiej przy kościele PNKK Dobrego Pasterza.",
@@ -120,7 +120,7 @@
     "203902": "Przystanek autobusowy na ul. Patriotów obok stacji kolejowej „Warszawa Międzylesie”.",
     "203906": "Przystanek autobusowy na ul. Żegańskiej obok drogerii Hebe.",
     "204301": "Przystanek autobusowy na ul. Patriotów obok piekarni „Oskroba”.",
-    "204351": "Przystanek autobusowy na ul. Patriotów przy centrum handlowego „K&M Park Radość”.",
+    "204351": "Przystanek autobusowy na ul. Patriotów obok centrum handlowego „K&M Park Radość”.",
     "204601": "Przystanek autobusowy na ul. Patriotów naprzeciwko stacji kolejowej „Warszawa Miedzeszyn”.",
     "204856": "Przystanek autobusowy na ul. Patriotów naprzeciwko Stokrotki.",
     "205802": "Przystanek autobusowy na ul. Marsa obok stacji kolejowej „Warszawa Gocławek”.",
@@ -137,7 +137,7 @@
     "211301": "Przystanek autobusowy na ul. Wiatracznej obok Biedronki.",
     "211701": "Przystanek autobusowy na ul. Chodakowskiej naprzeciwko stacji Orlen.",
     "212902": "Przystanek autobusowy na ul. Grenadierów obok Lidla.",
-    "213303": "Peron tramwajowy przy al. Waszyngtona przy centrum handlowego „Kamionek”.",
+    "213303": "Peron tramwajowy przy al. Waszyngtona obok centrum handlowego „Kamionek”.",
     "214101": "Przystanek autobusowy na ul. Międzynarodowej obok apteki „od Serca”.",
     "214102": "Przystanek autobusowy na ul. Międzynarodowej obok piekarni „SPC”.",
     "214503": "Przystanek autobusowy na ul. Abrahama obok piekarni „SPC”.",
@@ -148,7 +148,7 @@
     "218804": "Przystanek autobusowy na ul. Lucerny naprzeciwko stacji Circle K.",
     "220201": "Przystanek autobusowy na Wale Miedzeszyńskim obok restauracji „Neptun”.",
     "222001": "Przystanek autobusowy na ul. Czwartaków naprzeciwko stacji kolejowej „Warszawa Mokry Ług”.",
-    "222302": "Przystanek autobusowy na ul. Nadwiślańskiej przy centrum handlowego „Chińskie Centrum Handlowe”.",
+    "222302": "Przystanek autobusowy na ul. Nadwiślańskiej obok centrum handlowego „Chińskie Centrum Handlowe”.",
     "225102": "Peron tramwajowy przy al. Waszyngtona naprzeciwko sklepu Carrefour.",
     "225301": "Przystanek autobusowy na ul. Paryskiej obok oddziału banku PKO BP.",
     "225304": "Przystanek autobusowy na ul. Zwycięzców przy galerii „Saska Kępa”.",
@@ -170,7 +170,7 @@
     "250755": "Przystanek autobusowy na ul. Bystrzyckiej naprzeciwko supermarketu „FALA”.",
     "251752": "Przystanek autobusowy na ul. Okuniewskiej naprzeciwko stacji kolejowej „Warszawa Wola Grzybowska”.",
     "300101": "Przystanek autobusowy na ul. Waryńskiego przy kościele Wniebowstąpienia Pańskiego.",
-    "300102": "Przystanek autobusowy na ul. Waryńskiego przy centrum handlowego „Plac Unii”.",
+    "300102": "Przystanek autobusowy na ul. Waryńskiego obok centrum handlowego „Plac Unii”.",
     "300104": "Przystanek autobusowy na ul. Puławskiej obok kawiarni „Pora na Seniora”.",
     "300105": "Peron tramwajowy na ul. Marszałkowskiej naprzeciwko sklepu Carrefour.",
     "300106": "Peron tramwajowy na ul. Marszałkowskiej naprzeciwko teatru „TR Warszawa”.",
@@ -187,7 +187,7 @@
     "300706": "Peron tramwajowy na ul. Woronicza naprzeciwko targowiska „Targ śniadaniowy Mokotów”.",
     "300802": "Przystanek autobusowy na ul. Puławskiej obok Żabki.",
     "300902": "Przystanek autobusowy na ul. Puławskiej przy stacji metra Wilanowska.",
-    "300906": "Peron tramwajowy na ul. Puławskiej przy wejścia do metra.",
+    "300906": "Peron tramwajowy na ul. Puławskiej przy wejściu do metra.",
     "301102": "Przystanek autobusowy na ul. Puławskiej przy targowisku „Wałbrzyska”.",
     "301105": "Przystanek autobusowy na ul. Wałbrzyskiej obok supermarketu „Mokpol”.",
     "301107": "Peron tramwajowy na ul. Puławskiej obok kawiarni „The Tea Is Life”.",
@@ -213,14 +213,14 @@
     "311104": "Przystanek autobusowy na ul. Domaniewskiej przy kościele NMP Matki Kościoła.",
     "311301": "Przystanek autobusowy na ul. Modzelewskiego obok Pizza Hut.",
     "311402": "Przystanek autobusowy przy al. Niepodległości przy stacji metra Wierzbno.",
-    "311403": "Peron tramwajowy na ul. Woronicza przy wejścia do metra.",
+    "311403": "Peron tramwajowy na ul. Woronicza przy wejściu do metra.",
     "311406": "Przystanek autobusowy na ul. Woronicza obok piekarni „Mistrz Piekarz”.",
     "311606": "Przystanek autobusowy na ul. Joliot-Curie obok Żabki.",
     "312701": "Przystanek autobusowy przy al. KEN przy stacji metra Ursynów.",
-    "312702": "Przystanek autobusowy przy al. KEN przy wejścia do metra.",
+    "312702": "Przystanek autobusowy przy al. KEN przy wejściu do metra.",
     "313001": "Przystanek autobusowy na ul. Romera obok Żabki.",
     "313203": "Przystanek autobusowy przy al. KEN obok drogerii Hebe.",
-    "313204": "Przystanek autobusowy przy al. KEN przy wejścia do metra.",
+    "313204": "Przystanek autobusowy przy al. KEN przy wejściu do metra.",
     "313404": "Przystanek autobusowy na ul. Pileckiego obok piekarni „Pieczywko & Warzywko”.",
     "313903": "Przystanek autobusowy na ul. Indiry Gandhi przy kościele Świętego Tomasza.",
     "313904": "Przystanek autobusowy na ul. Indiry Gandhi obok piekarni „Grzybki”.",
@@ -230,16 +230,16 @@
     "314222": "Przystanek autobusowy na ul. Płaskowickiej po stronie parku.",
     "314502": "Przystanek autobusowy na ul. Lanciego obok drogerii Hebe.",
     "314603": "Przystanek autobusowy na ul. Lanciego obok oddziału banku Millennium.",
-    "315002": "Przystanek autobusowy na ul. Vogla przy centrum handlowego „MultiBox”.",
+    "315002": "Przystanek autobusowy na ul. Vogla obok centrum handlowego „MultiBox”.",
     "319802": "Przystanek autobusowy na ul. Sytej przy skwerze nad Stawem Zawadowskim.",
     "320803": "Przystanek autobusowy na ul. Branickiego przy skwerze „Kapitana Zygmunta Pawlaczyka”.",
     "322801": "Przystanek autobusowy przy al. Niepodległości przy stacji metra Pole Mokotowskie.",
     "322802": "Przystanek autobusowy przy al. Niepodległości przy stacji metra Pole Mokotowskie.",
-    "322803": "Peron tramwajowy przy al. Niepodległości przy wejścia do metra.",
+    "322803": "Peron tramwajowy przy al. Niepodległości przy wejściu do metra.",
     "322804": "Peron tramwajowy przy al. Niepodległości przy stacji metra Pole Mokotowskie.",
     "322810": "Przystanek autobusowy na ul. Batorego przy skwerze „Wasyla Stusa”.",
     "322902": "Przystanek autobusowy przy al. Niepodległości przy budynku „Szkoła Główna Handlowa”.",
-    "323002": "Przystanek autobusowy przy al. Niepodległości przy wejścia do metra.",
+    "323002": "Przystanek autobusowy przy al. Niepodległości przy wejściu do metra.",
     "323102": "Przystanek autobusowy przy al. Niepodległości obok sklepu Carrefour.",
     "323302": "Przystanek autobusowy na ul. Malczewskiego obok apteki „Ziko”.",
     "323702": "Przystanek autobusowy na ul. Św. A. Boboli obok apteki „Dbam o Zdrowie”.",
@@ -254,19 +254,19 @@
     "326002": "Przystanek autobusowy na ul. Konstruktorskiej naprzeciwko Stokrotki.",
     "326704": "Przystanek autobusowy na ul. Bokserskiej obok Poczty Polskiej.",
     "326902": "Przystanek autobusowy na ul. Kłobuckiej obok apteki „Cosmedica”.",
-    "327901": "Przystanek autobusowy na ul. Wałbrzyskiej przy wejścia do metra.",
+    "327901": "Przystanek autobusowy na ul. Wałbrzyskiej przy wejściu do metra.",
     "327903": "Przystanek autobusowy przy al. Harcerzy Rzeczypospolitej przy stacji metra Służew.",
-    "328002": "Przystanek autobusowy na ul. Indiry Gandhi przy wejścia do metra.",
+    "328002": "Przystanek autobusowy na ul. Indiry Gandhi przy wejściu do metra.",
     "328004": "Przystanek autobusowy przy al. KEN przy stacji metra Imielin.",
     "328101": "Przystanek autobusowy na ul. Belgradzkiej przy galerii „Ursynów”.",
     "328102": "Przystanek autobusowy na ul. Belgradzkiej obok sklepu Carrefour.",
-    "328103": "Przystanek autobusowy przy al. KEN przy wejścia do metra.",
-    "328201": "Przystanek autobusowy przy al. KEN przy wejścia do metra.",
+    "328103": "Przystanek autobusowy przy al. KEN przy wejściu do metra.",
+    "328201": "Przystanek autobusowy przy al. KEN przy wejściu do metra.",
     "328402": "Przystanek autobusowy na ul. Wąwozowej naprzeciwko supermarketu „Organic Market”.",
     "328602": "Przystanek autobusowy na ul. Św. A. Boboli obok Poczty Polskiej.",
     "328604": "Peron tramwajowy na ul. Św. A. Boboli naprzeciwko „Collegium Bobolanum”.",
     "328607": "Przystanek autobusowy na ul. Rakowieckiej naprzeciwko stacji Orlen.",
-    "334501": "Przystanek autobusowy na ul. Wilanowskiej przy centrum handlowego „Józefosław”.",
+    "334501": "Przystanek autobusowy na ul. Wilanowskiej obok centrum handlowego „Józefosław”.",
     "334503": "Przystanek autobusowy na ul. Geodetów naprzeciwko centrum handlowego „Józefosław”.",
     "334504": "Przystanek autobusowy na ul. Geodetów naprzeciwko centrum handlowego „Józefosław”.",
     "335201": "Przystanek autobusowy na ul. Geodetów przy szkole podstawowej.",
@@ -338,7 +338,7 @@
     "422802": "Przystanek autobusowy na ul. Wojciechowskiego obok sklepu Carrefour.",
     "423202": "Przystanek autobusowy przy al. Wojska Polskiego naprzeciwko skweru „Aleksandra Kamińskiego Kamyka”.",
     "426904": "Przystanek autobusowy na ul. Szkolnej naprzeciwko kościoła dojazdowa.",
-    "427002": "Przystanek autobusowy na ul. Słonecznej przy centrum handlowego „Nowa Wola”.",
+    "427002": "Przystanek autobusowy na ul. Słonecznej obok centrum handlowego „Nowa Wola”.",
     "427901": "Przystanek autobusowy na ul. Na Skraju naprzeciwko hotelu „Bloom Hotel”.",
     "430401": "Przystanek autobusowy na ul. 1 Sierpnia obok sklepu Carrefour.",
     "430402": "Przystanek autobusowy na ul. 1 Sierpnia naprzeciwko sklepu Carrefour.",
@@ -359,7 +359,7 @@
     "500401": "Przystanek autobusowy na ul. Wolskiej przy kościele Karmelitanek Bosych.",
     "500504": "Peron tramwajowy na ul. Wolskiej naprzeciwko Poczty Polskiej.",
     "500505": "Przystanek autobusowy na ul. Płockiej przy stacji metra Płocka.",
-    "500506": "Przystanek autobusowy na ul. Płockiej przy wejścia do metra.",
+    "500506": "Przystanek autobusowy na ul. Płockiej przy wejściu do metra.",
     "501206": "Przystanek autobusowy na ul. Dźwigowej obok stacji BP.",
     "502106": "Przystanek autobusowy na ul. Fort Wola naprzeciwko kościoła.",
     "502302": "Przystanek autobusowy na ul. Deotymy naprzeciwko kościoła Wieczystej Adoracji.",
@@ -368,14 +368,14 @@
     "502805": "Przystanek autobusowy na ul. Górczewskiej przy stacji metra Młynów.",
     "502806": "Przystanek autobusowy na ul. Górczewskiej przy stacji metra Młynów.",
     "503001": "Przystanek autobusowy na ul. Górczewskiej przy stacji metra Księcia Janusza.",
-    "503002": "Przystanek autobusowy na ul. Górczewskiej przy wejścia do metra.",
+    "503002": "Przystanek autobusowy na ul. Górczewskiej przy wejściu do metra.",
     "503003": "Przystanek autobusowy na ul. Jana Olbrachta obok Żabki.",
     "503008": "Przystanek autobusowy na ul. Górczewskiej przy stacji metra Księcia Janusza.",
     "503201": "Przystanek autobusowy na ul. Górczewskiej przy stacji metra Ulrychów.",
-    "503202": "Przystanek autobusowy na ul. Górczewskiej przy wejścia do metra.",
-    "503302": "Przystanek autobusowy na ul. Górczewskiej przy wejścia do metra.",
+    "503202": "Przystanek autobusowy na ul. Górczewskiej przy wejściu do metra.",
+    "503302": "Przystanek autobusowy na ul. Górczewskiej przy wejściu do metra.",
     "503401": "Przystanek autobusowy na ul. Górczewskiej przy stacji metra Bemowo.",
-    "503404": "Przystanek autobusowy na ul. Powstańców Śląskich przy wejścia do metra.",
+    "503404": "Przystanek autobusowy na ul. Powstańców Śląskich przy wejściu do metra.",
     "503501": "Przystanek autobusowy na ul. Górczewskiej obok piekarni „SPC”.",
     "503603": "Przystanek autobusowy na ul. Żelaznej obok Rossmanna.",
     "503703": "Przystanek autobusowy na ul. Towarowej obok Muzeum Nurkowania.",
@@ -418,11 +418,11 @@
     "600301": "Przystanek autobusowy na ul. Słowackiego przy stacji metra Plac Wilsona.",
     "600307": "Przystanek autobusowy na pl. Wilsona obok apteki „Ziko”.",
     "600309": "Przystanek autobusowy na pl. Wilsona obok piekarni „Lubaszka”.",
-    "600311": "Peron tramwajowy na ul. Słowackiego przy wejścia do metra.",
+    "600311": "Peron tramwajowy na ul. Słowackiego przy wejściu do metra.",
     "600318": "Przystanek autobusowy na pl. Wilsona obok kina „Wisła”.",
     "600501": "Przystanek autobusowy na ul. Słowackiego przy stacji metra Marymont.",
-    "600503": "Peron tramwajowy na ul. Słowackiego przy wejścia do metra.",
-    "600505": "Peron tramwajowy na ul. Słowackiego przy wejścia do metra.",
+    "600503": "Peron tramwajowy na ul. Słowackiego przy wejściu do metra.",
+    "600505": "Peron tramwajowy na ul. Słowackiego przy wejściu do metra.",
     "600506": "Przystanek autobusowy na ul. Gdańskiej naprzeciwko sklepu Carrefour.",
     "600507": "Przystanek autobusowy na ul. Gdańskiej naprzeciwko sklepu Carrefour.",
     "600603": "Przystanek autobusowy na ul. Żeromskiego obok Poczty Polskiej.",
@@ -436,7 +436,7 @@
     "604901": "Przystanek autobusowy na ul. Conrada obok sklepu Carrefour.",
     "604902": "Przystanek autobusowy na ul. Conrada naprzeciwko centrum handlowego „Pasaż Chomiczówka”.",
     "604903": "Przystanek autobusowy na ul. Kwitnącej naprzeciwko centrum handlowego „Pasaż Chomiczówka”.",
-    "604904": "Przystanek autobusowy na ul. Kwitnącej przy centrum handlowego „Pasaż Chomiczówka”.",
+    "604904": "Przystanek autobusowy na ul. Kwitnącej obok centrum handlowego „Pasaż Chomiczówka”.",
     "605201": "Przystanek autobusowy na ul. Kasprowicza obok Rossmanna.",
     "605203": "Przystanek autobusowy przy al. Zjednoczenia naprzeciwko Rossmanna.",
     "605204": "Przystanek autobusowy przy al. Zjednoczenia obok drogerii Hebe.",
@@ -462,13 +462,13 @@
     "605922": "Stanowisko na zadaszonej pętli autobusowej węzła Metro Młociny przy wyjściu z metra.",
     "605923": "Stanowisko na zadaszonej pętli autobusowej węzła Metro Młociny przy wyjściu z metra.",
     "605924": "Stanowisko na zadaszonej pętli autobusowej węzła Metro Młociny przy wyjściu z metra.",
-    "605928": "Peron tramwajowy na ul. Kasprowicza przy wejścia do metra.",
+    "605928": "Peron tramwajowy na ul. Kasprowicza przy wejściu do metra.",
     "606903": "Przystanek autobusowy na ul. Wóycickiego naprzeciwko kościoła Kaplica.",
     "608701": "Przystanek autobusowy na ul. Perzyńskiego obok Poczty Polskiej.",
     "608702": "Przystanek autobusowy na ul. Perzyńskiego naprzeciwko supermarketu „Ser-pol 24h”.",
     "608903": "Przystanek autobusowy na ul. Rydygiera naprzeciwko Rossmanna.",
     "609001": "Przystanek autobusowy na ul. Powązkowskiej przy skwerze „Kaliny”.",
-    "609002": "Przystanek autobusowy na ul. Powązkowskiej przy centrum handlowego „Defabryka”.",
+    "609002": "Przystanek autobusowy na ul. Powązkowskiej obok centrum handlowego „Defabryka”.",
     "609405": "Przystanek autobusowy na ul. Krasińskiego przy kościele Świętego Jana Kantego.",
     "609406": "Przystanek autobusowy na ul. Krasińskiego naprzeciwko kościoła Świętego Jana Kantego.",
     "609801": "Przystanek autobusowy na ul. Krasińskiego obok kawiarni „Praż”.",
@@ -476,7 +476,7 @@
     "611502": "Przystanek autobusowy przy Rynku przed urzędem miasta.",
     "613201": "Przystanek autobusowy na ul. Kochanowskiego obok Rossmanna.",
     "613801": "Przystanek autobusowy na ul. Estrady obok sklepu Netto.",
-    "621201": "Przystanek autobusowy na ul. ks. Indrzejczyka przy wejścia do metra.",
+    "621201": "Przystanek autobusowy na ul. ks. Indrzejczyka przy wejściu do metra.",
     "621202": "Przystanek autobusowy na ul. ks. Indrzejczyka naprzeciwko stacji kolejowej „Warszawa Gdańska”.",
     "622102": "Przystanek autobusowy na ul. Powązkowskiej obok Empiku.",
     "662602": "Przystanek autobusowy na ul. Warszawskiej obok oddziału banku Alior.",
@@ -502,7 +502,7 @@
     "700603": "Peron tramwajowy na ul. Nowowiejskiej obok apteki „Aptekarz Warszawski”.",
     "700604": "Peron tramwajowy na ul. Nowowiejskiej obok piekarni „Lubaszka”.",
     "700605": "Przystanek autobusowy na ul. Waryńskiego przy stacji metra Politechnika.",
-    "700608": "Przystanek autobusowy na ul. Waryńskiego przy wejścia do metra.",
+    "700608": "Przystanek autobusowy na ul. Waryńskiego przy wejściu do metra.",
     "700609": "Przystanek autobusowy na ul. Waryńskiego naprzeciwko Muzeum Marii Dąbrowskiej.",
     "700612": "Przystanek autobusowy na ul. Waryńskiego przy stacji metra Politechnika.",
     "700614": "Przystanek autobusowy na ul. Waryńskiego naprzeciwko Muzeum Marii Dąbrowskiej.",
@@ -527,7 +527,7 @@
     "701310": "Peron tramwajowy na wysepce Al. Jerozolimskich przy Rotundzie, zejście z przejścia podziemnego.",
     "701315": "Przystanek autobusowy w Al. Jerozolimskich po stronie hotelu Novotel, za rondem Dmowskiego.",
     "701402": "Przystanek autobusowy na ul. Marszałkowskiej obok kawiarni Green Caffè Nero.",
-    "701403": "Przystanek autobusowy na ul. Świętokrzyskiej przy wejścia do metra.",
+    "701403": "Przystanek autobusowy na ul. Świętokrzyskiej przy wejściu do metra.",
     "701404": "Przystanek autobusowy na ul. Świętokrzyskiej obok muzeum „Centralny Przystanek Historia”.",
     "701405": "Peron tramwajowy na ul. Marszałkowskiej naprzeciwko teatru „Kwadrat”.",
     "701602": "Przystanek autobusowy na pl. Bankowym przed Ratuszem, blisko wyjścia z metra Ratusz Arsenał.",
@@ -540,7 +540,7 @@
     "701806": "Przystanek autobusowy na ul. Bonifraterskiej naprzeciwko hotelu „Ibis Warszawa Stare Miasto”.",
     "701904": "Przystanek autobusowy na ul. Słomińskiego przy stacji metra Dworzec Gdański.",
     "701907": "Peron tramwajowy na ul. Słomińskiego przy stacji metra Dworzec Gdański.",
-    "701908": "Peron tramwajowy na ul. Słomińskiego przy wejścia do metra.",
+    "701908": "Peron tramwajowy na ul. Słomińskiego przy wejściu do metra.",
     "702102": "Przystanek autobusowy na ul. Stawki obok Rossmanna.",
     "702402": "Przystanek autobusowy na ul. Nowolipki przed teatrem „Potem o Tem”.",
     "702601": "Przystanek autobusowy na ul. Wierzbowej przed teatrem „Narodowy”.",
@@ -561,7 +561,7 @@
     "704005": "Przystanek autobusowy na pl. Trzech Krzyży obok Poczty Polskiej.",
     "704102": "Przystanek autobusowy w Al. Jerozolimskich przy skwerze „Stanisława Wisłockiego”.",
     "704202": "Przystanek autobusowy na Nowym Świecie obok kawiarni „Cava”.",
-    "704301": "Przystanek autobusowy na ul. Świętokrzyskiej przy wejścia do metra.",
+    "704301": "Przystanek autobusowy na ul. Świętokrzyskiej przy wejściu do metra.",
     "704302": "Przystanek autobusowy na ul. Świętokrzyskiej przy stacji metra Nowy Świat-Uniwersytet.",
     "704303": "Przystanek autobusowy na ul. Świętokrzyskiej naprzeciwko szpitala „Warszawski Szpital Dla Dzieci”.",
     "704304": "Przystanek autobusowy na ul. Świętokrzyskiej przy szpitalu „Warszawski Szpital Dla Dzieci”.",
@@ -589,7 +589,7 @@
     "707701": "Przystanek autobusowy na ul. Górnośląskiej naprzeciwko kościoła Matki Bożej Częstochowskiej.",
     "707901": "Przystanek autobusowy na Wybrzeżu Kościuszkowskim naprzeciwko parku „Odkrywców”.",
     "707902": "Przystanek autobusowy na Wybrzeżu Kościuszkowskim naprzeciwko parku „Odkrywców”.",
-    "707903": "Przystanek autobusowy na moście Świętokrzyskim przy wejścia do metra.",
+    "707903": "Przystanek autobusowy na moście Świętokrzyskim przy wejściu do metra.",
     "707904": "Przystanek autobusowy na ul. Zajęczej przed hotelem „Barceló”.",
     "707905": "Przystanek autobusowy na ul. Tamka naprzeciwko kościoła.",
     "708001": "Peron tramwajowy na ul. Marszałkowskiej obok muzeum „Przystanek Historia”.",
@@ -615,7 +615,7 @@
     "708903": "Peron tramwajowy na ul. Chałubińskiego naprzeciwko „Politechnika Warszawska”.",
     "709006": "Peron tramwajowy na ul. Nowowiejskiej obok Muzeum Politechniki Warszawskiej.",
     "709104": "Przystanek autobusowy na ul. Dzikiej naprzeciwko McDonald'sa.",
-    "709304": "Peron tramwajowy przy al. Niepodległości przy centrum handlowego „Warszawska Giełda Elektroniczna”.",
+    "709304": "Peron tramwajowy przy al. Niepodległości obok centrum handlowego „Warszawska Giełda Elektroniczna”.",
     "709306": "Przystanek autobusowy przy al. Armii Ludowej obok Muzeum Andrzeja Struga.",
     "709308": "Przystanek autobusowy na ul. Wawelskiej przy budynku „Wyższa Szkoła Ekologii i Zarządzania”.",
     "709901": "Przystanek autobusowy na ul. Andersa przy skwerze „Batalionu Harcerskiego AK Wigry”.",
@@ -623,10 +623,2161 @@
     "709904": "Peron tramwajowy na ul. Andersa przy stacji metra Ratusz-Arsenał.",
     "709906": "Przystanek autobusowy przy al. „Solidarności” obok kawiarni Starbucks.",
     "709909": "Peron tramwajowo-autobusowy przy al. „Solidarności” naprzeciwko muzeum „Żydowski Instytut Historyczny”.",
-    "709910": "Peron tramwajowo-autobusowy przy al. „Solidarności” przy wejścia do metra.",
+    "709910": "Peron tramwajowo-autobusowy przy al. „Solidarności” przy wejściu do metra.",
     "710101": "Przystanek autobusowy na ul. Bielańskiej obok sklepu Carrefour.",
     "R-1400": "Przystanek autobusowy na ul. Płochocińskiej obok stacji Avia.",
     "R-1499": "Przystanek autobusowy na ul. Płochocińskiej obok stacji Avia."
   },
-  "clusters": {}
+  "clusters": {},
+  "metroEntrances": [
+    {
+      "id": "1003M:E1",
+      "num": "1",
+      "stationId": "1003M",
+      "lat": 52.254258,
+      "lon": 21.034851,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Targowej i al. „Solidarności” obok Poczty Polskiej."
+    },
+    {
+      "id": "1003M:E10",
+      "num": "10",
+      "stationId": "1003M",
+      "lat": 52.254343,
+      "lon": 21.035035,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Targowej i al. „Solidarności” obok piekarni „Oskroba”."
+    },
+    {
+      "id": "1003M:E11",
+      "num": "11",
+      "stationId": "1003M",
+      "lat": 52.253677,
+      "lon": 21.036212,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Targowej i ul. Białostockiej, przy przystanku „Dw. Wileński 01”."
+    },
+    {
+      "id": "1003M:E12",
+      "num": "12",
+      "stationId": "1003M",
+      "lat": 52.253434,
+      "lon": 21.035716,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Targowej i ul. Białostockiej obok apteki „Hibiskus”."
+    },
+    {
+      "id": "1003M:E13",
+      "num": "13",
+      "stationId": "1003M",
+      "lat": 52.253722,
+      "lon": 21.035696,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Targowej i ul. Białostockiej, przy przystanku „Dw. Wileński 07”."
+    },
+    {
+      "id": "1003M:E2",
+      "num": "2",
+      "stationId": "1003M",
+      "lat": 52.254349,
+      "lon": 21.034419,
+      "hint": "Zachodnia strona stacji przy al. „Solidarności” i ul. Targowej, przy szkole średniej."
+    },
+    {
+      "id": "1003M:E3",
+      "num": "3",
+      "stationId": "1003M",
+      "lat": 52.254581,
+      "lon": 21.034232,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy al. „Solidarności” i ul. Targowej obok Poczty Polskiej."
+    },
+    {
+      "id": "1003M:E4",
+      "num": "4",
+      "stationId": "1003M",
+      "lat": 52.254788,
+      "lon": 21.034126,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy al. „Solidarności” i ul. Targowej."
+    },
+    {
+      "id": "1003M:E5",
+      "num": "5",
+      "stationId": "1003M",
+      "lat": 52.254992,
+      "lon": 21.03466,
+      "hint": "Północno-zachodnia strona stacji przy ul. Targowej i al. „Solidarności”, przy przystanku „Dw. Wileński 02”."
+    },
+    {
+      "id": "1003M:E6",
+      "num": "6",
+      "stationId": "1003M",
+      "lat": 52.255065,
+      "lon": 21.034955,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy ul. Targowej i al. „Solidarności”, przy przystanku „Dw. Wileński 08”."
+    },
+    {
+      "id": "1003M:E7",
+      "num": "7",
+      "stationId": "1003M",
+      "lat": 52.255116,
+      "lon": 21.036353,
+      "hint": "Północno-wschodnia strona stacji przy al. „Solidarności”, przy przystanku „Dw. Wileński 04”."
+    },
+    {
+      "id": "1003M:E8",
+      "num": "8",
+      "stationId": "1003M",
+      "lat": 52.254813,
+      "lon": 21.035663,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy al. „Solidarności” i ul. Targowej obok kawiarni Starbucks."
+    },
+    {
+      "id": "1003M:E9",
+      "num": "9",
+      "stationId": "1003M",
+      "lat": 52.254534,
+      "lon": 21.03557,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy ul. Targowej i al. „Solidarności” obok kawiarni „iCoffee”."
+    },
+    {
+      "id": "1085M:E1",
+      "num": "1",
+      "stationId": "1085M",
+      "lat": 52.29368,
+      "lon": 21.03058,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Ludwika Kondratowicza, przy przystanku „Metro Bródno 11”."
+    },
+    {
+      "id": "1085M:E2",
+      "num": "2",
+      "stationId": "1085M",
+      "lat": 52.29319,
+      "lon": 21.03017,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Ludwika Kondratowicza obok piekarni „Trimar”."
+    },
+    {
+      "id": "1085M:E3",
+      "num": "3",
+      "stationId": "1085M",
+      "lat": 52.29336,
+      "lon": 21.02769,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Ludwika Kondratowicza i ul. Rembielińskiej, przy przystanku „Metro Bródno 14”."
+    },
+    {
+      "id": "1085M:E4",
+      "num": "4",
+      "stationId": "1085M",
+      "lat": 52.29392,
+      "lon": 21.02748,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Ludwika Kondratowicza i ul. Rembielińskiej, przy przystanku „Metro Bródno 08”."
+    },
+    {
+      "id": "1085M:E5",
+      "num": "5",
+      "stationId": "1085M",
+      "lat": 52.29403,
+      "lon": 21.02624,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Rembielińskiej, przy przystanku „Metro Bródno 01”."
+    },
+    {
+      "id": "1085M:E6",
+      "num": "6",
+      "stationId": "1085M",
+      "lat": 52.29292,
+      "lon": 21.02731,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Rembielińskiej, przy przystanku „Metro Bródno 02”."
+    },
+    {
+      "id": "1137M:E1",
+      "num": "1",
+      "stationId": "1137M",
+      "lat": 52.269576,
+      "lon": 21.051152,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy ul. Michała Ossowskiego i ul. Pratulińskiej, przy przystanku „Metro Targówek Mieszkaniowy 02”."
+    },
+    {
+      "id": "1137M:E2",
+      "num": "2",
+      "stationId": "1137M",
+      "lat": 52.268417,
+      "lon": 21.051537,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Pratulińskiej i ul. Heleny Junkiewicz, przy kościele Chrystusa Króla."
+    },
+    {
+      "id": "1137M:E3",
+      "num": "3",
+      "stationId": "1137M",
+      "lat": 52.268962,
+      "lon": 21.051053,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Węgrowskiej i ul. Michała Ossowskiego."
+    },
+    {
+      "id": "1140M:E1",
+      "num": "1",
+      "stationId": "1140M",
+      "lat": 52.275653,
+      "lon": 21.05597,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy ul. Unickiej i ul. Trockiej obok supermarketu „Topaz”."
+    },
+    {
+      "id": "1140M:E2",
+      "num": "2",
+      "stationId": "1140M",
+      "lat": 52.275482,
+      "lon": 21.056336,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy ul. Unickiej i ul. Zamiejskiej, przy przystanku „Metro Trocka 01”."
+    },
+    {
+      "id": "1140M:E3",
+      "num": "3",
+      "stationId": "1140M",
+      "lat": 52.274381,
+      "lon": 21.054528,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Unickiej i ul. Aleksandra Gajkowicza, przy przystanku „Metro Trocka 03”."
+    },
+    {
+      "id": "1140M:E4",
+      "num": "4",
+      "stationId": "1140M",
+      "lat": 52.274539,
+      "lon": 21.054213,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Unickiej."
+    },
+    {
+      "id": "1146M:E1",
+      "num": "1",
+      "stationId": "1146M",
+      "lat": 52.29226,
+      "lon": 21.04915,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Ludwika Kondratowicza i ul. Malborskiej, przy przystanku „Metro Kondratowicza 03”."
+    },
+    {
+      "id": "1146M:E2",
+      "num": "2",
+      "stationId": "1146M",
+      "lat": 52.29183,
+      "lon": 21.04928,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Ludwika Kondratowicza i ul. Malborskiej, przy przystanku „Metro Kondratowicza 02”."
+    },
+    {
+      "id": "1146M:E3",
+      "num": "3",
+      "stationId": "1146M",
+      "lat": 52.2922,
+      "lon": 21.04747,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Ludwika Kondratowicza obok oddziału banku PKO BP."
+    },
+    {
+      "id": "1146M:E4",
+      "num": "4",
+      "stationId": "1146M",
+      "lat": 52.29182,
+      "lon": 21.04743,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Ludwika Kondratowicza obok oddziału banku VeloBank."
+    },
+    {
+      "id": "1146M:E5",
+      "num": "5",
+      "stationId": "1146M",
+      "lat": 52.29185,
+      "lon": 21.05123,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Świętego Wincentego i ul. Ludwika Kondratowicza, przy przystanku „Metro Kondratowicza 05”."
+    },
+    {
+      "id": "1146M:E6",
+      "num": "6",
+      "stationId": "1146M",
+      "lat": 52.29179,
+      "lon": 21.05182,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Świętego Wincentego i ul. Ludwika Kondratowicza obok sklepu Carrefour."
+    },
+    {
+      "id": "1231M:E1",
+      "num": "1",
+      "stationId": "1231M",
+      "lat": 52.246706,
+      "lon": 21.042633,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Sokolej."
+    },
+    {
+      "id": "1231M:E2",
+      "num": "2",
+      "stationId": "1231M",
+      "lat": 52.247168,
+      "lon": 21.042617,
+      "hint": "Północno-zachodnia strona stacji przy ul. Sokolej."
+    },
+    {
+      "id": "1231M:E3",
+      "num": "3",
+      "stationId": "1231M",
+      "lat": 52.247576,
+      "lon": 21.04273,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy ul. Jana Zamoyskiego i ul. Sokolej, przy przystanku „Metro Stadion Narodowy 12”."
+    },
+    {
+      "id": "1231M:E4",
+      "num": "4",
+      "stationId": "1231M",
+      "lat": 52.24736,
+      "lon": 21.043578,
+      "hint": "Północno-wschodnia strona stacji przy ul. Sokolej i ul. Jana Zamoyskiego, przy targowisku."
+    },
+    {
+      "id": "1231M:E5",
+      "num": "5",
+      "stationId": "1231M",
+      "lat": 52.246958,
+      "lon": 21.043515,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Sokolej, przy przystanku „Metro Stadion Narodowy 01”."
+    },
+    {
+      "id": "1231M:E6",
+      "num": "7",
+      "stationId": "1231M",
+      "lat": 52.2461,
+      "lon": 21.043426,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Sokolej, przy przystanku „Metro Stadion Narodowy 02”."
+    },
+    {
+      "id": "1231M:E7",
+      "num": "8",
+      "stationId": "1231M",
+      "lat": 52.246139,
+      "lon": 21.042965,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Sokolej."
+    },
+    {
+      "id": "1411M:E1",
+      "num": "1",
+      "stationId": "1411M",
+      "lat": 52.28298,
+      "lon": 21.06233,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Figara i ul. Czerwonej Jarzębiny."
+    },
+    {
+      "id": "1411M:E2",
+      "num": "2",
+      "stationId": "1411M",
+      "lat": 52.28512,
+      "lon": 21.06179,
+      "hint": "Północna strona stacji przy ul. Rolanda i ul. Litawora, przy przystanku „Metro Zacisze 02”."
+    },
+    {
+      "id": "1411M:E2w",
+      "num": "2 (Winda)",
+      "stationId": "1411M",
+      "lat": 52.28421,
+      "lon": 21.06179,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Figara i ul. Lecha."
+    },
+    {
+      "id": "1526M:E1",
+      "num": "1",
+      "stationId": "1526M",
+      "lat": 52.263489,
+      "lon": 21.046391,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Strzeleckiej obok stacji paliw „MZA”."
+    },
+    {
+      "id": "1526M:E2",
+      "num": "2",
+      "stationId": "1526M",
+      "lat": 52.263082,
+      "lon": 21.045414,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Strzeleckiej obok Lidla."
+    },
+    {
+      "id": "1526M:E3",
+      "num": "3",
+      "stationId": "1526M",
+      "lat": 52.263141,
+      "lon": 21.04447,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Strzeleckiej i ul. Szwedzkiej, przy przystanku „Metro Szwedzka 02”."
+    },
+    {
+      "id": "1526M:E4",
+      "num": "4",
+      "stationId": "1526M",
+      "lat": 52.263488,
+      "lon": 21.045321,
+      "hint": "Północna strona stacji przy ul. Strzeleckiej obok Lidla."
+    },
+    {
+      "id": "3009M:E1",
+      "num": "1",
+      "stationId": "3009M",
+      "lat": 52.181429,
+      "lon": 21.02412,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji obok Rossmanna."
+    },
+    {
+      "id": "3009M:E2",
+      "num": "2",
+      "stationId": "3009M",
+      "lat": 52.180985,
+      "lon": 21.024705,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Pejzażowej i ul. Grabowej obok kawiarni „Lisia Kita”."
+    },
+    {
+      "id": "3009M:E3",
+      "num": "3",
+      "stationId": "3009M",
+      "lat": 52.180942,
+      "lon": 21.02358,
+      "hint": "Południowa strona stacji przy ul. Pejzażowej i ul. Puławskiej obok kawiarni Starbucks."
+    },
+    {
+      "id": "3009M:E4",
+      "num": "4",
+      "stationId": "3009M",
+      "lat": 52.181556,
+      "lon": 21.022866,
+      "hint": "Zachodnia strona stacji przy ul. Puławskiej, przy przystanku „Metro Wilanowska 06”."
+    },
+    {
+      "id": "3009M:E5",
+      "num": "5",
+      "stationId": "3009M",
+      "lat": 52.181577,
+      "lon": 21.022671,
+      "hint": "Zachodnia strona stacji przy ul. Puławskiej, przy przystanku „Metro Wilanowska 02”."
+    },
+    {
+      "id": "3009M:E6",
+      "num": "6",
+      "stationId": "3009M",
+      "lat": 52.1823,
+      "lon": 21.021985,
+      "hint": "Północno-zachodnia strona stacji przy ul. Japońskiej obok piekarni „Gorąco Polecam”."
+    },
+    {
+      "id": "3009M:E7",
+      "num": "7",
+      "stationId": "3009M",
+      "lat": 52.18259,
+      "lon": 21.022645,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy ul. Puławskiej i ul. Japońskiej obok restauracji „Como”."
+    },
+    {
+      "id": "3114M:E1",
+      "num": "1",
+      "stationId": "3114M",
+      "lat": 52.189403,
+      "lon": 21.017244,
+      "hint": "Południowo-wschodnia strona stacji przy al. Niepodległości i ul. Jana Pawła Woronicza obok piekarni „Mistrz Piekarz”."
+    },
+    {
+      "id": "3114M:E10",
+      "num": "10",
+      "stationId": "3114M",
+      "lat": 52.190445,
+      "lon": 21.016726,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Adama Naruszewicza obok piekarni „Grzybki”."
+    },
+    {
+      "id": "3114M:E2",
+      "num": "2",
+      "stationId": "3114M",
+      "lat": 52.189128,
+      "lon": 21.017806,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Jana Pawła Woronicza i al. Niepodległości, przy przystanku „Metro Wierzbno 04”."
+    },
+    {
+      "id": "3114M:E3",
+      "num": "3",
+      "stationId": "3114M",
+      "lat": 52.188908,
+      "lon": 21.017621,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Niepodległości i ul. Jana Pawła Woronicza, przy przystanku „Metro Wierzbno 01”."
+    },
+    {
+      "id": "3114M:E4",
+      "num": "4",
+      "stationId": "3114M",
+      "lat": 52.188934,
+      "lon": 21.016894,
+      "hint": "Południowa strona stacji przy al. Niepodległości i ul. Jana Pawła Woronicza, przy przystanku „Metro Wierzbno 06”."
+    },
+    {
+      "id": "3114M:E5",
+      "num": "5",
+      "stationId": "3114M",
+      "lat": 52.188925,
+      "lon": 21.016529,
+      "hint": "Południowa strona stacji przy ul. Jana Pawła Woronicza i al. Niepodległości, przy przystanku „Metro Wierzbno 03”."
+    },
+    {
+      "id": "3114M:E6",
+      "num": "6",
+      "stationId": "3114M",
+      "lat": 52.189409,
+      "lon": 21.016581,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy al. Niepodległości i ul. Jana Pawła Woronicza, przy przystanku „Metro Wierzbno 02”."
+    },
+    {
+      "id": "3114M:E7",
+      "num": "7",
+      "stationId": "3114M",
+      "lat": 52.190394,
+      "lon": 21.01619,
+      "hint": "Północno-zachodnia strona stacji przy al. Niepodległości i ul. Adama Naruszewicza obok Żabki."
+    },
+    {
+      "id": "3114M:E8",
+      "num": "8",
+      "stationId": "3114M",
+      "lat": 52.190798,
+      "lon": 21.015978,
+      "hint": "Północno-zachodnia strona stacji przy al. Niepodległości i ul. Adama Naruszewicza obok kawiarni „Miau Café”."
+    },
+    {
+      "id": "3114M:E9",
+      "num": "9",
+      "stationId": "3114M",
+      "lat": 52.190891,
+      "lon": 21.016524,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Adama Naruszewicza obok apteki „Cosmedica”."
+    },
+    {
+      "id": "3127M:E1",
+      "num": "1",
+      "stationId": "3127M",
+      "lat": 52.16131,
+      "lon": 21.028363,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej i pasażu Stokłosy obok kawiarni Costa Coffee."
+    },
+    {
+      "id": "3127M:E2",
+      "num": "2",
+      "stationId": "3127M",
+      "lat": 52.16122,
+      "lon": 21.027575,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Komisji Edukacji Narodowej, przy przystanku „Metro Ursynów 01”."
+    },
+    {
+      "id": "3127M:E3",
+      "num": "3",
+      "stationId": "3127M",
+      "lat": 52.162452,
+      "lon": 21.027027,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej i ul. Wawrzyńca Surowieckiego."
+    },
+    {
+      "id": "3127M:E4",
+      "num": "4",
+      "stationId": "3127M",
+      "lat": 52.162588,
+      "lon": 21.028024,
+      "hint": "Północna strona stacji przy al. Komisji Edukacji Narodowej, przy przystanku „Metro Ursynów 02”."
+    },
+    {
+      "id": "3132M:E1",
+      "num": "1",
+      "stationId": "3132M",
+      "lat": 52.155733,
+      "lon": 21.035845,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej, przy przystanku „Metro Stokłosy 03”."
+    },
+    {
+      "id": "3132M:E2",
+      "num": "2",
+      "stationId": "3132M",
+      "lat": 52.155336,
+      "lon": 21.035588,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej obok apteki „Ziko”."
+    },
+    {
+      "id": "3132M:E3",
+      "num": "3",
+      "stationId": "3132M",
+      "lat": 52.155374,
+      "lon": 21.035291,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej obok Rossmanna."
+    },
+    {
+      "id": "3132M:E4",
+      "num": "4",
+      "stationId": "3132M",
+      "lat": 52.156342,
+      "lon": 21.033341,
+      "hint": "Zachodnia strona stacji przy al. Komisji Edukacji Narodowej obok oddziału banku BNP Paribas."
+    },
+    {
+      "id": "3132M:E5",
+      "num": "5",
+      "stationId": "3132M",
+      "lat": 52.156651,
+      "lon": 21.033426,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej i ul. Stokłosy obok piekarni „Oskroba”."
+    },
+    {
+      "id": "3132M:E6",
+      "num": "6",
+      "stationId": "3132M",
+      "lat": 52.1569,
+      "lon": 21.033824,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej i ul. Stokłosy, przy przystanku „Metro Stokłosy 04”."
+    },
+    {
+      "id": "3132M:E7",
+      "num": "7",
+      "stationId": "3132M",
+      "lat": 52.156858,
+      "lon": 21.034127,
+      "hint": "Północna strona stacji przy al. Komisji Edukacji Narodowej obok oddziału banku Millennium."
+    },
+    {
+      "id": "3228M:E1",
+      "num": "1",
+      "stationId": "3228M",
+      "lat": 52.208179,
+      "lon": 21.008391,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Niepodległości, przy przystanku „Metro Pole Mokotowskie 02”."
+    },
+    {
+      "id": "3228M:E10",
+      "num": "10",
+      "stationId": "3228M",
+      "lat": 52.209309,
+      "lon": 21.007571,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Giordana Bruna, przy przystanku „Metro Pole Mokotowskie 04”."
+    },
+    {
+      "id": "3228M:E11",
+      "num": "11",
+      "stationId": "3228M",
+      "lat": 52.209757,
+      "lon": 21.007882,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Giordana Bruna obok supermarketu „Mokpol”."
+    },
+    {
+      "id": "3228M:E12",
+      "num": "12",
+      "stationId": "3228M",
+      "lat": 52.209393,
+      "lon": 21.007991,
+      "hint": "Północna strona stacji przy al. Niepodległości."
+    },
+    {
+      "id": "3228M:E2",
+      "num": "2",
+      "stationId": "3228M",
+      "lat": 52.207771,
+      "lon": 21.00867,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Rakowieckiej i al. Niepodległości obok sklepu Carrefour."
+    },
+    {
+      "id": "3228M:E3",
+      "num": "3",
+      "stationId": "3228M",
+      "lat": 52.207982,
+      "lon": 21.008083,
+      "hint": "Południowa strona stacji przy al. Niepodległości i ul. Rakowieckiej obok sklepu Carrefour."
+    },
+    {
+      "id": "3228M:E4",
+      "num": "4",
+      "stationId": "3228M",
+      "lat": 52.207613,
+      "lon": 21.007726,
+      "hint": "Południowa strona stacji przy al. Niepodległości i ul. Rakowieckiej obok oddziału banku Alior."
+    },
+    {
+      "id": "3228M:E5",
+      "num": "5",
+      "stationId": "3228M",
+      "lat": 52.208073,
+      "lon": 21.007571,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Niepodległości obok restauracji „Taka Tajka”."
+    },
+    {
+      "id": "3228M:E6",
+      "num": "6",
+      "stationId": "3228M",
+      "lat": 52.208221,
+      "lon": 21.00785,
+      "hint": "Południowa strona stacji przy al. Niepodległości, przy przystanku „Metro Pole Mokotowskie 03”."
+    },
+    {
+      "id": "3228M:E7",
+      "num": "7",
+      "stationId": "3228M",
+      "lat": 52.2093,
+      "lon": 21.007179,
+      "hint": "Północno-zachodnia strona stacji przy al. Niepodległości i ul. Giordana Bruna, bliżej przystanku „Metro Pole Mokotowskie 04”."
+    },
+    {
+      "id": "3228M:E8",
+      "num": "8",
+      "stationId": "3228M",
+      "lat": 52.209717,
+      "lon": 21.007013,
+      "hint": "Północno-zachodnia strona stacji przy al. Niepodległości i ul. Giordana Bruna, obok sklepu Carrefour."
+    },
+    {
+      "id": "3228M:E9",
+      "num": "9",
+      "stationId": "3228M",
+      "lat": 52.209296,
+      "lon": 21.00741,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Giordana Bruna."
+    },
+    {
+      "id": "3230M:E1",
+      "num": "1",
+      "stationId": "3230M",
+      "lat": 52.19823,
+      "lon": 21.012779,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Niepodległości i ul. Racławickiej obok Żabki."
+    },
+    {
+      "id": "3230M:E2",
+      "num": "2",
+      "stationId": "3230M",
+      "lat": 52.197872,
+      "lon": 21.012957,
+      "hint": "Południowo-wschodnia strona stacji przy al. Niepodległości i ul. Racławickiej, przy targowisku „Racławicka”."
+    },
+    {
+      "id": "3230M:E3",
+      "num": "3",
+      "stationId": "3230M",
+      "lat": 52.197816,
+      "lon": 21.01249,
+      "hint": "Południowa strona stacji przy al. Niepodległości i ul. Racławickiej obok Delikatesów Centrum."
+    },
+    {
+      "id": "3230M:E4",
+      "num": "4",
+      "stationId": "3230M",
+      "lat": 52.198184,
+      "lon": 21.012329,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Niepodległości i ul. Racławickiej obok oddziału banku BNP Paribas."
+    },
+    {
+      "id": "3230M:E5",
+      "num": "5",
+      "stationId": "3230M",
+      "lat": 52.199355,
+      "lon": 21.011755,
+      "hint": "Północno-zachodnia strona stacji przy al. Niepodległości i ul. Wiktorskiej obok Poczty Polskiej."
+    },
+    {
+      "id": "3230M:E6",
+      "num": "6",
+      "stationId": "3230M",
+      "lat": 52.199834,
+      "lon": 21.011514,
+      "hint": "Północno-zachodnia strona stacji przy al. Niepodległości i ul. Odolańskiej, przy przystanku „Metro Racławicka 01”."
+    },
+    {
+      "id": "3230M:E7",
+      "num": "7",
+      "stationId": "3230M",
+      "lat": 52.199723,
+      "lon": 21.012039,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Odolańskiej, przy przystanku „Metro Racławicka 02”."
+    },
+    {
+      "id": "3230M:E8",
+      "num": "8",
+      "stationId": "3230M",
+      "lat": 52.19943,
+      "lon": 21.012195,
+      "hint": "Północna strona stacji przy al. Niepodległości i ul. Wiktorskiej obok pizzerii „Da Grasso”."
+    },
+    {
+      "id": "3279M:E1",
+      "num": "1",
+      "stationId": "3279M",
+      "lat": 52.171906,
+      "lon": 21.026622,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Harcerzy Rzeczypospolitej obok Żabki."
+    },
+    {
+      "id": "3279M:E2",
+      "num": "2",
+      "stationId": "3279M",
+      "lat": 52.171896,
+      "lon": 21.026083,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Harcerzy Rzeczypospolitej obok centrum handlowego „Land”."
+    },
+    {
+      "id": "3279M:E3",
+      "num": "3",
+      "stationId": "3279M",
+      "lat": 52.173103,
+      "lon": 21.025882,
+      "hint": "Północno-zachodnia strona stacji przy al. Harcerzy Rzeczypospolitej i ul. Wałbrzyskiej, przy przystanku „Metro Służew 03”."
+    },
+    {
+      "id": "3279M:E4",
+      "num": "4",
+      "stationId": "3279M",
+      "lat": 52.173563,
+      "lon": 21.025676,
+      "hint": "Północno-zachodnia strona stacji przy ul. Wałbrzyskiej i ul. Rolnej, przy przystanku „Metro Służew 02”."
+    },
+    {
+      "id": "3279M:E5",
+      "num": "5",
+      "stationId": "3279M",
+      "lat": 52.173682,
+      "lon": 21.026626,
+      "hint": "Północna strona stacji przy ul. Rolnej i ul. Wałbrzyskiej, przy przystanku „Metro Służew 04”."
+    },
+    {
+      "id": "3279M:E6",
+      "num": "6",
+      "stationId": "3279M",
+      "lat": 52.173222,
+      "lon": 21.026515,
+      "hint": "Północno-wschodnia strona stacji przy al. Harcerzy Rzeczypospolitej i ul. Wałbrzyskiej, przy przystanku „Metro Służew 01”."
+    },
+    {
+      "id": "3280M:E1",
+      "num": "1",
+      "stationId": "3280M",
+      "lat": 52.148834,
+      "lon": 21.04753,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej."
+    },
+    {
+      "id": "3280M:E2",
+      "num": "2",
+      "stationId": "3280M",
+      "lat": 52.14853,
+      "lon": 21.047071,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej obok piekarni „Putka”."
+    },
+    {
+      "id": "3280M:E3",
+      "num": "3",
+      "stationId": "3280M",
+      "lat": 52.149478,
+      "lon": 21.045365,
+      "hint": "Zachodnia strona stacji przy ul. Indiry Gandhi i al. Komisji Edukacji Narodowej, przy przystanku „Metro Imielin 04”."
+    },
+    {
+      "id": "3280M:E4",
+      "num": "4",
+      "stationId": "3280M",
+      "lat": 52.149702,
+      "lon": 21.045003,
+      "hint": "Północno-zachodnia strona stacji przy ul. Indiry Gandhi i al. Komisji Edukacji Narodowej, przy przystanku „Metro Imielin 02”."
+    },
+    {
+      "id": "3280M:E5",
+      "num": "5",
+      "stationId": "3280M",
+      "lat": 52.150055,
+      "lon": 21.045511,
+      "hint": "Północno-zachodnia strona stacji przy ul. Indiry Gandhi i al. Komisji Edukacji Narodowej, przy przystanku „Metro Imielin 03”."
+    },
+    {
+      "id": "3280M:E6",
+      "num": "6",
+      "stationId": "3280M",
+      "lat": 52.149826,
+      "lon": 21.045875,
+      "hint": "Północna strona stacji przy ul. Indiry Gandhi i al. Komisji Edukacji Narodowej, przy przystanku „Metro Imielin 01”."
+    },
+    {
+      "id": "3281M:E1",
+      "num": "1",
+      "stationId": "3281M",
+      "lat": 52.140646,
+      "lon": 21.057267,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej i pasażu Natoliński obok apteki „Ziko”."
+    },
+    {
+      "id": "3281M:E2",
+      "num": "2",
+      "stationId": "3281M",
+      "lat": 52.140343,
+      "lon": 21.057556,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej i ul. Belgradzkiej, przy przystanku „Metro Natolin 03”."
+    },
+    {
+      "id": "3281M:E3",
+      "num": "3",
+      "stationId": "3281M",
+      "lat": 52.140202,
+      "lon": 21.056966,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Komisji Edukacji Narodowej i pasażu Natoliński obok Żabki."
+    },
+    {
+      "id": "3281M:E4",
+      "num": "4",
+      "stationId": "3281M",
+      "lat": 52.140465,
+      "lon": 21.056719,
+      "hint": "Południowa strona stacji przy al. Komisji Edukacji Narodowej i pasażu Natoliński obok sklepu Carrefour."
+    },
+    {
+      "id": "3281M:E5",
+      "num": "5",
+      "stationId": "3281M",
+      "lat": 52.141499,
+      "lon": 21.055738,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej."
+    },
+    {
+      "id": "3281M:E6",
+      "num": "6",
+      "stationId": "3281M",
+      "lat": 52.141759,
+      "lon": 21.055448,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej obok piekarni „Putka”."
+    },
+    {
+      "id": "3281M:E7",
+      "num": "7",
+      "stationId": "3281M",
+      "lat": 52.14191,
+      "lon": 21.055904,
+      "hint": "Północna strona stacji przy al. Komisji Edukacji Narodowej obok piekarni „Gorąco Polecam”, obok restauracji „Rani”."
+    },
+    {
+      "id": "3281M:E8",
+      "num": "8",
+      "stationId": "3281M",
+      "lat": 52.141677,
+      "lon": 21.056172,
+      "hint": "Północna strona stacji przy al. Komisji Edukacji Narodowej obok piekarni „Gorąco Polecam”, bliżej południowego krańca."
+    },
+    {
+      "id": "3282M:E1",
+      "num": "1",
+      "stationId": "3282M",
+      "lat": 52.131621,
+      "lon": 21.065989,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy al. Komisji Edukacji Narodowej i ul. Wąwozowej, przy przystanku „Metro Kabaty 01”."
+    },
+    {
+      "id": "3282M:E2",
+      "num": "2",
+      "stationId": "3282M",
+      "lat": 52.130982,
+      "lon": 21.06659,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Wąwozowej i al. Komisji Edukacji Narodowej, przy przystanku „Metro Kabaty 03”."
+    },
+    {
+      "id": "3282M:E3",
+      "num": "3",
+      "stationId": "3282M",
+      "lat": 52.131005,
+      "lon": 21.065801,
+      "hint": "Południowa strona stacji przy al. Komisji Edukacji Narodowej i ul. Wąwozowej, przy przystanku „Metro Kabaty 02”."
+    },
+    {
+      "id": "3282M:E4",
+      "num": "4",
+      "stationId": "3282M",
+      "lat": 52.131453,
+      "lon": 21.065345,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Komisji Edukacji Narodowej i ul. Wąwozowej, przy przystanku „Metro Kabaty 04”."
+    },
+    {
+      "id": "3282M:E5",
+      "num": "5",
+      "stationId": "3282M",
+      "lat": 52.132461,
+      "lon": 21.064305,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej obok oddziału banku Alior."
+    },
+    {
+      "id": "3282M:E6",
+      "num": "6",
+      "stationId": "3282M",
+      "lat": 52.132747,
+      "lon": 21.064026,
+      "hint": "Północno-zachodnia strona stacji przy al. Komisji Edukacji Narodowej i ul. Pála Telekiego obok apteki „Kabaty”."
+    },
+    {
+      "id": "3282M:E7",
+      "num": "7",
+      "stationId": "3282M",
+      "lat": 52.132991,
+      "lon": 21.064573,
+      "hint": "Północna strona stacji przy al. Komisji Edukacji Narodowej i ul. Pála Telekiego obok Żabki."
+    },
+    {
+      "id": "3282M:E8",
+      "num": "8",
+      "stationId": "3282M",
+      "lat": 52.132668,
+      "lon": 21.064889,
+      "hint": "Północna strona stacji przy al. Komisji Edukacji Narodowej obok kawiarni „Galeria Projekt”."
+    },
+    {
+      "id": "5005M:E1",
+      "num": "1",
+      "stationId": "5005M",
+      "lat": 52.23204,
+      "lon": 20.966722,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Płockiej."
+    },
+    {
+      "id": "5005M:E2",
+      "num": "2",
+      "stationId": "5005M",
+      "lat": 52.231686,
+      "lon": 20.966844,
+      "hint": "Południowa strona stacji przy ul. Płockiej, bliżej wschodniego krańca."
+    },
+    {
+      "id": "5005M:E3",
+      "num": "3",
+      "stationId": "5005M",
+      "lat": 52.231583,
+      "lon": 20.966536,
+      "hint": "Południowa strona stacji przy ul. Płockiej, obok restauracji „Nasza Wola”."
+    },
+    {
+      "id": "5005M:E4",
+      "num": "4",
+      "stationId": "5005M",
+      "lat": 52.232158,
+      "lon": 20.966348,
+      "hint": "Południowa strona stacji przy ul. Płockiej, przy przystanku „Metro Płocka 05”."
+    },
+    {
+      "id": "5005M:E5",
+      "num": "5",
+      "stationId": "5005M",
+      "lat": 52.232992,
+      "lon": 20.965959,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Płockiej i ul. Wolskiej, przy przystanku „Metro Płocka 06”."
+    },
+    {
+      "id": "5005M:E6",
+      "num": "6",
+      "stationId": "5005M",
+      "lat": 52.233253,
+      "lon": 20.965603,
+      "hint": "Północno-zachodnia strona stacji przy ul. Wolskiej i ul. Płockiej obok oddziału banku Millennium."
+    },
+    {
+      "id": "5005M:E7",
+      "num": "7",
+      "stationId": "5005M",
+      "lat": 52.233341,
+      "lon": 20.966408,
+      "hint": "Północna strona stacji przy ul. Wolskiej i ul. Płockiej, przy przystanku „Metro Płocka 04”."
+    },
+    {
+      "id": "5005M:E8",
+      "num": "8",
+      "stationId": "5005M",
+      "lat": 52.233175,
+      "lon": 20.966467,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy ul. Płockiej i ul. Wolskiej obok apteki „Słoneczna”."
+    },
+    {
+      "id": "5028M:E1",
+      "num": "1",
+      "stationId": "5028M",
+      "lat": 52.237731,
+      "lon": 20.961115,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej obok pizzerii „Mała Italia”."
+    },
+    {
+      "id": "5028M:E2",
+      "num": "2",
+      "stationId": "5028M",
+      "lat": 52.237671,
+      "lon": 20.961693,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej i ul. Syreny obok Lewiatana, bliżej północnego krańca."
+    },
+    {
+      "id": "5028M:E3",
+      "num": "3",
+      "stationId": "5028M",
+      "lat": 52.237393,
+      "lon": 20.961623,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej i ul. Syreny obok Lewiatana, bliżej południowego krańca."
+    },
+    {
+      "id": "5028M:E4",
+      "num": "4",
+      "stationId": "5028M",
+      "lat": 52.237455,
+      "lon": 20.96101,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Górczewskiej obok apteki „Maxfarm”."
+    },
+    {
+      "id": "5028M:E5",
+      "num": "5",
+      "stationId": "5028M",
+      "lat": 52.237609,
+      "lon": 20.95942,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Sokołowskiej obok Żabki."
+    },
+    {
+      "id": "5028M:E6",
+      "num": "6",
+      "stationId": "5028M",
+      "lat": 52.237636,
+      "lon": 20.958769,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Sokołowskiej obok restauracji „Soto Sushi”."
+    },
+    {
+      "id": "5028M:E7",
+      "num": "7",
+      "stationId": "5028M",
+      "lat": 52.237915,
+      "lon": 20.958813,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Sokołowskiej, przy budynku „Instytut Wysokich Ciśnień PAN”."
+    },
+    {
+      "id": "5030M:E1",
+      "num": "1",
+      "stationId": "5030M",
+      "lat": 52.239201,
+      "lon": 20.945011,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej i ul. Erazma Ciołka obok piekarni „SPC”."
+    },
+    {
+      "id": "5030M:E2",
+      "num": "2",
+      "stationId": "5030M",
+      "lat": 52.239136,
+      "lon": 20.945665,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Erazma Ciołka i ul. Górczewskiej, przy przystanku „Metro Księcia Janusza 05”."
+    },
+    {
+      "id": "5030M:E3",
+      "num": "3",
+      "stationId": "5030M",
+      "lat": 52.238811,
+      "lon": 20.945577,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej i ul. Erazma Ciołka obok Rossmanna."
+    },
+    {
+      "id": "5030M:E4",
+      "num": "4",
+      "stationId": "5030M",
+      "lat": 52.238877,
+      "lon": 20.944945,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej i ul. Bitwy pod Lenino obok Poczty Polskiej."
+    },
+    {
+      "id": "5030M:E5",
+      "num": "5",
+      "stationId": "5030M",
+      "lat": 52.238924,
+      "lon": 20.943124,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Jana Olbrachta, przy przystanku „Metro Księcia Janusza 04”."
+    },
+    {
+      "id": "5030M:E6",
+      "num": "6",
+      "stationId": "5030M",
+      "lat": 52.238956,
+      "lon": 20.942499,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Jana Olbrachta i ul. Górczewskiej, przy przystanku „Metro Księcia Janusza 03”."
+    },
+    {
+      "id": "5030M:E7",
+      "num": "7",
+      "stationId": "5030M",
+      "lat": 52.239091,
+      "lon": 20.942054,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Jana Olbrachta, przy targowisku „Ryneczek Osiedlowy”."
+    },
+    {
+      "id": "5030M:E8",
+      "num": "8",
+      "stationId": "5030M",
+      "lat": 52.239472,
+      "lon": 20.941984,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Księcia Janusza, przy przystanku „Metro Księcia Janusza 02”."
+    },
+    {
+      "id": "5030M:E9",
+      "num": "9",
+      "stationId": "5030M",
+      "lat": 52.239338,
+      "lon": 20.943372,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Górczewskiej i ul. Jana Olbrachta, przy przystanku „Metro Księcia Janusza 08”."
+    },
+    {
+      "id": "5032M:E1",
+      "num": "1",
+      "stationId": "5032M",
+      "lat": 52.24063,
+      "lon": 20.92985,
+      "hint": "Północno-zachodnia strona stacji przy ul. Górczewskiej, przy przystanku „Metro Ulrychów 02”."
+    },
+    {
+      "id": "5032M:E2",
+      "num": "2",
+      "stationId": "5032M",
+      "lat": 52.24055,
+      "lon": 20.93063,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy ul. Górczewskiej i ul. Białowiejskiej, przy przystanku „Metro Ulrychów 01”."
+    },
+    {
+      "id": "5032M:E3",
+      "num": "3",
+      "stationId": "5032M",
+      "lat": 52.24017,
+      "lon": 20.93158,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej i ul. Szańcowej po stronie parku „Ulricha”."
+    },
+    {
+      "id": "5032M:E4",
+      "num": "4",
+      "stationId": "5032M",
+      "lat": 52.24021,
+      "lon": 20.92945,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Górczewskiej."
+    },
+    {
+      "id": "5032M:E5",
+      "num": "5",
+      "stationId": "5032M",
+      "lat": 52.24026,
+      "lon": 20.92877,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej."
+    },
+    {
+      "id": "5034M:E1",
+      "num": "1",
+      "stationId": "5034M",
+      "lat": 52.23962,
+      "lon": 20.91655,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej, przy przystanku „Konarskiego 02”."
+    },
+    {
+      "id": "5034M:E2",
+      "num": "2",
+      "stationId": "5034M",
+      "lat": 52.23922,
+      "lon": 20.91668,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Górczewskiej, przy kościele Świętego Łukasza Ewangelisty."
+    },
+    {
+      "id": "5034M:E3",
+      "num": "3",
+      "stationId": "5034M",
+      "lat": 52.23894,
+      "lon": 20.9139,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Górczewskiej i ul. Powstańców Śląskich przed urzędem dzielnicy."
+    },
+    {
+      "id": "5034M:E4",
+      "num": "4",
+      "stationId": "5034M",
+      "lat": 52.23864,
+      "lon": 20.91315,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Powstańców Śląskich i ul. Górczewskiej, przy przystanku „Metro Bemowo 03”."
+    },
+    {
+      "id": "5034M:E5",
+      "num": "5",
+      "stationId": "5034M",
+      "lat": 52.2387,
+      "lon": 20.91261,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Górczewskiej i ul. Powstańców Śląskich."
+    },
+    {
+      "id": "5034M:E6",
+      "num": "6",
+      "stationId": "5034M",
+      "lat": 52.23914,
+      "lon": 20.91236,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Powstańców Śląskich, przy przystanku „Metro Bemowo 06”."
+    },
+    {
+      "id": "5034M:E7",
+      "num": "7",
+      "stationId": "5034M",
+      "lat": 52.2393,
+      "lon": 20.91234,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Górczewskiej i ul. Powstańców Śląskich, przy przystanku „Metro Bemowo 02”."
+    },
+    {
+      "id": "5034M:E8",
+      "num": "8",
+      "stationId": "5034M",
+      "lat": 52.23963,
+      "lon": 20.91315,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Powstańców Śląskich i ul. Górczewskiej, przy przystanku „Metro Bemowo 04”."
+    },
+    {
+      "id": "5034M:E9",
+      "num": "9",
+      "stationId": "5034M",
+      "lat": 52.23946,
+      "lon": 20.91383,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy ul. Górczewskiej i ul. Powstańców Śląskich obok Lidla."
+    },
+    {
+      "id": "5040M:E1",
+      "num": "1",
+      "stationId": "5040M",
+      "lat": 52.230375,
+      "lon": 20.983104,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy ul. Prostej i ul. Towarowej, przy przystanku „Rondo Daszyńskiego 08”."
+    },
+    {
+      "id": "5040M:E2",
+      "num": "2",
+      "stationId": "5040M",
+      "lat": 52.230198,
+      "lon": 20.983415,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Prostej i rondzie Ignacego Daszyńskiego, przy przystanku „Rondo Daszyńskiego 07”."
+    },
+    {
+      "id": "5040M:E3",
+      "num": "3",
+      "stationId": "5040M",
+      "lat": 52.229804,
+      "lon": 20.983543,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Prostej i rondzie Ignacego Daszyńskiego obok piekarni „Gorąco Polecam”."
+    },
+    {
+      "id": "5040M:E4",
+      "num": "4",
+      "stationId": "5040M",
+      "lat": 52.22975,
+      "lon": 20.982452,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Prostej obok kawiarni Green Caffè Nero."
+    },
+    {
+      "id": "5040M:E5",
+      "num": "5",
+      "stationId": "5040M",
+      "lat": 52.229619,
+      "lon": 20.981777,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Prostej obok Rossmanna."
+    },
+    {
+      "id": "5040M:E6",
+      "num": "6",
+      "stationId": "5040M",
+      "lat": 52.230061,
+      "lon": 20.981624,
+      "hint": "Zachodnia strona stacji przy ul. Prostej obok oddziału banku mBank."
+    },
+    {
+      "id": "5040M:E7",
+      "num": "7",
+      "stationId": "5040M",
+      "lat": 52.230155,
+      "lon": 20.982283,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Prostej, przy przystanku „Rondo Daszyńskiego 02”."
+    },
+    {
+      "id": "6003M:E1",
+      "num": "1",
+      "stationId": "6003M",
+      "lat": 52.269207,
+      "lon": 20.985023,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Juliusza Słowackiego i pl. Thomasa Woodrowa Wilsona, przy przystanku „Pl. Wilsona 11”."
+    },
+    {
+      "id": "6003M:E2",
+      "num": "2",
+      "stationId": "6003M",
+      "lat": 52.269286,
+      "lon": 20.985067,
+      "hint": "Wschodnia strona stacji przy ul. Juliusza Słowackiego i pl. Thomasa Woodrowa Wilsona obok kawiarni „Początek”."
+    },
+    {
+      "id": "6003M:E3",
+      "num": "3",
+      "stationId": "6003M",
+      "lat": 52.269345,
+      "lon": 20.985605,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy pl. Thomasa Woodrowa Wilsona i ul. Adama Mickiewicza, przy przystanku „Pl. Wilsona 13”."
+    },
+    {
+      "id": "6003M:E4",
+      "num": "4",
+      "stationId": "6003M",
+      "lat": 52.268777,
+      "lon": 20.985162,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy pl. Thomasa Woodrowa Wilsona i ul. Zygmunta Krasińskiego obok apteki „Cuantum”."
+    },
+    {
+      "id": "6003M:E5",
+      "num": "5",
+      "stationId": "6003M",
+      "lat": 52.26938,
+      "lon": 20.98337,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Juliusza Słowackiego i ul. Filareckiej obok Poczty Polskiej."
+    },
+    {
+      "id": "6003M:E6",
+      "num": "6",
+      "stationId": "6003M",
+      "lat": 52.269529,
+      "lon": 20.983445,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Juliusza Słowackiego i ul. Filareckiej przed urzędem dzielnicy."
+    },
+    {
+      "id": "6003M:E7",
+      "num": "7",
+      "stationId": "6003M",
+      "lat": 52.269689,
+      "lon": 20.983291,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Juliusza Słowackiego i ul. Filareckiej, przy przystanku „Pl. Wilsona 02”."
+    },
+    {
+      "id": "6005M:E1",
+      "num": "1",
+      "stationId": "6005M",
+      "lat": 52.271572,
+      "lon": 20.972455,
+      "hint": "Południowa strona stacji przy ul. Juliusza Słowackiego obok supermarketu „Hala Marymoncka”."
+    },
+    {
+      "id": "6005M:E2",
+      "num": "2",
+      "stationId": "6005M",
+      "lat": 52.271905,
+      "lon": 20.97264,
+      "hint": "Północna strona stacji przy ul. Juliusza Słowackiego, przy przystanku „Metro Marymont 01”."
+    },
+    {
+      "id": "6005M:E3",
+      "num": "3",
+      "stationId": "6005M",
+      "lat": 52.271974,
+      "lon": 20.972685,
+      "hint": "Północna strona stacji przy ul. Juliusza Słowackiego, przy przystanku „Metro Marymont 05”."
+    },
+    {
+      "id": "6005M:E4",
+      "num": "4",
+      "stationId": "6005M",
+      "lat": 52.27211,
+      "lon": 20.972749,
+      "hint": "Północna strona stacji przy ul. Juliusza Słowackiego, przy przystanku „Metro Marymont 04”."
+    },
+    {
+      "id": "6005M:E5",
+      "num": "5",
+      "stationId": "6005M",
+      "lat": 52.27202,
+      "lon": 20.973156,
+      "hint": "Północno-wschodnia strona stacji przy ul. Juliusza Słowackiego i pl. Jacka Kuronia, przy przystanku „Metro Marymont 07”."
+    },
+    {
+      "id": "6005M:E6",
+      "num": "6",
+      "stationId": "6005M",
+      "lat": 52.271889,
+      "lon": 20.973086,
+      "hint": "Wschodnia strona stacji przy ul. Juliusza Słowackiego i pl. Jacka Kuronia, przy przystanku „Metro Marymont 03”."
+    },
+    {
+      "id": "6005M:E7",
+      "num": "7",
+      "stationId": "6005M",
+      "lat": 52.271816,
+      "lon": 20.973051,
+      "hint": "Wschodnia strona stacji przy ul. Juliusza Słowackiego i pl. Jacka Kuronia obok sklepu Carrefour."
+    },
+    {
+      "id": "6005M:E8",
+      "num": "8",
+      "stationId": "6005M",
+      "lat": 52.271398,
+      "lon": 20.972997,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Juliusza Słowackiego i ul. Księdza Jerzego Popiełuszki obok piekarni „Slit Korner”."
+    },
+    {
+      "id": "6005M:E9",
+      "num": "9",
+      "stationId": "6005M",
+      "lat": 52.271845,
+      "lon": 20.970864,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Juliusza Słowackiego obok piekarni „Piwoński”."
+    },
+    {
+      "id": "6006M:E1",
+      "num": "1",
+      "stationId": "6006M",
+      "lat": 52.276322,
+      "lon": 20.961192,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji po stronie parku „Serek Bielański”, z windą."
+    },
+    {
+      "id": "6006M:E2",
+      "num": "2",
+      "stationId": "6006M",
+      "lat": 52.27649,
+      "lon": 20.960823,
+      "hint": "Południowo-wschodnia strona stacji po stronie parku „Serek Bielański”, bliżej zachodniego krańca."
+    },
+    {
+      "id": "6006M:E3",
+      "num": "3",
+      "stationId": "6006M",
+      "lat": 52.277359,
+      "lon": 20.958961,
+      "hint": "Północno-zachodnia strona stacji przy ul. Jana Kasprowicza i rondzie Akademii Wychowania Fizycznego obok piekarni „Bake&cake”."
+    },
+    {
+      "id": "6052M:E1",
+      "num": "1",
+      "stationId": "6052M",
+      "lat": 52.281345,
+      "lon": 20.950396,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Jana Kasprowicza i al. Zjednoczenia, przy przystanku „Metro Stare Bielany 02”."
+    },
+    {
+      "id": "6052M:E2",
+      "num": "2",
+      "stationId": "6052M",
+      "lat": 52.282304,
+      "lon": 20.948296,
+      "hint": "Północno-zachodnia strona stacji przy ul. Jana Kasprowicza i ul. Płatniczej obok restauracji „Stacja Bielany”."
+    },
+    {
+      "id": "6055M:E1",
+      "num": "1",
+      "stationId": "6055M",
+      "lat": 52.285912,
+      "lon": 20.940489,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Jana Kasprowicza i rondzie Hutników Warszawskich, przy przystanku „Metro Wawrzyszew 03”."
+    },
+    {
+      "id": "6055M:E2",
+      "num": "2",
+      "stationId": "6055M",
+      "lat": 52.286859,
+      "lon": 20.938421,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Jana Kasprowicza i ul. Wergiliusza obok apteki „Ziko”."
+    },
+    {
+      "id": "6059M:E1",
+      "num": "1",
+      "stationId": "6059M",
+      "lat": 52.290411,
+      "lon": 20.930662,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Jana Kasprowicza i rondzie Grafen obok piekarni „Putka”."
+    },
+    {
+      "id": "6059M:E2",
+      "num": "2",
+      "stationId": "6059M",
+      "lat": 52.29121,
+      "lon": 20.92881,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy przystanku „Metro Młociny 17”."
+    },
+    {
+      "id": "7006M:E1",
+      "num": "1",
+      "stationId": "7006M",
+      "lat": 52.217922,
+      "lon": 21.015587,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Ludwika Waryńskiego i ul. Polnej, przy przystanku „Metro Politechnika 08”."
+    },
+    {
+      "id": "7006M:E2",
+      "num": "2",
+      "stationId": "7006M",
+      "lat": 52.21758,
+      "lon": 21.015672,
+      "hint": "Południowa strona stacji przy ul. Ludwika Waryńskiego i rondzie Jazdy Polskiej obok kawiarni Starbucks."
+    },
+    {
+      "id": "7006M:E3",
+      "num": "3",
+      "stationId": "7006M",
+      "lat": 52.217542,
+      "lon": 21.014356,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Ludwika Waryńskiego i al. Armii Ludowej, przy przystanku „Metro Politechnika 02”."
+    },
+    {
+      "id": "7006M:E4",
+      "num": "4",
+      "stationId": "7006M",
+      "lat": 52.219366,
+      "lon": 21.015245,
+      "hint": "Północna strona stacji przy ul. Ludwika Waryńskiego, przy przystanku „Metro Politechnika 09”."
+    },
+    {
+      "id": "7006M:E5",
+      "num": "5",
+      "stationId": "7006M",
+      "lat": 52.219726,
+      "lon": 21.015297,
+      "hint": "Północna strona stacji przy ul. Ludwika Waryńskiego i ul. Nowowiejskiej, przy przystanku „Metro Politechnika 03”."
+    },
+    {
+      "id": "7006M:E6",
+      "num": "6",
+      "stationId": "7006M",
+      "lat": 52.219701,
+      "lon": 21.015848,
+      "hint": "Północna strona stacji przy ul. Ludwika Waryńskiego i ul. Nowowiejskiej, przy przystanku „Metro Politechnika 04”."
+    },
+    {
+      "id": "7006M:E7",
+      "num": "7",
+      "stationId": "7006M",
+      "lat": 52.219331,
+      "lon": 21.015807,
+      "hint": "Północno-wschodnia strona stacji przy ul. Ludwika Waryńskiego i ul. Jaworzyńskiej, przy przystanku „Metro Politechnika 14”."
+    },
+    {
+      "id": "7013M:E1",
+      "num": "1·2·3",
+      "stationId": "7013M",
+      "lat": 52.230354,
+      "lon": 21.010684,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Marszałkowskiej obok apteki „Wawa”."
+    },
+    {
+      "id": "7013M:E10",
+      "num": "10",
+      "stationId": "7013M",
+      "lat": 52.231226,
+      "lon": 21.010419,
+      "hint": "Południowa strona stacji przy ul. Marszałkowskiej, przy przystanku „Centrum 03”."
+    },
+    {
+      "id": "7013M:E4",
+      "num": "4",
+      "stationId": "7013M",
+      "lat": 52.231065,
+      "lon": 21.009775,
+      "hint": "Południowo-zachodnia strona stacji obok Poczty Polskiej."
+    },
+    {
+      "id": "7013M:E5",
+      "num": "5",
+      "stationId": "7013M",
+      "lat": 52.231976,
+      "lon": 21.009824,
+      "hint": "Północno-zachodnia strona stacji przy ul. Marszałkowskiej i ul. Złotej."
+    },
+    {
+      "id": "7013M:E6",
+      "num": "6",
+      "stationId": "7013M",
+      "lat": 52.23238,
+      "lon": 21.00988,
+      "hint": "Północna strona stacji przy ul. Marszałkowskiej i ul. Złotej."
+    },
+    {
+      "id": "7013M:E7",
+      "num": "7",
+      "stationId": "7013M",
+      "lat": 52.232467,
+      "lon": 21.010464,
+      "hint": "Północna strona stacji przy ul. Marszałkowskiej przed teatrem „Scena Relax”."
+    },
+    {
+      "id": "7013M:E8",
+      "num": "8",
+      "stationId": "7013M",
+      "lat": 52.23216,
+      "lon": 21.010616,
+      "hint": "Północno-wschodnia strona stacji przy ul. Marszałkowskiej obok centrum handlowego „Sawa”."
+    },
+    {
+      "id": "7013M:E9",
+      "num": "9",
+      "stationId": "7013M",
+      "lat": 52.232028,
+      "lon": 21.010087,
+      "hint": "Północna strona stacji przy ul. Marszałkowskiej i ul. Złotej obok centrum handlowego „TK Maxx”."
+    },
+    {
+      "id": "7014M:E1",
+      "num": "1",
+      "stationId": "7014M",
+      "lat": 52.235599,
+      "lon": 21.00859,
+      "hint": "Północno-wschodnia strona stacji przy ul. Marszałkowskiej i ul. Świętokrzyskiej, przy przystanku „Metro Świętokrzyska 05”."
+    },
+    {
+      "id": "7014M:E2",
+      "num": "2",
+      "stationId": "7014M",
+      "lat": 52.235451,
+      "lon": 21.009212,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Świętokrzyskiej i ul. Szkolnej obok oddziału banku Millennium."
+    },
+    {
+      "id": "7014M:E3",
+      "num": "3",
+      "stationId": "7014M",
+      "lat": 52.235231,
+      "lon": 21.009287,
+      "hint": "Wschodnia strona stacji przy ul. Świętokrzyskiej i ul. Marszałkowskiej obok McDonald'sa."
+    },
+    {
+      "id": "7014M:E4",
+      "num": "4",
+      "stationId": "7014M",
+      "lat": 52.234995,
+      "lon": 21.009062,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Marszałkowskiej i ul. Świętokrzyskiej obok oddziału banku BNP Paribas."
+    },
+    {
+      "id": "7014M:E5",
+      "num": "5",
+      "stationId": "7014M",
+      "lat": 52.234791,
+      "lon": 21.00844,
+      "hint": "Południowa strona stacji przy ul. Marszałkowskiej i ul. Świętokrzyskiej, przy przystanku „Metro Świętokrzyska 06”."
+    },
+    {
+      "id": "7014M:E6",
+      "num": "6",
+      "stationId": "7014M",
+      "lat": 52.234831,
+      "lon": 21.007555,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Świętokrzyskiej, przy przystanku „Metro Świętokrzyska 03”."
+    },
+    {
+      "id": "7014M:E7",
+      "num": "7",
+      "stationId": "7014M",
+      "lat": 52.235215,
+      "lon": 21.007308,
+      "hint": "Zachodnia strona stacji przy ul. Świętokrzyskiej i ul. Zielnej, przy przystanku „Metro Świętokrzyska 04”."
+    },
+    {
+      "id": "7014M:E8",
+      "num": "8",
+      "stationId": "7014M",
+      "lat": 52.235583,
+      "lon": 21.007866,
+      "hint": "Północno-zachodnia strona stacji przy ul. Marszałkowskiej i ul. Świętokrzyskiej obok muzeum „Centralny Przystanek Historia”."
+    },
+    {
+      "id": "7014M:E9",
+      "num": "9",
+      "stationId": "7014M",
+      "lat": 52.236233,
+      "lon": 21.006766,
+      "hint": "Północno-zachodnia strona stacji przy ul. Zielnej i ul. Bagno, przy przystanku „Metro Świętokrzyska 01”."
+    },
+    {
+      "id": "7019M:E1",
+      "num": "1",
+      "stationId": "7019M",
+      "lat": 52.257996,
+      "lon": 20.994569,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Zygmunta Słomińskiego, przy przystanku „Dw. Gdański 04”."
+    },
+    {
+      "id": "7019M:E10",
+      "num": "12",
+      "stationId": "7019M",
+      "lat": 52.258235,
+      "lon": 20.994446,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Zygmunta Słomińskiego, przy przystanku „Dw. Gdański 07”."
+    },
+    {
+      "id": "7019M:E2",
+      "num": "2",
+      "stationId": "7019M",
+      "lat": 52.257677,
+      "lon": 20.994805,
+      "hint": "Południowo-wschodnia strona stacji przy ul. Zygmunta Słomińskiego, przy skwerze „Batalionu AK Czata 49”."
+    },
+    {
+      "id": "7019M:E3",
+      "num": "3",
+      "stationId": "7019M",
+      "lat": 52.257497,
+      "lon": 20.994086,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Zygmunta Słomińskiego, przy przystanku „Dw. Gdański 03”."
+    },
+    {
+      "id": "7019M:E4",
+      "num": "4",
+      "stationId": "7019M",
+      "lat": 52.257788,
+      "lon": 20.994246,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Zygmunta Słomińskiego, przy przystanku „Dw. Gdański 08”."
+    },
+    {
+      "id": "7019M:E5",
+      "num": "5",
+      "stationId": "7019M",
+      "lat": 52.258063,
+      "lon": 20.993913,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy ul. Zygmunta Słomińskiego obok Żabki."
+    },
+    {
+      "id": "7019M:E6",
+      "num": "6",
+      "stationId": "7019M",
+      "lat": 52.258919,
+      "lon": 20.9933,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji obok stacji kolejowej „Warszawa Gdańska”."
+    },
+    {
+      "id": "7019M:E7",
+      "num": "7",
+      "stationId": "7019M",
+      "lat": 52.259076,
+      "lon": 20.993294,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji obok piekarni „Kłos”."
+    },
+    {
+      "id": "7019M:E8",
+      "num": "10",
+      "stationId": "7019M",
+      "lat": 52.259588,
+      "lon": 20.99329,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy przystanku „Dw. Gdański (Rydygiera) 01”."
+    },
+    {
+      "id": "7019M:E9",
+      "num": "11",
+      "stationId": "7019M",
+      "lat": 52.258662,
+      "lon": 20.994284,
+      "hint": "Północno-wschodnia strona stacji obok piekarni „Lubaszka”."
+    },
+    {
+      "id": "7043M:E1",
+      "num": "1",
+      "stationId": "7043M",
+      "lat": 52.237016,
+      "lon": 21.017394,
+      "hint": "Północno-wschodnia strona stacji przy ul. Świętokrzyskiej i Nowym Świecie przed hotelem „Teatro”."
+    },
+    {
+      "id": "7043M:E2",
+      "num": "2",
+      "stationId": "7043M",
+      "lat": 52.236788,
+      "lon": 21.017165,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Świętokrzyskiej i ul. Kubusia Puchatka obok kawiarni Green Caffè Nero."
+    },
+    {
+      "id": "7043M:E3",
+      "num": "3",
+      "stationId": "7043M",
+      "lat": 52.236568,
+      "lon": 21.0166,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Kubusia Puchatka i ul. Świętokrzyskiej, przy przystanku „Nowy Świat 02”."
+    },
+    {
+      "id": "7043M:E4",
+      "num": "4",
+      "stationId": "7043M",
+      "lat": 52.236522,
+      "lon": 21.016406,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Kubusia Puchatka i ul. Świętokrzyskiej obok apteki „Ziko”."
+    },
+    {
+      "id": "7043M:E5",
+      "num": "5",
+      "stationId": "7043M",
+      "lat": 52.236765,
+      "lon": 21.016079,
+      "hint": "Zachodnia strona stacji przy ul. Świętokrzyskiej i ul. Kubusia Puchatka, przy przystanku „Nowy Świat 01”."
+    },
+    {
+      "id": "7079M:E1",
+      "num": "1",
+      "stationId": "7079M",
+      "lat": 52.240093,
+      "lon": 21.032129,
+      "hint": "Północno-wschodnia strona stacji przy ul. Tunel Wisłostrady i ul. Grymaly-Siedleckiego."
+    },
+    {
+      "id": "7079M:E2",
+      "num": "2",
+      "stationId": "7079M",
+      "lat": 52.239597,
+      "lon": 21.030425,
+      "wheelchair": true,
+      "hint": "Południowo-zachodnia strona stacji przy Wybrzeżu Kościuszkowskim i moście Świętokrzyskim przed hotelem „Sava Boutique Hotel”."
+    },
+    {
+      "id": "7079M:E3",
+      "num": "3",
+      "stationId": "7079M",
+      "lat": 52.239791,
+      "lon": 21.031024,
+      "hint": "Zachodnia strona stacji przy moście Świętokrzyskim i Wybrzeżu Kościuszkowskim, przy przystanku „Metro Centrum Nauki Kopernik 03”."
+    },
+    {
+      "id": "7088M:E1",
+      "num": "1",
+      "stationId": "7088M",
+      "lat": 52.233706,
+      "lon": 20.998197,
+      "wheelchair": true,
+      "hint": "Północna strona stacji przy al. Jana Pawła II i rondzie ONZ, przy przystanku „Rondo ONZ 04”."
+    },
+    {
+      "id": "7088M:E10",
+      "num": "10",
+      "stationId": "7088M",
+      "lat": 52.233125,
+      "lon": 20.997238,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Prostej i rondzie ONZ obok piekarni „Lubaszka”."
+    },
+    {
+      "id": "7088M:E11",
+      "num": "11",
+      "stationId": "7088M",
+      "lat": 52.233644,
+      "lon": 20.997602,
+      "hint": "Północno-zachodnia strona stacji przy al. Jana Pawła II i rondzie ONZ obok pizzerii „Casa”."
+    },
+    {
+      "id": "7088M:E2",
+      "num": "2",
+      "stationId": "7088M",
+      "lat": 52.23375,
+      "lon": 20.998509,
+      "hint": "Północna strona stacji przy al. Jana Pawła II i rondzie ONZ obok kawiarni Green Caffè Nero."
+    },
+    {
+      "id": "7088M:E3",
+      "num": "3",
+      "stationId": "7088M",
+      "lat": 52.233497,
+      "lon": 20.999149,
+      "wheelchair": true,
+      "hint": "Północno-wschodnia strona stacji przy ul. Świętokrzyskiej i rondzie ONZ obok Żabki."
+    },
+    {
+      "id": "7088M:E4",
+      "num": "4",
+      "stationId": "7088M",
+      "lat": 52.233089,
+      "lon": 20.999299,
+      "wheelchair": true,
+      "hint": "Wschodnia strona stacji przy ul. Świętokrzyskiej i rondzie ONZ obok oddziału banku Alior."
+    },
+    {
+      "id": "7088M:E5",
+      "num": "5",
+      "stationId": "7088M",
+      "lat": 52.232597,
+      "lon": 20.99915,
+      "hint": "Południowo-wschodnia strona stacji przy al. Jana Pawła II i rondzie ONZ obok restauracji „The Exchange”."
+    },
+    {
+      "id": "7088M:E6",
+      "num": "6",
+      "stationId": "7088M",
+      "lat": 52.232467,
+      "lon": 20.998608,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Jana Pawła II i rondzie ONZ, przy przystanku „Rondo ONZ 03”."
+    },
+    {
+      "id": "7088M:E7",
+      "num": "7",
+      "stationId": "7088M",
+      "lat": 52.232416,
+      "lon": 20.998279,
+      "wheelchair": true,
+      "hint": "Południowa strona stacji przy al. Jana Pawła II i ul. Pańskiej obok restauracji „The Exchange”."
+    },
+    {
+      "id": "7088M:E8",
+      "num": "8",
+      "stationId": "7088M",
+      "lat": 52.232631,
+      "lon": 20.997445,
+      "hint": "Południowo-zachodnia strona stacji przy ul. Prostej i ul. Pańskiej."
+    },
+    {
+      "id": "7088M:E9",
+      "num": "9",
+      "stationId": "7088M",
+      "lat": 52.232983,
+      "lon": 20.997305,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Prostej i rondzie ONZ, przy przystanku „Rondo ONZ 08”."
+    },
+    {
+      "id": "7099M:E1",
+      "num": "1",
+      "stationId": "7099M",
+      "lat": 52.244784,
+      "lon": 21.001692,
+      "hint": "Wschodnia strona stacji przy al. „Solidarności” obok Pizza Hut."
+    },
+    {
+      "id": "7099M:E2",
+      "num": "2",
+      "stationId": "7099M",
+      "lat": 52.24463,
+      "lon": 21.001831,
+      "hint": "Południowo-wschodnia strona stacji przy al. „Solidarności”, przy przystanku „Metro Ratusz Arsenał 10”."
+    },
+    {
+      "id": "7099M:E3",
+      "num": "3",
+      "stationId": "7099M",
+      "lat": 52.244489,
+      "lon": 21.001931,
+      "hint": "Południowo-wschodnia strona stacji przy al. „Solidarności”, przy przystanku „Metro Ratusz Arsenał 06”."
+    },
+    {
+      "id": "7099M:E4",
+      "num": "4",
+      "stationId": "7099M",
+      "lat": 52.244092,
+      "lon": 21.001825,
+      "wheelchair": true,
+      "hint": "Południowo-wschodnia strona stacji przy pl. Bankowym i al. „Solidarności”, przy przystanku „Pl. Bankowy 02”."
+    },
+    {
+      "id": "7099M:E5",
+      "num": "5",
+      "stationId": "7099M",
+      "lat": 52.244717,
+      "lon": 21.001016,
+      "wheelchair": true,
+      "hint": "Zachodnia strona stacji przy ul. Generała Władysława Andersa i al. „Solidarności”, przy przystanku „Metro Ratusz Arsenał 03”."
+    },
+    {
+      "id": "7099M:E6",
+      "num": "6",
+      "stationId": "7099M",
+      "lat": 52.245064,
+      "lon": 21.000172,
+      "wheelchair": true,
+      "hint": "Północno-zachodnia strona stacji przy ul. Generała Władysława Andersa, przy skwerze „Batalionu Harcerskiego AK Wigry”."
+    },
+    {
+      "id": "7099M:E7",
+      "num": "7",
+      "stationId": "7099M",
+      "lat": 52.245176,
+      "lon": 21.00067,
+      "hint": "Północno-zachodnia strona stacji przy ul. Generała Władysława Andersa i ul. Długiej, przy przystanku „Metro Ratusz Arsenał 04”."
+    },
+    {
+      "id": "7099M:E8",
+      "num": "8",
+      "stationId": "7099M",
+      "lat": 52.245291,
+      "lon": 21.001106,
+      "hint": "Północna strona stacji przy ul. Długiej i ul. Generała Władysława Andersa, przy skwerze „Sportów Miejskich”."
+    }
+  ]
 }

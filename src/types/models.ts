@@ -1,4 +1,4 @@
-// ─── Backend-ready domain models ─────────────────────────────────────────────
+// ─── Backend-ready domain models ──────────────────────────────────────────────
 // UI screens ONLY depend on these types + `src/services/types.ts` interfaces.
 // Future backend swap guide:
 //  - Suggestions  → Nominatim / Photon (`q`, `lat/lon`, `addressdetails=1`)
@@ -136,6 +136,17 @@ export interface LegStop {
   track?: string;
 }
 
+export interface MetroEntranceRef {
+  /** GTFS stop_id wejścia, np. "1003M:E1" */
+  id: string;
+  /** Numer lub oznaczenie wejścia z GTFS, np. "1", "2 (Winda)", "1·2·3" */
+  num: string;
+  /** Krótki opis lokalizacji wejścia */
+  hint?: string;
+  /** Czy wejście ma windę / dostęp bez barier */
+  wheelchair?: boolean;
+}
+
 export interface VehiclePosition {
   vehicleId: string;
   line: string;
@@ -192,6 +203,9 @@ export interface Leg {
   platformCode?: string;
   /** Numer toru kolejowego (np. 1, 2, 105) */
   trackCode?: string;
+  /** Optymalne wejście/wyjście stacji metra (dla odcinków pieszych i metra). */
+  fromEntrance?: MetroEntranceRef;
+  toEntrance?: MetroEntranceRef;
   stopHint?: string;
   liveNextStop?: string;
   /** Dane handlowe kursu z zbiorkom.live, bez nadpisywania identyfikatorów GTFS. */

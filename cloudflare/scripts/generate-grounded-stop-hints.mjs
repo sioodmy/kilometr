@@ -4,6 +4,7 @@ import readline from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 import { classifyOsmLandmark, formatStreetLocative } from './polish-grammar.mjs';
 import { VERIFIED_HUB_OVERRIDES } from './hub-overrides.mjs';
+import { generateWarsawMetroEntrances } from './metro-entrances.mjs';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../..');
 const CACHE_DIR = path.join(ROOT_DIR, 'cloudflare/.cache');
@@ -858,12 +859,22 @@ async function generateCity(city) {
     sortedStops[k] = stopsOutput[k];
   }
 
+  let metroEntrances;
+  if (city === 'warszawa') {
+    metroEntrances = generateWarsawMetroEntrances({
+      zipPath: path.join(CACHE_DIR, CITY_CONFIGS[city].zips[0]),
+      poisFile: path.join(CACHE_DIR, `${city}-osm-pois.json`),
+      roadsFile: path.join(CACHE_DIR, `${city}-osm-roads.json`),
+    });
+  }
+
   const dataset = {
-    schemaVersion: 2,
+    schemaVersion: metroEntrances ? 3 : 2,
     city,
     generatedAt: new Date().toISOString(),
     stops: sortedStops,
     clusters: {},
+    ...(metroEntrances ? { metroEntrances } : {}),
   };
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -875,6 +886,7 @@ async function generateCity(city) {
   console.log(
     `[✓] ${city}: zapisano ${total} wskazówek (hub=${stats.hubOverrides}, T1=${stats.tier1}, T2=${stats.tier2}, T3=${stats.tier3}, naprzeciwko=${stats.opposite}, wiadukt=${stats.viaduct}, pominięto_bez_POI=${stats.omittedNoAnchor}, rozdzielono_słupki=${stats.siblingDisambiguated})`,
   );
+  if (metroEntrances) console.log(`    + wejścia metra: ${metroEntrances.length}`);
   console.log(`    -> ${path.relative(ROOT_DIR, jsonPath)} + src/data/${CITY_CONFIGS[city].tsFile}`);
 }
 

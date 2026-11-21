@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
+const inflightBundled = new Map<string, Promise<StopHintsDataset | null>>();
 
 function extractHintText(val: StopHintValue | undefined): string | null {
   if (!val) return null;
@@ -116,6 +117,38 @@ async function fetchRemoteStopHints(
   }
 }
 
+export function getCachedStopHints(cityId: string): StopHintsDataset | null {
+  const norm = (cityId || '').trim().toLowerCase();
+  return norm ? cache.get(norm) ?? null : null;
+}
+
+/**
+ * Ładuje statyczny pakiet wskazówek dla miasta do pamięci (bez czekania na sieć).
+ * Bezpieczne do wielokrotnego wywołania przed lub w trakcie routingu.
+ */
+export function ensureStopHintsLoaded(cityId: string): Promise<StopHintsDataset | null> {
+  const norm = (cityId || '').trim().toLowerCase();
+  if (!norm) return Promise.resolve(null);
+  const hit = cache.get(norm);
+  if (hit) return Promise.resolve(hit);
+  const pending = inflightBundled.get(norm);
+  if (pending) return pending;
+
+  const task = loadBundledStopHints(norm)
+    .then((bundled) => {
+      if (bundled && !cache.has(norm)) {
+        cache.set(norm, bundled);
+      }
+      return cache.get(norm) ?? bundled ?? null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      inflightBundled.delete(norm);
+    });
+  inflightBundled.set(norm, task);
+  return task;
+}
+
 function useStopHints(cityId: string) {
   const normCity = (cityId || '').trim().toLowerCase();
   const [data, setData] = useState<StopHintsDataset | null>(() =>
@@ -186,10 +219,10 @@ export function resolveStopHint(
   mode?: string | null,
 ): string | null {
   if (!dataset) return null;
-  // Pociągi (dworce PKP) i metro nie mają bazy mikrowskazówek peronowych
+  // Pociągi (dworce PKP) i platformy metra nie mają wskazówek peronowych (wejścia metra mają osobny wpis)
   if (mode === 'train' || mode === 'subway') return null;
 
-  // 1. Sprawdź po unikalnym stopId (np. Warszawa "302702", GZM "5410", Wrocław "10101", Kraków "stop_322_117319", Poznań "poznan-glowny73-wqjhw")
+  // 1. Sprawdź po unikalnym stopId (np. Warszawa "302702", wejście metra "1003M:E1", GZM "5410", Wrocław "10101")
   if (stopId) {
     const trimmedId = stopId.trim();
     if (trimmedId.startsWith('pl:') || trimmedId.startsWith('stop-pl:')) {
@@ -198,6 +231,10 @@ export function resolveStopHint(
     for (const candidateId of stripKnownStopIdPrefixes(trimmedId)) {
       if (candidateId && dataset.stops[candidateId]) {
         return extractHintText(dataset.stops[candidateId]);
+      }
+      if (candidateId && dataset.metroEntrances && /:E/i.test(candidateId)) {
+        const ent = dataset.metroEntrances.find((e) => e.id === candidateId);
+        if (ent?.hint) return ent.hint.trim();
       }
     }
   }

@@ -179,10 +179,12 @@ test('All 5 bundled datasets obey schemaVersion 2, zero collision keys, zero dup
     STOP_HINTS_GZM,
   ];
   for (const ds of allDatasets) {
-    assert.equal(ds.schemaVersion, 2, `${ds.city}: schemaVersion powinno być 2`);
+    const expectedSchema = ds.city === 'warszawa' ? 3 : 2;
+    assert.equal(ds.schemaVersion, expectedSchema, `${ds.city}: schemaVersion powinno być ${expectedSchema}`);
     const entries = Object.entries(ds.stops);
     assert.ok(entries.length >= 100, `${ds.city}: powinno mieć >= 100 wskazówek`);
-    for (const [key, hint] of entries) {
+    for (const [key, rawHint] of entries) {
+      const hint = typeof rawHint === 'string' ? rawHint : rawHint.hint;
       assert.doesNotMatch(
         key,
         /^\d{1,3}$/,
@@ -278,4 +280,27 @@ test('Multi-transfer rail & transit journey differentiates train legs from trans
       assert.equal(hint, null, `Wskazówka NIE powinna być pokazywana dla pociągu ${leg.fromStop}`);
     }
   }
+});
+
+test('Warsaw metroEntrances covers all 253 GTFS entrances with unique per-station descriptions', () => {
+  const entrances = STOP_HINTS_WARSZAWA.metroEntrances ?? [];
+  assert.equal(entrances.length, 253);
+  const byStation = new Map<string, Set<string>>();
+  for (const ent of entrances) {
+    assert.ok(ent.id.includes(':E'));
+    assert.ok(ent.num.length > 0);
+    assert.ok(Number.isFinite(ent.lat) && Number.isFinite(ent.lon));
+    assert.ok(ent.hint.length >= 12);
+    assert.doesNotMatch(ent.hint, /\u2014|przy wejścia do metra|przy centrum handlowego/i);
+    let set = byStation.get(ent.stationId);
+    if (!set) {
+      set = new Set();
+      byStation.set(ent.stationId, set);
+    }
+    assert.equal(set.has(ent.hint), false, `Duplikat opisu na stacji ${ent.stationId}: ${ent.hint}`);
+    set.add(ent.hint);
+  }
+  assert.equal(byStation.size, 38);
+  const directHint = resolveStopHint(STOP_HINTS_WARSZAWA, undefined, '1003M:E11', 'Dworzec Wileński', 'walk');
+  assert.ok(directHint && directHint.length > 10);
 });

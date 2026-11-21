@@ -4,7 +4,7 @@
  */
 
 const GARBAGE_STREET_RE =
-  /^(?:parking|pętla|petla|tunel|dojazd|teren|plac budowy|droga\b|jezdnia\b|ciąg\b|ciag\b|przejście\b|przejscie\b|zjazd\b|wjazd\b|łącznica\b|lacznica\b|odcinek\b|trasa\s+bez\s+nazwy|bez\s+nazwy|n\/a|-)$/i;
+  /^(?:progi|patelnia|parking|pętla|petla|tunel|dojazd|teren|plac budowy|droga\b|jezdnia\b|ciąg\b|ciag\b|przejście\b|przejscie\b|zjazd\b|wjazd\b|łącznica\b|lacznica\b|odcinek\b|trasa\s+bez\s+nazwy|bez\s+nazwy|n\/a|-)$/i;
 
 /** Znane krótkie ulice przymiotnikowe (bez jednoznacznego sufiksu -ska/-cka/-zka/-owa). */
 const KNOWN_FEMININE_ADJ_STREETS = new Set([
@@ -14,7 +14,7 @@ const KNOWN_FEMININE_ADJ_STREETS = new Set([
   'krucza', 'krzywa', 'leśna', 'mała', 'młodzieńcza', 'niska', 'nowa', 'odkryta',
   'okrężna', 'orla', 'pawia', 'piękna', 'piwna', 'pogodna', 'polna', 'północna',
   'południowa', 'poprzeczna', 'prosta', 'rolna', 'różana', 'rybna', 'rzeczna',
-  'skrajna', 'skośna', 'ślężna', 'słoneczna', 'sokola', 'spokojna', 'średnia',
+  'skrajna', 'skośna', 'ślężna', 'słoneczna', 'sokola', 'twarda', 'spokojna', 'średnia',
   'środkowa', 'stara', 'starowiślna', 'sucha', 'syta', 'szeroka', 'wąska', 'widoczna',
   'wielka', 'wilcza', 'wodna', 'wschodnia', 'wspólna', 'wysoka', 'zachodnia',
   'zajęcza', 'zawiła', 'żelazna', 'zielona', 'zimna', 'złota', 'żurawia',
@@ -291,6 +291,16 @@ export function formatStreetLocative(rawStreet) {
     return `na moście ${declineStreetCore(most[1].trim(), 'most')}`;
   }
 
+  const pasaz = s.match(/^pasaż\s+(.+)$/i);
+  if (pasaz) {
+    return `przy pasażu ${pasaz[1].trim()}`;
+  }
+
+  const bulwar = s.match(/^bulwar\s+(.+)$/i);
+  if (bulwar) {
+    return `na bulwarze ${bulwar[1].trim()}`;
+  }
+
   const skwer = s.match(/^skwer\s+(.+)$/i);
   if (skwer) {
     return `przy skwerze ${skwer[1].trim()}`;
@@ -402,13 +412,14 @@ export function classifyOsmLandmark(el) {
       .replace(/^metro\s+/i, '')
       .replace(/\s*[-–]\s*wejście.*$/i, '')
       .trim();
-    const label = clean && clean.length <= 28 ? `wejścia do metra ${clean}` : 'wejścia do metra';
+    const labelGen = clean && clean.length <= 28 ? `wejścia do metra ${clean}` : 'wejścia do metra';
+    const labelLoc = clean && clean.length <= 28 ? `wejściu do metra ${clean}` : 'wejściu do metra';
     return {
       tier: 1,
       maxDist: 55,
       canBeOpposite: false,
-      nearPhrase: `przy ${label}`,
-      oppositePhrase: `naprzeciwko ${label}`,
+      nearPhrase: `przy ${labelLoc}`,
+      oppositePhrase: `naprzeciwko ${labelGen}`,
       key: `metro:${clean || 'entrance'}`,
     };
   }
@@ -481,7 +492,7 @@ export function classifyOsmLandmark(el) {
       tier: 1,
       maxDist: 70,
       canBeOpposite: true,
-      nearPhrase: `przy ${display}`,
+      nearPhrase: isGaleria ? `przy ${display}` : `obok ${display}`,
       oppositePhrase: `naprzeciwko ${display}`,
       key: `mall:${clean.toLowerCase()}`,
     };

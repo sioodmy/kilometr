@@ -257,7 +257,7 @@ function validateHint(text, id) {
   const sanitizedForSentences = trimmed
     .replace(/\.{2,}/g, '_')
     .replace(
-      /(^|[\s(„"])(ul|al|pl|św|pw|dr|prof|hab|sp|z o\.o|m\.st|os|gen|im|nr|ks|kard|bp|abp|bł|płk|ppłk|mjr|kpt|por|rtm|marsz|inż|mgr|doc|red|st|o|s|br|jr|sr|mr|ms|mrs|no|vol|art|pkt)\./gi,
+      /(^|[\s(„"])(ul|al|pl|dw|św|pw|dr|prof|hab|sp|z o\.o|m\.st|os|gen|im|nr|ks|kard|bp|abp|bł|płk|ppłk|mjr|kpt|por|rtm|marsz|inż|mgr|doc|red|st|o|s|br|jr|sr|mr|ms|mrs|no|vol|art|pkt)\./gi,
       '$1$2_',
     )
     .replace(/\b(\d{1,2})\.\s/g, '$1_ ')
@@ -323,12 +323,32 @@ function build() {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
 
+  const validatedEntrances = [];
+  if (Array.isArray(data.metroEntrances)) {
+    for (const ent of data.metroEntrances) {
+      if (!ent || typeof ent.id !== 'string' || typeof ent.stationId !== 'string') {
+        throw new Error(`[!] Niepoprawny wpis metroEntrances w ${DATA_FILE}`);
+      }
+      validateHint(ent.hint, `entrance:${ent.id}`);
+      validatedEntrances.push({
+        id: ent.id,
+        num: String(ent.num || ''),
+        stationId: ent.stationId,
+        lat: ent.lat,
+        lon: ent.lon,
+        ...(ent.wheelchair ? { wheelchair: true } : {}),
+        hint: ent.hint.trim(),
+      });
+    }
+  }
+
   const compiled = {
     schemaVersion: typeof data.schemaVersion === 'number' ? data.schemaVersion : 2,
     city: CITY,
     generatedAt: data.generatedAt || new Date().toISOString(),
     stops: validatedStops,
     clusters: validatedClusters,
+    ...(validatedEntrances.length > 0 ? { metroEntrances: validatedEntrances } : {}),
   };
 
   const minified = JSON.stringify(compiled);
@@ -340,6 +360,7 @@ function build() {
   console.log(`[✓] Sukces: zweryfikowano i skompilowano ${CITY.toUpperCase()} (schemaVersion=${compiled.schemaVersion})`);
   console.log(`    - Słupki (stops): ${Object.keys(validatedStops).length}`);
   console.log(`    - Zespoły (clusters): ${Object.keys(validatedClusters).length}`);
+  if (validatedEntrances.length > 0) console.log(`    - Wejścia metra (metroEntrances): ${validatedEntrances.length}`);
   console.log(`    - Rozmiar: ${inKb} KB -> ${outKb} KB`);
   console.log(`    - Zapisano do: ${OUTPUT_FILE}`);
 }
