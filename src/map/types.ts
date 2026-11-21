@@ -88,7 +88,8 @@ export type MapOutMessage =
     }
   | { t: 'legTap'; legId: string }
   | { t: 'tiles'; ok: boolean }
-  | { t: 'open'; url: string };
+  | { t: 'open'; url: string }
+  | { t: 'userDrag' };
 
 /** Komunikat aplikacja -> mapa (RouteMap -> WebView). */
 export type MapInMessage =
@@ -110,4 +111,8 @@ export type MapInMessage =
       pad?: [number, number, number, number];
     }
   | { t: 'fit'; pad?: [number, number, number, number] }
-  | { t: 'vehicle'; vehicle: MapVehicle | null };
+  | { t: 'vehicle'; vehicle: MapVehicle | null }
+  | { t: 'user'; lat: number | null; lon: number | null }
+  | { t: 'center'; lat: number; lon: number; zoom?: number }
+  | { t: 'zoom'; delta: number }
+  | { t: 'poi'; visible: boolean };
