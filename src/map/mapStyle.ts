@@ -406,6 +406,8 @@ export const POI_ICON_SPECS = [
   },
 ] as const;
 
+export const POI_LAYER_IDS = ['poi-istotne', 'poi-drobiazgi'] as const;
+
 /** Kategoria OSM -> nazwa obrazka ikony. */
 const poiIconImage = [
   'match',
@@ -465,20 +467,15 @@ const poiIconImage = [
  * Warstwy POI (miejsca punktowe z OSM): kolorowa ikona kategorii plus etykieta.
  * Ikony pokazują się od z14, etykiety dopiero od z16 (najważniejsze POI
  * wcześniej), więc przy oddalaniu mapa pokazuje orientacyjne punkty, a nie
- * ścianę tekstu. Kolizje i sortowanie po randze (1 = najważniejszy) sprawiają,
- * że gęste obszary same się rozrzedzają. Warstwy wchodzą do stylu PRZED
- * warstwami trasy, więc trasa i przystanki zawsze rysują się na nich.
+ * ścianę tekstu. Warstwy wchodzą do stylu PRZED warstwami trasy.
  */
-function buildPoiLayers() {
-  // Klasy transportowe pomijamy: przystanki trasy opisuje sama aplikacja,
-  // ich dublowanie tylko gęści mapę. Biura to szum bez wartości dla podróży.
+function buildPoiLayers(visible = true) {
   const notTransit = [
     '!',
     ['match', ['get', 'class'], ['bus', 'rail', 'railway', 'subway', 'station', 'entrance', 'aerialway', 'office'], true, false],
   ] as never;
   const isPoint = ['==', ['geometry-type'], 'Point'] as never;
   const rankSort = ['coalesce', ['get', 'rank'], 99];
-  // Najważniejsze POI mają nazwę już od z14, reszta dopiero od z16.
   const nameAtZoom = [
     'step',
     ['zoom'],
@@ -486,7 +483,9 @@ function buildPoiLayers() {
     16,
     nameField,
   ] as never;
+  const visibility = visible ? ('visible' as const) : ('none' as const);
   const layout = {
+    visibility,
     'icon-image': poiIconImage,
     'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.62, 17, 0.8, 20, 0.95],
     'icon-padding': 3,
@@ -505,7 +504,7 @@ function buildPoiLayers() {
   const paint = labelPaint(motif().poi, 1.2);
   return [
     {
-      id: 'poi-istotne',
+      id: POI_LAYER_IDS[0],
       type: 'symbol' as const,
       source: 'openmaptiles',
       'source-layer': 'poi',
@@ -515,7 +514,7 @@ function buildPoiLayers() {
       layout,
     },
     {
-      id: 'poi-drobiazgi',
+      id: POI_LAYER_IDS[1],
       type: 'symbol' as const,
       source: 'openmaptiles',
       'source-layer': 'poi',
@@ -552,12 +551,24 @@ const bySel = (selected: unknown, dimmed: unknown, normal: unknown) => [
 ];
 
 /**
- * Warstwy trasy: obwódka, linia kursu, przerywany spacer, przystanki
- * pośrednie, etykiety stacji i niewidoczna warstwa chwytna pod palce.
- * Wszystkie z jednego źródła GeoJSON, więc zmiana geometrii to jedno setData.
+ * Warstwy trasy: subtelna poświata aktywnego odcinka, obwódka, linia kursu,
+ * kropkowany spacer, przystanki pośrednie, etykiety i warstwa chwytna pod palce.
  */
 function buildRouteLayers() {
   return [
+    {
+      id: 'trasa-poswiata',
+      type: 'line' as const,
+      source: ROUTE_SOURCE_ID,
+      filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'walk'], 0], ['==', ['get', 'sel'], 2]] as never,
+      paint: {
+        'line-color': ['get', 'color'] as never,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 12, 10, 15, 14, 18] as never,
+        'line-opacity': 0.18,
+        'line-blur': 3,
+      },
+      layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
+    },
     {
       id: 'trasa-obwodka',
       type: 'line' as const,
@@ -570,13 +581,13 @@ function buildRouteLayers() {
           ['linear'],
           ['zoom'],
           4,
-          bySel(7.5, 5.5, 6.2),
+          bySel(8.2, 5.2, 6.4),
           8,
-          bySel(8.5, 6.5, 7.2),
+          bySel(9.4, 6.2, 7.6),
           12,
-          bySel(9.5, 7.5, 7.8),
+          bySel(10.6, 7.2, 8.4),
         ] as never,
-        'line-opacity': bySel(0.95, 0.4, 0.9),
+        'line-opacity': bySel(0.96, 0.36, 0.92),
       },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
     },
@@ -592,12 +603,12 @@ function buildRouteLayers() {
           ['linear'],
           ['zoom'],
           4,
-          bySel(3.2, 2.2, 2.6),
+          bySel(3.6, 2.2, 3),
           10,
-          bySel(4.5, 3.6, 4),
+          bySel(5, 3.6, 4.4),
         ] as never,
-        'line-opacity': bySel(0.9, 0.3, 0.85),
-        'line-dasharray': [1, 3.2],
+        'line-opacity': bySel(0.95, 0.28, 0.88),
+        'line-dasharray': [0.5, 2.2],
       },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
     },
@@ -613,13 +624,13 @@ function buildRouteLayers() {
           ['linear'],
           ['zoom'],
           4,
-          bySel(5, 3.2, 3.8),
+          bySel(5.4, 3, 4),
           8,
-          bySel(5.8, 4, 4.6),
+          bySel(6.4, 3.8, 4.8),
           12,
-          bySel(6.8, 5, 5.5),
+          bySel(7.4, 4.8, 5.8),
         ] as never,
-        'line-opacity': bySel(1, 0.35, 1),
+        'line-opacity': bySel(1, 0.32, 1),
       },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
     },
@@ -628,7 +639,7 @@ function buildRouteLayers() {
       type: 'line' as const,
       source: ROUTE_SOURCE_ID,
       filter: ['==', ['geometry-type'], 'LineString'] as never,
-      paint: { 'line-color': '#000000', 'line-width': 26, 'line-opacity': 0.001 },
+      paint: { 'line-color': '#000000', 'line-width': 28, 'line-opacity': 0.001 },
       layout: { 'line-cap': 'round' as const, 'line-join': 'round' as const },
     },
     {
@@ -642,33 +653,33 @@ function buildRouteLayers() {
           ['linear'],
           ['zoom'],
           5,
-          ['case', ['==', ['get', 'sel'], 2], 2.2, ['==', ['get', 'rail'], 1], 1.7, 0],
+          ['case', ['==', ['get', 'sel'], 2], 2.4, ['==', ['get', 'rail'], 1], 1.8, 0],
           8,
-          ['case', ['==', ['get', 'sel'], 2], 2.8, ['==', ['get', 'rail'], 1], 2.3, 0],
+          ['case', ['==', ['get', 'sel'], 2], 3.1, ['==', ['get', 'rail'], 1], 2.4, 0],
           10.5,
-          ['case', ['==', ['get', 'sel'], 2], 3.2, 2.1],
+          ['case', ['==', ['get', 'sel'], 2], 3.6, 2.2],
           13,
-          ['case', ['==', ['get', 'sel'], 2], 3.6, 2.6],
+          ['case', ['==', ['get', 'sel'], 2], 4.2, 2.8],
           16,
-          4.5,
+          5.2,
           19,
-          6.5,
+          7,
         ] as never,
-        'circle-color': ['coalesce', ['get', 'color'], motif().stopMid] as never,
-        'circle-stroke-color': C.land,
+        'circle-color': ['case', ['==', ['get', 'sel'], 2], '#F4F8F6', ['coalesce', ['get', 'color'], motif().stopMid]] as never,
+        'circle-stroke-color': ['case', ['==', ['get', 'sel'], 2], ['coalesce', ['get', 'color'], C.land], C.land] as never,
         'circle-stroke-width': [
           'interpolate',
           ['linear'],
           ['zoom'],
           5,
-          ['case', ['==', ['get', 'sel'], 2], 1.2, ['==', ['get', 'rail'], 1], 0.9, 0],
+          ['case', ['==', ['get', 'sel'], 2], 1.6, ['==', ['get', 'rail'], 1], 0.9, 0],
           10,
-          ['case', ['==', ['get', 'sel'], 2], 1.4, ['==', ['get', 'rail'], 1], 1.2, 0],
+          ['case', ['==', ['get', 'sel'], 2], 1.9, ['==', ['get', 'rail'], 1], 1.2, 0],
           11,
-          1.5,
+          ['case', ['==', ['get', 'sel'], 2], 2.1, 1.5],
         ] as never,
-        'circle-opacity': bySel(0.95, 0.25, 0.92),
-        'circle-stroke-opacity': bySel(0.95, 0.25, 0.92),
+        'circle-opacity': bySel(0.98, 0.22, 0.94),
+        'circle-stroke-opacity': bySel(0.98, 0.22, 0.94),
       },
     },
     {
@@ -704,14 +715,14 @@ function buildRouteLayers() {
           4.5,
           ['case', ['==', ['get', 'role'], 'endpoint'], 10.5, 0],
           6.5,
-          ['case', ['==', ['get', 'role'], 'endpoint'], 11, ['==', ['get', 'sel'], 2], 10, 9.5],
+          ['case', ['==', ['get', 'role'], 'endpoint'], 11, ['==', ['get', 'sel'], 2], 10.2, 9.5],
           10,
-          ['case', ['==', ['get', 'role'], 'endpoint'], 11.5, 10.5],
+          ['case', ['==', ['get', 'role'], 'endpoint'], 11.8, 10.8],
           14,
-          12,
+          12.5,
         ] as never,
         'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
-        'text-radial-offset': 0.85,
+        'text-radial-offset': 0.9,
         'text-max-width': 9,
         'text-padding': 6,
         'text-optional': true,
@@ -721,10 +732,10 @@ function buildRouteLayers() {
           'case',
           ['==', ['get', 'role'], 'endpoint'],
           bySel('#F4F8F6', 'rgba(244, 248, 246, 0.35)', '#F4F8F6'),
-          bySel('#E1EAE6', 'rgba(225, 234, 230, 0.22)', '#D2DDD8'),
+          bySel('#E4ECE8', 'rgba(228, 236, 232, 0.22)', '#D4DFDA'),
         ] as never,
         'text-halo-color': C.halo,
-        'text-halo-width': 1.8,
+        'text-halo-width': 2,
         'text-halo-blur': 0.4,
       },
     },
@@ -734,17 +745,10 @@ function buildRouteLayers() {
 const EMPTY = { type: 'FeatureCollection' as const, features: [] };
 
 /**
- * Pełny styl mapy: podkład OSM + warstwy trasy. Trasa siedzi w tym samym
- * stylu, więc WebView nie musi nic doklejać po wczytaniu, wystarczy
- * `setData` na źródle GeoJSON.
- *
- * `base` (opcjonalnie) przestawia kafle i glify na lokalny serwer mapy:
- * `base` to np. `http://127.0.0.1:45999`. Schemat kafli jest ten sam co
- * online (OpenMapTiles), więc warstwy poniżej nie wymagają żadnych zmian.
- * `opts.poi` dokłada etykiety POI między podkład a trasę (używa jej dopiero
- * pełnoekranowa mapa szczegółów połączenia).
+ * Pełny styl mapy: podkład OSM + opcjonalne POI + warstwy trasy.
+ * `opts.poi` dołącza warstwy POI (przełączane dynamicznie bez przeładowania WebView).
  */
-export function buildMapStyle(base?: string | null, opts: { poi?: boolean } = {}) {
+export function buildMapStyle(base?: string | null, opts: { poi?: boolean; poiVisible?: boolean } = {}) {
   const tiles = base
     ? { type: 'vector' as const, tiles: [`${base}/tiles/{z}/{x}/{y}.pbf`], minzoom: 0, maxzoom: 14 }
     : { type: 'vector' as const, url: MAP_SOURCE_URL };
@@ -758,7 +762,7 @@ export function buildMapStyle(base?: string | null, opts: { poi?: boolean } = {}
     glyphs: base ? `${base}/assets/fonts/{fontstack}/{range}.pbf` : MAP_GLYPHS_URL,
     layers: [
       ...baseLayers(),
-      ...(opts.poi ? buildPoiLayers() : []),
+      ...(opts.poi ? buildPoiLayers(opts.poiVisible ?? true) : []),
       ...buildRouteLayers(),
     ],
   };
