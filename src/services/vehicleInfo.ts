@@ -1,8 +1,8 @@
 import type { LegMode, RailAmenity } from '../types/models';
 
-export type FloorLevel = 'low' | 'partial' | 'high' | 'unknown';
-export type AcAvailability = 'yes' | 'no' | 'unknown';
-export type VehicleDrive = 'electric' | 'hydrogen' | 'hybrid';
+type FloorLevel = 'low' | 'partial' | 'high' | 'unknown';
+type AcAvailability = 'yes' | 'no' | 'unknown';
+type VehicleDrive = 'electric' | 'hydrogen' | 'hybrid';
 
 export interface VehicleSpecs {
   /** Znormalizowana nazwa modelu z feedu (np. "Konstal 105NWr"). */

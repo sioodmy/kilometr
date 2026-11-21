@@ -52,7 +52,7 @@ function normalizeSnake(value: string | null | undefined): string {
  * Odrzuca 1-3 cyfrowe lokalne numery słupków (np. Warszawa "01", "02", "06", Poznań "41", "71"),
  * które powtarzają się w całym mieście i powodowałyby kolizje między dzielnicami.
  */
-export function isGloballyUniqueStopCode(code: string): boolean {
+function isGloballyUniqueStopCode(code: string): boolean {
   const c = code.trim();
   if (!c) return false;
   if (/^\d{1,3}$/.test(c)) return false;
