@@ -1,5 +1,9 @@
-import { classifyVehicleModel, type VehicleSpecs } from '../src/services/vehicleInfo';
-import type { LegMode } from '../src/types/models';
+import {
+  classifyVehicleModel,
+  selectRailAmenitiesForStrip,
+  type VehicleSpecs,
+} from '../src/services/vehicleInfo';
+import type { LegMode, RailAmenity } from '../src/types/models';
 
 let failures = 0;
 
@@ -25,6 +29,22 @@ function expectSpecs(
     if (got !== v) diffs.push(`${k}: oczekiwano ${String(v)}, jest ${String(got)}`);
   }
   check(label, diffs.length === 0, diffs.join('; '));
+}
+
+function expectAmenities(
+  label: string,
+  keys: RailAmenity[],
+  specs: VehicleSpecs | null | undefined,
+  expected: RailAmenity[],
+) {
+  const actual = selectRailAmenitiesForStrip(keys, specs);
+  const ok =
+    actual.length === expected.length && actual.every((item, idx) => item === expected[idx]);
+  check(
+    label,
+    ok,
+    ok ? '' : `oczekiwano [${expected.join(', ')}], jest [${actual.join(', ')}]`,
+  );
 }
 
 console.log('=== Test klasyfikatora modeli pojazdow (vehicleInfo) ===');
@@ -77,14 +97,29 @@ expectSpecs('Hyundai Rotem 140N', 'tram', { floor: 'low', ac: 'yes', vintage: fa
 expectSpecs('Stadler Tango', 'tram', { floor: 'low', ac: 'yes', vintage: false });
 expectSpecs('Duewag R1.1', 'tram', { floor: 'low', ac: 'no', vintage: false });
 
-// 5. Kolej regionalna (EN57 vs EN57AL, nowoczesne EZT)
+// 5. Kolej regionalna i dalekobiezna (zbiorkom.live PKP)
 expectSpecs('EN57 Pafawag 5B/6B', 'train', { floor: 'high', ac: 'no', vintage: true });
 expectSpecs('EN57AL Pafawag 5B/6B', 'train', { floor: 'high', ac: 'yes', vintage: true });
+expectSpecs('EN57ALd Pafawag 5B/6B', 'train', { floor: 'high', ac: 'yes', vintage: true });
+expectSpecs('EN57AKM Pafawag 5B/6B', 'train', { floor: 'high', ac: 'yes', vintage: true });
 expectSpecs('EN71AKŚ Pafawag 5Bg/6Bg', 'train', { floor: 'high', ac: 'yes', vintage: true });
+expectSpecs('ED72Ac Pafawag 5B/6B', 'train', { floor: 'high', ac: 'yes', vintage: true });
+expectSpecs('ED72 Pafawag 5B/6B', 'train', { floor: 'high', ac: 'no', vintage: true });
 expectSpecs('Düwag VT627', 'train', { floor: 'high', ac: 'no', vintage: true });
+expectSpecs('ED250 Alstom Pendolino', 'train', { floor: 'high', ac: 'yes', vintage: false });
+expectSpecs('19WE Newag', 'train', { floor: 'high', ac: 'yes', vintage: false });
 expectSpecs('48WEc Pesa Elf 2', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('22WEd Pesa Elf 2', 'train', { floor: 'low', ac: 'yes', vintage: false });
 expectSpecs('31WEbc Newag Impuls 2', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('36WEha Newag Impuls 2', 'train', { floor: 'low', ac: 'yes', vintage: false });
 expectSpecs('ER160 Stadler Flirt 3', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('LM-4268 Stadler Flirt 3', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('SA134 Pesa 218M', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('SA136 Pesa 219M Atribo', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('SA139 Pesa Link', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('EN97 Pesa 33WE', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('EN100 Newag 39WE', 'train', { floor: 'low', ac: 'yes', vintage: false });
+expectSpecs('Siemens Desiro VT642', 'train', { floor: 'low', ac: 'yes', vintage: false });
 
 // 6. Autobusy i trolejbusy
 expectSpecs('Jelcz 120M', 'bus', { floor: 'high', ac: 'no', vintage: true });
@@ -153,6 +188,32 @@ expectSpecs('Prototyp 12LF', 'bus', {
   ac: 'unknown',
   vintage: false,
 });
+
+// 8. Laczenie udogodnien vagonweb z live specs zbiorkom.live
+expectAmenities(
+  'Intercity bez specs porzadkuje dostepnosc i klime na poczatek',
+  ['klimatyzacja', 'gniazdka_230V', 'wifi', 'wagon_restauracyjny', 'dostepny_wozkarze'],
+  null,
+  ['dostepny_wozkarze', 'klimatyzacja', 'gniazdka_230V', 'wifi', 'wagon_restauracyjny'],
+);
+expectAmenities(
+  'Regionalny Elf 2 deduplikuje klime i dostepnosc wozkow z vagonweb',
+  ['klimatyzacja', 'gniazdka_230V', 'wifi', 'przewoz_rowerow', 'dostepny_wozkarze'],
+  classifyVehicleModel('48WEc Pesa Elf 2', 'train'),
+  ['gniazdka_230V', 'wifi', 'przewoz_rowerow'],
+);
+expectAmenities(
+  'Klasyczny EN57 bez klimy nie pokazuje sprzecznej klimy z vagonweb',
+  ['klimatyzacja', 'przewoz_rowerow', 'dostepny_wozkarze'],
+  classifyVehicleModel('EN57 Pafawag 5B/6B', 'train'),
+  ['dostepny_wozkarze', 'przewoz_rowerow'],
+);
+expectAmenities(
+  'Wysokopodlogowy ED250 zachowuje dostepnosc wozkow, ale deduplikuje klime',
+  ['klimatyzacja', 'gniazdka_230V', 'wifi', 'bar', 'dostepny_wozkarze', 'strefa_ciszy'],
+  classifyVehicleModel('ED250 Pendolino', 'train'),
+  ['dostepny_wozkarze', 'gniazdka_230V', 'wifi', 'bar', 'strefa_ciszy'],
+);
 
 if (failures > 0) {
   console.error(`\nFAIL: ${failures} testow nie przeszlo.`);

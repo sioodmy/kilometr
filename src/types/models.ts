@@ -223,6 +223,8 @@ export interface Leg {
   routeId?: string;
   /** pełna sekwencja przystanków kursu (cała linia); nasz odcinek to podzbiór */
   intermediateStops?: LegStop[];
+  /** Model pojazdu z zbiorkom.live dla pociągów ogólnopolskich (np. "48WEc Pesa Elf 2"). */
+  vehicleModel?: string;
   /** Udogodnienia składu z vagonweb (klucze z RAIL_AMENITIES), puste = brak danych. */
   amenities?: RailAmenity[];
   /** Liczniki przy udogodnieniach (np. miejsca na rowery). */
