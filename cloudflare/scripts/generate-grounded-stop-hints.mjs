@@ -1,1219 +1,898 @@
-#!/usr/bin/env node
-/**
- * Generator wskazówek przystankowych dla miast (Wrocław, Warszawa, GZM, Kraków).
- * Zgodny ze skillem stop-hints (SKILL.md) i zasadami anti-slop.
- *
- * Twarde reguły grounding (anti-slop):
- * 1. Każda wskazówka słupka MUSI zawierać fizyczny punkt odniesienia:
- *    - Landmark / POI (sklep, kebab, burger, restauracja, stacja benzynowa, apteka, kościół, szpital, teatr),
- *    - Element krajobrazu (park, fosa miejska, most, rzeka),
- *    - Albo strukturę peronu/węzła (wyspa centralna peron 1-4, dolny peron w wykopie, podziemny terminal w tunelu).
- * 2. Jeśli słupek NIE POSIADA punktu odniesienia -> JEST POMIJANY (brak pustosłowia "ulica + kierunek").
- * 3. Kluczowe jest, by pasażer wiedział DOKŁADNIE z którego peronu/słupka odjeżdża.
- * 4. Płaski format JSON: Record<string, string>.
- * 5. Zwięzłe, 1-zdaniowe opisy (< 25 słów).
- */
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import readline from 'node:readline';
+import { spawn, spawnSync } from 'node:child_process';
+import { classifyOsmLandmark, formatStreetLocative } from './polish-grammar.mjs';
+import { VERIFIED_HUB_OVERRIDES } from './hub-overrides.mjs';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../..');
+const CACHE_DIR = path.join(ROOT_DIR, 'cloudflare/.cache');
+const DATA_DIR = path.join(ROOT_DIR, 'cloudflare/data');
+const SRC_DATA_DIR = path.join(ROOT_DIR, 'src/data');
 
-function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+const CITY_CONFIGS = {
+  warszawa: {
+    zips: ['gtfs-warszawa.zip'],
+    tsFile: 'stopHintsWarszawa.ts',
+    tsExport: 'STOP_HINTS_WARSZAWA',
+  },
+  wroclaw: {
+    zips: ['gtfs-wroclaw.zip'],
+    tsFile: 'stopHintsWroclaw.ts',
+    tsExport: 'STOP_HINTS_WROCLAW',
+  },
+  krakow: {
+    zips: ['gtfs-krakow-A.zip', 'gtfs-krakow-T.zip', 'gtfs-krakow-M.zip'],
+    tsFile: 'stopHintsKrakow.ts',
+    tsExport: 'STOP_HINTS_KRAKOW',
+  },
+  poznan: {
+    zips: ['gtfs-poznan.zip'],
+    tsFile: 'stopHintsPoznan.ts',
+    tsExport: 'STOP_HINTS_POZNAN',
+  },
+  gzm: {
+    zips: ['gtfs-gzm.zip'],
+    tsFile: 'stopHintsGzm.ts',
+    tsExport: 'STOP_HINTS_GZM',
+  },
+};
+
+function parseCsvLine(line) {
+  const cols = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQ = !inQ;
+      }
+    } else if (ch === ',' && !inQ) {
+      cols.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  cols.push(cur);
+  return cols;
+}
+
+function normalizePolish(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(
+      /[ąćęłńóśźż]/g,
+      (c) =>
+        ({
+          ą: 'a',
+          ć: 'c',
+          ę: 'e',
+          ł: 'l',
+          ń: 'n',
+          ó: 'o',
+          ś: 's',
+          ź: 'z',
+          ż: 'z',
+        })[c] || c,
+    );
+}
+
+function normalizeSlug(s) {
+  return normalizePolish(s)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function classifyRouteType(rawType) {
+  const t = Number(rawType);
+  if (t === 0 || (t >= 900 && t <= 999)) return 'tram';
+  if (t === 11 || t === 800) return 'trolleybus';
+  if (t === 3 || (t >= 700 && t <= 799)) return 'bus';
+  if (t === 1 || (t >= 400 && t <= 405)) return 'subway';
+  if (t === 2 || (t >= 100 && t <= 199)) return 'rail';
+  return 'other';
+}
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
       Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatStreet(street) {
-  if (!street) return '';
-  let s = street.trim();
-  if (/^aleja\s+/i.test(s)) return `przy al. ${s.replace(/^aleja\s+/i, '')}`;
-  if (/^al\.\s+/i.test(s)) return `przy ${s}`;
-  if (/^plac\s+/i.test(s)) return `przy pl. ${s.replace(/^plac\s+/i, '')}`;
-  if (/^pl\.\s+/i.test(s)) return `przy ${s}`;
-  if (/^rondo\s+/i.test(s)) return `na ${s}`;
-  return `na ul. ${s}`;
+/** Konwertuje przesunięcie (lat, lon) względem punktu odniesienia na lokalne metry (E, N). */
+function toLocalMeters(lat, lon, refLat, refLon) {
+  const mLat = 111320;
+  const mLon = 111320 * Math.cos((refLat * Math.PI) / 180);
+  return [(lon - refLon) * mLon, (lat - refLat) * mLat];
 }
 
-const FAMOUS_CHAINS_REGEX =
-  /^(?:żabka|biedronka|lidl|kaufland|netto|dino|carrefour|auchan|rossmann|kfc|mcdonald'?s|subway|burger king|orlen|bp|shell|circle k|moya|mol|amic|castorama|leroy merlin|ikea|obi|decathlon|media markt|empik|hebe|pepco|action|dealz|duży ben|aldi|bricomarché|intermarché|e\.leclerc|leclerc|jysk|ccc|deichmann|media expert|rtv euro agd|ch posnania|posnania|avenida|stary browar|galeria kazimierz|galeria krakowska|sukiennice|wawel|arkadia|westfield arkadia|złote tarasy|wroclavia|renoma|magnolia park|silesia city center|spodek|pałac kultury|teatr capitol|dworzec centralny|dworzec zachodni|dworzec główny)\b/i;
-
-const HAS_EXPLICIT_DESCRIPTOR_REGEX =
-  /^(?:apteka|aptek[aię]|pizzeria|pizzeri[aię]|kebab|burger|restauracja|restauracj[aię]|kawiarnia|kawiarn[aię]|cukiernia|cukiern[aię]|piekarnia|piekarn[aię]|bar|baru|pub|pubu|bistro|salon|kwiaciarnia|kwiaciarn[aię]|sklep|delikatesy|hotel|hostel|pensjonat|kościół|kościoł[au]|cerkiew|cerkwi|teatr|teatru|opera|opery|filharmonia|filharmonii|kino|kina|szpital|szpitala|przychodnia|przychodni|klinika|kliniki|gabinet|dworzec|dworca|stacja|stacji|uczelnia|uczelni|uniwersytet|politechnika|wydział|liceum|szkoła|szkoły|przedszkole|galeria|galerii|centrum|park|parku|ogród|ogrodu|most|mostu|wiadukt|wiaduktu|estakada|estakady|rondo|ronda|biurowiec|biurowca|wieżowiec|wieżowca|warsztat|serwis|muzeum|biblioteka|biblioteki|stadion|hala|hali|poczta|poczty|bank|banku|targowisko|bazar|myjnia|dom studencki|akademik|cmentarz|cmentarza)\b/i;
-
-function quoteName(n) {
-  if (!n) return '';
-  const trimmed = n.trim();
-  if (
-    (trimmed.startsWith('„') && trimmed.endsWith('”')) ||
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed;
+/** Odległość punktu P(0,0) od odcinka AB w metrach oraz wektor kierunkowy odcinka. */
+function pointToSegmentMetrics(ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-6) {
+    return { dist: Math.hypot(ax, ay), ux: 0, uy: 0, len: 0 };
   }
-  return `„${trimmed}”`;
+  const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2));
+  const px = ax + t * dx;
+  const py = ay + t * dy;
+  const len = Math.sqrt(len2);
+  return { dist: Math.hypot(px, py), ux: dx / len, uy: dy / len, len };
 }
 
-function categorizeLandmark(el) {
-  const t = el.tags || {};
-  if (t.public_transport || t.highway || t.railway) return null;
+/** Test przecięcia odcinków AB i CD w lokalnym układzie 2D. */
+function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  const ccw = (p1x, p1y, p2x, p2y, p3x, p3y) =>
+    (p3y - p1y) * (p2x - p1x) - (p2y - p1y) * (p3x - p1x);
+  const d1 = ccw(ax, ay, bx, by, cx, cy);
+  const d2 = ccw(ax, ay, bx, by, dx, dy);
+  const d3 = ccw(cx, cy, dx, dy, ax, ay);
+  const d4 = ccw(cx, cy, dx, dy, bx, by);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
 
-  const name = t.name || t.brand || t.operator;
-  if (!name && !t.leisure && !t.cuisine && !t.bridge) return null;
-  if (
-    name &&
-    /^(Wrocław|Warszawa|Katowice|Gliwice|Sosnowiec|Zabrze|Bytom|Kraków)\s+\d+$/i.test(name)
-  )
+function readZipText(zipPath, fileName) {
+  const res = spawnSync('unzip', ['-p', zipPath, fileName], { maxBuffer: 120 * 1024 * 1024 });
+  if (res.status !== 0) return '';
+  return res.stdout.toString('utf8');
+}
+
+/**
+ * Zwraca unikalny, stabilny klucz przystanku w `dataset.stops` (NIGDY goły 1-2 cyfrowy numer!).
+ */
+function canonicalStopKey(city, stop) {
+  if (city === 'warszawa') {
+    return stop.id; // 6-cyfrowe stop_id (np. "302702", "703706")
+  }
+  if (city === 'wroclaw') {
+    if (stop.code && /^\d{4,}$/.test(stop.code)) return stop.code;
     return null;
-
-  const isMajor =
-    /train_station|hospital|commercial|retail|mall/i.test(JSON.stringify(t)) ||
-    /galeria|dworzec|szpital|pasaż|renoma|wroclavia|capitol|opera|tarasy|park|kaufland|auchan|carrefour|arkadia|mokotow|zlote tarasy|silesia|bonarka|serenada|sukiennice|wawel|ice krakow|teatr słowackiego/i.test(
-      name || '',
-    );
-
-  let phrase = '';
-
-  if (t.leisure === 'park' || (name && /park\b/i.test(name))) {
-    phrase = name
-      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
-        ? `po stronie ${name}`
-        : `po stronie parku ${quoteName(name)}`
-      : 'przy parku';
-  } else if (
-    t.amenity === 'fuel' ||
-    t.brand === 'Orlen' ||
-    t.brand === 'BP' ||
-    t.brand === 'Shell' ||
-    t.brand === 'Circle K' ||
-    t.brand === 'Moya' ||
-    t.brand === 'Mol' ||
-    t.brand === 'Amic'
-  ) {
-    const brand = t.brand || name || 'benzynowej';
-    phrase = `obok stacji ${brand}`;
-  } else if (t.bridge || (name && /most|wiadukt/i.test(name))) {
-    phrase =
-      name && /most/i.test(name)
-        ? `przy moście ${name.replace(/^most\s+/i, '')}`
-        : 'pod wiaduktem kolejowym';
-  } else if (name && /fosa/i.test(name)) {
-    phrase = 'przy fosie miejskiej';
-  } else if (name && /szpital/i.test(name)) {
-    phrase = `przed wejściem do szpitala (${name})`;
-  } else if (name && /kościół|katedra|bazylika|cerkiew/i.test(name)) {
-    phrase = `obok ${name}`;
-  } else if (t.amenity === 'theatre' || (name && /teatr|opera|filharmonia/i.test(name))) {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok teatru ${quoteName(name)}`;
-  } else if (t.amenity === 'cinema' || (name && /kino\b/i.test(name))) {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok kina ${quoteName(name)}`;
-  } else if (t.amenity === 'pharmacy' || (name && /apteka/i.test(name))) {
-    phrase = name
-      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
-        ? `obok ${name}`
-        : `obok apteki ${quoteName(name)}`
-      : 'obok apteki';
-  } else if (t.amenity === 'restaurant') {
-    phrase =
-      FAMOUS_CHAINS_REGEX.test(name || '') || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok restauracji ${quoteName(name)}`;
-  } else if (t.amenity === 'cafe') {
-    phrase =
-      FAMOUS_CHAINS_REGEX.test(name || '') || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok kawiarni ${quoteName(name)}`;
-  } else if (t.cuisine === 'kebab' || (name && /kebab/i.test(name))) {
-    phrase = name
-      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
-        ? `obok ${name}`
-        : `obok lokalu z kebabem ${quoteName(name)}`
-      : 'obok lokalu z kebabem';
-  } else if (t.cuisine === 'burger' || (name && /burger/i.test(name))) {
-    phrase = name
-      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
-        ? `obok ${name}`
-        : `obok burgerowni ${quoteName(name)}`
-      : 'obok lokalu z burgerami';
-  } else if (t.cuisine === 'pizza' || (name && /pizza|pizzeria/i.test(name))) {
-    phrase = name
-      ? HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name)
-        ? `obok ${name}`
-        : `obok pizzerii ${quoteName(name)}`
-      : 'obok pizzerii';
-  } else if (t.amenity === 'fast_food') {
-    if (FAMOUS_CHAINS_REGEX.test(name || '') || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')) {
-      phrase = `obok ${name}`;
-    } else if (/asian|vietnamese|chinese|thai|sushi/i.test(t.cuisine || '')) {
-      phrase = `obok baru azjatyckiego ${quoteName(name)}`;
-    } else {
-      phrase = `obok lokalu gastronomicznego ${quoteName(name)}`;
-    }
-  } else if (t.amenity === 'bar' || t.amenity === 'pub') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok baru ${quoteName(name)}`;
-  } else if (t.amenity === 'ice_cream') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok lodziarni ${quoteName(name)}`;
-  } else if (t.amenity === 'bakery') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok piekarni ${quoteName(name)}`;
-  } else if (t.amenity === 'dentist') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok gabinetu stomatologicznego ${quoteName(name)}`;
-  } else if (t.amenity === 'doctors' || t.amenity === 'clinic') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok przychodni ${quoteName(name)}`;
-  } else if (t.amenity === 'veterinary') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok lecznicy weterynaryjnej ${quoteName(name)}`;
-  } else if (t.amenity === 'bank') {
-    phrase = `obok oddziału banku ${name.replace(/^bank\s+/i, '')}`;
-  } else if (t.amenity === 'post_office') {
-    phrase = `obok placówki pocztowej (${name})`;
-  } else if (t.amenity === 'place_of_worship') {
-    phrase = `obok kościoła (${name})`;
-  } else if (t.amenity === 'library') {
-    phrase = `obok biblioteki (${name})`;
-  } else if (t.shop) {
-    if (t.shop === 'convenience' || t.shop === 'grocery' || t.shop === 'general') {
-      phrase =
-        HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '') || FAMOUS_CHAINS_REGEX.test(name || '')
-          ? `obok ${name}`
-          : `obok sklepu spożywczego ${quoteName(name)}`;
-    } else if (t.shop === 'supermarket') {
-      phrase =
-        HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '') || FAMOUS_CHAINS_REGEX.test(name || '')
-          ? `obok ${name}`
-          : `obok supermarketu ${quoteName(name)}`;
-    } else if (t.shop === 'bakery') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok piekarni ${quoteName(name)}`;
-    } else if (t.shop === 'confectionery' || t.shop === 'pastry') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok cukierni ${quoteName(name)}`;
-    } else if (t.shop === 'hairdresser') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok salonu fryzjerskiego ${quoteName(name)}`;
-    } else if (t.shop === 'beauty') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok salonu urody ${quoteName(name)}`;
-    } else if (t.shop === 'florist') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok kwiaciarni ${quoteName(name)}`;
-    } else if (t.shop === 'butcher') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu mięsnego ${quoteName(name)}`;
-    } else if (t.shop === 'greengrocer') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok warzywniaka ${quoteName(name)}`;
-    } else if (t.shop === 'clothes' || t.shop === 'fashion' || t.shop === 'boutique') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu odzieżowego ${quoteName(name)}`;
-    } else if (t.shop === 'shoes') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu obuwniczego ${quoteName(name)}`;
-    } else if (t.shop === 'car_repair' || t.shop === 'tyres' || t.shop === 'car_parts') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok warsztatu samochodowego ${quoteName(name)}`;
-    } else if (t.shop === 'books') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok księgarni ${quoteName(name)}`;
-    } else if (t.shop === 'stationery') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu papierniczego ${quoteName(name)}`;
-    } else if (t.shop === 'jewelry') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok salonu jubilerskiego ${quoteName(name)}`;
-    } else if (t.shop === 'kiosk' || t.shop === 'newsagent') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok kiosku ${quoteName(name)}`;
-    } else if (t.shop === 'optician') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok salonu optycznego ${quoteName(name)}`;
-    } else if (t.shop === 'furniture') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok salonu meblowego ${quoteName(name)}`;
-    } else if (t.shop === 'hardware' || t.shop === 'doityourself') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu budowlanego ${quoteName(name)}`;
-    } else if (t.shop === 'chemist') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok drogerii ${quoteName(name)}`;
-    } else if (t.shop === 'alcohol' || t.shop === 'beverages') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu z alkoholami ${quoteName(name)}`;
-    } else if (t.shop === 'electronics') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu z elektroniką ${quoteName(name)}`;
-    } else if (t.shop === 'bicycle') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu rowerowego ${quoteName(name)}`;
-    } else if (t.shop === 'sports') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu sportowego ${quoteName(name)}`;
-    } else if (t.shop === 'toys') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu z zabawkami ${quoteName(name)}`;
-    } else if (t.shop === 'pet') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu zoologicznego ${quoteName(name)}`;
-    } else if (t.shop === 'funeral_directors') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok zakładu pogrzebowego ${quoteName(name)}`;
-    } else if (t.shop === 'antiques') {
-      phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-        ? `obok ${name}`
-        : `obok sklepu ze starociami ${quoteName(name)}`;
-    } else {
-      phrase =
-        HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '') || FAMOUS_CHAINS_REGEX.test(name || '')
-          ? `obok ${name}`
-          : `obok sklepu ${quoteName(name)}`;
-    }
-  } else if (t.craft) {
-    if (t.craft === 'photographer') {
-      phrase = `obok studia fotograficznego ${quoteName(name)}`;
-    } else if (t.craft === 'tailor') {
-      phrase = `obok pracowni krawieckiej ${quoteName(name)}`;
-    } else if (t.craft === 'shoemaker') {
-      phrase = `obok zakładu szewskiego ${quoteName(name)}`;
-    } else {
-      phrase = `obok punktu usługowego ${quoteName(name)}`;
-    }
-  } else if (t.tourism === 'hotel') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok hotelu ${quoteName(name)}`;
-  } else if (t.tourism === 'hostel') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok hostelu ${quoteName(name)}`;
-  } else if (t.tourism === 'museum') {
-    phrase = `obok muzeum (${name})`;
-  } else if (t.office) {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok biura ${quoteName(name)}`;
-  } else if (t.building === 'commercial' || t.building === 'retail') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok budynku usługowego ${quoteName(name)}`;
-  } else if (t.building === 'office') {
-    phrase = HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name || '')
-      ? `obok ${name}`
-      : `obok biurowca ${quoteName(name)}`;
-  } else if (name && (FAMOUS_CHAINS_REGEX.test(name) || HAS_EXPLICIT_DESCRIPTOR_REGEX.test(name))) {
-    phrase = `obok ${name}`;
   }
-
-  if (!phrase) return null;
-  phrase = phrase
-    .replace(/\.(?!\s*(?:pl|com|eu|org|net)\b)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!phrase || phrase.length < 5) return null;
-
-  return {
-    name: name || phrase,
-    phrase,
-    isMajor,
-    lat: el.lat ?? el.center?.lat,
-    lon: el.lon ?? el.center?.lon,
-  };
+  if (city === 'krakow') {
+    if (stop.code && /^\d+-\d+$/.test(stop.code)) return stop.code;
+    return null;
+  }
+  if (city === 'poznan') {
+    // Strip geohash: "poznan-glowny73-wqjhw" -> "poznan-glowny73"
+    const m = stop.id.match(/^([a-z0-9-]+\d{2})-[a-z0-9]{4,6}$/i);
+    if (m) return m[1];
+    // Fallback z nazwy kończącej się na 2 cyfry: "Poznań Główny 73" -> "poznan-glowny73"
+    const nm = stop.name.match(/^(.*?)\s+(\d{2})$/);
+    if (nm) return `${normalizeSlug(nm[1])}${nm[2]}`;
+    return stop.id;
+  }
+  if (city === 'gzm') {
+    if (stop.code && (stop.code.includes('-') || stop.code.length >= 5)) return stop.code;
+    return null;
+  }
+  return stop.id;
 }
 
-async function processCity(city) {
-  console.log(`\n======================================================`);
-  console.log(`[i] Generowanie grounded stop hints dla: ${city.toUpperCase()}`);
-  console.log(`======================================================`);
-
-  const OSM_CACHE = path.join(ROOT_DIR, `cloudflare/.cache/${city}-osm-elements.json`);
-  const OUTPUT_FILE = path.join(ROOT_DIR, `cloudflare/data/stop-hints-${city}.json`);
-
-  let zipFiles = [];
-  if (city === 'krakow') {
-    zipFiles = [
-      {
-        path: path.join(ROOT_DIR, 'cloudflare/.cache/gtfs-krakow-t.zip'),
-        isTram: true,
-        prefix: 'KRK:T',
-      },
-      {
-        path: path.join(ROOT_DIR, 'cloudflare/.cache/gtfs-krakow-a.zip'),
-        isTram: false,
-        prefix: 'KRK:A',
-      },
-    ];
-  } else {
-    zipFiles = [
-      {
-        path: path.join(ROOT_DIR, `cloudflare/.cache/gtfs-${city}.zip`),
-        isTram: false,
-        prefix: '',
-      },
-    ];
+/** Nazwa grupy przystankowej (do wykrywania przeciwległych słupków tego samego przystanku). */
+function stopGroupName(city, stop) {
+  let n = stop.name.trim();
+  if (city === 'poznan') {
+    n = n.replace(/\s+\d{2}$/, '');
   }
+  return normalizeSlug(n);
+}
 
-  for (const z of zipFiles) {
-    if (!fs.existsSync(z.path)) {
-      throw new Error(`Brak pliku GTFS w: ${z.path}`);
+/**
+ * Ładuje pełny graf GTFS dla miasta (stops + routes + trips + streaming stop_times):
+ * zwraca listę aktywnych przystanków naziemnych (bus/tram/trolleybus) z prawdziwym
+ * trybem transportu, liczbą odjazdów i wektorem kierunku jazdy (vE, vN).
+ */
+async function loadGtfsCity(city) {
+  const cfg = CITY_CONFIGS[city];
+  const stopsByKey = new Map();
+  const rawStopsById = new Map();
+
+  for (const zipName of cfg.zips) {
+    const zipPath = path.join(CACHE_DIR, zipName);
+    if (!fs.existsSync(zipPath)) {
+      throw new Error(`Brak pliku GTFS: ${zipPath}`);
     }
-  }
-  if (!fs.existsSync(OSM_CACHE)) {
-    throw new Error(`Brak pliku OSM w: ${OSM_CACHE}`);
-  }
 
-  console.log('[1/4] Ładowanie danych GTFS...');
-  const clusterMap = new Map();
-  const allStops = [];
+    const routeMode = new Map();
+    const rText = readZipText(zipPath, 'routes.txt');
+    const rLines = rText.split(/\r?\n/).filter(Boolean);
+    if (rLines.length < 2) continue;
+    const rH = parseCsvLine(rLines[0].replace(/^\uFEFF/, ''));
+    const riId = rH.indexOf('route_id');
+    const riType = rH.indexOf('route_type');
+    for (let i = 1; i < rLines.length; i++) {
+      const c = parseCsvLine(rLines[i]);
+      routeMode.set(c[riId], classifyRouteType(c[riType]));
+    }
 
-  for (const z of zipFiles) {
-    const stopsCsv = execSync(`unzip -p "${z.path}" stops.txt`, {
-      maxBuffer: 50 * 1024 * 1024,
-    }).toString('utf8');
+    const tripMode = new Map();
+    const tText = readZipText(zipPath, 'trips.txt');
+    const tLines = tText.split(/\r?\n/).filter(Boolean);
+    const tH = parseCsvLine(tLines[0].replace(/^\uFEFF/, ''));
+    const tiId = tH.indexOf('trip_id');
+    const tiR = tH.indexOf('route_id');
+    for (let i = 1; i < tLines.length; i++) {
+      const c = parseCsvLine(tLines[i]);
+      tripMode.set(c[tiId], routeMode.get(c[tiR]) || 'other');
+    }
 
-    for (const line of stopsCsv.split('\n').slice(1)) {
-      if (!line.trim()) continue;
-      const p = line.split(',');
-
-      let id = '',
-        code = '',
-        name = '',
-        lat = 0,
-        lon = 0,
-        street = '',
-        isTram = z.isTram;
-
-      if (city === 'warszawa') {
-        const locType = p[6]?.trim();
-        if (locType === '1' || locType === '2') continue;
-        id = p[0].trim();
-        name = (p[1] || '').replace(/"/g, '').trim();
-        code = (p[2] || '').trim();
-        // Metro M1/M2 ma literowe kody peronów (A1-C21); pomijamy je, bo baza nie opisuje wnętrza stacji.
-        if (/^[A-Z]\d+$/.test(code)) continue;
-        lat = parseFloat(p[4]);
-        lon = parseFloat(p[5]);
-        street = (p[12] || '').replace(/"/g, '').trim();
-      } else if (city === 'gzm') {
-        id = p[0].trim();
-        code = (p[1] || '').trim();
-        name = (p[2] || '').replace(/"/g, '').trim();
-        lat = parseFloat(p[3]);
-        lon = parseFloat(p[4]);
-      } else if (city === 'krakow') {
-        id = p[0].trim();
-        code = (p[1] || '').replace(/"/g, '').trim();
-        name = (p[2] || '').replace(/"/g, '').trim();
-        lat = parseFloat(p[4]);
-        lon = parseFloat(p[5]);
-      } else if (city === 'poznan') {
-        id = p[0].trim();
-        name = (p[1] || '').replace(/"/g, '').trim();
-        const m = name.match(/\s(\d{2})$/);
-        code = m ? m[1] : '';
-        lat = parseFloat(p[3]);
-        lon = parseFloat(p[4]);
-        const n = parseInt(code, 10);
-        isTram = (n >= 41 && n <= 49) || (n >= 71 && n <= 79);
-      } else {
-        // Wrocław
-        id = p[0].trim();
-        code = (p[1] || '').trim();
-        name = (p[2] || '').replace(/"/g, '').trim();
-        lat = parseFloat(p[3]);
-        lon = parseFloat(p[4]);
-      }
-
-      if (!name || isNaN(lat) || isNaN(lon)) continue;
-
-      const stopObj = {
-        id,
-        code,
-        name,
+    const localStops = new Map();
+    const sText = readZipText(zipPath, 'stops.txt');
+    const sLines = sText.split(/\r?\n/).filter(Boolean);
+    const sH = parseCsvLine(sLines[0].replace(/^\uFEFF/, ''));
+    const siId = sH.indexOf('stop_id');
+    const siCode = sH.indexOf('stop_code');
+    const siName = sH.indexOf('stop_name');
+    const siLat = sH.indexOf('stop_lat');
+    const siLon = sH.indexOf('stop_lon');
+    const siSt = sH.indexOf('street_name');
+    for (let i = 1; i < sLines.length; i++) {
+      const c = parseCsvLine(sLines[i]);
+      const lat = Number(c[siLat]);
+      const lon = Number(c[siLon]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat === 0 || lon === 0) continue;
+      const s = {
+        id: (c[siId] || '').trim(),
+        code: siCode >= 0 ? (c[siCode] || '').trim() : '',
+        name: (c[siName] || '').trim(),
         lat,
         lon,
-        street,
-        isTram,
-        prefix: z.prefix,
+        street: siSt >= 0 ? (c[siSt] || '').trim() : '',
       };
-      allStops.push(stopObj);
-
-      const list = clusterMap.get(name) || [];
-      list.push(stopObj);
-      clusterMap.set(name, list);
+      if (!s.id || !s.name) continue;
+      localStops.set(s.id, s);
+      rawStopsById.set(s.id, s);
     }
-  }
 
-  console.log(
-    `[✓] Przeanalizowano GTFS: ${allStops.length} słupków w ${clusterMap.size} zespołach.`,
-  );
+    // Streaming stop_times.txt -> tryby + liczba odjazdów + wektor kierunku jazdy
+    const child = spawn('unzip', ['-p', zipPath, 'stop_times.txt']);
+    const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+    let iTrip = -1;
+    let iStop = -1;
+    let prevTrip = '';
+    let prevStopId = '';
 
-  console.log('[2/4] Ładowanie i indeksowanie punktów OpenStreetMap...');
-  const osmElements = JSON.parse(fs.readFileSync(OSM_CACHE, 'utf8'));
+    const stopStats = new Map();
+    const ensureStat = (sid) => {
+      let st = stopStats.get(sid);
+      if (!st) {
+        st = { modes: new Set(), departures: 0, vecE: 0, vecN: 0, vecCount: 0 };
+        stopStats.set(sid, st);
+      }
+      return st;
+    };
 
-  const landmarks = [];
-  for (const el of osmElements) {
-    const cat = categorizeLandmark(el);
-    if (cat && cat.lat != null && cat.lon != null) {
-      landmarks.push(cat);
-    }
-  }
-
-  const landmarkGrid = new Map();
-  for (const l of landmarks) {
-    const cell = `${Math.floor(l.lat / 0.005)}:${Math.floor(l.lon / 0.005)}`;
-    if (!landmarkGrid.has(cell)) landmarkGrid.set(cell, []);
-    landmarkGrid.get(cell).push(l);
-  }
-
-  function findNearbyLandmark(lat, lon) {
-    const y0 = Math.floor((lat - 0.002) / 0.005);
-    const y1 = Math.floor((lat + 0.002) / 0.005);
-    const x0 = Math.floor((lon - 0.003) / 0.005);
-    const x1 = Math.floor((lon + 0.003) / 0.005);
-
-    let best = null;
-    let bestDist = 9999;
-
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const list = landmarkGrid.get(`${y}:${x}`);
-        if (!list) continue;
-        for (const l of list) {
-          const d = haversineDistanceMeters(lat, lon, l.lat, l.lon);
-          const maxDist = l.isMajor ? 75 : 35;
-          if (d <= maxDist && d < bestDist) {
-            best = l;
-            bestDist = d;
+    for await (const line of rl) {
+      if (iTrip < 0) {
+        const h = parseCsvLine(line.replace(/^\uFEFF/, ''));
+        iTrip = h.indexOf('trip_id');
+        iStop = h.indexOf('stop_id');
+        continue;
+      }
+      if (!line) continue;
+      const parts = line.split(',');
+      const trip = parts[iTrip];
+      const sid = parts[iStop];
+      const mode = tripMode.get(trip);
+      if (mode && localStops.has(sid)) {
+        const st = ensureStat(sid);
+        st.modes.add(mode);
+        st.departures++;
+      }
+      if (trip === prevTrip && prevStopId && prevStopId !== sid) {
+        const p1 = localStops.get(prevStopId);
+        const p2 = localStops.get(sid);
+        if (p1 && p2) {
+          const [dx, dy] = toLocalMeters(p2.lat, p2.lon, p1.lat, p1.lon);
+          const d = Math.hypot(dx, dy);
+          if (d >= 40 && d <= 2500) {
+            const st = ensureStat(prevStopId);
+            st.vecE += dx / d;
+            st.vecN += dy / d;
+            st.vecCount++;
           }
         }
       }
+      prevTrip = trip;
+      prevStopId = sid;
     }
-    return best ? { ...best, dist: bestDist } : null;
+
+    // Scalenie statystyk według klucza kanonicznego (np. Kraków 802-01 ma bus w A.zip i tram w T.zip)
+    for (const [sid, s] of localStops) {
+      const stat = stopStats.get(sid);
+      if (!stat || stat.departures === 0) continue;
+      const key = canonicalStopKey(city, s);
+      if (!key) continue;
+
+      let entry = stopsByKey.get(key);
+      if (!entry) {
+        entry = {
+          key,
+          id: s.id,
+          code: s.code,
+          name: s.name,
+          group: stopGroupName(city, s),
+          lat: s.lat,
+          lon: s.lon,
+          gtfsStreet: s.street,
+          modes: new Set(),
+          departures: 0,
+          vecE: 0,
+          vecN: 0,
+          vecCount: 0,
+        };
+        stopsByKey.set(key, entry);
+      }
+      for (const m of stat.modes) entry.modes.add(m);
+      entry.departures += stat.departures;
+      entry.vecE += stat.vecE;
+      entry.vecN += stat.vecN;
+      entry.vecCount += stat.vecCount;
+      if (!entry.gtfsStreet && s.street) entry.gtfsStreet = s.street;
+    }
   }
 
-  console.log(`[✓] Zaindeksowano ${landmarks.length} fizycznych punktów orientacyjnych OSM.`);
-
-  console.log('[3/4] Generowanie zakotwiczonych wskazówek dla słupków...');
-  const stopsOutput = {};
-
-  let SPECIFIC_POLE_HINTS = {};
-  if (city === 'wroclaw') {
-    SPECIFIC_POLE_HINTS = {
-      20820: 'Peron 1 • Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.',
-      20823: 'Peron 2 • Wyspa centralna Ronda Reagana od strony Pasażu Grunwaldzkiego.',
-      20824: 'Peron 3 • Wyspa centralna Ronda Reagana od strony Politechniki.',
-      20815: 'Peron 4 • Wyspa centralna Ronda Reagana od strony Politechniki.',
-      20855: 'Słupek na ul. Curie-Skłodowskiej przed wjazdem na rondo obok Pasażu Grunwaldzkiego.',
-      20816: 'Słupek na ul. Curie-Skłodowskiej za zjazdem z ronda obok Uniwersytetu Medycznego.',
-      20916:
-        'Zatoka autobusowa na pl. Grunwaldzkim przed głównym wejściem do Pasażu Grunwaldzkiego.',
-      20915: 'Zatoka autobusowa na pl. Grunwaldzkim naprzeciwko Pasażu Grunwaldzkiego.',
-      10101: 'Peron 1 • Wyspa tramwajowa przed frontem dworca PKP w stronę Arkad.',
-      10102: 'Peron 2 • Wyspa tramwajowa na ul. Piłsudskiego naprzeciwko frontu dworca PKP.',
-      10103: 'Słupek autobusowy na ul. Peronowej bezpośrednio przed wejściem na dworzec PKP.',
-      10201: 'Przystanek na ul. Suchej przy wejściu do galerii Wroclavia.',
-      10202: 'Przystanek na ul. Suchej naprzeciwko wejścia do dworca PKP.',
-      10501: 'Dolny peron 1 w wykopie pod pl. Dominikańskim w stronę mostu Grunwaldzkiego.',
-      10502: 'Dolny peron 2 w wykopie pod pl. Dominikańskim w stronę Rynku i Dworca Głównego.',
-      10531: 'Górny peron na poziomie ulicy przy pl. Dominikańskim.',
-      10532: 'Górny peron na poziomie ulicy przy wejściu do Galerii Dominikańskiej.',
-      10511: 'Zatoka autobusowa przy fosie miejskiej przed Galerią Dominikańską.',
-      10521: 'Zatoka autobusowa na ul. Kazimierza Wielkiego przy wyjściu z Galerii Dominikańskiej.',
-    };
-  } else if (city === 'warszawa') {
-    SPECIFIC_POLE_HINTS = {
-      700201: 'Słupek 01 • Al. Jerozolimskie, wyspa tramwajowa naprzeciwko CH Złote Tarasy.',
-      700202:
-        'Słupek 02 • Al. Jerozolimskie, wyspa tramwajowa naprzeciwko wejścia do Dworca Centralnego.',
-      700203: 'Słupek 03 • al. Jana Pawła II przed wejściem do Dworca Centralnego.',
-      700204: 'Słupek 04 • al. Jana Pawła II naprzeciwko wejścia do Dworca Centralnego.',
-      700205: 'Słupek 05 • Al. Jerozolimskie pod halą główną dworca kolejowego.',
-      700206: 'Słupek 06 • Al. Jerozolimskie pod halą główną dworca.',
-      700207: 'Słupek 07 • Al. Jerozolimskie w stronę Centrum naprzeciwko CH Złote Tarasy.',
-      700208: 'Słupek 08 • Al. Jerozolimskie w stronę pl. Zawiszy przed Dworcem Centralnym.',
-      700209: 'Słupek 09 • al. Jana Pawła II obok CH Złote Tarasy.',
-      700210: 'Słupek 10 • al. Jana Pawła II obok Dworca Centralnego.',
-      700211: 'Słupek 11 • ul. Emilii Plater naprzeciwko Pałacu Kultury i Nauki.',
-      700212: 'Słupek 12 • ul. Emilii Plater przy wejściu do CH Złote Tarasy.',
-      700216: 'Słupek 16 • ul. Emilii Plater przy Pałacu Kultury i Nauki.',
-      700221: 'Słupek 21 • Pętla autobusowa Dworzec Centralny, peron 1 przy CH Złote Tarasy.',
-      700223: 'Słupek 23 • Pętla autobusowa Dworzec Centralny, peron 2 obok CH Złote Tarasy.',
-      700225: 'Słupek 25 • Pętla autobusowa Dworzec Centralny, peron 3 obok CH Złote Tarasy.',
-      700227: 'Słupek 27 • Pętla autobusowa Dworzec Centralny, peron 4 pod zadaszeniem.',
-      700229: 'Słupek 29 • Pętla autobusowa Dworzec Centralny, peron 5 pod zadaszeniem.',
-      700272: 'Słupek 72 • ul. Emilii Plater naprzeciwko wejścia do Pałacu Kultury.',
-      605901:
-        'Słupek 01 • Pętla tramwajowa Metro Młociny, peron wysiadkowy przed wejściem do metra.',
-      605902: 'Słupek 02 • Pętla tramwajowa Metro Młociny, peron odjazdowy przed stacją metra.',
-      605903:
-        'Słupek 03 • Pętla tramwajowa Metro Młociny przy stacji metra w stronę mostu Skłodowskiej-Curie.',
-      605904: 'Słupek 04 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605905: 'Słupek 05 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605906: 'Słupek 06 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605907: 'Słupek 07 • Pętla tramwajowa Metro Młociny przed wejściem do stacji metra.',
-      605917: 'Słupek 17 • Zatoka autobusowa na ul. Kasprowicza obok wejścia do metra.',
-      605921: 'Słupek 21 • Dworzec autobusowy P+R Metro Młociny, peron 1 przy wyjściu z metra.',
-      605922: 'Słupek 22 • Dworzec autobusowy P+R Metro Młociny, peron 2 przy wyjściu z metra.',
-      605923: 'Słupek 23 • Dworzec autobusowy P+R Metro Młociny, peron 3 przy wyjściu z metra.',
-      605924: 'Słupek 24 • Dworzec autobusowy P+R Metro Młociny, peron 4 przy wyjściu z metra.',
-      605925: 'Słupek 25 • Dworzec autobusowy P+R Metro Młociny, peron 5 przy wyjściu z metra.',
-      605928: 'Słupek 28 • Dworzec autobusowy P+R Metro Młociny, peron wysiadkowy.',
-      700101: 'Słupek 01 • Peron tramwajowy na ul. Marszałkowskiej przed Błękitnym Wieżowcem.',
-      700102:
-        'Słupek 02 • Peron tramwajowy na ul. Marszałkowskiej naprzeciwko Błękitnego Wieżowca.',
-      700103: 'Słupek 03 • Zatoka autobusowa na al. Solidarności przed Urzędem Miasta.',
-      700104: 'Słupek 04 • Zatoka autobusowa na al. Solidarności naprzeciwko Urzędu Miasta.',
-      700105: 'Słupek 05 • Zatoka autobusowa na ul. Marszałkowskiej przed Błękitnym Wieżowcem.',
-      700106:
-        'Słupek 06 • Zatoka autobusowa na ul. Marszałkowskiej naprzeciwko Błękitnego Wieżowca.',
-      702601: 'Słupek 01 • Wyspa tramwajowa na ul. Prostej naprzeciwko wieżowca Warsaw Spire.',
-      702602: 'Słupek 02 • Wyspa tramwajowa na ul. Towarowej obok kompleksu The Warsaw Hub.',
-      702603: 'Słupek 03 • Wyspa tramwajowa na ul. Prostej obok wieżowca Skyliner.',
-      702604: 'Słupek 04 • Wyspa tramwajowa na ul. Towarowej obok kompleksu The Warsaw Hub.',
-      702605: 'Słupek 05 • Zatoka autobusowa na ul. Prostej przed Warsaw Spire.',
-      702606: 'Słupek 06 • Zatoka autobusowa na ul. Towarowej przed The Warsaw Hub.',
-      701701: 'Słupek 01 • Wyspa tramwajowa na al. Jana Pawła II obok wieżowca Rondo 1.',
-      701702: 'Słupek 02 • Wyspa tramwajowa na ul. Świętokrzyskiej obok wieżowca Rondo 1.',
-    };
-  } else if (city === 'gzm') {
-    SPECIFIC_POLE_HINTS = {
-      5410: 'Stanowisko 01 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 1).',
-      5409: 'Stanowisko 02 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 2).',
-      5408: 'Stanowisko 03 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 3).',
-      5407: 'Stanowisko 04 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 4).',
-      3687: 'Stanowisko 05 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 5).',
-      5411: 'Stanowisko 06 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 6).',
-      5412: 'Stanowisko 07 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 7).',
-      5413: 'Stanowisko 08 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 8).',
-      9753: 'Stanowisko 09 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 9).',
-      5415: 'Stanowisko 10 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 10).',
-      7105: 'Peron tramwajowy • ul. 3 Maja przed wejściem do Galerii Katowickiej.',
-      7106: 'Peron tramwajowy • ul. 3 Maja naprzeciwko Galerii Katowickiej.',
-      '2469011-00101':
-        'Stanowisko 01 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 1).',
-      '2469011-00102':
-        'Stanowisko 02 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 2).',
-      '2469011-00103':
-        'Stanowisko 03 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 3).',
-      '2469011-00104':
-        'Stanowisko 04 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 4).',
-      '2469011-00105':
-        'Stanowisko 05 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 5).',
-      '2469011-00106':
-        'Stanowisko 06 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 6).',
-      '2469011-00107':
-        'Stanowisko 07 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 7).',
-      '2469011-00108':
-        'Stanowisko 08 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 8).',
-      '2469011-00109':
-        'Stanowisko 09 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 9).',
-      '2469011-00110':
-        'Stanowisko 10 • Podziemny terminal autobusowy w tunelu pod Galerią Katowicką (peron 10).',
-      '2469011-00201t': 'Peron tramwajowy • ul. 3 Maja naprzeciwko Galerii Katowickiej.',
-      '2469011-00202t': 'Peron tramwajowy • ul. 3 Maja przed wejściem do Galerii Katowickiej.',
-    };
-  } else if (city === 'poznan') {
-    SPECIFIC_POLE_HINTS = {
-      // Poznań Główny / Dworzec Zachodni
-      'poznan-glowny73-wqjhw': 'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
-      'poznan-glowny73': 'Peron tramwajowy na Moście Dworcowym w stronę Ronda Kaponiera.',
-      'poznan-glowny74-wqo4m':
-        'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
-      'poznan-glowny74': 'Peron tramwajowy na Moście Dworcowym w stronę ul. Głogowskiej i Dębca.',
-      'poznan-glowny41-wozxq':
-        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Os. Sobieskiego.',
-      'poznan-glowny41':
-        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Os. Sobieskiego.',
-      'poznan-glowny42-wpigc':
-        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Dworca Zachodniego.',
-      'poznan-glowny42':
-        'Podziemny peron PST Poznań Główny pod galerią Avenida w stronę Dworca Zachodniego.',
-      'poznan-glowny01-wl51l':
-        'Słupek 01 • Przystanek autobusowy na placu Dworcowym przed wejściem na dworzec PKP.',
-      'poznan-glowny01':
-        'Słupek 01 • Przystanek autobusowy na placu Dworcowym przed wejściem na dworzec PKP.',
-      'poznan-glowny02-wl51n':
-        'Słupek 02 • Przystanek autobusowy na placu Dworcowym przed wejściem do galerii Avenida.',
-      'poznan-glowny02':
-        'Słupek 02 • Przystanek autobusowy na placu Dworcowym przed wejściem do galerii Avenida.',
-      'poznan-glowny05-wpn2o':
-        'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
-      'poznan-glowny05': 'Stanowisko 05 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
-      'poznan-glowny06-wq0yg':
-        'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
-      'poznan-glowny06': 'Stanowisko 06 • Dworzec autobusowy Poznań Główny pod galerią Avenida.',
-      'dworzec-zachodni71-wgrmp':
-        'Peron tramwajowy na ul. Głogowskiej przed wejściem do Dworca Zachodniego PKP w stronę centrum.',
-      'dworzec-zachodni71':
-        'Peron tramwajowy na ul. Głogowskiej przed wejściem do Dworca Zachodniego PKP w stronę centrum.',
-      'dworzec-zachodni72-wh5iq':
-        'Peron tramwajowy na ul. Głogowskiej naprzeciwko Dworca Zachodniego PKP w stronę Górczyna.',
-      'dworzec-zachodni72':
-        'Peron tramwajowy na ul. Głogowskiej naprzeciwko Dworca Zachodniego PKP w stronę Górczyna.',
-      'dworzec-zachodni41-wip2j':
-        'Peron PST w wykopie przy Dworcu Zachodnim w stronę Dworca Głównego i Mostu Teatralnego.',
-      'dworzec-zachodni41':
-        'Peron PST w wykopie przy Dworcu Zachodnim w stronę Dworca Głównego i Mostu Teatralnego.',
-      'dworzec-zachodni42-wift7': 'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
-      'dworzec-zachodni42': 'Pętla PST przy Dworcu Zachodnim, peron dla wysiadających.',
-      'dworzec-zachodni02-wi1x6':
-        'Zatoka autobusowa na ul. Zachodniej przed wejściem do tunelu Dworca Zachodniego.',
-      'dworzec-zachodni02':
-        'Zatoka autobusowa na ul. Zachodniej przed wejściem do tunelu Dworca Zachodniego.',
-
-      // Rondo Kaponiera
-      'rondo-kaponiera45-wm64d':
-        'Poziom -2 w wykopie PST, peron w stronę Mostu Teatralnego i Os. Sobieskiego.',
-      'rondo-kaponiera45':
-        'Poziom -2 w wykopie PST, peron w stronę Mostu Teatralnego i Os. Sobieskiego.',
-      'rondo-kaponiera46-wmfdq': 'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
-      'rondo-kaponiera46': 'Poziom -2 w wykopie PST, peron w stronę Dworca Zachodniego.',
-      'rondo-kaponiera71-wliz8':
-        'Poziom 0, peron tramwajowy na ul. Roosevelta obok hotelu Mercure w stronę Mostu Teatralnego.',
-      'rondo-kaponiera71':
-        'Poziom 0, peron tramwajowy na ul. Roosevelta obok hotelu Mercure w stronę Mostu Teatralnego.',
-      'rondo-kaponiera72-wls8k':
-        'Poziom 0, peron tramwajowy na ul. Roosevelta obok Bałtyku w stronę Mostu Dworcowego.',
-      'rondo-kaponiera72':
-        'Poziom 0, peron tramwajowy na ul. Roosevelta obok Bałtyku w stronę Mostu Dworcowego.',
-      'rondo-kaponiera73-wmon0':
-        'Poziom 0, peron tramwajowy na ul. Zwierzynieckiej obok DS Jowita w stronę ul. Kraszewskiego.',
-      'rondo-kaponiera73':
-        'Poziom 0, peron tramwajowy na ul. Zwierzynieckiej obok DS Jowita w stronę ul. Kraszewskiego.',
-      'rondo-kaponiera74-wmxwd':
-        'Poziom 0, peron tramwajowy na ul. Święty Marcin przed CK Zamek w stronę centrum.',
-      'rondo-kaponiera74':
-        'Poziom 0, peron tramwajowy na ul. Święty Marcin przed CK Zamek w stronę centrum.',
-      'rondo-kaponiera01-wkhxt':
-        'Słupek 01 • Zatoka autobusowa na ul. Zwierzynieckiej obok Domu Studenckiego Jowita.',
-      'rondo-kaponiera01':
-        'Słupek 01 • Zatoka autobusowa na ul. Zwierzynieckiej obok Domu Studenckiego Jowita.',
-      'rondo-kaponiera02-wi6ls':
-        'Słupek 02 • Zatoka autobusowa na ul. Zwierzynieckiej przed hotelem Mercure.',
-      'rondo-kaponiera02':
-        'Słupek 02 • Zatoka autobusowa na ul. Zwierzynieckiej przed hotelem Mercure.',
-      'rondo-kaponiera05-wmfdi':
-        'Słupek 05 • Zatoka autobusowa na ul. Roosevelta obok wejścia do Kaponiery.',
-      'rondo-kaponiera05':
-        'Słupek 05 • Zatoka autobusowa na ul. Roosevelta obok wejścia do Kaponiery.',
-      'rondo-kaponiera06-wmomr':
-        'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
-      'rondo-kaponiera06': 'Słupek 06 • Zatoka autobusowa na ul. Roosevelta obok wieżowca Bałtyk.',
-
-      // Most Teatralny
-      'most-teatralny44-wn2jy':
-        'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
-      'most-teatralny44': 'Dolny peron PST w wykopie pod wiaduktem w stronę Dworca Zachodniego.',
-      'most-teatralny45-wocut': 'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
-      'most-teatralny45': 'Dolny peron PST w wykopie pod wiaduktem w stronę Os. Sobieskiego.',
-      'most-teatralny46-wnyyt':
-        'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
-      'most-teatralny46': 'Rampa wyjazdowa PST przy parku Wieniawskiego w stronę ul. Roosevelta.',
-      'most-teatralny71-wmfec':
-        'Peron tramwajowy na ul. Roosevelta przed Teatrem Nowym w stronę Ronda Kaponiera.',
-      'most-teatralny71':
-        'Peron tramwajowy na ul. Roosevelta przed Teatrem Nowym w stronę Ronda Kaponiera.',
-      'most-teatralny72-wlnmj':
-        'Peron tramwajowy na Moście Teatralnym w stronę Jeżyc i ul. Dąbrowskiego.',
-      'most-teatralny72':
-        'Peron tramwajowy na Moście Teatralnym w stronę Jeżyc i ul. Dąbrowskiego.',
-      'most-teatralny73-wnubr':
-        'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
-      'most-teatralny73': 'Peron tramwajowy na ul. Fredry przed Teatrem Wielkim w stronę centrum.',
-      'most-teatralny01-wnbt9':
-        'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
-      'most-teatralny01': 'Słupek 01 • Zatoka autobusowa na Moście Teatralnym w stronę centrum.',
-      'most-teatralny02-wm1ic':
-        'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
-      'most-teatralny02': 'Słupek 02 • Zatoka autobusowa na Moście Teatralnym w stronę Jeżyc.',
-
-      // Rondo Rataje
-      'rondo-rataje71-xxd3e':
-        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
-      'rondo-rataje71': 'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Starołęki.',
-      'rondo-rataje72-xxmcs':
-        'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
-      'rondo-rataje72': 'Peron tramwajowy na ul. Zamenhofa obok CH Posnania w stronę Ronda Śródka.',
-      'rondo-rataje73-xys1a': 'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
-      'rondo-rataje73': 'Peron tramwajowy na ul. Krzywoustego przed mostem Królowej Jadwigi.',
-      'rondo-rataje74-xz1an':
-        'Peron tramwajowy na ul. Krzywoustego obok dworca Rondo Rataje w stronę Franowa.',
-      'rondo-rataje74':
-        'Peron tramwajowy na ul. Krzywoustego obok dworca Rondo Rataje w stronę Franowa.',
-      'rondo-rataje75-xwlbs': 'Peron tramwajowy przed wejściem do galerii Posnania.',
-      'rondo-rataje75': 'Peron tramwajowy przed wejściem do galerii Posnania.',
-      'rondo-rataje76-xw7fu': 'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
-      'rondo-rataje76': 'Peron tramwajowy obok dworca autobusowego Rondo Rataje.',
-      'rondo-rataje06-xwul7':
-        'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
-      'rondo-rataje06': 'Stanowisko 06 • Dworzec autobusowy Rondo Rataje obok galerii Posnania.',
-
-      // Rondo Śródka
-      'rondo-srodka43-y5q4v':
-        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Ronda Rataje.',
-      'rondo-srodka43':
-        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Ronda Rataje.',
-      'rondo-srodka44-y5ze7':
-        'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
-      'rondo-srodka44': 'Peron tramwajowy na ul. Jana Pawła II obok dworca Śródka w stronę Zawad.',
-      'rondo-srodka45-y7s7n':
-        'Peron tramwajowy na ul. Wyszyńskiego przed mostem Mieszka I w stronę Katedry.',
-      'rondo-srodka45':
-        'Peron tramwajowy na ul. Wyszyńskiego przed mostem Mieszka I w stronę Katedry.',
-      'rondo-srodka46-y863o':
-        'Peron tramwajowy na ul. Warszawskiej obok dworca Śródka w stronę Miłostowa.',
-      'rondo-srodka46':
-        'Peron tramwajowy na ul. Warszawskiej obok dworca Śródka w stronę Miłostowa.',
-      'rondo-srodka01-y7nkx': 'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka01': 'Stanowisko 01 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka03-y7wul': 'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka03': 'Stanowisko 03 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka04-y52zi': 'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
-      'rondo-srodka04': 'Stanowisko 04 • Dworzec autobusowy Rondo Śródka.',
-
-      // Os. Sobieskiego
-      'os-sobieskiego41-wscs0': 'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego41': 'Peron 1 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego42-wqxum': 'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego42': 'Peron 2 • Pętla tramwajowa PST Os. Sobieskiego w stronę centrum.',
-      'os-sobieskiego01-wqjyl':
-        'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
-      'os-sobieskiego01': 'Stanowisko 01 • Dworzec autobusowy Os. Sobieskiego obok pętli PST.',
-
-      // Rynek Jeżycki
-      'rynek-jezycki71-walhm':
-        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę Ogrodów.',
-      'rynek-jezycki71':
-        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę Ogrodów.',
-      'rynek-jezycki72-wa2yw':
-        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę centrum.',
-      'rynek-jezycki72':
-        'Peron tramwajowy na ul. Dąbrowskiego obok Rynku Jeżyckiego w stronę centrum.',
-      'rynek-jezycki73-wbmj1':
-        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Zwierzynieckiej.',
-      'rynek-jezycki73':
-        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Zwierzynieckiej.',
-      'rynek-jezycki74-wcnka':
-        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Dąbrowskiego.',
-      'rynek-jezycki74':
-        'Peron tramwajowy na ul. Kraszewskiego obok Rynku Jeżyckiego w stronę Dąbrowskiego.',
-
-      // Rynek Wildecki
-      'rynek-wildecki71-wvoll':
-        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Dębca.',
-      'rynek-wildecki71':
-        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Dębca.',
-      'rynek-wildecki72-ww2hn':
-        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Mostu Dworcowego.',
-      'rynek-wildecki72':
-        'Peron tramwajowy na ul. Wierzbięcice obok Rynku Wildeckiego w stronę Mostu Dworcowego.',
-
-      // Aleje Marcinkowskiego / Plac Wolności
-      'aleje-marcinkowskiego71-x63pc':
-        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę mostu Rocha.',
-      'aleje-marcinkowskiego71':
-        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę mostu Rocha.',
-      'aleje-marcinkowskiego72-x6m89':
-        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę Ronda Kaponiera.',
-      'aleje-marcinkowskiego72':
-        'Peron tramwajowy w Alejach Marcinkowskiego obok Placu Wolności w stronę Ronda Kaponiera.',
-
-      // Pl. Wielkopolski & Pl. Bernardyński
-      'pl-wielkopolski41-x9bh3':
-        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Małych Garbar.',
-      'pl-wielkopolski41':
-        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Małych Garbar.',
-      'pl-wielkopolski42-x927s':
-        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Placu Ratajskiego.',
-      'pl-wielkopolski42':
-        'Peron tramwajowy przy placu targowym na Placu Wielkopolskim w stronę Placu Ratajskiego.',
-      'pl-bernardynski71-xh17f':
-        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę mostu Rocha.',
-      'pl-bernardynski71':
-        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę mostu Rocha.',
-      'pl-bernardynski72-xgry4':
-        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę centrum.',
-      'pl-bernardynski72':
-        'Peron tramwajowy na Placu Bernardyńskim przed kościołem św. Franciszka z Asyżu w stronę centrum.',
-
-      // Pętle PKM
-      'gorczyn-pkm41-vh0fq':
-        'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
-      'gorczyn-pkm41': 'Peron odjazdowy tramwajów na pętli Górczyn PKM przed dworcem kolejowym.',
-      'debiec-pkm41-w9k5d': 'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
-      'debiec-pkm41': 'Peron odjazdowy tramwajów na pętli Dębiec PKM przed pętlą autobusową.',
-      'staroleka-pkm41-xa7k4':
-        'Peron odjazdowy tramwajów na pętli Starołęka PKM przed dworcem kolejowym.',
-      'staroleka-pkm41':
-        'Peron odjazdowy tramwajów na pętli Starołęka PKM przed dworcem kolejowym.',
-      'ogrody41-viy5n':
-        'Peron odjazdowy tramwajów na pętli Ogrody przy pętli autobusowej na ul. Dąbrowskiego.',
-      ogrody41:
-        'Peron odjazdowy tramwajów na pętli Ogrody przy pętli autobusowej na ul. Dąbrowskiego.',
-    };
-  } else if (city === 'krakow') {
-    SPECIFIC_POLE_HINTS = {
-      // Dworzec Główny Tunel (KST pod peronami PKP)
-      '901-01':
-        'Peron 1 • Podziemny peron tramwajowy KST w tunelu pod Dworcem Głównym PKP w stronę Politechniki.',
-      '901-02':
-        'Peron 2 • Podziemny peron tramwajowy KST w tunelu pod Dworcem Głównym PKP w stronę Ronda Mogilskiego.',
-      stop_322_117319:
-        'Peron 1 • Podziemny peron tramwajowy KST w tunelu pod Dworcem Głównym PKP w stronę Politechniki.',
-      stop_322_117329:
-        'Peron 2 • Podziemny peron tramwajowy KST w tunelu pod Dworcem Głównym PKP w stronę Ronda Mogilskiego.',
-      'KRK:T:stop_322_117319':
-        'Peron 1 • Podziemny peron tramwajowy KST w tunelu pod Dworcem Głównym PKP w stronę Politechniki.',
-      'KRK:T:stop_322_117329':
-        'Peron 2 • Podziemny peron tramwajowy KST w tunelu pod Dworcem Głównym PKP w stronę Ronda Mogilskiego.',
-      // Dworzec Główny Zachód
-      '760-01':
-        'Peron 1 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Dworca Towarowego.',
-      '760-02':
-        'Peron 2 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Teatru Słowackiego.',
-      stop_335_260819:
-        'Peron 1 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Dworca Towarowego.',
-      stop_335_260829:
-        'Peron 2 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Teatru Słowackiego.',
-      'KRK:T:stop_335_260819':
-        'Peron 1 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Dworca Towarowego.',
-      'KRK:T:stop_335_260829':
-        'Peron 2 • Peron tramwajowy na ul. Pawiej przed Galerią Krakowską w stronę Teatru Słowackiego.',
-      '760-03': 'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
-      11977: 'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
-      'KRK:A:11977': 'Słupek 03 • Zatoka autobusowa na ul. Pawiej przed Galerią Krakowską.',
-      '760-07': 'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      13714: 'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      'KRK:A:13714': 'Słupek 07 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      '760-09': 'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      13718: 'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      'KRK:A:13718': 'Słupek 09 • Pętla autobusowa przed dworcem PKP i Galerią Krakowską.',
-      // Dworzec Główny Wschód (MDA)
-      '461-01':
-        'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      8906: 'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      'KRK:A:8906':
-        'Stanowisko 01 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      '461-02':
-        'Stanowisko 02 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      12070:
-        'Stanowisko 02 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      'KRK:A:12070':
-        'Stanowisko 02 • Pętla autobusowa przy ul. Bosackiej obok Małopolskiego Dworca Autobusowego MDA.',
-      // Teatr Słowackiego
-      '801-01':
-        'Słupek 01 • Peron tramwajowy na ul. Basztowej przed Teatrem im. J. Słowackiego w stronę Dworca Głównego.',
-      stop_852_324219:
-        'Słupek 01 • Peron tramwajowy na ul. Basztowej przed Teatrem im. J. Słowackiego w stronę Dworca Głównego.',
-      12717:
-        'Słupek 01 • Peron tramwajowy na ul. Basztowej przed Teatrem im. J. Słowackiego w stronę Dworca Głównego.',
-      '801-02':
-        'Słupek 02 • Peron tramwajowy na ul. Basztowej od strony Plant w stronę Starego Kleparza.',
-      stop_852_324229:
-        'Słupek 02 • Peron tramwajowy na ul. Basztowej od strony Plant w stronę Starego Kleparza.',
-      12718:
-        'Słupek 02 • Peron tramwajowy na ul. Basztowej od strony Plant w stronę Starego Kleparza.',
-      '801-03':
-        'Słupek 03 • Peron tramwajowy na ul. Westerplatte od strony Plant w stronę Poczty Głównej.',
-      stop_852_324239:
-        'Słupek 03 • Peron tramwajowy na ul. Westerplatte od strony Plant w stronę Poczty Głównej.',
-      12719:
-        'Słupek 03 • Peron tramwajowy na ul. Westerplatte od strony Plant w stronę Poczty Głównej.',
-      '801-04':
-        'Słupek 04 • Peron tramwajowy na ul. Lubicz przed Teatrem im. J. Słowackiego w stronę Ronda Mogilskiego.',
-      stop_852_324249:
-        'Słupek 04 • Peron tramwajowy na ul. Lubicz przed Teatrem im. J. Słowackiego w stronę Ronda Mogilskiego.',
-      // Rondo Mogilskie (poziom dolny w wykopie)
-      '802-01':
-        'Peron 1 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę Ronda Grzegórzeckiego.',
-      stop_203_12519:
-        'Peron 1 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę Ronda Grzegórzeckiego.',
-      7471: 'Peron 1 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę Ronda Grzegórzeckiego.',
-      '802-02':
-        'Peron 2 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę Tunelu KST i Politechniki.',
-      stop_203_12529:
-        'Peron 2 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę Tunelu KST i Politechniki.',
-      9051: 'Peron 2 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę Tunelu KST i Politechniki.',
-      '802-03':
-        'Peron 3 • Dolny poziom w wykopie ronda, peron w stronę Dworca Głównego i ul. Lubicz.',
-      stop_203_12539:
-        'Peron 3 • Dolny poziom w wykopie ronda, peron w stronę Dworca Głównego i ul. Lubicz.',
-      9050: 'Peron 3 • Dolny poziom w wykopie ronda, peron w stronę Dworca Głównego i ul. Lubicz.',
-      '802-04':
-        'Peron 4 • Dolny poziom w wykopie ronda, peron w stronę al. Powstania Warszawskiego.',
-      stop_203_12549:
-        'Peron 4 • Dolny poziom w wykopie ronda, peron w stronę al. Powstania Warszawskiego.',
-      9049: 'Peron 4 • Dolny poziom w wykopie ronda, peron w stronę al. Powstania Warszawskiego.',
-      '802-05':
-        'Peron 5 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę al. Beliny-Prażmowskiego.',
-      stop_203_12559:
-        'Peron 5 • Dolny poziom w wykopie ronda, peron tramwajowy w stronę al. Beliny-Prażmowskiego.',
-      '802-06':
-        'Słupek 06 • Górny poziom ronda, zatoka autobusowa na al. Beliny-Prażmowskiego obok wieżowca Unity Centre.',
-      10991:
-        'Słupek 06 • Górny poziom ronda, zatoka autobusowa na al. Beliny-Prażmowskiego obok wieżowca Unity Centre.',
-      '802-08':
-        'Słupek 08 • Górny poziom ronda, zatoka autobusowa przy Uniwersytecie Ekonomicznym.',
-      11432: 'Słupek 08 • Górny poziom ronda, zatoka autobusowa przy Uniwersytecie Ekonomicznym.',
-      '802-09':
-        'Słupek 09 • Górny poziom ronda, zatoka autobusowa na ul. Lubicz przed wejściem do Opery Krakowskiej.',
-      11433:
-        'Słupek 09 • Górny poziom ronda, zatoka autobusowa na ul. Lubicz przed wejściem do Opery Krakowskiej.',
-      // Rondo Grzegórzeckie
-      '809-01': 'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
-      stop_230_36519: 'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
-      7905: 'Peron 1 • Peron tramwajowy na al. Pokoju w stronę Dąbia i Nowej Huty.',
-      '809-02': 'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
-      stop_230_36529: 'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
-      7907: 'Peron 2 • Peron tramwajowy na ul. Grzegórzeckiej w stronę Hali Targowej.',
-      '809-03':
-        'Peron 3 • Peron tramwajowy na al. Powstania Warszawskiego w stronę Ronda Mogilskiego.',
-      stop_230_36539:
-        'Peron 3 • Peron tramwajowy na al. Powstania Warszawskiego w stronę Ronda Mogilskiego.',
-      7908: 'Peron 3 • Peron tramwajowy na al. Powstania Warszawskiego w stronę Ronda Mogilskiego.',
-      '809-04': 'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
-      stop_230_36549: 'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
-      8604: 'Peron 4 • Peron tramwajowy na ul. Kotlarskiej w stronę mostu Kotlarskiego.',
-      // Rondo Grunwaldzkie (ICE Kraków)
-      '501-01':
-        'Peron 1 • Peron tramwajowy na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
-      stop_957_333819:
-        'Peron 1 • Peron tramwajowy na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
-      13180:
-        'Peron 1 • Peron tramwajowy na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
-      '501-02': 'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
-      stop_957_333829:
-        'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
-      13179: 'Peron 2 • Peron tramwajowy na ul. Dietla w stronę mostu Grunwaldzkiego i Wawelu.',
-      '501-03':
-        'Słupek 03 • Zatoka autobusowa na ul. Konopnickiej obok hotelu Park Inn w stronę mostu Dębnickiego.',
-      13177:
-        'Słupek 03 • Zatoka autobusowa na ul. Konopnickiej obok hotelu Park Inn w stronę mostu Dębnickiego.',
-      '501-04':
-        'Słupek 04 • Zatoka autobusowa na ul. Konopnickiej naprzeciwko Centrum Kongresowego ICE Kraków w stronę Ronda Matecznego.',
-      13178:
-        'Słupek 04 • Zatoka autobusowa na ul. Konopnickiej naprzeciwko Centrum Kongresowego ICE Kraków w stronę Ronda Matecznego.',
-      '501-05':
-        'Słupek 05 • Zatoka autobusowa na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
-      13183:
-        'Słupek 05 • Zatoka autobusowa na ul. Monte Cassino przed Centrum Kongresowym ICE Kraków.',
-      '501-06':
-        'Słupek 06 • Zatoka autobusowa na ul. Dietla przed mostem Grunwaldzkim w stronę Kazimierza.',
-      13186:
-        'Słupek 06 • Zatoka autobusowa na ul. Dietla przed mostem Grunwaldzkim w stronę Kazimierza.',
-      // Plac Centralny im. R. Reagana
-      '105-01': 'Peron 1 • Peron tramwajowy na al. Jana Pawła II w stronę Ronda Czyżyńskiego.',
-      stop_12_19: 'Peron 1 • Peron tramwajowy na al. Jana Pawła II w stronę Ronda Czyżyńskiego.',
-      '105-02': 'Peron 2 • Peron tramwajowy na al. Solidarności w stronę Kombinatu.',
-      stop_12_20: 'Peron 2 • Peron tramwajowy na al. Solidarności w stronę Kombinatu.',
-      '105-03': 'Peron 3 • Peron tramwajowy na al. Andersa w stronę Ronda Kocmyrzowskiego.',
-      stop_12_21: 'Peron 3 • Peron tramwajowy na al. Andersa w stronę Ronda Kocmyrzowskiego.',
-      '105-04': 'Peron 4 • Peron tramwajowy na Placu Centralnym w stronę Kopca Wandy.',
-      stop_12_24: 'Peron 4 • Peron tramwajowy na Placu Centralnym w stronę Kopca Wandy.',
-      '105-05': 'Słupek 05 • Zatoka autobusowa na al. Solidarności obok Placu Centralnego.',
-      18296: 'Słupek 05 • Zatoka autobusowa na al. Solidarności obok Placu Centralnego.',
-      '105-06':
-        'Słupek 06 • Zatoka autobusowa na al. Jana Pawła II przed Placem Centralnym w stronę Czyżyn.',
-      18314:
-        'Słupek 06 • Zatoka autobusowa na al. Jana Pawła II przed Placem Centralnym w stronę Czyżyn.',
-      '105-07':
-        'Słupek 07 • Zatoka autobusowa na al. Jana Pawła II przy Placu Centralnym w stronę Nowego Kleparza.',
-      18291:
-        'Słupek 07 • Zatoka autobusowa na al. Jana Pawła II przy Placu Centralnym w stronę Nowego Kleparza.',
-      '105-09': 'Słupek 09 • Zatoka autobusowa na al. Andersa przy Nowohuckim Centrum Kultury.',
-      18297: 'Słupek 09 • Zatoka autobusowa na al. Andersa przy Nowohuckim Centrum Kultury.',
-      // Nowy Kleparz
-      '835-01':
-        'Peron 1 • Peron tramwajowy na ul. Długiej obok Nowego Kleparza w stronę Starego Miasta.',
-      stop_187_7119:
-        'Peron 1 • Peron tramwajowy na ul. Długiej obok Nowego Kleparza w stronę Starego Miasta.',
-      '835-02':
-        'Peron 2 • Peron tramwajowy na ul. Kamiennej przy pętli Nowy Kleparz w stronę Dworca Towarowego.',
-      stop_187_7129:
-        'Peron 2 • Peron tramwajowy na ul. Kamiennej przy pętli Nowy Kleparz w stronę Dworca Towarowego.',
-      '835-03': 'Stanowisko 03 • Pętla autobusowa Nowy Kleparz obok placu targowego.',
-      7432: 'Stanowisko 03 • Pętla autobusowa Nowy Kleparz obok placu targowego.',
-      '835-04': 'Stanowisko 04 • Pętla autobusowa Nowy Kleparz przy al. Słowackiego.',
-      7430: 'Stanowisko 04 • Pętla autobusowa Nowy Kleparz przy al. Słowackiego.',
-      '835-05': 'Stanowisko 05 • Pętla autobusowa Nowy Kleparz, peron 5.',
-      7407: 'Stanowisko 05 • Pętla autobusowa Nowy Kleparz, peron 5.',
-      '835-06': 'Stanowisko 06 • Pętla autobusowa Nowy Kleparz, peron 6.',
-      8389: 'Stanowisko 06 • Pętla autobusowa Nowy Kleparz, peron 6.',
-      '835-07': 'Stanowisko 07 • Pętla autobusowa Nowy Kleparz, peron 7.',
-      12457: 'Stanowisko 07 • Pętla autobusowa Nowy Kleparz, peron 7.',
-    };
+  // Wybierz wyłącznie przystanki naziemne (bus / tram / trolleybus) i znormalizuj wektor jazdy
+  const activeStops = [];
+  for (const s of stopsByKey.values()) {
+    const hasSurface = s.modes.has('bus') || s.modes.has('tram') || s.modes.has('trolleybus');
+    if (!hasSurface) continue;
+    const mag = Math.hypot(s.vecE, s.vecN);
+    if (s.vecCount >= 2 && mag > 0.25 * s.vecCount) {
+      s.vE = s.vecE / mag;
+      s.vN = s.vecN / mag;
+      s.hasBearing = true;
+    } else {
+      s.vE = 0;
+      s.vN = 0;
+      s.hasBearing = false;
+    }
+    activeStops.push(s);
   }
 
-  for (const [key, hint] of Object.entries(SPECIFIC_POLE_HINTS)) {
-    stopsOutput[key] = hint;
+  return { activeStops, stopsByKey };
+}
+
+/** Buduje indeks przestrzenny siatkowy (~160m oczko) dla błyskawicznych zapytań OSM. */
+class SpatialGrid {
+  constructor(cellDeg = 0.0015) {
+    this.cellDeg = cellDeg;
+    this.cells = new Map();
+  }
+  _key(lat, lon) {
+    return `${Math.floor(lat / this.cellDeg)},${Math.floor(lon / this.cellDeg)}`;
+  }
+  add(lat, lon, item) {
+    const k = this._key(lat, lon);
+    let arr = this.cells.get(k);
+    if (!arr) {
+      arr = [];
+      this.cells.set(k, arr);
+    }
+    arr.push(item);
+  }
+  query(lat, lon, radiusCells = 1) {
+    const cLat = Math.floor(lat / this.cellDeg);
+    const cLon = Math.floor(lon / this.cellDeg);
+    const out = [];
+    for (let dl = -radiusCells; dl <= radiusCells; dl++) {
+      for (let dn = -radiusCells; dn <= radiusCells; dn++) {
+        const arr = this.cells.get(`${cLat + dl},${cLon + dn}`);
+        if (arr) {
+          for (let i = 0; i < arr.length; i++) out.push(arr[i]);
+        }
+      }
+    }
+    return out;
+  }
+}
+
+function loadOsmIndex(city) {
+  const poisFile = path.join(CACHE_DIR, `${city}-osm-pois.json`);
+  const roadsFile = path.join(CACHE_DIR, `${city}-osm-roads.json`);
+  if (!fs.existsSync(poisFile) || !fs.existsSync(roadsFile)) {
+    throw new Error(`Brak cache OSM dla ${city}. Uruchom: node cloudflare/scripts/cache-osm.mjs --city=${city}`);
   }
 
-  let skippedCount = 0;
+  const rawPois = JSON.parse(fs.readFileSync(poisFile, 'utf8'));
+  const rawRoads = JSON.parse(fs.readFileSync(roadsFile, 'utf8'));
 
-  for (const stop of allStops) {
-    const key = city === 'warszawa' || city === 'poznan' ? stop.id : stop.code || stop.id;
-    if (stopsOutput[key]) continue;
+  const landmarkGrid = new SpatialGrid(0.0015);
+  const platformGrid = new SpatialGrid(0.001);
+  const railBridgeGrid = new SpatialGrid(0.001);
+  const roadSegGrid = new SpatialGrid(0.0015);
 
-    const landmark = findNearbyLandmark(stop.lat, stop.lon);
+  let acceptedPois = 0;
+  for (const el of rawPois) {
+    const t = el.tags || {};
+    // 1. Platformy / przystanki OSM (bus_bay, shelter, level)
+    if (
+      t.public_transport === 'platform' ||
+      t.highway === 'bus_stop' ||
+      t.railway === 'tram_stop'
+    ) {
+      platformGrid.add(el.lat, el.lon, {
+        lat: el.lat,
+        lon: el.lon,
+        busBay: t.bus_bay === 'yes' || t.bay === 'yes',
+        underground: t.level === '-1' || t.layer === '-1' || t.tunnel === 'yes',
+        tram: t.tram === 'yes' || t.railway === 'tram_stop',
+        bus: t.bus === 'yes' || t.highway === 'bus_stop',
+      });
+    }
 
-    // TWARDA ZASADA ANTI-SLOP: brak fizycznego punktu odniesienia = POMIJAMY SŁUPEK!
-    if (!landmark) {
-      skippedCount++;
+    // 2. Prawdziwe wiadukty kolejowe
+    if (el.type === 'way' && (t.railway === 'rail' || t.railway === 'light_rail') && t.bridge === 'yes') {
+      railBridgeGrid.add(el.lat, el.lon, { lat: el.lat, lon: el.lon });
       continue;
     }
 
-    const typeStr =
-      city === 'warszawa'
-        ? stop.code && parseInt(stop.code, 10) >= 30
-          ? 'Peron tramwajowy'
-          : 'Zatoka autobusowa'
-        : city === 'poznan' && parseInt(stop.code, 10) >= 41 && parseInt(stop.code, 10) <= 49
-          ? 'Peron PST w wykopie'
-          : stop.isTram
-            ? 'Peron tramwajowy'
-            : 'Zatoka autobusowa';
-
-    const streetStr = formatStreet(stop.street);
-
-    // Oznaczenie peronu / słupka dla pełnej jasności
-    let polePrefix = '';
-    if (city === 'warszawa' && stop.code) {
-      polePrefix = `Słupek ${stop.code} • `;
-    } else if (city === 'gzm') {
-      const gzmMatch = stop.code?.match(/-(\d{3})(\d{2})([a-z]?)$/);
-      if (gzmMatch) {
-        polePrefix = `Stanowisko ${parseInt(gzmMatch[2], 10)} • `;
-      }
-    } else if (city === 'krakow') {
-      const krkMatch = stop.code?.match(/^\d{1,4}-(\d{2})$/);
-      if (krkMatch) {
-        const poleNum = krkMatch[1];
-        const n = parseInt(poleNum, 10);
-        if (stop.isTram && (n === 1 || n === 2)) {
-          polePrefix = `Peron ${n} • `;
-        } else {
-          polePrefix = `Słupek ${poleNum} • `;
-        }
-      }
-    } else if (city === 'poznan') {
-      const n = parseInt(stop.code, 10);
-      if (n >= 41 && n <= 49) {
-        polePrefix = `Słupek ${stop.code} (PST) • `;
-      } else if (stop.code) {
-        polePrefix = `Słupek ${stop.code} • `;
-      }
+    // 3. Kuratorowane POI
+    const classified = classifyOsmLandmark(el);
+    if (classified) {
+      acceptedPois++;
+      landmarkGrid.add(el.lat, el.lon, {
+        lat: el.lat,
+        lon: el.lon,
+        ...classified,
+      });
     }
+  }
 
-    let sentence = '';
-    if (streetStr) {
-      sentence = `${polePrefix}${typeStr} ${streetStr} ${landmark.phrase}.`;
-    } else {
-      sentence = `${polePrefix}${typeStr} ${landmark.phrase}.`;
-    }
-
-    sentence = sentence.replace(/\s+/g, ' ').replace(/\s+\./g, '.').trim();
-    if (!sentence.endsWith('.')) sentence += '.';
-
-    stopsOutput[key] = sentence;
-    if (stop.id && stop.id !== key) {
-      stopsOutput[stop.id] = sentence;
-    }
-    if (stop.code && stop.code !== key) {
-      stopsOutput[stop.code] = sentence;
-    }
-    if (stop.prefix && stop.id) {
-      stopsOutput[`${stop.prefix}:${stop.id}`] = sentence;
-    }
-    if (city === 'poznan') {
-      if (stop.name) {
-        stopsOutput[stop.name] = sentence;
-      }
-      const slug = stop.id.split('-').slice(0, -1).join('-');
-      if (slug && slug !== stop.id) {
-        stopsOutput[slug] = sentence;
+  // Indeks odcinków nazwanych dróg (do rozpoznawania ulicy + testu przecięcia osi jezdni)
+  const HW_PENALTY = {
+    trunk: 0,
+    primary: 0,
+    secondary: 1,
+    tertiary: 2,
+    unclassified: 5,
+    residential: 6,
+    living_street: 10,
+    pedestrian: 8,
+  };
+  for (const w of rawRoads) {
+    const geom = w.g;
+    if (!Array.isArray(geom) || geom.length < 2) continue;
+    const penalty = HW_PENALTY[w.hw] ?? 6;
+    for (let i = 0; i < geom.length - 1; i++) {
+      const [lat1, lon1] = geom[i];
+      const [lat2, lon2] = geom[i + 1];
+      const seg = { name: w.name, penalty, lat1, lon1, lat2, lon2 };
+      const midLat = (lat1 + lat2) * 0.5;
+      const midLon = (lon1 + lon2) * 0.5;
+      roadSegGrid.add(midLat, midLon, seg);
+      // Jeśli długi odcinek, dodaj też punkty końcowe
+      if (Math.abs(lat2 - lat1) > 0.0012 || Math.abs(lon2 - lon1) > 0.0018) {
+        roadSegGrid.add(lat1, lon1, seg);
+        roadSegGrid.add(lat2, lon2, seg);
       }
     }
   }
 
-  console.log(
-    `[✓] Zapisano ${Object.keys(stopsOutput).length} słupków z autentycznym punktem odniesienia.`,
-  );
-  console.log(`[i] Pominięto ${skippedCount} słupków bez fizycznego punktu odniesienia.`);
+  return { landmarkGrid, platformGrid, railBridgeGrid, roadSegGrid, acceptedPois };
+}
 
-  const clustersOutput = {};
+/**
+ * Dopasowuje słupek do ulicy i zwraca odcinki osi tej ulicy (w promieniu 55m)
+ * do matematycznego testu strony ulicy.
+ */
+function snapStopToRoad(stop, roadSegGrid) {
+  const nearbySegs = roadSegGrid.query(stop.lat, stop.lon, 1);
+  let best = null;
+  let bestScore = Infinity;
+  const seen = new Set();
 
-  const finalDataset = {
-    schemaVersion: 1,
-    city,
-    generatedAt: new Date().toISOString(),
-    stops: stopsOutput,
-    clusters: clustersOutput,
+  for (const seg of nearbySegs) {
+    if (seen.has(seg)) continue;
+    seen.add(seg);
+    const [ax, ay] = toLocalMeters(seg.lat1, seg.lon1, stop.lat, stop.lon);
+    const [bx, by] = toLocalMeters(seg.lat2, seg.lon2, stop.lat, stop.lon);
+    const m = pointToSegmentMetrics(ax, ay, bx, by);
+    if (m.dist > 34) continue;
+
+    let alignPenalty = 0;
+    if (stop.hasBearing && m.len > 3) {
+      const cosA = Math.abs(m.ux * stop.vE + m.uy * stop.vN);
+      // Mocna kara za przecznicę prostopadłą do kierunku jazdy
+      alignPenalty = (1 - cosA) * 20;
+    }
+
+    const score = m.dist + seg.penalty + alignPenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      best = { name: seg.name, dist: m.dist };
+    }
+  }
+
+  // Zbierz odcinki osi dopasowanej ulicy (lub GTFS ulicy) w promieniu 60m
+  const targetName = best?.name || stop.gtfsStreet || '';
+  const targetNorm = normalizePolish(targetName);
+  const roadCenterSegs = [];
+  if (targetNorm) {
+    for (const seg of seen) {
+      if (normalizePolish(seg.name) !== targetNorm) continue;
+      const [ax, ay] = toLocalMeters(seg.lat1, seg.lon1, stop.lat, stop.lon);
+      const [bx, by] = toLocalMeters(seg.lat2, seg.lon2, stop.lat, stop.lon);
+      if (Math.min(Math.hypot(ax, ay), Math.hypot(bx, by)) <= 65) {
+        roadCenterSegs.push([ax, ay, bx, by]);
+      }
+    }
+  }
+
+  return {
+    osmStreet: best?.name || null,
+    roadCenterSegs,
+  };
+}
+
+/** Formatuje prefiks typu przystanku WYŁĄCZNIE z prawdziwych danych GTFS + OSM. */
+function buildStopTypePrefix(stop, osmPlatform) {
+  const hasTram = stop.modes.has('tram');
+  const hasBus = stop.modes.has('bus');
+  const hasTrol = stop.modes.has('trolleybus');
+
+  if (hasTram && hasBus) return 'Peron tramwajowo-autobusowy';
+  if (hasTram) return 'Peron tramwajowy';
+  if (hasTrol && !hasBus) return 'Przystanek trolejbusowy';
+  if (osmPlatform?.busBay) return 'Zatoka autobusowa';
+  return 'Przystanek autobusowy';
+}
+
+function countWords(text) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Składa finalne 1 zdanie (<= 20 słów, bez powielania numeru słupka, naturalna polszczyzna).
+ */
+function assembleHint(prefix, streetPhrase, anchorPhrase) {
+  let sentence = streetPhrase
+    ? `${prefix} ${streetPhrase} ${anchorPhrase}.`
+    : `${prefix} ${anchorPhrase}.`;
+  sentence = sentence.replace(/\s+/g, ' ').trim();
+
+  // Jeśli zdanie przekracza 19 słów, spróbuj bez nazwy ulicy (punkt orientacyjny jest ważniejszy niż ulica!)
+  if (countWords(sentence) > 19 && streetPhrase) {
+    sentence = `${prefix} ${anchorPhrase}.`.replace(/\s+/g, ' ').trim();
+  }
+  if (countWords(sentence) > 20 || sentence.length > 155) {
+    return null;
+  }
+  return sentence;
+}
+
+/**
+ * Weryfikuje ręczne nadpisania dla kluczowych węzłów z live GTFS.
+ * Jeśli którykolwiek stop_id zniknął albo zmienił nazwę -> przerywa build z jasnym błędem!
+ */
+function verifyAndApplyHubOverrides(city, stopsByKey) {
+  const overrides = VERIFIED_HUB_OVERRIDES[city] || {};
+  const verified = new Map();
+
+  for (const [key, spec] of Object.entries(overrides)) {
+    const gtfsStop = stopsByKey.get(key);
+    if (!gtfsStop) {
+      throw new Error(
+        `[HUB OVERRIDE ERROR] ${city}: klucz "${key}" (${spec.expectedName}) nie istnieje w aktualnym GTFS!`,
+      );
+    }
+    const normActual = normalizePolish(gtfsStop.name);
+    const normExpected = normalizePolish(spec.expectedName);
+    if (!normActual.includes(normExpected) && !normExpected.includes(normActual)) {
+      throw new Error(
+        `[HUB OVERRIDE ERROR] ${city}: klucz "${key}" ma w GTFS nazwę "${gtfsStop.name}", oczekiwano "${spec.expectedName}"!`,
+      );
+    }
+    verified.set(key, spec.hint);
+  }
+  return verified;
+}
+
+function writeBundledTs(city, dataset) {
+  const cfg = CITY_CONFIGS[city];
+  const tsPath = path.join(SRC_DATA_DIR, cfg.tsFile);
+  const content = `import type { StopHintsDataset } from '../types/stopHints';\n\n/**\n * Statyczny fallback wskazówek przestrzennych dla miasta: ${city}.\n * Wygenerowany automatycznie z cloudflare/data/stop-hints-${city}.json (schemaVersion ${dataset.schemaVersion}).\n */\nexport const ${cfg.tsExport}: StopHintsDataset = ${JSON.stringify(dataset)};\n`;
+  fs.writeFileSync(tsPath, content, 'utf8');
+}
+
+async function generateCity(city) {
+  console.log(`\n========== GENEROWANIE: ${city.toUpperCase()} ==========`);
+  const { activeStops, stopsByKey } = await loadGtfsCity(city);
+  console.log(`[i] GTFS: ${activeStops.length} aktywnych przystanków naziemnych (bus/tram/trolejbus)`);
+
+  const verifiedHubs = verifyAndApplyHubOverrides(city, stopsByKey);
+  console.log(`[✓] Zweryfikowano ${verifiedHubs.size} ręcznych opisów kluczowych węzłów z GTFS`);
+
+  const { landmarkGrid, platformGrid, railBridgeGrid, roadSegGrid, acceptedPois } =
+    loadOsmIndex(city);
+  console.log(`[i] OSM: ${acceptedPois} kuratorowanych punktów orientacyjnych po filtracji slopu`);
+
+  // Grupuj przystanki według zespołu przystankowego (do wykrywania przeciwległych słupków)
+  const groups = new Map();
+  for (const s of activeStops) {
+    let arr = groups.get(s.group);
+    if (!arr) {
+      arr = [];
+      groups.set(s.group, arr);
+    }
+    arr.push(s);
+  }
+
+  const stopsOutput = {};
+  const stats = {
+    hubOverrides: 0,
+    tier1: 0,
+    tier2: 0,
+    tier3: 0,
+    opposite: 0,
+    viaduct: 0,
+    omittedNoAnchor: 0,
+    siblingDisambiguated: 0,
   };
 
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalDataset, null, 2) + '\n', 'utf8');
-  console.log(`[✓] Zapisano dataset do: ${OUTPUT_FILE}`);
+  for (const [, groupStops] of groups) {
+    // 1. Zbierz kandydatów dla każdego słupka w zespole
+    const perStopCandidates = new Map();
+
+    for (const stop of groupStops) {
+      if (verifiedHubs.has(stop.key)) {
+        stopsOutput[stop.key] = verifiedHubs.get(stop.key);
+        stats.hubOverrides++;
+        continue;
+      }
+
+      // Dopasuj ulicę i platformę OSM
+      const { osmStreet, roadCenterSegs } = snapStopToRoad(stop, roadSegGrid);
+      const streetPhrase =
+        formatStreetLocative(stop.gtfsStreet) || formatStreetLocative(osmStreet);
+
+      const nearbyPlatforms = platformGrid.query(stop.lat, stop.lon, 1);
+      let osmPlatform = null;
+      let bestPlatDist = 22;
+      for (const p of nearbyPlatforms) {
+        const d = haversineMeters(stop.lat, stop.lon, p.lat, p.lon);
+        if (d < bestPlatDist) {
+          bestPlatDist = d;
+          osmPlatform = p;
+        }
+      }
+
+      const isTramOnly = stop.modes.has('tram') && !stop.modes.has('bus');
+      const prefix = buildStopTypePrefix(stop, osmPlatform);
+
+      // Sprawdź przeciwległe słupki w tym samym zespole (>14m i <250m od tego słupka)
+      const oppositeSiblings = groupStops.filter((other) => {
+        if (other.key === stop.key) return false;
+        const d = haversineMeters(stop.lat, stop.lon, other.lat, other.lon);
+        return d >= 14 && d <= 250;
+      });
+
+      // Zbierz kandydatów POI w pobliżu
+      const nearbyPois = landmarkGrid.query(stop.lat, stop.lon, 1);
+      const candidates = [];
+      const seenKey = new Set();
+
+      for (const poi of nearbyPois) {
+        const dist = haversineMeters(stop.lat, stop.lon, poi.lat, poi.lon);
+        if (dist > poi.maxDist) continue;
+
+        const [dx, dy] = toLocalMeters(poi.lat, poi.lon, stop.lat, stop.lon);
+
+        // Test przecięcia osi jezdni
+        let crossesRoad = false;
+        for (let i = 0; i < roadCenterSegs.length; i++) {
+          const [ax, ay, bx, by] = roadCenterSegs[i];
+          if (segmentsIntersect(0, 0, dx, dy, ax, ay, bx, by)) {
+            crossesRoad = true;
+            break;
+          }
+        }
+
+        // Test prawej strony względem kierunku jazdy (ruch prawostronny w Polsce)
+        const rightOffset = stop.hasBearing ? dx * stop.vN - dy * stop.vE : 0;
+
+        // Czy ten POI leży wyraźnie bliżej przeciwległego słupka z tego samego zespołu?
+        let closerToSibling = false;
+        for (const sib of oppositeSiblings) {
+          const dSib = haversineMeters(sib.lat, sib.lon, poi.lat, poi.lon);
+          if (dSib + 6 < dist) {
+            closerToSibling = true;
+            break;
+          }
+        }
+
+        // Wyznacz relację (near = po tej samej stronie, opposite = naprzeciwko po drugiej stronie ulicy)
+        let relation = null;
+        if (!crossesRoad && !closerToSibling) {
+          if (!stop.hasBearing || isTramOnly) {
+            // Tramwaje są na wysepce pośrodku drogi — dopuszczamy lekki offset boczny
+            if (!stop.hasBearing || rightOffset >= -14) relation = 'near';
+          } else if (rightOffset >= -5) {
+            relation = 'near';
+          }
+        }
+
+        if (!relation && poi.canBeOpposite && dist <= Math.min(poi.maxDist, 55)) {
+          // Naprzeciwko tylko dla dużych/wyraźnych obiektów po przeciwnej stronie!
+          if (crossesRoad || closerToSibling || (stop.hasBearing && rightOffset < -10)) {
+            relation = 'opposite';
+          }
+        }
+
+        if (!relation) continue;
+
+        // Deduplikacja po kluczu POI + relacji
+        const dedupKey = `${poi.key}:${relation}`;
+        if (seenKey.has(dedupKey)) continue;
+        seenKey.add(dedupKey);
+
+        // Wynik jakości: niższy = lepszy (Tier 1 mocno preferowany, 'near' przed 'opposite', bliżej lepiej)
+        const tierPenalty = poi.tier === 1 ? 0 : poi.tier === 2 ? 32 : 68;
+        const relPenalty = relation === 'near' ? 0 : 28;
+        const score = tierPenalty + relPenalty + dist;
+
+        candidates.push({
+          poi,
+          relation,
+          dist,
+          score,
+          phrase: relation === 'near' ? poi.nearPhrase : poi.oppositePhrase,
+        });
+      }
+
+      // Sprawdź prawdziwy wiadukt kolejowy nad przystankiem
+      let hasRailViaduct = false;
+      const nearbyViaducts = railBridgeGrid.query(stop.lat, stop.lon, 1);
+      for (const v of nearbyViaducts) {
+        if (haversineMeters(stop.lat, stop.lon, v.lat, v.lon) <= 20) {
+          hasRailViaduct = true;
+          break;
+        }
+      }
+
+      candidates.sort((a, b) => a.score - b.score);
+      perStopCandidates.set(stop.key, {
+        stop,
+        prefix,
+        streetPhrase,
+        candidates,
+        hasRailViaduct,
+      });
+    }
+
+    // 2. Rozwiązywanie konfliktów między słupkami w tym samym zespole:
+    //    Przeciwległe słupki (>14m od siebie) NIE MOGĄ dostać identycznej frazy "obok X"!
+    //    Przetwarzamy słupki w kolejności najlepszego dopasowania (najbliższe POI wygrywa pierwszeństwo).
+    const entries = [...perStopCandidates.values()].sort((a, b) => {
+      const sa = a.candidates[0]?.score ?? 9999;
+      const sb = b.candidates[0]?.score ?? 9999;
+      return sa - sb;
+    });
+
+    const claimedNearByPoiKey = new Map(); // poi.key -> { lat, lon, stopKey }
+
+    for (const item of entries) {
+      const { stop, prefix, streetPhrase, candidates, hasRailViaduct } = item;
+      let chosen = null;
+
+      for (const cand of candidates) {
+        if (cand.relation === 'near') {
+          const prev = claimedNearByPoiKey.get(cand.poi.key);
+          if (prev) {
+            const sep = haversineMeters(stop.lat, stop.lon, prev.lat, prev.lon);
+            // Jeśli ten słupek stoi fizycznie w tym samym miejscu (<14m, np. wspólny peron bus+tram we Wrocławiu) -> OK!
+            if (sep >= 14) {
+              // Przeciwległy słupek! Nie może dostać tego samego "obok X".
+              stats.siblingDisambiguated++;
+              continue;
+            }
+          }
+        }
+        chosen = cand;
+        break;
+      }
+
+      // Jeśli wszystkie `near` były zajęte przez przeciwległy słupek, a najlepszy kandydat to Tier 1/2 z `canBeOpposite`,
+      // użyj jawnego `naprzeciwko ...` (o ile jeszcze nie było użyte)
+      if (!chosen && candidates.length > 0) {
+        const top = candidates[0];
+        if (top.poi.canBeOpposite && top.dist <= 55) {
+          chosen = {
+            ...top,
+            relation: 'opposite',
+            phrase: top.poi.oppositePhrase,
+          };
+        }
+      }
+
+      if (chosen) {
+        const hint = assembleHint(prefix, streetPhrase, chosen.phrase);
+        if (hint) {
+          stopsOutput[stop.key] = hint;
+          if (chosen.relation === 'near') {
+            if (!claimedNearByPoiKey.has(chosen.poi.key)) {
+              claimedNearByPoiKey.set(chosen.poi.key, {
+                lat: stop.lat,
+                lon: stop.lon,
+                stopKey: stop.key,
+              });
+            }
+            if (chosen.poi.tier === 1) stats.tier1++;
+            else if (chosen.poi.tier === 2) stats.tier2++;
+            else stats.tier3++;
+          } else {
+            stats.opposite++;
+          }
+          continue;
+        }
+      }
+
+      if (hasRailViaduct) {
+        const hint = assembleHint(prefix, streetPhrase, 'pod wiaduktem kolejowym');
+        if (hint) {
+          stopsOutput[stop.key] = hint;
+          stats.viaduct++;
+          continue;
+        }
+      }
+
+      stats.omittedNoAnchor++;
+    }
+  }
+
+  // Posortuj deterministycznie po kluczu
+  const sortedStops = {};
+  for (const k of Object.keys(stopsOutput).sort()) {
+    sortedStops[k] = stopsOutput[k];
+  }
+
+  const dataset = {
+    schemaVersion: 2,
+    city,
+    generatedAt: new Date().toISOString(),
+    stops: sortedStops,
+    clusters: {},
+  };
+
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const jsonPath = path.join(DATA_DIR, `stop-hints-${city}.json`);
+  fs.writeFileSync(jsonPath, JSON.stringify(dataset, null, 2) + '\n', 'utf8');
+  writeBundledTs(city, dataset);
+
+  const total = Object.keys(sortedStops).length;
+  console.log(
+    `[✓] ${city}: zapisano ${total} wskazówek (hub=${stats.hubOverrides}, T1=${stats.tier1}, T2=${stats.tier2}, T3=${stats.tier3}, naprzeciwko=${stats.opposite}, wiadukt=${stats.viaduct}, pominięto_bez_POI=${stats.omittedNoAnchor}, rozdzielono_słupki=${stats.siblingDisambiguated})`,
+  );
+  console.log(`    -> ${path.relative(ROOT_DIR, jsonPath)} + src/data/${CITY_CONFIGS[city].tsFile}`);
 }
 
 async function main() {
-  const cityArg = process.argv.find((a) => a.startsWith('--city='));
-  const allArg = process.argv.includes('--all');
+  const args = process.argv.slice(2);
+  const all = args.includes('--all') || !args.some((a) => a.startsWith('--city='));
+  const cityArg = args.find((a) => a.startsWith('--city='))?.split('=')[1];
+  const cities = all ? Object.keys(CITY_CONFIGS) : [cityArg];
 
-  const citiesToRun = allArg
-    ? ['wroclaw', 'warszawa', 'gzm', 'krakow', 'poznan']
-    : [cityArg ? cityArg.split('=')[1] : 'wroclaw'];
-
-  for (const city of citiesToRun) {
-    await processCity(city);
+  for (const city of cities) {
+    if (!CITY_CONFIGS[city]) throw new Error(`Nieznane miasto: ${city}`);
+    await generateCity(city);
   }
 }
 
-main().catch((err) => {
-  console.error('[!] Błąd generowania:', err);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error('[!] Błąd generatora stop-hints:', err);
+    process.exit(1);
+  });
+}

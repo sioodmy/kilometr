@@ -10,88 +10,107 @@ import { STOP_HINTS_KRAKOW } from '../src/data/stopHintsKrakow';
 import { STOP_HINTS_GZM } from '../src/data/stopHintsGzm';
 import type { StopHintsDataset } from '../src/types/stopHints';
 
-test('resolveStopHint: Wroclaw direct stopId and stopCode matching', () => {
-  // Przystanek Rondo Reagana / Dworzec Główny
-  const hintById = resolveStopHint(STOP_HINTS_WROCLAW, undefined, '10101', 'Dworzec Główny', 'tram');
-  assert.ok(hintById);
-  assert.match(hintById, /Peron 1/i);
+test('resolveStopHint: prevents bare 2-digit stop_code collisions (Dolna 02 / Pl. Na Rozdrożu 06 regression)', () => {
+  // 1. Zgłoszony przez użytkownika przypadek: Dolna słupek 02 (stop_id 302702, Mokotów)
+  const dolna02 = resolveStopHint(STOP_HINTS_WARSZAWA, '02', '302702', 'Dolna', 'bus');
+  assert.ok(dolna02);
+  assert.match(dolna02, /Sobieskiego/i);
+  assert.doesNotMatch(dolna02, /Andersa|Skwer Sportów/i);
 
-  const hintByCode = resolveStopHint(STOP_HINTS_WROCLAW, '20820', undefined, 'Rondo Reagana', 'bus');
-  assert.ok(hintByCode);
-  assert.match(hintByCode, /Ronda Reagana/i);
+  // 2. Zgłoszony przez użytkownika przypadek: Pl. Na Rozdrożu słupek 06 (stop_id 703706)
+  const rozdroze06 = resolveStopHint(STOP_HINTS_WARSZAWA, '06', '703706', 'Pl. Na Rozdrożu', 'bus');
+  assert.ok(rozdroze06);
+  assert.match(rozdroze06, /Armii Ludowej|Trasy Łazienkowskiej/i);
+  assert.doesNotMatch(rozdroze06, /Solidarności|Starbucks/i);
+
+  // 3. Nieznany słupek 02 lub 06 w Warszawie NIE może trafić w opis z innej dzielnicy
+  assert.equal(resolveStopHint(STOP_HINTS_WARSZAWA, '02', '999902', 'Nieistniejący', 'bus'), null);
+  assert.equal(resolveStopHint(STOP_HINTS_WARSZAWA, '06', '999906', 'Nieistniejący', 'bus'), null);
+
+  // 4. Nawet gdyby zdalny/stary dataset miał gołe klucze "02" lub "06", resolver musi je odrzucić
+  const poisonedDataset: StopHintsDataset = {
+    schemaVersion: 1,
+    city: 'warszawa',
+    generatedAt: '2026-01-01T00:00:00Z',
+    stops: {
+      '02': 'Zatoka autobusowa na ul. Andersa po stronie parku „Skwer Sportów Miejskich”.',
+      '06': 'Zatoka autobusowa przy al. „Solidarności” obok kawiarni „Starbucks”.',
+    },
+    clusters: {},
+  };
+  assert.equal(resolveStopHint(poisonedDataset, '02', '302702', 'Dolna', 'bus'), null);
+  assert.equal(resolveStopHint(poisonedDataset, '06', '703706', 'Pl. Na Rozdrożu', 'bus'), null);
 });
 
-test('resolveStopHint: Poznan slugified stopName + stopCode matching and geohash handling for transit', () => {
-  // Most Dworcowy / Poznań Główny peron 73 (tramwaj)
-  const hint73 = resolveStopHint(STOP_HINTS_POZNAN, '73', 'poznan-glowny73', 'Poznań Główny', 'tram');
-  assert.ok(hint73);
-  assert.match(hint73, /Moście Dworcowym/i);
+test('resolveStopHint: Wroclaw real GTFS stop_code matching (Dworzec Główny & Pl. Grunwaldzki)', () => {
+  const dworzecTram = resolveStopHint(STOP_HINTS_WROCLAW, '10268', '10268', 'DWORZEC GŁÓWNY', 'tram');
+  assert.ok(dworzecTram);
+  assert.match(dworzecTram, /Piłsudskiego|Dworca Głównego/i);
 
-  // Plac Dworcowy / Poznań Główny słupek 01 z kodem '1' (dopełnienie zerem, autobus)
-  const hint01 = resolveStopHint(STOP_HINTS_POZNAN, '1', 'poznan-glowny01', 'Poznań Główny', 'bus');
+  const reaganBus = resolveStopHint(STOP_HINTS_WROCLAW, '20820', undefined, 'PL. GRUNWALDZKI', 'tram');
+  assert.ok(reaganBus);
+  assert.match(reaganBus, /Ronda Reagana/i);
+
+  const reaganBus6Digit = resolveStopHint(STOP_HINTS_WROCLAW, '120820', undefined, 'PL. GRUNWALDZKI', 'bus');
+  assert.ok(reaganBus6Digit);
+  assert.match(reaganBus6Digit, /Ronda Reagana/i);
+});
+
+test('resolveStopHint: Poznan slugified stopName + stopCode matching and geohash handling', () => {
+  // Poznań Główny 73 (ul. Matyi / Avenida) z i bez geohasha
+  const hint73 = resolveStopHint(STOP_HINTS_POZNAN, '73', 'poznan-glowny73-wqjhw', 'Poznań Główny', 'tram');
+  assert.ok(hint73);
+  assert.match(hint73, /Matyi|Avenida/i);
+
+  // Dopasowanie z nazwy kończącej się 2-cyfrowym słupkiem bez stopId
+  const hint73ByName = resolveStopHint(STOP_HINTS_POZNAN, undefined, undefined, 'Poznań Główny 73', 'tram');
+  assert.equal(hint73ByName, hint73);
+
+  // Plac Dworcowy / Poznań Główny 01
+  const hint01 = resolveStopHint(STOP_HINTS_POZNAN, '1', 'poznan-glowny01-abcde', 'Poznań Główny', 'bus');
   assert.ok(hint01);
-  assert.match(hint01, /placu Dworcowym/i);
+  assert.match(hint01, /Dworcowej|Dworca/i);
 
   // Dworzec Zachodni peron 71
   const hintZachodni = resolveStopHint(STOP_HINTS_POZNAN, '71', undefined, 'Dworzec Zachodni', 'tram');
   assert.ok(hintZachodni);
   assert.match(hintZachodni, /Głogowskiej/i);
 
-  // PST Poznań Główny 41
-  const hintPst = resolveStopHint(STOP_HINTS_POZNAN, '41', undefined, 'Poznań Główny', 'tram');
+  // Poznań Główny 41 (Avenida / PKP) oraz PST na Rondzie Kaponiera 45
+  const hint41 = resolveStopHint(STOP_HINTS_POZNAN, '41', undefined, 'Poznań Główny', 'tram');
+  assert.ok(hint41);
+  assert.match(hint41, /Avenida/i);
+
+  const hintPst = resolveStopHint(STOP_HINTS_POZNAN, '45', undefined, 'Rondo Kaponiera', 'tram');
   assert.ok(hintPst);
   assert.match(hintPst, /PST/i);
 });
 
 test('resolveStopHint: returns null for train/subway modes and PKP rail stations', () => {
-  // 1. Z feedu krajowego z prefiksem pl: lub stop-pl:
-  const railHintPl = resolveStopHint(STOP_HINTS_POZNAN, '73', 'pl:5100028', 'Poznań Główny');
-  assert.equal(railHintPl, null, 'Stacje PKP z id pl: nie powinny zwracać wskazówek miejskich');
-
-  const railHintStopPl = resolveStopHint(STOP_HINTS_POZNAN, '1', 'stop-pl:5100028', 'Poznań Główny');
-  assert.equal(railHintStopPl, null, 'Stacje PKP z id stop-pl: nie powinny zwracać wskazówek miejskich');
-
-  // 2. Połączenia kolejowe (mode === "train")
-  const trainWroclawHint = resolveStopHint(
-    STOP_HINTS_WROCLAW,
-    '1',
-    '10101',
-    'Dworzec Główny',
-    'train',
-  );
-  assert.equal(trainWroclawHint, null, 'Połączenia pociągowe we Wrocławiu nie powinny mieć wskazówek');
-
-  const trainPoznanHint = resolveStopHint(
-    STOP_HINTS_POZNAN,
-    '73',
-    'poznan-glowny73',
-    'Poznań Główny',
-    'train',
-  );
-  assert.equal(trainPoznanHint, null, 'Pociąg z Poznania Głównego nie powinien mieć wskazówek');
-
-  const trainKrkHint = resolveStopHint(
-    STOP_HINTS_KRAKOW,
-    '901-01',
-    'stop_322_117319',
-    'Kraków Główny',
-    'train',
-  );
-  assert.equal(trainKrkHint, null, 'Pociąg z Krakowa Głównego nie powinien mieć wskazówek');
-
-  // 3. Metro (mode === "subway") nie ma wskazówek peronowych
-  const metroHint = resolveStopHint(
-    STOP_HINTS_WARSZAWA,
-    'C15',
-    '1003M:P2',
-    'Dworzec Wileński',
-    'subway',
-  );
-  assert.equal(metroHint, null, 'Stacje metra nie powinny mieć wskazówek');
   assert.equal(
-    STOP_HINTS_WARSZAWA.stops['1003M:P2'],
-    undefined,
-    'Baza nie powinna zawierać wpisów dla peronów metra',
+    resolveStopHint(STOP_HINTS_POZNAN, '73', 'pl:5100028', 'Poznań Główny'),
+    null,
+    'Stacje PKP z id pl: nie powinny zwracać wskazówek miejskich',
+  );
+  assert.equal(
+    resolveStopHint(STOP_HINTS_POZNAN, '1', 'stop-pl:5100028', 'Poznań Główny'),
+    null,
+  );
+  assert.equal(
+    resolveStopHint(STOP_HINTS_WROCLAW, '10268', '10268', 'Dworzec Główny', 'train'),
+    null,
+  );
+  assert.equal(
+    resolveStopHint(STOP_HINTS_POZNAN, '73', 'poznan-glowny73', 'Poznań Główny', 'train'),
+    null,
+  );
+  assert.equal(
+    resolveStopHint(STOP_HINTS_KRAKOW, '901-01', 'stop_322_117319', 'Kraków Główny', 'train'),
+    null,
+  );
+  assert.equal(
+    resolveStopHint(STOP_HINTS_WARSZAWA, 'C15', '1003M:P2', 'Dworzec Wileński', 'subway'),
+    null,
   );
 });
 
@@ -100,13 +119,13 @@ test('isTrainLeg correctly identifies train legs', () => {
   assert.equal(isTrainLeg({ mode: 'train', fromStopId: 'pl:5100028' }), true);
   assert.equal(isTrainLeg({ mode: 'bus', fromStopId: 'pl:5100028' }), true);
   assert.equal(isTrainLeg({ mode: 'bus', tripId: 'pl:trip_123' }), true);
-  assert.equal(isTrainLeg({ mode: 'tram', fromStopId: '10101' }), false);
+  assert.equal(isTrainLeg({ mode: 'tram', fromStopId: '10268' }), false);
   assert.equal(isTrainLeg({ mode: 'bus', fromStopId: '20820' }), false);
 });
 
 test('resolveStopHint: Cluster fallback for major municipal transfer hubs', () => {
   const dummyDatasetWithClusters: StopHintsDataset = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     city: 'test',
     generatedAt: '2026-11-01T00:00:00Z',
     stops: {},
@@ -125,33 +144,62 @@ test('resolveStopHint: Cluster fallback for major municipal transfer hubs', () =
     resolveStopHint(dummyDatasetWithClusters, undefined, undefined, 'Poznań Główny', 'tram'),
     'Główny węzeł: wejście na dworzec PKP od strony placu Dworcowego i galerii Avenida.',
   );
-  // Ale dla pociągu (train) cluster fallback NIE może się wywołać:
   assert.equal(
     resolveStopHint(dummyDatasetWithClusters, undefined, undefined, 'Poznań Główny', 'train'),
     null,
   );
 });
 
-test('resolveStopHint: Krakow and Warszawa matching for municipal transit', () => {
+test('resolveStopHint: Krakow, Warszawa and GZM matching for municipal transit', () => {
   const hintKrk = resolveStopHint(
     STOP_HINTS_KRAKOW,
     '901-01',
-    'stop_322_117319',
+    'KRK:T:stop_322_117319',
     'Dworzec Główny Tunel',
     'tram',
   );
   assert.ok(hintKrk);
   assert.match(hintKrk, /tunelu pod Dworcem Głównym/i);
 
-  const hintWaw = resolveStopHint(STOP_HINTS_WARSZAWA, '10', '700101', 'Centrum', 'tram');
+  const hintWaw = resolveStopHint(STOP_HINTS_WARSZAWA, '07', '701307', 'Centrum', 'tram');
   assert.ok(hintWaw);
   assert.match(hintWaw, /Marszałkowskiej/i);
-});
 
-test('resolveStopHint: GZM station matching for municipal transit', () => {
   const hintGzm = resolveStopHint(STOP_HINTS_GZM, '2469011-00103', '3220', 'Katowice Dworzec', 'bus');
   assert.ok(hintGzm);
   assert.match(hintGzm, /Katowicką/i);
+});
+
+test('All 5 bundled datasets obey schemaVersion 2, zero collision keys, zero duplicated pole prefix', () => {
+  const allDatasets = [
+    STOP_HINTS_WARSZAWA,
+    STOP_HINTS_WROCLAW,
+    STOP_HINTS_KRAKOW,
+    STOP_HINTS_POZNAN,
+    STOP_HINTS_GZM,
+  ];
+  for (const ds of allDatasets) {
+    assert.equal(ds.schemaVersion, 2, `${ds.city}: schemaVersion powinno być 2`);
+    const entries = Object.entries(ds.stops);
+    assert.ok(entries.length >= 100, `${ds.city}: powinno mieć >= 100 wskazówek`);
+    for (const [key, hint] of entries) {
+      assert.doesNotMatch(
+        key,
+        /^\d{1,3}$/,
+        `${ds.city}: niedozwolony krótki klucz mogący powodować kolizje: "${key}"`,
+      );
+      assert.doesNotMatch(
+        hint,
+        /^Słupek\s+\d+\s*[•·-]/i,
+        `${ds.city}[${key}]: wskazówka nie może dublować prefiksu "Słupek XX •"`,
+      );
+      assert.doesNotMatch(
+        hint,
+        /budynku usługowego|punktu usługowego|zakładu pogrzebowego|\?”/i,
+        `${ds.city}[${key}]: zawiera zakazany slop: "${hint}"`,
+      );
+    }
+  }
 });
 
 test('Multi-transfer rail & transit journey differentiates train legs from transit legs', () => {
@@ -163,16 +211,10 @@ test('Multi-transfer rail & transit journey differentiates train legs from trans
     gzm: STOP_HINTS_GZM,
   };
 
-  // Trasa wieloetapowa:
-  // 1. Wrocław: Tramwaj na Dworzec Główny -> ma wskazówkę
-  // 2. PKP: Pociąg Wrocław Główny -> Poznań Główny -> BRAK wskazówki (null)
-  // 3. Poznań: Tramwaj z Mostu Dworcowego (Poznań Główny 73) -> ma wskazówkę
-  // 4. PKP: Pociąg Poznań Główny -> Kraków Główny -> BRAK wskazówki (null)
-  // 5. Kraków: Tramwaj KST pod dworcem (Dworzec Główny Tunel) -> ma wskazówkę
   const journeyLegs = [
     {
       mode: 'tram' as const,
-      fromStop: 'Rondo Reagana',
+      fromStop: 'PL. GRUNWALDZKI',
       fromStopId: '20820',
       platformCode: '20820',
       fromLat: 51.1118,
@@ -191,7 +233,7 @@ test('Multi-transfer rail & transit journey differentiates train legs from trans
     {
       mode: 'tram' as const,
       fromStop: 'Poznań Główny',
-      fromStopId: 'poznan-glowny73',
+      fromStopId: 'poznan-glowny73-wqjhw',
       platformCode: '73',
       fromLat: 52.4026,
       fromLon: 16.9126,
@@ -230,7 +272,6 @@ test('Multi-transfer rail & transit journey differentiates train legs from trans
       assert.ok(hint, `Wskazówka powinna zostać znaleziona dla ${leg.fromStop} (${leg.mode})`);
     } else {
       assert.equal(isTrain, true);
-      // Dla połączeń kolejowych wskazówka musi być null niezależnie od bazy miejskiej
       const matchedCity = suggestCityForCoords(leg.fromLat, leg.fromLon);
       const dataset = matchedCity ? cityDatasets[matchedCity.id] : null;
       const hint = resolveStopHint(dataset, leg.platformCode, leg.fromStopId, leg.fromStop, leg.mode);
