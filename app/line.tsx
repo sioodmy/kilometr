@@ -28,13 +28,18 @@ import {
   Clock3,
   RefreshCw,
   RouteOff,
+  Ticket,
 } from '../src/components/icons';
 import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { StopDeparturesSheet } from '../src/components/StopDeparturesSheet';
 import { getLocaleSync, useStrings } from '../src/i18n';
+import { isFareBoundary, parseFareBoundary } from '../src/gtfs/fareBoundary';
 import {
+  countPhysicalLineStops,
   findNextDeparture,
+  firstPhysicalStopIndex,
+  lastPhysicalStopIndex,
   findTripSegment,
   formatTimetableDateCompact,
   parseClockToSeconds,
@@ -229,7 +234,19 @@ export default function LineScreen() {
   const displayMode: LegMode =
     data?.line?.mode ?? (mode as LegMode | undefined) ?? 'bus';
   const displayHeadsign = pattern?.headsign ?? direction ?? '';
-  const originStop = pattern?.stops[0];
+  const firstPhysicalIdx = useMemo(
+    () => (pattern ? firstPhysicalStopIndex(pattern.stops) : -1),
+    [pattern],
+  );
+  const lastPhysicalIdx = useMemo(
+    () => (pattern ? lastPhysicalStopIndex(pattern.stops) : -1),
+    [pattern],
+  );
+  const physicalStopsCount = useMemo(
+    () => (pattern ? countPhysicalLineStops(pattern.stops) : 0),
+    [pattern],
+  );
+  const originStop = firstPhysicalIdx >= 0 ? pattern?.stops[firstPhysicalIdx] : pattern?.stops[0];
 
   const railStroke = useMemo(() => {
     if (!displayLine) return scheme.primary;
@@ -255,11 +272,11 @@ export default function LineScreen() {
   // Najbliższy odjazd w karcie głównej (z przystanku wsiadania albo z pętli początkowej).
   const heroReferenceStop = useMemo(() => {
     if (!pattern) return undefined;
-    if (boardingIndex >= 0 && boardingIndex < pattern.stops.length - 1) {
+    if (boardingIndex >= 0 && boardingIndex < lastPhysicalIdx) {
       return pattern.stops[boardingIndex];
     }
-    return pattern.stops[0];
-  }, [pattern, boardingIndex]);
+    return firstPhysicalIdx >= 0 ? pattern.stops[firstPhysicalIdx] : pattern.stops[0];
+  }, [pattern, boardingIndex, firstPhysicalIdx, lastPhysicalIdx]);
 
   const heroNextDep = useMemo(
     () =>
@@ -306,8 +323,11 @@ export default function LineScreen() {
   const renderStopItem = useCallback(
     ({ item, index }: { item: LineStop; index: number }) => {
       const total = pattern?.stops.length ?? 0;
-      const isFirst = index === 0;
-      const isTerminal = index === total - 1;
+      const isFirstRow = index === 0;
+      const isLastRow = index === total - 1;
+      const boundary = parseFareBoundary(item.name);
+      const isFirst = index === firstPhysicalIdx;
+      const isTerminal = index === lastPhysicalIdx;
       const isBoarding = index === boardingIndex;
       const isAlighting = index === alightingIndex;
       const inSegment = hasFullSegment
@@ -319,6 +339,40 @@ export default function LineScreen() {
       const bottomRailActive = hasFullSegment
         ? index >= boardingIndex && index < alightingIndex
         : true;
+
+      if (boundary) {
+        const lineColor =
+          topRailActive && bottomRailActive ? railStroke : scheme.outlineVariant;
+        return (
+          <View
+            style={[
+              styles.stopCardSlice,
+              isFirstRow && styles.stopCardFirst,
+              isLastRow && styles.stopCardLast,
+            ]}
+            accessibilityRole="text"
+          >
+            <View style={styles.boundaryRow}>
+              <View style={styles.railCol}>
+                <View style={[styles.railContinuous, { backgroundColor: lineColor }]} />
+              </View>
+              <View
+                style={[styles.boundaryContentCol, !isFirstRow && styles.stopContentDivider]}
+              >
+                <View style={styles.boundaryChip}>
+                  <Ticket size={14} color={scheme.onSecondaryContainer} />
+                  <View style={styles.boundaryText}>
+                    <Text style={styles.boundaryTitle}>{s.leg.fareBoundary}</Text>
+                    <Text style={styles.boundaryDetail}>
+                      {s.leg.fareBoundaryDetail(boundary.areas, boundary.point)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        );
+      }
       const nodeColor = inSegment || isBoarding || isAlighting ? railStroke : scheme.outline;
       const stopNextDep = !isTerminal
         ? findNextDeparture(item.departures, nowSec, isToday)
@@ -352,8 +406,8 @@ export default function LineScreen() {
         <View
           style={[
             styles.stopCardSlice,
-            isFirst && styles.stopCardFirst,
-            isTerminal && styles.stopCardLast,
+            isFirstRow && styles.stopCardFirst,
+            isLastRow && styles.stopCardLast,
             highlightedRow && styles.stopCardHighlighted,
           ]}
         >
@@ -366,7 +420,7 @@ export default function LineScreen() {
             style={styles.stopRow}
           >
             <View style={styles.railCol}>
-              {!isFirst && (
+              {!isFirstRow && (
                 <View
                   style={[
                     styles.railTop,
@@ -374,7 +428,7 @@ export default function LineScreen() {
                   ]}
                 />
               )}
-              {!isTerminal && (
+              {!isLastRow && (
                 <View
                   style={[
                     styles.railBottom,
@@ -405,7 +459,7 @@ export default function LineScreen() {
               )}
             </View>
 
-            <View style={[styles.stopContentCol, !isFirst && styles.stopContentDivider]}>
+            <View style={[styles.stopContentCol, !isFirstRow && styles.stopContentDivider]}>
               <View style={styles.stopMainCol}>
                 <Text
                   style={[
@@ -477,13 +531,16 @@ export default function LineScreen() {
     [
       alightingIndex,
       boardingIndex,
+      firstPhysicalIdx,
       hasFullSegment,
       isToday,
+      lastPhysicalIdx,
       nowSec,
       pattern?.stops.length,
       railStroke,
       s.common.departIn,
       s.common.departNow,
+      s.leg,
       t,
     ],
   );
@@ -554,7 +611,7 @@ export default function LineScreen() {
                     {pattern && (
                       <View style={styles.secondaryPill}>
                         <Text style={styles.secondaryPillText}>
-                          {t.stopsCount(pattern.stops.length)}
+                          {t.stopsCount(physicalStopsCount)}
                         </Text>
                       </View>
                     )}
@@ -760,7 +817,7 @@ export default function LineScreen() {
                               ]}
                               numberOfLines={1}
                             >
-                              {item.stops[0].name}
+                              {(item.stops.find((st) => !isFareBoundary(st.name)) ?? item.stops[0]).name}
                               {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
                             </Text>
                           </SpringPressable>
@@ -840,7 +897,7 @@ export default function LineScreen() {
                                 ]}
                                 numberOfLines={1}
                               >
-                                {item.stops[0].name}
+                                {(item.stops.find((st) => !isFareBoundary(st.name)) ?? item.stops[0]).name}
                                 {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
                               </Text>
                             </SpringPressable>
@@ -1333,6 +1390,46 @@ const styles = StyleSheet.create({
     top: '50%',
     bottom: 0,
     width: SPINE_W,
+  },
+  railContinuous: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: SPINE_W,
+  },
+  boundaryRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  boundaryContentCol: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 8,
+  },
+  boundaryChip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: shape.medium,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  boundaryText: {
+    flex: 1,
+    gap: 1,
+  },
+  boundaryTitle: {
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
+  boundaryDetail: {
+    ...type.bodySmall,
+    color: scheme.onSecondaryContainer,
+    lineHeight: 16,
   },
   nodeHollowLarge: {
     width: 12,

@@ -2,7 +2,12 @@ import '../scripts/stub-expo.cjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  countPhysicalLineStops,
   findNextDeparture,
+  firstPhysicalStopIndex,
+  lastPhysicalStopIndex,
+  physicalStopOrdinal,
+  stepPhysicalStopIndex,
   findTripSegment,
   formatTimetableDate,
   formatTimetableDateCompact,
@@ -193,4 +198,20 @@ test('parseClockToSeconds parsuje poprawne godziny i odrzuca błędne formaty', 
   assert.equal(parseClockToSeconds(''), null);
   assert.equal(parseClockToSeconds('99:00'), null);
   assert.equal(parseClockToSeconds('12:75'), null);
+});
+
+test('pomocniki fizycznych przystanków pomijają granice stref biletowych', () => {
+  const stopsWithBoundary = [
+    { id: 's1', name: 'Metro Młociny', code: '01', departures: [3600] },
+    { id: 'b1', name: 'Granica I - II (Łomianki)', code: '', departures: [3700] },
+    { id: 's2', name: 'Dąbrowa Leśna', code: '02', departures: [3900] },
+  ];
+  assert.equal(countPhysicalLineStops(stopsWithBoundary), 2);
+  assert.equal(firstPhysicalStopIndex(stopsWithBoundary), 0);
+  assert.equal(lastPhysicalStopIndex(stopsWithBoundary), 2);
+  assert.equal(stepPhysicalStopIndex(stopsWithBoundary, 0, 1), 2);
+  assert.equal(stepPhysicalStopIndex(stopsWithBoundary, 2, -1), 0);
+  assert.equal(stepPhysicalStopIndex(stopsWithBoundary, 0, -1), -1);
+  assert.equal(physicalStopOrdinal(stopsWithBoundary, 0), 1);
+  assert.equal(physicalStopOrdinal(stopsWithBoundary, 2), 2);
 });

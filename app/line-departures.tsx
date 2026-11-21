@@ -20,8 +20,10 @@ import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { TimetableDeparturesView } from '../src/components/TimetableDeparturesView';
 import { getLocaleSync, useStrings } from '../src/i18n';
+import { isFareBoundary } from '../src/gtfs/fareBoundary';
 import {
   formatTimetableDateCompact,
+  lastPhysicalStopIndex,
   parseClockToSeconds,
   shiftTimetableDate,
   timetableToday,
@@ -88,9 +90,11 @@ export default function LineDeparturesScreen() {
 
   const pattern = data?.patterns.find((item) => item.id === params.patternId);
   const stopIndex = Number(params.stopIndex ?? -1);
-  const stop =
+  const rawStop =
     Number.isInteger(stopIndex) && stopIndex >= 0 ? pattern?.stops[stopIndex] : undefined;
-  const terminal = !!stop && stopIndex === (pattern?.stops.length ?? 0) - 1;
+  const stop = rawStop && !isFareBoundary(rawStop.name) ? rawStop : undefined;
+  const terminal =
+    !!stop && !!pattern && stopIndex === lastPhysicalStopIndex(pattern.stops);
   const dateCompact = useMemo(
     () => formatTimetableDateCompact(date, getLocaleSync()),
     [date, s],
