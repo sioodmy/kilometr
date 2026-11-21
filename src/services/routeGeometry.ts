@@ -141,6 +141,8 @@ function legToMapLeg(leg: Leg): MapLeg {
     tripId: leg.tripId,
     platformCode: leg.platformCode,
     trackCode: leg.trackCode,
+    fromEntrance: leg.fromEntrance,
+    toEntrance: leg.toEntrance,
     stops,
     approx: !leg.geometry,
   };

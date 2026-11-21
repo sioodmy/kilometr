@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
+const inflightBundled = new Map<string, Promise<StopHintsDataset | null>>();
 
 function extractHintText(val: StopHintValue | undefined): string | null {
   if (!val) return null;
-  if (typeof val === 'string') return val;
-  return val.hint || null;
+  const text = typeof val === 'string' ? val : val.hint;
+  const trimmed = text?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function normalizePolishText(value: string | null | undefined): string {
@@ -41,7 +43,45 @@ function normalizeSnake(value: string | null | undefined): string {
     .replace(/^_+|_+$/g, '');
 }
 
-/** Dynamiczny import per miasto: 684 KB hints nie trafia do startowego bundla. */
+/**
+ * Zwraca true wyłącznie dla kodów słupków unikalnych w skali całego miasta:
+ * - Wrocław: 5-cyfrowe kody słupków (np. "20820")
+ * - Kraków: zespół-słupek (np. "802-01")
+ * - GZM: kod z myślnikiem lub alfanumeryczny >= 5 znaków (np. "2469011-00101", "GR01201")
+ *
+ * Odrzuca 1-3 cyfrowe lokalne numery słupków (np. Warszawa "01", "02", "06", Poznań "41", "71"),
+ * które powtarzają się w całym mieście i powodowałyby kolizje między dzielnicami.
+ */
+export function isGloballyUniqueStopCode(code: string): boolean {
+  const c = code.trim();
+  if (!c) return false;
+  if (/^\d{1,3}$/.test(c)) return false;
+  if (/^\d{4,}$/.test(c)) return true;
+  if (/^[a-z0-9]+-[a-z0-9]+$/i.test(c) && c.length >= 4) return true;
+  if (/[a-z]/i.test(c) && /\d/.test(c) && c.length >= 5) return true;
+  return false;
+}
+
+function stripKnownStopIdPrefixes(rawId: string): string[] {
+  const out: string[] = [rawId];
+  let cur = rawId;
+  if (cur.startsWith('stop-')) {
+    cur = cur.slice(5);
+    out.push(cur);
+  }
+  const krkMatch = cur.match(/^KRK:[ATM]:(.+)$/);
+  if (krkMatch) {
+    out.push(krkMatch[1]);
+  }
+  // Poznań zbiorkom: "poznan-glowny73-wqjhw" -> "poznan-glowny73"
+  const poznanMatch = cur.match(/^([a-z0-9-]+\d{2})-[a-z0-9]{4,6}$/i);
+  if (poznanMatch) {
+    out.push(poznanMatch[1]);
+  }
+  return out;
+}
+
+/** Dynamiczny import per miasto: hints nie trafiają do startowego bundla. */
 function loadBundledStopHints(cityId: string): Promise<StopHintsDataset | null> {
   const c = cityId.toLowerCase();
   if (c === 'wroclaw' || c === 'wrocław') {
@@ -77,6 +117,38 @@ async function fetchRemoteStopHints(
   }
 }
 
+export function getCachedStopHints(cityId: string): StopHintsDataset | null {
+  const norm = (cityId || '').trim().toLowerCase();
+  return norm ? cache.get(norm) ?? null : null;
+}
+
+/**
+ * Ładuje statyczny pakiet wskazówek dla miasta do pamięci (bez czekania na sieć).
+ * Bezpieczne do wielokrotnego wywołania przed lub w trakcie routingu.
+ */
+export function ensureStopHintsLoaded(cityId: string): Promise<StopHintsDataset | null> {
+  const norm = (cityId || '').trim().toLowerCase();
+  if (!norm) return Promise.resolve(null);
+  const hit = cache.get(norm);
+  if (hit) return Promise.resolve(hit);
+  const pending = inflightBundled.get(norm);
+  if (pending) return pending;
+
+  const task = loadBundledStopHints(norm)
+    .then((bundled) => {
+      if (bundled && !cache.has(norm)) {
+        cache.set(norm, bundled);
+      }
+      return cache.get(norm) ?? bundled ?? null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      inflightBundled.delete(norm);
+    });
+  inflightBundled.set(norm, task);
+  return task;
+}
+
 function useStopHints(cityId: string) {
   const normCity = (cityId || '').trim().toLowerCase();
   const [data, setData] = useState<StopHintsDataset | null>(() =>
@@ -102,7 +174,8 @@ function useStopHints(cityId: string) {
       if (!cancelled) setData((prev) => (prev === next ? prev : next));
     };
 
-    // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache.
+    // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache,
+    // o ile nie ma starszej wersji schematu niż baza wbudowana w aplikację.
     const load = async () => {
       const cached = cache.get(normCity);
       if (cached) {
@@ -111,7 +184,6 @@ function useStopHints(cityId: string) {
       }
       const bundled = await loadBundledStopHints(normCity).catch(() => null);
       if (cancelled) return;
-      // Równoległe karty mogły już zdążyć wpisać bundled do cache.
       const raced = cache.get(normCity);
       if (raced) {
         apply(raced);
@@ -123,7 +195,9 @@ function useStopHints(cityId: string) {
         setData((prev) => (prev === null ? prev : null));
       }
       const remote = await fetchRemoteStopHints(normCity, abortController.signal);
-      if (remote) apply(remote);
+      if (remote && (remote.schemaVersion ?? 1) >= (bundled?.schemaVersion ?? 1)) {
+        apply(remote);
+      }
     };
 
     void load();
@@ -145,24 +219,27 @@ export function resolveStopHint(
   mode?: string | null,
 ): string | null {
   if (!dataset) return null;
-  // Pociągi (dworce PKP) i metro nie mają bazy mikrowskazówek peronowych
+  // Pociągi (dworce PKP) i platformy metra nie mają wskazówek peronowych (wejścia metra mają osobny wpis)
   if (mode === 'train' || mode === 'subway') return null;
 
-  // 1. Sprawdź po unikalnym stopId (np. Warszawa "700201", GZM "3220", Wrocław "10101", Kraków "stop_322_117319")
+  // 1. Sprawdź po unikalnym stopId (np. Warszawa "302702", wejście metra "1003M:E1", GZM "5410", Wrocław "10101")
   if (stopId) {
     const trimmedId = stopId.trim();
-    // Stacje kolejowe PKP z feedu krajowego nie posiadają bazy stop hints
     if (trimmedId.startsWith('pl:') || trimmedId.startsWith('stop-pl:')) {
       return null;
     }
-    if (dataset.stops[trimmedId]) return extractHintText(dataset.stops[trimmedId]);
-
-    const strippedStop = trimmedId.startsWith('stop-') ? trimmedId.slice(5) : null;
-    if (strippedStop && dataset.stops[strippedStop]) return extractHintText(dataset.stops[strippedStop]);
+    for (const candidateId of stripKnownStopIdPrefixes(trimmedId)) {
+      if (candidateId && dataset.stops[candidateId]) {
+        return extractHintText(dataset.stops[candidateId]);
+      }
+      if (candidateId && dataset.metroEntrances && /:E/i.test(candidateId)) {
+        const ent = dataset.metroEntrances.find((e) => e.id === candidateId);
+        if (ent?.hint) return ent.hint.trim();
+      }
+    }
   }
 
-  // 2. Kombinacja stopName + stopCode (np. Poznań "poznan-glowny73", "poznan-glowny01")
-  // Sprawdzamy PRZED czystym 1-2 cyfrowym stopCode, żeby uniknąć kolizji z odległymi słupkami o tym samym numerze.
+  // 2. Kombinacja stopName + numer słupka (np. Poznań "Poznań Główny 73" -> "poznan-glowny73")
   let slug = '';
   let snake = '';
   let cleanName = '';
@@ -170,30 +247,40 @@ export function resolveStopHint(
     cleanName = stopName.replace(/\s*\([^)]*\)/g, '').trim();
     slug = normalizeSlug(cleanName);
     snake = normalizeSnake(cleanName);
+
+    // Jeśli nazwa przystanku sama zawiera numer słupka na końcu (Poznań: "Poznań Główny 73")
+    const trailingPoleMatch = cleanName.match(/^(.*?)\s+(\d{2})$/);
+    if (trailingPoleMatch) {
+      const baseSlug = normalizeSlug(trailingPoleMatch[1]);
+      const poleNum = trailingPoleMatch[2];
+      const composite = `${baseSlug}${poleNum}`;
+      if (dataset.stops[composite]) return extractHintText(dataset.stops[composite]);
+      if (dataset.stops[slug]) return extractHintText(dataset.stops[slug]);
+    }
+
     const code = (
       stopCode ||
       stopName.match(/(?:peron|słupek|stanowisko)\s*(\d+)/i)?.[1] ||
+      trailingPoleMatch?.[2] ||
       ''
     ).trim();
 
     if (code) {
+      const baseName = trailingPoleMatch ? trailingPoleMatch[1] : cleanName;
+      const baseSlug = normalizeSlug(baseName);
+      const baseSnake = normalizeSnake(baseName);
       const pad2 = code.padStart(2, '0');
       const noZero = code.replace(/^0+/, '');
       const candidates = [
-        `${slug}${code}`,
-        `${slug}${pad2}`,
-        `${slug}${noZero}`,
-        `${slug}-${code}`,
-        `${slug}-${pad2}`,
-        `${slug}-${noZero}`,
-        `${snake}_${code}`,
-        `${snake}_${pad2}`,
-        `${snake}_${noZero}`,
-        `${snake}${code}`,
-        `${snake}${pad2}`,
-        `${snake}${noZero}`,
-        `${cleanName} ${code}`,
-        `${cleanName} ${pad2}`,
+        `${baseSlug}${code}`,
+        `${baseSlug}${pad2}`,
+        `${baseSlug}${noZero}`,
+        `${baseSlug}-${code}`,
+        `${baseSlug}-${pad2}`,
+        `${baseSnake}_${code}`,
+        `${baseSnake}_${pad2}`,
+        `${baseName} ${code}`,
+        `${baseName} ${pad2}`,
       ];
 
       for (const cand of candidates) {
@@ -203,8 +290,8 @@ export function resolveStopHint(
       }
 
       // Warianty z sufiksem geohash w kluczu (np. "poznan-glowny73-wqjhw")
-      const primaryPrefix = `${slug}${code}-`;
-      const padPrefix = `${slug}${pad2}-`;
+      const primaryPrefix = `${baseSlug}${code}-`;
+      const padPrefix = `${baseSlug}${pad2}-`;
       for (const [key, val] of Object.entries(dataset.stops)) {
         if (key.startsWith(primaryPrefix) || key.startsWith(padPrefix)) {
           return extractHintText(val);
@@ -213,44 +300,25 @@ export function resolveStopHint(
     }
   }
 
-  // 3. Bezpośredni stopCode (np. Wrocław "20820", GZM "2470011-08702", Kraków "901-01", Warszawa "01")
+  // 3. Bezpośredni stopCode WYŁĄCZNIE gdy jest globalnie unikalny w skali miasta
+  // (Wrocław "20820", GZM "2469011-00101", Kraków "901-01" — NIGDY Warszawa "01"/"02"/"06" ani Poznań "41"/"71").
   if (stopCode) {
     const trimmedCode = stopCode.trim();
-    if (dataset.stops[trimmedCode]) return extractHintText(dataset.stops[trimmedCode]);
+    if (isGloballyUniqueStopCode(trimmedCode)) {
+      if (dataset.stops[trimmedCode]) return extractHintText(dataset.stops[trimmedCode]);
+      if (/^\d{4,5}$/.test(trimmedCode)) {
+        const pad5 = trimmedCode.padStart(5, '0');
+        if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
+      }
+    }
   }
 
-  // 4. Warianty z normalizacją kluczy (leading zeroes, pad5, pad2)
-  if (stopId) {
-    const trimmedId = stopId.trim();
-    const noLeadingZeros = trimmedId.replace(/^0+/, '');
-    if (noLeadingZeros && dataset.stops[noLeadingZeros]) {
-      return extractHintText(dataset.stops[noLeadingZeros]);
-    }
-    const pad5 = trimmedId.padStart(5, '0');
-    if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
-  }
-  if (stopCode) {
-    const trimmedCode = stopCode.trim();
-    const noLeadingZeros = trimmedCode.replace(/^0+/, '');
-    if (noLeadingZeros && dataset.stops[noLeadingZeros]) {
-      return extractHintText(dataset.stops[noLeadingZeros]);
-    }
-    const pad5 = trimmedCode.padStart(5, '0');
-    if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
-    const pad2 = trimmedCode.padStart(2, '0');
-    if (dataset.stops[pad2]) return extractHintText(dataset.stops[pad2]);
-  }
-
-  // 5. Fallback do klastrów / węzłów przesiadkowych (dataset.clusters lub bezpośredni klucz w stops)
-  if (cleanName) {
-    if (dataset.clusters) {
-      if (dataset.clusters[snake]) return dataset.clusters[snake];
-      if (dataset.clusters[slug]) return dataset.clusters[slug];
-      const lower = cleanName.toLowerCase();
-      if (dataset.clusters[lower]) return dataset.clusters[lower];
-    }
-    if (dataset.stops[snake]) return extractHintText(dataset.stops[snake]);
-    if (dataset.stops[slug]) return extractHintText(dataset.stops[slug]);
+  // 4. Fallback do jawnych klastrów (wyłącznie dataset.clusters, nigdy przypadkowy słupek z dataset.stops)
+  if (cleanName && dataset.clusters) {
+    if (dataset.clusters[snake]) return dataset.clusters[snake];
+    if (dataset.clusters[slug]) return dataset.clusters[slug];
+    const lower = cleanName.toLowerCase();
+    if (dataset.clusters[lower]) return dataset.clusters[lower];
   }
 
   return null;

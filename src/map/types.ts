@@ -2,7 +2,7 @@
 // od domenowego `Connection`: mapa potrzebuje kolorów, ról przystanków i flag
 // „geometria jeszcze się dociąga”, a nie całej reszty planera.
 
-import type { LatLon, LegMode } from '../types/models';
+import type { LatLon, LegMode, MetroEntranceRef } from '../types/models';
 
 export type MapStopRole = 'board' | 'alight' | 'intermediate' | 'walk';
 
@@ -38,6 +38,8 @@ export interface MapLeg {
   tripId?: string;
   platformCode?: string;
   trackCode?: string;
+  fromEntrance?: MetroEntranceRef;
+  toEntrance?: MetroEntranceRef;
   stops: MapStop[];
   /**
    * true = noga rysowana po prostych między przystankami, dopóki nie wróci

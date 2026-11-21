@@ -22,7 +22,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import type { Leg, LegStop } from '../types/models';
+import type { Leg, LegStop, MetroEntranceRef } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
 import { RailAmenities } from './RailAmenities';
 import { StationAmenities } from './StationAmenities';
@@ -574,6 +574,50 @@ const LiveDataAgeInline = memo(function LiveDataAgeInline({ timestamp }: { times
 });
 
 /** Karta jednego przejazdu M3 Expressive z ciągłą 3-kolumnową osią czasu. */
+
+function formatMetroEntranceLabel(
+  t: Strings,
+  kind: 'entrance' | 'exit',
+  entrance: MetroEntranceRef,
+): string {
+  const base =
+    kind === 'entrance'
+      ? t.leg.metroEntrance(entrance.num)
+      : t.leg.metroExit(entrance.num);
+  if (entrance.wheelchair && !/winda|lift|aufzug|ліфт/i.test(entrance.num)) {
+    return `${base} (${t.leg.metroElevatorTag})`;
+  }
+  return base;
+}
+
+function MetroEntranceBlock({
+  t,
+  kind,
+  entrance,
+  compactMargin,
+}: {
+  t: Strings;
+  kind: 'entrance' | 'exit';
+  entrance: MetroEntranceRef;
+  compactMargin?: boolean;
+}) {
+  return (
+    <View style={compactMargin ? s.entranceConnectorWrap : s.entranceLegWrap}>
+      <View style={s.platformBadge}>
+        <Text style={s.platformBadgeText}>
+          {formatMetroEntranceLabel(t, kind, entrance)}
+        </Text>
+      </View>
+      {entrance.hint ? (
+        <View style={s.stopHintBox}>
+          <MapPin size={14} color={scheme.primary} style={s.stopHintIcon} />
+          <Text style={s.stopHintText}>{entrance.hint}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const TransitLegCard = memo(function TransitLegCard({
   leg,
   expanded,
@@ -582,6 +626,8 @@ const TransitLegCard = memo(function TransitLegCard({
   allowLive,
   boardedDepartAt,
   showStationAmenities,
+  showFromEntrance,
+  showToEntrance,
 }: {
   leg: Leg;
   expanded: boolean;
@@ -590,6 +636,8 @@ const TransitLegCard = memo(function TransitLegCard({
   allowLive: boolean;
   boardedDepartAt?: string;
   showStationAmenities?: boolean;
+  showFromEntrance?: boolean;
+  showToEntrance?: boolean;
 }) {
   const t = useStrings();
   const router = useRouter();
@@ -1120,6 +1168,10 @@ const TransitLegCard = memo(function TransitLegCard({
             </View>
           ) : null}
 
+          {!isBoardedLeg && showFromEntrance && leg.fromEntrance ? (
+            <MetroEntranceBlock t={t} kind="entrance" entrance={leg.fromEntrance} />
+          ) : null}
+
           {stopHint ? (
             <View style={s.stopHintBox}>
               <MapPin size={14} color={scheme.primary} style={s.stopHintIcon} />
@@ -1395,6 +1447,9 @@ const TransitLegCard = memo(function TransitLegCard({
               ) : null}
             </View>
           ) : null}
+          {showToEntrance && leg.toEntrance ? (
+            <MetroEntranceBlock t={t} kind="exit" entrance={leg.toEntrance} />
+          ) : null}
           {showStationAmenities ? (
             <StationAmenities stopId={leg.toStopId} lat={leg.toLat} lon={leg.toLon} showLabel />
           ) : null}
@@ -1572,6 +1627,12 @@ export function LegTimeline({
                     </Text>
                   </View>
                 ) : null}
+                {leg.fromEntrance ? (
+                  <MetroEntranceBlock t={t} kind="exit" entrance={leg.fromEntrance} compactMargin />
+                ) : null}
+                {leg.toEntrance ? (
+                  <MetroEntranceBlock t={t} kind="entrance" entrance={leg.toEntrance} compactMargin />
+                ) : null}
               </View>
             </View>
           );
@@ -1588,6 +1649,15 @@ export function LegTimeline({
         const hasNextLeg = i < displayLegs.length - 1;
         const nextLeg = hasNextLeg ? displayLegs[i + 1] : null;
         const nextLegIsTransit = nextLeg != null && nextLeg.mode !== 'walk';
+        const prevDisplayedLeg = i > 0 ? displayLegs[i - 1] : null;
+        const showFromEntrance = Boolean(
+          leg.fromEntrance &&
+            (!prevDisplayedLeg || prevDisplayedLeg.mode !== 'walk' || !prevDisplayedLeg.toEntrance),
+        );
+        const showToEntrance = Boolean(
+          leg.toEntrance &&
+            (!nextLeg || nextLeg.mode !== 'walk' || !nextLeg.fromEntrance),
+        );
         const showStationAmenities = shouldShowStationAmenities(displayLegs, i, walkMps);
         const isRailImplicitTransfer =
           nextLegIsTransit && isTrainLeg(leg) && isTrainLeg(nextLeg);
@@ -1606,6 +1676,8 @@ export function LegTimeline({
               allowLive={!observeOnly || leg.live}
               boardedDepartAt={leg.id === firstTransitId ? boardedDepartAt : undefined}
               showStationAmenities={showStationAmenities}
+              showFromEntrance={showFromEntrance}
+              showToEntrance={showToEntrance}
               onToggle={toggleLeg}
             />
 
@@ -2202,6 +2274,13 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 2,
+  },
+  entranceLegWrap: {
+    gap: 6,
+  },
+  entranceConnectorWrap: {
+    gap: 6,
+    marginTop: 6,
   },
   connectorContentCol: {
     flex: 1,

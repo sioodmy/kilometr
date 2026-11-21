@@ -749,6 +749,20 @@ export default function RouteMapScreen() {
                             ? ` • ${s.map.legStops(stage.stopsCount)}`
                             : ''}
                       </Text>
+                      {isWalk && (leg.toEntrance || leg.fromEntrance) ? (
+                        <Text style={[styles.legSub, styles.legTitleActive]} numberOfLines={2}>
+                          {(() => {
+                            const isTo = Boolean(leg.toEntrance);
+                            const ref = leg.toEntrance ?? leg.fromEntrance!;
+                            const label = isTo ? s.leg.metroEntrance(ref.num) : s.leg.metroExit(ref.num);
+                            const wc =
+                              ref.wheelchair && !/winda|lift|aufzug|ліфт/i.test(ref.num)
+                                ? ` (${s.leg.metroElevatorTag})`
+                                : '';
+                            return ref.hint ? `${label}${wc} · ${ref.hint}` : `${label}${wc}`;
+                          })()}
+                        </Text>
+                      ) : null}
                     </View>
                   </>
                 ) : isWalk ? (
