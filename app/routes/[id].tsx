@@ -53,8 +53,10 @@ import {
   ensureNotificationPermission,
   getTrackedTripSync,
   permissionDeniedMessage,
+  setTransferProtectionEnabled,
   startTracking,
   stopTracking,
+  updateTrackedConnection,
   useTrackedTrip,
   isTransferProtectionSupported,
 } from '../../src/services/notifications';
@@ -84,19 +86,20 @@ export default function RouteDetailsScreen() {
 
   const isTrackedThis = useMemo(() => {
     if (!trackedTrip) return false;
+    const targets = new Set([id, matchTrackId].filter(Boolean));
     const trackedId = trackedTrip.id ? normalizeConnectionId(trackedTrip.id) : '';
     const trackedConnId = trackedTrip.connection.id
       ? normalizeConnectionId(trackedTrip.connection.id)
       : '';
-    if (trackedId === matchTrackId || trackedConnId === matchTrackId) return true;
+    if (targets.has(trackedId) || targets.has(trackedConnId)) return true;
     try {
-      if (normalizeConnectionId(stableConnectionId(trackedTrip.connection)) === matchTrackId)
+      if (targets.has(normalizeConnectionId(stableConnectionId(trackedTrip.connection))))
         return true;
     } catch {
       // ignore
     }
     return false;
-  }, [trackedTrip, matchTrackId]);
+  }, [trackedTrip, id, matchTrackId]);
 
   const matchesRouteId = useCallback(
     (candidateId?: string | null) => {
@@ -170,10 +173,16 @@ export default function RouteDetailsScreen() {
   const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline);
   const item = liveItems[0] ?? null;
 
-  const handleApplyLegSwap = useCallback((nextConnection: Connection) => {
-    rememberPlannedConnection(nextConnection);
-    setSwappedBase(nextConnection);
-  }, []);
+  const handleApplyLegSwap = useCallback(
+    (nextConnection: Connection) => {
+      rememberPlannedConnection(nextConnection);
+      setSwappedBase(nextConnection);
+      if (isTrackedThis) {
+        void updateTrackedConnection(nextConnection, { reason: 'legSwap' });
+      }
+    },
+    [isTrackedThis],
+  );
 
   const { swapStates, swapLeg, retryLeg } = useLegAlternatives({
     connection: item,
@@ -193,10 +202,14 @@ export default function RouteDetailsScreen() {
     alarm && normalizeConnectionId(alarm.connectionId) === activeId ? alarm : null;
 
   useEffect(() => {
-    if (isTrackedThis && trackedTrip?.connection && loadedItem?.id !== trackedTrip.connection.id) {
+    if (!isTrackedThis || !trackedTrip?.connection) return;
+    if (loadedItem?.id !== trackedTrip.connection.id) {
       setItem(trackedTrip.connection);
     }
-  }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id]);
+    if (swappedBase && swappedBase.id !== trackedTrip.connection.id) {
+      setSwappedBase(trackedTrip.connection);
+    }
+  }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id, swappedBase]);
 
   const hasTransfers = item != null && hasTransfer(item);
   const [isSavedRoute, setIsSavedRoute] = useState(false);
@@ -252,6 +265,28 @@ export default function RouteDetailsScreen() {
     if (!item || trackingBusy) return;
     if (isTrackedThis && !enableProtection) {
       await stopTracking();
+      return;
+    }
+    if (isTrackedThis && enableProtection && !trackedTrip?.protectionEnabled) {
+      setTrackingBusy(true);
+      try {
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (!permission.granted) permission = await Location.requestForegroundPermissionsAsync();
+        const precise =
+          permission.granted &&
+          permission.android?.accuracy !== 'coarse' &&
+          permission.ios?.accuracy !== 'reduced';
+        if (!precise) {
+          Alert.alert(s.transferGuard.title, s.transferGuard.locationRequired, [
+            { text: s.common.cancel, style: 'cancel' },
+            { text: s.compass.openSettingsA11y, onPress: () => void Linking.openSettings() },
+          ]);
+          return;
+        }
+        await setTransferProtectionEnabled(true);
+      } finally {
+        setTrackingBusy(false);
+      }
       return;
     }
     setTrackingBusy(true);
@@ -584,6 +619,10 @@ export default function RouteDetailsScreen() {
                 legSwapStates={swapStates}
                 onSwapLeg={swapLeg}
                 onRetrySwapLeg={retryLeg}
+                transferState={
+                  isTrackedThis && trackedTrip?.protectionEnabled ? trackedTrip.transfer : undefined
+                }
+                onOpenTransferProtection={openTransferProtection}
               />
               <RouteMapCard
                 connection={item}

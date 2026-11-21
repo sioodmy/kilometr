@@ -1,10 +1,21 @@
-import type { Connection } from '../../types/models';
+import type { Connection, Leg } from '../../types/models';
 
-export function hasTransfer(connection: Pick<Connection, 'legs'>): boolean {
-  return connection.legs.filter((leg) => leg.mode !== 'walk').length > 1;
+/** Ochrona przesiadek ma sens dopiero od dwóch pojazdów: dojście piesze nie jest przesiadką. */
+export function hasTransfer(connection?: Pick<Connection, 'legs'> | null): boolean {
+  let rides = 0;
+  for (const leg of connection?.legs ?? []) {
+    if (leg.mode !== 'walk' && ++rides >= 2) return true;
+  }
+  return false;
 }
 
-type TransferStatus =
+/** Pociągów (ani kursów krajowych pl:) nie podmieniamy automatyczną wymianą miejską. */
+export function isProtectedTrainLeg(leg?: Pick<Leg, 'mode' | 'tripId'> | null): boolean {
+  if (!leg) return false;
+  return leg.mode === 'train' || Boolean(leg.tripId?.startsWith('pl:'));
+}
+
+export type TransferStatus =
   | 'preparing'
   | 'waiting'
   | 'safe'
@@ -17,14 +28,31 @@ type TransferStatus =
   | 'unavailable'
   | 'complete';
 
-/** Następny pociąg po spóźnieniu na połączenie międzyregionalne (tryb konduktora). */
+export type TransferDelaySource = 'gps' | 'live' | 'schedule';
+
 export interface NextTrainInfo {
-  /** Linia z kategorią (np. „IC 2522”). */
   label: string;
-  /** Odjazd z tej samej stacji (ms epoki). */
-  departAtMs: number;
-  /** Nazwa handlowa pociągu (np. „SILESIUM”), jeśli jest. */
   trainName?: string;
+  departAtMs: number;
+}
+
+export interface TransferSegmentSummary {
+  /** Indeks pierwszego (dojeżdżającego) odcinka w connection.legs. */
+  legIndex: number;
+  /** Indeks kolejnego odcinka w connection.legs. */
+  nextLegIndex: number;
+  fromLine: string;
+  fromMode: Leg['mode'];
+  toLine: string;
+  toMode: Leg['mode'];
+  transferStop: string;
+  walkM: number;
+  walkSec: number;
+  arrivalAtMs: number;
+  departureAtMs: number;
+  slackSec: number;
+  state: 'passed' | 'active' | 'upcoming';
+  isTrainNext: boolean;
 }
 
 export interface TransferAlternative {
@@ -32,11 +60,19 @@ export interface TransferAlternative {
   connection: Connection;
   activeLegIndex: number;
   nextLine: string;
+  nextMode?: Leg['mode'];
   transferStop: string;
   departureAtMs: number;
   arrivalAtMs: number;
   validUntil: number;
   kind: 'sameStop' | 'stayOn' | 'fromHere';
+  source?: 'legSwap' | 'raptor';
+  /** Różnica czasu przyjazdu do celu względem bieżącego planu (w minutach). */
+  deltaArrivalMin?: number;
+  /** Szacowany zapas czasu na przesiadkę w tej propozycji (w sekundach). */
+  slackSec?: number;
+  /** Dystans dojścia pieszego na przesiadce (w metrach). */
+  walkM?: number;
 }
 
 export interface TransferProtectionState {
@@ -45,18 +81,31 @@ export interface TransferProtectionState {
   updatedAt: number;
   revision: number;
   activeLegIndex?: number;
+  currentLine?: string;
+  currentMode?: Leg['mode'];
+  nextLine?: string;
+  nextMode?: Leg['mode'];
+  transferStop?: string;
   delaySec?: number;
   slackSec?: number;
-  nextLine?: string;
-  currentLine?: string;
-  transferStop?: string;
+  walkSec?: number;
+  walkM?: number;
+  bufferSec?: number;
   departureAtMs?: number;
   arrivalAtMs?: number;
   departureSource?: 'live' | 'schedule';
-  reason?: 'location' | 'offRoute' | 'routing' | 'expired';
-  connection?: Connection;
-  alternative?: TransferAlternative;
-  /** Tryb konduktora: następny pociąg po spóźnieniu na międzyregionalny. */
-  nextTrain?: NextTrainInfo;
+  delaySource?: TransferDelaySource;
+  reason?: 'permission' | 'offRoute' | 'routing' | 'expired';
   scope?: 'foreground' | 'background';
+  nextTrain?: NextTrainInfo;
+  /** Najlepsza propozycja (utrzymana dla kompatybilności z natywnym serwisem i testami). */
+  alternative?: TransferAlternative;
+  /** Wszystkie aktualne, posortowane propozycje (maks. 3). */
+  alternatives?: TransferAlternative[];
+  /** Przegląd wszystkich przesiadek na trasie. */
+  transfers?: TransferSegmentSummary[];
+  /** Oznaczenie, że użytkownik ręcznie podmienił odcinek w trakcie ochrony. */
+  swappedByUser?: boolean;
+  /** Pole tylko po stronie serwisu natywnego: nie może nadpisywać planu bez zgody. */
+  connection?: Connection;
 }

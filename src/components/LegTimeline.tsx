@@ -10,6 +10,8 @@ import {
   ChevronRight,
   Footprints,
   MapPin,
+  ShieldAlert,
+  ShieldCheck,
   Ticket,
   TrainFront,
   TramFront,
@@ -26,6 +28,8 @@ import type { Leg, LegStop, MetroEntranceRef } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
 import { SwipeableLegCard } from './SwipeableLegCard';
 import type { LegSwapSlotState, SwapDirection } from '../hooks/useLegAlternatives';
+import type { TransferProtectionState } from '../services/notifications/transferTypes';
+import { formatSlackLabel, transferTone } from './TransferProtectionCard';
 import { useRailAmenities } from './RailAmenities';
 import { StationAmenities } from './StationAmenities';
 import { shouldShowStationAmenities } from './stationAmenitiesGate';
@@ -1487,6 +1491,63 @@ function isWalkingNow(legs: Leg[], nowSec: number): boolean {
   return false;
 }
 
+/** Interaktywna pigułka stanu ochrony przesiadki na aktywnym łączniku między odcinkami. */
+function TransferGuardPill({
+  state,
+  onPress,
+}: {
+  state: TransferProtectionState;
+  onPress?: () => void;
+}) {
+  const t = useStrings();
+  const tone = transferTone(state);
+  const bg =
+    tone === 'danger'
+      ? scheme.errorContainer
+      : tone === 'warning'
+        ? scheme.warningContainer
+        : tone === 'safe'
+          ? scheme.primaryContainer
+          : scheme.surfaceContainerHigh;
+  const fg =
+    tone === 'danger'
+      ? scheme.onErrorContainer
+      : tone === 'warning'
+        ? scheme.onWarningContainer
+        : tone === 'safe'
+          ? scheme.onPrimaryContainer
+          : scheme.onSurfaceVariant;
+  const Icon = tone === 'warning' || tone === 'danger' ? ShieldAlert : ShieldCheck;
+  const altCount = state.alternatives?.length ?? (state.alternative ? 1 : 0);
+  const label =
+    state.status === 'alternative' && altCount > 0
+      ? `${t.transferGuard.alternativesCount(altCount)} · ${t.transferGuard.dockOpenAction}`
+      : state.status === 'conductor'
+        ? t.transferGuard.conductorTitle
+        : formatSlackLabel(state, t) ?? t.transferGuard.active;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`${t.transferGuard.title}: ${label}`}
+      style={({ pressed }) => [
+        s.guardPill,
+        { backgroundColor: bg },
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      <Icon size={14} color={fg} />
+      <Text style={[s.guardPillText, { color: fg }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {onPress && <ChevronRight size={13} color={fg} />}
+    </Pressable>
+  );
+}
+
 /** Pionowa oś podróży M3 Expressive z kartami przejazdu i łącznikami pieszymi / przesiadkami. */
 export function LegTimeline({
   legs,
@@ -1495,6 +1556,8 @@ export function LegTimeline({
   legSwapStates,
   onSwapLeg,
   onRetrySwapLeg,
+  transferState,
+  onOpenTransferProtection,
 }: {
   legs: Leg[];
   observeOnly?: boolean;
@@ -1502,6 +1565,8 @@ export function LegTimeline({
   legSwapStates?: ReadonlyMap<string, LegSwapSlotState>;
   onSwapLeg?: (legId: string, direction: SwapDirection) => void;
   onRetrySwapLeg?: (legId: string) => void;
+  transferState?: TransferProtectionState;
+  onOpenTransferProtection?: () => void;
 }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1545,6 +1610,19 @@ export function LegTimeline({
   const firstTransitId = boardedDepartAt
     ? displayLegs.find((l) => l.mode !== 'walk')?.id
     : undefined;
+
+  const isProtectedBridge = (fromLeg?: Leg | null, toLeg?: Leg | null) =>
+    Boolean(
+      transferState &&
+        fromLeg &&
+        toLeg &&
+        fromLeg.mode !== 'walk' &&
+        toLeg.mode !== 'walk' &&
+        transferState.currentLine &&
+        transferState.nextLine &&
+        fromLeg.line === transferState.currentLine &&
+        toLeg.line === transferState.nextLine,
+    );
 
   return (
     <View style={s.list}>
@@ -1652,6 +1730,9 @@ export function LegTimeline({
                 {leg.toEntrance ? (
                   <MetroEntranceBlock t={t} kind="entrance" entrance={leg.toEntrance} compactMargin />
                 ) : null}
+                {isTransferWalk && transferState && isProtectedBridge(prevLeg, nextLeg) ? (
+                  <TransferGuardPill state={transferState} onPress={onOpenTransferProtection} />
+                ) : null}
               </View>
             </View>
           );
@@ -1745,6 +1826,9 @@ export function LegTimeline({
                     <Text style={s.connectorSub} numberOfLines={1}>
                       {`${t.leg.toPrefix}${nextPlatform}`}
                     </Text>
+                  ) : null}
+                  {transferState && isProtectedBridge(leg, nextLeg) ? (
+                    <TransferGuardPill state={transferState} onPress={onOpenTransferProtection} />
                   ) : null}
                 </View>
               </View>
@@ -2312,6 +2396,21 @@ const s = StyleSheet.create({
   entranceConnectorWrap: {
     gap: 6,
     marginTop: 6,
+  },
+  guardPill: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    minHeight: 30,
+  },
+  guardPillText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   connectorContentCol: {
     flex: 1,
