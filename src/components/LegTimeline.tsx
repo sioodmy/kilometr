@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -24,6 +24,8 @@ import Animated, {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop, MetroEntranceRef } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
+import { SwipeableLegCard } from './SwipeableLegCard';
+import type { LegSwapSlotState, SwapDirection } from '../hooks/useLegAlternatives';
 import { useRailAmenities } from './RailAmenities';
 import { StationAmenities } from './StationAmenities';
 import { shouldShowStationAmenities } from './stationAmenitiesGate';
@@ -628,6 +630,7 @@ const TransitLegCard = memo(function TransitLegCard({
   showStationAmenities,
   showFromEntrance,
   showToEntrance,
+  footer,
 }: {
   leg: Leg;
   expanded: boolean;
@@ -638,6 +641,7 @@ const TransitLegCard = memo(function TransitLegCard({
   showStationAmenities?: boolean;
   showFromEntrance?: boolean;
   showToEntrance?: boolean;
+  footer?: ReactNode;
 }) {
   const t = useStrings();
   const router = useRouter();
@@ -1463,6 +1467,7 @@ const TransitLegCard = memo(function TransitLegCard({
           ) : null}
         </View>
       </View>
+      {footer}
     </View>
   );
 });
@@ -1487,10 +1492,16 @@ export function LegTimeline({
   legs,
   observeOnly = false,
   boardedDepartAt,
+  legSwapStates,
+  onSwapLeg,
+  onRetrySwapLeg,
 }: {
   legs: Leg[];
   observeOnly?: boolean;
   boardedDepartAt?: string;
+  legSwapStates?: ReadonlyMap<string, LegSwapSlotState>;
+  onSwapLeg?: (legId: string, direction: SwapDirection) => void;
+  onRetrySwapLeg?: (legId: string) => void;
 }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1675,18 +1686,30 @@ export function LegTimeline({
             ? formatPlatformLabel(t, nextLeg.platformCode, nextLeg.mode, nextLeg.fromStop, nextLeg.trackCode)
             : null;
 
+        const swapSlot = legSwapStates?.get(leg.id);
+
         return (
           <View key={leg.id} style={s.cardContainer}>
-            <TransitLegCard
-              leg={leg}
-              expanded={expandedId === leg.id}
-              userLocation={observeOnly || expandedId !== leg.id ? null : location}
-              allowLive={!observeOnly || leg.live}
-              boardedDepartAt={leg.id === firstTransitId ? boardedDepartAt : undefined}
-              showStationAmenities={showStationAmenities}
-              showFromEntrance={showFromEntrance}
-              showToEntrance={showToEntrance}
-              onToggle={toggleLeg}
+            <SwipeableLegCard
+              legId={leg.id}
+              slot={swapSlot}
+              currentLine={leg.line}
+              onSwap={onSwapLeg}
+              onRetry={onRetrySwapLeg}
+              renderCard={(footer) => (
+                <TransitLegCard
+                  leg={leg}
+                  expanded={expandedId === leg.id}
+                  userLocation={observeOnly || expandedId !== leg.id ? null : location}
+                  allowLive={!observeOnly || leg.live}
+                  boardedDepartAt={leg.id === firstTransitId ? boardedDepartAt : undefined}
+                  showStationAmenities={showStationAmenities}
+                  showFromEntrance={showFromEntrance}
+                  showToEntrance={showToEntrance}
+                  onToggle={toggleLeg}
+                  footer={footer}
+                />
+              )}
             />
 
             {uncertainTransfer ? (

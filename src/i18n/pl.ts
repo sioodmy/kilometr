@@ -2474,6 +2474,21 @@ export const pl = {
     metroElevatorTag: 'winda',
     liveAgeShort: (s: number) => `${s} s temu`,
     stopsLoading: 'Wczytuję trasę…',
+    swapEarlier: 'Wcześniejszy',
+    swapLater: 'Późniejszy',
+    swapLoading: 'Szukam kursów…',
+    swapNoEarlier: 'Brak wcześniejszego',
+    swapNoLater: 'Brak późniejszego',
+    swapError: 'Nie udało się sprawdzić innych kursów',
+    swapRetry: 'Ponów',
+    swapEarlierA11y: (line: string, time: string) =>
+      `Wcześniejszy kurs: linia ${line}, odjazd ${time}`,
+    swapLaterA11y: (line: string, time: string) =>
+      `Późniejszy kurs: linia ${line}, odjazd ${time}`,
+    swapLoadMoreEarlierA11y: 'Sprawdź wcześniejsze kursy',
+    swapLoadMoreLaterA11y: 'Sprawdź późniejsze kursy',
+    swapCounterA11y: (current: number, total: number) =>
+      `Opcja ${current} z ${total}. Przesuń kartę w lewo lub prawo, aby zmienić kurs.`,
   },
   compass: {
     fullscreen: 'Nawigacja na pełnym ekranie',

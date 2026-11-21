@@ -28,7 +28,8 @@ import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService, subscribeSavedRoutes } from '../../src/services';
 import * as Haptics from 'expo-haptics';
-import { getPlannedConnection } from '../../src/services/api';
+import { getPlannedConnection, rememberPlannedConnection } from '../../src/services/api';
+import { useLegAlternatives } from '../../src/hooks/useLegAlternatives';
 import {
   normalizeConnectionId,
   stableConnectionId,
@@ -75,20 +76,27 @@ export default function RouteDetailsScreen() {
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
 
+  const [swappedBase, setSwappedBase] = useState<Connection | null>(null);
+  useEffect(() => {
+    setSwappedBase(null);
+  }, [id]);
+  const matchTrackId = swappedBase ? normalizeConnectionId(swappedBase.id) : id;
+
   const isTrackedThis = useMemo(() => {
     if (!trackedTrip) return false;
     const trackedId = trackedTrip.id ? normalizeConnectionId(trackedTrip.id) : '';
     const trackedConnId = trackedTrip.connection.id
       ? normalizeConnectionId(trackedTrip.connection.id)
       : '';
-    if (trackedId === id || trackedConnId === id) return true;
+    if (trackedId === matchTrackId || trackedConnId === matchTrackId) return true;
     try {
-      if (normalizeConnectionId(stableConnectionId(trackedTrip.connection)) === id) return true;
+      if (normalizeConnectionId(stableConnectionId(trackedTrip.connection)) === matchTrackId)
+        return true;
     } catch {
       // ignore
     }
     return false;
-  }, [trackedTrip, id]);
+  }, [trackedTrip, matchTrackId]);
 
   const matchesRouteId = useCallback(
     (candidateId?: string | null) => {
@@ -115,6 +123,7 @@ export default function RouteDetailsScreen() {
       : matchesRouteId(loadedItem?.id)
         ? loadedItem
         : (immediateItem ?? null);
+  const effectiveRawItem = swappedBase ?? rawItem;
 
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
   const [liveTick, setLiveTick] = useState(0);
@@ -153,20 +162,35 @@ export default function RouteDetailsScreen() {
       };
     }, []),
   );
-  const rawItems = useMemo(() => (rawItem ? [rawItem] : []), [rawItem]);
+  const rawItems = useMemo(() => (effectiveRawItem ? [effectiveRawItem] : []), [effectiveRawItem]);
   const tripDelays = useMemo(
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
   const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline);
   const item = liveItems[0] ?? null;
+
+  const handleApplyLegSwap = useCallback((nextConnection: Connection) => {
+    rememberPlannedConnection(nextConnection);
+    setSwappedBase(nextConnection);
+  }, []);
+
+  const { swapStates, swapLeg, retryLeg } = useLegAlternatives({
+    connection: item,
+    routeKey: id,
+    tripDelays,
+    onApplySwap: handleApplyLegSwap,
+  });
+
+  const activeId = normalizeConnectionId(item?.id ?? id);
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [alarmOpen, setAlarmOpen] = useState(false);
   const [alarmFocused, setAlarmFocused] = useState(false);
   const alarm = useDepartureAlarm();
-  const currentAlarm = alarm?.connectionId === id ? alarm : null;
+  const currentAlarm =
+    alarm && normalizeConnectionId(alarm.connectionId) === activeId ? alarm : null;
 
   useEffect(() => {
     if (isTrackedThis && trackedTrip?.connection && loadedItem?.id !== trackedTrip.connection.id) {
@@ -557,6 +581,9 @@ export default function RouteDetailsScreen() {
               <LegTimeline
                 legs={item.legs}
                 boardedDepartAt={item.boarded ? item.departAt : undefined}
+                legSwapStates={swapStates}
+                onSwapLeg={swapLeg}
+                onRetrySwapLeg={retryLeg}
               />
               <RouteMapCard
                 connection={item}

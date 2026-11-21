@@ -182,11 +182,19 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   const { cityId } = useActiveCity();
   const [attempt, setAttempt] = useState(0);
   const routeKey = useMemo(() => (route ? routeBridgeKey(route) : null), [route]);
+  const hasRoute = Boolean(route);
+  const latestRouteRef = useRef<MapRoute | null>(route);
+  latestRouteRef.current = route;
+  const latestRouteKeyRef = useRef<string | null>(routeKey);
+  latestRouteKeyRef.current = routeKey;
   const sentRouteKey = useRef<string | null>(null);
   const sentRouteId = useRef<string | null>(null);
 
   const html = useMemo(() => {
-    let center = routeCenter(route);
+    const bootRoute = latestRouteRef.current;
+    sentRouteKey.current = bootRoute ? routeBridgeKey(bootRoute) : null;
+    sentRouteId.current = bootRoute?.id ?? null;
+    let center = routeCenter(bootRoute);
     if (!center) {
       try {
         const c = getActiveCitySync().center;
@@ -196,7 +204,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       }
     }
     return buildRouteMapDocument({
-      route,
+      route: bootRoute,
       vehicle,
       selectedLegId,
       offlineBase,
@@ -206,11 +214,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       maxZoom,
       fitOnGeometry,
     });
-    // Tylko to, co wymaga nowego dokumentu. Trasa, pojazd, wybór nogi i marginesy
-    // idą potem wiadomościami (efekty niżej); nowe `html` przeładowuje cały
-    // MapLibre w WebView, czyli kafle i kadr przy każdym ticku pojazdu.
+    // Tylko to, co wymaga nowego dokumentu. Podmiana trasy (np. przesunięcie karty nogi),
+    // pojazd, wybór nogi i marginesy idą wiadomościami przez mostek bez przeładowania WebView.
     // cityId: ekran nie jest odmontowywany przy zmianie miasta (stos natywny).
-  }, [route?.id, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
+  }, [hasRoute, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
 
   const send = useCallback((msg: MapInMessage) => {
     webRef.current?.injectJavaScript(
@@ -284,6 +291,14 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         return;
       }
       if (msg.t === 'ready') {
+        const latest = latestRouteRef.current;
+        const latestKey = latestRouteKeyRef.current;
+        if (latest && latestKey && latestKey !== sentRouteKey.current) {
+          const refit = sentRouteId.current !== latest.id;
+          sentRouteKey.current = latestKey;
+          sentRouteId.current = latest.id;
+          send({ t: 'route', route: latest, fit: refit, pad: padRef.current });
+        }
         if (selectedLegId) {
           sendSelect();
         }

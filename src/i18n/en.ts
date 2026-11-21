@@ -1987,6 +1987,21 @@ export const en: Strings = {
     metroElevatorTag: 'lift',
     liveAgeShort: (s: number) => `${s}s ago`,
     stopsLoading: 'Loading stops…',
+    swapEarlier: 'Earlier',
+    swapLater: 'Later',
+    swapLoading: 'Finding trips…',
+    swapNoEarlier: 'No earlier trip',
+    swapNoLater: 'No later trip',
+    swapError: 'Could not load other trips',
+    swapRetry: 'Retry',
+    swapEarlierA11y: (line: string, time: string) =>
+      `Earlier trip: line ${line}, departs ${time}`,
+    swapLaterA11y: (line: string, time: string) =>
+      `Later trip: line ${line}, departs ${time}`,
+    swapLoadMoreEarlierA11y: 'Check earlier trips',
+    swapLoadMoreLaterA11y: 'Check later trips',
+    swapCounterA11y: (current: number, total: number) =>
+      `Option ${current} of ${total}. Swipe card left or right to switch trip.`,
   },
   compass: {
     fullscreen: 'Full screen navigation',

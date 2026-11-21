@@ -2005,6 +2005,21 @@ export const de: Strings = {
     metroElevatorTag: 'Aufzug',
     liveAgeShort: (s: number) => `vor ${s} s`,
     stopsLoading: 'Halte werden geladen…',
+    swapEarlier: 'Früher',
+    swapLater: 'Später',
+    swapLoading: 'Suche Fahrten…',
+    swapNoEarlier: 'Keine frühere Fahrt',
+    swapNoLater: 'Keine spätere Fahrt',
+    swapError: 'Andere Fahrten konnten nicht geladen werden',
+    swapRetry: 'Erneut',
+    swapEarlierA11y: (line: string, time: string) =>
+      `Frühere Fahrt: Linie ${line}, Abfahrt ${time}`,
+    swapLaterA11y: (line: string, time: string) =>
+      `Spätere Fahrt: Linie ${line}, Abfahrt ${time}`,
+    swapLoadMoreEarlierA11y: 'Frühere Fahrten prüfen',
+    swapLoadMoreLaterA11y: 'Spätere Fahrten prüfen',
+    swapCounterA11y: (current: number, total: number) =>
+      `Option ${current} von ${total}. Karte nach links oder rechts wischen, um die Fahrt zu wechseln.`,
   },
   compass: {
     fullscreen: 'Navigation im Vollbild',

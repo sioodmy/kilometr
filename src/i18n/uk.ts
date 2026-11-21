@@ -2491,6 +2491,21 @@ export const uk: Strings = {
     metroElevatorTag: 'ліфт',
     liveAgeShort: (s: number) => `${s} с тому`,
     stopsLoading: 'Завантаження зупинок…',
+    swapEarlier: 'Раніше',
+    swapLater: 'Пізніше',
+    swapLoading: 'Шукаю рейси…',
+    swapNoEarlier: 'Немає ранішого',
+    swapNoLater: 'Немає пізнішого',
+    swapError: 'Не вдалося перевірити інші рейси',
+    swapRetry: 'Повторити',
+    swapEarlierA11y: (line: string, time: string) =>
+      `Раніший рейс: лінія ${line}, відправлення ${time}`,
+    swapLaterA11y: (line: string, time: string) =>
+      `Пізніший рейс: лінія ${line}, відправлення ${time}`,
+    swapLoadMoreEarlierA11y: 'Перевірити раніші рейси',
+    swapLoadMoreLaterA11y: 'Перевірити пізніші рейси',
+    swapCounterA11y: (current: number, total: number) =>
+      `Варіант ${current} з ${total}. Проведіть картку вліво або вправо, щоб змінити рейс.`,
   },
   compass: {
     fullscreen: 'Навігація на весь екран',
