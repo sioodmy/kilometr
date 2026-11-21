@@ -1,134 +1,264 @@
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  AppState,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft } from '../src/components/icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  RouteOff,
+} from '../src/components/icons';
+import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
+import { SpringPressable } from '../src/components/SpringPressable';
+import { TimetableDeparturesView } from '../src/components/TimetableDeparturesView';
 import { getLocaleSync, useStrings } from '../src/i18n';
-import { LineBadge } from '../src/components/LineBadge';
-import { formatTimetableDate, timetableClock, timetableToday } from '../src/services/lineTimetable';
+import {
+  formatTimetableDateCompact,
+  parseClockToSeconds,
+  shiftTimetableDate,
+  timetableToday,
+} from '../src/services/lineTimetable';
 import { useLineTimetable } from '../src/services/useLineTimetable';
-import { scheme, shape, type } from '../src/theme/tokens';
+import { resolveRailStrokeColor } from '../src/theme/colorContrast';
+import { elev, scheme, shape, type } from '../src/theme/tokens';
 
+/** Zwraca aktualny czas dnia w sekundach w strefie Europe/Warsaw. */
+function nowSecondsInWarsaw(): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Warsaw',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  const s = Number(parts.find((p) => p.type === 'second')?.value ?? 0);
+  return (h % 24) * 3600 + m * 60 + s;
+}
+
+/** Pełnoekranowy widok odjazdów z przystanku spójny z ekranem rozkładu linii. */
 export default function LineDeparturesScreen() {
   const params = useLocalSearchParams<{
     routeId: string;
     date: string;
     patternId: string;
     stopIndex: string;
+    departAt?: string;
     dbTarget?: string;
   }>();
+
   const routeId = params.routeId ?? '';
-  const date = params.date ?? timetableToday();
+  const initialDate = params.date ?? timetableToday();
   const dbTarget = params.dbTarget;
+  const [date, setDate] = useState(initialDate);
+  const isToday = date === timetableToday();
+  const [nowSec, setNowSec] = useState(nowSecondsInWarsaw);
+
+  useEffect(() => {
+    setDate(initialDate);
+  }, [initialDate]);
+
+  useEffect(() => {
+    if (!isToday) return;
+    setNowSec(nowSecondsInWarsaw());
+    const tick = setInterval(() => setNowSec(nowSecondsInWarsaw()), 30_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setNowSec(nowSecondsInWarsaw());
+    });
+    return () => {
+      clearInterval(tick);
+      sub.remove();
+    };
+  }, [isToday]);
+
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const s = useStrings();
   const t = s.lineTimetable;
   const { data, loading, error, retry } = useLineTimetable(routeId, date, { dbTarget });
+
   const pattern = data?.patterns.find((item) => item.id === params.patternId);
   const stopIndex = Number(params.stopIndex ?? -1);
   const stop =
     Number.isInteger(stopIndex) && stopIndex >= 0 ? pattern?.stops[stopIndex] : undefined;
   const terminal = !!stop && stopIndex === (pattern?.stops.length ?? 0) - 1;
-  const hours = useMemo(() => {
-    const groups = new Map<number, string[]>();
-    for (const seconds of stop?.departures ?? []) {
-      const hour = Math.floor(seconds / 3600);
-      const minutes = groups.get(hour) ?? [];
-      const minute = timetableClock(seconds).slice(3);
-      if (!minutes.includes(minute)) minutes.push(minute);
-      groups.set(hour, minutes);
-    }
-    return [...groups];
-  }, [stop]);
-  const dateLabel = useMemo(
-    () => formatTimetableDate(date, getLocaleSync()),
+  const dateCompact = useMemo(
+    () => formatTimetableDateCompact(date, getLocaleSync()),
     [date, s],
   );
+  const plannedDepartSec = useMemo(
+    () => parseClockToSeconds(params.departAt),
+    [params.departAt],
+  );
+
+  const railStroke = useMemo(() => {
+    if (!data?.line) return scheme.primary;
+    const { bg } = resolveLegBadgeColors({
+      mode: data.line.mode,
+      line: data.line.shortName,
+    });
+    return resolveRailStrokeColor(bg, scheme.surfaceContainer);
+  }, [data?.line]);
+
+  const goBack = () =>
+    router.canGoBack()
+      ? router.back()
+      : router.replace({
+          pathname: '/line',
+          params: { routeId, ...(dbTarget ? { dbTarget } : {}) },
+        });
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.toolbar}>
-        <Pressable
-          onPress={() =>
-            router.canGoBack()
-              ? router.back()
-              : router.replace({
-                  pathname: '/line',
-                  params: { routeId, ...(dbTarget ? { dbTarget } : {}) },
-                })
-          }
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <View style={styles.topBar}>
+        <SpringPressable
+          onPress={goBack}
+          haptic="selection"
+          scaleDelta={0.05}
           accessibilityRole="button"
           accessibilityLabel={t.back}
-          style={styles.iconButton}
-          android_ripple={{ color: scheme.outlineVariant }}
+          style={styles.backBtn}
         >
-          <ArrowLeft size={24} color={scheme.onSurface} />
-        </Pressable>
-        <Text style={styles.toolbarTitle}>{t.departures}</Text>
+          <ChevronLeft size={22} color={scheme.onSurface} />
+        </SpringPressable>
+        <Text style={styles.topBarTitle} numberOfLines={1}>
+          {t.departures}
+        </Text>
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, 16) + 28 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {stop && data?.line && (
-          <>
-            <View style={styles.identity}>
-              <LineBadge line={data.line.shortName} mode={data.line.mode} size="large" />
-              <View style={styles.stopText}>
+          <View style={styles.heroCard}>
+            <View style={styles.heroIdentity}>
+              <LineBadge
+                line={data.line.shortName}
+                mode={data.line.mode}
+                size="large"
+              />
+              <View style={styles.heroTextCol}>
                 <Text style={styles.stopName} accessibilityRole="header">
                   {stop.name}
                 </Text>
-                {!!stop.code && <Text style={styles.subtitle}>{t.stopCode(stop.code)}</Text>}
+                {!!stop.code && (
+                  <View style={styles.codePill}>
+                    <Text style={styles.codePillText}>{t.stopCode(stop.code)}</Text>
+                  </View>
+                )}
               </View>
             </View>
-            <View style={styles.context}>
-              <Text style={styles.subtitle}>{t.direction}</Text>
-              <Text style={styles.direction}>{pattern?.headsign}</Text>
-              <Text style={styles.date}>{dateLabel}</Text>
+
+            <View style={styles.directionBar}>
+              <View style={[styles.directionDot, { backgroundColor: railStroke }]} />
+              <View style={styles.directionCol}>
+                <Text style={styles.directionEyebrow}>{t.direction}</Text>
+                <Text style={styles.directionValue} numberOfLines={2}>
+                  {pattern?.headsign}
+                </Text>
+              </View>
             </View>
-          </>
+          </View>
         )}
-        {loading || error || !stop || terminal ? (
-          <View style={styles.state} accessibilityLiveRegion="polite">
-            {loading && <ActivityIndicator color={scheme.primary} />}
-            <Text style={styles.stateText} accessibilityRole={error ? 'alert' : undefined}>
-              {loading ? t.loading : error ? t.error : terminal ? t.terminal : t.missingStop}
+
+        <View style={styles.dateBar}>
+          <SpringPressable
+            onPress={() => setDate(shiftTimetableDate(date, -1))}
+            haptic="selection"
+            scaleDelta={0.06}
+            accessibilityRole="button"
+            accessibilityLabel={t.previousDay}
+            style={styles.dateStepBtn}
+          >
+            <ChevronLeft size={20} color={scheme.onSurface} />
+          </SpringPressable>
+
+          <View style={styles.dateCenter}>
+            <Text style={styles.dateLabel} numberOfLines={1}>
+              {dateCompact}
             </Text>
-            {terminal && <Text style={styles.subtitle}>{t.terminalHint}</Text>}
-            {error && (
-              <Pressable onPress={retry} accessibilityRole="button" style={styles.retry}>
-                <Text style={styles.retryText}>{s.common.retry}</Text>
-              </Pressable>
+            {!isToday && (
+              <SpringPressable
+                onPress={() => setDate(timetableToday())}
+                haptic="selection"
+                scaleDelta={0.04}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                style={styles.todayPill}
+              >
+                <Text style={styles.todayPillText}>{s.common.today}</Text>
+              </SpringPressable>
+            )}
+          </View>
+
+          <SpringPressable
+            onPress={() => setDate(shiftTimetableDate(date, 1))}
+            haptic="selection"
+            scaleDelta={0.06}
+            accessibilityRole="button"
+            accessibilityLabel={t.nextDay}
+            style={styles.dateStepBtn}
+          >
+            <ChevronRight size={20} color={scheme.onSurface} />
+          </SpringPressable>
+        </View>
+
+        {loading || error || !stop ? (
+          <View style={styles.stateCard} accessibilityLiveRegion="polite">
+            {loading ? (
+              <>
+                <ActivityIndicator color={scheme.primary} size="small" />
+                <Text style={styles.stateBody}>{t.loading}</Text>
+              </>
+            ) : error ? (
+              <>
+                <View style={styles.stateIconCircle}>
+                  <AlertCircle size={24} color={scheme.onSecondaryContainer} />
+                </View>
+                <Text style={styles.stateBody} accessibilityRole="alert">
+                  {t.error}
+                </Text>
+                <SpringPressable
+                  onPress={retry}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  style={styles.statePrimaryBtn}
+                >
+                  <RefreshCw size={16} color={scheme.onPrimary} />
+                  <Text style={styles.statePrimaryBtnText}>{s.common.retry}</Text>
+                </SpringPressable>
+              </>
+            ) : (
+              <>
+                <View style={styles.stateIconCircle}>
+                  <RouteOff size={24} color={scheme.onSecondaryContainer} />
+                </View>
+                <Text style={styles.stateBody}>{t.missingStop}</Text>
+              </>
             )}
           </View>
         ) : (
-          <View style={styles.schedule}>
-            <Text style={styles.subtitle}>{t.scheduled}</Text>
-            {hours.map(([hour, minutes]) => (
-              <View
-                key={hour}
-                style={styles.hourRow}
-                accessible
-                accessibilityLabel={minutes
-                  .map((minute) => {
-                    const time = timetableClock(hour * 3600 + Number(minute) * 60);
-                    return hour >= 24 ? t.nextDayTime(time, Math.floor(hour / 24)) : time;
-                  })
-                  .join(', ')}
-              >
-                <View style={styles.hourLabel}>
-                  <Text style={styles.hour}>{hour % 24}</Text>
-                  {hour >= 24 && (
-                    <Text style={styles.subtitle}>{t.dayOffset(Math.floor(hour / 24))}</Text>
-                  )}
-                </View>
-                <View style={styles.minutes}>
-                  {minutes.map((minute) => (
-                    <Text key={minute} style={styles.minute}>
-                      {minute}
-                    </Text>
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
+          <TimetableDeparturesView
+            stop={stop}
+            terminal={terminal}
+            isToday={isToday}
+            nowSec={nowSec}
+            railStroke={railStroke}
+            plannedDepartSec={plannedDepartSec}
+          />
         )}
       </ScrollView>
     </SafeAreaView>
@@ -136,65 +266,199 @@ export default function LineDeparturesScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: scheme.surface },
-  toolbar: {
+  screen: {
+    flex: 1,
+    backgroundColor: scheme.surface,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topBarTitle: {
+    flex: 1,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: scheme.onSurface,
+  },
+  content: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    gap: 14,
+  },
+  heroCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 16,
+    gap: 14,
+    ...elev.level1,
+  },
+  heroIdentity: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  heroTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  stopName: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    color: scheme.onSurface,
+  },
+  codePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: shape.small,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  codePillText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  directionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.large,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  directionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: shape.full,
+    flexShrink: 0,
+  },
+  directionCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  directionEyebrow: {
+    fontSize: 10.5,
+    lineHeight: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: scheme.onSurfaceVariant,
+  },
+  directionValue: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  dateBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    padding: 5,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
-  toolbarTitle: { ...type.titleMedium, color: scheme.onSurface, flex: 1 },
-  iconButton: {
-    minWidth: 48,
-    minHeight: 48,
+  dateStepBtn: {
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  content: {
-    padding: 24,
-    paddingBottom: 32,
-    maxWidth: 720,
-    width: '100%',
-    alignSelf: 'center',
-    gap: 24,
-  },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  stopText: { flex: 1, gap: 6 },
-  stopName: { ...type.headlineSmall, fontWeight: '700', color: scheme.onSurface },
-  subtitle: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  context: { gap: 6 },
-  direction: { ...type.titleMedium, color: scheme.onSurface },
-  date: { ...type.bodyMedium, color: scheme.onSurfaceVariant, marginTop: 8 },
-  schedule: { gap: 12 },
-  hourRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 2 },
-  hourLabel: { gap: 2 },
-  hour: {
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '700',
-    color: scheme.primary,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
-  },
-  minutes: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 2 },
-  minute: {
-    ...type.bodyMedium,
-    lineHeight: 18,
-    fontWeight: '600',
-    color: scheme.onSurface,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
-  },
-  state: { paddingVertical: 32, alignItems: 'center', gap: 16 },
-  stateText: { ...type.bodyLarge, color: scheme.onSurfaceVariant, textAlign: 'center' },
-  retry: {
-    minHeight: 48,
-    paddingHorizontal: 24,
+  dateCenter: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  dateLabel: {
+    ...type.titleSmall,
+    fontSize: 15,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    textAlign: 'center',
+  },
+  todayPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+  },
+  todayPillText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+  },
+  stateCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: 'center',
+    gap: 14,
+    ...elev.level1,
+  },
+  stateIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stateBody: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  statePrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 48,
+    paddingHorizontal: 22,
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
+    justifyContent: 'center',
   },
-  retryText: { ...type.labelLarge, color: scheme.onPrimary },
+  statePrimaryBtnText: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onPrimary,
+  },
 });

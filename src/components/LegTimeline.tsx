@@ -26,6 +26,8 @@ import Animated, {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop, MetroEntranceRef } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
+import { SpringPressable } from './SpringPressable';
+import { resolveRailStrokeColor } from '../theme/colorContrast';
 import { SwipeableLegCard } from './SwipeableLegCard';
 import type { LegSwapSlotState, SwapDirection } from '../hooks/useLegAlternatives';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
@@ -82,70 +84,6 @@ const COL_GAP = 8;
 const SPINE_W = 3;
 const TRAY_BLEED = 6;
 const TRAY_BORDER_W = 1;
-
-function parseHexRgb(hex: string): [number, number, number] | null {
-  const clean = hex.trim().replace(/^#/, '');
-  if (clean.length !== 6) return null;
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
-  return [r, g, b];
-}
-
-function relativeLuminance([r, g, b]: [number, number, number]): number {
-  const lin = (v: number) => {
-    const srgb = v / 255;
-    return srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
-  const la = relativeLuminance(a);
-  const lb = relativeLuminance(b);
-  const lighter = Math.max(la, lb);
-  const darker = Math.min(la, lb);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-function toHex([r, g, b]: [number, number, number]): string {
-  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
-  return (
-    '#' +
-    [clamp(r), clamp(g), clamp(b)].map((c) => c.toString(16).padStart(2, '0')).join('')
-  );
-}
-
-/**
- * Zapewnia wyraźny kontrast (>= 3.8:1) pionowej szyny i pierścieni przystanków
- * względem tła karty w obu motywach (ciemnym i jasnym). Ciemne barwy przewoźników
- * (np. granat IC) rozjaśnia na ciemnym tle, a jasne tony (np. miętowy tramwaj)
- * przyciemnia na jasnym tle, zachowując barwę linii.
- */
-function resolveRailStrokeColor(accentHex: string, surfaceHex: string): string {
-  const accent = parseHexRgb(accentHex);
-  const surface = parseHexRgb(surfaceHex);
-  if (!accent || !surface) return accentHex;
-  if (contrastRatio(accent, surface) >= 3.6) return accentHex;
-
-  const isDarkSurface = relativeLuminance(surface) < 0.25;
-  const target: [number, number, number] = isDarkSurface ? [255, 255, 255] : [0, 0, 0];
-  for (let step = 1; step <= 10; step++) {
-    const t = step * 0.08;
-    const mixed: [number, number, number] = [
-      accent[0] + (target[0] - accent[0]) * t,
-      accent[1] + (target[1] - accent[1]) * t,
-      accent[2] + (target[2] - accent[2]) * t,
-    ];
-    if (contrastRatio(mixed, surface) >= 4.0) return toHex(mixed);
-  }
-  return toHex([
-    accent[0] + (target[0] - accent[0]) * 0.6,
-    accent[1] + (target[1] - accent[1]) * 0.6,
-    accent[2] + (target[2] - accent[2]) * 0.6,
-  ]);
-}
 
 function genericModeNom(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.leg.modeTram;
@@ -1012,26 +950,37 @@ const TransitLegCard = memo(function TransitLegCard({
   const specsA11y = formatVehicleSpecsA11y(vehicleSpecs, t, railAmenities);
   const lineCardA11y = specsA11y ? `${lineCardBaseA11y}. ${specsA11y}` : lineCardBaseA11y;
 
+  const lineCardRef = useRef<View>(null);
+
   const openLineTimetable = useCallback(() => {
     if (!canOpenLine) return;
-    void Haptics.selectionAsync();
-    router.push({
-      pathname: '/line',
-      params: {
-        ...(leg.routeId ? { routeId: leg.routeId } : {}),
-        ...(leg.line ? { line: leg.line } : {}),
-        ...(leg.mode ? { mode: leg.mode } : {}),
-        ...(leg.tripId ? { tripId: leg.tripId } : {}),
-        ...(leg.direction || directionLabel
-          ? { direction: leg.direction || directionLabel }
-          : {}),
-        ...(leg.fromStopId ? { fromStopId: leg.fromStopId } : {}),
-        ...(leg.toStopId ? { toStopId: leg.toStopId } : {}),
-        ...(leg.fromStop ? { fromStop: leg.fromStop } : {}),
-        ...(leg.toStop ? { toStop: leg.toStop } : {}),
-        ...(isNationalRail ? { dbTarget: 'national' } : {}),
-      },
-    });
+    const navigate = (fromY?: number) => {
+      router.push({
+        pathname: '/line',
+        params: {
+          ...(leg.routeId ? { routeId: leg.routeId } : {}),
+          ...(leg.line ? { line: leg.line } : {}),
+          ...(leg.mode ? { mode: leg.mode } : {}),
+          ...(leg.tripId ? { tripId: leg.tripId } : {}),
+          ...(leg.direction || directionLabel
+            ? { direction: leg.direction || directionLabel }
+            : {}),
+          ...(leg.fromStopId ? { fromStopId: leg.fromStopId } : {}),
+          ...(leg.toStopId ? { toStopId: leg.toStopId } : {}),
+          ...(leg.fromStop ? { fromStop: leg.fromStop } : {}),
+          ...(leg.toStop ? { toStop: leg.toStop } : {}),
+          ...(leg.departAt ? { departAt: leg.departAt } : {}),
+          ...(leg.arriveAt ? { arriveAt: leg.arriveAt } : {}),
+          ...(fromY != null ? { fromY: String(Math.round(fromY)) } : {}),
+          ...(isNationalRail ? { dbTarget: 'national' } : {}),
+        },
+      });
+    };
+    if (lineCardRef.current) {
+      lineCardRef.current.measureInWindow((_x, y) => navigate(y));
+    } else {
+      navigate();
+    }
   }, [
     canOpenLine,
     router,
@@ -1045,6 +994,8 @@ const TransitLegCard = memo(function TransitLegCard({
     leg.toStopId,
     leg.fromStop,
     leg.toStop,
+    leg.departAt,
+    leg.arriveAt,
     isNationalRail,
   ]);
 
@@ -1239,40 +1190,40 @@ const TransitLegCard = memo(function TransitLegCard({
         <View style={s.bodyContentCol}>
           {/* Karta linii / pociągu z przejściem do rozkładu i parametrami konkretnego pojazdu */}
           {canOpenLine ? (
-            <Pressable
-              onPress={openLineTimetable}
-              accessibilityRole="button"
-              accessibilityLabel={lineCardA11y}
-              style={({ pressed }) => [
-                s.lineCard,
-                hasSpecsTray && s.lineCardWithSpecs,
-                pressed && s.lineCardPressed,
-              ]}
-            >
-              <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
-                <LineBadge leg={leg} />
-                <View style={s.lineTextCol}>
-                  {directionLabel ? (
-                    <Text style={s.lineDirection} numberOfLines={1}>
-                      {directionLabel}
-                    </Text>
-                  ) : null}
-                  {agencySubtitle ? (
-                    <Text style={s.lineAgencySub} numberOfLines={1}>
-                      {agencySubtitle}
-                    </Text>
-                  ) : null}
+            <View ref={lineCardRef} collapsable={false}>
+              <SpringPressable
+                onPress={openLineTimetable}
+                haptic="selection"
+                scaleDelta={0.02}
+                accessibilityRole="button"
+                accessibilityLabel={lineCardA11y}
+                style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}
+              >
+                <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
+                  <LineBadge leg={leg} />
+                  <View style={s.lineTextCol}>
+                    {directionLabel ? (
+                      <Text style={s.lineDirection} numberOfLines={1}>
+                        {directionLabel}
+                      </Text>
+                    ) : null}
+                    {agencySubtitle ? (
+                      <Text style={s.lineAgencySub} numberOfLines={1}>
+                        {agencySubtitle}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <ChevronRight size={18} color={scheme.onSurfaceVariant} />
                 </View>
-                <ChevronRight size={18} color={scheme.onSurfaceVariant} />
-              </View>
-              {hasSpecsTray ? (
-                <VehicleSpecsStrip
-                  specs={vehicleSpecs}
-                  railAmenities={railAmenities}
-                  mode={leg.mode}
-                />
-              ) : null}
-            </Pressable>
+                {hasSpecsTray ? (
+                  <VehicleSpecsStrip
+                    specs={vehicleSpecs}
+                    railAmenities={railAmenities}
+                    mode={leg.mode}
+                  />
+                ) : null}
+              </SpringPressable>
+            </View>
           ) : (
             <View style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}>
               <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>

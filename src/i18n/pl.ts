@@ -1274,6 +1274,22 @@ export const pl = {
     dayOffset: (days: number) => `+${days} ${days === 1 ? 'dzień' : 'dni'}`,
     nextDayTime: (time: string, days: number) =>
       `${time} (+${days} ${days === 1 ? 'dzień' : 'dni'})`,
+    reverseDirection: 'Zmień kierunek',
+    stopsCount: (n: number) =>
+      `${n} ${n === 1 ? 'przystanek' : isFew(n) ? 'przystanki' : 'przystanków'}`,
+    departuresCount: (n: number) =>
+      `${n} ${n === 1 ? 'kurs' : isFew(n) ? 'kursy' : 'kursów'}`,
+    yourTrip: 'Twój przejazd',
+    boardingStop: 'Wsiadasz',
+    alightingStop: 'Wysiadasz',
+    plannedDeparture: 'Twój kurs',
+    nextDepartures: 'Najbliższe odjazdy',
+    noMoreToday: 'Brak kolejnych odjazdów dziś',
+    fullSchedule: 'Pełny rozkład',
+    previousStop: 'Poprzedni przystanek',
+    nextStop: 'Następny przystanek',
+    fromOrigin: (name: string) => `Z: ${name}`,
+    openFullScreen: 'Otwórz na pełnym ekranie',
   },
   transferGuard: {
     enabled: 'Włączona',
