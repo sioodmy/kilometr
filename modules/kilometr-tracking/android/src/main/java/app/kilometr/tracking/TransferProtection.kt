@@ -142,7 +142,7 @@ internal class TransferProtection(
         return
       }
       val transferStop = ride.stops[ride.alight]
-      val nearTransfer = haversineMeters(fix.lat, fix.lon, transferStop.lat, transferStop.lon) <= 130.0 &&
+      val nearTransfer = TransferEstimator.distanceMeters(fix.lat, fix.lon, transferStop.lat, transferStop.lon) <= 130.0 &&
         now >= transferStop.arriveMs - 90_000
       if (nearTransfer && next != null && now <= next.stops[next.board].departMs + 300_000) {
         publish("safe", now)
