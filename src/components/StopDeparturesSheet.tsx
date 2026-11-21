@@ -12,7 +12,14 @@ import { LineBadge } from './LineBadge';
 import { SpringPressable } from './SpringPressable';
 import { TimetableDeparturesView } from './TimetableDeparturesView';
 import { useStrings } from '../i18n';
-import type { LinePattern, TransitLine } from '../services/lineTimetable';
+import {
+  countPhysicalLineStops,
+  lastPhysicalStopIndex,
+  physicalStopOrdinal,
+  stepPhysicalStopIndex,
+  type LinePattern,
+  type TransitLine,
+} from '../services/lineTimetable';
 import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 
@@ -81,10 +88,13 @@ export function StopDeparturesSheet({
   const stop = pattern.stops[stopIndex];
   if (!stop) return null;
 
-  const totalStops = pattern.stops.length;
-  const isTerminal = stopIndex === totalStops - 1;
-  const canPrev = stopIndex > 0;
-  const canNext = stopIndex < totalStops - 1;
+  const totalStops = countPhysicalLineStops(pattern.stops);
+  const currentOrdinal = physicalStopOrdinal(pattern.stops, stopIndex);
+  const isTerminal = stopIndex === lastPhysicalStopIndex(pattern.stops);
+  const prevIndex = stepPhysicalStopIndex(pattern.stops, stopIndex, -1);
+  const nextIndex = stepPhysicalStopIndex(pattern.stops, stopIndex, 1);
+  const canPrev = prevIndex >= 0;
+  const canNext = nextIndex >= 0;
   const isBoarding = stopIndex === boardingIndex;
   const isAlighting = stopIndex === alightingIndex;
 
@@ -155,7 +165,7 @@ export function StopDeparturesSheet({
 
         <View style={styles.stopNavBar}>
           <SpringPressable
-            onPress={() => canPrev && onSelectStopIndex(stopIndex - 1)}
+            onPress={() => canPrev && onSelectStopIndex(prevIndex)}
             disabled={!canPrev}
             haptic="selection"
             scaleDelta={0.06}
@@ -177,11 +187,11 @@ export function StopDeparturesSheet({
               </Text>
             </View>
             <Text style={styles.stopIndexText} numberOfLines={1}>
-              {stopIndex + 1} / {totalStops} {'\u00b7'} {dateLabel}
+              {currentOrdinal} / {totalStops} {'\u00b7'} {dateLabel}
             </Text>
           </View>
           <SpringPressable
-            onPress={() => canNext && onSelectStopIndex(stopIndex + 1)}
+            onPress={() => canNext && onSelectStopIndex(nextIndex)}
             disabled={!canNext}
             haptic="selection"
             scaleDelta={0.06}

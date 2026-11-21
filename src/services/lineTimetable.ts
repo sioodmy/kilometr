@@ -1,4 +1,5 @@
 import type { LegMode } from '../types/models';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 import { openGtfsDbHandle } from './gtfsDatabase';
 
 export interface TransitLine {
@@ -252,6 +253,50 @@ function findTimetableStopIndex(
   return stops.findIndex((stop) => normalizeText(stop.name) === targetName);
 }
 
+/** Zlicza fizyczne przystanki na trasie wariantu, pomijając wirtualne granice stref biletowych. */
+export function countPhysicalLineStops(stops: LineStop[]): number {
+  let count = 0;
+  for (const stop of stops) {
+    if (!isFareBoundary(stop.name)) count++;
+  }
+  return count;
+}
+
+/** Zwraca indeks pierwszego fizycznego przystanku na trasie (z bezpiecznym fallbackiem do 0). */
+export function firstPhysicalStopIndex(stops: LineStop[]): number {
+  const idx = stops.findIndex((stop) => !isFareBoundary(stop.name));
+  return idx >= 0 ? idx : stops.length > 0 ? 0 : -1;
+}
+
+/** Zwraca indeks ostatniego fizycznego przystanku na trasie (z bezpiecznym fallbackiem do końca). */
+export function lastPhysicalStopIndex(stops: LineStop[]): number {
+  for (let i = stops.length - 1; i >= 0; i--) {
+    if (!isFareBoundary(stops[i].name)) return i;
+  }
+  return stops.length > 0 ? stops.length - 1 : -1;
+}
+
+/** Zwraca indeks sąsiedniego fizycznego przystanku w zadanym kierunku, pomijając granice stref. */
+export function stepPhysicalStopIndex(
+  stops: LineStop[],
+  currentIndex: number,
+  step: -1 | 1,
+): number {
+  for (let i = currentIndex + step; i >= 0 && i < stops.length; i += step) {
+    if (!isFareBoundary(stops[i].name)) return i;
+  }
+  return -1;
+}
+
+/** Zwraca numer porządkowy (1-based) fizycznego przystanku dla paska nawigacji w arkuszu. */
+export function physicalStopOrdinal(stops: LineStop[], index: number): number {
+  let ordinal = 0;
+  for (let i = 0; i <= index && i < stops.length; i++) {
+    if (!isFareBoundary(stops[i].name)) ordinal++;
+  }
+  return ordinal;
+}
+
 /** Wyznacza indeksy odcinka podróży użytkownika (wsiadanie i wysiadanie) na trasie wariantu. */
 export function findTripSegment(
   stops: LineStop[],
@@ -345,7 +390,8 @@ export function selectInitialPattern(
   for (const pattern of patterns) {
     let score = 0;
     const headsign = normalizeText(pattern.headsign);
-    const terminal = normalizeText(pattern.stops[pattern.stops.length - 1]?.name);
+    const lastIdx = lastPhysicalStopIndex(pattern.stops);
+    const terminal = normalizeText(lastIdx >= 0 ? pattern.stops[lastIdx]?.name : undefined);
     if (targetDir) {
       if (headsign === targetDir) score += 1000;
       else if (
@@ -398,7 +444,8 @@ function buildLinePatterns(trips: TimetableTrip[], times: TimetableTime[]): Line
     const stops = byTrip.get(trip.trip_id);
     if (!stops?.length) continue;
     stops.sort((a, b) => a.seq - b.seq);
-    const headsign = trip.headsign.trim() || stops[stops.length - 1].name;
+    const lastPhys = [...stops].reverse().find((stop) => !isFareBoundary(stop.name)) ?? stops[stops.length - 1];
+    const headsign = trip.headsign.trim() || lastPhys.name;
     const id = JSON.stringify([trip.direction, headsign, stops.map((stop) => stop.stop_id)]);
     let group = patterns.get(id);
     if (!group) {
