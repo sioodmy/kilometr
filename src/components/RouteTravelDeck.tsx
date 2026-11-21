@@ -366,14 +366,30 @@ export function RouteTravelDeck({
     ? (seatLabel ?? (meta?.passenger ? meta.passenger : s.railTickets.showShort))
     : s.railTickets.buyOrAdd;
 
-  const transferTitle = isWarning ? s.travelDeck.transferAlert : s.travelDeck.protection;
+  const corridorText =
+    transferActive && transferState?.currentLine && transferState?.nextLine
+      ? `${transferState.currentLine} → ${transferState.nextLine}`
+      : null;
+  const altCount =
+    transferState?.alternatives?.length ?? (transferState?.alternative ? 1 : 0);
+  const transferTitle = isWarning
+    ? transferState?.status === 'conductor'
+      ? s.transferGuard.conductorTitle
+      : s.travelDeck.transferAlert
+    : corridorText ?? s.travelDeck.protection;
   const transferSubtitle = !transferActive
     ? s.travelDeck.protectionEnable
-    : isWarning
-      ? s.travelDeck.protectionAtRisk
-      : isSafe
-        ? s.travelDeck.protectionSlack(slackMin)
-        : s.travelDeck.protectionWatching;
+    : transferState?.status === 'alternative' && altCount > 0
+      ? s.transferGuard.alternativesCount(altCount)
+      : transferState?.status === 'conductor'
+        ? s.transferGuard.conductorBody
+        : isWarning
+          ? transferState?.slackSec != null && transferState.slackSec < 0
+            ? s.transferGuard.shortBy(Math.max(1, Math.ceil(-transferState.slackSec / 60)))
+            : s.travelDeck.protectionAtRisk
+          : isSafe
+            ? s.travelDeck.protectionSlack(slackMin)
+            : s.travelDeck.protectionWatching;
 
   const ticketIcon = ticket ? (
     ticketHasBarcode(ticket) ? (
