@@ -20,11 +20,20 @@ import { toPlkTripId } from './nationalRailUpdates';
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
 
+interface NationalRailPosition {
+  lat: number;
+  lon: number;
+  bearing?: number;
+  updatedAt: number;
+  /** Model składu z zbiorkom.live (np. "48WEc Pesa Elf 2", "ER160 Stadler Flirt 3"). */
+  model?: string;
+}
+
 export interface NationalRailLive {
   /** trip_id (pl:...) -> opóźnienie w sekundach. */
   delays: Map<string, number>;
-  /** trip_id -> bieżąca pozycja (mapa, etykieta „gdzie jest pociąg”). */
-  positions: Map<string, { lat: number; lon: number; bearing?: number; updatedAt: number }>;
+  /** trip_id -> bieżąca pozycja (mapa, etykieta „gdzie jest pociąg” i model składu). */
+  positions: Map<string, NationalRailPosition>;
   /** trip_id -> id kursu zbiorkomu (do strumienia alertów). */
   zbTripIds: Map<string, string>;
   fetchedAt: number;
@@ -55,6 +64,20 @@ export interface ZbVehicleAlert {
 type StopTuple = [string, string, string, string, [number, number]];
 
 const POSITIONS_TTL_MS = 25_000;
+const DEFAULT_PKP_AGENCIES = [
+  'IC',
+  'PR',
+  'KD',
+  'KM',
+  'KW',
+  'KS',
+  'KML',
+  'LKA',
+  'SKM',
+  'SKMT',
+  'WKD',
+  'AR',
+];
 
 let stopsPromise: Promise<StopTuple[]> | null = null;
 const positionsCache = new Map<string, { at: number; promise: Promise<NationalRailLive> }>();
@@ -69,6 +92,17 @@ function normalized(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+/** Kod agencji ASCII dla api.zbiorkom.live (np. "KŚ" -> "KS", "KMŁ" -> "KML", "ŁKA" -> "LKA"). */
+function normalizeZbAgency(agency?: string): string | null {
+  const clean = agency
+    ?.trim()
+    .replace(/[łŁ]/g, 'L')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  return clean || null;
 }
 
 /** Numer pociągu bez wariantów: „3830/1” -> „3830”, „65000/1” -> „65000”. */
@@ -177,7 +211,7 @@ function bboxOf(points: Array<{ lat: number; lon: number }>, padDeg = 0.25): str
 }
 
 interface ZbPosition {
-  vehicle: { id: string; agency: string };
+  vehicle: { id: string; agency: string; model?: string | null };
   routeName: string;
   brigade: string;
   location: [number, number];
@@ -241,7 +275,7 @@ async function findCandidateTrips(
 
   const svcPlaceholders = [...services].map(() => '?').join(',');
   // Numer w bazie bywa „3830/1” (para kursów), a noga podaje sam numer
-  // („3830”) albo pełną parę - dopasowujemy dokładnie albo po prefiksie.
+  // („3830”) albo pełną parę: dopasowujemy dokładnie albo po prefiksie.
   const numClauses = numbers
     .map(() => '(t.train_number = ? OR t.train_number LIKE ?)')
     .join(' OR ');
@@ -307,7 +341,7 @@ function matchPositions(
   inputLegs: NationalLiveLeg[],
 ): NationalRailLive {
   const delays = new Map<string, number>();
-  const out = new Map<string, { lat: number; lon: number; bearing?: number; updatedAt: number }>();
+  const out = new Map<string, NationalRailPosition>();
   const zbTripIds = new Map<string, string>();
   const byNumber = new Map<string, CandidateTrip[]>();
   // Kurs indeksowany pod WSZYSTKIMI wariantami numeru („61170/1” = 61170
@@ -346,11 +380,16 @@ function matchPositions(
     }
     if (!best) continue;
     const delaySec = Math.round(pos.delay / 1000);
-    const posEntry = {
+    const model =
+      typeof pos.vehicle?.model === 'string' && pos.vehicle.model.trim()
+        ? pos.vehicle.model.trim()
+        : undefined;
+    const posEntry: NationalRailPosition = {
       lat: pos.location[1],
       lon: pos.location[0],
       bearing: typeof pos.bearing === 'number' ? pos.bearing : undefined,
       updatedAt: pos.timestamp,
+      ...(model ? { model } : {}),
     };
     const zbId = `2:${pos.vehicle.agency}__${pos.vehicle.id.replace(/^_/, '')}`;
 
@@ -425,7 +464,11 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
   );
   if (points.length === 0) return empty;
   const bbox = bboxOf(points);
-  const agencies = [...new Set(trains.map((l) => l.railAgency).filter((a): a is string => !!a))];
+  const agencies = [
+    ...new Set(
+      trains.map((l) => normalizeZbAgency(l.railAgency)).filter((a): a is string => a !== null),
+    ),
+  ];
   const cacheKey = `${bbox}|${agencies.join(',')}`;
   const hit = positionsCache.get(cacheKey);
   if (hit && Date.now() - hit.at < POSITIONS_TTL_MS) return hit.promise;
@@ -433,9 +476,7 @@ export async function fetchNationalRailLive(legs: NationalLiveLeg[]): Promise<Na
   const promise = (async () => {
     const positions = await fetchPositions(
       bbox,
-      agencies.length
-        ? agencies
-        : ['IC', 'PR', 'KD', 'KM', 'KW', 'KS', 'KML', 'LKA', 'SKM', 'SKMT', 'AR'],
+      agencies.length ? agencies : DEFAULT_PKP_AGENCIES,
     );
     if (positions.length === 0) return empty;
     const now = new Date();
@@ -538,7 +579,7 @@ export async function fetchZbStopDepartures(stationName: string): Promise<ZbStop
 /**
  * Id pojazdu zbiorkomu dla nogi kolejowej: `2:AGENCJA__numer`. Zbiorkom
  * numeruje pojazdy brygadą, która dla pociągów „61170/1” bywa drugim
- * wariantem (61171), więc zwracamy oba kandydaty - strumień dla złego
+ * wariantem (61171), więc zwracamy oba kandydaty: strumień dla złego
  * numeru odpowiada POSITION_NOT_FOUND i po prostu próbujemy następnego.
  * To działa nawet gdy pozycje chwilowo nie dopasowały kursu.
  */
@@ -547,7 +588,7 @@ export function vehicleCandidatesForLeg(leg: {
   trainNumber?: string;
   line?: string;
 }): string[] {
-  const agency = (leg.railAgency ?? 'IC').trim() || 'IC';
+  const agency = normalizeZbAgency(leg.railAgency) ?? 'IC';
   const numbers = trainNumberVariants(leg.trainNumber, leg.line);
   return numbers.map((n) => `2:${agency}__${n}`);
 }
@@ -559,7 +600,10 @@ function parseAlerts(raw: unknown): ZbVehicleAlert[] {
     if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
     const title = entry[0].trim();
     const description = typeof entry[1] === 'string' ? entry[1].trim() : '';
-    const url = typeof entry[2] === 'string' && /^https?:\/\//i.test(entry[2].trim()) ? entry[2].trim() : undefined;
+    const url =
+      typeof entry[2] === 'string' && /^https?:\/\//i.test(entry[2].trim())
+        ? entry[2].trim()
+        : undefined;
     if (!title) continue;
     // Zbiorkom dokleja komunikaty operatora do KAŻDEGO kursu (przedsprzedaż,
     // cenniki, prace serwisowe w kanałach sprzedaży). Zostają realne
@@ -600,8 +644,8 @@ const ALERT_NOISE = [
  * wysyła `initial` (rozkład kursu) i `message` (pozycja + stops + alerts).
  * Czytamy do pierwszego `message` i zamykamy strumień; cache 5 min.
  *
- * `vehicle` to `2:AGENCJA__numer` (np. `2:IC__8316`) - dostajemy je z
- * dopasowania pozycji (`NationalRailLive.zbTripIds`).
+ * `vehicle` to `2:AGENCJA__numer` (np. `2:IC__8316`), z dopasowania pozycji
+ * (`NationalRailLive.zbTripIds`).
  */
 export async function fetchZbVehicleAlerts(vehicle: string): Promise<ZbVehicleAlert[]> {
   const hit = alertsCache.get(vehicle);

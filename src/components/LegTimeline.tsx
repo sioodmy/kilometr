@@ -24,7 +24,7 @@ import Animated, {
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegStop, MetroEntranceRef } from '../types/models';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
-import { RailAmenities } from './RailAmenities';
+import { useRailAmenities } from './RailAmenities';
 import { StationAmenities } from './StationAmenities';
 import { shouldShowStationAmenities } from './stationAmenitiesGate';
 import { VehicleSpecsStrip, formatVehicleSpecsA11y } from './VehicleSpecsStrip';
@@ -979,9 +979,18 @@ const TransitLegCard = memo(function TransitLegCard({
   const liveTimestamp = vehicle?.updatedAt ?? (leg.live && lastOk > 0 ? lastOk : undefined);
 
   const vehicleSpecs = useMemo(
-    () => classifyVehicleModel(vehicle?.model, leg.mode),
-    [vehicle?.model, leg.mode],
+    () => classifyVehicleModel(vehicle?.model ?? leg.vehicleModel, leg.mode),
+    [vehicle?.model, leg.vehicleModel, leg.mode],
   );
+  const railAmenities = useRailAmenities({
+    enabled: isTrain,
+    tripId: leg.tripId,
+    agency: leg.railAgency,
+    trainNumber: leg.trainNumber,
+    line: leg.line,
+    trainName: leg.trainName,
+  });
+  const hasSpecsTray = Boolean(vehicleSpecs || (railAmenities && railAmenities.keys.length > 0));
   const directionLabel =
     leg.mode === 'train' ? railDirectionLabel(leg) || leg.direction : leg.direction;
   const isNationalRail =
@@ -992,9 +1001,8 @@ const TransitLegCard = memo(function TransitLegCard({
   const lineCardBaseA11y = directionLabel
     ? `${t.lineTimetable.open(leg.line ?? '')}, ${t.lineTimetable.direction}: ${directionLabel}`
     : t.lineTimetable.open(leg.line ?? '');
-  const lineCardA11y = vehicleSpecs
-    ? `${lineCardBaseA11y}. ${formatVehicleSpecsA11y(vehicleSpecs, t)}`
-    : lineCardBaseA11y;
+  const specsA11y = formatVehicleSpecsA11y(vehicleSpecs, t, railAmenities);
+  const lineCardA11y = specsA11y ? `${lineCardBaseA11y}. ${specsA11y}` : lineCardBaseA11y;
 
   const openLineTimetable = useCallback(() => {
     if (!canOpenLine) return;
@@ -1229,11 +1237,11 @@ const TransitLegCard = memo(function TransitLegCard({
               accessibilityLabel={lineCardA11y}
               style={({ pressed }) => [
                 s.lineCard,
-                vehicleSpecs && s.lineCardWithSpecs,
+                hasSpecsTray && s.lineCardWithSpecs,
                 pressed && s.lineCardPressed,
               ]}
             >
-              <View style={[s.lineCardHeader, vehicleSpecs && s.lineCardHeaderWithSpecs]}>
+              <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
                 <LineBadge leg={leg} />
                 <View style={s.lineTextCol}>
                   {directionLabel ? (
@@ -1249,11 +1257,17 @@ const TransitLegCard = memo(function TransitLegCard({
                 </View>
                 <ChevronRight size={18} color={scheme.onSurfaceVariant} />
               </View>
-              {vehicleSpecs ? <VehicleSpecsStrip specs={vehicleSpecs} mode={leg.mode} /> : null}
+              {hasSpecsTray ? (
+                <VehicleSpecsStrip
+                  specs={vehicleSpecs}
+                  railAmenities={railAmenities}
+                  mode={leg.mode}
+                />
+              ) : null}
             </Pressable>
           ) : (
-            <View style={[s.lineCard, vehicleSpecs && s.lineCardWithSpecs]}>
-              <View style={[s.lineCardHeader, vehicleSpecs && s.lineCardHeaderWithSpecs]}>
+            <View style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}>
+              <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
                 <LineBadge leg={leg} />
                 <View style={s.lineTextCol}>
                   {directionLabel ? (
@@ -1268,21 +1282,15 @@ const TransitLegCard = memo(function TransitLegCard({
                   ) : null}
                 </View>
               </View>
-              {vehicleSpecs ? <VehicleSpecsStrip specs={vehicleSpecs} mode={leg.mode} /> : null}
+              {hasSpecsTray ? (
+                <VehicleSpecsStrip
+                  specs={vehicleSpecs}
+                  railAmenities={railAmenities}
+                  mode={leg.mode}
+                />
+              ) : null}
             </View>
           )}
-
-          {/* Udogodnienia składu (kolej, tylko gdy vagonweb zwróci realne dane) */}
-          {isTrain ? (
-            <RailAmenities
-              tripId={leg.tripId}
-              agency={leg.railAgency}
-              trainNumber={leg.trainNumber}
-              line={leg.line}
-              trainName={leg.trainName}
-              showLabel
-            />
-          ) : null}
 
           {/* Baner statusu na żywo / opóźnienia / wiarygodności */}
           {showLiveBanner ? (

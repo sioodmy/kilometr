@@ -389,12 +389,14 @@ class LiveTracker {
         const prev = this.byId.get(vehicleId);
         const leg = this.nationalWatch.find((l) => l.tripId === tripId);
         const delay = this.tripDelays.get(tripId) ?? null;
+        const model = pos.model ?? prev?.model;
         if (
           !prev ||
           prev.lat !== pos.lat ||
           prev.lon !== pos.lon ||
           prev.bearing !== pos.bearing ||
-          prev.delaySec !== delay
+          prev.delaySec !== delay ||
+          prev.model !== model
         ) {
           changed = true;
         }
@@ -410,6 +412,7 @@ class LiveTracker {
           currentStopName: leg?.fromStop,
           nextStopName: leg?.toStop,
           updatedAt: pos.updatedAt,
+          ...(model ? { model } : {}),
         });
       }
       if (changed) {

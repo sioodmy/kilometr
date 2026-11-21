@@ -34,11 +34,24 @@ function mergeMap<V>(prev: Map<string, V>, incoming: Map<string, V>): Map<string
   return changed ? next : prev;
 }
 
+function mergeNationalRailLive(
+  prev: NationalRailLive | null,
+  incoming: NationalRailLive,
+): NationalRailLive {
+  if (!prev) return incoming;
+  return {
+    delays: mergeMap(prev.delays, incoming.delays),
+    positions: mergeMap(prev.positions, incoming.positions),
+    zbTripIds: mergeMap(prev.zbTripIds, incoming.zbTripIds),
+    fetchedAt: Math.max(prev.fetchedAt, incoming.fetchedAt),
+  };
+}
+
 /**
  * Dokłada live do nóg kolejowych:
  * - oficjalny feed PKP PLK via mkuran.pl (główne źródło opóźnień, peronów i torów w całym kraju),
  * - tablica odjazdów zbiorkomu (nazwa handlowa i fallback peronu),
- * - pozycje pociągów ogólnopolskich (punkt na mapie i fallback opóźnienia).
+ * - pozycje pociągów ogólnopolskich (punkt na mapie, model składu i fallback opóźnienia).
  * Źródłem prawdy czasów zostaje rozkład; live koryguje go z pierwszeństwem PKP PLK.
  */
 export function useRailLiveConnections(
@@ -116,9 +129,9 @@ export function useRailLiveConnections(
           sharedNationalUpdates = mergeMap(sharedNationalUpdates, updData);
           setNationalUpdates(sharedNationalUpdates);
         }
-        if (liveData && liveData.delays.size > 0) {
-          sharedNational = liveData;
-          setNational(liveData);
+        if (liveData && (liveData.delays.size > 0 || liveData.positions.size > 0)) {
+          sharedNational = mergeNationalRailLive(sharedNational, liveData);
+          setNational(sharedNational);
         }
       });
     };
@@ -150,6 +163,7 @@ export function useRailLiveConnections(
         const platformCode = update?.platform ?? rail?.platform ?? leg.platformCode;
         const trackCode = update?.track ?? leg.trackCode;
         const cancelled = update?.cancelled === true || rail?.cancelled === true || leg.cancelled;
+        const vehicleModel = pos?.model ?? leg.vehicleModel;
         if (
           leg.railAgency === (update?.agency ?? rail?.agency ?? leg.railAgency) &&
           leg.railLine === (rail?.line ?? leg.railLine) &&
@@ -158,7 +172,8 @@ export function useRailLiveConnections(
           leg.trainName === (rail?.trainName ?? leg.trainName) &&
           leg.platformCode === platformCode &&
           leg.trackCode === trackCode &&
-          Boolean(leg.cancelled) === Boolean(cancelled)
+          Boolean(leg.cancelled) === Boolean(cancelled) &&
+          leg.vehicleModel === vehicleModel
         )
           return leg;
         legsChanged = true;
@@ -172,6 +187,7 @@ export function useRailLiveConnections(
           platformCode,
           trackCode,
           cancelled: cancelled || undefined,
+          vehicleModel,
         };
       });
       if (!legsChanged) return connection;

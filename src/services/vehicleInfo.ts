@@ -1,4 +1,4 @@
-import type { LegMode } from '../types/models';
+import type { LegMode, RailAmenity } from '../types/models';
 
 export type FloorLevel = 'low' | 'partial' | 'high' | 'unknown';
 export type AcAvailability = 'yes' | 'no' | 'unknown';
@@ -279,8 +279,10 @@ const RULES: ClassifierRule[] = [
   // 5. KOLEJ REGIONALNA I DALEKOBIEŻNA (zbiorkom.live PKP / koleje regionalne)
   // =========================================================================
   {
-    // Zmodernizowane EN57/EN71 (AL, AKM, AKS, AKD, AKL, FPS, Feniks): wysoka podłoga, ale z klimą
-    test: (n) => /\b(en57|en71)\s*-?\s*(al|akm|aks|akd|akl|fps|feniks)\b/.test(n),
+    // Zmodernizowane EN57/EN71/ED72 (AL, ALd, ALc, AKM, AKS, AKD, AKL, AP, FPS, Feniks, ED72A/Ac): wysoka podłoga, ale z klimą
+    test: (n) =>
+      /\b(en57|en71)\s*-?\s*(al[a-z]?|akm|aks|akd|akl|ap|fps|feniks)\b/.test(n) ||
+      /\bed72a[a-z]?\b/.test(n),
     result: () => ({ floor: 'high', ac: 'yes', vintage: true }),
   },
   {
@@ -289,18 +291,18 @@ const RULES: ClassifierRule[] = [
     result: () => ({ floor: 'high', ac: 'no', vintage: true }),
   },
   {
-    // Alstom Pendolino ED250 (wysoka podłoga z drzwiami ze stopniami, pełna klimatyzacja)
-    test: (n) => /\b(ed250|pendolino)\b/.test(n),
+    // Wysokopodłogowe nowoczesne składy z klimatyzacją (Alstom Pendolino ED250, Newag 14WE / 19WE)
+    test: (n) => /\b(ed250|pendolino|14we\w*|19we\w*)\b/.test(n),
     result: () => ({ floor: 'high', ac: 'yes', vintage: false }),
   },
   {
-    // Nowoczesne EZT/SZT: Pesa Elf / Elf 2 / Acatus / Dart / Link / 33WE / 214M / 218M / 223M,
-    // Newag Impuls / Impuls 2 / 39WE / 220M-222M / Vulcano, Stadler Flirt / Flirt 3
+    // Nowoczesne EZT/SZT: Pesa Elf / Elf 2 / Acatus / Bydgostia / Dart / Link / Atribo / Sundeck / Regio160 / 33WE / 214M / 218M / 219M / 223M,
+    // Newag Impuls / Impuls 2 / 39WE / 220M-228M / Vulcano, Stadler Flirt / Flirt 3, Bombardier Twindexx, Siemens Desiro, Alstom Coradia LINT
     test: (n) =>
-      /\b(elf|acatus|impuls|flirt|vulcano|pesa\s+dart|ed160|ed161|er75|en75|er160|en63\w*|en76\w*|en77\w*|en78\w*|en79\w*|en97|en100|sa134|sa135|sa137|sa138|sa139|l-?4268|lm-?4268)\b/.test(
+      /\b(elf|acatus|bydgostia|atribo|impuls|flirt|vulcano|pesa\s+(dart|link|sundeck|regio160)|twindexx|desiro|coradia|lint|ed74|ed78|ed160|ed161|er75|en75|er160|en62\w*|en63\w*|en64\w*|en76\w*|en77\w*|en78\w*|en79\w*|en96\w*|en97|en98\w*|en99\w*|en100|sa103|sa106|sa131|sa132|sa133|sa134|sa135|sa136|sa137|sa138|sa139|vt640|vt642|vt648|l-?4268|lm-?4268)\b/.test(
         n,
       ) ||
-      /\b(21we\w*|22we\w*|27we\w*|31we\w*|32we\w*|33we\w*|34we\w*|35we\w*|36we\w*|37we\w*|39we\w*|40we\w*|45we\w*|48we\w*|214m\w*|218m\w*|220m\w*|221m\w*|222m\w*|223m\w*)\b/.test(
+      /\b(21we\w*|22we\w*|27we\w*|31we\w*|32we\w*|33we\w*|34we\w*|35we\w*|36we\w*|37we\w*|39we\w*|40we\w*|45we\w*|48we\w*|214m\w*|218m\w*|219m\w*|220m\w*|221m\w*|222m\w*|223m\w*|226m\w*|227m\w*|228m\w*)\b/.test(
         n,
       ),
     result: () => ({ floor: 'low', ac: 'yes', vintage: false }),
@@ -461,4 +463,31 @@ export function classifyVehicleModel(
     vintage: false,
     ...(drive ? { drive } : {}),
   };
+}
+
+/**
+ * Wybiera i porządkuje udogodnienia składu z vagonweb dla paska w karcie linii.
+ * Gdy mamy bieżący model pojazdu z zbiorkom.live, unikamy dublowania lub sprzeczności
+ * (klima i dostępność z live biorą pierwszeństwo nad planowym składem), a kluczowe
+ * chipy (dostępność, klimatyzacja) trafiają na początek w tej samej kolejności co specs.
+ */
+export function selectRailAmenitiesForStrip(
+  keys: readonly RailAmenity[],
+  specs?: VehicleSpecs | null,
+): RailAmenity[] {
+  if (keys.length === 0) return [];
+  const filtered = keys.filter((key) => {
+    if (key === 'klimatyzacja' && specs && specs.ac !== 'unknown') return false;
+    if (key === 'dostepny_wozkarze' && specs?.floor === 'low') return false;
+    return true;
+  });
+
+  const priority: RailAmenity[] = [];
+  const rest: RailAmenity[] = [];
+  for (const key of filtered) {
+    if (key === 'dostepny_wozkarze') priority.unshift(key);
+    else if (key === 'klimatyzacja') priority.push(key);
+    else rest.push(key);
+  }
+  return [...priority, ...rest];
 }
