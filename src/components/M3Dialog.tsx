@@ -1,6 +1,16 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import Animated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import { SpringPressable } from './SpringPressable';
+import { motion } from '../theme/motion';
 import { elev, scheme, shape } from '../theme/tokens';
 import { useStrings } from '../i18n';
 
@@ -24,9 +34,8 @@ interface M3DialogProps {
 }
 
 /**
- * Dialog M3 Expressive: ikona w tonalnym kontenerze, headline, tekst
- * pomocniczy i akcje po prawej. Używany m.in. do odrzucenia biletu
- * kolejowego i potwierdzenia usunięcia.
+ * Dialog M3 Expressive: ikona w tonalnym kontenerze, nagłówek, treść
+ * pomocnicza i sprężyste wejście kontenera ze skalowaniem.
  */
 export function M3Dialog({
   visible,
@@ -38,40 +47,80 @@ export function M3Dialog({
   onClose,
 }: M3DialogProps) {
   const s = useStrings();
-  if (!visible) return null;
+  const reducedMotion = useReducedMotion();
+  const [rendered, setRendered] = useState(visible);
+  const progress = useSharedValue(visible ? 1 : 0);
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+      if (reducedMotion) {
+        progress.value = 1;
+      } else {
+        progress.value = 0;
+        progress.value = withSpring(1, motion.spring.spatialDefault);
+      }
+      return;
+    }
+    if (!rendered) return;
+    if (reducedMotion) {
+      progress.value = 0;
+      setRendered(false);
+      return;
+    }
+    progress.value = withTiming(0, motion.exit, (finished) => {
+      if (finished) runOnJS(setRendered)(false);
+    });
+  }, [visible, rendered, reducedMotion, progress]);
+
+  const scrimStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, Math.min(1, progress.value)),
+  }));
+
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, Math.min(1, interpolate(progress.value, [0, 0.45, 1], [0, 0.9, 1]))),
+    transform: [
+      { translateY: interpolate(progress.value, [0, 1], [14, 0]) },
+      { scale: interpolate(progress.value, [0, 1], [0.92, 1]) },
+    ],
+  }));
+
+  if (!rendered) return null;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel={s.common.close}>
-        <View style={styles.center}>
-          <Pressable
-            style={styles.card}
-            onPress={(e) => e.stopPropagation()}
-            onStartShouldSetResponder={() => true}
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+      <Animated.View style={[styles.scrim, scrimStyle]}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityLabel={s.common.close}
+        />
+        <View style={styles.center} pointerEvents="box-none">
+          <Animated.View
+            style={[styles.card, cardStyle]}
             accessibilityRole="alert"
             accessibilityLabel={title}
+            accessibilityViewIsModal
           >
             <View style={[styles.iconBox, { backgroundColor: iconContainerColor }]}>{icon}</View>
 
             <Text style={styles.title}>{title}</Text>
-            {message ? (
-              <Text style={styles.message}>{message}</Text>
-            ) : null}
+            {message ? <Text style={styles.message}>{message}</Text> : null}
 
             <View style={styles.actions}>
               {actions.map((action, index) => (
-                <Pressable
+                <SpringPressable
                   key={`${action.label}-${index}`}
+                  haptic="selection"
+                  scaleDelta={0.03}
                   onPress={() => {
-                    void Haptics.selectionAsync().catch(() => {});
                     onClose();
                     action.onPress();
                   }}
-                  style={({ pressed }) => [
+                  style={[
                     styles.actionBtn,
                     !action.tonal && styles.actionFilled,
                     !action.tonal && action.destructive && styles.actionDestructive,
-                    pressed && styles.pressed,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={action.label}
@@ -85,12 +134,12 @@ export function M3Dialog({
                   >
                     {action.label}
                   </Text>
-                </Pressable>
+                </SpringPressable>
               ))}
             </View>
-          </Pressable>
+          </Animated.View>
         </View>
-      </Pressable>
+      </Animated.View>
     </Modal>
   );
 }
@@ -168,8 +217,5 @@ const styles = StyleSheet.create({
   },
   actionLabelDestructive: {
     color: scheme.onError,
-  },
-  pressed: {
-    opacity: 0.75,
   },
 });

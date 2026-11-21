@@ -150,6 +150,9 @@ jobs:
       - name: Run test/*.test.ts suite
         run: npm run test:unit
 
+      - name: Run Cloudflare timetable & KP scraper tests
+        run: node --test cloudflare/scripts/build-timetable.test.mjs cloudflare/scripts/kp-gtfs.test.mjs
+
       - name: Run Cloudflare offline checks
         run: |
           set -euo pipefail

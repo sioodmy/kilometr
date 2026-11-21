@@ -1,22 +1,20 @@
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing,
   interpolate,
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
-  withTiming,
+  withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
 import { ArrowRight, RotateCcw, Search } from './icons';
+import { motion } from '../theme/motion';
 import { elev, scheme, shape, spacing, type } from '../theme/tokens';
 import type { TripHistoryItem } from '../services/smartRanker';
 import { useStrings } from '../i18n';
 
-// Progi pulla (px): lupka od 70, a szybki powrót (reverse) dopiero od ~36%
-// wysokości ekranu, celowo głęboko, żeby nie dało się go zahaczyć
-// przypadkowym pociągnięciem. MAX zostawia zapas nad progiem.
+// Progi pulla (px): lupka od 70, a szybki powrót dopiero od ~36% wysokości ekranu.
 const SCREEN_H = Dimensions.get('window').height;
 const ARM_2_PX = Math.round(SCREEN_H * 0.36);
 export const LAST_TRIP_ARM_1 = 70;
@@ -33,11 +31,8 @@ const SLOT_GAP = 8;
 const PILL_TRAVEL = THUMB + SLOT_GAP;
 
 /**
- * Szybki skrót do ostatniego połączenia, odsłaniany pociągnięciem ekranu
- * w dół (pull-to-refresh bez spinnera): wiersz od→do ze strzałką i pod nim
- * pionowy toggle jak wczorajszy (lupka = szukaj, rotate = powrót).
- * Zero klikalnych elementów: gest obsługuje rodzic, a czytnik ekranu
- * dostaje akcję "activate", która otwiera to samo połączenie.
+ * Szybki skrót do ostatniego połączenia odsłaniany pociągnięciem ekranu w dół.
+ * Przełącznik trybu i kierunek animują się sprężyście na wątku UI (M3 Expressive).
  */
 export function LastTripPull({
   trip,
@@ -57,16 +52,13 @@ export function LastTripPull({
     return opt === 2 ? 1 : 0;
   });
 
-  // Strzałka: pełny obrót jak przy swapie na ekranie połączeń.
+  // Strzałka wykonuje sprężysty obrót przy przełączeniu kierunku powrotu.
   const spin = useSharedValue(0);
   useAnimatedReaction(
     () => isReversed.value,
     (rev, prev) => {
       if (rev !== prev && rev === 1) {
-        spin.value = withTiming(Math.round(spin.value) + 1, {
-          duration: 450,
-          easing: Easing.inOut(Easing.ease),
-        });
+        spin.value = withSpring(Math.round(spin.value) + 1, motion.spring.spatialDefault);
       }
     },
   );
@@ -74,31 +66,24 @@ export function LastTripPull({
   const arrowStyle = useAnimatedStyle(() => {
     const p = spin.value % 1;
     return {
-      transform: [
-        { rotate: `${p * 360}deg` },
-        { scale: 1 + 0.28 * Math.sin(Math.PI * p) },
-      ],
+      transform: [{ rotate: `${p * 360}deg` }, { scale: 1 + 0.22 * Math.sin(Math.PI * p) }],
     };
   });
 
-  // Kciuk pionowego toggla: góra = lupka, dół = powrót.
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [
       {
-        translateY: withTiming(isReversed.value ? PILL_TRAVEL : 0, {
-          duration: 190,
-          easing: Easing.out(Easing.cubic),
-        }),
+        translateY: withSpring(isReversed.value ? PILL_TRAVEL : 0, motion.spring.spatialFast),
       },
     ],
   }));
 
   const searchSlotStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(isReversed.value ? 0.45 : 1, { duration: 180 }),
+    opacity: withSpring(isReversed.value ? 0.45 : 1, motion.spring.effectsFast),
   }));
 
   const rotateSlotStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(isReversed.value ? 1 : 0.45, { duration: 180 }),
+    opacity: withSpring(isReversed.value ? 1 : 0.45, motion.spring.effectsFast),
   }));
 
   const containerStyle = useAnimatedStyle(() => ({
@@ -107,13 +92,13 @@ export function LastTripPull({
   }));
 
   const normalTextStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(isReversed.value ? 0 : 1, { duration: 180 }),
-    transform: [{ translateY: withTiming(isReversed.value ? -5 : 0, { duration: 180 }) }],
+    opacity: withSpring(isReversed.value ? 0 : 1, motion.spring.effectsFast),
+    transform: [{ translateY: withSpring(isReversed.value ? -5 : 0, motion.spring.spatialFast) }],
   }));
 
   const reversedTextStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(isReversed.value ? 1 : 0, { duration: 180 }),
-    transform: [{ translateY: withTiming(isReversed.value ? 0 : 5, { duration: 180 }) }],
+    opacity: withSpring(isReversed.value ? 1 : 0, motion.spring.effectsFast),
+    transform: [{ translateY: withSpring(isReversed.value ? 0 : 5, motion.spring.spatialFast) }],
   }));
 
   return (
@@ -139,7 +124,6 @@ export function LastTripPull({
           </Animated.View>
         </View>
 
-        {/* Tekst płynnie zamienia się miejscami na UI threadzie bez przeładowania flexboxa. */}
         <View style={styles.tripRow}>
           <View style={styles.tripSide}>
             <Animated.View style={normalTextStyle}>
@@ -188,8 +172,6 @@ export function LastTripPull({
 }
 
 const styles = StyleSheet.create({
-  // Rozciąga listę w dół jak pull-to-refresh; treść doklejona do góry,
-  // więc pill (sterowanie) widać od razu, a tekst dojeżdża głębiej.
   reveal: {
     overflow: 'hidden',
     justifyContent: 'flex-start',
@@ -241,7 +223,6 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
   },
-  // Pionowy toggle w vibe docka: pigułka, tor, kciuk jak wczoraj.
   pill: {
     width: THUMB + PILL_PAD * 2,
     padding: PILL_PAD,

@@ -1,4 +1,5 @@
 import type { LegMode } from '../types/models';
+import { isFareBoundary } from '../gtfs/fareBoundary';
 import { openGtfsDbHandle } from './gtfsDatabase';
 
 export interface TransitLine {
@@ -34,6 +35,28 @@ export interface LinePatternHint {
   toStopId?: string;
   fromStop?: string;
   toStop?: string;
+}
+
+export interface TripSegmentIndices {
+  fromIndex: number;
+  toIndex: number;
+}
+
+interface TimetableMinuteEntry {
+  minute: string;
+  seconds: number;
+}
+
+export interface TimetableHourGroup {
+  hour: number;
+  displayHour: number;
+  dayOffset: number;
+  minutes: TimetableMinuteEntry[];
+}
+
+export interface NextDepartureInfo {
+  seconds: number;
+  minutesUntil: number;
 }
 
 interface RouteRow {
@@ -83,6 +106,7 @@ export function timetableToday(): string {
 }
 
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+const compactDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function getTimetableDateFormatter(locale: string): Intl.DateTimeFormat {
   const key = locale || 'pl';
@@ -106,6 +130,30 @@ function getTimetableDateFormatter(locale: string): Intl.DateTimeFormat {
       });
     }
     dateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
+function getCompactDateFormatter(locale: string): Intl.DateTimeFormat {
+  const key = locale || 'pl';
+  let formatter = compactDateFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat(key, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        timeZone: 'Europe/Warsaw',
+      });
+    } catch {
+      formatter = new Intl.DateTimeFormat('pl', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        timeZone: 'Europe/Warsaw',
+      });
+    }
+    compactDateFormatters.set(key, formatter);
   }
   return formatter;
 }
@@ -134,6 +182,20 @@ export function formatTimetableDate(date: string, locale: string): string {
   }
 }
 
+/** Formatuje skróconą etykietę daty (np. "pt., 23 paź") do kompaktowego przełącznika dni. */
+export function formatTimetableDateCompact(date: string, locale: string): string {
+  try {
+    const value = parseTimetableDate(date);
+    return getCompactDateFormatter(locale).format(value);
+  } catch {
+    const today = timetableToday();
+    const fallbackDate = new Date(
+      `${today.slice(0, 4)}-${today.slice(4, 6)}-${today.slice(6, 8)}T12:00:00Z`,
+    );
+    return getCompactDateFormatter('pl').format(fallbackDate);
+  }
+}
+
 /** Przesuwa datę rozkładu (YYYYMMDD) o wskazaną liczbę dni, z bezpiecznym fallbackiem do dzisiaj. */
 export function shiftTimetableDate(date: string, days: number): string {
   const value = parseTimetableDate(date);
@@ -147,6 +209,19 @@ export function timetableClock(seconds: number): string {
   return `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
+/** Zamienia godzinę zapisaną jako "HH:MM" na sekundy od północy. */
+export function parseClockToSeconds(clock?: string): number | null {
+  if (!clock) return null;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 47 || m < 0 || m > 59) {
+    return null;
+  }
+  return h * 3600 + m * 60;
+}
+
 function normalizeText(value?: string): string {
   if (!value) return '';
   return value
@@ -158,7 +233,12 @@ function normalizeText(value?: string): string {
     .trim();
 }
 
-function findStopIndex(stops: LineStop[], stopId?: string, stopName?: string): number {
+/** Zwraca indeks przystanku na trasie wariantu po identyfikatorze GTFS lub nazwie. */
+function findTimetableStopIndex(
+  stops: LineStop[],
+  stopId?: string,
+  stopName?: string,
+): number {
   if (stopId) {
     const cleanHint = stopId.replace(/^stop-pl:/, '');
     const byId = stops.findIndex(
@@ -171,6 +251,126 @@ function findStopIndex(stops: LineStop[], stopId?: string, stopName?: string): n
   const targetName = normalizeText(stopName);
   if (!targetName) return -1;
   return stops.findIndex((stop) => normalizeText(stop.name) === targetName);
+}
+
+/** Zlicza fizyczne przystanki na trasie wariantu, pomijając wirtualne granice stref biletowych. */
+export function countPhysicalLineStops(stops: LineStop[]): number {
+  let count = 0;
+  for (const stop of stops) {
+    if (!isFareBoundary(stop.name)) count++;
+  }
+  return count;
+}
+
+/** Zwraca indeks pierwszego fizycznego przystanku na trasie (z bezpiecznym fallbackiem do 0). */
+export function firstPhysicalStopIndex(stops: LineStop[]): number {
+  const idx = stops.findIndex((stop) => !isFareBoundary(stop.name));
+  return idx >= 0 ? idx : stops.length > 0 ? 0 : -1;
+}
+
+/** Zwraca indeks ostatniego fizycznego przystanku na trasie (z bezpiecznym fallbackiem do końca). */
+export function lastPhysicalStopIndex(stops: LineStop[]): number {
+  for (let i = stops.length - 1; i >= 0; i--) {
+    if (!isFareBoundary(stops[i].name)) return i;
+  }
+  return stops.length > 0 ? stops.length - 1 : -1;
+}
+
+/** Zwraca indeks sąsiedniego fizycznego przystanku w zadanym kierunku, pomijając granice stref. */
+export function stepPhysicalStopIndex(
+  stops: LineStop[],
+  currentIndex: number,
+  step: -1 | 1,
+): number {
+  for (let i = currentIndex + step; i >= 0 && i < stops.length; i += step) {
+    if (!isFareBoundary(stops[i].name)) return i;
+  }
+  return -1;
+}
+
+/** Zwraca numer porządkowy (1-based) fizycznego przystanku dla paska nawigacji w arkuszu. */
+export function physicalStopOrdinal(stops: LineStop[], index: number): number {
+  let ordinal = 0;
+  for (let i = 0; i <= index && i < stops.length; i++) {
+    if (!isFareBoundary(stops[i].name)) ordinal++;
+  }
+  return ordinal;
+}
+
+/** Wyznacza indeksy odcinka podróży użytkownika (wsiadanie i wysiadanie) na trasie wariantu. */
+export function findTripSegment(
+  stops: LineStop[],
+  hint: LinePatternHint,
+): TripSegmentIndices | null {
+  const fromIndex = findTimetableStopIndex(stops, hint.fromStopId, hint.fromStop);
+  const toIndex = findTimetableStopIndex(stops, hint.toStopId, hint.toStop);
+  if (fromIndex < 0 && toIndex < 0) return null;
+  if (fromIndex >= 0 && toIndex >= 0 && toIndex <= fromIndex) {
+    return { fromIndex, toIndex: -1 };
+  }
+  return { fromIndex, toIndex };
+}
+
+/** Grupuje posortowane odjazdy (w sekundach od północy) według godzin z zachowaniem dnia (+1 dzień). */
+export function groupDeparturesByHour(departures: number[]): TimetableHourGroup[] {
+  const groups = new Map<number, TimetableMinuteEntry[]>();
+  const seenPerHour = new Map<number, Set<string>>();
+  for (const seconds of departures) {
+    const hour = Math.floor(seconds / 3600);
+    const minute = timetableClock(seconds).slice(3);
+    let seen = seenPerHour.get(hour);
+    if (!seen) {
+      seen = new Set<string>();
+      seenPerHour.set(hour, seen);
+    }
+    if (seen.has(minute)) continue;
+    seen.add(minute);
+    const entries = groups.get(hour) ?? [];
+    entries.push({ minute, seconds });
+    groups.set(hour, entries);
+  }
+  return [...groups.entries()].map(([hour, minutes]) => ({
+    hour,
+    displayHour: hour % 24,
+    dayOffset: Math.floor(hour / 24),
+    minutes,
+  }));
+}
+
+/** Zwraca najbliższy odjazd dla dzisiejszego rozkładu wraz z czasem pozostałym w minutach. */
+export function findNextDeparture(
+  departures: number[],
+  nowSec: number,
+  isToday: boolean,
+): NextDepartureInfo | null {
+  if (!isToday || departures.length === 0) return null;
+  const threshold = nowSec - 30;
+  for (const seconds of departures) {
+    if (seconds >= threshold) {
+      const minutesUntil = Math.max(0, Math.round((seconds - nowSec) / 60));
+      return { seconds, minutesUntil };
+    }
+  }
+  return null;
+}
+
+/** Zwraca listę najbliższych odjazdów (w sekundach) dla dzisiejszego rozkładu. */
+export function getUpcomingDepartures(
+  departures: number[],
+  nowSec: number,
+  isToday: boolean,
+  limit = 3,
+): number[] {
+  if (!isToday || departures.length === 0 || limit <= 0) return [];
+  const threshold = nowSec - 30;
+  const upcoming: number[] = [];
+  for (const seconds of departures) {
+    if (seconds >= threshold) {
+      upcoming.push(seconds);
+      if (upcoming.length >= limit) break;
+    }
+  }
+  return upcoming;
 }
 
 /** Wybiera wariant kierunku najbliższy wskazówce z karty połączenia. */
@@ -190,7 +390,8 @@ export function selectInitialPattern(
   for (const pattern of patterns) {
     let score = 0;
     const headsign = normalizeText(pattern.headsign);
-    const terminal = normalizeText(pattern.stops[pattern.stops.length - 1]?.name);
+    const lastIdx = lastPhysicalStopIndex(pattern.stops);
+    const terminal = normalizeText(lastIdx >= 0 ? pattern.stops[lastIdx]?.name : undefined);
     if (targetDir) {
       if (headsign === targetDir) score += 1000;
       else if (
@@ -202,8 +403,8 @@ export function selectInitialPattern(
       if (terminal && terminal === targetDir) score += 250;
     }
 
-    const fromIdx = findStopIndex(pattern.stops, hint.fromStopId, hint.fromStop);
-    const toIdx = findStopIndex(pattern.stops, hint.toStopId, hint.toStop);
+    const fromIdx = findTimetableStopIndex(pattern.stops, hint.fromStopId, hint.fromStop);
+    const toIdx = findTimetableStopIndex(pattern.stops, hint.toStopId, hint.toStop);
     if (fromIdx >= 0 && toIdx > fromIdx) score += 500;
     else if (fromIdx >= 0 || toIdx >= 0) score += 100;
 
@@ -243,7 +444,8 @@ function buildLinePatterns(trips: TimetableTrip[], times: TimetableTime[]): Line
     const stops = byTrip.get(trip.trip_id);
     if (!stops?.length) continue;
     stops.sort((a, b) => a.seq - b.seq);
-    const headsign = trip.headsign.trim() || stops[stops.length - 1].name;
+    const lastPhys = [...stops].reverse().find((stop) => !isFareBoundary(stop.name)) ?? stops[stops.length - 1];
+    const headsign = trip.headsign.trim() || lastPhys.name;
     const id = JSON.stringify([trip.direction, headsign, stops.map((stop) => stop.stop_id)]);
     let group = patterns.get(id);
     if (!group) {

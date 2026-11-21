@@ -2,18 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
   BottomSheetFlatList,
   type BottomSheetFlatListMethods,
+  useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import Animated, {
-  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import { GripVertical, MapPin, Pencil, Plus, Trash2, X } from './icons';
@@ -29,7 +29,7 @@ const DRAG_DELAY = 120; // ms przytrzymania uchwytu zanim karta „pływa”
 const EDGE_PX = 72; // strefa auto-scrollu od krawędzi listy
 const SCROLL_TICK_MS = 16;
 const SCROLL_STEP_PX = 9;
-const LIFT_SPRING = { damping: 26, stiffness: 420, mass: 0.8, reduceMotion: ReduceMotion.System };
+const LIFT_SPRING = motion.spring.spatialFast;
 
 /** Sesja przeciągania: zwykły obiekt w refie, UI sterują shared values kart. */
 type DragSession = {
@@ -283,12 +283,23 @@ export function ManagePlacesSheet({
   const listWrapRef = useRef<View>(null);
   const reorderRef = useRef(onReorderPlaces);
   reorderRef.current = onReorderPlaces;
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const snapPoints = useMemo(() => (fontScale > 1.3 ? ['96%'] : ['78%', '94%']), [fontScale]);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        accessibilityLabel={s.common.close}
+      />
+    ),
+    [s.common.close],
+  );
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeRef.current();
+      sheetRef.current?.close();
       return true;
     });
     return () => sub.remove();
@@ -335,7 +346,7 @@ export function ManagePlacesSheet({
       for (let j = 0; j < list.length; j++) {
         if (j === session.from) continue;
         const sv = cardsRef.current.get(list[j].id);
-        if (sv) sv.value = withTiming(shiftFor(j, session.from, next, dragH), motion.state);
+        if (sv) sv.value = withSpring(shiftFor(j, session.from, next, dragH), motion.spring.spatialFast);
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
@@ -414,7 +425,7 @@ export function ManagePlacesSheet({
       // Bez zmiany kolejności: wszystko wraca animacją na swoje miejsce.
       for (const p of list) {
         const sv = cards.get(p.id);
-        if (sv) sv.value = withTiming(0, motion.state);
+        if (sv) sv.value = withSpring(0, motion.spring.spatialFast);
       }
       setDragId(null);
       return;
@@ -437,7 +448,7 @@ export function ManagePlacesSheet({
     const cardSv = cards.get(session.id);
     if (cardSv) {
       cardSv.value = settle;
-      cardSv.value = withTiming(0, motion.state);
+      cardSv.value = withSpring(0, motion.spring.spatialFast);
     }
     setDragId(null);
     setOrder(next);
@@ -480,20 +491,14 @@ export function ManagePlacesSheet({
     <BottomSheet
       ref={sheetRef}
       index={0}
-      snapPoints={fontScale > 1.3 ? ['96%'] : ['78%', '94%']}
+      snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
       enablePanDownToClose
       onClose={onClose}
-      backdropComponent={(props) => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          accessibilityLabel={s.common.close}
-        />
-      )}
+      backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >

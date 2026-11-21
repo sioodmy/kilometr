@@ -1,310 +1,849 @@
-import { AppState } from 'react-native';
 import type { Connection, Leg, LegStop } from '../../types/models';
 import { RoutingService } from '../api';
 import { getCurrentLocationSnapshot } from '../currentLocation';
-import { distanceMeters } from '../../gtfs/geo';
-import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
+import { getSettingsSync, profileWalkSpeedMps } from '../settings';
+import { distanceMeters } from '../../gtfs/geo';
 import { computeLegTimeline } from './tripProgress';
-import { formatClock, parseClock } from './format';
-import { TransferRideEstimator, TransferRiskDecision } from './transferAssessment';
-import type { NextTrainInfo, TransferAlternative, TransferProtectionState } from './transferTypes';
+import {
+  TransferRideEstimator,
+  TransferRiskDecision,
+} from './transferAssessment';
+
+type RideEstimate = NonNullable<ReturnType<TransferRideEstimator['observe']>>;
+import {
+  isProtectedTrainLeg,
+  type NextTrainInfo,
+  type TransferAlternative,
+  type TransferDelaySource,
+  type TransferProtectionState,
+  type TransferSegmentSummary,
+} from './transferTypes';
 import type { TrackedTrip } from './types';
 
 interface Ride {
+  legIndex: number;
   leg: Leg;
-  index: number;
   stops: LegStop[];
   board: number;
   alight: number;
-  baseMs: number;
-  estimator: TransferRideEstimator;
+  scheduledDepartMs: number;
+  scheduledArriveMs: number;
 }
 
+const MAX_ALTERNATIVES = 3;
+const LIVE_FRESH_MS = 120_000;
+const STALE_FIX_MS = 30_000;
+
+function stopIdMatch(stop: LegStop, id?: string, name?: string): boolean {
+  if (id && stop.stopId === id) return true;
+  if (name && stop.name.trim().toLowerCase() === name.trim().toLowerCase()) return true;
+  return false;
+}
+
+function buildFallbackStops(
+  leg: Leg,
+  departMs: number,
+  arriveMs: number,
+  baseMs: number,
+): LegStop[] {
+  const departSec = Math.round((departMs - baseMs) / 1000);
+  const arriveSec = Math.max(departSec + 60, Math.round((arriveMs - baseMs) / 1000));
+  return [
+    {
+      stopId: leg.fromStopId ?? `${leg.id}:from`,
+      name: leg.fromStop,
+      lat: leg.fromLat ?? 0,
+      lon: leg.fromLon ?? 0,
+      seq: 0,
+      arriveSec: departSec,
+      departSec,
+    },
+    {
+      stopId: leg.toStopId ?? `${leg.id}:to`,
+      name: leg.toStop,
+      lat: leg.toLat ?? 0,
+      lon: leg.toLon ?? 0,
+      seq: 1,
+      arriveSec,
+      departSec: arriveSec,
+    },
+  ];
+}
+
+function clockFromMs(ms: number): string {
+  const date = new Date(ms);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function departureMsOf(connection: Connection, fallbackMs: number): number {
+  const timeline = computeLegTimeline(connection, new Date(fallbackMs));
+  return timeline[0]?.departMs ?? fallbackMs;
+}
+
+function arrivalMsOf(connection: Connection, fallbackMs: number): number {
+  const timeline = computeLegTimeline(connection, new Date(fallbackMs));
+  return timeline.at(-1)?.arriveMs ?? fallbackMs;
+}
+
+function walkBetweenLegs(
+  legs: Leg[],
+  fromLegIndex: number,
+  toLegIndex: number,
+  fromStop: LegStop,
+  toStop: LegStop,
+  walkSpeedMps: number,
+): { walkSec: number; walkM: number } {
+  let walkM = 0;
+  let explicitWalk = false;
+  for (let i = fromLegIndex + 1; i < toLegIndex; i++) {
+    const mid = legs[i];
+    if (mid?.mode === 'walk') {
+      explicitWalk = true;
+      walkM += Math.max(0, mid.walkM ?? 0);
+    }
+  }
+  if (!explicitWalk) {
+    const hasCoords =
+      fromStop.lat != null &&
+      fromStop.lon != null &&
+      toStop.lat != null &&
+      toStop.lon != null &&
+      Number.isFinite(fromStop.lat) &&
+      Number.isFinite(fromStop.lon) &&
+      Number.isFinite(toStop.lat) &&
+      Number.isFinite(toStop.lon) &&
+      (fromStop.lat !== 0 || fromStop.lon !== 0) &&
+      (toStop.lat !== 0 || toStop.lon !== 0);
+    walkM = hasCoords
+      ? Math.round(distanceMeters(fromStop.lat!, fromStop.lon!, toStop.lat!, toStop.lon!))
+      : 0;
+  }
+  const walkSec = walkM <= 25 ? 0 : Math.max(45, Math.round((walkM * 1.15) / walkSpeedMps));
+  return { walkSec, walkM };
+}
+
+/** Ochrona przesiadek w trakcie działania aplikacji (GPS + live feed + szybka wymiana miejska). */
 export class ForegroundTransferProtection {
+  private readonly trip: TrackedTrip;
+  private readonly baseMs: number;
+  private readonly firstDepartureMs: number;
+  private readonly plannedArrivalMs: number;
   private rides: Ride[] = [];
+  private loaded = false;
+  private loadFailed = false;
   private rideIndex = 0;
+  private estimator = new TransferRideEstimator();
+  private nextEstimator = new TransferRideEstimator();
   private decision = new TransferRiskDecision();
+  private alternatives: TransferAlternative[] = [];
   private lastSearch = 0;
-  private alternative: TransferAlternative | undefined;
+  private lastSearchDelaySec = 0;
+  private lastPosition = -1;
   private nextTrain: NextTrainInfo | undefined;
-  private loading: Promise<void> | null = null;
+  private nextTrainSearched = false;
+  private revision = 0;
 
-  constructor(private readonly trip: TrackedTrip) {}
-
-  private load(): Promise<void> {
-    if (this.loading) return this.loading;
-    this.loading = (async () => {
-      const timeline = computeLegTimeline(this.trip.connection, new Date(this.trip.startedAt));
-      this.rides = (
-        await Promise.all(
-          timeline.map(async ({ leg, departMs }, index) => {
-            if (leg.mode === 'walk' || !leg.tripId) return null;
-            const stops = leg.intermediateStops?.length
-              ? leg.intermediateStops
-              : await RoutingService.getTripStops(leg.tripId);
-            const board = stops.findIndex((stop) => stop.stopId === leg.fromStopId);
-            const alight = stops.findIndex((stop, i) => i > board && stop.stopId === leg.toStopId);
-            const scheduled = stops[board]?.departSec;
-            if (board < 0 || alight <= board || scheduled == null) return null;
-            const plannedDelay = ((parseClock(leg.departAt)! - scheduled + 129600) % 86400) - 43200;
-            return {
-              leg,
-              index,
-              stops,
-              board,
-              alight,
-              baseMs: departMs - (scheduled + plannedDelay) * 1000,
-              estimator: new TransferRideEstimator(),
-            };
-          }),
-        )
-      ).filter((ride): ride is Ride => ride != null);
-      if (
-        this.rides.length !== this.trip.connection.legs.filter((leg) => leg.mode !== 'walk').length
-      ) {
-        this.rides = [];
-        throw new Error('Missing transfer timetable');
-      }
-      this.rideIndex = Math.max(
-        0,
-        this.rides.findIndex((ride) => ride.index === this.trip.transfer?.activeLegIndex),
-      );
-    })().catch((error) => {
-      this.loading = null;
-      throw error;
-    });
-    return this.loading;
+  constructor(trip: TrackedTrip) {
+    this.trip = trip;
+    const timeline = computeLegTimeline(trip.connection, new Date(trip.startedAt));
+    const first = timeline.find((entry) => entry.leg.mode !== 'walk');
+    const date = new Date(first?.departMs ?? trip.startedAt);
+    date.setHours(0, 0, 0, 0);
+    this.baseMs = date.getTime();
+    this.firstDepartureMs = timeline[0]?.departMs ?? trip.startedAt;
+    this.plannedArrivalMs = timeline.at(-1)?.arriveMs ?? trip.startedAt;
   }
 
-  async refresh(now = Date.now()): Promise<TransferProtectionState> {
-    const state: TransferProtectionState = {
-      tripId: this.trip.id,
-      revision: this.trip.transferRevision ?? 0,
-      updatedAt: now,
-      status: 'waiting',
-      scope: 'foreground',
-    };
-    if (AppState.currentState !== 'active')
-      return { ...state, status: 'unavailable', reason: 'location' };
-    await this.load();
-    const ride = this.rides[this.rideIndex];
-    if (!ride) return { ...state, status: 'unavailable', reason: 'routing' };
-    const fix = getCurrentLocationSnapshot().location;
-    if (!fix) return { ...state, status: 'unavailable', reason: 'location' };
-    const next = this.rides[this.rideIndex + 1];
-    if (
-      next &&
-      now >= next.baseMs + (next.stops[next.board].departSec ?? 0) * 1000 - 60_000 &&
-      next.estimator.observe(next.stops, next.board, next.baseMs, fix, now)
-    ) {
-      this.rideIndex++;
-      this.decision = new TransferRiskDecision();
-      this.alternative = undefined;
-      this.nextTrain = undefined;
-      return this.refresh(now);
-    }
-    const estimate = ride.estimator.observe(ride.stops, ride.board, ride.baseMs, fix, now);
-    if (!estimate)
-      return {
-        ...state,
-        status:
-          now < ride.baseMs + (ride.stops[ride.board].departSec ?? 0) * 1000 + 300_000
-            ? 'waiting'
-            : 'unavailable',
-        reason: 'location',
-      };
-    if (!next)
-      return {
-        ...state,
-        status: 'complete',
-        activeLegIndex: ride.index,
-        delaySec: estimate.delaySec,
-        arrivalAtMs:
-          ride.baseMs + ((ride.stops[ride.alight].arriveSec ?? 0) + estimate.delaySec) * 1000,
-      };
-    const settings = getSettingsSync();
-    const walkSpeed = profileWalkSpeedMps(settings.walkPace);
-    const transferWalk = this.trip.connection.legs
-      .slice(ride.index + 1, next.index)
-      .reduce((sum, leg) => sum + ((leg.walkM ?? 0) * 1.15) / walkSpeed, 0);
-    const vehicle = liveTracker
-      .snapshot()
-      .find(
-        (v) =>
-          v.matchedTripId === next.leg.tripId &&
-          now - v.updatedAt >= 0 &&
-          now - v.updatedAt <= 120_000,
+  /** Wymusza natychmiastowe ponowne wyszukanie propozycji przy najbliższym odświeżeniu. */
+  resetSearchCooldown(): void {
+    this.lastSearch = 0;
+    this.nextTrainSearched = false;
+  }
+
+  private async load(): Promise<void> {
+    if (this.loaded) return;
+    this.loaded = true;
+    const timeline = computeLegTimeline(this.trip.connection, new Date(this.trip.startedAt));
+    const transitLegs = this.trip.connection.legs
+      .map((leg, legIndex) => ({ leg, legIndex }))
+      .filter(({ leg }) => leg.mode !== 'walk');
+    const loadedRides: Ride[] = [];
+
+    for (const { leg, legIndex } of transitLegs) {
+      const entry = timeline[legIndex];
+      const scheduledDepartMs = entry?.departMs ?? this.trip.startedAt;
+      const scheduledArriveMs = entry?.arriveMs ?? scheduledDepartMs + 60_000;
+      let stops: LegStop[] = [];
+      if (leg.intermediateStops && leg.intermediateStops.length >= 2) {
+        stops = leg.intermediateStops;
+      } else if (leg.tripId) {
+        try {
+          stops = await RoutingService.getTripStops(leg.tripId);
+        } catch {
+          stops = [];
+        }
+      }
+      if (stops.length < 2) {
+        stops = buildFallbackStops(leg, scheduledDepartMs, scheduledArriveMs, this.baseMs);
+      }
+
+      let board = stops.findIndex((stop) => stopIdMatch(stop, leg.fromStopId, leg.fromStop));
+      let alight = stops.findIndex(
+        (stop, idx) => idx > Math.max(board, 0) && stopIdMatch(stop, leg.toStopId, leg.toStop),
       );
-    const arrivalAtMs =
-      ride.baseMs + ((ride.stops[ride.alight].arriveSec ?? 0) + estimate.delaySec) * 1000;
-    const departureAtMs =
-      next.baseMs + ((next.stops[next.board].departSec ?? 0) + (vehicle?.delaySec ?? 0)) * 1000;
-    const buffer = Math.max(
-      60,
-      next.leg.mode === 'train' ? settings.trainMinTransferSec : settings.minTransferSec,
+      if (board < 0) board = 0;
+      if (alight <= board) alight = stops.length - 1;
+      if (alight <= board) {
+        stops = buildFallbackStops(leg, scheduledDepartMs, scheduledArriveMs, this.baseMs);
+        board = 0;
+        alight = 1;
+      }
+
+      loadedRides.push({
+        legIndex,
+        leg,
+        stops,
+        board,
+        alight,
+        scheduledDepartMs,
+        scheduledArriveMs,
+      });
+    }
+
+    this.rides = loadedRides;
+    this.loadFailed = loadedRides.length < 2;
+    const active = this.trip.transfer?.activeLegIndex;
+    if (active !== undefined) {
+      const index = this.rides.findIndex((ride) => ride.legIndex >= active);
+      if (index >= 0) this.rideIndex = index;
+    }
+  }
+
+  private freshLiveDelay(tripId: string | undefined, now: number): number | undefined {
+    if (!tripId) return undefined;
+    const vehicles = liveTracker.snapshot();
+    const match = vehicles.find(
+      (vehicle) =>
+        vehicle.matchedTripId === tripId &&
+        vehicle.delaySec != null &&
+        now - vehicle.updatedAt >= 0 &&
+        now - vehicle.updatedAt <= LIVE_FRESH_MS,
     );
-    const physicalSlack = (departureAtMs - arrivalAtMs) / 1000 - transferWalk;
-    const assessment = this.decision.assess(
-      estimate.position > ride.alight + 0.3 ? -120 : physicalSlack,
-      buffer,
-      now,
+    return match?.delaySec ?? undefined;
+  }
+
+  private rideTimes(ride: Ride): { departMs: number; arriveMs: number } {
+    const boardStop = ride.stops[ride.board];
+    const alightStop = ride.stops[ride.alight];
+    const departMs =
+      boardStop?.departSec != null
+        ? this.baseMs + boardStop.departSec * 1000
+        : ride.scheduledDepartMs;
+    const arriveMs =
+      alightStop?.arriveSec != null
+        ? this.baseMs + alightStop.arriveSec * 1000
+        : alightStop?.departSec != null
+          ? this.baseMs + alightStop.departSec * 1000
+          : ride.scheduledArriveMs;
+    return { departMs, arriveMs };
+  }
+
+  private buildTransferSummaries(
+    now: number,
+    activeDelaySec: number,
+    walkSpeedMps: number,
+  ): TransferSegmentSummary[] {
+    const out: TransferSegmentSummary[] = [];
+    for (let i = 0; i < this.rides.length - 1; i++) {
+      const curr = this.rides[i];
+      const next = this.rides[i + 1];
+      const currTimes = this.rideTimes(curr);
+      const nextTimes = this.rideTimes(next);
+      const currDelay =
+        i === this.rideIndex
+          ? activeDelaySec
+          : (this.freshLiveDelay(curr.leg.tripId, now) ?? curr.leg.delaySec ?? 0);
+      const nextDelay = this.freshLiveDelay(next.leg.tripId, now) ?? next.leg.delaySec ?? 0;
+      const arrivalAtMs = currTimes.arriveMs + currDelay * 1000;
+      const departureAtMs = nextTimes.departMs + nextDelay * 1000;
+      const { walkSec, walkM } = walkBetweenLegs(
+        this.trip.connection.legs,
+        curr.legIndex,
+        next.legIndex,
+        curr.stops[curr.alight],
+        next.stops[next.board],
+        walkSpeedMps,
+      );
+      const slackSec = Math.round((departureAtMs - arrivalAtMs) / 1000) - walkSec;
+      out.push({
+        legIndex: curr.legIndex,
+        nextLegIndex: next.legIndex,
+        fromLine: curr.leg.line ?? '',
+        fromMode: curr.leg.mode,
+        toLine: next.leg.line ?? '',
+        toMode: next.leg.mode,
+        transferStop: curr.stops[curr.alight]?.name ?? curr.leg.toStop,
+        walkM,
+        walkSec,
+        arrivalAtMs,
+        departureAtMs,
+        slackSec,
+        state: i < this.rideIndex ? 'passed' : i === this.rideIndex ? 'active' : 'upcoming',
+        isTrainNext: isProtectedTrainLeg(next.leg),
+      });
+    }
+    return out;
+  }
+
+  async refresh(): Promise<TransferProtectionState> {
+    const now = Date.now();
+    try {
+      await this.load();
+    } catch {
+      return this.state('unavailable', now, { reason: 'routing' });
+    }
+    if (this.loadFailed) {
+      return this.state('unavailable', now, { reason: 'routing' });
+    }
+
+    const ride = this.rides[this.rideIndex];
+    const next = this.rides[this.rideIndex + 1];
+    if (!ride || !next) {
+      return this.state('complete', now, {
+        activeLegIndex: ride?.legIndex,
+        currentLine: ride?.leg.line,
+        currentMode: ride?.leg.mode,
+        transfers: this.buildTransferSummaries(
+          now,
+          0,
+          profileWalkSpeedMps(getSettingsSync().walkPace),
+        ),
+      });
+    }
+
+    const settings = getSettingsSync();
+    const walkSpeedMps = profileWalkSpeedMps(settings.walkPace);
+    const { departMs: rideDepartMs, arriveMs: rideArriveMs } = this.rideTimes(ride);
+    const { departMs: nextScheduledDepartMs } = this.rideTimes(next);
+    const nextLiveDelay = this.freshLiveDelay(next.leg.tripId, now);
+    const nextDelaySec = nextLiveDelay ?? next.leg.delaySec ?? 0;
+    const departureAtMs = nextScheduledDepartMs + nextDelaySec * 1000;
+    const departureSource: 'live' | 'schedule' =
+      nextLiveDelay !== undefined || next.leg.live ? 'live' : 'schedule';
+
+    const { walkSec, walkM } = walkBetweenLegs(
+      this.trip.connection.legs,
+      ride.legIndex,
+      next.legIndex,
+      ride.stops[ride.alight],
+      next.stops[next.board],
+      walkSpeedMps,
     );
-    Object.assign(state, {
-      activeLegIndex: ride.index,
-      delaySec: estimate.delaySec,
-      slackSec: Math.round(physicalSlack - buffer),
-      nextLine: next.leg.line,
+    const baseBuffer = isProtectedTrainLeg(next.leg)
+      ? Math.max(60, settings.trainMinTransferSec)
+      : Math.max(60, settings.minTransferSec);
+    const transferStopName = ride.stops[ride.alight]?.name ?? ride.leg.toStop;
+
+    const fix = getCurrentLocationSnapshot()?.location;
+    const fixFresh = !!fix && now - fix.timestamp >= 0 && now - fix.timestamp <= STALE_FIX_MS;
+
+    // 1) Sprawdź czy pasażer już wsiadł do kolejnego pojazdu.
+    if (fixFresh && this.nextEstimator.observe(next.stops, next.board, this.baseMs, fix, now)) {
+      this.rideIndex++;
+      this.estimator = this.nextEstimator;
+      this.nextEstimator = new TransferRideEstimator();
+      this.decision = new TransferRiskDecision();
+      this.alternatives = [];
+      this.lastSearch = 0;
+      this.lastPosition = -1;
+      this.nextTrain = undefined;
+      this.nextTrainSearched = false;
+      this.revision++;
+      return this.refresh();
+    }
+
+    // 2) Obserwacja GPS na bieżącym pojeździe.
+    const gpsEstimate = fix
+      ? this.estimator.observe(ride.stops, ride.board, this.baseMs, fix, now)
+      : null;
+
+    // 3) Telemetria live z feedu (działa również przed wejściem do pojazdu i w korku).
+    const currentLiveDelay = this.freshLiveDelay(ride.leg.tripId, now);
+
+    // 4) Pasażer na przystanku przesiadkowym czekający na kolejny kurs nie wpada w offRoute.
+    const transferStop = ride.stops[ride.alight];
+    const atTransferStop =
+      fixFresh &&
+      transferStop &&
+      transferStop.lat != null &&
+      transferStop.lon != null &&
+      distanceMeters(fix.lat, fix.lon, transferStop.lat, transferStop.lon) <= 130 &&
+      now >= rideArriveMs - 90_000 &&
+      now <= departureAtMs + 300_000;
+
+    let delaySec: number;
+    let delaySource: TransferDelaySource;
+    let effectiveEstimate: RideEstimate | null = gpsEstimate;
+
+    if (gpsEstimate) {
+      delaySec = gpsEstimate.delaySec;
+      delaySource = 'gps';
+      this.lastPosition = gpsEstimate.position;
+    } else if (currentLiveDelay !== undefined) {
+      delaySec = currentLiveDelay;
+      delaySource = 'live';
+      effectiveEstimate = {
+        position: Math.max(ride.board, this.lastPosition),
+        delaySec: currentLiveDelay,
+      };
+    } else if (atTransferStop) {
+      delaySec = Math.max(0, Math.round((now - rideArriveMs) / 1000));
+      delaySource = 'gps';
+      const arrivalAtMs = Math.max(now, rideArriveMs);
+      const slackSec = Math.round((departureAtMs - arrivalAtMs) / 1000) - walkSec;
+      const transfers = this.buildTransferSummaries(now, delaySec, walkSpeedMps);
+      return this.state(slackSec >= 0 ? 'safe' : 'risk', now, {
+        activeLegIndex: ride.legIndex,
+        currentLine: ride.leg.line,
+        currentMode: ride.leg.mode,
+        nextLine: next.leg.line,
+        nextMode: next.leg.mode,
+        transferStop: transferStopName,
+        delaySec,
+        slackSec,
+        walkSec,
+        walkM,
+        bufferSec: baseBuffer,
+        arrivalAtMs,
+        departureAtMs,
+        departureSource,
+        delaySource,
+        transfers,
+      });
+    } else {
+      this.alternatives = [];
+      const waiting = now < rideDepartMs + 300_000;
+      const scheduledArrivalAtMs = rideArriveMs + (ride.leg.delaySec ?? 0) * 1000;
+      const scheduledSlackSec =
+        Math.round((departureAtMs - scheduledArrivalAtMs) / 1000) - walkSec;
+      const transfers = this.buildTransferSummaries(now, ride.leg.delaySec ?? 0, walkSpeedMps);
+      return this.state(waiting ? 'waiting' : 'unavailable', now, {
+        activeLegIndex: ride.legIndex,
+        currentLine: ride.leg.line,
+        currentMode: ride.leg.mode,
+        nextLine: next.leg.line,
+        nextMode: next.leg.mode,
+        transferStop: transferStopName,
+        delaySec: ride.leg.delaySec ?? 0,
+        slackSec: scheduledSlackSec,
+        walkSec,
+        walkM,
+        bufferSec: baseBuffer,
+        arrivalAtMs: scheduledArrivalAtMs,
+        departureAtMs,
+        departureSource,
+        delaySource: 'schedule',
+        reason: waiting ? undefined : 'offRoute',
+        transfers,
+      });
+    }
+
+    const arrivalAtMs = rideArriveMs + delaySec * 1000;
+    const slackSec = Math.round((departureAtMs - arrivalAtMs) / 1000) - walkSec;
+    const assessment = this.decision.assess(slackSec, baseBuffer, now);
+    const transfers = this.buildTransferSummaries(now, delaySec, walkSpeedMps);
+
+    const common: Partial<TransferProtectionState> = {
+      activeLegIndex: ride.legIndex,
       currentLine: ride.leg.line,
-      transferStop: ride.leg.toStop,
+      currentMode: ride.leg.mode,
+      nextLine: next.leg.line,
+      nextMode: next.leg.mode,
+      transferStop: transferStopName,
+      delaySec,
+      slackSec,
+      walkSec,
+      walkM,
+      bufferSec: baseBuffer,
       arrivalAtMs,
       departureAtMs,
-      departureSource: vehicle?.delaySec != null ? 'live' : 'schedule',
-    });
-    if (this.alternative && now >= this.alternative.validUntil) this.alternative = undefined;
-    if (assessment === 'safe') this.alternative = undefined;
-    // Spóźnienie na pociąg międzyregionalny (baza `polska`): nie szukamy
-    // zamiennika po cichu. Bilet na IC/EIC jest imienny, konduktor decyduje
-    // o przewozie, więc pokazujemy „poinformuj konduktora” + najbliższy
-    // następny pociąg z tej stacji.
-    if (assessment === 'missed' && next.leg.tripId?.startsWith('pl:')) {
-      if (!this.nextTrain || now - this.lastSearch >= 60_000) {
-        this.lastSearch = now;
-        const { nextNationalTrains } = await import('../routing/intercity');
-        const trains = await nextNationalTrains(
-          next.leg.fromStopId ?? '',
-          next.leg.toStopId,
-          departureAtMs + 60_000,
-          1,
-        );
-        this.nextTrain = trains[0];
-      }
-      return {
-        ...state,
-        status: 'conductor',
-        alternative: undefined,
-        nextTrain: this.nextTrain,
-      };
-    }
-    if (assessment === 'missed' && now - this.lastSearch >= 60_000) {
-      this.lastSearch = now;
-      this.alternative = await this.findAlternative(ride, estimate, now);
-    }
-    return {
-      ...state,
-      status: this.alternative
-        ? 'alternative'
-        : assessment === 'missed'
-          ? 'noAlternative'
-          : assessment,
-      alternative: this.alternative,
+      departureSource,
+      delaySource,
+      transfers,
     };
+
+    if (assessment === 'safe') {
+      this.alternatives = [];
+      return this.state('safe', now, common);
+    }
+
+    // Przesiadka na pociąg (krajowy pl: lub kolejowy): nigdy nie wymieniamy pociągów.
+    const nextIsTrain = isProtectedTrainLeg(next.leg);
+    if (nextIsTrain && assessment === 'missed') {
+      if (!this.nextTrainSearched) {
+        this.nextTrainSearched = true;
+        this.nextTrain = await this.findNextTrain(next, arrivalAtMs + walkSec * 1000);
+      }
+      return this.state('conductor', now, { ...common, nextTrain: this.nextTrain });
+    }
+
+    this.alternatives = this.alternatives.filter((item) => item.validUntil > now);
+
+    const delayWorsened = delaySec - this.lastSearchDelaySec >= 90;
+    const searchDue =
+      this.alternatives.length === 0
+        ? now - this.lastSearch >= 30_000
+        : now - this.lastSearch >= 60_000 || delayWorsened;
+
+    if (assessment === 'missed' && searchDue) {
+      this.lastSearch = now;
+      this.lastSearchDelaySec = delaySec;
+      this.alternatives = await this.findAlternatives(
+        ride,
+        next,
+        effectiveEstimate!,
+        walkSec,
+        baseBuffer,
+        walkSpeedMps,
+        now,
+      );
+    } else if (
+      assessment === 'risk' &&
+      slackSec < baseBuffer &&
+      !nextIsTrain &&
+      this.alternatives.length === 0 &&
+      now - this.lastSearch >= 45_000 &&
+      delaySource === 'live'
+    ) {
+      this.lastSearch = now;
+      this.lastSearchDelaySec = delaySec;
+      this.alternatives = await this.findAlternatives(
+        ride,
+        next,
+        effectiveEstimate!,
+        walkSec,
+        baseBuffer,
+        walkSpeedMps,
+        now,
+      );
+    }
+
+    if (assessment === 'risk' && this.alternatives.length === 0) {
+      return this.state('risk', now, common);
+    }
+
+    const best = this.alternatives[0];
+    if (best && best.validUntil > now) {
+      return this.state('alternative', now, {
+        ...common,
+        alternative: best,
+        alternatives: this.alternatives,
+      });
+    }
+
+    return this.state(assessment === 'risk' ? 'risk' : 'noAlternative', now, common);
   }
 
-  private async findAlternative(
-    ride: Ride,
-    estimate: { position: number; delaySec: number },
-    now: number,
-  ) {
-    const settings = getSettingsSync();
-    const fix = getCurrentLocationSnapshot().location;
-    if (!fix) return undefined;
-    const alightStop = ride.stops[ride.alight];
-    const onPlatform =
-      alightStop.lat != null &&
-      alightStop.lon != null &&
-      distanceMeters(fix.lat, fix.lon, alightStop.lat, alightStop.lon) <= 45 &&
-      (fix.speed ?? 0) < 2.2;
-    const first = Math.max(ride.board + 1, Math.floor(estimate.position) + 1);
-    const indices = onPlatform
-      ? [ride.alight]
-      : [...new Set([ride.alight, first, first + 1, first + 2])].filter(
-          (index) => index >= first && index < ride.stops.length,
-        );
-    let best: TransferAlternative | undefined;
-    for (const index of indices) {
-      const stop = ride.stops[index];
-      if (stop.lat == null || stop.lon == null || stop.arriveSec == null) continue;
-      const at = onPlatform ? now : ride.baseMs + (stop.arriveSec + estimate.delaySec) * 1000;
-      const originalAt = ride.baseMs + ((alightStop.arriveSec ?? 0) + estimate.delaySec) * 1000;
-      const validUntil = onPlatform ? now + 60_000 : Math.min(at, originalAt) - 60_000;
-      if (validUntil <= now) continue;
-      const day = new Date(now);
-      day.setHours(0, 0, 0, 0);
-      const connections = await RoutingService.getConnections({
-        fromTitle: stop.name,
-        fromLat: stop.lat,
-        fromLon: stop.lon,
-        anchorStopId: stop.stopId,
+  private async findNextTrain(next: Ride, afterMs: number): Promise<NextTrainInfo | undefined> {
+    try {
+      const from = next.stops[next.board];
+      if (!from || from.lat == null || from.lon == null) return undefined;
+      const results = await RoutingService.getConnections({
+        fromId: from.stopId,
+        fromTitle: from.name,
+        fromLat: from.lat,
+        fromLon: from.lon,
         toId: this.trip.toId,
         toTitle: this.trip.toTitle,
         toLat: this.trip.toLat,
         toLon: this.trip.toLon,
-        departureTimeSec:
-          Math.ceil((at - day.getTime()) / 1000) + Math.max(60, settings.minTransferSec),
-        maxTransfers: Math.max(0, settings.maxTransfers - this.rideIndex - 1),
-        minTransferSec: settings.minTransferSec,
-        trainMinTransferSec: settings.trainMinTransferSec,
-        allowedTransferModes: settings.allowedModes,
-        maxWalkM: Math.min(800, settings.maxWalkM),
-        walkSpeedMps: profileWalkSpeedMps(settings.walkPace),
+        departureTimeSec: Math.max(0, Math.floor((afterMs - this.baseMs) / 1000)),
+        trainsEnabled: true,
       });
-      for (const tail of connections) {
-        const timeline = computeLegTimeline(tail, new Date(now));
-        const boarding = timeline.find(({ leg }) => leg.mode !== 'walk');
-        const end = timeline.at(-1)?.arriveMs;
-        if (!boarding || !end || boarding.leg.tripId === ride.leg.tripId || boarding.departMs <= at)
-          continue;
-        const prefix = onPlatform
-          ? []
-          : [
-              ...this.trip.connection.legs.slice(0, ride.index),
-              {
-                ...ride.leg,
-                toStop: stop.name,
-                toStopId: stop.stopId,
-                toLat: stop.lat,
-                toLon: stop.lon,
-                arriveAt: formatClock((at - day.getTime()) / 1000),
-                stopsCount: index - ride.board,
-                intermediateStops: ride.stops,
-              },
-            ];
-        const connection: Connection = {
-          ...this.trip.connection,
-          legs: [...prefix, ...tail.legs],
-          arriveAt: tail.arriveAt,
-          durationMin: Math.ceil(
-            (end -
-              computeLegTimeline(this.trip.connection, new Date(this.trip.startedAt))[0].departMs) /
-              60_000,
-          ),
-          transfers: prefix.filter((leg) => leg.mode !== 'walk').length + tail.transfers,
-          ...(onPlatform
-            ? {
-                fromTitle: tail.fromTitle,
-                departureSec: tail.departureSec,
-                departAt: tail.departAt,
-              }
-            : {}),
+      for (const conn of results) {
+        const trainLeg = conn.legs.find((l) => isProtectedTrainLeg(l));
+        if (!trainLeg) continue;
+        const depMs = departureMsOf(conn, afterMs);
+        if (depMs <= afterMs) continue;
+        const label = trainLeg.line ?? trainLeg.trainNumber ?? '';
+        if (!label) continue;
+        return {
+          label,
+          trainName: trainLeg.trainName,
+          departAtMs: depMs,
         };
-        const candidate: TransferAlternative = {
-          id: `${ride.index}:${stop.stopId}:${boarding.leg.tripId}:${boarding.departMs}`,
-          connection,
-          activeLegIndex: onPlatform ? 0 : ride.index,
-          nextLine: boarding.leg.line ?? '',
-          transferStop: stop.name,
-          departureAtMs: boarding.departMs,
-          arrivalAtMs: end,
-          validUntil: Math.min(validUntil, boarding.departMs - 60_000),
-          kind: onPlatform ? 'fromHere' : index === ride.alight ? 'sameStop' : 'stayOn',
-        };
-        if (candidate.validUntil <= Date.now()) continue;
-        const score = candidate.arrivalAtMs + (candidate.kind === 'stayOn' ? 180_000 : 0);
-        if (!best || score < best.arrivalAtMs + (best.kind === 'stayOn' ? 180_000 : 0))
-          best = candidate;
       }
+      return undefined;
+    } catch {
+      return undefined;
     }
-    return best;
+  }
+
+  /**
+   * Łączy szybką wymianę kolejnego odcinka miejskiego (legAlternatives)
+   * z pełnym przeplanowaniem RAPTOR (stayOn / sameStop). Pociągów nigdy nie wymienia.
+   */
+  private async findAlternatives(
+    ride: Ride,
+    next: Ride,
+    estimate: RideEstimate,
+    walkSec: number,
+    bufferSec: number,
+    walkSpeedMps: number,
+    now: number,
+  ): Promise<TransferAlternative[]> {
+    const candidates: TransferAlternative[] = [];
+    const seenKeys = new Set<string>();
+    const addCandidate = (alt: TransferAlternative) => {
+      const key = `${alt.kind}|${alt.nextLine}|${alt.transferStop}|${Math.round(alt.departureAtMs / 60_000)}|${Math.round(alt.arrivalAtMs / 60_000)}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      candidates.push(alt);
+    };
+
+    const delayedArriveMs = this.rideTimes(ride).arriveMs + estimate.delaySec * 1000;
+
+    if (!isProtectedTrainLeg(next.leg)) {
+      const urbanSwaps = await this.findUrbanLegSwapAlternatives(
+        ride,
+        next,
+        delayedArriveMs,
+        estimate.delaySec,
+        walkSec,
+        bufferSec,
+        walkSpeedMps,
+        now,
+      );
+      for (const alt of urbanSwaps) addCandidate(alt);
+    }
+
+    const raptorAlts = await this.findRaptorAlternatives(
+      ride,
+      estimate,
+      bufferSec,
+      walkSpeedMps,
+      now,
+    );
+    for (const alt of raptorAlts) addCandidate(alt);
+
+    candidates.sort((a, b) => {
+      const scoreA = a.arrivalAtMs + (a.kind === 'sameStop' ? 0 : 180_000);
+      const scoreB = b.arrivalAtMs + (b.kind === 'sameStop' ? 0 : 180_000);
+      return scoreA - scoreB;
+    });
+
+    return candidates.slice(0, MAX_ALTERNATIVES);
+  }
+
+  private async findUrbanLegSwapAlternatives(
+    ride: Ride,
+    next: Ride,
+    delayedArriveMs: number,
+    delaySec: number,
+    walkSec: number,
+    bufferSec: number,
+    walkSpeedMps: number,
+    now: number,
+  ): Promise<TransferAlternative[]> {
+    try {
+      const {
+        applyLegSwapToConnection,
+        isSwappableUrbanLeg,
+        loadLegAlternatives,
+        materializeAlternativeLeg,
+      } = await import('../routing/legAlternatives');
+
+      const delayedConnection: Connection = {
+        ...this.trip.connection,
+        legs: this.trip.connection.legs.map((l, idx) =>
+          idx === ride.legIndex
+            ? {
+                ...l,
+                arriveAt: clockFromMs(delayedArriveMs),
+                delaySec,
+                arrivalDelaySec: delaySec,
+                live: true,
+              }
+            : l,
+        ),
+        delayMin: Math.round(delaySec / 60),
+        live: true,
+      };
+
+      if (!isSwappableUrbanLeg(delayedConnection, next.legIndex)) return [];
+
+      const nowSec = Math.round((now - this.baseMs) / 1000);
+      const tripDelays = liveTracker.getTripDelays();
+      const loaded = await loadLegAlternatives(delayedConnection, next.legIndex, {
+        lookbackSec: 0,
+        lookaheadSec: 5400,
+        tripDelays,
+        nowSec,
+      });
+      if (!loaded) return [];
+
+      const delayedArriveSec = Math.round((delayedArriveMs - this.baseMs) / 1000);
+      const results: TransferAlternative[] = [];
+      for (const candidate of loaded.alternatives) {
+        if (candidate.isCurrent || candidate.tripId === next.leg.tripId) continue;
+        const requiredWalk = candidate.boardWalkSec || walkSec;
+        if (candidate.effectiveDepartureSec < delayedArriveSec + requiredWalk + bufferSec) continue;
+
+        const materialized = materializeAlternativeLeg(candidate, next.leg, undefined, nowSec);
+        const swapped = applyLegSwapToConnection(delayedConnection, next.legIndex, materialized, {
+          boardWalkM: candidate.boardWalkM,
+          boardWalkSec: candidate.boardWalkSec,
+          alightWalkM: candidate.alightWalkM,
+          alightWalkSec: candidate.alightWalkSec,
+          walkSpeedMps,
+          nowSec,
+        });
+        const departureAtMs = this.baseMs + candidate.effectiveDepartureSec * 1000;
+        const arrivalAtMs = arrivalMsOf(swapped, departureAtMs);
+        const slackSec = Math.round((departureAtMs - delayedArriveMs) / 1000) - requiredWalk;
+        results.push({
+          id: `swap-${ride.legIndex}-${candidate.tripId}-${candidate.effectiveDepartureSec}`,
+          connection: swapped,
+          activeLegIndex: ride.legIndex,
+          nextLine: candidate.line,
+          nextMode: candidate.mode,
+          transferStop: candidate.fromStop,
+          departureAtMs,
+          arrivalAtMs,
+          validUntil: Math.max(now + 45_000, Math.min(delayedArriveMs, departureAtMs) - 30_000),
+          kind: 'sameStop',
+          source: 'legSwap',
+          deltaArrivalMin: Math.round((arrivalAtMs - this.plannedArrivalMs) / 60_000),
+          slackSec,
+          walkM: candidate.boardWalkM,
+        });
+        if (results.length >= 2) break;
+      }
+      return results;
+    } catch {
+      return [];
+    }
+  }
+
+  private async findRaptorAlternatives(
+    ride: Ride,
+    estimate: RideEstimate,
+    bufferSec: number,
+    walkSpeedMps: number,
+    now: number,
+  ): Promise<TransferAlternative[]> {
+    const first = Math.max(ride.board + 1, Math.floor(estimate.position) + 1);
+    const indexes = [
+      ...new Set(
+        [
+          ride.alight,
+          ...Array.from(
+            { length: Math.max(0, Math.min(ride.stops.length - 1, first + 3) - first + 1) },
+            (_, i) => first + i,
+          ),
+        ].filter((i) => i >= first && i < ride.stops.length),
+      ),
+    ];
+
+    const out: TransferAlternative[] = [];
+    for (const alight of indexes) {
+      const stop = ride.stops[alight];
+      const stopArriveMs =
+        stop.arriveSec != null
+          ? this.baseMs + stop.arriveSec * 1000
+          : stop.departSec != null
+            ? this.baseMs + stop.departSec * 1000
+            : this.rideTimes(ride).arriveMs;
+      const arrivalAtMs = stopArriveMs + estimate.delaySec * 1000;
+      if (arrivalAtMs < now + 60_000 || stop.lat == null || stop.lon == null) continue;
+
+      let connections: Connection[];
+      try {
+        connections = await RoutingService.getConnections({
+          fromId: stop.stopId,
+          fromTitle: stop.name,
+          fromLat: stop.lat,
+          fromLon: stop.lon,
+          toId: this.trip.toId,
+          toTitle: this.trip.toTitle,
+          toLat: this.trip.toLat,
+          toLon: this.trip.toLon,
+          departureTimeSec: Math.max(
+            0,
+            Math.floor((arrivalAtMs + bufferSec * 1000 - this.baseMs) / 1000),
+          ),
+          trainsEnabled: false,
+        });
+      } catch {
+        continue;
+      }
+
+      const tail = connections.find((item) => item.legs.some((leg) => leg.mode !== 'walk'));
+      const firstNext = tail?.legs.find((leg) => leg.mode !== 'walk');
+      if (!tail || !firstNext) continue;
+
+      const current: Leg = {
+        ...ride.leg,
+        toStop: stop.name,
+        toStopId: stop.stopId,
+        toLat: stop.lat,
+        toLon: stop.lon,
+        arriveAt: clockFromMs(arrivalAtMs),
+        stopsCount: alight - ride.board,
+        intermediateStops: ride.stops.slice(ride.board, alight + 1),
+      };
+      const legs = [...this.trip.connection.legs.slice(0, ride.legIndex), current, ...tail.legs];
+      const finalArrivalMs = arrivalMsOf(tail, arrivalAtMs);
+      const nextDepMs = departureMsOf(tail, arrivalAtMs);
+      const firstWalk = tail.legs[0]?.mode === 'walk' ? tail.legs[0] : undefined;
+      const walkM = firstWalk?.walkM ?? 0;
+      const walkSec = walkM <= 25 ? 0 : Math.max(45, Math.round((walkM * 1.15) / walkSpeedMps));
+      const slackSec = Math.round((nextDepMs - arrivalAtMs) / 1000) - walkSec;
+      const connection: Connection = {
+        ...this.trip.connection,
+        legs,
+        arriveAt: tail.arriveAt,
+        durationMin: Math.ceil((finalArrivalMs - this.firstDepartureMs) / 60_000),
+        transfers: Math.max(0, legs.filter((leg) => leg.mode !== 'walk').length - 1),
+        delayMin: Math.round(estimate.delaySec / 60),
+        live: true,
+        interchange: stop.name,
+      };
+      const kind: TransferAlternative['kind'] = alight === ride.alight ? 'sameStop' : 'stayOn';
+      out.push({
+        id: `${this.trip.id}-${alight}-${tail.departureSec}-${firstNext.line ?? ''}`,
+        connection,
+        activeLegIndex: ride.legIndex,
+        nextLine: firstNext.line ?? '',
+        nextMode: firstNext.mode,
+        transferStop: stop.name,
+        departureAtMs: nextDepMs,
+        arrivalAtMs: finalArrivalMs,
+        validUntil: Math.max(now + 45_000, arrivalAtMs - 30_000),
+        kind,
+        source: 'raptor',
+        deltaArrivalMin: Math.round((finalArrivalMs - this.plannedArrivalMs) / 60_000),
+        slackSec,
+        walkM,
+      });
+    }
+
+    return out;
+  }
+
+  private state(
+    status: TransferProtectionState['status'],
+    updatedAt: number,
+    extra: Partial<TransferProtectionState> = {},
+  ): TransferProtectionState {
+    return {
+      tripId: this.trip.id,
+      status,
+      updatedAt,
+      revision: this.revision,
+      scope: 'foreground',
+      ...extra,
+    };
   }
 }

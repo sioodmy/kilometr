@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -10,9 +10,15 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetScrollView,
+  useBottomSheetSpringConfigs,
+} from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlarmClock, Minus, Plus, Volume2, X } from './icons';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { Connection } from '../types/models';
@@ -68,6 +74,19 @@ export function DepartureAlarmSheet({
   const a = s.alarm;
   const insets = useSafeAreaInsets();
   const sheet = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ['90%'], []);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        accessibilityLabel={s.common.close}
+      />
+    ),
+    [s.common.close],
+  );
   const busyRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -193,21 +212,15 @@ export function DepartureAlarmSheet({
     <BottomSheet
       ref={sheet}
       index={0}
-      snapPoints={['90%']}
+      snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       enableDynamicSizing={false}
       topInset={insets.top}
       enablePanDownToClose
       onClose={onCloseRef.current}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
-      backdropComponent={(props) => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          accessibilityLabel={s.common.close}
-        />
-      )}
+      backdropComponent={renderBackdrop}
     >
       <View style={styles.container} accessibilityViewIsModal>
         <View style={styles.header}>

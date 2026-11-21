@@ -15,26 +15,49 @@ function rawTrainParts(line?: string): { number?: string; name?: string } {
  * i gwarantujące kontrast WCAG AA (>= 4.5:1) dla tekstu i ikony.
  */
 export const RAIL_AGENCY_COLORS: Record<string, string> = {
-  KD: '#FFB957', // Koleje Dolnośląskie – dolnośląskie złoto / bursztyn (czarny tekst, kontrast 12.3:1)
-  'KŚ': '#1976D2', // Koleje Śląskie – błękit śląski (biały tekst, kontrast 4.6:1)
+  KD: '#FFB957', // Koleje Dolnośląskie - dolnośląskie złoto / bursztyn (czarny tekst, kontrast 12.3:1)
+  'KŚ': '#1976D2', // Koleje Śląskie - błękit śląski (biały tekst, kontrast 4.6:1)
   KS: '#1976D2',
-  PR: '#D32F2F', // Polregio – firmowa czerwień / karmin (biały tekst, kontrast 5.0:1)
-  IC: '#0D47A1', // PKP Intercity – firmowy kobalt / granat (biały tekst, kontrast 8.6:1)
-  KM: '#2E7D32', // Koleje Mazowieckie – zieleń mazowiecka (biały tekst, kontrast 5.1:1)
-  'ŁKA': '#7B1FA2', // Łódzka Kolej Aglomeracyjna – fiolet / magenta (biały tekst, kontrast 8.2:1)
+  PR: '#D32F2F', // Polregio - firmowa czerwień / karmin (biały tekst, kontrast 5.0:1)
+  IC: '#0D47A1', // PKP Intercity - firmowy kobalt / granat (biały tekst, kontrast 8.6:1)
+  KM: '#2E7D32', // Koleje Mazowieckie - zieleń mazowiecka (biały tekst, kontrast 5.1:1)
+  'ŁKA': '#7B1FA2', // Łódzka Kolej Aglomeracyjna - fiolet / magenta (biały tekst, kontrast 8.2:1)
   LKA: '#7B1FA2',
-  KW: '#C2185B', // Koleje Wielkopolskie – malinowa czerwień (biały tekst, kontrast 5.9:1)
-  'KMŁ': '#0288D1', // Koleje Małopolskie – błękit małopolski (czarny tekst, kontrast 5.4:1)
+  KW: '#C2185B', // Koleje Wielkopolskie - malinowa czerwień (biały tekst, kontrast 5.9:1)
+  'KMŁ': '#0288D1', // Koleje Małopolskie - błękit małopolski (czarny tekst, kontrast 5.4:1)
   KML: '#0288D1',
-  SKM: '#D32F2F', // SKM Warszawa – warszawska czerwień (biały tekst, kontrast 5.0:1)
-  SKMT: '#0D47A1', // PKP SKM Trójmiasto – granat morski (biały tekst, kontrast 8.6:1)
-  WKD: '#1A237E', // Warszawska Kolej Dojazdowa – ciemny granat (biały tekst, kontrast 13.2:1)
+  SKM: '#D32F2F', // SKM Warszawa - warszawska czerwień (biały tekst, kontrast 5.0:1)
+  SKMT: '#0D47A1', // PKP SKM Trójmiasto - granat morski (biały tekst, kontrast 8.6:1)
+  WKD: '#1A237E', // Warszawska Kolej Dojazdowa - ciemny granat (biały tekst, kontrast 13.2:1)
+};
+
+const RAIL_AGENCY_NAMES: Record<string, string> = {
+  IC: 'PKP Intercity',
+  KD: 'Koleje Dolnośląskie',
+  PR: 'Polregio',
+  KM: 'Koleje Mazowieckie',
+  'KŚ': 'Koleje Śląskie',
+  KS: 'Koleje Śląskie',
+  'ŁKA': 'Łódzka Kolej Aglomeracyjna',
+  LKA: 'Łódzka Kolej Aglomeracyjna',
+  KW: 'Koleje Wielkopolskie',
+  'KMŁ': 'Koleje Małopolskie',
+  KML: 'Koleje Małopolskie',
+  SKM: 'SKM Warszawa',
+  SKMT: 'PKP SKM w Trójmieście',
+  WKD: 'Warszawska Kolej Dojazdowa',
 };
 
 export function getRailAgencyColor(agency?: string): string | undefined {
   if (!agency) return undefined;
   const upper = agency.toUpperCase();
   return RAIL_AGENCY_COLORS[upper] ?? RAIL_AGENCY_COLORS[agency];
+}
+
+export function railAgencyFullName(agency?: string): string | undefined {
+  if (!agency) return undefined;
+  const upper = agency.trim().toUpperCase();
+  return RAIL_AGENCY_NAMES[upper] ?? RAIL_AGENCY_NAMES[agency.trim()];
 }
 
 /**

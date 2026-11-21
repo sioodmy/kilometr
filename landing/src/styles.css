@@ -3,6 +3,7 @@
 @import './components/coverageSection.css';
 @import './components/landingSections.css';
 @import './components/installPage.css';
+@import './components/themeStudio.css';
 
 @font-face {
   font-family: 'Demo Roboto';

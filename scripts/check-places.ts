@@ -118,7 +118,7 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   // Najdalsza stacja GZM (Rudziniec Gliwicki, ~46 km) musi łapać się promienia...
   expect('Rudziniec Gliwicki w GZM', suggestCityForCoords(50.3666, 18.4042)?.id, 'gzm');
   // ...ale Bielsko (~49,5 km) już nie: promień ma sufit.
-  expect('Bielsko poza GZM', suggestCityForCoords(49.8224, 19.0444)?.id ?? null, null);
+  expect('Bielsko-Biała to własne miasto', suggestCityForCoords(49.8224, 19.0444)?.id ?? null, 'bielskobiala');
   expect('Pałac Kultury w Warszawie', suggestCityForCoords(52.2319, 21.0067)?.id, 'warszawa');
   expect('Metro Młociny w Warszawie', suggestCityForCoords(52.2905, 20.9308)?.id, 'warszawa');
   expect('Stary Rynek w Poznaniu', suggestCityForCoords(52.4084, 16.9336)?.id, 'poznan');
@@ -126,7 +126,7 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   // Środa Wielkopolska (~31 km) to najdalszy punkt aglomeracji...
   expect('Środa Wlkp. w Poznaniu', suggestCityForCoords(52.2277, 17.2787)?.id, 'poznan');
   // ...a Września (~50 km) już poza nią.
-  expect('Września poza Poznaniem', suggestCityForCoords(52.326, 17.5866)?.id ?? null, null);
+  expect('Września to własne miasto', suggestCityForCoords(52.326, 17.5866)?.id ?? null, 'wrzesnia');
   expect('Długi Targ w Trójmieście', suggestCityForCoords(54.3485, 18.6533)?.id, 'trojmiasto');
   expect('Orłowo w Trójmieście', suggestCityForCoords(54.48, 18.55)?.id, 'trojmiasto');
   // Wejherowo (~28 km od Sopotu) to najdalszy punkt aglomeracji...
@@ -138,26 +138,26 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   // Zgierz (~25 km) to najdalszy punkt aglomeracji...
   expect('Zgierz w Łodzi', suggestCityForCoords(51.854, 19.125)?.id, 'lodz');
   // ...a Sieradz (~53 km) już poza nią.
-  expect('Sieradz poza Łodzią', suggestCityForCoords(51.593, 18.73)?.id ?? null, null);
+  expect('Sieradz to własne miasto', suggestCityForCoords(51.593, 18.73)?.id ?? null, 'sieradz');
   expect('Brama Portowa w Szczecinie', suggestCityForCoords(53.4285, 14.5528)?.id, 'szczecin');
   expect('Dąbie w Szczecinie', suggestCityForCoords(53.39, 14.67)?.id, 'szczecin');
   // Police (~13 km) to najdalszy punkt strefy...
   expect('Police w Szczecinie', suggestCityForCoords(53.55, 14.575)?.id, 'szczecin');
   // ...a Stargard (~33 km) już poza nią.
-  expect('Stargard poza Szczecinem', suggestCityForCoords(53.34, 15.04)?.id ?? null, null);
+  expect('Stargard to własne miasto', suggestCityForCoords(53.34, 15.04)?.id ?? null, 'stargard');
   expect('Rynek w Kielcach', suggestCityForCoords(50.8717, 20.6314)?.id, 'kielce');
   expect('Kadzielnia w Kielcach', suggestCityForCoords(50.8556, 20.6176)?.id, 'kielce');
   // Obice Szkoła (~21 km) to najdalszy przystanek strefy ZTM...
   expect('Obice w Kielcach', suggestCityForCoords(50.68369, 20.60016)?.id, 'kielce');
   // ...a Skarżysko-Kamienna (~32 km) już poza nią.
-  expect('Skarżysko poza Kielcami', suggestCityForCoords(51.1146, 20.8693)?.id ?? null, null);
+  expect('Skarżysko to własne miasto', suggestCityForCoords(51.1146, 20.8693)?.id ?? null, 'skarzysko');
   expect('Stare Miasto w Olsztynie', suggestCityForCoords(53.7778, 20.4778)?.id, 'olsztyn');
   expect('Dworzec Główny w Olsztynie', suggestCityForCoords(53.7839, 20.4947)?.id, 'olsztyn');
   expect('Kortowo w Olsztynie', suggestCityForCoords(53.759, 20.457)?.id, 'olsztyn');
   // Barczewo (~16 km) to najdalszy punkt strefy...
   expect('Barczewo w Olsztynie', suggestCityForCoords(53.8489, 20.6911)?.id, 'olsztyn');
   // ...a Ostróda (~35 km) już poza nią.
-  expect('Ostróda poza Olsztynem', suggestCityForCoords(53.6965, 19.9651)?.id ?? null, null);
+  expect('Ostróda to własne miasto', suggestCityForCoords(53.6965, 19.9651)?.id ?? null, 'ostroda');
   expect('Rynek Kościuszki w Białymstoku', suggestCityForCoords(53.1325, 23.1688)?.id, 'bialystok');
   expect('Choroszcz w Białymstoku', suggestCityForCoords(53.1428, 22.9186)?.id, 'bialystok');
   // Niewodnica (~24 km) to najdalszy punkt strefy...
@@ -176,7 +176,7 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
   // Albigowa (~17 km) to najdalszy przystanek ZTM...
   expect('Albigowa w Rzeszowie', suggestCityForCoords(50.0151, 22.2293)?.id, 'rzeszow');
   // ...a Przemyśl (~60 km) już poza strefą.
-  expect('Przemyśl poza Rzeszowem', suggestCityForCoords(49.7835, 22.7846)?.id ?? null, null);
+  expect('Przemyśl to własne miasto', suggestCityForCoords(49.7835, 22.7846)?.id ?? null, 'przemysl');
   expect('Zamek w Lublinie', suggestCityForCoords(51.2515, 22.5695)?.id, 'lublin');
   expect('Felicity w Lublinie', suggestCityForCoords(51.23, 22.6135)?.id, 'lublin');
   // Świdnik (~10 km) i Niemce (~13 km) to najdalsze punkty strefy...
@@ -192,9 +192,9 @@ describe('Klasyfikacja współrzędnych do miasta (migracja)');
 describe('Rejestr miast');
 {
   expect(
-    'trzydzieści trzy miasta',
+    '132 miasta',
     CITIES.map((c) => c.id).join(','),
-    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow,lublin,radom,bydgoszcz,torun,elblag,gorzow,czestochowa,zielonagora,rybnik,slupsk,walbrzych,kalisz,siedlce,lomza,krosno,jaslo,olkusz,chrzanow,bochnia,ilawa',
+    'wroclaw,krakow,gzm,warszawa,poznan,trojmiasto,lodz,szczecin,kielce,olsztyn,bialystok,opole,rzeszow,lublin,radom,bydgoszcz,torun,elblag,gorzow,czestochowa,zielonagora,rybnik,slupsk,walbrzych,kalisz,siedlce,lomza,krosno,jaslo,olkusz,chrzanow,bochnia,ilawa,bielskobiala,koszalin,piotrkow,tomaszow,skarzysko,oswiecim,swinoujscie,zakopane,plock,tarnow,legnica,jastrzebie,pila,konin,suwalki,ostrowiec,stalowawola,przemysl,elk,leszno,chelm,mielec,tczew,ostroleka,starachowice,kutno,kolobrzeg,radomsko,boleslawiec,cieszyn,zywiec,krasnik,grodzisk,pruszkow,sochaczew,minskmazowiecki,otwock,nowydwormaz,zabki,pabianice,zgierz,grudziadz,stargard,gniezno,jaworzno,kedzierzynkozle,zamosc,raciborz,belchatow,tarnobrzeg,skierniewice,zawiercie,starogard,zdunskawola,nysa,malbork,sieradz,szczecinek,nowasol,olesnica,czechowicedziedzice,ostroda,nowytarg,augustow,ketrzyn,zgorzelec,polkowice,gorlice,jarocin,wrzesnia,walcz,gizycko,zagan,koscierzyna,krotoszyn,sandomierz,bartoszyce,wielun,mragowo,swiecie,wagrowiec,bielskpodlaski,dzialdowo,brzesko,gostyn,chodziez,lidzbarkwarminski,pszczyna,wodzislaw,zabkowice,strzelin,srodaslaska,jedrzejow,kozienice,oborniki,wieliczka,myszkow,slubice,kartuzy',
   );
   expect('nieznane id to Wrocław', getCity('berlin').id, 'wroclaw');
   expect(
@@ -387,6 +387,105 @@ describe('Wpisy miast dodanych w 2026');
     chrzanow: { db: 'kilometr-gtfs-chrzanow.db', pack: 'chrzanow-tiles.ktp', live: false },
     bochnia: { db: 'kilometr-gtfs-bochnia.db', pack: 'bochnia-tiles.ktp', live: false },
     ilawa: { db: 'kilometr-gtfs-ilawa.db', pack: 'ilawa-tiles.ktp', live: false },
+    bielskobiala: { db: 'kilometr-gtfs-bielskobiala.db', pack: 'bielskobiala-tiles.ktp', live: true },
+    koszalin: { db: 'kilometr-gtfs-koszalin.db', pack: 'koszalin-tiles.ktp', live: true },
+    piotrkow: { db: 'kilometr-gtfs-piotrkow.db', pack: 'piotrkow-tiles.ktp', live: true },
+    tomaszow: { db: 'kilometr-gtfs-tomaszow.db', pack: 'tomaszow-tiles.ktp', live: true },
+    skarzysko: { db: 'kilometr-gtfs-skarzysko.db', pack: 'skarzysko-tiles.ktp', live: true },
+    oswiecim: { db: 'kilometr-gtfs-oswiecim.db', pack: 'oswiecim-tiles.ktp', live: true },
+    swinoujscie: { db: 'kilometr-gtfs-swinoujscie.db', pack: 'swinoujscie-tiles.ktp', live: true },
+    zakopane: { db: 'kilometr-gtfs-zakopane.db', pack: 'zakopane-tiles.ktp', live: true },
+    plock: { db: 'kilometr-gtfs-plock.db', pack: 'plock-tiles.ktp', live: true },
+    tarnow: { db: 'kilometr-gtfs-tarnow.db', pack: 'tarnow-tiles.ktp', live: true },
+    legnica: { db: 'kilometr-gtfs-legnica.db', pack: 'legnica-tiles.ktp', live: true },
+    jastrzebie: { db: 'kilometr-gtfs-jastrzebie.db', pack: 'jastrzebie-tiles.ktp', live: true },
+    pila: { db: 'kilometr-gtfs-pila.db', pack: 'pila-tiles.ktp', live: true },
+    konin: { db: 'kilometr-gtfs-konin.db', pack: 'konin-tiles.ktp', live: true },
+    suwalki: { db: 'kilometr-gtfs-suwalki.db', pack: 'suwalki-tiles.ktp', live: true },
+    ostrowiec: { db: 'kilometr-gtfs-ostrowiec.db', pack: 'ostrowiec-tiles.ktp', live: true },
+    stalowawola: { db: 'kilometr-gtfs-stalowawola.db', pack: 'stalowawola-tiles.ktp', live: false },
+    przemysl: { db: 'kilometr-gtfs-przemysl.db', pack: 'przemysl-tiles.ktp', live: false },
+    elk: { db: 'kilometr-gtfs-elk.db', pack: 'elk-tiles.ktp', live: true },
+    leszno: { db: 'kilometr-gtfs-leszno.db', pack: 'leszno-tiles.ktp', live: true },
+    chelm: { db: 'kilometr-gtfs-chelm.db', pack: 'chelm-tiles.ktp', live: true },
+    mielec: { db: 'kilometr-gtfs-mielec.db', pack: 'mielec-tiles.ktp', live: true },
+    tczew: { db: 'kilometr-gtfs-tczew.db', pack: 'tczew-tiles.ktp', live: true },
+    ostroleka: { db: 'kilometr-gtfs-ostroleka.db', pack: 'ostroleka-tiles.ktp', live: true },
+    starachowice: { db: 'kilometr-gtfs-starachowice.db', pack: 'starachowice-tiles.ktp', live: true },
+    kutno: { db: 'kilometr-gtfs-kutno.db', pack: 'kutno-tiles.ktp', live: true },
+    kolobrzeg: { db: 'kilometr-gtfs-kolobrzeg.db', pack: 'kolobrzeg-tiles.ktp', live: true },
+    radomsko: { db: 'kilometr-gtfs-radomsko.db', pack: 'radomsko-tiles.ktp', live: true },
+    boleslawiec: { db: 'kilometr-gtfs-boleslawiec.db', pack: 'boleslawiec-tiles.ktp', live: true },
+    cieszyn: { db: 'kilometr-gtfs-cieszyn.db', pack: 'cieszyn-tiles.ktp', live: true },
+    zywiec: { db: 'kilometr-gtfs-zywiec.db', pack: 'zywiec-tiles.ktp', live: true },
+    krasnik: { db: 'kilometr-gtfs-krasnik.db', pack: 'krasnik-tiles.ktp', live: true },
+    grodzisk: { db: 'kilometr-gtfs-grodzisk.db', pack: 'grodzisk-tiles.ktp', live: true },
+    pruszkow: { db: 'kilometr-gtfs-pruszkow.db', pack: 'pruszkow-tiles.ktp', live: true },
+    sochaczew: { db: 'kilometr-gtfs-sochaczew.db', pack: 'sochaczew-tiles.ktp', live: true },
+    minskmazowiecki: { db: 'kilometr-gtfs-minskmazowiecki.db', pack: 'minskmazowiecki-tiles.ktp', live: true },
+    otwock: { db: 'kilometr-gtfs-otwock.db', pack: 'otwock-tiles.ktp', live: true },
+    nowydwormaz: { db: 'kilometr-gtfs-nowydwormaz.db', pack: 'nowydwormaz-tiles.ktp', live: true },
+    zabki: { db: 'kilometr-gtfs-zabki.db', pack: 'zabki-tiles.ktp', live: true },
+    pabianice: { db: 'kilometr-gtfs-pabianice.db', pack: 'pabianice-tiles.ktp', live: true },
+    zgierz: { db: 'kilometr-gtfs-zgierz.db', pack: 'zgierz-tiles.ktp', live: true },
+    grudziadz: { db: 'kilometr-gtfs-grudziadz.db', pack: 'grudziadz-tiles.ktp', live: true },
+    jaworzno: { db: 'kilometr-gtfs-jaworzno.db', pack: 'jaworzno-tiles.ktp', live: true },
+    stargard: { db: 'kilometr-gtfs-stargard.db', pack: 'stargard-tiles.ktp', live: true },
+    gniezno: { db: 'kilometr-gtfs-gniezno.db', pack: 'gniezno-tiles.ktp', live: true },
+    zamosc: { db: 'kilometr-gtfs-zamosc.db', pack: 'zamosc-tiles.ktp', live: true },
+    kedzierzynkozle: { db: 'kilometr-gtfs-kedzierzynkozle.db', pack: 'kedzierzynkozle-tiles.ktp', live: true },
+    belchatow: { db: 'kilometr-gtfs-belchatow.db', pack: 'belchatow-tiles.ktp', live: true },
+    raciborz: { db: 'kilometr-gtfs-raciborz.db', pack: 'raciborz-tiles.ktp', live: true },
+    tarnobrzeg: { db: 'kilometr-gtfs-tarnobrzeg.db', pack: 'tarnobrzeg-tiles.ktp', live: true },
+    skierniewice: { db: 'kilometr-gtfs-skierniewice.db', pack: 'skierniewice-tiles.ktp', live: true },
+    starogard: { db: 'kilometr-gtfs-starogard.db', pack: 'starogard-tiles.ktp', live: true },
+    zawiercie: { db: 'kilometr-gtfs-zawiercie.db', pack: 'zawiercie-tiles.ktp', live: true },
+    nysa: { db: 'kilometr-gtfs-nysa.db', pack: 'nysa-tiles.ktp', live: true },
+    zdunskawola: { db: 'kilometr-gtfs-zdunskawola.db', pack: 'zdunskawola-tiles.ktp', live: true },
+    sieradz: { db: 'kilometr-gtfs-sieradz.db', pack: 'sieradz-tiles.ktp', live: true },
+    malbork: { db: 'kilometr-gtfs-malbork.db', pack: 'malbork-tiles.ktp', live: true },
+    szczecinek: { db: 'kilometr-gtfs-szczecinek.db', pack: 'szczecinek-tiles.ktp', live: true },
+    nowasol: { db: 'kilometr-gtfs-nowasol.db', pack: 'nowasol-tiles.ktp', live: true },
+    olesnica: { db: 'kilometr-gtfs-olesnica.db', pack: 'olesnica-tiles.ktp', live: true },
+    czechowicedziedzice: { db: 'kilometr-gtfs-czechowicedziedzice.db', pack: 'czechowicedziedzice-tiles.ktp', live: true },
+    ostroda: { db: 'kilometr-gtfs-ostroda.db', pack: 'ostroda-tiles.ktp', live: true },
+    nowytarg: { db: 'kilometr-gtfs-nowytarg.db', pack: 'nowytarg-tiles.ktp', live: true },
+    augustow: { db: 'kilometr-gtfs-augustow.db', pack: 'augustow-tiles.ktp', live: true },
+    ketrzyn: { db: 'kilometr-gtfs-ketrzyn.db', pack: 'ketrzyn-tiles.ktp', live: true },
+    gorlice: { db: 'kilometr-gtfs-gorlice.db', pack: 'gorlice-tiles.ktp', live: true },
+    zgorzelec: { db: 'kilometr-gtfs-zgorzelec.db', pack: 'zgorzelec-tiles.ktp', live: true },
+    jarocin: { db: 'kilometr-gtfs-jarocin.db', pack: 'jarocin-tiles.ktp', live: true },
+    polkowice: { db: 'kilometr-gtfs-polkowice.db', pack: 'polkowice-tiles.ktp', live: true },
+    zagan: { db: 'kilometr-gtfs-zagan.db', pack: 'zagan-tiles.ktp', live: true },
+    wrzesnia: { db: 'kilometr-gtfs-wrzesnia.db', pack: 'wrzesnia-tiles.ktp', live: true },
+    walcz: { db: 'kilometr-gtfs-walcz.db', pack: 'walcz-tiles.ktp', live: true },
+    gizycko: { db: 'kilometr-gtfs-gizycko.db', pack: 'gizycko-tiles.ktp', live: true },
+    krotoszyn: { db: 'kilometr-gtfs-krotoszyn.db', pack: 'krotoszyn-tiles.ktp', live: true },
+    koscierzyna: { db: 'kilometr-gtfs-koscierzyna.db', pack: 'koscierzyna-tiles.ktp', live: true },
+    sandomierz: { db: 'kilometr-gtfs-sandomierz.db', pack: 'sandomierz-tiles.ktp', live: true },
+    bartoszyce: { db: 'kilometr-gtfs-bartoszyce.db', pack: 'bartoszyce-tiles.ktp', live: true },
+    wielun: { db: 'kilometr-gtfs-wielun.db', pack: 'wielun-tiles.ktp', live: true },
+    mragowo: { db: 'kilometr-gtfs-mragowo.db', pack: 'mragowo-tiles.ktp', live: true },
+    wagrowiec: { db: 'kilometr-gtfs-wagrowiec.db', pack: 'wagrowiec-tiles.ktp', live: true },
+    swiecie: { db: 'kilometr-gtfs-swiecie.db', pack: 'swiecie-tiles.ktp', live: true },
+    dzialdowo: { db: 'kilometr-gtfs-dzialdowo.db', pack: 'dzialdowo-tiles.ktp', live: true },
+    bielskpodlaski: { db: 'kilometr-gtfs-bielskpodlaski.db', pack: 'bielskpodlaski-tiles.ktp', live: true },
+    gostyn: { db: 'kilometr-gtfs-gostyn.db', pack: 'gostyn-tiles.ktp', live: true },
+    brzesko: { db: 'kilometr-gtfs-brzesko.db', pack: 'brzesko-tiles.ktp', live: true },
+    lidzbarkwarminski: { db: 'kilometr-gtfs-lidzbarkwarminski.db', pack: 'lidzbarkwarminski-tiles.ktp', live: true },
+    chodziez: { db: 'kilometr-gtfs-chodziez.db', pack: 'chodziez-tiles.ktp', live: true },
+    pszczyna: { db: 'kilometr-gtfs-pszczyna.db', pack: 'pszczyna-tiles.ktp', live: true },
+    wodzislaw: { db: 'kilometr-gtfs-wodzislaw.db', pack: 'wodzislaw-tiles.ktp', live: true },
+    zabkowice: { db: 'kilometr-gtfs-zabkowice.db', pack: 'zabkowice-tiles.ktp', live: false },
+    strzelin: { db: 'kilometr-gtfs-strzelin.db', pack: 'strzelin-tiles.ktp', live: true },
+    srodaslaska: { db: 'kilometr-gtfs-srodaslaska.db', pack: 'srodaslaska-tiles.ktp', live: true },
+    jedrzejow: { db: 'kilometr-gtfs-jedrzejow.db', pack: 'jedrzejow-tiles.ktp', live: false },
+    kozienice: { db: 'kilometr-gtfs-kozienice.db', pack: 'kozienice-tiles.ktp', live: true },
+    oborniki: { db: 'kilometr-gtfs-oborniki.db', pack: 'oborniki-tiles.ktp', live: true },
+    wieliczka: { db: 'kilometr-gtfs-wieliczka.db', pack: 'wieliczka-tiles.ktp', live: true },
+    myszkow: { db: 'kilometr-gtfs-myszkow.db', pack: 'myszkow-tiles.ktp', live: true },
+    kartuzy: { db: 'kilometr-gtfs-kartuzy.db', pack: 'kartuzy-tiles.ktp', live: true },
+    slubice: { db: 'kilometr-gtfs-slubice.db', pack: 'slubice-tiles.ktp', live: true },
   };
   for (const [id, e] of Object.entries(expected)) {
     const c = getCity(id);
@@ -434,12 +533,13 @@ describe("Strefy obsługi i mniejsze miejscowości (GZM i aglomeracje)");
   expect("resolve Pyrzowice", resolveSupportedCityId("Pyrzowice"), "gzm");
   expect("resolve Bojszowy", resolveSupportedCityId("Bojszowy"), "gzm");
   expect("resolve Wejherowo", resolveSupportedCityId("Wejherowo"), "trojmiasto");
-  expect("resolve Pruszków", resolveSupportedCityId("Pruszków"), "warszawa");
-  expect("resolve Zgierz", resolveSupportedCityId("Zgierz"), "lodz");
+  expect("resolve Pruszków", resolveSupportedCityId("Pruszków"), "pruszkow");
+  expect("resolve Zgierz", resolveSupportedCityId("Zgierz"), "zgierz");
   expect("resolve Swarzędz", resolveSupportedCityId("Swarzędz"), "poznan");
-  expect("resolve Wieliczka", resolveSupportedCityId("Wieliczka"), "krakow");
+  expect("resolve Wieliczka", resolveSupportedCityId("Wieliczka"), "wieliczka");
   expect("resolve Długołęka", resolveSupportedCityId("Długołęka"), "wroclaw");
-  expect("resolve Bielsko-Biała (nieobsługiwane)", resolveSupportedCityId("Bielsko-Biała"), undefined);
+  expect("resolve Bielsko-Biała", resolveSupportedCityId("Bielsko-Biała"), "bielskobiala");
+  expect("resolve Grudziądz", resolveSupportedCityId("Grudziądz"), "grudziadz");
   expect("resolve Strzelce Opolskie (nieobsługiwane)", resolveSupportedCityId("Strzelce Opolskie"), undefined);
   expect("resolve null", resolveSupportedCityId(null), undefined);
 }

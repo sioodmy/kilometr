@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -10,10 +10,14 @@ import {
   View,
 } from 'react-native';
 import BottomSheet, {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
   BottomSheetFlatList,
   BottomSheetScrollView,
   BottomSheetTextInput,
+  useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
+import { motion } from '../theme/motion';
 // W arkuszu poziome listy wymagają ScrollView z gesture-handlera.
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -288,9 +292,23 @@ export function AddPlaceSheet({
   const [nearestStops, setNearestStops] = useState<NearestStop[]>([]);
   const [searchingAnchor, setSearchingAnchor] = useState(false);
 
+  const snapPoints = useMemo(() => ['78%', '96%'], []);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.5}
+        pressBehavior="close"
+        accessibilityLabel={s.common.close}
+      />
+    ),
+    [s.common.close],
+  );
+
   // Android back / gest wstecz
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (isPickingIcon) {
@@ -309,7 +327,7 @@ export function AddPlaceSheet({
         setSuggestions([]);
         return true;
       }
-      closeRef.current();
+      sheetRef.current?.close();
       return true;
     });
     return () => sub.remove();
@@ -504,7 +522,8 @@ export function AddPlaceSheet({
     <BottomSheet
       ref={sheetRef}
       index={1}
-      snapPoints={['78%', '96%']}
+      snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       topInset={insets.top}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
@@ -514,6 +533,7 @@ export function AddPlaceSheet({
       onChange={(idx) => {
         if (idx === -1) onClose();
       }}
+      backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheet}
       handleIndicatorStyle={styles.handle}
     >

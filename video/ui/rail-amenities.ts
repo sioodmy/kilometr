@@ -12,6 +12,10 @@ const KEYS: RailAmenity[] = [
 
 export type RailAmenities = { keys: RailAmenity[]; counts: Partial<Record<RailAmenity, number>> };
 
+export function getCachedRailAmenities(): RailAmenities | null | undefined {
+  return { keys: KEYS, counts: { przewoz_rowerow: 8 } };
+}
+
 export async function loadRailAmenities(_leg: Leg): Promise<RailAmenities | null> {
   return { keys: KEYS, counts: { przewoz_rowerow: 8 } };
 }

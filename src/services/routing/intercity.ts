@@ -27,7 +27,6 @@ import {
   warsawNow,
 } from '../../gtfs/geo';
 import type { Connection, Leg, LegMode } from './types';
-import { sharedTimeMs } from '../../sharing/progress';
 import { deduplicateConnections, stableConnectionId } from './connectionIdentity';
 
 /** Stacja kolejowa w magazynie ogólnopolskim. */
@@ -834,77 +833,6 @@ async function planRailOnly(
 
 function railConnections(options: PlanOptions): Promise<Connection[]> {
   return planConnections(options, polskaStore);
-}
-
-/* ─── Następny pociąg (tryb konduktora) ─────────────────────────────────────── */
-
-export interface NextTrain {
-  label: string;
-  departAtMs: number;
-  trainName?: string;
-}
-
-/**
- * Kolejne pociągi z tej samej stacji (najlepiej do tej samej stacji
- * docelowej), po spóźnieniu na połączenie międzyregionalne. Zwraca
- * podpowiedź dla arkusza ochrony przesiadki: „poinformuj konduktora,
- * następny pociąg odjeżdża o …”.
- */
-export async function nextNationalTrains(
-  fromStopId: string,
-  toStopId: string | undefined,
-  afterMs: number,
-  limit = 3,
-): Promise<NextTrain[]> {
-  try {
-    const gtfs = await import('../gtfsDatabase');
-    const db = await gtfs.getNationalDb();
-    const afterWarsaw = warsawNow(new Date(afterMs));
-    const services = await gtfs.getNationalActiveServices(afterWarsaw.weekday, afterWarsaw.dateStr);
-    if (services.size === 0) return [];
-    const placeholders = [...services].map(() => '?').join(',');
-    const afterSec = afterWarsaw.sec;
-    const rows = await db.getAllAsync<{
-      dep_sec: number;
-      train_number: string;
-      train_name: string;
-      category: string;
-    }>(
-      `SELECT st.dep_sec, t.train_number, t.train_name, t.category
-       FROM stop_times st JOIN trips t ON t.trip_id = st.trip_id
-       WHERE st.stop_id = ?
-         AND t.service_id IN (${placeholders})
-         AND st.dep_sec > ?
-         ${toStopId ? 'AND EXISTS (SELECT 1 FROM stop_times d WHERE d.trip_id = st.trip_id AND d.stop_id = ? AND d.seq > st.seq)' : ''}
-       ORDER BY st.dep_sec
-       LIMIT ?`,
-      ...(toStopId
-        ? [fromStopId, ...services, afterSec, toStopId, Math.max(limit * 4, 12)]
-        : [fromStopId, ...services, afterSec, Math.max(limit * 4, 12)]),
-    );
-    const out: NextTrain[] = [];
-    for (const row of rows) {
-      // Czas GTFS liczy się od doby serwisowej; odjazdy po północy
-      // (24:xx+) mają dep_sec > 86400 i należą do „jutra” zegara.
-      const departAtMs = sharedTimeMs(afterWarsaw.isoDate, row.dep_sec);
-      if (departAtMs <= afterMs) continue;
-      const category = (row.category || '')
-        .split('/')
-        .map((part) => part.trim())
-        .find((part) => part && !/BUS/i.test(part));
-      out.push({
-        label: row.train_number
-          ? `${category || 'IC'} ${row.train_number}`
-          : category || '',
-        departAtMs,
-        trainName: row.train_name || undefined,
-      });
-      if (out.length >= limit) break;
-    }
-    return out;
-  } catch {
-    return [];
-  }
 }
 
 /* ─── Wybór najlepszych wariantów ───────────────────────────────────────────── */

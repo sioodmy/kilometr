@@ -1,10 +1,10 @@
 import React, { memo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, Clock3, Footprints, MapPinned, Pin, Ticket, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { LineBadge } from './LineBadge';
 import { transfersLabel } from './ConnectionCard';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedRoute } from '../types/models';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { Strings } from '../i18n/pl';
@@ -109,8 +109,9 @@ const SavedRouteCard = memo(function SavedRouteCard({
         },
         s,
       )}
-      scaleDelta={0.018}
+      scaleDelta={0.016}
       opacityDelta={0.05}
+      haptic="selection"
       style={[
         styles.card,
         (segment === 'first' || segment === 'single') && styles.cardTop,
@@ -124,60 +125,58 @@ const SavedRouteCard = memo(function SavedRouteCard({
           <Text style={styles.endpointFrom} numberOfLines={1}>
             {conn.fromTitle}
           </Text>
-          <ArrowRight size={15} color={scheme.primary} style={styles.arrow} />
+          <ArrowRight size={14} color={scheme.primary} style={styles.arrow} />
           <Text style={styles.endpointTo} numberOfLines={1}>
             {conn.toTitle}
           </Text>
         </View>
         <View style={styles.actions}>
           {hasTicket && (
-            <Pressable
+            <SpringPressable
               onPress={(e) => {
                 e.stopPropagation();
                 onOpenTicket(route);
               }}
-              hitSlop={8}
+              hitSlop={6}
+              scaleDelta={0.08}
+              haptic="light"
               accessibilityRole="button"
               accessibilityLabel={s.railTickets.showTicket}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.actionAccent,
-                pressed && styles.actionPressed,
-              ]}
+              style={[styles.actionBtn, styles.actionAccent]}
             >
               <Ticket size={16} color={scheme.onPrimaryContainer} />
-            </Pressable>
+            </SpringPressable>
           )}
           {active ? (
-            <Pressable
+            <SpringPressable
               onPress={(e) => {
                 e.stopPropagation();
                 onUnpin(route);
               }}
-              hitSlop={8}
+              hitSlop={6}
+              scaleDelta={0.08}
+              haptic="light"
               accessibilityRole="button"
               accessibilityLabel={s.routes.stopTrackingTripA11y}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.actionAccent,
-                pressed && styles.actionPressed,
-              ]}
+              style={[styles.actionBtn, styles.actionAccent]}
             >
               <Pin size={16} color={scheme.onPrimaryContainer} />
-            </Pressable>
+            </SpringPressable>
           ) : (
-            <Pressable
+            <SpringPressable
               onPress={(e) => {
                 e.stopPropagation();
                 onRemove(route);
               }}
-              hitSlop={8}
+              hitSlop={6}
+              scaleDelta={0.08}
+              haptic="selection"
               accessibilityRole="button"
               accessibilityLabel={s.home.removeRouteA11y(conn.toTitle)}
-              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+              style={styles.actionBtn}
             >
               <X size={16} color={scheme.onSurfaceVariant} />
-            </Pressable>
+            </SpringPressable>
           )}
         </View>
       </View>
@@ -206,12 +205,16 @@ const SavedRouteCard = memo(function SavedRouteCard({
         )}
       </View>
 
-      {/* Data, godziny, czas i przesiadki */}
+      {/* Godziny, czas, przesiadki i data */}
       <View style={styles.footerRow}>
         <View style={styles.timesPill}>
-          <Text style={styles.timesText} numberOfLines={1}>
-            {conn.departAt} – {conn.arriveAt}
-          </Text>
+          <Text style={styles.timesText}>{conn.departAt}</Text>
+          <View style={styles.miniBridge}>
+            <View style={styles.miniDotStart} />
+            <View style={styles.miniLine} />
+            <View style={styles.miniDotEnd} />
+          </View>
+          <Text style={styles.timesText}>{conn.arriveAt}</Text>
         </View>
         <View style={styles.durationChip}>
           <Clock3 size={13} color={scheme.onSurfaceVariant} />
@@ -283,9 +286,9 @@ function routeA11yLabel(
   s: Strings,
 ): string {
   const parts = [
-    `${conn.fromTitle} → ${conn.toTitle}`,
+    `${conn.fromTitle} \u2192 ${conn.toTitle}`,
     dateLabel,
-    `${conn.departAt} – ${conn.arriveAt}`,
+    `${conn.departAt} \u2192 ${conn.arriveAt}`,
     s.common.durMin(conn.durationMin),
   ];
   if (marks.active) parts.push(marks.active);
@@ -295,15 +298,16 @@ function routeA11yLabel(
 
 const styles = StyleSheet.create({
   list: {
-    gap: 4,
+    gap: 3,
   },
   card: {
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.small,
+    borderRadius: 8,
     padding: 16,
     gap: 12,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
   cardTop: {
     borderTopLeftRadius: shape.extraLarge,
@@ -315,7 +319,8 @@ const styles = StyleSheet.create({
   },
   cardActive: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderColor: scheme.primaryContainer,
+    borderWidth: 1.5,
+    borderColor: scheme.primary,
   },
   headerRow: {
     flexDirection: 'row',
@@ -331,7 +336,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   endpointFrom: {
-    ...type.titleMedium,
+    ...type.titleSmall,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
     flexShrink: 1,
@@ -339,6 +344,7 @@ const styles = StyleSheet.create({
   endpointTo: {
     ...type.titleMedium,
     fontWeight: '700',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
     flexShrink: 1,
   },
@@ -352,18 +358,18 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   actionBtn: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionAccent: {
     backgroundColor: scheme.primaryContainer,
-  },
-  actionPressed: {
-    opacity: 0.65,
+    borderColor: scheme.primary,
   },
   metaRow: {
     flexDirection: 'row',
@@ -374,21 +380,21 @@ const styles = StyleSheet.create({
   activePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
   },
   activeDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
   },
   activeText: {
     ...type.labelSmall,
-    fontWeight: '700',
+    fontWeight: '800',
     color: scheme.onPrimaryContainer,
   },
   badgeRow: {
@@ -416,18 +422,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     columnGap: 10,
-    rowGap: 4,
+    rowGap: 6,
   },
   timesPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: shape.small,
-    backgroundColor: scheme.surfaceContainerHigh,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   timesText: {
     ...type.labelMedium,
-    fontWeight: '700',
+    fontWeight: '800',
     color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
+  },
+  miniBridge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 18,
+  },
+  miniDotStart: {
+    width: 4,
+    height: 4,
+    borderRadius: shape.full,
+    borderWidth: 1.2,
+    borderColor: scheme.primary,
+  },
+  miniLine: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: scheme.outlineVariant,
+  },
+  miniDotEnd: {
+    width: 4,
+    height: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
   },
   durationChip: {
     flexDirection: 'row',
@@ -438,6 +473,7 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   metaText: {
     ...type.bodySmall,
@@ -452,16 +488,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    padding: 20,
+    padding: 18,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
   emptyIcon: {
     width: 48,
     height: 48,
-    borderRadius: shape.large,
-    borderTopRightRadius: shape.small,
-    borderBottomLeftRadius: shape.small,
+    borderRadius: 22,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 10,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -470,6 +509,7 @@ const styles = StyleSheet.create({
   emptyText: {
     flex: 1,
     gap: 4,
+    minWidth: 0,
   },
   emptyTitle: {
     ...type.titleMedium,

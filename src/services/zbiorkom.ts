@@ -46,10 +46,12 @@ export interface ZbKdVehicle {
   currentStopName?: string;
   nextStopName?: string;
   stops: ZbUpcomingStop[];
+  /** Model pojazdu z feedu (np. "48WEc Pesa Elf 2"). */
+  model?: string;
 }
 
 interface ZbPositionJson {
-  vehicle?: { id?: string; type?: string; agency?: string };
+  vehicle?: { id?: string; type?: string; agency?: string; model?: string };
   routeName?: string;
   brigade?: string;
   location?: [number, number];
@@ -309,6 +311,44 @@ const NEW_LIVE_AGENCIES: Record<string, string | undefined> = {
   kalisz: undefined,
   siedlce: undefined,
   krosno: undefined,
+  koszalin: undefined,
+  piotrkow: undefined,
+  tomaszow: undefined,
+  skarzysko: undefined,
+  oswiecim: undefined,
+  swinoujscie: undefined,
+  zakopane: undefined,
+  plock: undefined,
+  tarnow: undefined,
+  legnica: undefined,
+  jastrzebie: 'JASTRZEBIE',
+  pila: undefined,
+  konin: undefined,
+  suwalki: undefined,
+  ostrowiec: undefined,
+  elk: undefined,
+  leszno: undefined,
+  chelm: undefined,
+  mielec: undefined,
+  tczew: undefined,
+  ostroleka: undefined,
+  starachowice: undefined,
+  kutno: undefined,
+  kolobrzeg: undefined,
+  radomsko: undefined,
+  boleslawiec: undefined,
+  cieszyn: undefined,
+  zywiec: undefined,
+  krasnik: undefined,
+  grodzisk: 'GPA',
+  pruszkow: 'PRUSZKOW',
+  sochaczew: 'SOCHACZEW',
+  minskmazowiecki: 'MINSK',
+  otwock: 'OTWOCK',
+  nowydwormaz: 'NDM',
+  zabki: 'ZABKI',
+  pabianice: 'PABIANICE',
+  zgierz: 'ZGIERZ',
 };
 
 /** Czy miasto ma nowy feed live (dyspozyt w liveTracker.fetchZbCity). */
@@ -360,6 +400,7 @@ function toRawRows(positions: ZbPositionJson[]): RawVehicleRow[] {
       timestamp: p.timestamp,
       headsign: p.headsign,
       brigade: p.brigade,
+      model: p.vehicle?.model?.trim() || undefined,
       upcomingStops: p.upcomingStops?.flatMap((s) => {
         const at = s.scheduledDeparture ?? s.scheduledArrival;
         return s.name && at != null && Number.isFinite(at)
@@ -512,6 +553,7 @@ function toRailVehicles(positions: ZbPositionJson[]): ZbKdVehicle[] {
       currentStopName: stops[0]?.name,
       nextStopName: stops[1]?.name,
       stops,
+      model: p.vehicle?.model?.trim() || undefined,
     });
   }
   return out;
