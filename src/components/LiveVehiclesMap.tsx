@@ -1,4 +1,4 @@
-// Komponent pełnoekranowej mapy pojazdów i przystanków na żywo w stylu zbiorkom.live.
+// Komponent pełnoekranowej mapy pojazdów i przystanków na żywo.
 // Przesyła paczki pozycji, warstwę przystanków, trasę wybranego pojazdu, korytarze utrudnień,
 // pozycję użytkownika oraz wybór przez mostek WebView.
 
@@ -29,6 +29,10 @@ import { scheme } from '../theme/tokens';
 export interface LiveVehiclesMapHandle {
   /** Płynnie centruje mapę na zadanej pozycji. */
   centerOn: (lat: number, lon: number, zoom?: number) => void;
+  /** Dopasowuje kadr do pełnej trasy aktualnie wybranego pojazdu. */
+  fitRoute: () => void;
+  /** Przybliża lub oddala mapę o zadany krok zoomu. */
+  zoomBy: (delta: number) => void;
   /** Wymusza przeładowanie WebView po błędzie renderera. */
   reload: () => void;
 }
@@ -42,6 +46,7 @@ interface LiveVehiclesMapProps {
   selectedRoute?: LiveMapSelectedRoute | null;
   selectedDisruptionId?: string | null;
   showDisruptions?: boolean;
+  showStops?: boolean;
   userLat?: number | null;
   userLon?: number | null;
   offlineBase?: string | null;
@@ -50,6 +55,8 @@ interface LiveVehiclesMapProps {
   onSelectStop?: (stopId: string) => void;
   onSelectDisruption?: (disruptionId: string) => void;
   onClearSelection?: () => void;
+  onUserDrag?: () => void;
+  onZoomModeChange?: (mode: 'dots' | 'pills') => void;
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
@@ -67,6 +74,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       selectedRoute = null,
       selectedDisruptionId = null,
       showDisruptions = true,
+      showStops = true,
       userLat = null,
       userLon = null,
       offlineBase = null,
@@ -75,6 +83,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       onSelectStop,
       onSelectDisruption,
       onClearSelection,
+      onUserDrag,
+      onZoomModeChange,
       onTilesStatus,
       onError,
       onReady,
@@ -103,6 +113,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     selectedDisruptionIdRef.current = selectedDisruptionId;
     const showDisruptionsRef = useRef(showDisruptions);
     showDisruptionsRef.current = showDisruptions;
+    const showStopsRef = useRef(showStops);
+    showStopsRef.current = showStops;
 
     const userPos = useMemo<[number, number] | null>(
       () =>
@@ -140,6 +152,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         selectedRoute: selectedRouteRef.current ?? null,
         selectedDisruptionId: selectedDisruptionIdRef.current,
         showDisruptions: showDisruptionsRef.current,
+        showStops: showStopsRef.current,
         userPos: userPosRef.current,
       });
     }, [attempt, cityId, initialCenter, offlineBase]);
@@ -160,6 +173,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       ref,
       () => ({
         centerOn: (lat, lon, zoom) => send({ t: 'center', lat, lon, zoom }),
+        fitRoute: () => send({ t: 'fitRoute' }),
+        zoomBy: (delta) => send({ t: 'zoom', delta }),
         reload: restart,
       }),
       [restart, send],
@@ -192,6 +207,11 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
 
     useEffect(() => {
       if (!readyRef.current) return;
+      send({ t: 'stopsVisible', visible: showStops });
+    }, [send, showStops]);
+
+    useEffect(() => {
+      if (!readyRef.current) return;
       send({
         t: 'disruptions',
         disruptions,
@@ -202,7 +222,6 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
 
     useEffect(() => {
       if (!readyRef.current) return;
-      // null czyści niebieską kropkę, gdy GPS znika (np. brak zgody w trakcie).
       send({ t: 'user', lat: userPos?.[1] ?? null, lon: userPos?.[0] ?? null });
     }, [send, userPos]);
 
@@ -229,6 +248,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           });
           send({ t: 'selectedRoute', route: selectedRouteRef.current ?? null });
           send({ t: 'stops', stops: stopsRef.current, selectedStopId: selectedStopIdRef.current });
+          send({ t: 'stopsVisible', visible: showStopsRef.current });
           send({ t: 'vehicles', vehicles: vehiclesRef.current, selectedId: selectedIdRef.current });
           if (userPosRef.current) {
             send({ t: 'user', lat: userPosRef.current[1], lon: userPosRef.current[0] });
@@ -255,6 +275,14 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           onClearSelection?.();
           return;
         }
+        if (msg.t === 'userDrag') {
+          onUserDrag?.();
+          return;
+        }
+        if (msg.t === 'zoomMode') {
+          onZoomModeChange?.(msg.mode);
+          return;
+        }
         if (msg.t === 'tiles') {
           onTilesStatus?.(msg.ok);
           return;
@@ -275,6 +303,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         onSelectStop,
         onSelectVehicle,
         onTilesStatus,
+        onUserDrag,
+        onZoomModeChange,
         send,
       ],
     );
