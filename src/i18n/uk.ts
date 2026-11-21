@@ -1273,6 +1273,22 @@ export const uk: Strings = {
     dayOffset: (days: number) => `+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'}`,
     nextDayTime: (time: string, days: number) =>
       `${time} (+${days} ${isOne(days) ? 'день' : isFew(days) ? 'дні' : 'днів'})`,
+    reverseDirection: 'Змінити напрямок',
+    stopsCount: (n: number) =>
+      `${n} ${isOne(n) ? 'зупинка' : isFew(n) ? 'зупинки' : 'зупинок'}`,
+    departuresCount: (n: number) =>
+      `${n} ${isOne(n) ? 'рейс' : isFew(n) ? 'рейси' : 'рейсів'}`,
+    yourTrip: 'Ваша поїздка',
+    boardingStop: 'Посадка',
+    alightingStop: 'Висадка',
+    plannedDeparture: 'Ваш рейс',
+    nextDepartures: 'Найближчі відправлення',
+    noMoreToday: 'Більше відправлень сьогодні немає',
+    fullSchedule: 'Повний розклад',
+    previousStop: 'Попередня зупинка',
+    nextStop: 'Наступна зупинка',
+    fromOrigin: (name: string) => `Від: ${name}`,
+    openFullScreen: 'Відкрити на весь екран',
   },
   transferGuard: {
     enabled: 'Увімкнено',

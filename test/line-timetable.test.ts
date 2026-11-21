@@ -2,7 +2,13 @@ import '../scripts/stub-expo.cjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  findNextDeparture,
+  findTripSegment,
   formatTimetableDate,
+  formatTimetableDateCompact,
+  getUpcomingDepartures,
+  groupDeparturesByHour,
+  parseClockToSeconds,
   selectInitialPattern,
   shiftTimetableDate,
   timetableToday,
@@ -45,6 +51,12 @@ test('formatTimetableDate zwraca poprawny sformatowany string dla poprawnej daty
   assert.ok(result.length > 0);
   assert.match(result, /23/);
   assert.match(result, /2026/);
+});
+
+test('formatTimetableDateCompact zwraca zwięzłą datę z bezpiecznym fallbackiem', () => {
+  const compact = formatTimetableDateCompact('20261023', 'pl');
+  assert.match(compact, /23/);
+  assert.doesNotThrow(() => formatTimetableDateCompact('invalid', 'invalid-locale-xyz'));
 });
 
 test('formatTimetableDate nie rzuca wyjątku dla niepoprawnych danych i zwraca sformatowany dzisiejszy dzień', () => {
@@ -115,4 +127,70 @@ test('selectInitialPattern rozstrzyga warianty o tym samym headsign po odcinku p
 test('selectInitialPattern zwraca pierwszy wariant gdy brak dopasowania', () => {
   assert.equal(selectInitialPattern(SAMPLE_PATTERNS, { direction: 'Nieznany' })?.id, 'p1');
   assert.equal(selectInitialPattern([], { direction: 'Osobowice' }), undefined);
+});
+
+test('findTripSegment wyznacza odcinek wsiadania i wysiadania oraz odrzuca odwróconą kolejność', () => {
+  const seg = findTripSegment(SAMPLE_PATTERNS[0].stops, {
+    fromStopId: 's1',
+    toStopId: 's3',
+  });
+  assert.deepEqual(seg, { fromIndex: 0, toIndex: 2 });
+
+  const reversed = findTripSegment(SAMPLE_PATTERNS[0].stops, {
+    fromStopId: 's3',
+    toStopId: 's1',
+  });
+  assert.deepEqual(reversed, { fromIndex: 2, toIndex: -1 });
+
+  assert.equal(
+    findTripSegment(SAMPLE_PATTERNS[0].stops, { fromStop: 'Brak', toStop: 'Inny' }),
+    null,
+  );
+});
+
+test('groupDeparturesByHour grupuje odjazdy po godzinie, usuwa duplikaty minut i obsługuje kursy po północy', () => {
+  const groups = groupDeparturesByHour([
+    8 * 3600 + 5 * 60,
+    8 * 3600 + 5 * 60 + 20,
+    8 * 3600 + 25 * 60,
+    24 * 3600 + 15 * 60,
+  ]);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].hour, 8);
+  assert.equal(groups[0].displayHour, 8);
+  assert.equal(groups[0].dayOffset, 0);
+  assert.deepEqual(
+    groups[0].minutes.map((m) => m.minute),
+    ['05', '25'],
+  );
+  assert.equal(groups[1].hour, 24);
+  assert.equal(groups[1].displayHour, 0);
+  assert.equal(groups[1].dayOffset, 1);
+  assert.deepEqual(
+    groups[1].minutes.map((m) => m.minute),
+    ['15'],
+  );
+});
+
+test('findNextDeparture i getUpcomingDepartures działają tylko dla dzisiejszej daty', () => {
+  const deps = [10 * 3600, 10 * 3600 + 15 * 60, 10 * 3600 + 30 * 60, 10 * 3600 + 45 * 60];
+  const now = 10 * 3600 + 10 * 60;
+  assert.deepEqual(findNextDeparture(deps, now, true), {
+    seconds: 10 * 3600 + 15 * 60,
+    minutesUntil: 5,
+  });
+  assert.equal(findNextDeparture(deps, now, false), null);
+  assert.deepEqual(getUpcomingDepartures(deps, now, true, 2), [
+    10 * 3600 + 15 * 60,
+    10 * 3600 + 30 * 60,
+  ]);
+  assert.deepEqual(getUpcomingDepartures(deps, now, false, 2), []);
+});
+
+test('parseClockToSeconds parsuje poprawne godziny i odrzuca błędne formaty', () => {
+  assert.equal(parseClockToSeconds('07:35'), 7 * 3600 + 35 * 60);
+  assert.equal(parseClockToSeconds('25:10'), 25 * 3600 + 10 * 60);
+  assert.equal(parseClockToSeconds(''), null);
+  assert.equal(parseClockToSeconds('99:00'), null);
+  assert.equal(parseClockToSeconds('12:75'), null);
 });
