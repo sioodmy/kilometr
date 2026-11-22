@@ -25,6 +25,7 @@ test('formatStreetLocative: rejects garbage GTFS street names', () => {
   assert.equal(formatStreetLocative('parking'), null);
   assert.equal(formatStreetLocative('pętla'), null);
   assert.equal(formatStreetLocative('droga wzdłuż nasypu'), null);
+  assert.equal(formatStreetLocative('jezdnia w sąsiedztwie CH Targówek'), null);
   assert.equal(formatStreetLocative(''), null);
 });
 
@@ -50,4 +51,46 @@ test('classifyOsmLandmark: declines known chains and rejects slop POIs', () => {
   assert.equal(classifyOsmLandmark({ id: 12, tags: { amenity: 'cinema', name: 'Kino dla dzieci' } }), null);
   assert.equal(classifyOsmLandmark({ id: 13, tags: { shop: 'convenience', name: 'Sklep?' } }), null);
   assert.equal(classifyOsmLandmark({ id: 14, tags: { amenity: 'place_of_worship', name: 'Kościół domowy' } }), null);
+
+  // Szkoły z "nr X", poczty, policja, straż, fast_food, księgarnie i brak kolizji Lotos
+  assert.equal(
+    classifyOsmLandmark({ id: 20, tags: { amenity: 'school', name: 'Szkoła Podstawowa nr 15' } })?.nearPhrase,
+    'przy szkole podstawowej',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 21, tags: { amenity: 'post_office', name: 'Urząd Pocztowy Wrocław 48' } })?.nearPhrase,
+    'obok poczty',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 22, tags: { amenity: 'post_office', name: 'POK InPost' } }),
+    null,
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 23, tags: { amenity: 'fast_food', name: 'Mr Kebab' } })?.nearPhrase,
+    'obok lokalu z kebabem „Mr Kebab”',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 24, tags: { shop: 'books', name: 'Pod Arkadami' } })?.nearPhrase,
+    'obok księgarni „Pod Arkadami”',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 25, tags: { shop: 'department_store', name: 'Lotos' } })?.nearPhrase,
+    'obok centrum handlowego „Lotos”',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 26, tags: { amenity: 'fuel', name: 'Lotos' } })?.nearPhrase,
+    'obok stacji Lotos',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 27, tags: { leisure: 'garden', name: 'Ogród Botaniczny' } })?.nearPhrase,
+    'przy Ogrodzie Botanicznym',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 28, tags: { amenity: 'arts_centre', name: 'Centrum Kultury Nowy Pafawag' } })?.nearPhrase,
+    'przy centrum kultury „Nowy Pafawag”',
+  );
+  assert.equal(
+    classifyOsmLandmark({ id: 29, tags: { amenity: 'university', name: 'C1' } }),
+    null,
+  );
 });

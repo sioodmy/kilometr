@@ -108,6 +108,8 @@ const FAMOUS_CHAINS_AND_LANDMARKS = [
   'lewiatan',
   'polomarket',
   'delikatesów centrum',
+  'subway',
+  'popeyes',
   'poczty polskiej',
   'poczty',
   'posnani',
@@ -179,6 +181,7 @@ const DESCRIPTOR_ROOTS = [
   'zamk',
   'market',
   'supermarket',
+  'hipermarket',
   'drogeri',
   'wejści',
   'wyjści',
@@ -199,10 +202,17 @@ const DESCRIPTOR_ROOTS = [
   'ogrod',
   'pasaż',
   'zjazd',
+  'bar',
+  'burgerown',
+  'księgarn',
+  'lodziarn',
+  'komisariat',
+  'straż',
+  'remiz',
 ];
 
 function checkObokUnambiguity(trimmed, id) {
-  const m = trimmed.match(/obok\s+([^.,;]+)/i);
+  const m = trimmed.match(/obok\s+([^,;]+?)(?:\.(?:\s|$)|$)/i);
   if (!m) return;
   const target = m[1].trim();
   const lower = target.toLowerCase();
@@ -255,6 +265,7 @@ function validateHint(text, id) {
   checkObokUnambiguity(trimmed, id);
 
   const sanitizedForSentences = trimmed
+    .replace(/„[^”]+”/g, (m) => m.replace(/[.?!]/g, '_'))
     .replace(/\.{2,}/g, '_')
     .replace(
       /(^|[\s(„"])(ul|al|pl|dw|św|pw|dr|prof|hab|sp|z o\.o|m\.st|os|gen|im|nr|ks|kard|bp|abp|bł|płk|ppłk|mjr|kpt|por|rtm|marsz|inż|mgr|doc|red|st|o|s|br|jr|sr|mr|ms|mrs|no|vol|art|pkt)\./gi,

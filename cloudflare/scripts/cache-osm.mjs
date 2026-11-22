@@ -57,6 +57,63 @@ function buildRoadQuery(tile) {
 out geom tags;`;
 }
 
+function buildAreaQuery(tile) {
+  const b = tile.join(',');
+  return `[out:json][timeout:90];
+(
+  way(${b})["shop"~"^(mall|department_store|supermarket|doityourself|furniture)$"]["name"];
+  way(${b})["leisure"~"^(park|garden|stadium|sports_centre)$"]["name"];
+  way(${b})["amenity"~"^(hospital|university|college|school|bus_station|marketplace|place_of_worship|arts_centre|police|fire_station)$"]["name"];
+  way(${b})["tourism"~"^(zoo|museum)$"]["name"];
+  relation(${b})["leisure"~"^(park|garden)$"]["name"];
+  relation(${b})["shop"~"^(mall|department_store)$"]["name"];
+  relation(${b})["amenity"~"^(hospital|university|bus_station)$"]["name"];
+  relation(${b})["tourism"~"^(zoo|museum)$"]["name"];
+);
+out geom tags;`;
+}
+
+/** Wyciąga równomiernie próbkowane punkty brzegowe (co ~25m) z geometrii way/relation. */
+function sampleAreaBoundary(el) {
+  const rings = [];
+  if (el.type === 'way' && Array.isArray(el.geometry)) {
+    rings.push(el.geometry);
+  } else if (el.type === 'relation' && Array.isArray(el.members)) {
+    for (const m of el.members) {
+      if (m.role !== 'inner' && Array.isArray(m.geometry) && m.geometry.length >= 2) {
+        rings.push(m.geometry);
+      }
+    }
+  }
+  const pts = [];
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      if (!a || a.lat == null || a.lon == null) continue;
+      pts.push([+a.lat.toFixed(6), +a.lon.toFixed(6)]);
+      const b = ring[i + 1];
+      if (!b || b.lat == null || b.lon == null) continue;
+      const d = Math.hypot((b.lat - a.lat) * 111320, (b.lon - a.lon) * 70000);
+      if (d > 30) {
+        const steps = Math.min(20, Math.floor(d / 25));
+        for (let s = 1; s < steps; s++) {
+          const t = s / steps;
+          pts.push([+(a.lat + (b.lat - a.lat) * t).toFixed(6), +(a.lon + (b.lon - a.lon) * t).toFixed(6)]);
+        }
+      }
+    }
+  }
+  // Odsiej zbyt gęste punkty (<14m od poprzedniego zapisanego)
+  const slim = [];
+  for (const p of pts) {
+    const prev = slim[slim.length - 1];
+    if (!prev || Math.hypot((p[0] - prev[0]) * 111320, (p[1] - prev[1]) * 70000) >= 14) {
+      slim.push(p);
+    }
+  }
+  return slim;
+}
+
 async function fetchTiled(city, kind, queryBuilder, outFile, force) {
   if (!force && fs.existsSync(outFile) && fs.statSync(outFile).size > 50_000) {
     console.log(`[i] ${city}/${kind}: cache juz istnieje (${(fs.statSync(outFile).size / 1024 / 1024).toFixed(1)} MB)`);
@@ -91,6 +148,16 @@ async function fetchTiled(city, kind, queryBuilder, outFile, force) {
               bridge: el.tags.bridge === 'yes' ? 1 : 0,
               tunnel: el.tags.tunnel === 'yes' || el.tags.layer === '-1' ? 1 : 0,
               g: el.geometry.map((p) => [+p.lat.toFixed(6), +p.lon.toFixed(6)]),
+            });
+          }
+        } else if (kind === 'areas') {
+          const pts = sampleAreaBoundary(el);
+          if (pts.length >= 2 && el.tags?.name) {
+            byKey.set(k, {
+              type: el.type,
+              id: el.id,
+              tags: el.tags,
+              pts,
             });
           }
         } else {
@@ -136,6 +203,7 @@ async function main() {
     }
     await fetchTiled(city, 'pois', buildPoiQuery, path.join(CACHE_DIR, `${city}-osm-pois.json`), force);
     await fetchTiled(city, 'roads', buildRoadQuery, path.join(CACHE_DIR, `${city}-osm-roads.json`), force);
+    await fetchTiled(city, 'areas', buildAreaQuery, path.join(CACHE_DIR, `${city}-osm-areas.json`), force);
   }
 }
 

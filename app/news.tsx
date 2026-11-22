@@ -41,6 +41,7 @@ import {
   markNewsSeen,
   formatNewsDate,
   rememberNewsItemForDetail,
+  subscribeNewsCache,
   type MpkNewsItem,
 } from '../src/services/mpkNews';
 import { useActiveCity } from '../src/services/cityStore';
@@ -280,6 +281,14 @@ export default function NewsScreen() {
   useEffect(() => {
     let live = true;
     void markNewsSeen();
+    const unsub = subscribeNewsCache(() => {
+      if (!live) return;
+      const latest = getCachedNews();
+      if (latest && latest.some((item) => Boolean(item.disruption))) {
+        setItems(latest);
+        setLoading(false);
+      }
+    });
     void (async () => {
       await refreshMyLines();
       if ((getCachedNews()?.length ?? 0) === 0) {
@@ -293,6 +302,7 @@ export default function NewsScreen() {
     })();
     return () => {
       live = false;
+      unsub();
     };
   }, [cityId, load, refreshMyLines]);
 

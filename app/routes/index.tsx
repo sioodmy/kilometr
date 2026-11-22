@@ -97,7 +97,7 @@ import {
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard, type CardLayoutInfo } from '../../src/components/ConnectionCard';
+import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import {
@@ -1237,15 +1237,12 @@ export default function RoutesScreen() {
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
   const openConnection = useCallback(
-    (item: Connection, sourceLayout?: CardLayoutInfo) => {
+    (item: Connection) => {
       rememberPlannedConnection(item);
       closePreview();
       router.push({
         pathname: '/routes/[id]',
-        params: {
-          id: item.id,
-          ...(sourceLayout ? { fromY: String(Math.round(sourceLayout.y)) } : {}),
-        },
+        params: { id: item.id },
       });
     },
     [closePreview, router],
