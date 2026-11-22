@@ -252,7 +252,7 @@ fs.writeFileSync(
   encodePng(maskable.width, maskable.height, maskable.rgba),
 );
 
-// ─── 2. Wstrzyknięcie listy precache do dist/sw.js ──────────────────────────
+// ─── 2. Przeniesienie assets/node_modules + lista precache w dist/sw.js ────
 
 function walk(dir, rel = '') {
   const out = [];
@@ -266,6 +266,23 @@ function walk(dir, rel = '') {
     }
   }
   return out;
+}
+
+// Wrangler pomija katalogi o nazwie "node_modules" podczas `pages deploy`,
+// przez co font MaterialIcons i wa-sqlite.wasm nie trafiały na Cloudflare Pages.
+const assetsNodeModules = path.join(DIST, 'assets', 'node_modules');
+const assetsVendor = path.join(DIST, 'assets', 'vendor');
+if (fs.existsSync(assetsNodeModules)) {
+  fs.rmSync(assetsVendor, { recursive: true, force: true });
+  fs.renameSync(assetsNodeModules, assetsVendor);
+  for (const rel of walk(DIST)) {
+    if (!rel.endsWith('.js') && !rel.endsWith('.css') && !rel.endsWith('.html')) continue;
+    const full = path.join(DIST, rel);
+    const content = fs.readFileSync(full, 'utf8');
+    if (content.includes('/assets/node_modules/')) {
+      fs.writeFileSync(full, content.replaceAll('/assets/node_modules/', '/assets/vendor/'));
+    }
+  }
 }
 
 const EXCLUDE_PRECACHE = new Set(['sw.js', '_headers', '_redirects', 'metadata.json']);
@@ -320,6 +337,12 @@ for (const file of required) {
 const hasWasm = allFiles.some((f) => f.endsWith('.wasm'));
 if (!hasWasm) {
   throw new Error('Brak pliku wa-sqlite.wasm w dist/ (sprawdź metro.config.js).');
+}
+if (allFiles.some((f) => f.split('/').includes('node_modules'))) {
+  throw new Error('dist/ zawiera katalog node_modules, który Wrangler pomija przy deployu.');
+}
+if (!allFiles.some((f) => f.endsWith('.ttf'))) {
+  throw new Error('Brak fontu MaterialIcons (.ttf) w dist/.');
 }
 
 const indexHtml = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
