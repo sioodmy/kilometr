@@ -1,24 +1,10 @@
-import {
-  Accessibility,
-  BusFront,
-  MapPin,
-  Snowflake,
-  TrainFront,
-  TramFront,
-  Utensils,
-  VolumeX,
-  Wifi,
-  Zap,
-} from 'lucide-react';
-import { resolveLineBadgeIdentity } from '../../../src/services/lineIdentity';
+import { TrainFront } from 'lucide-react';
 import { RAIL_ICON_SPECS, type RailIconSpec } from '../../../src/services/railIconPaths';
 import { getRailAgencyColor } from '../../../src/services/railIdentity';
-import { classifyVehicleModel } from '../../../src/services/vehicleInfo';
-import type { LegMode } from '../../../src/types/models';
 
-export type RailIconKey = keyof typeof RAIL_ICON_SPECS;
+type RailIconKey = keyof typeof RAIL_ICON_SPECS;
 
-export function RailCarrierMark({
+function RailCarrierMark({
   agency,
   color = 'currentColor',
   size = 15,
@@ -55,132 +41,6 @@ export function RailCarrierMark({
         ))}
       </g>
     </svg>
-  );
-}
-
-export function KilometrLineBadge({
-  line,
-  mode,
-  cityId = 'warszawa',
-  compact = false,
-  size = 'medium',
-  railAgencyOverride,
-}: {
-  line: string;
-  mode?: LegMode;
-  cityId?: string;
-  compact?: boolean;
-  size?: 'small' | 'medium' | 'large';
-  railAgencyOverride?: string;
-}) {
-  const identity = resolveLineBadgeIdentity({
-    line,
-    mode,
-    compact,
-    cityId,
-    railAgencyOverride,
-  });
-
-  const iconSize = size === 'small' ? 12 : size === 'large' ? 16 : 14;
-  const Icon =
-    identity.resolvedMode === 'train' ? (
-      <RailCarrierMark agency={identity.railAgency} color={identity.fg} size={iconSize} />
-    ) : identity.resolvedMode === 'tram' ? (
-      <TramFront size={iconSize} strokeWidth={2.25} color={identity.fg} aria-hidden="true" />
-    ) : (
-      <BusFront size={iconSize} strokeWidth={2.25} color={identity.fg} aria-hidden="true" />
-    );
-
-  return (
-    <span
-      className={`km-line-badge km-line-badge-${size}`}
-      style={{ backgroundColor: identity.bg, color: identity.fg }}
-    >
-      {Icon}
-      <span>{identity.normalizedLine || line}</span>
-    </span>
-  );
-}
-
-export function KilometrStopHint({ text }: { text: string }) {
-  return (
-    <div className="km-stop-hint">
-      <MapPin size={14} strokeWidth={2.2} className="km-stop-hint-icon" aria-hidden="true" />
-      <span>{text}</span>
-    </div>
-  );
-}
-
-export function KilometrVehicleSpecs({
-  model,
-  lowFloorLabel,
-  acLabel,
-}: {
-  model: string;
-  lowFloorLabel: string;
-  acLabel: string;
-}) {
-  const info = classifyVehicleModel(model);
-  return (
-    <div className="km-vehicle-strip">
-      <span className="km-vehicle-model">{model}</span>
-      <div className="km-vehicle-chips">
-        {info?.floor === 'low' && (
-          <span className="km-spec-chip km-spec-chip-ok">
-            <Accessibility size={12} strokeWidth={2.2} aria-hidden="true" />
-            {lowFloorLabel}
-          </span>
-        )}
-        {info?.ac === 'yes' && (
-          <span className="km-spec-chip km-spec-chip-ok">
-            <Snowflake size={12} strokeWidth={2.2} aria-hidden="true" />
-            {acLabel}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export function KilometrTrainAmenities({
-  model,
-  labels,
-}: {
-  model: string;
-  labels: {
-    ac: string;
-    power: string;
-    wifi: string;
-    dining: string;
-    quiet: string;
-  };
-}) {
-  return (
-    <div className="km-vehicle-strip">
-      <span className="km-vehicle-model">{model}</span>
-      <div className="km-vehicle-chips">
-        <span className="km-spec-chip km-spec-chip-ok">
-          <Snowflake size={12} strokeWidth={2.2} aria-hidden="true" />
-          {labels.ac}
-        </span>
-        <span className="km-spec-chip km-spec-chip-neutral">
-          <Zap size={12} strokeWidth={2.2} aria-hidden="true" />
-          {labels.power}
-        </span>
-        <span className="km-spec-chip km-spec-chip-neutral">
-          <Wifi size={12} strokeWidth={2.2} aria-hidden="true" />
-          {labels.wifi}
-        </span>
-        <span className="km-spec-chip km-spec-chip-neutral">
-          <Utensils size={12} strokeWidth={2.2} aria-hidden="true" />
-          {labels.dining}
-        </span>
-        <span className="km-spec-chip km-spec-chip-neutral">
-          <VolumeX size={12} strokeWidth={2.2} aria-hidden="true" />
-          {labels.quiet}
-        </span>
-      </div>
-    </div>
   );
 }
 

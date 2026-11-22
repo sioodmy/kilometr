@@ -160,7 +160,6 @@ export const University = icon('account-balance');
 export const Usb = icon('usb');
 export const Users = icon('people');
 export const Utensils = icon('restaurant');
-export const UtensilsCrossed = icon('fastfood');
 export const Volume2 = icon('volume-up');
 export const VolumeOff = icon('volume-off');
 export const Wallpaper = icon('wallpaper');
