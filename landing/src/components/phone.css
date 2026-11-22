@@ -1,130 +1,307 @@
 @layer product {
-  .phone {
+  .pixel-phone {
+    --phone-radius: 44px;
+    --phone-rail: 4px;
+    --phone-bezel: 7px;
+    --phone-btn-w: 2.2px;
+    --bezel-radius: calc(var(--phone-radius) - var(--phone-rail));
+    --screen-radius: calc(var(--bezel-radius) - var(--phone-bezel));
+
     position: relative;
     isolation: isolate;
-    container-type: inline-size;
-    padding: 7px;
-    border: 1px solid #a4a39d;
-    border-radius: 17.2% / 8.1%;
+    width: 100%;
+    max-width: 320px;
+    padding: var(--phone-rail);
+    border-radius: var(--phone-radius);
     background: linear-gradient(
-      110deg,
-      #dad8d1 0%,
-      #777974 9%,
-      #b5b5ac 24%,
-      #5d615d 49%,
-      #c7c6bc 74%,
-      #777a73 91%,
-      #d2d1c9 100%
+      148deg,
+      #66706a 0%,
+      #353b38 11%,
+      #191d1b 28%,
+      #2b312e 48%,
+      #151816 70%,
+      #3e4641 88%,
+      #555f59 100%
     );
     box-shadow:
-      0 28px 56px -16px rgb(0 0 0 / 65%),
-      inset 0 0 0 1px #e0dfd7,
-      inset 0 0 0 3px #464a46;
+      0 42px 84px -22px rgb(0 0 0 / 84%),
+      0 14px 32px -12px rgb(0 0 0 / 62%),
+      inset 0 0 0 0.75px rgb(255 255 255 / 22%),
+      inset 0 1.5px 1px rgb(255 255 255 / 32%),
+      inset 0 -1.5px 1.5px rgb(0 0 0 / 80%);
   }
-  .phone::before,
-  .phone::after {
-    content: '';
-    position: absolute;
-    pointer-events: none;
-  }
-  .phone::before {
-    top: 4px;
-    left: 43%;
-    width: 14%;
-    height: 1px;
-    background: #30332f;
-    border-radius: 2px;
-  }
-  .phone::after {
-    inset: 3px;
-    border: 1px solid rgb(0 0 0 / 80%);
-    border-radius: 16.5% / 7.8%;
-    box-shadow: inset 0 0 0 3px #080a09;
-  }
-  .iphone-hardware {
+
+  .pixel-hardware {
     position: absolute;
     inset: 0;
-    z-index: -1;
+    z-index: 0;
     pointer-events: none;
   }
-  .iphone-button {
+
+  /* Paski antenowe na aluminiowej ramce Pixela 9 Pro. */
+  .pixel-antenna {
     position: absolute;
-    left: -3px;
-    width: 3px;
-    border-radius: 2px 0 0 2px;
-    background: linear-gradient(90deg, #8d9087, #c3c4ba 45%, #555a52);
-    box-shadow: -1px 0 1px rgb(0 0 0 / 65%);
+    width: var(--phone-rail);
+    height: 2px;
+    background: rgb(10 12 11 / 88%);
+    box-shadow: 0 0.5px 0 rgb(255 255 255 / 14%);
   }
-  .iphone-button-action {
-    top: 15%;
-    height: 4%;
+
+  .pixel-antenna-tl {
+    top: 11.5%;
+    left: 0;
   }
-  .iphone-button-volume-up {
-    top: 23%;
-    height: 7%;
+
+  .pixel-antenna-tr {
+    top: 11.5%;
+    right: 0;
   }
-  .iphone-button-volume-down {
-    top: 32%;
-    height: 7%;
+
+  .pixel-antenna-bl {
+    bottom: 11.5%;
+    left: 0;
   }
-  .iphone-button-power {
-    top: 25%;
-    height: 11%;
-    left: auto;
-    right: -3px;
+
+  .pixel-antenna-br {
+    bottom: 11.5%;
+    right: 0;
+  }
+
+  /* Fazowane aluminiowe przyciski osadzone w krawędzi obudowy. */
+  .pixel-btn {
+    position: absolute;
+    right: calc(var(--phone-btn-w) * -1 + 0.3px);
+    width: var(--phone-btn-w);
     border-radius: 0 2px 2px 0;
-    transform: scaleX(-1);
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 26%) 0%,
+        transparent 16%,
+        transparent 84%,
+        rgb(0 0 0 / 35%) 100%
+      ),
+      linear-gradient(90deg, #121513 0%, #3b423e 38%, #68736d 72%, #444c47 100%);
+    box-shadow:
+      0 0 0 0.5px rgb(0 0 0 / 75%),
+      inset 0 1px 0.5px rgb(255 255 255 / 55%),
+      inset 0 -1px 0.5px rgb(0 0 0 / 85%),
+      inset -0.75px 0 0.5px rgb(255 255 255 / 28%),
+      1.5px 1px 3px rgb(0 0 0 / 55%);
   }
-  .phone-screen {
+
+  .pixel-btn-power {
+    top: 22.5%;
+    height: 6.4%;
+  }
+
+  .pixel-btn-volume {
+    top: 32%;
+    height: 12.6%;
+  }
+
+  .pixel-bezel {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    padding: var(--phone-bezel);
+    border-radius: var(--bezel-radius);
+    background: #050706;
+    box-shadow:
+      0 0 0 0.75px rgb(0 0 0 / 92%),
+      inset 0 0 0 0.75px rgb(255 255 255 / 11%),
+      inset 0 1.5px 3px rgb(0 0 0 / 95%);
+  }
+
+  /* Szczelina głośnika rozmów w górnej ramce szkła. */
+  .pixel-speaker {
+    position: absolute;
+    top: calc(var(--phone-bezel) * 0.28);
+    left: 50%;
+    z-index: 8;
+    width: 17%;
+    height: 2px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #010202;
+    box-shadow:
+      inset 0 0.75px 0.75px rgb(0 0 0 / 95%),
+      0 0.5px 0 rgb(255 255 255 / 12%);
+  }
+
+  .pixel-screen {
     position: relative;
     width: 100%;
-    aspect-ratio: 393 / 852;
+    aspect-ratio: 9 / 20;
     overflow: hidden;
-    border-radius: 15.9% / 7.34%;
+    border-radius: var(--screen-radius);
     background: #111414;
-    box-shadow: 0 0 0 1px #050706;
+    box-shadow: inset 0 0 0 0.75px rgb(255 255 255 / 6%);
   }
-  .phone-home {
+
+  .pixel-viewport {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #111414;
+  }
+
+  .pixel-shot {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  /* Clean synthetic Pixel status bar matching #111414 screen surface seamlessly. */
+  .pixel-status-bar {
     position: absolute;
     top: 0;
     left: 0;
-    width: 393px;
-    height: 852px;
-    transform: scale(var(--phone-scale, 1));
-    transform-origin: top left;
+    right: 0;
+    height: 4.55%;
+    min-height: 24px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 7.2%;
+    background: #111414;
+    color: rgb(238 244 240 / 88%);
+    font-family:
+      'Demo Roboto',
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
+    font-size: clamp(9.5px, 2.8cqw, 11.5px);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    pointer-events: none;
+  }
+
+  .pixel-status-bar.is-transparent {
+    background: transparent;
+  }
+
+  .pixel-status-time {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pixel-punch {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10.5px;
+    height: 10.5px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background:
+      radial-gradient(circle at 38% 36%, rgb(116 178 164 / 38%) 0%, transparent 24%),
+      radial-gradient(circle at 50% 50%, #151b1e 0%, #050707 52%, #000 100%);
+    box-shadow:
+      0 0 0 0.75px rgb(255 255 255 / 8%),
+      inset 0 0 2px rgb(0 0 0 / 90%);
+  }
+
+  .pixel-status-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.88;
+  }
+
+  .pixel-battery {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 16px;
+    height: 8.5px;
+    padding: 1.4px;
+    border-radius: 2.5px;
+    border: 1.2px solid currentColor;
+  }
+
+  .pixel-battery::after {
+    content: '';
+    position: absolute;
+    right: -2.6px;
+    top: 2px;
+    width: 1.6px;
+    height: 3.6px;
+    border-radius: 0 1px 1px 0;
+    background: currentColor;
+  }
+
+  .pixel-battery-fill {
+    display: block;
+    width: 78%;
+    height: 100%;
+    border-radius: 1px;
+    background: currentColor;
+  }
+
+  .pixel-gesture-pill {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    z-index: 6;
+    width: 31%;
+    height: 3.5px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 42%);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .pixel-glass-sheen {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    pointer-events: none;
+    border-radius: var(--screen-radius);
+    background: linear-gradient(
+      132deg,
+      rgb(255 255 255 / 4%) 0%,
+      rgb(255 255 255 / 1%) 14%,
+      transparent 30%
+    );
+    box-shadow: inset 0 0 0 0.75px rgb(255 255 255 / 7%);
+  }
+
+  /* Crossfading slide stack inside a Pixel screen (used for scroll & ambient beats). */
+  .pixel-slide-stack {
+    position: relative;
+    width: 100%;
+    height: 100%;
     background: #111414;
   }
-  .phone-shot {
-    display: block;
+
+  .pixel-slide {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    opacity: 0;
+    transform: scale(1.028);
+    transition:
+      opacity 0.72s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
   }
-  .phone-shot {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+
+  .pixel-slide.is-active {
+    opacity: 1;
+    transform: scale(1);
+    z-index: 2;
   }
-  .iphone-island {
-    position: absolute;
-    top: 11px;
-    left: 50%;
-    width: 125px;
-    height: 36px;
-    border-radius: 24px;
-    background: #000;
-    transform: translateX(-50%);
-    box-shadow: inset 0 0 0 1px #090b0c;
-  }
-  .iphone-camera {
-    position: absolute;
-    top: 12px;
-    right: 11px;
-    width: 12px;
-    height: 12px;
-    border: 2px solid #0c1014;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #1b344d 0%, #101b2b 35%, #030509 70%);
+
+  @media (prefers-reduced-motion: reduce) {
+    .pixel-slide {
+      transform: none;
+      transition: opacity 0.2s linear;
+    }
   }
 }

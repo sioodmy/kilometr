@@ -50,14 +50,19 @@ export function PromiseSection() {
   }, []);
 
   return (
-    <section className="promise section-shell" ref={section} aria-labelledby="promise-title">
-      <h2 id="promise-title">
-        {(['ads', 'free', 'forever'] as const).map((line) => (
-          <span className={`promise-line promise-${line}`} key={line}>
-            <span>{s[line]}</span>
-          </span>
-        ))}
-      </h2>
+    <section className="promise" ref={section} aria-labelledby="promise-title">
+      <div className="promise-inner">
+        <h2 id="promise-title" className="promise-track">
+          {(['ads', 'free', 'forever'] as const).map((line) => (
+            <span className={`promise-line promise-${line}`} key={line}>
+              <span className="promise-node" aria-hidden="true" />
+              <span className="promise-text-clip">
+                <span className="promise-text">{s[line]}</span>
+              </span>
+            </span>
+          ))}
+        </h2>
+      </div>
     </section>
   );
 }

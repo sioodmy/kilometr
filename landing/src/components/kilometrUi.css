@@ -1,0 +1,287 @@
+@layer product {
+  .km-app-surface {
+    --km-surface: #111414;
+    --km-surface-low: #171d1c;
+    --km-surface-container: #1b2120;
+    --km-surface-high: #252b2a;
+    --km-surface-highest: #2f3634;
+    --km-on-surface: #e0e3e1;
+    --km-on-variant: #bec9c5;
+    --km-outline: #3f4946;
+    --km-primary: #5cdbbe;
+    --km-on-primary: #003831;
+    --km-primary-container: #005047;
+    --km-on-primary-container: #7df8de;
+    --km-secondary-container: #334b46;
+    --km-on-secondary-container: #cde8e1;
+    --km-tertiary: #a5cce8;
+    --km-tertiary-container: #244b63;
+    --km-on-tertiary-container: #c6e7ff;
+    --km-success: #7dd895;
+    --km-success-container: #005321;
+    --km-on-success-container: #98f6b0;
+    --km-warning: #ffb957;
+    --km-warning-container: #633f00;
+    --km-on-warning-container: #ffddb3;
+    --km-error: #ffb4ab;
+    --km-error-container: #93000a;
+    --km-on-error-container: #ffdad6;
+    font-family: 'Demo Roboto', var(--font);
+    color: var(--km-on-surface);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .km-line-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-family: 'Demo Roboto', var(--font);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .km-line-badge-small {
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 7px;
+    font-size: 0.75rem;
+  }
+
+  .km-line-badge-medium {
+    height: 28px;
+    padding: 0 9px;
+    border-radius: 9px;
+    font-size: 0.84rem;
+  }
+
+  .km-line-badge-large {
+    height: 32px;
+    padding: 0 11px;
+    border-radius: 10px;
+    font-size: 0.92rem;
+  }
+
+  .km-rail-mark {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .km-stop-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 11px;
+    border-radius: 12px;
+    background: var(--km-surface-low);
+    border: 1px solid rgb(255 255 255 / 6%);
+    color: var(--km-on-variant);
+    font-size: 0.79rem;
+    line-height: 1.45;
+  }
+
+  .km-stop-hint-icon {
+    color: var(--km-primary);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .km-vehicle-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--km-surface-low);
+    border: 1px solid rgb(255 255 255 / 5%);
+  }
+
+  .km-vehicle-model {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--km-on-surface);
+    letter-spacing: -0.01em;
+  }
+
+  .km-vehicle-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .km-spec-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .km-spec-chip-ok {
+    background: var(--km-secondary-container);
+    color: var(--km-on-secondary-container);
+  }
+
+  .km-spec-chip-neutral {
+    background: var(--km-surface-high);
+    color: var(--km-on-variant);
+  }
+
+  /* Compact rail carrier & city crest chips in seamless infinite marquees */
+  .km-rail-strip {
+    width: 100%;
+  }
+
+  .km-rail-marquee {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    padding-block: 4px;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 7%,
+      #000 93%,
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 7%,
+      #000 93%,
+      transparent 100%
+    );
+  }
+
+  .km-rail-marquee-track {
+    display: flex;
+    width: max-content;
+    will-change: transform;
+    animation: km-rail-marquee 34s linear infinite;
+  }
+
+  .km-rail-marquee-track.is-reverse {
+    animation-duration: 46s;
+    animation-direction: reverse;
+  }
+
+  .km-rail-marquee:hover .km-rail-marquee-track,
+  .km-rail-marquee:focus-within .km-rail-marquee-track {
+    animation-play-state: paused;
+  }
+
+  .km-rail-marquee-group {
+    list-style: none;
+    margin: 0;
+    padding: 0 10px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .km-rail-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 6px;
+    border-radius: 10px;
+    background: rgb(14 22 18 / 86%);
+    border: 1px solid rgb(255 255 255 / 8%);
+    color: #d7e3da;
+    font-size: 0.81rem;
+    font-weight: 560;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease,
+      color 0.2s ease;
+  }
+
+  .km-rail-chip:hover {
+    border-color: rgb(92 219 190 / 34%);
+    background: rgb(19 30 24 / 95%);
+    color: #f2f8f4;
+  }
+
+  .km-rail-chip-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .km-city-chip {
+    cursor: pointer;
+    font-family: inherit;
+    line-height: inherit;
+  }
+
+  .km-city-chip.is-selected {
+    border-color: rgb(92 219 190 / 48%);
+    background: rgb(20 35 28 / 96%);
+    color: #f4faf6;
+  }
+
+  .km-city-crest-box {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 5%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .km-city-crest {
+    display: block;
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+  }
+
+  @keyframes km-rail-marquee {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-50%, 0, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .km-rail-marquee {
+      mask-image: none;
+      -webkit-mask-image: none;
+    }
+
+    .km-rail-marquee-track {
+      width: auto;
+      animation: none;
+      justify-content: center;
+    }
+
+    .km-rail-marquee-group {
+      flex-wrap: wrap;
+      justify-content: center;
+      padding-right: 0;
+    }
+
+    .km-rail-marquee-group.is-duplicate {
+      display: none;
+    }
+  }
+}

@@ -25,13 +25,13 @@
 | APK na GitHubie                                | Nawigacja do `releases/latest` z odpowiedzią HTTP 200. Obecny release ma plik `app-release.apk`; po zmianie nazwy na `kilometr-prod.apk` link do wydania pozostaje poprawny |
 | Wersje testowe                                 | Nawigacja do listy wydań GitHuba                                                                                                                                            |
 | Obtainium                                      | Zachowany protokół `obtainium://app/https://github.com/sioodmy/kilometr`; otwarcie aplikacji wymaga zainstalowanego klienta                                                 |
-| Ko-fi                                          | Przycisk wsparcia nawiguje do `https://ko-fi.com/sioodmy`, zgodnie z `.github/FUNDING.yml` i Ustawieniami aplikacji                                                         |
+| BuyCoffee                                          | Przycisk wsparcia nawiguje do `https://buycoffee.to/sioodmy`, zgodnie z `.github/FUNDING.yml` i Ustawieniami aplikacji                                                         |
 | Puste miejsca na screeny                       | Zachowane proporcje 1080:2400. Wczytany obraz jest wyświetlany w całości przez `object-fit: contain`; błędny adres przywraca opisane puste miejsce                          |
 
 ## 2. Purpose-Gate: PASS
 
 - R-01, R-06, R-07, R-31: zieleń wynika z ikony aplikacji. Krój systemowy nawiązuje do natywnych interfejsów i nie wymaga pobierania fontów. Jasna przestrzeń eksponuje produkt; elipsa pod telefonami grupuje trzy widoki na jednej podstawie.
-- R-04, R-08, R-09: zachowana biblioteka Lucide, zgodna z aplikacją. Ikony oznaczają transport, pobieranie, motyw, brak zrzutu lub wsparcie na Ko-fi. Strzałki wskazują nawigację. Brak ozdobnych statusów, migających kropek i pigułek.
+- R-04, R-08, R-09: zachowana biblioteka Lucide, zgodna z aplikacją. Ikony oznaczają transport, pobieranie, motyw, brak zrzutu lub wsparcie na BuyCoffee. Strzałki wskazują nawigację. Brak ozdobnych statusów, migających kropek i pigułek.
 - R-10, R-12, R-13, R-14: rozmycie tylko w nagłówku. Cienie oddzielają urządzenia i ilustrację biletu od tła. Funkcje mają wspólny przełączany widok zamiast szeregu jednakowych kart.
 - R-19, R-22: wejście telefonów kieruje uwagę na produkt; krótkie ujawnianie sekcji wspiera rytm czytania. Bez zapętlonych animacji i przechwytywania przewijania. `prefers-reduced-motion` wyłącza ruch. Ilustracja trybu samolotowego objaśnia pracę offline.
 
@@ -55,7 +55,7 @@
 
 - Uruchomienie: `npm --prefix landing ci`, potem `npm --prefix landing run dev`.
 - Build: `npm --prefix landing run build` zapisuje stronę do `docs/`; archiwalne `docs/screenshots/` pozostają na miejscu.
-- Adresy pobierania i Ko-fi: `landing/src/data.ts`.
+- Adresy pobierania i BuyCoffee: `landing/src/data.ts`.
 - Teksty: `src/i18n/landing/`, dołączone również do typowanego słownika aplikacji. Nazwy miast zachowują polską pisownię we wszystkich wersjach językowych.
 - Podgląd telefonu w hero i sekcji z ekranami używa tej samej obudowy iPhone'a z `landing/src/components/Phone.tsx` (`phone.css`) i zrzutów z `landing/public/screenshots/`.
 - `social-preview.png` jest osobną grafiką do udostępniania strony. Po zmianie prezentacji trzeba odświeżyć ją osobno.
