@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { reloadWidgets } from '../../modules/kilometr-widgets';
 import { getLocaleSync, tr } from '../i18n/locale';
 import { getLineColors, inferTransitMode, normalizeLineName } from './lineIdentity';
@@ -177,6 +178,7 @@ export function mergeWidgetSnapshot(partial: Partial<WidgetData>): Promise<void>
 }
 
 async function writeMerged(partial: Partial<WidgetData>): Promise<void> {
+  if (Platform.OS === 'web') return;
   try {
     const path = snapshotPath();
     if (!path) return;

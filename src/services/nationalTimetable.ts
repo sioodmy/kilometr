@@ -6,6 +6,7 @@
 // (gtfsDatabase), osobne meta (w samej bazie polska) i osobny limit
 // pobierań, żeby nie blokował odświeżania rozkładu miasta.
 
+import { Platform } from 'react-native';
 import {
   getNationalMeta,
   getNationalTimetableEndDate,
@@ -146,21 +147,27 @@ export async function nationalTimetableReady(): Promise<boolean> {
 /** Usuwa bazę kolejową (ustawienia): zamyka uchwyt i kasuje plik. */
 export async function deleteNationalTimetable(): Promise<void> {
   const gtfs = await import('./gtfsDatabase');
-  const FileSystem = await import('expo-file-system/legacy');
   gtfs.beginNationalDbSwap();
   try {
     await gtfs.closeNationalDb();
     const { polskaStore } = await import('./routing/store');
     polskaStore.reset();
-    const base = FileSystem.documentDirectory;
-    if (base) {
-      const dir = `${base.replace(/\/+$/, '')}/SQLite`;
-      const main = `${dir}/${gtfs.NATIONAL_DB_FILE}`;
-      for (const suffix of ['', '-wal', '-shm', '-journal', '.bak']) {
-        try {
-          await FileSystem.deleteAsync(`${main}${suffix}`, { idempotent: true });
-        } catch {
-          // best-effort
+    if (Platform.OS === 'web') {
+      const SQLite = await import('expo-sqlite');
+      await SQLite.deleteDatabaseAsync(gtfs.NATIONAL_DB_FILE).catch(() => {});
+      await gtfs.clearWebDbReady(gtfs.NATIONAL_DB_FILE);
+    } else {
+      const FileSystem = await import('expo-file-system/legacy');
+      const base = FileSystem.documentDirectory;
+      if (base) {
+        const dir = `${base.replace(/\/+$/, '')}/SQLite`;
+        const main = `${dir}/${gtfs.NATIONAL_DB_FILE}`;
+        for (const suffix of ['', '-wal', '-shm', '-journal', '.bak']) {
+          try {
+            await FileSystem.deleteAsync(`${main}${suffix}`, { idempotent: true });
+          } catch {
+            // best-effort
+          }
         }
       }
     }

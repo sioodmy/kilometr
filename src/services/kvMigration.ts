@@ -11,6 +11,7 @@
 // Wywoływać RAZ w _layout przed initApp().
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { kvGetStrict, kvSetStrict } from './storage';
 
 const MIGRATED_FLAG = '__kv_migrated_from_sqlite';
@@ -65,6 +66,7 @@ async function performMigration(isCancelled: () => boolean): Promise<void> {
 }
 
 export async function migrateFromSqliteKv(): Promise<void> {
+  if (Platform.OS === 'web') return;
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
