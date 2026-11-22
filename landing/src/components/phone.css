@@ -1,67 +1,132 @@
 @layer product {
   .pixel-phone {
+    --phone-radius: 44px;
+    --phone-rail: 4px;
+    --phone-bezel: 7px;
+    --phone-btn-w: 2.2px;
+    --bezel-radius: calc(var(--phone-radius) - var(--phone-rail));
+    --screen-radius: calc(var(--bezel-radius) - var(--phone-bezel));
+
     position: relative;
     isolation: isolate;
     width: 100%;
     max-width: 320px;
-    padding: 4px;
-    border-radius: 44px;
+    padding: var(--phone-rail);
+    border-radius: var(--phone-radius);
     background: linear-gradient(
-      142deg,
-      #4a524d 0%,
-      #252a27 16%,
-      #141816 42%,
-      #2e3531 66%,
-      #171b19 88%,
-      #3f4742 100%
+      148deg,
+      #66706a 0%,
+      #353b38 11%,
+      #191d1b 28%,
+      #2b312e 48%,
+      #151816 70%,
+      #3e4641 88%,
+      #555f59 100%
     );
     box-shadow:
-      0 42px 84px -22px rgb(0 0 0 / 82%),
-      0 14px 32px -12px rgb(0 0 0 / 60%),
-      inset 0 1px 0.5px rgb(255 255 255 / 26%),
-      inset 0 -1px 1px rgb(0 0 0 / 65%);
+      0 42px 84px -22px rgb(0 0 0 / 84%),
+      0 14px 32px -12px rgb(0 0 0 / 62%),
+      inset 0 0 0 0.75px rgb(255 255 255 / 22%),
+      inset 0 1.5px 1px rgb(255 255 255 / 32%),
+      inset 0 -1.5px 1.5px rgb(0 0 0 / 80%);
   }
 
   .pixel-hardware {
     position: absolute;
     inset: 0;
-    z-index: -1;
+    z-index: 0;
     pointer-events: none;
   }
 
+  /* Paski antenowe na aluminiowej ramce Pixela 9 Pro. */
+  .pixel-antenna {
+    position: absolute;
+    width: var(--phone-rail);
+    height: 2px;
+    background: rgb(10 12 11 / 88%);
+    box-shadow: 0 0.5px 0 rgb(255 255 255 / 14%);
+  }
+
+  .pixel-antenna-tl {
+    top: 11.5%;
+    left: 0;
+  }
+
+  .pixel-antenna-tr {
+    top: 11.5%;
+    right: 0;
+  }
+
+  .pixel-antenna-bl {
+    bottom: 11.5%;
+    left: 0;
+  }
+
+  .pixel-antenna-br {
+    bottom: 11.5%;
+    right: 0;
+  }
+
+  /* Fazowane aluminiowe przyciski osadzone w krawędzi obudowy. */
   .pixel-btn {
     position: absolute;
-    right: -3.5px;
-    width: 3.5px;
-    border-radius: 0 2.5px 2.5px 0;
-    background: linear-gradient(180deg, #565e59, #2b302d 50%, #1b1f1d);
-    box-shadow: 1px 0 2px rgb(0 0 0 / 70%);
+    right: calc(var(--phone-btn-w) * -1 + 0.3px);
+    width: var(--phone-btn-w);
+    border-radius: 0 2px 2px 0;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 26%) 0%,
+        transparent 16%,
+        transparent 84%,
+        rgb(0 0 0 / 35%) 100%
+      ),
+      linear-gradient(90deg, #121513 0%, #3b423e 38%, #68736d 72%, #444c47 100%);
+    box-shadow:
+      0 0 0 0.5px rgb(0 0 0 / 75%),
+      inset 0 1px 0.5px rgb(255 255 255 / 55%),
+      inset 0 -1px 0.5px rgb(0 0 0 / 85%),
+      inset -0.75px 0 0.5px rgb(255 255 255 / 28%),
+      1.5px 1px 3px rgb(0 0 0 / 55%);
   }
 
   .pixel-btn-power {
-    top: 24%;
-    height: 7.5%;
+    top: 22.5%;
+    height: 6.4%;
   }
 
-  .pixel-btn-vol-up {
-    top: 35.5%;
-    height: 11.5%;
-  }
-
-  .pixel-btn-vol-down {
-    top: 48.5%;
-    height: 11.5%;
+  .pixel-btn-volume {
+    top: 32%;
+    height: 12.6%;
   }
 
   .pixel-bezel {
     position: relative;
+    z-index: 1;
     width: 100%;
-    padding: 7px;
-    border-radius: 40px;
-    background: #060807;
+    padding: var(--phone-bezel);
+    border-radius: var(--bezel-radius);
+    background: #050706;
     box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 6%),
-      inset 0 1px 3px rgb(0 0 0 / 90%);
+      0 0 0 0.75px rgb(0 0 0 / 92%),
+      inset 0 0 0 0.75px rgb(255 255 255 / 11%),
+      inset 0 1.5px 3px rgb(0 0 0 / 95%);
+  }
+
+  /* Szczelina głośnika rozmów w górnej ramce szkła. */
+  .pixel-speaker {
+    position: absolute;
+    top: calc(var(--phone-bezel) * 0.28);
+    left: 50%;
+    z-index: 8;
+    width: 17%;
+    height: 2px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #010202;
+    box-shadow:
+      inset 0 0.75px 0.75px rgb(0 0 0 / 95%),
+      0 0.5px 0 rgb(255 255 255 / 12%);
   }
 
   .pixel-screen {
@@ -69,9 +134,9 @@
     width: 100%;
     aspect-ratio: 9 / 20;
     overflow: hidden;
-    border-radius: 33px;
+    border-radius: var(--screen-radius);
     background: #111414;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
+    box-shadow: inset 0 0 0 0.75px rgb(255 255 255 / 6%);
   }
 
   .pixel-viewport {
@@ -106,7 +171,11 @@
     padding: 0 7.2%;
     background: #111414;
     color: rgb(238 244 240 / 88%);
-    font-family: 'Demo Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family:
+      'Demo Roboto',
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
     font-size: clamp(9.5px, 2.8cqw, 11.5px);
     font-weight: 500;
     letter-spacing: 0.01em;
@@ -125,14 +194,16 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 11px;
-    height: 11px;
+    width: 10.5px;
+    height: 10.5px;
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    background: radial-gradient(circle at 38% 36%, #1f2730 0%, #060809 55%, #000 100%);
+    background:
+      radial-gradient(circle at 38% 36%, rgb(116 178 164 / 38%) 0%, transparent 24%),
+      radial-gradient(circle at 50% 50%, #151b1e 0%, #050707 52%, #000 100%);
     box-shadow:
-      0 0 0 1px rgb(255 255 255 / 7%),
-      inset 0 0 2px rgb(92 219 190 / 22%);
+      0 0 0 0.75px rgb(255 255 255 / 8%),
+      inset 0 0 2px rgb(0 0 0 / 90%);
   }
 
   .pixel-status-icons {
@@ -190,14 +261,14 @@
     inset: 0;
     z-index: 7;
     pointer-events: none;
-    border-radius: 33px;
+    border-radius: var(--screen-radius);
     background: linear-gradient(
-      128deg,
-      rgb(255 255 255 / 7%) 0%,
-      rgb(255 255 255 / 1.5%) 18%,
-      transparent 38%
+      132deg,
+      rgb(255 255 255 / 4%) 0%,
+      rgb(255 255 255 / 1%) 14%,
+      transparent 30%
     );
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 7%);
+    box-shadow: inset 0 0 0 0.75px rgb(255 255 255 / 7%);
   }
 
   /* Crossfading slide stack inside a Pixel screen (used for scroll & ambient beats). */

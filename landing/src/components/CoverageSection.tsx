@@ -663,9 +663,9 @@ export function CoverageSection() {
                 <div className={`cov-metric${stats.live.available ? ' is-on' : ' is-off'}`}>
                   <span className="cov-metric-k">
                     {stats.live.available ? (
-                      <Radio size={13} strokeWidth={2} aria-hidden="true" />
+                      <Radio size={15} strokeWidth={2} aria-hidden="true" />
                     ) : (
-                      <Clock size={13} strokeWidth={2} aria-hidden="true" />
+                      <Clock size={15} strokeWidth={2} aria-hidden="true" />
                     )}
                     <span>{c.liveLabel}</span>
                   </span>
@@ -679,7 +679,7 @@ export function CoverageSection() {
 
                 <div className={`cov-metric${stats.news.available ? ' is-on' : ' is-off'}`}>
                   <span className="cov-metric-k">
-                    <Megaphone size={13} strokeWidth={2} aria-hidden="true" />
+                    <Megaphone size={15} strokeWidth={2} aria-hidden="true" />
                     <span>{c.newsLabel}</span>
                   </span>
                   <span className="cov-metric-v">
@@ -692,7 +692,7 @@ export function CoverageSection() {
 
                 <div className={`cov-metric${stats.stopHints.available ? ' is-on' : ' is-off'}`}>
                   <span className="cov-metric-k">
-                    <MapPin size={13} strokeWidth={2} aria-hidden="true" />
+                    <MapPin size={15} strokeWidth={2} aria-hidden="true" />
                     <span>{c.stopHintsLabel}</span>
                   </span>
                   <span className="cov-metric-v">

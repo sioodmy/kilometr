@@ -102,7 +102,7 @@ export function Hero() {
           </div>
 
           <div className="hero-centerpiece">
-            <Phone label={copy.hero.phoneMainAlt} statusTime="08:54">
+            <Phone label={copy.hero.phoneMainAlt} statusTime="13:31">
               <img
                 className="pixel-shot"
                 src="./screenshots/details-urban.webp"

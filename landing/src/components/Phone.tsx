@@ -22,11 +22,15 @@ export function Phone({
   return (
     <div className={`pixel-phone ${className}`.trim()} role="img" aria-label={label}>
       <div className="pixel-hardware" aria-hidden="true">
+        <span className="pixel-antenna pixel-antenna-tl" />
+        <span className="pixel-antenna pixel-antenna-tr" />
+        <span className="pixel-antenna pixel-antenna-bl" />
+        <span className="pixel-antenna pixel-antenna-br" />
         <span className="pixel-btn pixel-btn-power" />
-        <span className="pixel-btn pixel-btn-vol-up" />
-        <span className="pixel-btn pixel-btn-vol-down" />
+        <span className="pixel-btn pixel-btn-volume" />
       </div>
       <div className="pixel-bezel" aria-hidden="true">
+        <span className="pixel-speaker" />
         <div className="pixel-screen">
           <div className="pixel-viewport">{children}</div>
 

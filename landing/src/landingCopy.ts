@@ -45,9 +45,7 @@ export type ReleaseCopy = {
   donate: {
     title: string;
     body: string;
-    points: readonly string[];
-    ctaPrimary: string;
-    ctaSecondary: string;
+    cta: string;
     note: string;
   };
 };
@@ -55,7 +53,7 @@ export type ReleaseCopy = {
 const COPY: Record<Locale, ReleaseCopy> = {
   pl: {
     hero: {
-      titleLine1: 'Tym razem dojedziesz',
+      titleLine1: 'Tym razem dojedziesz.',
       titleAccent: 'Czym chcesz, Jak chcesz',
       subtitle:
         'Open Source planer tras komunikacją miejską i koleją w całej Polsce',
@@ -87,7 +85,7 @@ const COPY: Record<Locale, ReleaseCopy> = {
           body: 'Zawsze wiesz czym i kiedy jedziesz. Bez wątpliwości z którego przystanku.',
           shot: './screenshots/details-urban.webp',
           alt: 'Szczegóły połączenia z numerem słupka, modelem tramwaju i świeżością GPS',
-          statusTime: '08:54',
+          statusTime: '13:31',
         },
         {
           id: 'intercity',
@@ -128,16 +126,10 @@ const COPY: Record<Locale, ReleaseCopy> = {
       phoneAlt: 'Szczegóły dużego utrudnienia ZTM GZM w Chorzowie z liniami 6, 61 i komunikacją zastępczą T-6',
     },
     donate: {
-      title: 'Niezależna aplikacja, rozwijana po godzinach.',
-      body: 'Kilometr nie wyświetla reklam, nie sprzedaje danych i nie zamyka funkcji za abonamentem. Jeśli aplikacja oszczędza Ci czas w drodze, możesz dorzucić się do serwerów rozkładów i dalszego rozwoju.',
-      points: [
-        'Utrzymanie serwerów rozkładów GTFS i odczytów GPS na żywo',
-        'Zero reklam, zero trackerów, zero płatnych planów',
-        'Otwarty kod źródłowy rozwijany publicznie na GitHubie',
-      ],
-      ctaPrimary: 'Postaw kawę na BuyCoffee',
-      ctaSecondary: 'Zobacz kod na GitHubie',
-      note: 'Jednorazowe, dobrowolne wsparcie · bez rejestracji',
+      title: 'Pomóż utrzymać Kilometr w ruchu.',
+      body: 'Tworzę tę aplikację po godzinach, bez reklam i bez opłat. Każda postawiona kawa pomaga opłacić serwery rozkładów i daje czas na kolejne funkcje.',
+      cta: 'Postaw mi kawę',
+      note: 'Jednorazowo przez BuyCoffee, bez konta.',
     },
   },
 
@@ -175,7 +167,7 @@ const COPY: Record<Locale, ReleaseCopy> = {
           body: 'You always know what you are riding and when. No doubt about which stop.',
           shot: './screenshots/details-urban.webp',
           alt: 'Kilometr connection details with boarding post, tram model, and GPS freshness',
-          statusTime: '08:54',
+          statusTime: '13:31',
         },
         {
           id: 'intercity',
@@ -216,16 +208,10 @@ const COPY: Record<Locale, ReleaseCopy> = {
       phoneAlt: 'Kilometr structured ZTM GZM disruption detail screen showing lines 6, 61, and replacement bus T-6',
     },
     donate: {
-      title: 'An independent transit app, built after hours.',
-      body: 'Kilometr has no ads, no data brokers, and no paywalls. If it saves you time on your daily commute, a coffee helps cover GTFS timetable servers, live GPS feeds, and ongoing development.',
-      points: [
-        'Covers GTFS timetable build pipelines and live GPS feeds',
-        'No ads, no analytics trackers, no subscription tiers',
-        'Open source and developed in the open on GitHub',
-      ],
-      ctaPrimary: 'Buy a coffee on BuyCoffee',
-      ctaSecondary: 'View source on GitHub',
-      note: 'One-time voluntary support · no account required',
+      title: 'Help keep Kilometr moving.',
+      body: 'I build this app after hours, with no ads and no paywalls. Every coffee helps pay for timetable servers and funds new features.',
+      cta: 'Buy me a coffee',
+      note: 'One-time support via BuyCoffee, no account needed.',
     },
   },
 
@@ -263,7 +249,7 @@ const COPY: Record<Locale, ReleaseCopy> = {
           body: 'Du weißt immer, womit und wann du fährst. Keine Zweifel, von welcher Haltestelle.',
           shot: './screenshots/details-urban.webp',
           alt: 'Kilometr Verbindungsdetails mit Haltepunkt und Fahrzeugdaten',
-          statusTime: '08:54',
+          statusTime: '13:31',
         },
         {
           id: 'intercity',
@@ -304,16 +290,10 @@ const COPY: Record<Locale, ReleaseCopy> = {
       phoneAlt: 'Kilometr Störungsdetails ZTM GZM mit betroffenen Linien 6, 61 und Ersatzbus T-6',
     },
     donate: {
-      title: 'Unabhängig entwickelt, ohne Investoren.',
-      body: 'Kilometr zeigt keine Werbung, sammelt keine Nutzerdaten und versteckt nichts hinter Abos. Wenn dir die App unterwegs hilft, unterstützt jeder Kaffee die Fahrplan-Server und die Weiterentwicklung.',
-      points: [
-        'Deckt GTFS-Fahrplanserver und Live-GPS-Feeds ab',
-        'Keine Werbung, keine Tracker, keine Bezahlschranken',
-        'Quelloffen und transparent auf GitHub entwickelt',
-      ],
-      ctaPrimary: 'Kaffee auf BuyCoffee spendieren',
-      ctaSecondary: 'Quellcode auf GitHub',
-      note: 'Freiwillige, einmalige Unterstützung · ohne Konto',
+      title: 'Hilf mit, Kilometr am Laufen zu halten.',
+      body: 'Ich entwickle diese App in meiner Freizeit, ohne Werbung und ohne Abo. Jeder Kaffee hilft bei den Fahrplan-Servern und neuen Funktionen.',
+      cta: 'Spendiere einen Kaffee',
+      note: 'Einmalig über BuyCoffee, ganz ohne Konto.',
     },
   },
 
@@ -351,7 +331,7 @@ const COPY: Record<Locale, ReleaseCopy> = {
           body: 'Ти завжди знаєш, чим і коли їдеш. Без сумнівів, з якої зупинки.',
           shot: './screenshots/details-urban.webp',
           alt: 'Деталі маршруту з номером стовпчика, моделлю трамвая та часом GPS',
-          statusTime: '08:54',
+          statusTime: '13:31',
         },
         {
           id: 'intercity',
@@ -392,16 +372,10 @@ const COPY: Record<Locale, ReleaseCopy> = {
       phoneAlt: 'Деталі значного ускладнення ZTM GZM у Хожуві з лініями 6, 61 і замінним автобусом T-6',
     },
     donate: {
-      title: 'Незалежний застосунок, створений після роботи.',
-      body: 'У Kilometr немає реклами, трекерів і платних підписок. Якщо застосунок економить твій час у дорозі, кава на BuyCoffee допоможе оплатити сервери розкладів GTFS і подальший розвиток.',
-      points: [
-        'Оплата серверів розкладів GTFS і живих даних GPS',
-        'Жодної реклами, трекерів чи платних тарифів',
-        'Відкритий вихідний код на GitHub',
-      ],
-      ctaPrimary: 'Пригостити кавою на BuyCoffee',
-      ctaSecondary: 'Код на GitHub',
-      note: 'Добровільна разова підтримка · без реєстрації',
+      title: 'Допоможи Kilometr рухатися далі.',
+      body: 'Я створюю цей застосунок у вільний час, без реклами та підписок. Кожна кава допомагає оплачувати сервери розкладів і додавати нові функції.',
+      cta: 'Пригостити кавою',
+      note: 'Разова підтримка через BuyCoffee, без реєстрації.',
     },
   },
 };

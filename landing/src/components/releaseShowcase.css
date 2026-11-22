@@ -202,11 +202,7 @@
     padding: clamp(28px, 4vw, 44px) clamp(20px, 3vw, 36px);
     border-radius: 32px;
     border: 1px solid rgb(255 255 255 / 7%);
-    background: linear-gradient(
-      180deg,
-      rgb(22 32 26 / 68%) 0%,
-      rgb(15 22 18 / 88%) 100%
-    );
+    background: linear-gradient(180deg, rgb(22 32 26 / 68%) 0%, rgb(15 22 18 / 88%) 100%);
   }
 
   .transfer-column.transfer-mobile-unified {
@@ -519,18 +515,10 @@
     }
 
     .story-ig-phone-wrap .pixel-phone {
-      border-radius: 34px;
-      padding: 3px;
-    }
-
-    .story-ig-phone-wrap .pixel-bezel {
-      border-radius: 31px;
-      padding: 5px;
-    }
-
-    .story-ig-phone-wrap .pixel-screen,
-    .story-ig-phone-wrap .pixel-glass-sheen {
-      border-radius: 26px;
+      --phone-radius: 34px;
+      --phone-rail: 3px;
+      --phone-bezel: 5px;
+      --phone-btn-w: 1.75px;
     }
 
     .story-ig-tap {
@@ -639,18 +627,10 @@
     }
 
     .transfer-mobile-unified .transfer-phone-wrap .pixel-phone {
-      border-radius: 34px;
-      padding: 3px;
-    }
-
-    .transfer-mobile-unified .transfer-phone-wrap .pixel-bezel {
-      border-radius: 31px;
-      padding: 5px;
-    }
-
-    .transfer-mobile-unified .transfer-phone-wrap .pixel-screen,
-    .transfer-mobile-unified .transfer-phone-wrap .pixel-glass-sheen {
-      border-radius: 26px;
+      --phone-radius: 34px;
+      --phone-rail: 3px;
+      --phone-bezel: 5px;
+      --phone-btn-w: 1.75px;
     }
 
     .transfer-beat-bar-unified {

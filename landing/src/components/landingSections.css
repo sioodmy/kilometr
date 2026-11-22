@@ -50,77 +50,205 @@
     opacity: 0.7;
   }
   .promise {
-    padding-block: clamp(64px, 9vw, 120px) clamp(88px, 11vw, 160px);
+    position: relative;
+    padding-block: clamp(72px, 10vw, 136px) clamp(68px, 9vw, 120px);
+    background: linear-gradient(180deg, var(--bg) 0%, #0b110e 100%);
+    border-top: 1px solid rgb(255 255 255 / 7%);
   }
-  .promise h2 {
-    font-size: clamp(2.25rem, 9.5vw, 8.25rem);
-    font-weight: 650;
-    line-height: 1.13;
-    letter-spacing: -0.065em;
+  .promise-inner {
+    width: min(1040px, calc(100% - 48px));
+    margin-inline: auto;
+  }
+  .promise-track {
+    margin: 0;
+    padding: 0;
+    letter-spacing: -0.05em;
   }
   .promise-line {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(16px, 3vw, 34px);
+    padding-block: clamp(8px, 1.4vw, 14px);
+  }
+  /* Pionowy tor przystankowy łączący trzy punkty manifestu. */
+  .promise-line:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 17px;
+    top: 50%;
+    bottom: -50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, rgb(127 219 177 / 34%) 0%, rgb(127 219 177 / 18%) 100%);
+    opacity: var(--line-reveal, 1);
+  }
+  .promise-node {
+    position: relative;
+    z-index: 1;
+    justify-self: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2.5px solid rgb(127 219 177 / 58%);
+    background: #0c130f;
+    box-shadow: 0 0 0 5px #0d1410;
+    opacity: var(--line-reveal, 1);
+    transform: translateY(0.05em) scale(calc(0.68 + var(--line-reveal, 1) * 0.32));
+  }
+  .promise-forever .promise-node {
+    width: 16px;
+    height: 16px;
+    border: 0;
+    background: var(--accent);
+    box-shadow:
+      0 0 0 5px #0c130f,
+      0 0 0 8px rgb(127 219 177 / 18%);
+  }
+  .promise-text-clip {
     display: block;
-    width: fit-content;
     overflow: clip;
     padding-block: 0.08em;
     margin-block: -0.08em;
   }
-  .promise-line > span {
+  .promise-text {
     position: relative;
-    display: block;
+    display: inline-block;
+    width: fit-content;
+    font-size: clamp(1.85rem, 7.6vw, 6.25rem);
+    font-weight: 700;
+    line-height: 1.06;
+    letter-spacing: -0.05em;
+    color: #f4f9f5;
     opacity: var(--line-reveal, 1);
     transform: translateY(var(--line-shift, 0%));
   }
-  .promise-forever > span {
+  .promise-forever .promise-text {
     color: var(--accent);
   }
-  .promise-forever > span::after {
+  .promise-forever .promise-text::after {
     content: '';
     position: absolute;
     left: 0;
-    right: 0.06em;
-    bottom: 0.04em;
-    height: max(2px, 0.025em);
+    right: 0.04em;
+    bottom: -0.02em;
+    height: max(2.5px, 0.03em);
+    border-radius: 999px;
     background: currentColor;
     transform: scaleX(var(--line-reveal, 1));
     transform-origin: left;
   }
+  .closing-section {
+    padding-block: clamp(20px, 4vw, 44px) clamp(32px, 5vw, 56px);
+    background: linear-gradient(180deg, #0b110e 0%, var(--bg) 100%);
+  }
   .closing {
-    border: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 9%);
     border-radius: 32px;
-    background: var(--surface);
-    padding: clamp(56px, 8vw, 112px) clamp(20px, 5vw, 80px);
+    background:
+      radial-gradient(
+        76% 62% at 50% 0%,
+        rgb(127 219 177 / 12%) 0%,
+        rgb(92 219 190 / 4%) 44%,
+        transparent 72%
+      ),
+      linear-gradient(180deg, rgb(18 28 22 / 94%) 0%, rgb(10 16 13 / 98%) 100%);
+    box-shadow:
+      0 36px 84px rgb(0 0 0 / 50%),
+      inset 0 1px 0 rgb(255 255 255 / 7%);
+    padding: clamp(48px, 7.5vw, 96px) clamp(22px, 5vw, 72px);
     text-align: center;
   }
+  .closing-mark {
+    display: inline-flex;
+    padding: 2px;
+    margin-bottom: 24px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgb(255 255 255 / 16%) 0%, rgb(255 255 255 / 4%) 100%);
+    box-shadow: 0 16px 36px -8px rgb(0 0 0 / 65%);
+  }
+  .closing-mark img {
+    display: block;
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+  }
   .closing h2 {
-    max-width: 20ch;
+    max-width: 17ch;
     margin-inline: auto;
-    font-size: clamp(2.25rem, 5.5vw, 5rem);
+    font-size: clamp(2.1rem, 4.6vw, 3.85rem);
+    font-weight: 700;
+    line-height: 1.06;
+    letter-spacing: -0.045em;
+    color: #f4f9f5;
   }
   .closing .section-body {
-    max-width: 48ch;
-    margin: 26px auto 0;
+    max-width: 46ch;
+    margin: 20px auto 0;
+    font-size: clamp(1rem, 1.35vw, 1.15rem);
+    line-height: 1.62;
+    letter-spacing: -0.015em;
+    color: #b4c3b7;
   }
   .closing-actions {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 18px;
     width: min(100%, 480px);
     margin: 34px auto 0;
   }
+  .closing-actions .platform-links {
+    justify-content: center;
+    gap: 12px;
+  }
   .closing-actions .button {
-    min-width: 0;
-    min-height: 60px;
+    min-width: 148px;
+    min-height: 52px;
     gap: 10px;
-    padding: 14px 16px;
-    border-radius: 12px;
+    padding: 0 24px;
+    border-radius: 999px;
+    font-size: 0.96rem;
+    font-weight: 650;
+  }
+  .closing-actions .button-secondary {
+    border: 1px solid rgb(255 255 255 / 16%);
+    background: rgb(15 22 18 / 78%);
+    backdrop-filter: blur(12px);
+    color: #eef4ee;
+  }
+  .closing-actions .button-secondary:hover {
+    border-color: rgb(127 219 177 / 42%);
+    background: rgb(22 33 27 / 88%);
   }
   .closing-actions svg {
     flex-shrink: 0;
   }
   .closing-support {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 999px;
+    border: 1px solid rgb(255 255 255 / 8%);
+    background: rgb(255 255 255 / 3%);
     color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 550;
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease,
+      color 0.2s ease;
+  }
+  .closing-support:hover {
+    border-color: rgb(127 219 177 / 34%);
+    background: rgb(127 219 177 / 8%);
+    color: var(--accent);
   }
   @media (prefers-reduced-motion: no-preference) {
     .transit-train {
@@ -140,11 +268,16 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .promise-line > span {
+    .promise-line:not(:last-child)::before,
+    .promise-node,
+    .promise-text {
       opacity: 1;
       transform: none;
     }
-    .promise-forever > span::after {
+    .promise-node {
+      transform: translateY(0.05em);
+    }
+    .promise-forever .promise-text::after {
       transform: none;
     }
   }
@@ -155,13 +288,78 @@
     .transit-backdrop svg {
       width: 100%;
     }
+    .promise {
+      padding-block: 56px 48px;
+    }
+    .promise-inner {
+      width: calc(100% - 40px);
+    }
+    .promise-line {
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 14px;
+      padding-block: 7px;
+    }
+    .promise-line:not(:last-child)::before {
+      left: 11px;
+    }
+    .promise-node {
+      width: 11px;
+      height: 11px;
+      border-width: 2px;
+      box-shadow: 0 0 0 4px #0d1410;
+    }
+    .promise-forever .promise-node {
+      width: 13px;
+      height: 13px;
+      box-shadow:
+        0 0 0 4px #0c130f,
+        0 0 0 7px rgb(127 219 177 / 18%);
+    }
+    .closing-section {
+      padding-block: 16px 32px;
+    }
     .closing {
-      border-radius: 24px;
+      border-radius: 26px;
+      padding: 40px 20px 36px;
+    }
+    .closing-mark {
+      margin-bottom: 20px;
+      border-radius: 18px;
+    }
+    .closing-mark img {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+    }
+    .closing h2 {
+      font-size: clamp(1.85rem, 7.2vw, 2.5rem);
+    }
+    .closing .section-body {
+      margin-top: 16px;
+      font-size: 0.96rem;
+      line-height: 1.56;
+    }
+    .closing-actions {
+      margin-top: 28px;
+      gap: 14px;
+    }
+    .closing-actions .platform-links {
+      width: 100%;
+    }
+    .closing-actions .button {
+      flex: 1 1 130px;
+      min-width: 0;
+      min-height: 48px;
+      padding: 0 18px;
+      font-size: 0.92rem;
     }
   }
   @media (max-width: 420px) {
+    .promise-inner {
+      width: calc(100% - 32px);
+    }
     .closing-actions {
-      gap: 10px;
+      gap: 12px;
     }
   }
 }

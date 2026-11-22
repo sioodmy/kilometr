@@ -43,19 +43,25 @@ function Landing() {
       <CoverageSection />
       <DonateSection />
       <PromiseSection />
-      <section
-        id="pobierz"
-        className="closing section-shell reveal"
-        aria-labelledby="closing-title"
-      >
-        <h2 id="closing-title">{s.closing.title}</h2>
-        <p className="section-body">{s.closing.body}</p>
-        <div className="closing-actions">
-          <PlatformLinks />
-          <a className="text-link closing-support" href={COFFEE_URL}>
-            <Coffee size={18} aria-hidden="true" />
-            <span>{s.closing.support}</span>
-          </a>
+      <section id="pobierz" className="closing-section" aria-labelledby="closing-title">
+        <div className="closing section-shell reveal">
+          <div className="closing-mark" aria-hidden="true">
+            <img src="./icon.png" alt="" width={64} height={64} />
+          </div>
+          <h2 id="closing-title">{s.closing.title}</h2>
+          <p className="section-body">{s.closing.body}</p>
+          <div className="closing-actions">
+            <PlatformLinks />
+            <a
+              className="closing-support"
+              href={COFFEE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Coffee size={16} aria-hidden="true" />
+              <span>{s.closing.support}</span>
+            </a>
+          </div>
         </div>
       </section>
     </main>
