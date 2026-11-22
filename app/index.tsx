@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -1593,7 +1594,7 @@ export default function HomeScreen() {
           pullOption.value = 0;
           pullHeight.value = withSpring(0, motion.spring.spatialDefault);
         })
-        .enabled(atTop && lastTrip != null && !sheetsOpen),
+        .enabled(Platform.OS !== 'web' && atTop && lastTrip != null && !sheetsOpen),
     [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
   );
 

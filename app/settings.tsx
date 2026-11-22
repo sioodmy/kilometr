@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -533,13 +534,17 @@ export default function SettingsScreen() {
                 )}
                 onPress={() => openSection('routing')}
               />
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={BellRing}
-                title={s.notificationPrefs.title}
-                detail={s.settings.notificationsSummary}
-                onPress={() => openSection('notifications')}
-              />
+              {Platform.OS !== 'web' && (
+                <>
+                  <View style={styles.menuDivider} />
+                  <SettingsLink
+                    icon={BellRing}
+                    title={s.notificationPrefs.title}
+                    detail={s.settings.notificationsSummary}
+                    onPress={() => openSection('notifications')}
+                  />
+                </>
+              )}
               <View style={styles.menuDivider} />
               <SettingsLink
                 icon={SlidersHorizontal}
