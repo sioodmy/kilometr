@@ -2,15 +2,15 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowUpRight, ChevronDown, Coffee } from 'lucide-react';
 import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } from './i18n';
 import { Hero } from './components/Hero';
-import { ShowcaseDemo } from './components/ShowcaseDemo';
+import { ReleaseShowcase } from './components/ReleaseShowcase';
 import { CoverageSection } from './components/CoverageSection';
-import { TransitBackdrop } from './components/TransitBackdrop';
+import { DonateSection } from './components/DonateSection';
 import { PromiseSection } from './components/Promise';
 import { InformationPage } from './components/InformationPage';
 import { InstallPage } from './components/InstallPage';
 import { ThemeStudioPage } from './components/ThemeStudioPage';
 import { PlatformLinks } from './components/PlatformLinks';
-import { GITHUB_URL, KOFI_URL } from './data';
+import { GITHUB_URL, COFFEE_URL } from './data';
 
 const SharedJourney = lazy(() => import('./components/SharedJourney'));
 
@@ -38,12 +38,10 @@ function Landing() {
   const s = useStrings();
   return (
     <main id="main" tabIndex={-1}>
-      <div className="landing-story">
-        <TransitBackdrop />
-        <Hero />
-        <ShowcaseDemo />
-      </div>
+      <Hero />
+      <ReleaseShowcase />
       <CoverageSection />
+      <DonateSection />
       <PromiseSection />
       <section
         id="pobierz"
@@ -54,7 +52,7 @@ function Landing() {
         <p className="section-body">{s.closing.body}</p>
         <div className="closing-actions">
           <PlatformLinks />
-          <a className="text-link closing-support" href={KOFI_URL}>
+          <a className="text-link closing-support" href={COFFEE_URL}>
             <Coffee size={18} aria-hidden="true" />
             <span>{s.closing.support}</span>
           </a>
@@ -76,7 +74,7 @@ export default function App() {
         ? 'android'
         : hash === '#ios'
           ? 'ios'
-          : hash === '#motyw'
+          : hash === '#motyw' || hash === '#dziekuje'
             ? 'themeStudio'
             : null;
   useEffect(() => {
@@ -94,6 +92,17 @@ export default function App() {
       .querySelector('meta[name="description"]')
       ?.setAttribute('content', page ? s[page].intro : s.meta.description);
   }, [page, s, shared, shareStrings]);
+  useEffect(() => {
+    const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (page === 'themeStudio') {
+      const meta = robots ?? document.createElement('meta');
+      meta.name = 'robots';
+      meta.content = 'noindex, nofollow';
+      if (!robots) document.head.appendChild(meta);
+    } else {
+      robots?.remove();
+    }
+  }, [page]);
   useEffect(() => {
     if (page || shared || !hash || hash === '#top') {
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -163,13 +172,12 @@ export default function App() {
       <footer className="footer section-shell">
         <div className="footer-main">
           <a className="brand" href="#top">
-            <img src="./icon.png" alt="" width="26" height="26" />
+            <img src="./icon.png" alt="" width={26} height={26} />
             <span>Kilometr</span>
           </a>
           <p>{s.footer.tagline}</p>
           <nav aria-label={s.nav.label}>
             <a href="#polityka">{s.footer.privacy}</a>
-            <a href="#motyw">{s.themeStudio.footerLink}</a>
             <a href={GITHUB_URL}>
               {s.footer.github}
               <ArrowUpRight size={13} aria-hidden="true" />

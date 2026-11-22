@@ -1,0 +1,739 @@
+@layer layout {
+  .release-showcase {
+    position: relative;
+    background: linear-gradient(180deg, #090e0b 0%, #0d1410 18%, #101713 100%);
+  }
+
+  .release-section {
+    position: relative;
+    padding: clamp(72px, 10vw, 148px) clamp(18px, 4vw, 48px);
+  }
+
+  .release-section + .release-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: min(1160px, calc(100% - 48px));
+    height: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 8%) 20%,
+      rgb(255 255 255 / 8%) 80%,
+      transparent 100%
+    );
+  }
+
+  .release-inner {
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  .release-head {
+    max-width: 720px;
+  }
+
+  .release-head-center {
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .release-title {
+    margin-top: 14px;
+    font-size: clamp(2.1rem, 4.4vw, 3.65rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.042em;
+    text-wrap: balance;
+    color: #f3f8f4;
+  }
+
+  .release-lead {
+    margin-top: 20px;
+    font-size: clamp(1.02rem, 1.35vw, 1.18rem);
+    line-height: 1.62;
+    color: #a9b8ac;
+    text-wrap: pretty;
+  }
+
+  .release-head-center .release-lead {
+    max-width: 60ch;
+    margin-inline: auto;
+  }
+
+  /* ── ACT II: Sticky scroll-choreographed route story (desktop) ── */
+  .story-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+    gap: clamp(32px, 6vw, 88px);
+    align-items: start;
+    margin-top: clamp(44px, 6vw, 80px);
+  }
+
+  .story-beats {
+    display: grid;
+    gap: clamp(48px, 10vh, 112px);
+    padding-block: clamp(16px, 4vh, 48px);
+  }
+
+  .story-beat {
+    position: relative;
+    padding-left: 26px;
+    border-left: 2px solid rgb(255 255 255 / 9%);
+    opacity: 0.42;
+    transition:
+      opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .story-beat.is-active {
+    opacity: 1;
+    border-left-color: var(--accent);
+  }
+
+  .story-beat-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.82rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .story-beat-num {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .story-beat-title {
+    margin-top: 12px;
+    font-size: clamp(1.5rem, 2.5vw, 2.15rem);
+    font-weight: 680;
+    line-height: 1.12;
+    letter-spacing: -0.032em;
+    color: #f3f8f4;
+  }
+
+  .story-beat-body {
+    margin-top: 14px;
+    max-width: 48ch;
+    font-size: 1.02rem;
+    line-height: 1.62;
+    color: #b4c3b7;
+  }
+
+  .story-sticky-col {
+    position: sticky;
+    top: max(64px, calc(50vh - 340px));
+    display: flex;
+    justify-content: center;
+  }
+
+  .story-sticky-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 312px;
+  }
+
+  .story-sticky-glow {
+    position: absolute;
+    inset: 14% -22%;
+    z-index: -1;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle,
+      rgb(92 219 190 / 16%) 0%,
+      rgb(127 219 177 / 4%) 52%,
+      transparent 75%
+    );
+    filter: blur(36px);
+    pointer-events: none;
+  }
+
+  .story-progress-rails {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 24px;
+  }
+
+  .story-rail-dot {
+    width: 18px;
+    height: 3px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 16%);
+    transition:
+      width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 0.35s ease;
+  }
+
+  .story-rail-dot.is-active {
+    width: 42px;
+    background: var(--accent);
+  }
+
+  /* Mobile Instagram Stories reel (hidden on desktop) */
+  .story-ig {
+    display: none;
+  }
+
+  /* ── ACT III: Transfer Protection & Rail Stage ── */
+  .transfers-section,
+  .disruptions-section {
+    overflow-x: clip;
+  }
+
+  .transfer-stage {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: clamp(28px, 4.5vw, 64px);
+    margin-top: clamp(48px, 6vw, 80px);
+  }
+
+  .transfer-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: clamp(28px, 4vw, 44px) clamp(20px, 3vw, 36px);
+    border-radius: 32px;
+    border: 1px solid rgb(255 255 255 / 7%);
+    background: linear-gradient(
+      180deg,
+      rgb(22 32 26 / 68%) 0%,
+      rgb(15 22 18 / 88%) 100%
+    );
+  }
+
+  .transfer-column.transfer-mobile-unified {
+    display: none;
+  }
+
+  .transfer-phone-wrap {
+    width: min(100%, 288px);
+  }
+
+  .transfer-beat-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: min(100%, 160px);
+    margin-top: 24px;
+  }
+
+  .transfer-bar-seg {
+    flex: 1;
+    height: 2.5px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 14%);
+    transition: background-color 0.35s ease;
+  }
+
+  .transfer-bar-seg.is-group {
+    background: rgb(127 219 177 / 32%);
+  }
+
+  .transfer-bar-seg.is-active {
+    background: var(--accent);
+  }
+
+  .transfer-text {
+    margin-top: 20px;
+    padding-top: 22px;
+    width: 100%;
+    border-top: 1px solid rgb(255 255 255 / 8%);
+    text-align: left;
+  }
+
+  .transfer-text h3 {
+    margin-top: 8px;
+    font-size: clamp(1.32rem, 2vw, 1.65rem);
+    font-weight: 680;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: #f3f8f4;
+  }
+
+  .transfer-text p {
+    margin-top: 12px;
+    font-size: 0.96rem;
+    line-height: 1.6;
+    color: #aab9ad;
+  }
+
+  /* ── ACT IV: Disruptions & Material You ── */
+  .disruptions-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    gap: clamp(36px, 6vw, 88px);
+    align-items: center;
+  }
+
+  .disruptions-phone {
+    display: flex;
+    justify-content: center;
+  }
+
+  @keyframes story-ig-progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  @keyframes story-ig-caption-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer responsive {
+  @media (max-width: 960px) {
+    .release-section {
+      padding: 52px 18px;
+    }
+
+    .release-title {
+      font-size: clamp(1.85rem, 6.8vw, 2.65rem);
+    }
+
+    .release-lead {
+      margin-top: 14px;
+      font-size: 0.98rem;
+      line-height: 1.56;
+    }
+
+    /* ── ACT II Mobile: Full-height Instagram Stories ── */
+    .story-section {
+      padding-top: 44px;
+      padding-bottom: 32px;
+    }
+
+    .story-grid {
+      display: block;
+      margin-top: 24px;
+    }
+
+    .story-beats,
+    .story-sticky-col {
+      display: none;
+    }
+
+    .story-ig {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100svh;
+      height: 100dvh;
+      min-height: 580px;
+      max-height: 880px;
+      width: 100%;
+      border-radius: 28px;
+      border: 1px solid rgb(255 255 255 / 9%);
+      background:
+        radial-gradient(
+          84% 58% at 50% 42%,
+          rgb(92 219 190 / 11%) 0%,
+          rgb(16 26 21 / 55%) 56%,
+          #090e0b 100%
+        ),
+        linear-gradient(180deg, #101914 0%, #090e0b 100%);
+      box-shadow:
+        0 28px 72px rgb(0 0 0 / 56%),
+        inset 0 1px 0 rgb(255 255 255 / 7%);
+      overflow: hidden;
+      touch-action: pan-y;
+      user-select: none;
+    }
+
+    .story-ig-top {
+      position: relative;
+      z-index: 6;
+      padding: 12px 14px 4px;
+      background: linear-gradient(180deg, rgb(7 11 9 / 76%) 0%, transparent 100%);
+    }
+
+    .story-ig-bars {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .story-ig-bar-btn {
+      display: flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 8px 0;
+      margin: -6px 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .story-ig-bar-track {
+      position: relative;
+      display: block;
+      width: 100%;
+      height: 3px;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 22%);
+      overflow: hidden;
+    }
+
+    .story-ig-bar-fill {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: #f3f8f4;
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+
+    .story-ig-bar-fill.is-done {
+      transform: scaleX(1);
+    }
+
+    .story-ig-bar-fill.is-active {
+      background: var(--accent);
+      animation-name: story-ig-progress;
+      animation-timing-function: linear;
+      animation-fill-mode: forwards;
+      animation-play-state: paused;
+    }
+
+    .story-ig.is-in-view .story-ig-bar-fill.is-active {
+      animation-play-state: running;
+    }
+
+    .story-ig.is-paused .story-ig-bar-fill.is-active {
+      animation-play-state: paused;
+    }
+
+    .story-ig-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .story-ig-identity {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .story-ig-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 10px rgb(0 0 0 / 42%);
+    }
+
+    .story-ig-tag {
+      font-size: 0.84rem;
+      font-weight: 650;
+      color: #f3f8f4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .story-ig-step {
+      font-size: 0.76rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #8ea395;
+      flex-shrink: 0;
+    }
+
+    .story-ig-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .story-ig-nav-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      border: 1px solid rgb(255 255 255 / 11%);
+      background: rgb(11 17 14 / 68%);
+      color: #dce9df;
+    }
+
+    .story-ig-nav-btn:active {
+      background: rgb(127 219 177 / 18%);
+      border-color: rgb(127 219 177 / 42%);
+    }
+
+    .story-ig-stage {
+      position: relative;
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 16px;
+    }
+
+    .story-ig-glow {
+      position: absolute;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: radial-gradient(
+        circle,
+        rgb(92 219 190 / 20%) 0%,
+        rgb(127 219 177 / 5%) 54%,
+        transparent 76%
+      );
+      filter: blur(28px);
+      pointer-events: none;
+    }
+
+    .story-ig-phone-wrap {
+      position: relative;
+      z-index: 2;
+      width: min(62vw, 236px, calc((100dvh - 280px) * 0.44));
+    }
+
+    .story-ig-phone-wrap .pixel-phone {
+      border-radius: 34px;
+      padding: 3px;
+    }
+
+    .story-ig-phone-wrap .pixel-bezel {
+      border-radius: 31px;
+      padding: 5px;
+    }
+
+    .story-ig-phone-wrap .pixel-screen,
+    .story-ig-phone-wrap .pixel-glass-sheen {
+      border-radius: 26px;
+    }
+
+    .story-ig-tap {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: 4;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .story-ig-tap-prev {
+      left: 0;
+      width: 36%;
+    }
+
+    .story-ig-tap-next {
+      right: 0;
+      width: 64%;
+    }
+
+    .story-ig-caption {
+      position: relative;
+      z-index: 6;
+      padding: 16px 18px 18px;
+      background: linear-gradient(
+        180deg,
+        rgb(9 14 11 / 0%) 0%,
+        rgb(9 14 11 / 88%) 22%,
+        rgb(9 14 11 / 98%) 100%
+      );
+      border-top: 1px solid rgb(255 255 255 / 6%);
+    }
+
+    .story-ig-caption-inner {
+      animation: story-ig-caption-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .story-ig-title {
+      font-size: clamp(1.16rem, 4.6vw, 1.42rem);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      color: #f3f8f4;
+    }
+
+    .story-ig-body {
+      margin-top: 7px;
+      font-size: 0.875rem;
+      line-height: 1.48;
+      color: #b7c7bb;
+    }
+    /* ── ACT III Mobile: Single unified mock seamlessly switching Urban <-> Rail ── */
+    .transfer-stage {
+      grid-template-columns: 1fr;
+      margin-top: 28px;
+    }
+
+    .transfer-desktop-col {
+      display: none;
+    }
+
+    .transfer-mobile-unified {
+      display: flex;
+      padding: 20px 18px 24px;
+      border-radius: 26px;
+    }
+
+    .transfer-mode-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      margin-bottom: 20px;
+      border-radius: 999px;
+      border: 1px solid rgb(255 255 255 / 8%);
+      background: rgb(8 13 10 / 72%);
+      max-width: 100%;
+    }
+
+    .transfer-mode-pill {
+      min-height: 36px;
+      padding: 6px 14px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: #8ea395;
+      font-size: 0.78rem;
+      font-weight: 620;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      transition:
+        background-color 0.25s ease,
+        color 0.25s ease;
+    }
+
+    .transfer-mode-pill.is-active {
+      background: rgb(127 219 177 / 15%);
+      color: var(--accent);
+    }
+
+    .transfer-mobile-unified .transfer-phone-wrap {
+      width: min(62vw, 224px);
+    }
+
+    .transfer-mobile-unified .transfer-phone-wrap .pixel-phone {
+      border-radius: 34px;
+      padding: 3px;
+    }
+
+    .transfer-mobile-unified .transfer-phone-wrap .pixel-bezel {
+      border-radius: 31px;
+      padding: 5px;
+    }
+
+    .transfer-mobile-unified .transfer-phone-wrap .pixel-screen,
+    .transfer-mobile-unified .transfer-phone-wrap .pixel-glass-sheen {
+      border-radius: 26px;
+    }
+
+    .transfer-beat-bar-unified {
+      width: min(100%, 184px);
+      margin-top: 16px;
+    }
+    .transfer-text-crossfade {
+      display: grid;
+      margin-top: 14px;
+      padding-top: 18px;
+    }
+
+    .transfer-text-pane {
+      grid-area: 1 / 1;
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition:
+        opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .transfer-text-pane.is-active {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* ── ACT IV Mobile: Disruptions ── */
+    .disruptions-grid {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    .disruptions-phone .pixel-phone {
+      max-width: min(72vw, 268px);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .story-section {
+      padding-inline: 12px;
+    }
+
+    .story-section .release-head {
+      padding-inline: 6px;
+    }
+
+    .story-ig {
+      border-radius: 24px;
+    }
+
+    .transfer-mode-switch {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .transfer-mode-pill {
+      padding: 6px 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  @media (max-width: 960px) and (max-height: 700px) {
+    .story-ig-caption {
+      padding: 12px 16px 14px;
+    }
+
+    .story-ig-phone-wrap {
+      width: min(56vw, 200px, calc((100dvh - 230px) * 0.44));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .story-ig-bar-fill.is-active {
+      animation: none;
+      transform: scaleX(1);
+    }
+
+    .story-ig-caption-inner {
+      animation: none;
+    }
+  }
+}

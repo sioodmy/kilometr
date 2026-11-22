@@ -1,9 +1,12 @@
-@layer reset, base, layout, product, responsive;
-@import './components/showcaseDemo.css';
+@import './layers.css';
 @import './components/coverageSection.css';
+@import './components/donateSection.css';
 @import './components/landingSections.css';
 @import './components/installPage.css';
 @import './components/themeStudio.css';
+@import './components/kilometrUi.css';
+@import './components/hero.css';
+@import './components/releaseShowcase.css';
 
 @font-face {
   font-family: 'Demo Roboto';
@@ -149,11 +152,6 @@
     line-height: 1.65;
     letter-spacing: -0.02em;
     max-width: 42ch;
-  }
-  .eyebrow {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
   }
   .sr-only {
     position: absolute;
@@ -523,10 +521,6 @@
   }
   .offline > * {
     min-width: 0;
-  }
-  .offline-copy .eyebrow {
-    margin-bottom: 22px;
-    color: var(--accent);
   }
   .offline-copy h2 {
     font-size: clamp(2.4rem, 3.8vw, 3.5rem);

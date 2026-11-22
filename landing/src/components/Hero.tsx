@@ -1,114 +1,134 @@
 import { useEffect, useRef } from 'react';
-import type { CityId } from '../../../src/cities';
-import { useStrings } from '../i18n';
-import { PlatformLinks } from './PlatformLinks';
+import { useWebLocale } from '../i18n';
+import { useReleaseCopy } from '../landingCopy';
+import { HeroMapStage } from './HeroMapStage';
 import { Phone } from './Phone';
-
-const cities = [
-  'wroclaw',
-  'krakow',
-  'warszawa',
-  'poznan',
-  'gzm',
-  'lodz',
-] as const satisfies readonly CityId[];
+import { PlatformLinks } from './PlatformLinks';
 
 export function Hero() {
-  const s = useStrings();
-  const hero = useRef<HTMLElement>(null);
+  const locale = useWebLocale();
+  const copy = useReleaseCopy(locale);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const element = hero.current;
-    if (!element) return;
-    const pointer = window.matchMedia(
-      '(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)',
-    );
-    let frame = 0;
-    let visible = true;
-    const updateMotion = () => {
-      element.dataset.motion = visible && !document.hidden ? 'running' : 'paused';
-    };
-    const observer = new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
-      updateMotion();
-    });
-    observer.observe(element);
-    document.addEventListener('visibilitychange', updateMotion);
-    updateMotion();
+    const stage = stageRef.current;
+    if (!stage) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let raf = 0;
 
-    const move = (event: PointerEvent) => {
-      if (!pointer.matches || event.pointerType !== 'mouse') return;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const bounds = element.getBoundingClientRect();
-        element.style.setProperty(
-          '--pointer-x',
-          `${(event.clientX - bounds.left - bounds.width / 2) * 0.025}px`,
-        );
-        element.style.setProperty(
-          '--pointer-y',
-          `${(event.clientY - bounds.top - Math.min(bounds.height, 600) / 2) * 0.025}px`,
-        );
-      });
+    const update = () => {
+      raf = 0;
+      if (reduced.matches) {
+        stage.style.setProperty('--hero-scroll', '1');
+        return;
+      }
+      const rect = stage.getBoundingClientRect();
+      const progress = Math.max(
+        0,
+        Math.min(1, (window.innerHeight * 0.92 - rect.top) / (window.innerHeight * 0.62)),
+      );
+      stage.style.setProperty('--hero-scroll', progress.toFixed(4));
     };
-    const reset = () => {
-      cancelAnimationFrame(frame);
-      element.style.setProperty('--pointer-x', '0px');
-      element.style.setProperty('--pointer-y', '0px');
+
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(update);
     };
-    element.addEventListener('pointermove', move);
-    element.addEventListener('pointerleave', reset);
-    pointer.addEventListener('change', reset);
+
+    update();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    reduced.addEventListener('change', update);
     return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      document.removeEventListener('visibilitychange', updateMotion);
-      element.removeEventListener('pointermove', move);
-      element.removeEventListener('pointerleave', reset);
-      pointer.removeEventListener('change', reset);
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      reduced.removeEventListener('change', update);
     };
   }, []);
 
   return (
-    <section className="hero" aria-labelledby="hero-title" ref={hero}>
-      <div className="hero-brand brand">
-        <img src="./icon.png" alt="" width="30" height="30" />
-        <span>Kilometr</span>
-      </div>
-      <div className="hero-cities" aria-hidden="true">
-        {cities.map((city) => (
-          <div className={`hero-city hero-city-${city}`} key={city}>
-            <div className="hero-city-float">
-              <div className="hero-city-mark">
-                <img src={`./cities/${city}.webp`} alt="" width="100" height="60" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="hero-copy">
-        <h1 id="hero-title">
-          <span>
-            {s.hero.title} <em>{s.hero.accent}</em>
+    <section className="hero-release" aria-labelledby="hero-title">
+      <HeroMapStage
+        originLabel={copy.hero.mapOrigin}
+        destinationLabel={copy.hero.mapDestination}
+      />
+
+      <header className="release-nav">
+        <a className="release-brand" href="#top">
+          <img
+            className="release-brand-mark"
+            src="./icon.png"
+            width="28"
+            height="28"
+            alt=""
+            aria-hidden="true"
+          />
+          <span>Kilometr</span>
+        </a>
+
+      </header>
+
+      <div className="hero-content">
+        <h1 className="hero-title" id="hero-title">
+          <span className="hero-line">
+            <span>{copy.hero.titleLine1}</span>
           </span>
-          <span>{s.hero.titleEnd}</span>
+          <span className="hero-line hero-line-accent">
+            <span>{copy.hero.titleAccent}</span>
+          </span>
         </h1>
-        <p className="hero-body">{s.hero.body}</p>
-        <div className="hero-actions">
+
+        <p className="hero-subtitle">{copy.hero.subtitle}</p>
+
+        <div className="hero-cta">
           <PlatformLinks />
         </div>
       </div>
-      <div className="product-stage">
-        <Phone className="hero-phone" label={s.hero.phoneAlt}>
-          <img
-            className="phone-shot"
-            src="./screenshots/mainscreen.png"
-            alt=""
-            width={720}
-            height={1600}
-            fetchPriority="high"
-          />
-        </Phone>
+
+      <div className="hero-hardware-stage" ref={stageRef}>
+        <div className="hero-hardware-trio">
+          <div className="hero-flank hero-flank-left" aria-hidden="true">
+            <Phone label={copy.hero.phoneLeftAlt} statusTime="08:51">
+              <img
+                className="pixel-shot"
+                src="./screenshots/routes-urban.webp"
+                alt=""
+                width="720"
+                height="1600"
+                loading="eager"
+                decoding="async"
+              />
+            </Phone>
+          </div>
+
+          <div className="hero-centerpiece">
+            <Phone label={copy.hero.phoneMainAlt} statusTime="08:54">
+              <img
+                className="pixel-shot"
+                src="./screenshots/details-urban.webp"
+                alt=""
+                width="720"
+                height="1600"
+                fetchPriority="high"
+                decoding="async"
+              />
+            </Phone>
+          </div>
+
+          <div className="hero-flank hero-flank-right" aria-hidden="true">
+            <Phone label={copy.hero.phoneRightAlt} statusTime="09:32">
+              <img
+                className="pixel-shot"
+                src="./screenshots/details-ic.webp"
+                alt=""
+                width="720"
+                height="1600"
+                loading="eager"
+                decoding="async"
+              />
+            </Phone>
+          </div>
+        </div>
       </div>
     </section>
   );
