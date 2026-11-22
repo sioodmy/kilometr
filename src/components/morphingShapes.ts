@@ -279,3 +279,14 @@ export function initialTransitPath(index: TransitShapeIndex = 0): string {
   const shape = TRANSIT_SHAPES[index];
   return interpolateTransitPath(shape, shape, 0);
 }
+
+/**
+ * Bezpieczny indeks sylwetki dla postępu animacji.
+ * NaN, Infinity i wartości ujemne sprowadza do zakresu 0..SHAPE_COUNT-1.
+ */
+export function transitShapeStep(progress: number): number {
+  'worklet';
+  if (!Number.isFinite(progress)) return 0;
+  const step = Math.floor(progress) % SHAPE_COUNT;
+  return step < 0 ? step + SHAPE_COUNT : step;
+}
