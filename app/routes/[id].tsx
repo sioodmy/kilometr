@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   AppState,
   Linking,
@@ -12,7 +11,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AlarmClock,
   ChevronLeft,
@@ -23,6 +22,7 @@ import {
   Share2,
 } from '../../src/components/icons';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { MorphingLoader } from '../../src/components/MorphingLoader';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
@@ -64,14 +64,16 @@ import {
 export default function RouteDetailsScreen() {
   const s = useStrings();
   const router = useRouter();
+  // Inset z kontekstu od razu, nie z natywnego SafeAreaView: przy ciężkim
+  // pierwszym renderze natywny padding wpada po kolejnym commicie i nagłówek
+  // chwilowo ląduje pod paskiem stanu.
+  const insets = useSafeAreaInsets();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId, action: routeAction, fromY } = useLocalSearchParams<{
+  const { id: routeId, action: routeAction } = useLocalSearchParams<{
     id: string;
     action?: string;
-    fromY?: string;
   }>();
-  const cardFromY = fromY ? Number(fromY) : undefined;
   const id = normalizeConnectionId(routeId ?? '');
   const openTicket = routeAction === 'ticket';
   const { trip: trackedTrip } = useTrackedTrip();
@@ -377,7 +379,7 @@ export default function RouteDetailsScreen() {
 
   if (loadFailed) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <View style={[styles.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
@@ -406,13 +408,13 @@ export default function RouteDetailsScreen() {
             </Pressable>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!item) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={[styles.safe, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Pressable
             onPress={goBack}
@@ -426,10 +428,11 @@ export default function RouteDetailsScreen() {
             {s.routeDetails.title}
           </Text>
         </View>
-        <View style={styles.stateWrap}>
-          <ActivityIndicator size="large" color={scheme.primary} />
+        <View style={styles.stateWrap} accessibilityLiveRegion="polite">
+          <MorphingLoader variant="contained" size={44} />
+          <Text style={styles.emptyText}>{s.routeDetails.loading}</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -444,7 +447,7 @@ export default function RouteDetailsScreen() {
       : null;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       <View
         style={styles.screen}
         importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
@@ -546,7 +549,7 @@ export default function RouteDetailsScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
         >
-          <ConnectionSummary item={item} offline={offline} fromY={cardFromY} showLegStrip />
+          <ConnectionSummary item={item} offline={offline} showLegStrip />
 
           {currentAlarm && (
             <SpringPressable
@@ -644,7 +647,7 @@ export default function RouteDetailsScreen() {
       {alarmOpen && (
         <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

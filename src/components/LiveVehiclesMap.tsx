@@ -11,8 +11,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebMapFrame, type WebMapFrameHandle } from './WebMapFrame';
 import {
   buildLiveVehiclesMapDocument,
   type LiveMapDisruptionItem,
@@ -92,6 +93,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     ref,
   ) {
     const webRef = useRef<WebView>(null);
+    const webFrameRef = useRef<WebMapFrameHandle>(null);
     const firstLoad = useRef(true);
     const readyRef = useRef(false);
     const { cityId } = useActiveCity();
@@ -158,6 +160,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     }, [attempt, cityId, initialCenter, offlineBase]);
 
     const send = useCallback((msg: LiveMapInMessage) => {
+      if (Platform.OS === 'web') {
+        webFrameRef.current?.postMessage(JSON.stringify(msg));
+        return;
+      }
       webRef.current?.injectJavaScript(
         `window.dispatchEvent(new MessageEvent('message',{data:${JSON.stringify(JSON.stringify(msg))}}));true;`,
       );
@@ -230,11 +236,11 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       send({ t: 'pad', bottom: bottomOffset });
     }, [bottomOffset, send]);
 
-    const handleMessage = useCallback(
-      (event: WebViewMessageEvent) => {
+    const handleRawMessage = useCallback(
+      (raw: string) => {
         let msg: LiveMapOutMessage;
         try {
-          msg = JSON.parse(event.nativeEvent.data) as LiveMapOutMessage;
+          msg = JSON.parse(raw) as LiveMapOutMessage;
         } catch {
           return;
         }
@@ -308,6 +314,26 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         send,
       ],
     );
+
+    const handleMessage = useCallback(
+      (event: WebViewMessageEvent) => handleRawMessage(event.nativeEvent.data),
+      [handleRawMessage],
+    );
+
+    if (Platform.OS === 'web') {
+      return (
+        <View style={styles.wrap}>
+          <WebMapFrame
+            key={attempt}
+            ref={webFrameRef}
+            html={html}
+            title="Mapa na żywo"
+            onMessage={handleRawMessage}
+            onError={() => onError?.('map-load-failed')}
+          />
+        </View>
+      );
+    }
 
     return (
       <View style={styles.wrap}>

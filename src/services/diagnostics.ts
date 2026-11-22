@@ -21,6 +21,7 @@ import {
   getMeta,
   getNationalMeta,
   getNationalTimetableEndDate,
+  getWebDbBytes,
   hasNationalDb,
   NATIONAL_DB_FILE,
   needsStopWeights,
@@ -129,6 +130,10 @@ function clockOf(ts: number): string {
 
 async function dbFileSize(name: string): Promise<{ main: number | null; wal: number | null; orphan: string | null }> {
   try {
+    if (Platform.OS === 'web') {
+      const main = await getWebDbBytes(name);
+      return { main, wal: null, orphan: null };
+    }
     const base = FileSystem.documentDirectory;
     if (!base) return { main: null, wal: null, orphan: null };
     const dir = `${base.replace(/\/+$/, '')}/SQLite`;

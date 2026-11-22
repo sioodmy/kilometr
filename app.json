@@ -70,7 +70,15 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "Kilometr",
+      "shortName": "Kilometr",
+      "themeColor": "#111414",
+      "backgroundColor": "#111414",
+      "display": "standalone",
+      "orientation": "portrait"
     },
     "scheme": "kilometr",
     "locales": {

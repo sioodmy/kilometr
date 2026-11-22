@@ -64,8 +64,8 @@ export async function getTimetableDownloadGate(cityId?: string): Promise<Downloa
   }
 }
 
-export async function markTimetableDownloaded(): Promise<void> {
-  await setMeta(TIMETABLE_LAST_META, new Date().toISOString());
+export async function markTimetableDownloaded(cityId?: string): Promise<void> {
+  await setMeta(TIMETABLE_LAST_META, new Date().toISOString(), cityId);
 }
 
 /** Do UI: pełne dni w górę (1 = „jutro” / „1 dzień”). */

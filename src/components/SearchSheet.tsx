@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   BackHandler,
   InteractionManager,
   Keyboard,
@@ -16,6 +15,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { MorphingLoader } from './MorphingLoader';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -746,7 +746,7 @@ export function SearchSheet({
                 <View style={styles.listHeader}>
                   {syncLabel && rows.length > 0 && (
                     <View style={styles.syncBanner} accessibilityLiveRegion="polite">
-                      <ActivityIndicator size="small" color={scheme.primary} />
+                      <MorphingLoader size={18} color={scheme.primary} />
                       <Text style={styles.syncBannerText}>{syncLabel}</Text>
                     </View>
                   )}
@@ -783,7 +783,7 @@ export function SearchSheet({
               ListFooterComponent={
                 showLoading && rows.length > 0 ? (
                   <View style={styles.status} accessibilityLiveRegion="polite">
-                    <ActivityIndicator size="small" color={scheme.primary} />
+                    <MorphingLoader size={18} color={scheme.primary} />
                     <Text style={styles.statusText}>{s.search.searching(cityLoc)}</Text>
                   </View>
                 ) : error && rows.length > 0 ? (
@@ -796,7 +796,7 @@ export function SearchSheet({
                 <View style={styles.emptyCard} accessibilityLiveRegion="polite">
                   <View style={styles.emptyIcon}>
                     {showLoading || timetableSyncing ? (
-                      <ActivityIndicator color={scheme.onPrimaryContainer} />
+                      <MorphingLoader size={28} color={scheme.onPrimaryContainer} />
                     ) : (
                       <Search size={26} color={scheme.onPrimaryContainer} />
                     )}

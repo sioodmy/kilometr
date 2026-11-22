@@ -13,6 +13,7 @@
 
 import { File, FileMode } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { MAP_GLYPHS_URL } from '../config';
 import { CITIES, getCity, type CityId } from '../cities';
 import { tr } from '../i18n';
@@ -81,6 +82,7 @@ interface TilePackInspection {
 
 /** Czyta nagłówek i katalog pakietu; plik zostaje nietknięty. */
 async function inspectTilePack(uri: string): Promise<TilePackInspection> {
+  if (Platform.OS === 'web') return { state: 'missing', size: 0 };
   let size = 0;
   try {
     const info = await FileSystem.getInfoAsync(uri);
@@ -135,6 +137,7 @@ export async function getOfflineMapInfo(
 
 /** Pakiety pozostałych miast na dysku; do listy z osobnym usuwaniem w Ustawieniach. */
 export async function listDownloadedMaps(activeCityId?: string): Promise<DownloadedMap[]> {
+  if (Platform.OS === 'web') return [];
   const activeId = getCity(activeCityId ?? getActiveCityIdSync()).id;
   const found = await Promise.all(
     CITIES.filter((city) => city.id !== activeId).map(
@@ -205,6 +208,7 @@ export async function downloadOfflineMap(
   onProgress?: (p: OfflineMapProgress) => void,
   cityId?: string,
 ): Promise<OfflineMapDownloadResult> {
+  if (Platform.OS === 'web') return { ok: false, reason: 'fail' };
   const city = getCity(cityId ?? getActiveCityIdSync());
   const gate = await getMapDownloadGate(city.id);
   if (!gate.allowed) {
@@ -251,6 +255,7 @@ export async function downloadOfflineMap(
  * Inne miasta nietknięte (osobne pliki w tym samym katalogu).
  */
 export async function deleteOfflineMap(cityId?: string): Promise<void> {
+  if (Platform.OS === 'web') return;
   const city = getCity(cityId ?? getActiveCityIdSync());
   const state = await getOfflineMapState(city.id);
   try {

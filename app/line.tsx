@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   AppState,
   FlatList,
   ScrollView,
@@ -31,6 +30,7 @@ import {
   Ticket,
 } from '../src/components/icons';
 import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
+import { MorphingLoader } from '../src/components/MorphingLoader';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { StopDeparturesSheet } from '../src/components/StopDeparturesSheet';
 import { getLocaleSync, useStrings } from '../src/i18n';
@@ -925,7 +925,7 @@ export default function LineScreen() {
           <View style={styles.stateCard} accessibilityLiveRegion="polite">
             {loading ? (
               <>
-                <ActivityIndicator color={scheme.primary} size="small" />
+                <MorphingLoader variant="contained" size={32} />
                 <Text style={styles.stateTitle}>{t.loading}</Text>
               </>
             ) : error ? (

@@ -8,7 +8,7 @@ export const en: Strings = {
   meta: {
     title: 'Kilometr',
     imageAlt:
-      'Kilometr. Your open source journey planner. The app on an iPhone, city coats of arms and a transit network diagram.',
+      'Kilometr. This time you get there. By whatever, however you want. Three phones with the app over a map with a journey route.',
     description:
       'Public transport in cities across Poland. Plan journeys, check departures and use offline timetables. Free on Android.',
   },

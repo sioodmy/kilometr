@@ -58,7 +58,7 @@ import { withTimeout } from './net';
 import { TIMETABLE } from './gtfsConfig';
 import { kvGet, kvSet } from './storage';
 import { getCity, type CityId } from '../cities';
-import { getActiveCityIdSync } from './cityStore';
+import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -2486,6 +2486,20 @@ let inMemoryLastSeenTs: number | null = null;
 let inMemorySeenCity: string | null = null;
 let inMemorySeenUrgentIds: Set<string> | null = null;
 
+// Zmiana miasta czyści komunikaty w pamięci, żeby nagłówki i karty innego miasta
+// nie widziały wpisów poprzedniego przewoźnika (np. MPK Wrocław po przełączeniu).
+subscribeActiveCity(() => {
+  cachedNewsItems = null;
+  cachedNewsCity = null;
+  cachedNewsFetchedAt = 0;
+  inMemoryLastSeenDate = null;
+  inMemoryLastSeenTs = null;
+  inMemorySeenCity = null;
+  inMemorySeenUrgentIds = null;
+  transientNewsItems.clear();
+  notifyNewsCacheListeners();
+});
+
 function getTodayDateString(d: Date = new Date()): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -2665,9 +2679,11 @@ export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsIt
   try {
     const items = JSON.parse(raw) as MpkNewsItem[];
     if (!Array.isArray(items) || items.length === 0) return null;
-    cachedNewsItems = items;
-    cachedNewsCity = city.id;
-    notifyNewsCacheListeners();
+    if (activeCityId() === city.id) {
+      cachedNewsItems = items;
+      cachedNewsCity = city.id;
+      notifyNewsCacheListeners();
+    }
     return items;
   } catch {
     return null;
@@ -2679,11 +2695,13 @@ async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNe
   // źródła, nie "brak newsów": pusta lista nie może nadpisać dobrego cache
   // (loadNewsCache i tak odrzuca pusty wpis, tu pojawia się zwrot starych).
   if (items.length === 0) return (await loadNewsCache(cityId)) ?? [];
-  cachedNewsItems = items;
-  cachedNewsCity = cityId;
-  cachedNewsFetchedAt = Date.now();
   void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
-  notifyNewsCacheListeners();
+  if (activeCityId() === cityId) {
+    cachedNewsItems = items;
+    cachedNewsCity = cityId;
+    cachedNewsFetchedAt = Date.now();
+    notifyNewsCacheListeners();
+  }
   return items;
 }
 
@@ -2729,25 +2747,29 @@ export async function fetchDisruptionsFromWorker(
   }
 }
 
-/** Ile czekamy na bogate alerty z R2, zanim pokażemy feedy miasta. */
-const RICH_NEWS_WAIT_MS = 1500;
+/** Ile czekamy na bogate alerty z R2 przy pustym cache, zanim pokażemy feed miasta. */
+const RICH_NEWS_WAIT_MS = 3500;
+
+function hasRichDisruptions(items: MpkNewsItem[] | null | undefined): boolean {
+  return Boolean(items && items.some((item) => Boolean(item.disruption)));
+}
 
 /** Bezpośrednie źródła miasta: RSS/JSON/HTML scrapery. null = brak feedu. */
 function fetchCityFeed(cityId: string, signal?: AbortSignal): Promise<MpkNewsItem[] | null> {
-  if (cityId === 'krakow') return fetchZtpNews(signal, cityId);
-  if (cityId === 'gzm') return fetchGzmNews(signal, cityId);
-  if (cityId === 'warszawa') return fetchWtpNews(signal, cityId);
-  if (cityId === 'poznan') return fetchPoznanNews(signal, cityId);
-  if (cityId === 'trojmiasto') return fetchGdanskNews(signal, cityId);
-  if (cityId === 'lodz') return fetchLodzNews(signal, cityId);
-  if (cityId === 'szczecin') return fetchSzczecinNews(signal, cityId);
-  if (cityId === 'kielce') return fetchKielceNews(signal, cityId);
-  if (cityId === 'olsztyn') return fetchOlsztynNews(signal, cityId);
-  if (cityId === 'bialystok') return fetchBialystokNews(signal, cityId);
-  if (cityId === 'opole') return fetchOpoleNews(signal, cityId);
-  if (cityId === 'rzeszow') return fetchRzeszowNews(signal, cityId);
-  if (cityId === 'lublin') return fetchLublinNews(signal, cityId);
-  if (cityId === 'radom') return fetchRadomNews(signal, cityId);
+  if (cityId === 'krakow') return fetchZtpNews(signal);
+  if (cityId === 'gzm') return fetchGzmNews(signal);
+  if (cityId === 'warszawa') return fetchWtpNews(signal);
+  if (cityId === 'poznan') return fetchPoznanNews(signal);
+  if (cityId === 'trojmiasto') return fetchGdanskNews(signal);
+  if (cityId === 'lodz') return fetchLodzNews(signal);
+  if (cityId === 'szczecin') return fetchSzczecinNews(signal);
+  if (cityId === 'kielce') return fetchKielceNews(signal);
+  if (cityId === 'olsztyn') return fetchOlsztynNews(signal);
+  if (cityId === 'bialystok') return fetchBialystokNews(signal);
+  if (cityId === 'opole') return fetchOpoleNews(signal);
+  if (cityId === 'rzeszow') return fetchRzeszowNews(signal);
+  if (cityId === 'lublin') return fetchLublinNews(signal);
+  if (cityId === 'radom') return fetchRadomNews(signal);
   if (cityId === 'wroclaw') return fetchMpkNews(signal);
   // Miasta dodane w 2026 nie mają własnych źródeł komunikatów. null zamiast
   // pustej listy, żeby fetchCityNews wiedział, że musi poczekać na R2.
@@ -2757,49 +2779,85 @@ function fetchCityFeed(cityId: string, signal?: AbortSignal): Promise<MpkNewsIte
 
 /**
  * Aktualności aktywnego miasta. Bogate alerty z R2 i feed miasta lecą
- * równolegle: worker miał 12 s timeoutu, więc każde otwarcie aktualności bez
- * cache czekało na niego, zanim w ogóle ruszył scraper. Po 1,5 s bierzemy
- * feed miasta; jeśli R2 zdąży z treścią, wygrywa.
+ * równolegle: gdy R2 zwróci treść, przerywamy scraper, żeby nie nadpisał
+ * cache surowym fallbackiem. Gdy w cache są już alerty z analizą AI, czekamy
+ * na R2 bez krótkiego odcięcia, żeby nie degradować widoku po chwili.
  */
 export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const city = getCity(activeCityId());
+  const hasRichCache = cachedNewsCity === city.id && hasRichDisruptions(cachedNewsItems);
+
+  const cityAbort = new AbortController();
+  const onParentAbort = () => cityAbort.abort();
+  if (signal?.aborted) {
+    cityAbort.abort();
+  } else if (signal) {
+    signal.addEventListener('abort', onParentAbort, { once: true });
+  }
+
   let cityFailed = false;
-  const cityPromise = fetchCityFeed(city.id, signal).catch(() => {
+  const cityPromise = fetchCityFeed(city.id, cityAbort.signal).catch(() => {
     cityFailed = true;
     return null;
   });
 
   const richPromise = fetchDisruptionsFromWorker(city.id, signal).catch(() => null);
+  let richTimedOut = false;
   let richTimer: ReturnType<typeof setTimeout> | undefined;
-  const richDeadline = new Promise<null>((resolve) => {
-    richTimer = setTimeout(() => resolve(null), RICH_NEWS_WAIT_MS);
-  });
+
   try {
-    const richItems = await Promise.race([richPromise, richDeadline]);
+    let richItems: MpkNewsItem[] | null;
+    if (hasRichCache) {
+      richItems = await richPromise;
+    } else {
+      const richDeadline = new Promise<null>((resolve) => {
+        richTimer = setTimeout(() => {
+          richTimedOut = true;
+          resolve(null);
+        }, RICH_NEWS_WAIT_MS);
+      });
+      richItems = await Promise.race([richPromise, richDeadline]);
+    }
     if (richItems && richItems.length > 0) {
+      cityAbort.abort();
+      if (signal?.aborted || activeCityId() !== city.id) return richItems;
       return rememberNews(richItems, city.id);
     }
+
+    const cityItems = await cityPromise;
+    if (cityItems !== null) {
+      if (signal?.aborted || activeCityId() !== city.id) return cityItems;
+      const saved = await rememberNews(cityItems, city.id);
+      if (richTimedOut) {
+        void richPromise.then((lateRich) => {
+          if (signal?.aborted || activeCityId() !== city.id) return;
+          if (lateRich && lateRich.length > 0) {
+            void rememberNews(lateRich, city.id);
+          }
+        });
+      }
+      return saved;
+    }
+
+    // Miasto bez własnego feedu (albo feed padł): R2 jest jedynym źródłem.
+    const lateRich = await richPromise;
+    if (lateRich && lateRich.length > 0) {
+      if (signal?.aborted || activeCityId() !== city.id) return lateRich;
+      return rememberNews(lateRich, city.id);
+    }
+    if (cityFailed) throw new Error('news');
+    return [];
   } finally {
     if (richTimer) clearTimeout(richTimer);
+    if (signal) signal.removeEventListener('abort', onParentAbort);
   }
-
-  const cityItems = await cityPromise;
-  if (cityItems !== null) return cityItems;
-
-  // Miasto bez własnego feedu (albo feed padł): R2 jest jedynym źródłem.
-  const richItems = await richPromise;
-  if (richItems && richItems.length > 0) {
-    return rememberNews(richItems, city.id);
-  }
-  if (cityFailed) throw new Error('news');
-  return [];
 }
 
 /**
  * Komunikaty MPK Łódź: zmiany w rozkładach plus utrudnienia w ruchu.
  * Kanał utrudnień bywa pusty (wtedy bierzemy same zmiany); oba martwe to błąd.
  */
-async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<MpkNewsItem[]> {
+async function fetchLodzNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const [rozklady, utrudnienia] = await Promise.allSettled([
@@ -2821,20 +2879,20 @@ async function fetchLodzNews(signal?: AbortSignal, cityId = 'lodz'): Promise<Mpk
       }
       console.warn('[News] Łódź: oba kanały MPK puste (zmiana formatu?)');
     }
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty ZDZiT Olsztyn: jedno źródło (RSS), brak fallbacku. */
-async function fetchOlsztynNews(signal?: AbortSignal, cityId = 'olsztyn'): Promise<MpkNewsItem[]> {
+async function fetchOlsztynNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const xml = await fetchText(ZDZIT_OLSZTYN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
     const items = parseZdzitOlsztynRss(xml);
     if (items.length === 0) console.warn('[News] Olsztyn: pusty feed (zmiana formatu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
@@ -2843,111 +2901,111 @@ async function fetchOlsztynNews(signal?: AbortSignal, cityId = 'olsztyn'): Promi
 /** Komunikaty ZDiTM Szczecin: jedno źródło (lista HTML), brak fallbacku. */
 
 /** Komunikaty ZDiTM Lublin: jedno źródło (lista HTML), brak fallbacku. */
-async function fetchLublinNews(signal?: AbortSignal, cityId = 'lublin'): Promise<MpkNewsItem[]> {
+async function fetchLublinNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(ZDITM_LUBLIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseLublinInfo(html);
     if (items.length === 0) console.warn('[News] Lublin: pusta lista (zmiana markupu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty MZDiK Radom: jedno źródło (lista HTML), brak fallbacku. */
-async function fetchRadomNews(signal?: AbortSignal, cityId = 'radom'): Promise<MpkNewsItem[]> {
+async function fetchRadomNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(MZDIK_RADOM_KOMUNIKATY_URL, scope.signal, 'text/html, */*');
     const items = parseMzdikRadomKomunikaty(html);
     if (items.length === 0) console.warn('[News] Radom: pusta lista (zmiana markupu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
-async function fetchSzczecinNews(signal?: AbortSignal, cityId = 'szczecin'): Promise<MpkNewsItem[]> {
+async function fetchSzczecinNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(ZDITM_SZCZECIN_INFO_URL, scope.signal, 'text/html, */*');
     const items = parseSzczecinInfo(html);
     if (items.length === 0) console.warn('[News] Szczecin: pusta lista (zmiana markupu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty ZTM Kielce: jedno źródło (lista Joomla), brak fallbacku. */
-async function fetchKielceNews(signal?: AbortSignal, cityId = 'kielce'): Promise<MpkNewsItem[]> {
+async function fetchKielceNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(ZTM_KIELCE_NEWS_URL, scope.signal, 'text/html, */*');
     const items = parseKielceNews(html);
     if (items.length === 0) console.warn('[News] Kielce: pusta lista (zmiana markupu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty BKM Białystok: jedno źródło (lista HTML), brak fallbacku. */
-async function fetchBialystokNews(signal?: AbortSignal, cityId = 'bialystok'): Promise<MpkNewsItem[]> {
+async function fetchBialystokNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(BKM_BIALYSTOK_KOMUNIKATY_URL, scope.signal, 'text/html, */*');
     const items = parseBialystokNews(html);
     if (items.length === 0) console.warn('[News] Białystok: pusta lista (zmiana markupu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty MZK Opole: jedno źródło (RSS kategorii Aktualności), brak fallbacku. */
-async function fetchOpoleNews(signal?: AbortSignal, cityId = 'opole'): Promise<MpkNewsItem[]> {
+async function fetchOpoleNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const xml = await fetchText(MZK_OPOLE_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
     const items = parseOpoleRss(xml);
     if (items.length === 0) console.warn('[News] Opole: pusty feed (zmiana formatu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty ZTM Rzeszów: jedno źródło (RSS), brak fallbacku. */
-async function fetchRzeszowNews(signal?: AbortSignal, cityId = 'rzeszow'): Promise<MpkNewsItem[]> {
+async function fetchRzeszowNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const xml = await fetchText(ZTM_RZESZOW_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
     const items = parseRzeszowRss(xml);
     if (items.length === 0) console.warn('[News] Rzeszów: pusty feed (zmiana formatu?)');
 
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty ZTM Poznań: jedno źródło (RSS), brak fallbacku. */
-async function fetchPoznanNews(signal?: AbortSignal, cityId = 'poznan'): Promise<MpkNewsItem[]> {
+async function fetchPoznanNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const xml = await fetchText(ZTM_POZNAN_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
     const items = parsePoznanRss(xml);
     if (items.length === 0) console.warn('[News] Poznań: pusty feed (zmiana formatu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty ZTM Gdańsk: zmiany tras (znt) plus bieżące awarie (bsk). */
-async function fetchGdanskNews(signal?: AbortSignal, cityId = 'trojmiasto'): Promise<MpkNewsItem[]> {
+async function fetchGdanskNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const [znt, bsk] = await Promise.allSettled([
@@ -2962,39 +3020,39 @@ async function fetchGdanskNews(signal?: AbortSignal, cityId = 'trojmiasto'): Pro
       }
       console.warn('[News] Gdańsk: puste feedy (zmiana formatu?)');
     }
-    return rememberNews(sortNews([...breakdowns, ...changes]), cityId);
+    return sortNews([...breakdowns, ...changes]);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty WTP Warszawa: jedno źródło (RSS), brak fallbacku. */
-async function fetchWtpNews(signal?: AbortSignal, cityId = 'warszawa'): Promise<MpkNewsItem[]> {
+async function fetchWtpNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const xml = await fetchText(WTP_FEED_URL, scope.signal, 'application/rss+xml, application/xml, text/xml, */*');
     const items = parseWtpRss(xml);
     if (items.length === 0) console.warn('[News] WTP: pusty feed (zmiana formatu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
 /** Komunikaty ZTM GZM: jedno źródło (lista HTML), brak fallbacku. */
-async function fetchGzmNews(signal?: AbortSignal, cityId = 'gzm'): Promise<MpkNewsItem[]> {
+async function fetchGzmNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const html = await fetchText(GZM_NEWS_URL, scope.signal, 'text/html, */*');
     const items = parseGzmNews(html);
     if (items.length === 0) console.warn('[News] GZM: pusta lista (zmiana markupu?)');
-    return rememberNews(sortNews(items), cityId);
+    return sortNews(items);
   } finally {
     scope.dispose();
   }
 }
 
-async function fetchZtpNews(signal?: AbortSignal, cityId = 'krakow'): Promise<MpkNewsItem[]> {
+async function fetchZtpNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
   const scope = withTimeout(NEWS_TIMEOUT_MS, signal);
   try {
     const [list, rss] = await Promise.allSettled([
@@ -3005,7 +3063,7 @@ async function fetchZtpNews(signal?: AbortSignal, cityId = 'krakow'): Promise<Mp
     ]);
     const fromList = list.status === 'fulfilled' ? list.value : [];
     if (fromList.length > 0) {
-      return rememberNews(sortNews(fromList), cityId);
+      return sortNews(fromList);
     }
     const fromRss = rss.status === 'fulfilled' ? rss.value : [];
     if (fromRss.length === 0) {
@@ -3013,7 +3071,7 @@ async function fetchZtpNews(signal?: AbortSignal, cityId = 'krakow'): Promise<Mp
         throw list.reason instanceof Error ? list.reason : new Error('news');
       }
     }
-    return rememberNews(sortNews(fromRss), cityId);
+    return sortNews(fromRss);
   } finally {
     scope.dispose();
   }
@@ -3048,7 +3106,7 @@ async function fetchMpkNews(signal?: AbortSignal): Promise<MpkNewsItem[]> {
       if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
       return (b.pubDate ?? 0) - (a.pubDate ?? 0);
     };
-    return rememberNews([...changes.sort(byFreshness), ...stories.sort(byFreshness)], 'wroclaw');
+    return [...changes.sort(byFreshness), ...stories.sort(byFreshness)];
   } finally {
     scope.dispose();
   }

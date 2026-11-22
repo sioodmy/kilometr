@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -33,6 +32,7 @@ import {
   X,
 } from '../src/components/icons';
 import { DirectionsWalk } from '../src/components/DirectionsWalk';
+import { MorphingLoader } from '../src/components/MorphingLoader';
 import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
@@ -640,8 +640,8 @@ export default function RouteMapScreen() {
           </SpringPressable>
           <Text style={styles.headerTitle}>{s.map.title}</Text>
         </View>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={scheme.primary} />
+        <View style={styles.centered} accessibilityLiveRegion="polite">
+          <MorphingLoader variant="contained" size={44} startIndex={3} />
           <Text style={styles.centeredSub}>{s.map.assembling}</Text>
         </View>
       </View>

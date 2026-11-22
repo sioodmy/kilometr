@@ -47,6 +47,7 @@ import { suggestCityForGps } from '../src/services/serviceArea';
 import { setOnboardingSeen } from '../src/services/onboarding';
 import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
 import {
+  areNotificationsSupported,
   ensureNotificationPermission,
   hasNotificationPermission,
 } from '../src/services/notifications';
@@ -119,7 +120,8 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
+const NOTIF_SUPPORTED =
+  Platform.OS === 'web' ? areNotificationsSupported() : Constants.appOwnership !== 'expo';
 
 function usePermissionStates() {
   const [loc, setLoc] = useState<'unknown' | 'granted' | 'denied'>('unknown');
@@ -159,7 +161,7 @@ function usePermissionStates() {
     setBusy('loc');
     try {
       if (!locCanAskAgain) {
-        await Linking.openSettings();
+        if (Platform.OS !== 'web') await Linking.openSettings();
         return;
       }
       const r = await Location.requestForegroundPermissionsAsync();
@@ -177,7 +179,7 @@ function usePermissionStates() {
     setBusy('notif');
     try {
       if (notif === 'denied') {
-        await Linking.openSettings();
+        if (Platform.OS !== 'web') await Linking.openSettings();
         return;
       }
       setNotif((await ensureNotificationPermission()) ? 'granted' : 'denied');
@@ -524,6 +526,9 @@ export default function OnboardingScreen() {
     setDownloading(true);
     try {
       await importGtfsFromNetwork();
+      void import('../src/services/nationalTimetable')
+        .then((m) => m.ensureNationalTimetable())
+        .catch(() => {});
     } catch {
       // błąd pokazuje karta statusu (state 'error') z przyciskiem ponowienia
     } finally {

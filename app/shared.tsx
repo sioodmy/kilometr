@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -12,6 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Compass, MapPin, RefreshCw } from '../src/components/icons';
 import { LegTimeline } from '../src/components/LegTimeline';
+import { MorphingLoader } from '../src/components/MorphingLoader';
 import { getLineColors, mapLineColor } from '../src/components/LineBadge';
 import { SharedJourneyHero } from '../src/components/SharedJourneyHero';
 import { SharedJourneyMapCard } from '../src/components/SharedJourneyMapCard';
@@ -19,6 +19,7 @@ import { getCity } from '../src/cities';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import type { MapVehicle } from '../src/map/types';
 import { useActiveCity } from '../src/services/cityStore';
+import { ensureActiveCityTimetable } from '../src/services/dataManager';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -297,6 +298,9 @@ export default function SharedJourneyScreen() {
                   setBusy(true);
                   setError(false);
                   void setCity(journey.city)
+                    .then(() => {
+                      void ensureActiveCityTimetable();
+                    })
                     .catch(() => setError(true))
                     .finally(() => {
                       busyRef.current = false;
@@ -322,7 +326,7 @@ export default function SharedJourneyScreen() {
                   </Text>
                   {loading && (
                     <View style={styles.loadingChip} accessibilityLiveRegion="polite">
-                      <ActivityIndicator size="small" color={scheme.primary} />
+                      <MorphingLoader size={16} color={scheme.primary} />
                       <Text style={styles.loadingText} numberOfLines={1}>
                         {s.share.loading}
                       </Text>
