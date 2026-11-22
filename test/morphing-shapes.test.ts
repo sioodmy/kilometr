@@ -6,6 +6,7 @@ import {
   expressiveMorphEase,
   initialTransitPath,
   interpolateTransitPath,
+  transitShapeStep,
 } from '../src/components/morphingShapes';
 
 describe('morphingShapes (transit)', () => {
@@ -45,6 +46,17 @@ describe('morphingShapes (transit)', () => {
       if (v > peak) peak = v;
     }
     assert.ok(peak > 1.02 && peak < 1.14, `unexpected overshoot peak ${peak}`);
+  });
+
+  it('sprowadza postęp animacji do bezpiecznego indeksu sylwetki', () => {
+    assert.equal(transitShapeStep(Number.NaN), 0);
+    assert.equal(transitShapeStep(Number.POSITIVE_INFINITY), 0);
+    assert.equal(transitShapeStep(Number.NEGATIVE_INFINITY), 0);
+    assert.equal(transitShapeStep(-1), SHAPE_COUNT - 1);
+    assert.equal(transitShapeStep(-0.2), SHAPE_COUNT - 1);
+    for (let p = 0; p < SHAPE_COUNT * 2; p++) {
+      assert.equal(transitShapeStep(p + 0.5), p % SHAPE_COUNT);
+    }
   });
 
   it('interpolacja generuje poprawne złożone ścieżki evenodd także przy przesterowaniu', () => {

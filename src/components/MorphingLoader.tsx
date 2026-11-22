@@ -20,6 +20,7 @@ import {
   expressiveMorphEase,
   initialTransitPath,
   interpolateTransitPath,
+  transitShapeStep,
   type TransitShapeIndex,
 } from './morphingShapes';
 
@@ -113,20 +114,36 @@ export const MorphingLoader = memo(function MorphingLoader({
     };
   }, [orbit, progress, reduceMotion, startIndex, variant]);
 
+  const fillColor =
+    color ?? (variant === 'contained' ? scheme.onPrimaryContainer : scheme.primary);
+  const staticPath = initialTransitPath(startIndex);
+
   const bodyAnimatedProps = useAnimatedProps<PathProps>(() => {
     const raw = progress.value;
-    const step = Math.floor(raw) % SHAPE_COUNT;
+    // Po odmontowaniu widoku Reanimated może odczytać postęp jako NaN.
+    // Wtedy zamiast indeksować tablicę poza zakresem, zostawiamy statyczną sylwetkę.
+    if (!Number.isFinite(raw)) {
+      return { d: staticPath };
+    }
+    const step = transitShapeStep(raw);
     const nextStep = (step + 1) % SHAPE_COUNT;
+    const shapes: typeof TRANSIT_SHAPES | undefined = TRANSIT_SHAPES;
+    const from = shapes?.[step];
+    const to = shapes?.[nextStep];
+    if (!from || !to) {
+      return { d: staticPath };
+    }
     const localT = raw - Math.floor(raw);
     const eased = expressiveMorphEase(localT);
     return {
-      d: interpolateTransitPath(TRANSIT_SHAPES[step], TRANSIT_SHAPES[nextStep], eased),
+      d: interpolateTransitPath(from, to, eased),
     };
   });
 
   // Delikatny, sprężysty ruch squash-and-stretch i podskok przy każdej zamianie pojazdu.
   const bounceStyle = useAnimatedStyle(() => {
-    const localT = progress.value - Math.floor(progress.value);
+    const raw = progress.value;
+    const localT = Number.isFinite(raw) ? raw - Math.floor(raw) : 0;
     if (localT >= MORPH_ACTIVE_FRACTION) {
       return {
         transform: [{ translateY: 0 }, { scaleX: 1 }, { scaleY: 1 }],
@@ -177,13 +194,10 @@ export const MorphingLoader = memo(function MorphingLoader({
     };
   });
 
-  const orbitStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${orbit.value}deg` }],
-  }));
-
-  const fillColor =
-    color ?? (variant === 'contained' ? scheme.onPrimaryContainer : scheme.primary);
-  const staticPath = initialTransitPath(startIndex);
+  const orbitStyle = useAnimatedStyle(() => {
+    const angle = Number.isFinite(orbit.value) ? orbit.value : 0;
+    return { transform: [{ rotate: `${angle}deg` }] };
+  });
 
   const pictogram = (
     <Animated.View style={[styles.stage, { width: size, height: size }, !reduceMotion && bounceStyle]}>
