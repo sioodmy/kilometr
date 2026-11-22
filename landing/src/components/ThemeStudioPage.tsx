@@ -493,7 +493,7 @@ export function ThemeStudioPage() {
           <div className="studio-grid">
             <section className="studio-preview" aria-label={t.previewTitle}>
               <div className="studio-phone-crop">
-                <Phone className="studio-phone" label={t.previewAria}>
+                <Phone className="studio-phone" label={t.previewAria} gesturePill>
                   <MockScreen scheme={previewScheme} />
                 </Phone>
               </div>
