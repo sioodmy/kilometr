@@ -1,17 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight, Clock3, Footprints } from './icons';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import { motion } from '../theme/motion';
 import type { Connection, Leg } from '../types/models';
 import { RollingTime } from './RollingTime';
 import { LiveSensors } from './LiveDot';
@@ -33,18 +24,14 @@ export function ConnectionSummary({
   item,
   offline = false,
   availableWidth,
-  fromY,
   showLegStrip = false,
 }: {
   item: Connection;
   offline?: boolean;
   availableWidth?: number;
-  fromY?: number;
   showLegStrip?: boolean;
 }) {
   const s = useStrings();
-  const insets = useSafeAreaInsets();
-  const reduceMotion = useReducedMotion();
   const walkMps = useWalkSpeedMps();
   const { width, fontScale } = useWindowDimensions();
   const stacked = ((availableWidth ?? width - 28) - 44) / fontScale < 280;
@@ -101,36 +88,6 @@ export function ConnectionSummary({
   const departurePlace = item.boarded ? item.fromTitle : (firstVehicle?.fromStop ?? item.fromTitle);
   const showArrivalDelay =
     arrivalDelay !== 0 && (item.boarded || arrivalDelay !== departureDelay);
-
-  const targetY = insets.top + 64;
-  const deltaY = fromY != null ? fromY - targetY : 0;
-  const hasTransform = fromY != null && !reduceMotion;
-
-  const progress = useSharedValue(hasTransform ? 0 : 1);
-
-  useEffect(() => {
-    if (hasTransform) {
-      progress.value = withSpring(1, motion.spring.spatialDefault);
-    }
-  }, [hasTransform, progress]);
-
-  const containerAnimatedStyle = useAnimatedStyle(() => {
-    if (!hasTransform) return {};
-    const translateY = interpolate(progress.value, [0, 1], [deltaY, 0]);
-    return {
-      transform: [{ translateY }],
-    };
-  });
-
-  const contentAnimatedStyle = useAnimatedStyle(() => {
-    if (!hasTransform) return {};
-    const opacity = interpolate(progress.value, [0, 0.35, 1], [0.35, 0.85, 1]);
-    const scale = interpolate(progress.value, [0, 1], [0.96, 1]);
-    return {
-      opacity,
-      transform: [{ scale }],
-    };
-  });
 
   const innerContent = (
     <>
@@ -391,20 +348,10 @@ export function ConnectionSummary({
     </>
   );
 
-  if (!hasTransform) {
-    return (
-      <View style={styles.summary}>
-        <View style={styles.content}>{innerContent}</View>
-      </View>
-    );
-  }
-
   return (
-    <Animated.View style={[styles.summary, containerAnimatedStyle]}>
-      <Animated.View style={[styles.content, contentAnimatedStyle]}>
-        {innerContent}
-      </Animated.View>
-    </Animated.View>
+    <View style={styles.summary}>
+      <View style={styles.content}>{innerContent}</View>
+    </View>
   );
 }
 
