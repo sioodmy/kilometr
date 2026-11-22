@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -76,6 +77,7 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
   const canGoEarlier = Boolean(slot && (slot.hasEarlier || slot.canLoadMoreEarlier));
   const canGoLater = Boolean(slot && (slot.hasLater || slot.canLoadMoreLater));
   const gestureEnabled =
+    Platform.OS !== 'web' &&
     swappable &&
     slot?.status === 'ready' &&
     !isBusy &&
