@@ -1,7 +1,7 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(self), notifications=(self)
+  Permissions-Policy: geolocation=(self)
 
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate

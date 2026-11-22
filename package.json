@@ -25,6 +25,7 @@
     "expo-status-bar": "~57.0.1",
     "fflate": "^0.8.3",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-bootsplash": "^7.3.5",
     "react-native-gesture-handler": "~2.32.0",
@@ -173,7 +174,7 @@
     }
   },
   "overrides": {
-    "react-dom": "19.2.0",
+    "react-dom": "$react",
     "expo-application": "57.0.3",
     "expo-modules-autolinking": "57.0.13"
   }

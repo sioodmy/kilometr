@@ -246,13 +246,43 @@ writeResized(iconSrc, 512, 'icon-512.png');
 writeResized(iconSrc, 180, 'apple-touch-icon.png');
 writeResized(splashSrc, 268, 'splash-icon.png');
 
+// Nadpisujemy dist/favicon.ico generowany przez Expo (konwersja BMP potrafiła
+// spłaszczać przezroczystość na białe tło) kontenerem ICO z PNG 32x32 i 48x48.
+function encodeIco(pngBuffersWithSizes) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(pngBuffersWithSizes.length, 4);
+  const dir = Buffer.alloc(16 * pngBuffersWithSizes.length);
+  let offset = 6 + dir.length;
+  pngBuffersWithSizes.forEach(({ size, buf }, i) => {
+    const o = i * 16;
+    dir[o] = size >= 256 ? 0 : size;
+    dir[o + 1] = size >= 256 ? 0 : size;
+    dir[o + 2] = 0;
+    dir[o + 3] = 0;
+    dir.writeUInt16LE(1, o + 4);
+    dir.writeUInt16LE(32, o + 6);
+    dir.writeUInt32LE(buf.length, o + 8);
+    dir.writeUInt32LE(offset, o + 12);
+    offset += buf.length;
+  });
+  return Buffer.concat([header, dir, ...pngBuffersWithSizes.map((e) => e.buf)]);
+}
+
+const icoEntries = [32, 48].map((size) => {
+  const img = resizeRgba(iconSrc, size, size);
+  return { size, buf: encodePng(img.width, img.height, img.rgba) };
+});
+fs.writeFileSync(path.join(DIST, 'favicon.ico'), encodeIco(icoEntries));
+
 const maskable = buildMaskableIcon(iconSrc, 512, [0x00, 0xa8, 0x84]);
 fs.writeFileSync(
   path.join(ICONS_DIR, 'icon-maskable-512.png'),
   encodePng(maskable.width, maskable.height, maskable.rgba),
 );
 
-// ─── 2. Wstrzyknięcie listy precache do dist/sw.js ──────────────────────────
+// ─── 2. Przeniesienie assets/node_modules + lista precache w dist/sw.js ────
 
 function walk(dir, rel = '') {
   const out = [];
@@ -266,6 +296,72 @@ function walk(dir, rel = '') {
     }
   }
   return out;
+}
+
+// Wrangler pomija katalogi o nazwie "node_modules" podczas `pages deploy`,
+// przez co font MaterialIcons i wa-sqlite.wasm nie trafiały na Cloudflare Pages.
+// Po przepisaniu ścieżek w bundlach przeliczamy hash w nazwach plików .js,
+// bo /_expo/static/* ma Cache-Control: immutable (1 rok).
+const assetsNodeModules = path.join(DIST, 'assets', 'node_modules');
+const assetsVendor = path.join(DIST, 'assets', 'vendor');
+if (fs.existsSync(assetsNodeModules)) {
+  fs.rmSync(assetsVendor, { recursive: true, force: true });
+  fs.renameSync(assetsNodeModules, assetsVendor);
+
+  const rewriteJsWithNewHash = (rel, replacements) => {
+    const full = path.join(DIST, rel);
+    let content = fs.readFileSync(full, 'utf8');
+    let changed = false;
+    for (const [from, to] of replacements) {
+      if (content.includes(from)) {
+        content = content.replaceAll(from, to);
+        changed = true;
+      }
+    }
+    if (!changed) return null;
+    const match = rel.match(/^(.*-)([0-9a-f]{16,})(\.js)$/);
+    if (!match) {
+      fs.writeFileSync(full, content);
+      return null;
+    }
+    const newHash = crypto.createHash('md5').update(content).digest('hex');
+    const newRel = `${match[1]}${newHash}${match[3]}`;
+    fs.writeFileSync(path.join(DIST, newRel), content);
+    if (newRel !== rel) fs.unlinkSync(full);
+    return [rel, newRel];
+  };
+
+  const renames = [];
+  // Najpierw pliki poboczne (np. worker-*.js), potem entry-*.js, żeby entry dostał nową nazwę workera.
+  const jsFiles = walk(DIST)
+    .filter((rel) => rel.endsWith('.js') && rel !== 'sw.js')
+    .sort((a, b) => (a.includes('/entry-') ? 1 : 0) - (b.includes('/entry-') ? 1 : 0));
+
+  for (const rel of jsFiles) {
+    const replacements = [
+      ['/assets/node_modules/', '/assets/vendor/'],
+      ...renames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
+    ];
+    const renamed = rewriteJsWithNewHash(rel, replacements);
+    if (renamed) renames.push(renamed);
+  }
+
+  for (const rel of walk(DIST)) {
+    if (!rel.endsWith('.css') && !rel.endsWith('.html')) continue;
+    const full = path.join(DIST, rel);
+    let content = fs.readFileSync(full, 'utf8');
+    let changed = false;
+    for (const [from, to] of [
+      ['/assets/node_modules/', '/assets/vendor/'],
+      ...renames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
+    ]) {
+      if (content.includes(from)) {
+        content = content.replaceAll(from, to);
+        changed = true;
+      }
+    }
+    if (changed) fs.writeFileSync(full, content);
+  }
 }
 
 const EXCLUDE_PRECACHE = new Set(['sw.js', '_headers', '_redirects', 'metadata.json']);
@@ -320,6 +416,12 @@ for (const file of required) {
 const hasWasm = allFiles.some((f) => f.endsWith('.wasm'));
 if (!hasWasm) {
   throw new Error('Brak pliku wa-sqlite.wasm w dist/ (sprawdź metro.config.js).');
+}
+if (allFiles.some((f) => f.split('/').includes('node_modules'))) {
+  throw new Error('dist/ zawiera katalog node_modules, który Wrangler pomija przy deployu.');
+}
+if (!allFiles.some((f) => f.endsWith('.ttf'))) {
+  throw new Error('Brak fontu MaterialIcons (.ttf) w dist/.');
 }
 
 const indexHtml = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
