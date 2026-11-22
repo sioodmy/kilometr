@@ -427,7 +427,11 @@ export function CitySelectSheet({
   const closingRef = useRef(false);
 
   const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const effectiveHeight = Platform.OS === 'web' ? overlayHeight : baseHeight;
+  const targetSheetHeight = Math.max(
+    Platform.OS === 'web' ? 180 : 320,
+    Math.round((effectiveHeight - insets.top) * 0.92),
+  );
   const targetHeightRef = useRef(targetSheetHeight);
   targetHeightRef.current = targetSheetHeight;
 

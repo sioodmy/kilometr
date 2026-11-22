@@ -135,7 +135,11 @@ export function SearchSheet({
   const closingRef = useRef(false);
 
   const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.93));
+  const effectiveHeight = Platform.OS === 'web' ? overlayHeight : baseHeight;
+  const targetSheetHeight = Math.max(
+    Platform.OS === 'web' ? 180 : 320,
+    Math.round((effectiveHeight - insets.top) * 0.93),
+  );
   const targetHeightRef = useRef(targetSheetHeight);
   targetHeightRef.current = targetSheetHeight;
 
@@ -215,7 +219,10 @@ export function SearchSheet({
   }, []);
 
   // Pojedynczy fallback fokusu po zakończeniu przejść nawigacji (bez podwójnego żądania IME).
+  // Na webie pomijamy opóźniony focus: asynchroniczny focus po animacji powoduje na iOS Safari
+  // wypchnięcie całego dokumentu do góry po wysunięciu klawiatury.
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     const task = InteractionManager.runAfterInteractions(() => {
       if (!closingRef.current && !focusedRef.current) {
         inputRef.current?.focus();
