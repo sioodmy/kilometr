@@ -1671,7 +1671,7 @@ export const en: Strings = {
     gpsFailBody:
       'Could not get the current GPS position. Make sure location is enabled on your phone.',
     now: 'Now',
-    title: (operator: string) => `${operator} connections`,
+    title: 'Connections',
     changeFromA11y: (t: string) => `Change start, currently ${t}`,
     changeFromAnchorA11y: (t: string, stop: string) =>
       `Change start, currently ${t}, departing from stop ${stop}`,

@@ -4,7 +4,7 @@ import { DirectionsWalk } from './DirectionsWalk';
 import { scheme, shape, type } from '../theme/tokens';
 import type { Leg, LegMode } from '../types/models';
 import { resolveLineBadgeIdentity } from '../services/lineIdentity';
-import { getActiveCityIdSync } from '../services/cityStore';
+import { getActiveCityIdSync, useActiveCity } from '../services/cityStore';
 import { inferRailAgency, railBadgeLine } from '../services/railIdentity';
 import { RailIcon, isRailAgency } from './RailIcon';
 
@@ -56,7 +56,7 @@ export function LineBadge({
   size?: 'medium' | 'large';
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
-  const cityId = getActiveCityIdSync();
+  const { cityId } = useActiveCity();
   const inputMode = leg?.mode ?? mode;
   const displayLine = leg ? railBadgeLine(leg) : line;
   const {

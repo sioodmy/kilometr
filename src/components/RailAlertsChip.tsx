@@ -7,6 +7,7 @@ import { scheme, shape } from "../theme/tokens";
 import type { Connection } from "../types/models";
 import { alertsForConnection, type TrainAlerts } from "../services/railTripAlerts";
 import { linesFromConnections } from "../services/recentRouteLines";
+import { useActiveCity } from "../services/cityStore";
 import { getCachedNews, subscribeNewsCache } from "../services/mpkNews";
 import { alertTouchesRoute } from "./ConnectionLineAlerts";
 
@@ -23,6 +24,7 @@ export function RailAlertsChip({
   dimmed?: boolean;
 }) {
   const s = useStrings();
+  const { cityId } = useActiveCity();
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
   const [newsTick, setNewsTick] = useState(0);
 
@@ -63,8 +65,8 @@ export function RailAlertsChip({
     if (lineSet.size === 0) return [];
     const cached = getCachedNews() ?? [];
     return cached.filter((item) => alertTouchesRoute(item, lineSet));
-    // newsTick: odśwież gdy rememberNews / loadNewsCache podmieni cache
-  }, [lineSet, newsTick]);
+    // newsTick i cityId: odśwież gdy cache albo aktywne miasto się zmieni
+  }, [lineSet, newsTick, cityId]);
 
   const hasCityDisruptions = cityDisruptions.length > 0;
 

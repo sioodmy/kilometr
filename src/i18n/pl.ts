@@ -2148,7 +2148,7 @@ export const pl = {
     gpsFailBody:
       'Nie udało się pobrać aktualnej pozycji GPS. Upewnij się, że lokalizacja w telefonie jest włączona.',
     now: 'Teraz',
-    title: (operator: string) => `Połączenia ${operator}`,
+    title: 'Połączenia',
     changeFromA11y: (t: string) => `Zmień miejsce startowe, obecnie ${t}`,
     changeFromAnchorA11y: (t: string, stop: string) =>
       `Zmień miejsce startowe, obecnie ${t}, odjazd z przystanku ${stop}`,
