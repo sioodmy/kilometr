@@ -68,7 +68,7 @@ export function ConnectionPeekTarget({
   const gesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!!handlers)
+        .enabled(Platform.OS !== 'web' && !!handlers)
         .activateAfterLongPress(350)
         .maxPointers(1)
         .shouldCancelWhenOutside(false)
@@ -103,7 +103,7 @@ export function ConnectionPeekTarget({
     [handlers, item],
   );
 
-  return handlers ? (
+  return Platform.OS !== 'web' && handlers ? (
     <GestureDetector gesture={gesture}>
       {cloneElement(children, {
         onPressIn: (event) => {
