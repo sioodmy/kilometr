@@ -17,10 +17,68 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 const IS_WEB = Platform.OS === 'web';
-const WEB_PREFIX = 'kilometr.kv:';
+const WEB_KV_DB = 'kilometr-web-kv';
+const WEB_KV_STORE = 'kv';
 const memCache = new Map<string, string>();
 const pending = new Map<string, Promise<void>>();
 let dirReady = false;
+let webKvDbPromise: Promise<IDBDatabase> | null = null;
+
+function openWebKvDb(): Promise<IDBDatabase> {
+  if (webKvDbPromise) return webKvDbPromise;
+  webKvDbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
+    const req = indexedDB.open(WEB_KV_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(WEB_KV_STORE)) {
+        db.createObjectStore(WEB_KV_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
+  });
+  webKvDbPromise.catch(() => {
+    webKvDbPromise = null;
+  });
+  return webKvDbPromise;
+}
+
+async function webKvGet(key: string): Promise<string | null> {
+  if (typeof indexedDB === 'undefined') return null;
+  const db = await openWebKvDb();
+  return new Promise<string | null>((resolve, reject) => {
+    const tx = db.transaction(WEB_KV_STORE, 'readonly');
+    const req = tx.objectStore(WEB_KV_STORE).get(key);
+    req.onsuccess = () => resolve(typeof req.result === 'string' ? req.result : null);
+    req.onerror = () => reject(req.error ?? new Error('IndexedDB get failed'));
+  });
+}
+
+async function webKvSet(key: string, value: string): Promise<void> {
+  if (typeof indexedDB === 'undefined') return;
+  const db = await openWebKvDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(WEB_KV_STORE, 'readwrite');
+    tx.objectStore(WEB_KV_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB put failed'));
+  });
+}
+
+async function webKvDelete(key: string): Promise<void> {
+  if (typeof indexedDB === 'undefined') return;
+  const db = await openWebKvDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(WEB_KV_STORE, 'readwrite');
+    tx.objectStore(WEB_KV_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB delete failed'));
+  });
+}
 
 function serialize<T>(key: string, operation: () => Promise<T>): Promise<T> {
   const result = (pending.get(key) ?? Promise.resolve()).then(operation);
@@ -106,8 +164,7 @@ async function readValue(key: string): Promise<string | null> {
     return memCache.get(key) ?? null;
   }
   if (IS_WEB) {
-    if (typeof window === 'undefined' || !window.localStorage) return null;
-    const val = window.localStorage.getItem(`${WEB_PREFIX}${key}`);
+    const val = await webKvGet(key);
     if (val !== null) memCache.set(key, val);
     return val;
   }
@@ -135,9 +192,7 @@ export async function kvSetStrict(key: string, value: string): Promise<void> {
 
 async function writeValue(key: string, value: string): Promise<void> {
   if (IS_WEB) {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(`${WEB_PREFIX}${key}`, value);
-    }
+    await webKvSet(key, value);
     memCache.set(key, value);
     return;
   }
@@ -159,9 +214,7 @@ export async function kvRemove(key: string): Promise<void> {
 async function removeValue(key: string): Promise<void> {
   try {
     if (IS_WEB) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(`${WEB_PREFIX}${key}`);
-      }
+      await webKvDelete(key);
       memCache.delete(key);
       return;
     }
