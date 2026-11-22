@@ -452,6 +452,30 @@ function loadOsmIndex(city) {
     }
   }
 
+  // 4. Duże obiekty obszarowe (obrysy poligonów: parki, galerie, szpitale, uczelnie, szkoły, ZOO)
+  // Liczymy odległość do prawdziwej krawędzi obiektu, a nie do środka 300-metrowego poligonu.
+  const areasFile = path.join(CACHE_DIR, `${city}-osm-areas.json`);
+  if (fs.existsSync(areasFile)) {
+    const rawAreas = JSON.parse(fs.readFileSync(areasFile, 'utf8'));
+    for (const area of rawAreas) {
+      if (!Array.isArray(area.pts) || area.pts.length === 0) continue;
+      const classified = classifyOsmLandmark({ type: area.type, id: area.id, tags: area.tags });
+      if (!classified) continue;
+      acceptedPois++;
+      // Odległość liczymy już do krawędzi, więc trzymamy twardy, realistyczny promień od płotu/elewacji.
+      const edgeMaxDist = classified.tier === 1 ? 58 : 45;
+      for (const [lat, lon] of area.pts) {
+        landmarkGrid.add(lat, lon, {
+          lat,
+          lon,
+          ...classified,
+          maxDist: Math.min(classified.maxDist, edgeMaxDist),
+          isAreaEdge: true,
+        });
+      }
+    }
+  }
+
   // Indeks odcinków nazwanych dróg (do rozpoznawania ulicy + testu przecięcia osi jezdni)
   const HW_PENALTY = {
     trunk: 0,
@@ -673,22 +697,35 @@ async function generateCity(city) {
       const isTramOnly = stop.modes.has('tram') && !stop.modes.has('bus');
       const prefix = buildStopTypePrefix(stop, osmPlatform);
 
-      // Sprawdź przeciwległe słupki w tym samym zespole (>14m i <250m od tego słupka)
+      // Sprawdź przeciwległe słupki w tym samym zespole (>14m i <250m od tego słupka).
+      // Sąsiednie słupki jadące w tym samym kierunku po tej samej stronie (np. peron tramwajowy
+      // i przystanek autobusowy tuż obok) nie są przeciwległe.
       const oppositeSiblings = groupStops.filter((other) => {
         if (other.key === stop.key) return false;
         const d = haversineMeters(stop.lat, stop.lon, other.lat, other.lon);
-        return d >= 14 && d <= 250;
+        if (d < 14 || d > 250) return false;
+        if (stop.hasBearing && other.hasBearing) {
+          const dot = stop.vE * other.vE + stop.vN * other.vN;
+          if (dot > 0.55 && d < 55) return false;
+        }
+        return true;
       });
 
-      // Zbierz kandydatów POI w pobliżu
+      // Zbierz kandydatów POI w pobliżu (dla tego samego klucza POI zachowujemy najbliższy punkt krawędzi)
       const nearbyPois = landmarkGrid.query(stop.lat, stop.lon, 1);
-      const candidates = [];
-      const seenKey = new Set();
-
+      const bestDistByPoiKey = new Map();
       for (const poi of nearbyPois) {
         const dist = haversineMeters(stop.lat, stop.lon, poi.lat, poi.lon);
         if (dist > poi.maxDist) continue;
+        const prev = bestDistByPoiKey.get(poi.key);
+        if (!prev || dist < prev.dist) {
+          bestDistByPoiKey.set(poi.key, { poi, dist });
+        }
+      }
+      const candidates = [];
+      const seenKey = new Set();
 
+      for (const { poi, dist } of bestDistByPoiKey.values()) {
         const [dx, dy] = toLocalMeters(poi.lat, poi.lon, stop.lat, stop.lon);
 
         // Test przecięcia osi jezdni
@@ -705,27 +742,37 @@ async function generateCity(city) {
         const rightOffset = stop.hasBearing ? dx * stop.vN - dy * stop.vE : 0;
 
         // Czy ten POI leży wyraźnie bliżej przeciwległego słupka z tego samego zespołu?
+        // Dla dużych obiektów obszarowych (park, galeria, szpital) wiele słupków wzdłuż ogrodzenia
+        // stoi po stronie tego samego obiektu; rozdzielamy tylko obiekty punktowe.
         let closerToSibling = false;
-        for (const sib of oppositeSiblings) {
-          const dSib = haversineMeters(sib.lat, sib.lon, poi.lat, poi.lon);
-          if (dSib + 6 < dist) {
-            closerToSibling = true;
-            break;
+        if (!poi.isAreaEdge) {
+          for (const sib of oppositeSiblings) {
+            const dSib = haversineMeters(sib.lat, sib.lon, poi.lat, poi.lon);
+            if (dSib + 10 < dist && dist > 20) {
+              closerToSibling = true;
+              break;
+            }
           }
         }
 
         // Wyznacz relację (near = po tej samej stronie, opposite = naprzeciwko po drugiej stronie ulicy)
+        // Na wysepce tramwajowej między jezdniami odcinek do budynku po prawej stronie zawsze przecina
+        // jedną nitkę jezdni, więc dla tramwaju po właściwej stronie dopuszczamy near.
         let relation = null;
-        if (!crossesRoad && !closerToSibling) {
-          if (!stop.hasBearing || isTramOnly) {
-            // Tramwaje są na wysepce pośrodku drogi — dopuszczamy lekki offset boczny
-            if (!stop.hasBearing || rightOffset >= -14) relation = 'near';
-          } else if (rightOffset >= -5) {
+        if (!closerToSibling) {
+          if (!crossesRoad) {
+            if (!stop.hasBearing || isTramOnly) {
+              if (!stop.hasBearing || rightOffset >= -14) relation = 'near';
+            } else if (rightOffset >= -5) {
+              relation = 'near';
+            }
+          } else if (stop.modes.has('tram') && (!stop.hasBearing || rightOffset >= -6)) {
             relation = 'near';
           }
         }
 
-        if (!relation && poi.canBeOpposite && dist <= Math.min(poi.maxDist, 55)) {
+        const maxOppDist = poi.tier === 1 ? Math.min(poi.maxDist, 70) : Math.min(poi.maxDist, 55);
+        if (!relation && poi.canBeOpposite && dist <= maxOppDist) {
           // Naprzeciwko tylko dla dużych/wyraźnych obiektów po przeciwnej stronie!
           if (crossesRoad || closerToSibling || (stop.hasBearing && rightOffset < -10)) {
             relation = 'opposite';
@@ -789,12 +836,18 @@ async function generateCity(city) {
       let chosen = null;
 
       for (const cand of candidates) {
-        if (cand.relation === 'near') {
+        if (cand.relation === 'near' && !cand.poi.isAreaEdge) {
           const prev = claimedNearByPoiKey.get(cand.poi.key);
           if (prev) {
             const sep = haversineMeters(stop.lat, stop.lon, prev.lat, prev.lon);
-            // Jeśli ten słupek stoi fizycznie w tym samym miejscu (<14m, np. wspólny peron bus+tram we Wrocławiu) -> OK!
-            if (sep >= 14) {
+            // Jeśli ten słupek stoi fizycznie w tym samym miejscu (<14m) albo jedzie w tym samym
+            // kierunku (<55m, np. wspólny węzeł bus+tram) -> OK!
+            const sameDir =
+              stop.hasBearing &&
+              prev.hasBearing &&
+              stop.vE * prev.vE + stop.vN * prev.vN > 0.55 &&
+              sep < 55;
+            if (sep >= 14 && !sameDir) {
               // Przeciwległy słupek! Nie może dostać tego samego "obok X".
               stats.siblingDisambiguated++;
               continue;
@@ -828,6 +881,9 @@ async function generateCity(city) {
                 lat: stop.lat,
                 lon: stop.lon,
                 stopKey: stop.key,
+                hasBearing: stop.hasBearing,
+                vE: stop.vE,
+                vN: stop.vN,
               });
             }
             if (chosen.poi.tier === 1) stats.tier1++;

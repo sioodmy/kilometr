@@ -108,6 +108,8 @@ const FAMOUS_CHAINS_AND_LANDMARKS = [
   'lewiatan',
   'polomarket',
   'delikatesów centrum',
+  'subway',
+  'popeyes',
   'poczty polskiej',
   'poczty',
   'posnani',
@@ -199,6 +201,13 @@ const DESCRIPTOR_ROOTS = [
   'ogrod',
   'pasaż',
   'zjazd',
+  'bar',
+  'burgerown',
+  'księgarn',
+  'lodziarn',
+  'komisariat',
+  'straż',
+  'remiz',
 ];
 
 function checkObokUnambiguity(trimmed, id) {

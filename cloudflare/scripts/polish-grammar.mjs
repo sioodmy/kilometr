@@ -319,7 +319,7 @@ export function formatStreetLocative(rawStreet) {
   return `na ul. ${declined}`;
 }
 
-/** Mapa ogólnopolskich marek/sieci z poprawną formą w dopełniaczu. */
+/** Mapa ogólnopolskich marek/sieci z poprawną formą w dopełniaczu: [regex, dopełniacz, tier, onlyTag?]. */
 const CHAIN_GENITIVE_RULES = [
   [/^żabka(?:\s+(?:nano|caf[eé]))?$/i, 'Żabki', 3],
   [/^biedronka$/i, 'Biedronki', 2],
@@ -336,8 +336,15 @@ const CHAIN_GENITIVE_RULES = [
   [/^intermarch[eé]$/i, 'Intermarché', 2],
   [/^e\.?\s*leclerc$/i, 'E.Leclerc', 2],
   [/^delikatesy\s+centrum$/i, 'Delikatesów Centrum', 2],
+  [/^społem$/i, 'sklepu Społem', 3],
+  [/^groszek$/i, 'sklepu Groszek', 3],
+  [/^chata\s+polska$/i, 'sklepu Chata Polska', 3],
+  [/^spar(?:\s+express)?$/i, 'sklepu Spar', 2],
   [/^rossmann$/i, 'Rossmanna', 2],
   [/^hebe$/i, 'drogerii Hebe', 2],
+  [/^dm$/i, 'drogerii dm', 2, 'chemist'],
+  [/^super-?pharm$/i, 'drogerii Super-Pharm', 2],
+  [/^ziko\s+dermo$/i, 'drogerii Ziko Dermo', 3],
   [/^empik$/i, 'Empiku', 2],
   [/^decathlon$/i, 'Decathlonu', 2],
   [/^ikea$/i, 'sklepu IKEA', 1],
@@ -350,25 +357,34 @@ const CHAIN_GENITIVE_RULES = [
   [/^rtv\s+euro\s+agd$/i, 'RTV Euro AGD', 2],
   [/^pepco$/i, 'sklepu Pepco', 2],
   [/^action$/i, 'sklepu Action', 2],
+  [/^dealz$/i, 'sklepu Dealz', 2],
+  [/^tedi$/i, 'sklepu TEDi', 2],
   [/^jysk$/i, 'sklepu JYSK', 2],
   [/^smyk$/i, 'sklepu Smyk', 2],
-  [/^orlen$|^pkn\s+orlen$/i, 'stacji Orlen', 2],
-  [/^bp$/i, 'stacji BP', 2],
-  [/^shell$/i, 'stacji Shell', 2],
-  [/^circle\s*k$/i, 'stacji Circle K', 2],
-  [/^moya$/i, 'stacji Moya', 2],
-  [/^amic(?:\s+energy)?$/i, 'stacji Amic', 2],
-  [/^mol$/i, 'stacji MOL', 2],
-  [/^lotos$/i, 'stacji Lotos', 2],
-  [/^avia$/i, 'stacji Avia', 2],
+  [/^orlen$|^pkn\s+orlen$/i, 'stacji Orlen', 2, 'fuel'],
+  [/^bp$/i, 'stacji BP', 2, 'fuel'],
+  [/^shell$/i, 'stacji Shell', 2, 'fuel'],
+  [/^circle\s*k$/i, 'stacji Circle K', 2, 'fuel'],
+  [/^moya$/i, 'stacji Moya', 2, 'fuel'],
+  [/^amic(?:\s+energy)?$/i, 'stacji Amic', 2, 'fuel'],
+  [/^mol$/i, 'stacji MOL', 2, 'fuel'],
+  [/^lotos$/i, 'stacji Lotos', 2, 'fuel'],
+  [/^avia$/i, 'stacji Avia', 2, 'fuel'],
   [/^mcdonald['’]?s$/i, "McDonald'sa", 2],
   [/^kfc$/i, 'KFC', 2],
   [/^burger\s+king$/i, 'Burger Kinga', 2],
   [/^max\s+(?:premium\s+)?burgers$/i, 'Max Burgers', 2],
   [/^pizza\s+hut$/i, 'Pizza Hut', 2],
+  [/^subway$/i, 'Subwaya', 3],
+  [/^popeyes$/i, 'Popeyes', 2],
+  [/^pasibus$/i, 'burgerowni Pasibus', 3],
   [/^starbucks(?:\s+coffee)?$/i, 'kawiarni Starbucks', 2],
   [/^costa(?:\s+coffee)?$/i, 'kawiarni Costa Coffee', 2],
   [/^green\s+caff[eè]\s+nero$/i, 'kawiarni Green Caffè Nero', 2],
+  [/^etno\s+caf[eé]$/i, 'kawiarni Etno Cafe', 3],
+  [/^gorąco\s+polecam$/i, 'piekarni Gorąco Polecam', 3],
+  [/^cukiernia\s+sowa$|^sowa$/i, 'cukierni Sowa', 3],
+  [/^grycan$/i, 'lodziarni Grycan', 3],
   [/^poczta\s+polska$/i, 'Poczty Polskiej', 2],
 ];
 
@@ -376,7 +392,7 @@ const MAJOR_BANKS_RE =
   /^(?:PKO(?:\s+BP|\s+Bank\s+Polski)?|Bank\s+Pekao(?:\s+S\.?A\.?)?|Pekao(?:\s+S\.?A\.?)?|mBank|ING(?:\s+Bank\s+Śląski)?|Santander(?:\s+Bank\s+Polska|\s+Consumer\s+Bank)?|Bank\s+Millennium|Millennium(?:\s+Bank)?|Alior\s+Bank|BNP\s+Paribas(?:\s+Polska)?|Cr[eé]dit\s+Agricole|VeloBank|Citi\s+Handlowy)$/i;
 
 const REGIONAL_BAKERIES_RE =
-  /^(?:Putka|Galeria\s+Wypieków\s+Lubaszka|Lubaszka|Grzybki|Oskroba|SPC|Hert|Buczek|Awiteks|Lajkonik|Kłos|Fawor|Natura|Gromulski|Gromulska|Piekarnia\s+Szwajcarska|Vincent)$/i;
+  /^(?:Putka|Galeria\s+Wypieków\s+Lubaszka|Lubaszka|Grzybki|Oskroba|SPC|Hert|Familijna|Piekarnia\s+Familijna|Chleboteka|Jul-?Ka|Górecka|Piekarnia\s+Sąsiedzi|Buczek|Awiteks|Lajkonik|Kłos|Fawor|Natura|Gromulski|Gromulska|Piekarnia\s+Szwajcarska|Vincent)$/i;
 
 const BANNED_POI_NAME_RE =
   /(?:\?|budynek\s*\d|nr\s*\d|bohema\d|wx\d{2,}|spółdzielnia\s+mieszkaniowa|zakład\s+gospodarowania|zarząd\s+dróg|zarząd\s+nieruchomości|stacja\s+kontroli|myjnia|pralnia|ksero|pogrzeb|blachar|lakierni|wulkanizac|lombard|kantor|bukmacher|^sts$|^fortuna$|monopol|alkohol|vape|e-?papieros|fryzjer|barber|paznokci|urody|kosmetycz|stomatolog|dentyst|pracownia\s+usg|gabinet|notariusz|adwokat|radca|komornik|ubezpiecz|nieruchomoś|kredyt|chwilówk|epaka|inpost|paczkomat|dpd\s+pickup|orlen\s+paczka|punkt\s+obsługi|punkt\s+ksero|warsztat|auto[-\s]?serwis|mechanik|części\s+samochod|komis|wypożyczalnia|skup\s+złomu|park\s+kieszonkowy|kieszonkowy|plac\s+zabaw|śniadania,\s*obiady|pizza\s+na\s+kawałki|^sklep$|^apteka$|^restauracja$|^bar$|^kawiarnia$|^piekarnia$|^cukiernia$|^bank$|^bankomat$|^atm$|^przychodnia$|^szpital$|^szkoła$|^kościół$|^hotel$|^park$|^skwer$|^ogród$|^dworzec$|^stacja$|^centrum$|^biuro$|^budynek$|^salon$|^sklep\s+spożywcz|mini\s*market)/i;
@@ -424,6 +440,123 @@ export function classifyOsmLandmark(el) {
     };
   }
 
+  const isArea = el?.type === 'way' || el?.type === 'relation';
+
+  // 1b. Instytucje z jednoznaczną frazą bez nazwy własnej (długość nazwy lub "nr X" w OSM nie dyskwalifikuje)
+  if (t.amenity === 'school' && rawName) {
+    if (!/szkoła\s+jazdy|nauka\s+jazdy|język|tańca|muzyczn|balet|rodzenia|pływania|psów/i.test(rawName)) {
+      if (/(?:szkoła\s+podstawowa|\bsp\s+nr\b|zespół\s+szkolno-przedszkolny)/i.test(rawName)) {
+        return {
+          tier: 2,
+          maxDist: isArea ? 65 : 50,
+          canBeOpposite: true,
+          nearPhrase: 'przy szkole podstawowej',
+          oppositePhrase: 'naprzeciwko szkoły podstawowej',
+          key: `school:${el.id}`,
+        };
+      }
+      if (/(?:liceum|\blo\s+nr\b|technikum|zespół\s+szkół|szkoła\s+branżowa|branżowa\s+szkoła)/i.test(rawName)) {
+        return {
+          tier: 2,
+          maxDist: isArea ? 65 : 50,
+          canBeOpposite: true,
+          nearPhrase: 'przy szkole średniej',
+          oppositePhrase: 'naprzeciwko szkoły średniej',
+          key: `school:${el.id}`,
+        };
+      }
+    }
+  }
+
+  if (t.amenity === 'library' && rawName) {
+    if (/biblioteka/i.test(rawName)) {
+      return {
+        tier: 2,
+        maxDist: isArea ? 50 : 40,
+        canBeOpposite: false,
+        nearPhrase: 'przy bibliotece',
+        oppositePhrase: 'naprzeciwko biblioteki',
+        key: `library:${el.id}`,
+      };
+    }
+  }
+
+  if (t.amenity === 'post_office' && rawName) {
+    const isCourier = /inpost|dpd|dhl|ups|gls|paczkomat|epaka|furgonetka|orlen\s+paczka|allegro|kurier/i.test(
+      `${rawName} ${t.operator || ''}`,
+    );
+    const isPolishPost =
+      /poczta|urząd\s+pocztowy|\bf?up\s+|filia\s+urzędu\s+pocztowego/i.test(`${rawName} ${t.operator || ''}`) ||
+      /^[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż\s-]+\s+\d{1,3}$/.test(rawName);
+    if (!isCourier && isPolishPost) {
+      return {
+        tier: 2,
+        maxDist: isArea ? 52 : 45,
+        canBeOpposite: true,
+        nearPhrase: 'obok poczty',
+        oppositePhrase: 'naprzeciwko poczty',
+        key: `post:${el.id}`,
+      };
+    }
+  }
+
+  if (t.amenity === 'police' && rawName) {
+    if (/straż\s+miejska/i.test(rawName)) {
+      return {
+        tier: 2,
+        maxDist: isArea ? 60 : 50,
+        canBeOpposite: true,
+        nearPhrase: 'przy straży miejskiej',
+        oppositePhrase: 'naprzeciwko straży miejskiej',
+        key: `police:${el.id}`,
+      };
+    }
+    if (/komisariat|komenda|posterunek|policj/i.test(rawName)) {
+      return {
+        tier: 2,
+        maxDist: isArea ? 60 : 50,
+        canBeOpposite: true,
+        nearPhrase: 'przy komisariacie policji',
+        oppositePhrase: 'naprzeciwko komisariatu policji',
+        key: `police:${el.id}`,
+      };
+    }
+  }
+
+  if (t.amenity === 'fire_station' && rawName) {
+    const isOsp = /ochotnicz|\bosp\b/i.test(rawName);
+    return {
+      tier: 2,
+      maxDist: isArea ? 65 : 52,
+      canBeOpposite: true,
+      nearPhrase: isOsp ? 'przy remizie strażackiej' : 'przy straży pożarnej',
+      oppositePhrase: isOsp ? 'naprzeciwko remizy strażackiej' : 'naprzeciwko straży pożarnej',
+      key: `fire:${el.id}`,
+    };
+  }
+
+  if (t.amenity === 'bus_station' && rawName) {
+    return {
+      tier: 1,
+      maxDist: isArea ? 85 : 70,
+      canBeOpposite: true,
+      nearPhrase: 'przy dworcu autobusowym',
+      oppositePhrase: 'naprzeciwko dworca autobusowego',
+      key: `busstation:${el.id}`,
+    };
+  }
+
+  if (t.tourism === 'zoo' && /^(?:zoo\b|ogród\s+zoologiczny)/i.test(rawName) && !/team|sklep/i.test(rawName)) {
+    return {
+      tier: 1,
+      maxDist: isArea ? 90 : 75,
+      canBeOpposite: true,
+      nearPhrase: 'przy wejściu do ZOO',
+      oppositePhrase: 'naprzeciwko ZOO',
+      key: `zoo:${el.id}`,
+    };
+  }
+
   if (!rawName) return null;
   const name = cleanPoiDisplayName(rawName);
   if (!name || name.length < 2 || name.length > 42) return null;
@@ -432,16 +565,31 @@ export function classifyOsmLandmark(el) {
 
   // 2. Ogólnopolskie sieci (z poprawną polską odmianą)
   const brandCandidate = cleanPoiDisplayName(t.brand || name);
-  for (const [re, genitive, tier] of CHAIN_GENITIVE_RULES) {
+  for (const [re, genitive, tier, onlyTag] of CHAIN_GENITIVE_RULES) {
+    if (onlyTag === 'fuel' && t.amenity !== 'fuel') continue;
+    if (onlyTag === 'chemist' && t.shop !== 'chemist') continue;
     if (re.test(name) || re.test(brandCandidate)) {
+      const isFuel = onlyTag === 'fuel' || t.amenity === 'fuel';
+      const isSupermarket =
+        t.shop === 'supermarket' || t.shop === 'mall' || t.shop === 'doityourself' || t.shop === 'furniture';
       const isFuelOrBig =
         tier <= 2 &&
         !/^Żabki$/.test(genitive) &&
         !/^kawiarni\s/.test(genitive) &&
         !/^drogerii\s/.test(genitive);
+      const baseDist =
+        tier === 1
+          ? 70
+          : isFuel
+            ? 55
+            : isSupermarket
+              ? 52
+              : tier === 2
+                ? 42
+                : 35;
       return {
         tier,
-        maxDist: tier === 1 ? 65 : tier === 2 ? 38 : 22,
+        maxDist: isArea ? baseDist + 12 : baseDist,
         canBeOpposite: isFuelOrBig,
         nearPhrase: `obok ${genitive}`,
         oppositePhrase: `naprzeciwko ${genitive}`,
@@ -526,6 +674,16 @@ export function classifyOsmLandmark(el) {
       };
     }
     if (/^ogród\b/i.test(name)) {
+      if (/^ogród\s+botaniczny\b/i.test(name)) {
+        return {
+          tier: 1,
+          maxDist: 65,
+          canBeOpposite: true,
+          nearPhrase: 'przy Ogrodzie Botanicznym',
+          oppositePhrase: 'naprzeciwko Ogrodu Botanicznego',
+          key: 'garden:botaniczny',
+        };
+      }
       const clean = stripLeadingCategory(name, /^ogród\s+/i);
       if (!clean || clean.length > 32 || /^(?:na|nad|w|przy|społeczny|sąsiedzki)\b/i.test(clean)) {
         return null;
@@ -561,7 +719,7 @@ export function classifyOsmLandmark(el) {
     };
   }
 
-  // 6. Stadiony
+  // 6. Stadiony i duże obiekty sportowe (aquapark, hala sportowa, basen)
   if (t.leisure === 'stadium') {
     if (name.length > 34) return null;
     const clean = stripLeadingCategory(name, /^stadion\s+(?:im\.?\s*)?/i);
@@ -573,6 +731,30 @@ export function classifyOsmLandmark(el) {
       oppositePhrase: `naprzeciwko stadionu „${clean || name}”`,
       key: `stadium:${(clean || name).toLowerCase()}`,
     };
+  }
+
+  if (t.leisure === 'sports_centre') {
+    if (/aquapark/i.test(name)) {
+      return {
+        tier: 1,
+        maxDist: 75,
+        canBeOpposite: true,
+        nearPhrase: 'przy Aquaparku',
+        oppositePhrase: 'naprzeciwko Aquaparku',
+        key: `aquapark:${el.id}`,
+      };
+    }
+    if (/^(?:hala\s+sportowa|hala\s+widowiskowo|pływalnia|basen|centrum\s+sportu|ośrodek\s+sportu)/i.test(name) && name.length <= 36) {
+      const isPool = /^(?:pływalnia|basen)/i.test(name);
+      return {
+        tier: 1,
+        maxDist: 65,
+        canBeOpposite: true,
+        nearPhrase: isPool ? 'przy pływalni' : 'przy hali sportowej',
+        oppositePhrase: isPool ? 'naprzeciwko pływalni' : 'naprzeciwko hali sportowej',
+        key: `sports:${el.id}`,
+      };
+    }
   }
 
   // 7. Szpitale
@@ -592,18 +774,37 @@ export function classifyOsmLandmark(el) {
     };
   }
 
-  // 8. Teatry, kina, muzea
+  // 8. Teatry, kina, muzea, centra kultury
   if (t.amenity === 'theatre') {
     const clean = stripLeadingCategory(name, /^teatr\s+(?:im\.?\s*)?/i);
     if (!clean || clean.length < 3 || clean.length > 30) return null;
     return {
       tier: 1,
-      maxDist: 60,
+      maxDist: isArea ? 80 : 68,
       canBeOpposite: true,
       nearPhrase: `przed teatrem „${clean}”`,
       oppositePhrase: `naprzeciwko teatru „${clean}”`,
       key: `theatre:${clean.toLowerCase()}`,
     };
+  }
+
+  if (t.amenity === 'arts_centre') {
+    if (/^(?:centrum\s+kultury|centrum\s+sztuki|ośrodek\s+kultury|dom\s+kultury|impart|filharmonia|narodowe\s+forum)/i.test(name) && name.length <= 36) {
+      const clean = stripLeadingCategory(
+        name,
+        /^(?:centrum\s+kultury|centrum\s+sztuki|ośrodek\s+kultury|dom\s+kultury)\s+/i,
+      );
+      if (!clean || clean.length < 3) return null;
+      return {
+        tier: 1,
+        maxDist: isArea ? 78 : 65,
+        canBeOpposite: true,
+        nearPhrase: `przy centrum kultury „${clean}”`,
+        oppositePhrase: `naprzeciwko centrum kultury „${clean}”`,
+        key: `arts:${clean.toLowerCase()}`,
+      };
+    }
+    return null;
   }
 
   if (t.amenity === 'cinema') {
@@ -612,7 +813,7 @@ export function classifyOsmLandmark(el) {
     if (!clean || clean.length < 3 || clean.length > 30) return null;
     return {
       tier: 1,
-      maxDist: 60,
+      maxDist: isArea ? 78 : 65,
       canBeOpposite: true,
       nearPhrase: `obok kina „${clean}”`,
       oppositePhrase: `naprzeciwko kina „${clean}”`,
@@ -621,10 +822,11 @@ export function classifyOsmLandmark(el) {
   }
 
   if (t.tourism === 'museum') {
+    const dist = isArea ? 85 : 65;
     if (/^muzeum\s+/i.test(name) && name.length <= 38) {
       return {
         tier: 1,
-        maxDist: 60,
+        maxDist: dist,
         canBeOpposite: true,
         nearPhrase: `obok ${name}`,
         oppositePhrase: `naprzeciwko ${name}`,
@@ -634,7 +836,7 @@ export function classifyOsmLandmark(el) {
     if (name.length > 32) return null;
     return {
       tier: 1,
-      maxDist: 60,
+      maxDist: dist,
       canBeOpposite: true,
       nearPhrase: `obok muzeum „${name}”`,
       oppositePhrase: `naprzeciwko muzeum „${name}”`,
@@ -644,7 +846,7 @@ export function classifyOsmLandmark(el) {
 
   // 9. Uczelnie wyższe
   if (t.amenity === 'university' || t.amenity === 'college') {
-    if (name.length > 36) return null;
+    if (name.length < 4 || name.length > 36 || /^[A-Z]-?\d+[a-z]?$/i.test(name)) return null;
     return {
       tier: 1,
       maxDist: 65,
@@ -775,56 +977,7 @@ export function classifyOsmLandmark(el) {
     };
   }
 
-  // 13. Szkoły i biblioteki
-  if (t.amenity === 'school') {
-    if (/szkoła\s+jazdy|nauka\s+jazdy|język|tańca|muzyczn|balet/i.test(name)) return null;
-    if (/^(?:szkoła\s+podstawowa|sp\s+nr)/i.test(name)) {
-      return {
-        tier: 2,
-        maxDist: 42,
-        canBeOpposite: true,
-        nearPhrase: 'przy szkole podstawowej',
-        oppositePhrase: 'naprzeciwko szkoły podstawowej',
-        key: `school:${el.id}`,
-      };
-    }
-    if (/liceum|technikum|zespół\s+szkół/i.test(name)) {
-      return {
-        tier: 2,
-        maxDist: 42,
-        canBeOpposite: true,
-        nearPhrase: 'przy szkole średniej',
-        oppositePhrase: 'naprzeciwko szkoły średniej',
-        key: `school:${el.id}`,
-      };
-    }
-    return null;
-  }
-
-  if (t.amenity === 'library') {
-    if (name.length > 30) return null;
-    return {
-      tier: 2,
-      maxDist: 35,
-      canBeOpposite: false,
-      nearPhrase: 'przy bibliotece',
-      oppositePhrase: 'naprzeciwko biblioteki',
-      key: `library:${el.id}`,
-    };
-  }
-
-  // 14. Poczta Polska
-  if (t.amenity === 'post_office') {
-    if (!/poczta/i.test(name)) return null;
-    return {
-      tier: 2,
-      maxDist: 32,
-      canBeOpposite: false,
-      nearPhrase: 'obok poczty',
-      oppositePhrase: 'naprzeciwko poczty',
-      key: `post:${el.id}`,
-    };
-  }
+  // 13-14 obsłużone wcześniej w 1b (school, library, post_office).
 
   // 15. Duże banki
   if (t.amenity === 'bank' && MAJOR_BANKS_RE.test(name)) {
@@ -835,7 +988,7 @@ export function classifyOsmLandmark(el) {
     if (!cleanBank) return null;
     return {
       tier: 2,
-      maxDist: 28,
+      maxDist: 35,
       canBeOpposite: false,
       nearPhrase: `obok oddziału banku ${cleanBank}`,
       oppositePhrase: `naprzeciwko banku ${cleanBank}`,
@@ -849,7 +1002,7 @@ export function classifyOsmLandmark(el) {
     if (!clean || clean.length > 24) return null;
     return {
       tier: 2,
-      maxDist: 42,
+      maxDist: isArea ? 60 : 52,
       canBeOpposite: true,
       nearPhrase: `obok stacji paliw „${clean}”`,
       oppositePhrase: `naprzeciwko stacji paliw „${clean}”`,
@@ -863,7 +1016,7 @@ export function classifyOsmLandmark(el) {
     if (!clean || clean.length < 3 || clean.length > 26) return null;
     return {
       tier: 2,
-      maxDist: 34,
+      maxDist: isArea ? 54 : 44,
       canBeOpposite: true,
       nearPhrase: `obok supermarketu „${clean}”`,
       oppositePhrase: `naprzeciwko supermarketu „${clean}”`,
@@ -879,7 +1032,7 @@ export function classifyOsmLandmark(el) {
     if (!clean || clean.length < 2 || clean.length > 24 || /^apteka$/i.test(clean)) {
       return {
         tier: 3,
-        maxDist: 24,
+        maxDist: 35,
         canBeOpposite: false,
         nearPhrase: 'obok apteki',
         oppositePhrase: 'naprzeciwko apteki',
@@ -888,7 +1041,7 @@ export function classifyOsmLandmark(el) {
     }
     return {
       tier: 3,
-      maxDist: 24,
+      maxDist: 35,
       canBeOpposite: false,
       nearPhrase: `obok apteki „${clean}”`,
       oppositePhrase: `naprzeciwko apteki „${clean}”`,
@@ -901,7 +1054,7 @@ export function classifyOsmLandmark(el) {
     const clean = stripLeadingCategory(name, /^(?:piekarnia|cukiernia|galeria\s+wypieków)\s+/i);
     return {
       tier: 3,
-      maxDist: 24,
+      maxDist: 35,
       canBeOpposite: false,
       nearPhrase: `obok piekarni „${clean || name}”`,
       oppositePhrase: `naprzeciwko piekarni „${clean || name}”`,
@@ -909,13 +1062,13 @@ export function classifyOsmLandmark(el) {
     };
   }
 
-  // 20. Zwykłe piekarnie / kawiarnie / restauracje (<= 20m, ta sama strona)
+  // 20. Zwykłe piekarnie / kawiarnie / restauracje / fast_food / księgarnie / drogerie / sklepy spożywcze (<= 34m)
   if (t.shop === 'bakery') {
     const clean = stripLeadingCategory(name, /^(?:piekarnia|cukiernia)(?:\s+cukiernia)?\s+/i);
     if (!clean || clean.length < 3 || clean.length > 22) return null;
     return {
       tier: 3,
-      maxDist: 20,
+      maxDist: 32,
       canBeOpposite: false,
       nearPhrase: `obok piekarni „${clean}”`,
       oppositePhrase: `naprzeciwko piekarni „${clean}”`,
@@ -928,7 +1081,7 @@ export function classifyOsmLandmark(el) {
     if (!clean || clean.length < 3 || clean.length > 22) return null;
     return {
       tier: 3,
-      maxDist: 20,
+      maxDist: 32,
       canBeOpposite: false,
       nearPhrase: `obok kawiarni „${clean}”`,
       oppositePhrase: `naprzeciwko kawiarni „${clean}”`,
@@ -943,11 +1096,85 @@ export function classifyOsmLandmark(el) {
     const cat = isPizza ? 'pizzerii' : 'restauracji';
     return {
       tier: 3,
-      maxDist: 20,
+      maxDist: 32,
       canBeOpposite: false,
       nearPhrase: `obok ${cat} „${clean}”`,
       oppositePhrase: `naprzeciwko ${cat} „${clean}”`,
       key: `rest:${clean.toLowerCase()}`,
+    };
+  }
+
+  if (t.amenity === 'fast_food') {
+    if (/(?:kiosk|automat|budka|stoisko|punkt\s+gastronomiczny|24h)/i.test(name)) return null;
+    const isKebab = /kebab|kebap|doner|döner|gyros|shawarma/i.test(`${name} ${t.cuisine || ''}`);
+    const isPizza = /pizzeria|pizza/i.test(`${name} ${t.cuisine || ''}`);
+    const isBurger = /burger/i.test(`${name} ${t.cuisine || ''}`);
+    const isBarMleczny = /bar\s+mleczny/i.test(name);
+    const clean = stripLeadingCategory(
+      name,
+      /^(?:bar\s+mleczny|bar|bistro|pizzeria|restauracja|lokal)\s+/i,
+    );
+    if (!clean || clean.length < 3 || clean.length > 24 || /^\d+$/.test(clean)) return null;
+    const cat = isKebab
+      ? 'lokalu z kebabem'
+      : isPizza
+        ? 'pizzerii'
+        : isBurger
+          ? 'burgerowni'
+          : isBarMleczny
+            ? 'baru mlecznego'
+            : 'baru';
+    return {
+      tier: 3,
+      maxDist: 32,
+      canBeOpposite: false,
+      nearPhrase: `obok ${cat} „${clean}”`,
+      oppositePhrase: `naprzeciwko ${cat} „${clean}”`,
+      key: `fastfood:${clean.toLowerCase()}`,
+    };
+  }
+
+  if (t.shop === 'books') {
+    if (/antykwariat|przystanek|punkt/i.test(name)) return null;
+    const clean = stripLeadingCategory(name, /^księgarnia\s+/i);
+    if (!clean || clean.length < 3 || clean.length > 24) return null;
+    return {
+      tier: 3,
+      maxDist: 32,
+      canBeOpposite: false,
+      nearPhrase: `obok księgarni „${clean}”`,
+      oppositePhrase: `naprzeciwko księgarni „${clean}”`,
+      key: `books:${clean.toLowerCase()}`,
+    };
+  }
+
+  if (t.shop === 'chemist') {
+    if (/chemia|sp\.\s*z\s*o\.o\.|hurtowni/i.test(name)) return null;
+    const clean = stripLeadingCategory(name, /^drogeria\s+/i);
+    if (!clean || clean.length < 3 || clean.length > 22) return null;
+    return {
+      tier: 3,
+      maxDist: 32,
+      canBeOpposite: false,
+      nearPhrase: `obok drogerii „${clean}”`,
+      oppositePhrase: `naprzeciwko drogerii „${clean}”`,
+      key: `chemist:${clean.toLowerCase()}`,
+    };
+  }
+
+  if (t.shop === 'convenience') {
+    if (/(?:przystanek|na\s+gramy|sp\.\s*z\s*o\.o\.|24h|całodobow|nocny|monopol|alkohol|warzywniak|kiosk)/i.test(name)) {
+      return null;
+    }
+    const clean = stripLeadingCategory(name, /^(?:sklep\s+spożywczy|sklep|delikatesy|market)\s+/i);
+    if (!clean || clean.length < 3 || clean.length > 22 || /^\d+$/.test(clean)) return null;
+    return {
+      tier: 3,
+      maxDist: 30,
+      canBeOpposite: false,
+      nearPhrase: `obok sklepu spożywczego „${clean}”`,
+      oppositePhrase: `naprzeciwko sklepu spożywczego „${clean}”`,
+      key: `conv:${clean.toLowerCase()}`,
     };
   }
 
