@@ -233,7 +233,7 @@ export function SharedJourneyMapCard({
     if (!mapRoute) {
       return (
         <View style={styles.mapEmpty}>
-          {loading && <MorphingLoader variant="contained" size={30} />}
+          {loading && <MorphingLoader variant="contained" size={30} startIndex={3} />}
           <Text style={styles.emptyText}>
             {loading ? s.share.geometryLoading : s.share.mapUnavailable}
           </Text>

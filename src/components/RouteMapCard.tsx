@@ -355,7 +355,7 @@ export function RouteMapCard({
                   style={styles.status}
                   accessibilityLiveRegion="polite"
                 >
-                  {status === 'loading' && <MorphingLoader variant="contained" size={30} />}
+                  {status === 'loading' && <MorphingLoader variant="contained" size={30} startIndex={3} />}
                   <Text style={styles.statusText}>
                     {status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}
                   </Text>

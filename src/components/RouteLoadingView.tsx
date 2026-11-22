@@ -14,14 +14,123 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { MorphingLoader } from './MorphingLoader';
 
 const SHIMMER_DURATION_MS = 1350;
+const TRACK_CYCLE_MS = 2200;
 const PHASE_TRANSFERS_MS = 1800;
 const PHASE_LONG_MS = 4500;
+const STOP_POSITIONS = [0, 1 / 3, 2 / 3, 1] as const;
+
+const TrackStopNode = memo(function TrackStopNode({
+  position,
+  progress,
+  reduceMotion,
+}: {
+  position: number;
+  progress: SharedValue<number>;
+  reduceMotion: boolean;
+}) {
+  const dotStyle = useAnimatedStyle(() => {
+    const head = Math.min(1, progress.value * 1.45);
+    const tail = Math.max(0, (progress.value - 0.35) * 1.54);
+    const active = head >= position && tail <= position + 0.08;
+    const dist = Math.abs(head - position);
+    const pop = active && dist < 0.16 ? 1 + (1 - dist / 0.16) * 0.32 : 1;
+    return {
+      transform: [{ scale: pop }],
+    };
+  });
+
+  const fillStyle = useAnimatedStyle(() => {
+    const head = Math.min(1, progress.value * 1.45);
+    const tail = Math.max(0, (progress.value - 0.35) * 1.54);
+    const lit = head >= position - 0.02 && tail <= position + 0.06 ? 1 : 0;
+    return {
+      opacity: lit,
+    };
+  });
+
+  if (reduceMotion) {
+    return (
+      <View style={styles.stopOuter}>
+        {position === 0 && <View style={styles.stopFill} />}
+      </View>
+    );
+  }
+
+  return (
+    <Animated.View style={[styles.stopOuter, dotStyle]}>
+      <Animated.View style={[styles.stopFill, fillStyle]} />
+    </Animated.View>
+  );
+});
+
+/** Schematyczna linia przystanków z płynącą falą wyszukiwania połączenia. */
+const RouteTrackProgress = memo(function RouteTrackProgress() {
+  const reduceMotion = useReducedMotion();
+  const [trackWidth, setTrackWidth] = useState(260);
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      cancelAnimation(progress);
+      progress.value = 0;
+      return;
+    }
+    progress.value = 0;
+    progress.value = withRepeat(
+      withTiming(1, {
+        duration: TRACK_CYCLE_MS,
+        easing: Easing.inOut(Easing.cubic),
+      }),
+      -1,
+      false,
+    );
+    return () => {
+      cancelAnimation(progress);
+    };
+  }, [progress, reduceMotion]);
+
+  const activeSegmentStyle = useAnimatedStyle(() => {
+    const head = Math.min(1, progress.value * 1.45);
+    const tail = Math.max(0, (progress.value - 0.35) * 1.54);
+    const left = tail * trackWidth;
+    const width = Math.max(0, (head - tail) * trackWidth);
+    return {
+      left,
+      width,
+    };
+  });
+
+  return (
+    <View style={styles.trackWrap} pointerEvents="none">
+      <View
+        style={styles.trackRail}
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          if (w > 0 && w !== trackWidth) setTrackWidth(w);
+        }}
+      >
+        {!reduceMotion && <Animated.View style={[styles.trackActive, activeSegmentStyle]} />}
+      </View>
+      <View style={styles.stopsRow}>
+        {STOP_POSITIONS.map((pos) => (
+          <TrackStopNode
+            key={pos}
+            position={pos}
+            progress={progress}
+            reduceMotion={Boolean(reduceMotion)}
+          />
+        ))}
+      </View>
+    </View>
+  );
+});
 
 const SkeletonConnectionCard = memo(function SkeletonConnectionCard({
   dimmed,
@@ -101,13 +210,14 @@ const SkeletonConnectionCard = memo(function SkeletonConnectionCard({
 });
 
 export interface RouteLoadingViewProps {
-  /** Trasa między miastami korzysta z dodatkowego komunikatu kolejowego. */
+  /** Trasa między miastami zaczyna animację od pociągu i używa komunikatu kolejowego. */
   intercity?: boolean;
 }
 
 /**
- * Widok ładowania listy połączeń: morfujący wskaźnik M3 Expressive, progresywne
- * komunikaty przy dłuższym liczeniu oraz szkielet kart z kierunkowym połyskiem.
+ * Widok ładowania listy połączeń: morfujący wskaźnik transportowy (tramwaj,
+ * autobus, pociąg, pinezka), schematyczna linia przystanków, progresywne
+ * komunikaty oraz szkielet kart z kierunkowym połyskiem.
  */
 export function RouteLoadingView({ intercity = false }: RouteLoadingViewProps) {
   const s = useStrings();
@@ -154,39 +264,42 @@ export function RouteLoadingView({ intercity = false }: RouteLoadingViewProps) {
       accessibilityLiveRegion="polite"
     >
       <View style={styles.heroBanner}>
-        <MorphingLoader variant="contained" size={38} />
-        <View style={styles.heroCopy}>
-          <Animated.Text
-            key={phase}
-            entering={
-              reduceMotion
-                ? undefined
-                : FadeIn.duration(220).reduceMotion(ReduceMotion.System)
-            }
-            exiting={
-              reduceMotion
-                ? undefined
-                : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
-            }
-            style={styles.heroTitle}
-            numberOfLines={2}
-          >
-            {statusLabel}
-          </Animated.Text>
-          {phase >= 1 && (
+        <View style={styles.heroTop}>
+          <MorphingLoader variant="contained" size={38} startIndex={intercity ? 2 : 0} />
+          <View style={styles.heroCopy}>
             <Animated.Text
+              key={phase}
               entering={
                 reduceMotion
                   ? undefined
-                  : FadeIn.duration(240).reduceMotion(ReduceMotion.System)
+                  : FadeIn.duration(220).reduceMotion(ReduceMotion.System)
               }
-              style={styles.heroHint}
+              exiting={
+                reduceMotion
+                  ? undefined
+                  : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
+              }
+              style={styles.heroTitle}
               numberOfLines={2}
             >
-              {s.routes.searchingOfflineHint}
+              {statusLabel}
             </Animated.Text>
-          )}
+            {phase >= 1 && (
+              <Animated.Text
+                entering={
+                  reduceMotion
+                    ? undefined
+                    : FadeIn.duration(240).reduceMotion(ReduceMotion.System)
+                }
+                style={styles.heroHint}
+                numberOfLines={2}
+              >
+                {s.routes.searchingOfflineHint}
+              </Animated.Text>
+            )}
+          </View>
         </View>
+        <RouteTrackProgress />
       </View>
 
       <SkeletonConnectionCard delay={0} />
@@ -202,8 +315,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   heroBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -211,6 +322,11 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   heroCopy: {
     flex: 1,
@@ -226,6 +342,47 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     lineHeight: 17,
+  },
+  trackWrap: {
+    height: 16,
+    justifyContent: 'center',
+  },
+  trackRail: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    height: 3,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
+    overflow: 'hidden',
+  },
+  trackActive: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+  },
+  stopsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stopOuter: {
+    width: 11,
+    height: 11,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 2,
+    borderColor: scheme.outline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopFill: {
+    width: 11,
+    height: 11,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
   },
   skelCard: {
     backgroundColor: scheme.surfaceContainer,

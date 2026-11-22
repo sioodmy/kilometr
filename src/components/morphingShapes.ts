@@ -1,48 +1,44 @@
 /**
- * Geometria i interpolacja kształtów M3 Expressive dla wskaźnika ładowania.
- * Każdy kształt ma identyczną liczbę segmentów Béziera w tym samym porządku
- * kątowym, dzięki czemu morfing na wątku UI nigdy się nie skręca ani nie tnie.
+ * Geometria i interpolacja transportowych kształtów M3 Expressive:
+ * Tramwaj -> Autobus -> Pociąg -> Pinezka celu.
+ * Wszystkie cztery sylwetki są symetryczne względem osi X = 50 i mają identyczną
+ * liczbę krzywych Béziera, dzięki czemu korpus, szyba (lub otwór pinezki) oraz
+ * reflektory płynnie w siebie przechodzą na wątku UI bez skręcania ścieżki.
  */
 
-const SAMPLE_COUNT = 24;
-const CENTER = 50;
+const CENTER_X = 50;
 
 type Point = readonly [number, number];
 
-function polarShape(radiusAt: (angle: number) => number): Point[] {
-  const pts: Point[] = [];
-  for (let i = 0; i < SAMPLE_COUNT; i++) {
-    const angle = (Math.PI * 2 * i) / SAMPLE_COUNT;
-    const r = radiusAt(angle);
-    pts.push([CENTER + Math.cos(angle) * r, CENTER + Math.sin(angle) * r]);
+export type TransitShapeIndex = 0 | 1 | 2 | 3;
+
+export interface TransitKeyframes {
+  readonly body: readonly number[];
+  readonly window: readonly number[];
+  /** Lewy reflektor [cx, cy, r]; prawy jest lustrzany (100 - cx). */
+  readonly headlight: readonly [number, number, number];
+}
+
+/** Odbija prawą połowę konturu (od środka góry do środka dołu) na pełną pętlę. */
+function mirrorRightHalf(right: readonly Point[]): Point[] {
+  const pts: Point[] = [...right];
+  for (let i = right.length - 2; i >= 1; i--) {
+    pts.push([CENTER_X * 2 - right[i][0], right[i][1]]);
   }
   return pts;
 }
 
-function superellipseShape(
-  rx: number,
-  ry: number,
-  exponent: number,
-  rotateRad = 0,
-): Point[] {
+/** Generuje okrąg z `count` równomiernych punktów zaczynając od 12:00. */
+function circlePoints(cx: number, cy: number, r: number, count: number): Point[] {
   const pts: Point[] = [];
-  const cosR = Math.cos(rotateRad);
-  const sinR = Math.sin(rotateRad);
-  const power = 2 / exponent;
-  for (let i = 0; i < SAMPLE_COUNT; i++) {
-    const angle = (Math.PI * 2 * i) / SAMPLE_COUNT;
-    const ca = Math.cos(angle);
-    const sa = Math.sin(angle);
-    const lx = rx * Math.sign(ca) * Math.pow(Math.abs(ca), power);
-    const ly = ry * Math.sign(sa) * Math.pow(Math.abs(sa), power);
-    const x = CENTER + lx * cosR - ly * sinR;
-    const y = CENTER + lx * sinR + ly * cosR;
-    pts.push([x, y]);
+  for (let i = 0; i < count; i++) {
+    const a = -Math.PI / 2 + (Math.PI * 2 * i) / count;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
   }
   return pts;
 }
 
-/** Zamienia zamkniętą pętlę punktów na płaską tablicę krzywych sześciennych Catmull-Rom. */
+/** Zamienia zamkniętą pętlę punktów na płaską tablicę segmentów Catmull-Rom. */
 function closedPointsToCubicArray(pts: readonly Point[]): readonly number[] {
   const n = pts.length;
   const out: number[] = [pts[0][0], pts[0][1]];
@@ -52,51 +48,155 @@ function closedPointsToCubicArray(pts: readonly Point[]): readonly number[] {
     const p2 = pts[(i + 1) % n];
     const p3 = pts[(i + 2) % n];
 
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-
-    out.push(c1x, c1y, c2x, c2y, p2[0], p2[1]);
+    out.push(
+      p1[0] + (p2[0] - p0[0]) / 6,
+      p1[1] + (p2[1] - p0[1]) / 6,
+      p2[0] - (p3[0] - p1[0]) / 6,
+      p2[1] - (p3[1] - p1[1]) / 6,
+      p2[0],
+      p2[1],
+    );
   }
   return out;
 }
 
 /**
- * Sześć wyrazistych kształtów M3 Expressive w widoku 0..100:
- * gwiazda miękka -> kapsuła -> koniczyna -> miękki trójkąt -> poduszka -> ciastko.
+ * Cztery klatki kluczowe w widoku 0..100:
+ * 0: tramwaj, 1: autobus, 2: pociąg, 3: pinezka celu.
  */
-export const MORPH_SHAPES: readonly (readonly number[])[] = [
-  // 0: Soft Burst (6-ramienna gwiazda)
-  closedPointsToCubicArray(polarShape((a) => 33.5 + 8.5 * Math.cos(6 * a))),
-  // 1: Stadium Pill (pozioma kapsuła)
-  closedPointsToCubicArray(superellipseShape(42, 24.5, 3.2, 0)),
-  // 2: 4-Leaf Clover (koniczyna)
-  closedPointsToCubicArray(polarShape((a) => 32.5 + 9.2 * Math.cos(4 * a))),
-  // 3: Soft Triangle (zaokrąglony trójkąt)
-  closedPointsToCubicArray(polarShape((a) => 35 + 7.4 * Math.cos(3 * a - Math.PI / 2))),
-  // 4: Cushion Diamond (miękki romb / squircle 45°)
-  closedPointsToCubicArray(superellipseShape(39, 39, 3.8, Math.PI / 4)),
-  // 5: 8-Scalloped Cookie (karbowane ciastko)
-  closedPointsToCubicArray(polarShape((a) => 37 + 4.4 * Math.cos(8 * a))),
+export const TRANSIT_SHAPES: readonly TransitKeyframes[] = [
+  // 0: Tramwaj (smukły przód, lekko zaokrąglony dach, wysoka szyba)
+  {
+    body: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 21],
+        [59, 21.5],
+        [68, 23],
+        [74, 27],
+        [76, 34],
+        [76, 45],
+        [76, 56],
+        [76, 66],
+        [74.5, 73.5],
+        [69.5, 77.5],
+        [62, 78],
+        [56, 78],
+        [50, 78],
+      ]),
+    ),
+    window: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 29],
+        [61.5, 29],
+        [68, 32],
+        [68.5, 41],
+        [68, 50],
+        [61.5, 53],
+        [50, 53],
+      ]),
+    ),
+    headlight: [36, 65.5, 4.5],
+  },
+  // 1: Autobus (szersze nadwozie, płaski dach, szeroka szyba)
+  {
+    body: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 20],
+        [61, 20],
+        [72, 20.5],
+        [79, 24],
+        [82, 31],
+        [82, 42],
+        [82, 53],
+        [82, 64],
+        [80.5, 72],
+        [75.5, 76],
+        [67, 76],
+        [58, 76],
+        [50, 76],
+      ]),
+    ),
+    window: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 27],
+        [65, 27],
+        [73.5, 29.5],
+        [74.5, 39],
+        [73.5, 48.5],
+        [65, 51],
+        [50, 51],
+      ]),
+    ),
+    headlight: [30, 64, 4.7],
+  },
+  // 2: Pociąg (aerodynamiczny łuk dachu i zaokrąglona przednia szyba)
+  {
+    body: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 14],
+        [60, 15],
+        [69, 19],
+        [75, 26],
+        [77.5, 35],
+        [78, 46],
+        [78, 56],
+        [77, 66],
+        [73.5, 73],
+        [67.5, 76.5],
+        [61, 77],
+        [55, 77],
+        [50, 77],
+      ]),
+    ),
+    window: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 23],
+        [61, 24.5],
+        [69, 30],
+        [70.5, 40],
+        [68.5, 48],
+        [60.5, 50],
+        [50, 50],
+      ]),
+    ),
+    headlight: [35, 64.5, 4.7],
+  },
+  // 3: Pinezka trasy (korpus zwęża się w grot, szyba zamienia w okrągły środek)
+  {
+    body: closedPointsToCubicArray(
+      mirrorRightHalf([
+        [50, 13],
+        [61, 14.5],
+        [70.5, 20.5],
+        [76.5, 30],
+        [78.5, 41],
+        [76.5, 52],
+        [70.5, 62],
+        [63.5, 71.5],
+        [57.5, 79.5],
+        [53.5, 85],
+        [51.5, 88],
+        [50.5, 89.2],
+        [50, 89.5],
+      ]),
+    ),
+    window: closedPointsToCubicArray(circlePoints(50, 41, 11.5, 12)),
+    headlight: [50, 41, 0],
+  },
 ];
 
-export const SHAPE_COUNT = MORPH_SHAPES.length;
+export const SHAPE_COUNT = TRANSIT_SHAPES.length;
 
-/** Czas jednego kroku morfingu w ms (krótkie wyhamowanie pozwala odczytać kształt). */
-export const MORPH_STEP_MS = 650;
+/** Czas jednego kroku morfingu w ms: 530 ms płynnego przejścia + 320 ms czytelnego postoju. */
+export const MORPH_STEP_MS = 850;
+export const MORPH_ACTIVE_FRACTION = 0.62;
 
-/**
- * Ułamek kroku przeznaczony na sam morfing; reszta to spokojny przystanek
- * kształtu przy ciągłym, łagodnym obrocie.
- */
-const MORPH_ACTIVE_FRACTION = 0.82;
-const DAMPING = 5.8;
-const OMEGA = 7.2;
+const DAMPING = 5.9;
+const OMEGA = 7.0;
 const RAW_SPRING_AT_ONE =
   1 - Math.exp(-DAMPING) * (Math.cos(OMEGA) + (DAMPING / OMEGA) * Math.sin(OMEGA));
 
-/** Krzywa sprężystego przejścia M3 Expressive z lekkim przesterowaniem (~8%). */
+/** Krzywa sprężysta M3 Expressive z lekkim, czytelnym przesterowaniem (~7%). */
 export function expressiveMorphEase(localT: number): number {
   'worklet';
   if (localT <= 0) return 0;
@@ -107,8 +207,7 @@ export function expressiveMorphEase(localT: number): number {
   return raw / RAW_SPRING_AT_ONE;
 }
 
-/** Buduje ścieżkę SVG między dwoma kształtami bezpośrednio w worklecie Reanimated. */
-export function interpolateShapePath(
+function interpolateCubicSubpath(
   from: readonly number[],
   to: readonly number[],
   t: number,
@@ -130,4 +229,53 @@ export function interpolateShapePath(
   return `${d}Z`;
 }
 
-export const INITIAL_SHAPE_PATH = interpolateShapePath(MORPH_SHAPES[0], MORPH_SHAPES[0], 0);
+function circleSubpath(cx: number, cy: number, r: number): string {
+  'worklet';
+  if (r <= 0.35) return '';
+  const k = r * 0.5523;
+  const rx = Math.round(cx * 10) / 10;
+  const ry = Math.round(cy * 10) / 10;
+  const rr = Math.round(r * 10) / 10;
+  const rk = Math.round(k * 10) / 10;
+  const top = Math.round((ry - rr) * 10) / 10;
+  const bot = Math.round((ry + rr) * 10) / 10;
+  const left = Math.round((rx - rr) * 10) / 10;
+  const right = Math.round((rx + rr) * 10) / 10;
+  const xPlusK = Math.round((rx + rk) * 10) / 10;
+  const xMinusK = Math.round((rx - rk) * 10) / 10;
+  const yPlusK = Math.round((ry + rk) * 10) / 10;
+  const yMinusK = Math.round((ry - rk) * 10) / 10;
+  return (
+    `M${rx} ${top}` +
+    `C${xPlusK} ${top} ${right} ${yMinusK} ${right} ${ry}` +
+    `C${right} ${yPlusK} ${xPlusK} ${bot} ${rx} ${bot}` +
+    `C${xMinusK} ${bot} ${left} ${yPlusK} ${left} ${ry}` +
+    `C${left} ${yMinusK} ${xMinusK} ${top} ${rx} ${top}Z`
+  );
+}
+
+/**
+ * Buduje złożoną ścieżkę SVG (korpus + szyba/otwór + reflektory) pod fillRule="evenodd",
+ * dzięki czemu wycięcia są prawdziwie przezroczyste na każdym tle motywu.
+ */
+export function interpolateTransitPath(
+  from: TransitKeyframes,
+  to: TransitKeyframes,
+  t: number,
+): string {
+  'worklet';
+  const clampedForCutout = t < 0 ? 0 : t > 1 ? 1 : t;
+  const body = interpolateCubicSubpath(from.body, to.body, t);
+  const win = interpolateCubicSubpath(from.window, to.window, t);
+  const lx = from.headlight[0] + (to.headlight[0] - from.headlight[0]) * clampedForCutout;
+  const ly = from.headlight[1] + (to.headlight[1] - from.headlight[1]) * clampedForCutout;
+  const lr = from.headlight[2] + (to.headlight[2] - from.headlight[2]) * clampedForCutout;
+  const l1 = circleSubpath(lx, ly, lr);
+  const l2 = circleSubpath(100 - lx, ly, lr);
+  return `${body}${win}${l1}${l2}`;
+}
+
+export function initialTransitPath(index: TransitShapeIndex = 0): string {
+  const shape = TRANSIT_SHAPES[index];
+  return interpolateTransitPath(shape, shape, 0);
+}
