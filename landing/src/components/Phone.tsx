@@ -8,6 +8,8 @@ type PhoneProps = {
   transparentStatusBar?: boolean;
   /** Clock shown in the Pixel status bar. */
   statusTime?: string;
+  /** System gesture pill. Screenshots already contain it, so it is off by default. */
+  gesturePill?: boolean;
   children: ReactNode;
 };
 
@@ -17,6 +19,7 @@ export function Phone({
   label,
   transparentStatusBar = false,
   statusTime = '09:05',
+  gesturePill = false,
   children,
 }: PhoneProps) {
   return (
@@ -67,7 +70,7 @@ export function Phone({
             </span>
           </div>
 
-          <span className="pixel-gesture-pill" />
+          {gesturePill && <span className="pixel-gesture-pill" />}
           <span className="pixel-glass-sheen" />
         </div>
       </div>
