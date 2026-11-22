@@ -6,6 +6,7 @@
 // stops → routes → calendar → calendar_dates → trips → stop_times.
 // stop_times jest ~46 MB - importujemy batched po 5000 rekordów w transakcjach.
 
+import { Platform } from 'react-native';
 import {
   parseCalendarContent,
   parseCalendarDatesContent,
@@ -483,7 +484,7 @@ export function importGtfsFromNetwork(expectedCityId?: string): Promise<ImportOu
       // prebuilt z serwera (katalog Wrocławia do bazy Krakowa to katastrofa).
       // Też objęta limitem, żeby nie palić Open Data / R2 przy spamie przycisku.
       if (isStale()) return 'upToDate';
-      if (importCityId !== 'wroclaw') {
+      if (importCityId !== 'wroclaw' || Platform.OS === 'web') {
         const detail = 'prebuilt sync failed';
         const Terr = dataTr();
         console.warn('[DataManager] import failed:', detail);

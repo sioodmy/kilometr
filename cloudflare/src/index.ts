@@ -203,8 +203,30 @@ const poisKeyFor = (city: string): string => `${city}/pois.json.gz`;
  */
 const mapPackKeyFor = (city: string): string => `maps/${city}-tiles.ktp`;
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Headers': 'Range, If-None-Match, Accept',
+  'Access-Control-Expose-Headers': 'ETag, Content-Length, Content-Range, Accept-Ranges',
+};
+
+function withCors(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    if (!headers.has(k)) headers.set(k, v);
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
+
 function json(data: unknown, status = 200, cacheSeconds = 0): Response {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json; charset=utf-8',
+    ...CORS_HEADERS,
+  };
   if (cacheSeconds > 0) headers['Cache-Control'] = `public, max-age=${cacheSeconds}`;
   return new Response(JSON.stringify(data), { status, headers });
 }
@@ -241,6 +263,22 @@ async function serveObject(
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...CORS_HEADERS,
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+
+    const res = await handleRequest(req, env, ctx);
+    return withCors(res);
+  },
+};
+
+async function handleRequest(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     // HEAD działa jak GET (Runtime sam ucina body) - klient sprawdza rozmiar/ETag.
@@ -308,8 +346,7 @@ export default {
     }
 
     return json({ error: 'not-found' }, 404);
-  },
-};
+}
 
 async function serveManifest(env: Env, key: string): Promise<Response> {
   const obj = await env.TIMETABLE_BUCKET.get(key);

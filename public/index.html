@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111414" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="application-name" content="Kilometr" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Kilometr" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="description"
+      content="Rozkłady jazdy komunikacji miejskiej i kolei w Polsce. Mapa na żywo, szybki planer połączeń i praca offline."
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <title>Kilometr</title>
+    <style id="expo-reset">
+      :root {
+        --km-sat: env(safe-area-inset-top, 0px);
+        --km-sar: env(safe-area-inset-right, 0px);
+        --km-sab: env(safe-area-inset-bottom, 0px);
+        --km-sal: env(safe-area-inset-left, 0px);
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        background-color: #111414;
+        color: #E0E3E1;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      #root {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        background-color: #111414;
+        position: relative;
+        overflow: hidden;
+      }
+      @media (min-width: 560px) {
+        body {
+          background-color: #0C0F0E;
+          display: flex;
+          justify-content: center;
+          align-items: stretch;
+        }
+        #root {
+          max-width: 460px;
+          border-left: 1px solid #252B2A;
+          border-right: 1px solid #252B2A;
+          box-shadow: 0 0 48px rgba(0, 0, 0, 0.55);
+        }
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #3F4946 transparent;
+      }
+      @media (pointer: coarse) {
+        * {
+          scrollbar-width: none;
+        }
+        *::-webkit-scrollbar {
+          display: none;
+        }
+      }
+      button:focus-visible,
+      [role='button']:focus-visible,
+      a:focus-visible,
+      input:focus-visible {
+        outline: 2px solid #5CDBBE;
+        outline-offset: 2px;
+      }
+      #km-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #111414;
+        transition: opacity 220ms ease-out;
+      }
+      #km-boot-splash.km-hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #km-boot-splash img {
+        width: 134px;
+        height: 134px;
+        border-radius: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>Kilometr wymaga włączonego JavaScriptu.</noscript>
+    <div id="km-boot-splash" aria-hidden="true">
+      <img src="/icons/splash-icon.png" alt="" width="134" height="134" />
+    </div>
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
+  </body>
+</html>

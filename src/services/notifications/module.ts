@@ -45,6 +45,10 @@ let warnedUnsupported = false;
 
 export function getNotifications(): NotificationsModule | null {
   if (nmod !== undefined) return nmod;
+  if (Platform.OS === 'web') {
+    nmod = null;
+    return nmod;
+  }
   try {
     if (Constants.appOwnership === 'expo') {
       nmod = null;
@@ -58,8 +62,11 @@ export function getNotifications(): NotificationsModule | null {
   return nmod;
 }
 
-/** Czy w ogóle da się pokazać powiadomienie (dev build / produkcja). */
+/** Czy w ogóle da się pokazać powiadomienie (dev build / produkcja / przeglądarka z Web Notifications). */
 export function areNotificationsSupported(): boolean {
+  if (Platform.OS === 'web') {
+    return typeof window !== 'undefined' && 'Notification' in window;
+  }
   return getNotifications() != null;
 }
 

@@ -104,6 +104,29 @@ export function cancelLegacyDepartureAlerts(): Promise<void> {
   });
 }
 
+async function showWebAlert(title: string, body: string, tag: string): Promise<boolean> {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+  try {
+    const opts: NotificationOptions = {
+      body,
+      tag,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+    };
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg?.showNotification) {
+        await reg.showNotification(title, opts);
+        return true;
+      }
+    }
+    new Notification(title, opts);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sendDisruptionAlert(
   p: TripProgress,
   trip: TrackedTrip,
@@ -111,21 +134,26 @@ export function sendDisruptionAlert(
 ): Promise<boolean> {
   return enqueue(async () => {
     if (!prefs.disruptionAlertsEnabled) return false;
-    const N = getNotifications();
-    if (!N) return false;
     const s = tr();
     const n = s.notification;
     const id = `kilometr.alert.disruption.${trip.id}`;
+    const title = n.delayTitle(p.line, s.common.durMin(Math.max(1, Math.round(p.departInSec / 60))));
+    const body = [
+      p.leg ? n.stopHere(p.leg.fromStop) : null,
+      n.newDeparture(p.departAt),
+      p.delayMin >= 2 ? n.delayLate(p.delayMin) : '',
+    ].filter(Boolean).join(' • ');
+    if (Platform.OS === 'web') {
+      return showWebAlert(title, body, id);
+    }
+    const N = getNotifications();
+    if (!N) return false;
     try {
       await N.scheduleNotificationAsync({
         identifier: id,
         content: {
-          title: n.delayTitle(p.line, s.common.durMin(Math.max(1, Math.round(p.departInSec / 60)))),
-          body: [
-            p.leg ? n.stopHere(p.leg.fromStop) : null,
-            n.newDeparture(p.departAt),
-            p.delayMin >= 2 ? n.delayLate(p.delayMin) : '',
-          ].filter(Boolean).join(' • '),
+          title,
+          body,
           data: tripNotificationData(trip, 'disruption'),
           sound: 'default',
           categoryIdentifier: ALERT_CATEGORY,
@@ -145,16 +173,21 @@ export function sendDisruptionAlert(
 
 export function sendArrivedNotification(p: TripProgress, trip: TrackedTrip): Promise<void> {
   return enqueue(async () => {
-    const N = getNotifications();
-    if (!N) return;
     const copy = buildTripCopy(p, trip.connection, tr(), !!trip.sharedJourney);
     const id = `kilometr.alert.arrived.${trip.id}`;
+    const body = [copy.subtitle, copy.body].filter(Boolean).join(' • ');
+    if (Platform.OS === 'web') {
+      await showWebAlert(copy.title, body, id);
+      return;
+    }
+    const N = getNotifications();
+    if (!N) return;
     try {
       await N.scheduleNotificationAsync({
         identifier: id,
         content: {
           title: copy.title,
-          body: [copy.subtitle, copy.body].filter(Boolean).join(' • '),
+          body,
           data: tripNotificationData(trip, 'arrived'),
           sound: 'default',
           categoryIdentifier: ALERT_CATEGORY,

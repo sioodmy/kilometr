@@ -1,0 +1,57 @@
+name: Deploy Web PWA to Cloudflare Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'src/**'
+      - 'modules/kilometr-raptor/**'
+      - 'public/**'
+      - 'assets/**'
+      - 'scripts/postbuild-web.mjs'
+      - 'scripts/bundle-maplibre.mjs'
+      - 'app.json'
+      - 'app.config.js'
+      - 'metro.config.js'
+      - 'babel.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-web.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 'deploy-web-pwa'
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy PWA (web.kilometr.app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js & install dependencies
+        uses: ./.github/actions/setup-node-ci
+        with:
+          cache-dependency-path: package-lock.json
+
+      - name: Build Expo Web PWA
+        run: npm run build:web
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages deploy dist \
+            --project-name=kilometr-web \
+            --branch=main \
+            --commit-dirty=true

@@ -37,6 +37,16 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    files: ['public/sw.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.serviceworker,
+        __KM_PRECACHE_URLS__: 'readonly',
+      },
+    },
+  },
   // Skrypty są celowo commonjs (app.config, pluginy Expo, skrypty tsx).
   {
     files: ['**/*.js', '**/*.cjs', 'server/scripts/**/*.ts', 'test/**/*.ts'],

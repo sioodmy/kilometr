@@ -14,7 +14,10 @@
 // - Pliki trzymane w documentDirectory/.kv/ (lub fallback cacheDirectory).
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
+const IS_WEB = Platform.OS === 'web';
+const WEB_PREFIX = 'kilometr.kv:';
 const memCache = new Map<string, string>();
 const pending = new Map<string, Promise<void>>();
 let dirReady = false;
@@ -102,6 +105,12 @@ async function readValue(key: string): Promise<string | null> {
   if (memCache.has(key)) {
     return memCache.get(key) ?? null;
   }
+  if (IS_WEB) {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    const val = window.localStorage.getItem(`${WEB_PREFIX}${key}`);
+    if (val !== null) memCache.set(key, val);
+    return val;
+  }
   const dir = await ensureDir();
   if (!dir) throw new Error('kv storage directory unavailable');
   const path = keyToFile(dir, key);
@@ -125,6 +134,13 @@ export async function kvSetStrict(key: string, value: string): Promise<void> {
 }
 
 async function writeValue(key: string, value: string): Promise<void> {
+  if (IS_WEB) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(`${WEB_PREFIX}${key}`, value);
+    }
+    memCache.set(key, value);
+    return;
+  }
   const dir = await ensureDir();
   if (!dir) throw new Error('kv storage directory unavailable');
   const path = keyToFile(dir, key);
@@ -142,6 +158,13 @@ export async function kvRemove(key: string): Promise<void> {
 
 async function removeValue(key: string): Promise<void> {
   try {
+    if (IS_WEB) {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(`${WEB_PREFIX}${key}`);
+      }
+      memCache.delete(key);
+      return;
+    }
     const dir = await ensureDir();
     if (!dir) return;
     const path = keyToFile(dir, key);

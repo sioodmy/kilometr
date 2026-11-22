@@ -1,6 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
+import { Platform } from 'react-native';
 import { kvGet, kvRemove, kvSet } from './storage';
+import {
+  isWebFileUri,
+  webFileDelete,
+  webFileExists,
+  webFileOpenInTab,
+  webFilePut,
+  webFileToDataUrl,
+} from './webFiles';
 import {
   base64ToUint8Array,
   extractBarcodesFromPdf,
@@ -103,6 +112,9 @@ async function ensureTicketDir(): Promise<string | null> {
  */
 export function resolveTicketUri(storedUri?: string | null, fallbackFileName?: string): string | null {
   if (!storedUri && !fallbackFileName) return null;
+  if (Platform.OS === 'web' || isWebFileUri(storedUri) || storedUri?.startsWith('data:')) {
+    return storedUri ?? null;
+  }
   const dir = getTicketDir();
   if (!dir) return storedUri ?? null;
   const rawFileName = storedUri ? storedUri.split('/').pop()?.split('?')[0] : fallbackFileName;
@@ -114,6 +126,10 @@ async function checkTicketFileExists(
   uri: string,
   fallbackFileName?: string,
 ): Promise<{ exists: boolean; resolvedUri: string }> {
+  if (Platform.OS === 'web' || isWebFileUri(uri)) {
+    const exists = await webFileExists(uri);
+    return { exists, resolvedUri: uri };
+  }
   try {
     const directInfo = await FileSystem.getInfoAsync(uri);
     if (directInfo.exists) {
@@ -132,6 +148,21 @@ async function checkTicketFileExists(
   }
 
   return { exists: false, resolvedUri: resolved ?? uri };
+}
+
+async function hydrateWebTicketBarcodes(ticket: AttachedRailTicket): Promise<AttachedRailTicket> {
+  if (Platform.OS !== 'web') return ticket;
+  if (ticket.barcodeUri && isWebFileUri(ticket.barcodeUri)) {
+    const url = await webFileToDataUrl(ticket.barcodeUri);
+    if (url) ticket.barcodeUri = url;
+  }
+  if (ticket.barcodeUris && ticket.barcodeUris.length > 0) {
+    const resolved = await Promise.all(
+      ticket.barcodeUris.map(async (u) => (isWebFileUri(u) ? (await webFileToDataUrl(u)) ?? u : u)),
+    );
+    ticket.barcodeUris = resolved;
+  }
+  return ticket;
 }
 
 function resolveTicketUrisInPlace(ticket: AttachedRailTicket, resolvedFileUri?: string): AttachedRailTicket {
@@ -325,7 +356,7 @@ export async function getTicketForConnection(
         const { exists, resolvedUri } = await checkTicketFileExists(parsed.fileUri, `${parsed.id}.pdf`);
         if (exists) {
           resolveTicketUrisInPlace(parsed, resolvedUri);
-          return parsed;
+          return await hydrateWebTicketBarcodes(parsed);
         }
       } catch {}
     }
@@ -358,7 +389,7 @@ export async function getTicketForConnection(
           if (exists) {
             resolveTicketUrisInPlace(cand, resolvedUri);
             await kvSet(`ticket:${connectionId}`, JSON.stringify(cand));
-            return cand;
+            return await hydrateWebTicketBarcodes(cand);
           }
         } catch {}
       }
@@ -379,7 +410,7 @@ export async function getTicketForConnection(
           if (exists) {
             resolveTicketUrisInPlace(cand, resolvedUri);
             await kvSet(`ticket:${connectionId}`, JSON.stringify(cand));
-            return cand;
+            return await hydrateWebTicketBarcodes(cand);
           }
         }
       } catch {}
@@ -430,20 +461,31 @@ export async function deleteTicketForConnection(connectionId: string): Promise<v
   }
 
   if (foundTicket) {
-    const targetFile = resolveTicketUri(foundTicket.fileUri, `${foundTicket.id}.pdf`) ?? foundTicket.fileUri;
-    try {
-      await FileSystem.deleteAsync(targetFile, { idempotent: true });
-    } catch {}
-
-    const barcodes = [
-      ...(foundTicket.barcodeUri ? [foundTicket.barcodeUri] : []),
-      ...(foundTicket.barcodeUris ?? []),
-    ];
-    for (const bUri of barcodes) {
-      const resolved = resolveTicketUri(bUri) ?? bUri;
+    if (Platform.OS === 'web' || isWebFileUri(foundTicket.fileUri)) {
+      await webFileDelete(foundTicket.fileUri);
+      const barcodes = [
+        ...(foundTicket.barcodeUri ? [foundTicket.barcodeUri] : []),
+        ...(foundTicket.barcodeUris ?? []),
+      ];
+      for (const bUri of barcodes) {
+        if (isWebFileUri(bUri)) await webFileDelete(bUri);
+      }
+    } else {
+      const targetFile = resolveTicketUri(foundTicket.fileUri, `${foundTicket.id}.pdf`) ?? foundTicket.fileUri;
       try {
-        await FileSystem.deleteAsync(resolved, { idempotent: true });
+        await FileSystem.deleteAsync(targetFile, { idempotent: true });
       } catch {}
+
+      const barcodes = [
+        ...(foundTicket.barcodeUri ? [foundTicket.barcodeUri] : []),
+        ...(foundTicket.barcodeUris ?? []),
+      ];
+      for (const bUri of barcodes) {
+        const resolved = resolveTicketUri(bUri) ?? bUri;
+        try {
+          await FileSystem.deleteAsync(resolved, { idempotent: true });
+        } catch {}
+      }
     }
 
     if (foundTicket.id) {
@@ -518,58 +560,93 @@ export async function importTicketPdf(
     ? fetchDelayAtAttachSec(connection).catch(() => null)
     : Promise.resolve(null);
 
-  const dir = await ensureTicketDir();
-  if (!dir) throw new Error('Tickets directory unavailable');
-
   const ticketId = `ticket_${Date.now()}`;
-  const targetUri = `${dir}${ticketId}.pdf`;
-
-  // Kopiowanie pliku do trwałego folderu aplikacji
-  await FileSystem.copyAsync({
-    from: asset.uri,
-    to: targetUri,
-  });
-
-  try {
-    await FileSystem.deleteAsync(asset.uri, { idempotent: true });
-  } catch {}
-
-  // Odczyt zawartości, analiza tekstu i ekstrakcja kodu kreskowego/Aztec
+  let targetUri: string;
   let metadata: ParsedTicketMetadata = {};
   let barcodeUri: string | null = null;
   const barcodeUris: string[] = [];
   let trustedBarcode = false;
   let text = '';
 
-  try {
-    const base64 = await FileSystem.readAsStringAsync(targetUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    const bytes = base64ToUint8Array(base64);
+  if (Platform.OS === 'web') {
+    let bytes: Uint8Array;
+    if (asset.file) {
+      bytes = new Uint8Array(await asset.file.arrayBuffer());
+    } else {
+      const res = await fetch(asset.uri);
+      bytes = new Uint8Array(await res.arrayBuffer());
+    }
+    declaredSize = bytes.byteLength;
+    if (declaredSize > MAX_TICKET_FILE_SIZE) {
+      return { status: 'rejected', reason: 'tooLarge' };
+    }
+    targetUri = await webFilePut(`${ticketId}.pdf`, bytes, 'application/pdf');
+    try {
+      text = extractTextFromPdf(bytes);
+      metadata = parseRailTicketText(text, asset.name);
+      try {
+        const barcodes = extractBarcodesFromPdf(bytes);
+        trustedBarcode = barcodes.some((bc) => bc.monochromeVerified);
+        for (let i = 0; i < barcodes.length; i++) {
+          const bc = barcodes[i];
+          const mime = bc.extension === 'jpg' ? 'image/jpeg' : 'image/png';
+          const bcUri = await webFilePut(`${ticketId}_barcode_${i}.${bc.extension}`, bc.bytes, mime);
+          barcodeUris.push(bcUri);
+        }
+        if (barcodeUris.length > 0) barcodeUri = barcodeUris[0];
+      } catch (barcodeErr) {
+        console.warn('[TicketStorage] Barcode extraction error:', barcodeErr);
+      }
+    } catch (err) {
+      console.warn('[TicketStorage] PDF parsing failed, keeping basic metadata:', err);
+    }
+  } else {
+    const dir = await ensureTicketDir();
+    if (!dir) throw new Error('Tickets directory unavailable');
 
-    text = extractTextFromPdf(bytes);
-    metadata = parseRailTicketText(text, asset.name);
+    targetUri = `${dir}${ticketId}.pdf`;
+
+    // Kopiowanie pliku do trwałego folderu aplikacji
+    await FileSystem.copyAsync({
+      from: asset.uri,
+      to: targetUri,
+    });
 
     try {
-      const barcodes = extractBarcodesFromPdf(bytes);
-      trustedBarcode = barcodes.some((bc) => bc.monochromeVerified);
-      for (let i = 0; i < barcodes.length; i++) {
-        const bc = barcodes[i];
-        const bcUri = `${dir}${ticketId}_barcode_${i}.${bc.extension}`;
-        const bcBase64 = uint8ArrayToBase64(bc.bytes);
-        await FileSystem.writeAsStringAsync(bcUri, bcBase64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        barcodeUris.push(bcUri);
+      await FileSystem.deleteAsync(asset.uri, { idempotent: true });
+    } catch {}
+
+    // Odczyt zawartości, analiza tekstu i ekstrakcja kodu kreskowego/Aztec
+    try {
+      const base64 = await FileSystem.readAsStringAsync(targetUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const bytes = base64ToUint8Array(base64);
+
+      text = extractTextFromPdf(bytes);
+      metadata = parseRailTicketText(text, asset.name);
+
+      try {
+        const barcodes = extractBarcodesFromPdf(bytes);
+        trustedBarcode = barcodes.some((bc) => bc.monochromeVerified);
+        for (let i = 0; i < barcodes.length; i++) {
+          const bc = barcodes[i];
+          const bcUri = `${dir}${ticketId}_barcode_${i}.${bc.extension}`;
+          const bcBase64 = uint8ArrayToBase64(bc.bytes);
+          await FileSystem.writeAsStringAsync(bcUri, bcBase64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          barcodeUris.push(bcUri);
+        }
+        if (barcodeUris.length > 0) {
+          barcodeUri = barcodeUris[0];
+        }
+      } catch (barcodeErr) {
+        console.warn('[TicketStorage] Barcode extraction error:', barcodeErr);
       }
-      if (barcodeUris.length > 0) {
-        barcodeUri = barcodeUris[0];
-      }
-    } catch (barcodeErr) {
-      console.warn('[TicketStorage] Barcode extraction error:', barcodeErr);
+    } catch (err) {
+      console.warn('[TicketStorage] PDF parsing failed, keeping basic metadata:', err);
     }
-  } catch (err) {
-    console.warn('[TicketStorage] PDF parsing failed, keeping basic metadata:', err);
   }
 
   // 2. Bezpiecznik semantyczny: czy to faktycznie jest bilet kolejowy?
@@ -724,12 +801,17 @@ export async function importTicketPdf(
     console.warn('[TicketStorage] cleanupExpiredTickets background error:', err),
   );
 
-  return { status: 'attached', ticket };
+  return { status: 'attached', ticket: await hydrateWebTicketBarcodes({ ...ticket }) };
 }
 
 /** Usuwa plik biletu i wyekstrahowane kody po odrzuconym imporcie. */
 async function discardImportedFiles(targetUri: string, barcodeUris: string[]): Promise<void> {
   try {
+    if (Platform.OS === 'web' || isWebFileUri(targetUri)) {
+      await webFileDelete(targetUri);
+      for (const uri of barcodeUris) await webFileDelete(uri);
+      return;
+    }
     await FileSystem.deleteAsync(targetUri, { idempotent: true });
     for (const uri of barcodeUris) {
       await FileSystem.deleteAsync(uri, { idempotent: true });
@@ -830,15 +912,26 @@ export async function cleanupExpiredTickets(
           (await kvGet(`ticket:${entry.connectionId}`));
         if (ticketRaw) {
           const ticket = JSON.parse(ticketRaw) as AttachedRailTicket;
-          const targetFile = resolveTicketUri(ticket.fileUri, `${ticket.id}.pdf`) ?? ticket.fileUri;
-          await FileSystem.deleteAsync(targetFile, { idempotent: true });
-          const barcodes = [
-            ...(ticket.barcodeUri ? [ticket.barcodeUri] : []),
-            ...(ticket.barcodeUris ?? []),
-          ];
-          for (const uri of barcodes) {
-            const resolved = resolveTicketUri(uri) ?? uri;
-            await FileSystem.deleteAsync(resolved, { idempotent: true });
+          if (Platform.OS === 'web' || isWebFileUri(ticket.fileUri)) {
+            await webFileDelete(ticket.fileUri);
+            const barcodes = [
+              ...(ticket.barcodeUri ? [ticket.barcodeUri] : []),
+              ...(ticket.barcodeUris ?? []),
+            ];
+            for (const uri of barcodes) {
+              if (isWebFileUri(uri)) await webFileDelete(uri);
+            }
+          } else {
+            const targetFile = resolveTicketUri(ticket.fileUri, `${ticket.id}.pdf`) ?? ticket.fileUri;
+            await FileSystem.deleteAsync(targetFile, { idempotent: true });
+            const barcodes = [
+              ...(ticket.barcodeUri ? [ticket.barcodeUri] : []),
+              ...(ticket.barcodeUris ?? []),
+            ];
+            for (const uri of barcodes) {
+              const resolved = resolveTicketUri(uri) ?? uri;
+              await FileSystem.deleteAsync(resolved, { idempotent: true });
+            }
           }
         }
         await kvRemove(`ticket:${entry.connectionId}`);
@@ -866,6 +959,9 @@ export async function cleanupExpiredTickets(
  * Otwiera bilet PDF za pomocą natywnego mechanizmu udostępniania / podglądu systemu.
  */
 export async function openTicketPdf(ticket: AttachedRailTicket): Promise<boolean> {
+  if (Platform.OS === 'web' || isWebFileUri(ticket.fileUri)) {
+    return webFileOpenInTab(ticket.fileUri);
+  }
   let Sharing: typeof import('expo-sharing');
   try {
     Sharing = await import('expo-sharing');
