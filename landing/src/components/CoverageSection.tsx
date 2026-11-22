@@ -87,12 +87,14 @@ function computeCalloutPosition(
   x: number,
   y: number,
   label: string,
+  dotR: number,
 ): { boxX: number; boxY: number; boxW: number; textX: number; textY: number } {
   const boxW = Math.max(76, Math.round(label.length * 7.6 + 24));
   const boxH = 26;
   const boxX = Math.max(10, Math.min(MAP_VIEWBOX_SIZE - boxW - 10, x - boxW / 2));
-  const placeBelow = y < 48;
-  const boxY = placeBelow ? y + 16 : y - boxH - 14;
+  const clearance = Math.round(dotR + 12);
+  const placeBelow = y < clearance + boxH + 8;
+  const boxY = placeBelow ? y + clearance : y - boxH - clearance;
   return {
     boxX,
     boxY,
@@ -140,13 +142,6 @@ export function CoverageSection() {
     [],
   );
 
-  const orderedProjectedCities = useMemo(() => {
-    return [...projectedCities].sort((a, b) => {
-      const rank = (key: string) => (key === hoveredKey ? 2 : key === selectedKey ? 1 : 0);
-      return rank(a.place.key) - rank(b.place.key);
-    });
-  }, [projectedCities, selectedKey, hoveredKey]);
-
   const sortedCities = useMemo(
     () => [...COVERAGE_CITIES].sort((a, b) => a.name.localeCompare(b.name, 'pl')),
     [],
@@ -164,6 +159,14 @@ export function CoverageSection() {
   );
 
   const isSearching = query.trim().length > 0;
+
+  const orderedProjectedCities = useMemo(() => {
+    const rank = (key: CoveragePlace["key"]) =>
+      isSearching && matchedKeys.has(key) ? 1 : 0;
+    return [...projectedCities].sort(
+      (a, b) => rank(a.place.key) - rank(b.place.key) || a.place.populationK - b.place.populationK,
+    );
+  }, [projectedCities, isSearching, matchedKeys]);
 
   const selectedPlace: CoveragePlace = useMemo(
     () => COVERAGE_CITIES.find((place) => place.key === selectedKey) ?? COVERAGE_CITIES[0]!,
@@ -278,6 +281,13 @@ export function CoverageSection() {
                 const isSelected = place.key === selectedPlace.key;
                 const isHovered = place.key === hoveredKey;
                 const isDimmed = isSearching && !matchedKeys.has(place.key) && !isSelected;
+                const baseR = place.pinRadius;
+                const dotR = Number(
+                  (isSelected ? baseR + 1.8 : isHovered ? baseR + 1.2 : baseR).toFixed(2),
+                );
+                const hitR = Number(Math.max(6.4, baseR + Math.max(0.8, 4.3 - baseR * 0.5)).toFixed(2));
+                const ringR = Number((baseR + 5.8).toFixed(2));
+                const haloR = Number((baseR + 10.8).toFixed(2));
 
                 return (
                   <g
@@ -295,16 +305,16 @@ export function CoverageSection() {
                     onFocus={() => setHoveredKey(place.key)}
                     onBlur={() => setHoveredKey((prev) => (prev === place.key ? null : prev))}
                   >
-                    <circle className="cov-pin-hit" r={10} cx={0} cy={0} />
+                    <circle className="cov-pin-hit" r={hitR} cx={0} cy={0} />
                     {isSelected && (
                       <>
-                        <circle className="cov-pin-halo" r={15} cx={0} cy={0} />
-                        <circle className="cov-pin-ring" r={10} cx={0} cy={0} />
+                        <circle className="cov-pin-halo" r={haloR} cx={0} cy={0} />
+                        <circle className="cov-pin-ring" r={ringR} cx={0} cy={0} />
                       </>
                     )}
                     <circle
                       className="cov-pin-dot"
-                      r={isSelected ? 6 : isHovered ? 5.2 : 4}
+                      r={dotR}
                       cx={0}
                       cy={0}
                     />
@@ -314,10 +324,14 @@ export function CoverageSection() {
 
               {activeCalloutItem &&
                 (() => {
+                  const activeR =
+                    activeCalloutItem.place.pinRadius +
+                    (activeCalloutItem.place.key === selectedPlace.key ? 1.8 : 1.2);
                   const pos = computeCalloutPosition(
                     activeCalloutItem.x,
                     activeCalloutItem.y,
                     activeCalloutItem.place.name,
+                    activeR,
                   );
                   return (
                     <g className="cov-callout" pointerEvents="none" aria-hidden="true">

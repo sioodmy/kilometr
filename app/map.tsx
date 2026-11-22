@@ -1,8 +1,12 @@
+// Ekran pełnoekranowej mapy trasy połączenia w stylu M3 Expressive:
+// pływająca kapsuła podsumowania, szyna szybkich akcji (GPS, śledzenie pojazdu,
+// warstwy POI, kadrowanie, zoom), inspektor klikniętego przystanku oraz zwijany
+// dolny panel etapów podróży.
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   type LayoutChangeEvent,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,8 +15,26 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, ChevronLeft, ChevronRight, ScanLine, WifiOff } from '../src/components/icons';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Layers,
+  LocateFixed,
+  Minus,
+  Navigation,
+  Plus,
+  RefreshCw,
+  ScanLine,
+  WifiOff,
+  X,
+} from '../src/components/icons';
 import { DirectionsWalk } from '../src/components/DirectionsWalk';
+import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
+import { SpringPressable } from '../src/components/SpringPressable';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -23,7 +45,7 @@ import {
   straightGeometry,
   pinRouteGeometry,
 } from '../src/services/routeGeometry';
-import { RouteMap, type RouteMapHandle } from '../src/components/RouteMap';
+import { RouteMap, type MapStopTap, type RouteMapHandle } from '../src/components/RouteMap';
 import {
   getLineColors,
   inferTransitMode,
@@ -32,6 +54,7 @@ import {
 } from '../src/components/LineBadge';
 import { buildMapStages, resolveStageSelection, useEnrichedConnection } from '../src/map/stages';
 import { acquireMapServerForRoute } from '../src/services/mapServerLease';
+import { useCurrentLocation } from '../src/services/currentLocation';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
@@ -52,6 +75,14 @@ function nowSec(): number {
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
 }
 
+function formatClockSec(sec?: number): string | null {
+  if (typeof sec !== 'number' || !Number.isFinite(sec)) return null;
+  const wrapped = ((Math.floor(sec) % 86400) + 86400) % 86400;
+  const hh = String(Math.floor(wrapped / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((wrapped % 3600) / 60)).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 export default function RouteMapScreen() {
   const s = useStrings();
   const router = useRouter();
@@ -63,6 +94,7 @@ export default function RouteMapScreen() {
   }>();
   const id = normalizeConnectionId(routeId ?? '');
 
+  const { location: userLoc } = useCurrentLocation(true, false);
   const [loadedItem, setItem] = useState<Connection | null>(null);
   const { trip: trackedTrip } = useTrackedTrip();
   const trackedConnection =
@@ -70,11 +102,15 @@ export default function RouteMapScreen() {
   const rawItem = trackedConnection ?? (loadedItem?.id === String(id) ? loadedItem : null);
   const item = useEnrichedConnection(rawItem) ?? rawItem;
   const [loadFailed, setLoadFailed] = useState(false);
-  const [panelHeight, setPanelHeight] = useState(120);
-  const [headerHeight, setHeaderHeight] = useState(96);
+  const [panelHeight, setPanelHeight] = useState(140);
+  const [headerHeight, setHeaderHeight] = useState(72);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(initialStageId ?? null);
   const [geometryVersion, setGeometryVersion] = useState(0);
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
+  const [followVehicle, setFollowVehicle] = useState(false);
+  const [poiVisible, setPoiVisible] = useState(true);
+  const [deckCollapsed, setDeckCollapsed] = useState(false);
+  const [inspectedStop, setInspectedStop] = useState<MapStopTap | null>(null);
   const [tilesDown, setTilesDown] = useState(false);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -86,7 +122,7 @@ export default function RouteMapScreen() {
   const pendingScrollStageIdRef = useRef<string | null>(null);
   const geometryRef = useRef(new Map<string, Coord[]>());
 
-  // Mapa pokazuje pojazd na żywo, więc poll chodzi tylko, gdy ekran widać.
+  // Mapa pokazuje pojazd na żywo, więc poll działa tylko, gdy ekran jest aktywny.
   useFocusEffect(
     useCallback(() => {
       liveTracker.acquire();
@@ -121,7 +157,7 @@ export default function RouteMapScreen() {
 
   useEffect(() => () => clearOfflinePillTimer(), [clearOfflinePillTimer]);
 
-  // ─── Połączenie ──────────────────────────────────────────────
+  // ─── Połączenie ───────────────────────────────────────────────
   useEffect(() => {
     if (trackedConnection) {
       setItem(trackedConnection);
@@ -162,12 +198,15 @@ export default function RouteMapScreen() {
     return buildMapStages(route, geometryRef.current);
   }, [route, geometryVersion]);
 
-  const compact = stages.length > 1 ? width / fontScale < 460 : width / fontScale < 320;
-
   const activeStage = useMemo(
     () => resolveStageSelection(stages, selectedStageId),
     [stages, selectedStageId],
   );
+
+  const inspectedLeg = useMemo(() => {
+    if (!inspectedStop || !route) return null;
+    return route.legs.find((l) => l.id === inspectedStop.legId) ?? null;
+  }, [inspectedStop, route]);
 
   const lastRouteIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -181,15 +220,17 @@ export default function RouteMapScreen() {
       lastRouteIdRef.current = route.id;
       chipLayoutsRef.current = {};
       setSelectedStageId(null);
+      setInspectedStop(null);
+      setFollowVehicle(false);
     }
   }, [initialStageId, route?.id]);
 
   const expandedCardWidth = useMemo(
-    () => Math.min(width - 40, 290 * Math.max(1, fontScale)),
+    () => Math.min(width - 40, 296 * Math.max(1, fontScale)),
     [fontScale, width],
   );
   const inactiveTransitMaxWidth = useMemo(
-    () => Math.min(width - 48, 172 * Math.max(1, fontScale)),
+    () => Math.min(width - 48, 176 * Math.max(1, fontScale)),
     [fontScale, width],
   );
 
@@ -204,7 +245,7 @@ export default function RouteMapScreen() {
   );
 
   useEffect(() => {
-    if (!activeStage) return;
+    if (!activeStage || deckCollapsed) return;
     const targetId = activeStage.id;
     pendingScrollStageIdRef.current = targetId;
     const raf = requestAnimationFrame(() => {
@@ -214,7 +255,7 @@ export default function RouteMapScreen() {
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [activeStage, scrollChipIntoView]);
+  }, [activeStage, deckCollapsed, scrollChipIntoView]);
 
   // ─── Geometria ulic i torów (OSRM / OSM Overpass, w tle) ──────
   const pushGeometry = useCallback((legId: string, coords: Coord[]) => {
@@ -224,15 +265,11 @@ export default function RouteMapScreen() {
   }, []);
 
   // ─── Zestaw mapy offline ──────────────────────────────────────
-  // undefined = jeszcze sprawdzamy lokalny serwer; null = brak pakietu (CDN);
-  // string = kafle z telefonu. WebView montujemy dopiero po decyzji, inaczej
-  // mapa chwilę ładuje CDN, pada bez sieci i miga żółtym „offline".
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
     let release: (() => void) | null = null;
     (async () => {
-      // Trasy międzyregionalne wychodzą poza pakiet miasta: kafelki online.
       const lease = await acquireMapServerForRoute(route);
       if (cancelled) {
         lease.release();
@@ -267,8 +304,6 @@ export default function RouteMapScreen() {
         },
         abort.signal,
       );
-      // Trasa, którą użytkownik właśnie otworzył, zostaje w cache na stałe:
-      // to ona najczęściej przyda się offline.
       if (!cancelled) void pinRouteGeometry(route);
     })();
     return () => {
@@ -286,7 +321,7 @@ export default function RouteMapScreen() {
     }
   }, [activeStage]);
 
-  // ─── Pojazd na żywo ──────────────────────────────────────────
+  // ─── Pojazd na żywo ───────────────────────────────────────────
   useEffect(() => {
     if (!item) return;
     let cancelled = false;
@@ -300,9 +335,6 @@ export default function RouteMapScreen() {
         shownVehicleRef.current = null;
         return;
       }
-      // GPS pasażera wygrywa z feedem: gdy jedziemy tym pociągiem, nasz
-      // telefon mówi prawdę o pozycji, a feed PKP potrafi być nieświeży
-      // (pociąg „stoi" na stacji początkowej godzinę po odjeździe).
       const onboard = getOnboardEstimate();
       if (trackedConnection && onboard && Date.now() - onboard.fix.timestamp <= 60_000) {
         const leg = legs.find((l) => l.id === onboard.legId);
@@ -353,9 +385,6 @@ export default function RouteMapScreen() {
       shownVehicleRef.current = match.vehicle.vehicleId;
       const displayLine = leg.line || match.vehicle.line;
       const { bg } = getLineColors(displayLine, leg.mode);
-      // Tryb bierze się z leg.mode (planner ustawia go z route_type feedu),
-      // więc metro i SKA niosą własne tryby. 'walk' tu nie trafia, ale
-      // unia MapVehicle go nie zna, stąd mapowanie na autobus.
       const vehMode = inferTransitMode(leg.mode, displayLine);
       setVehicle({
         vehicleId: match.vehicle.vehicleId,
@@ -381,9 +410,21 @@ export default function RouteMapScreen() {
     };
   }, [item, route, trackedConnection]);
 
-  // ─── Akcje ──────────────────────────────────────────────────
+  // Automatyczne podążanie kamery za pojazdem live, dopóki użytkownik nie przesunie mapy.
+  useEffect(() => {
+    if (!followVehicle) return;
+    if (!vehicle) {
+      setFollowVehicle(false);
+      return;
+    }
+    mapRef.current?.centerOn(vehicle.lat, vehicle.lon, 15.6);
+  }, [followVehicle, vehicle]);
+
+  // ─── Akcje ────────────────────────────────────────────────────
   const handleSelectStage = useCallback(
     (stageId: string) => {
+      setFollowVehicle(false);
+      setInspectedStop(null);
       if (activeStage?.id === stageId) mapRef.current?.fit();
       else setSelectedStageId(stageId);
     },
@@ -392,6 +433,8 @@ export default function RouteMapScreen() {
 
   const handleLegTap = useCallback(
     (legId: string) => {
+      setFollowVehicle(false);
+      setInspectedStop(null);
       const next = resolveStageSelection(stages, legId, activeStage?.id ?? null);
       if (next) {
         setSelectedStageId(next.id);
@@ -400,9 +443,20 @@ export default function RouteMapScreen() {
     [activeStage?.id, stages],
   );
 
+  const handleStopTap = useCallback((stop: MapStopTap) => {
+    setFollowVehicle(false);
+    setInspectedStop(stop);
+  }, []);
+
+  const handleUserDrag = useCallback(() => {
+    setFollowVehicle(false);
+  }, []);
+
   const handleStepStage = useCallback(
     (delta: -1 | 1) => {
       if (stages.length === 0) return;
+      setFollowVehicle(false);
+      setInspectedStop(null);
       if (!activeStage) {
         setSelectedStageId(delta > 0 ? stages[0].id : stages[stages.length - 1].id);
         return;
@@ -418,9 +472,28 @@ export default function RouteMapScreen() {
   );
 
   const handleShowRoute = useCallback(() => {
+    setFollowVehicle(false);
+    setInspectedStop(null);
     if (activeStage === null) mapRef.current?.fit();
     else setSelectedStageId(null);
   }, [activeStage]);
+
+  const handleCenterUser = useCallback(() => {
+    if (!userLoc) return;
+    setFollowVehicle(false);
+    mapRef.current?.centerOn(userLoc.lat, userLoc.lon, 15.8);
+  }, [userLoc]);
+
+  const handleToggleFollowVehicle = useCallback(() => {
+    if (!vehicle) return;
+    setFollowVehicle((prev) => {
+      const next = !prev;
+      if (next) {
+        mapRef.current?.centerOn(vehicle.lat, vehicle.lon, 15.6);
+      }
+      return next;
+    });
+  }, [vehicle]);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -451,32 +524,102 @@ export default function RouteMapScreen() {
     [panelHeight],
   );
 
-  // ─── Render ──────────────────────────────────────────────────
+  const railActions = useMemo<MapActionItem[]>(() => {
+    const list: MapActionItem[] = [
+      {
+        id: 'fit-route',
+        icon: ScanLine,
+        accessibilityLabel: s.map.fitRouteA11y,
+        active: activeStage === null && !followVehicle,
+        onPress: handleShowRoute,
+      },
+      {
+        id: 'poi-toggle',
+        icon: Layers,
+        accessibilityLabel: s.map.togglePoiA11y,
+        active: poiVisible,
+        onPress: () => setPoiVisible((v) => !v),
+      },
+    ];
+    if (vehicle) {
+      list.unshift({
+        id: 'follow-vehicle',
+        icon: Navigation,
+        accessibilityLabel: s.map.followVehicleA11y,
+        active: followVehicle,
+        onPress: handleToggleFollowVehicle,
+      });
+    }
+    return list;
+  }, [
+    activeStage,
+    followVehicle,
+    handleShowRoute,
+    handleToggleFollowVehicle,
+    poiVisible,
+    s.map.fitRouteA11y,
+    s.map.followVehicleA11y,
+    s.map.togglePoiA11y,
+    vehicle,
+  ]);
+
+  const zoomPair = useMemo<[MapActionItem, MapActionItem]>(
+    () => [
+      {
+        id: 'zoom-in',
+        icon: Plus,
+        accessibilityLabel: s.liveMap.zoomInA11y,
+        onPress: () => mapRef.current?.zoomBy(1),
+      },
+      {
+        id: 'zoom-out',
+        icon: Minus,
+        accessibilityLabel: s.liveMap.zoomOutA11y,
+        onPress: () => mapRef.current?.zoomBy(-1),
+      },
+    ],
+    [s.liveMap.zoomInA11y, s.liveMap.zoomOutA11y],
+  );
+
+  const locationAction = useMemo<MapActionItem | undefined>(() => {
+    if (!userLoc) return undefined;
+    return {
+      id: 'my-location',
+      icon: LocateFixed,
+      accessibilityLabel: s.map.myLocationA11y,
+      tone: 'secondary',
+      onPress: handleCenterUser,
+    };
+  }, [handleCenterUser, s.map.myLocationA11y, userLoc]);
+
+  // ─── Render ───────────────────────────────────────────────────
   if (loadFailed && !item) {
     return (
       <View style={styles.safe}>
-        <View style={[styles.headerSafe, { paddingTop: insets.top + 6 }]}>
-          <Pressable
+        <View style={[styles.headerSafe, { paddingTop: insets.top + 8 }]}>
+          <SpringPressable
             onPress={goBack}
+            haptic="selection"
             style={styles.backBtn}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={22} color={scheme.onSurface} />
-          </Pressable>
+            <ArrowLeft size={22} color={scheme.onSurface} />
+          </SpringPressable>
           <Text style={styles.headerTitle}>{s.map.title}</Text>
         </View>
         <View style={styles.centered}>
           <Text style={styles.centeredTitle}>{s.map.loadFail}</Text>
           <Text style={styles.centeredSub}>{s.map.loadFailBody}</Text>
-          <Pressable
+          <SpringPressable
             onPress={goBack}
-            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+            haptic="selection"
+            style={styles.primaryBtn}
             accessibilityRole="button"
             accessibilityLabel={s.map.backToDetails}
           >
             <Text style={styles.primaryBtnText}>{s.map.backToDetails}</Text>
-          </Pressable>
+          </SpringPressable>
         </View>
       </View>
     );
@@ -485,15 +628,16 @@ export default function RouteMapScreen() {
   if (!item || !route) {
     return (
       <View style={styles.safe}>
-        <View style={[styles.headerSafe, { paddingTop: insets.top + 6 }]}>
-          <Pressable
+        <View style={[styles.headerSafe, { paddingTop: insets.top + 8 }]}>
+          <SpringPressable
             onPress={goBack}
+            haptic="selection"
             style={styles.backBtn}
             accessibilityRole="button"
             accessibilityLabel={s.map.backA11y}
           >
-            <ChevronLeft size={22} color={scheme.onSurface} />
-          </Pressable>
+            <ArrowLeft size={22} color={scheme.onSurface} />
+          </SpringPressable>
           <Text style={styles.headerTitle}>{s.map.title}</Text>
         </View>
         <View style={styles.centered}>
@@ -505,6 +649,13 @@ export default function RouteMapScreen() {
   }
 
   const delayMin = item.live ? item.delayMin : 0;
+  const inspectedTime = formatClockSec(inspectedStop?.arriveSec);
+  const inspectedRoleLabel =
+    inspectedStop?.role === 'board'
+      ? s.map.board
+      : inspectedStop?.role === 'alight'
+        ? s.map.alight
+        : s.map.stopRoleIntermediate;
 
   return (
     <View style={styles.root}>
@@ -513,17 +664,24 @@ export default function RouteMapScreen() {
           ref={mapRef}
           route={route}
           vehicle={vehicle}
+          userLat={userLoc?.lat ?? null}
+          userLon={userLoc?.lon ?? null}
           selectedLegId={activeStage?.legId ?? null}
           focusCoords={activeStage?.focusCoords ?? null}
           stopRange={activeStage?.stopRange ?? null}
           focusMaxZoom={activeStage?.focusMaxZoom ?? null}
           offlineBase={offlineBase}
           showPoi
+          poiVisible={poiVisible}
           fitOnGeometry
-          paddingTop={insets.top + 8 + headerHeight + 16}
-          paddingBottom={panelHeight + insets.bottom + 16}
+          paddingTop={insets.top + 12 + headerHeight + 14}
+          paddingBottom={panelHeight + 20}
+          paddingRight={72}
+          paddingLeft={28}
           onReady={handleMapReady}
           onLegTap={handleLegTap}
+          onStopTap={handleStopTap}
+          onUserDrag={handleUserDrag}
           onTilesStatus={handleTilesStatus}
           onError={handleMapError}
         />
@@ -531,250 +689,364 @@ export default function RouteMapScreen() {
         <View style={styles.mapPlaceholder} />
       )}
 
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        <View style={styles.headerSurface} onLayout={handleHeaderLayout}>
-          <View style={styles.headerRow}>
-            <Pressable
-              onPress={goBack}
-              style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
-              accessibilityRole="button"
-              accessibilityLabel={s.map.backA11y}
-            >
-              <ChevronLeft size={22} color={scheme.onSurface} />
-            </Pressable>
-            <View style={styles.headerContent}>
-              {item.fromTitle === item.toTitle ? (
-                <Text style={styles.headerTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+      {/* Pływający górny pasek: osobny przycisk wstecz + kapsuła podsumowania trasy */}
+      <View style={[styles.topBar, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
+        <View style={styles.topRow} onLayout={handleHeaderLayout} pointerEvents="box-none">
+          <SpringPressable
+            onPress={goBack}
+            haptic="selection"
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
+            <ArrowLeft size={22} color={scheme.onSurface} />
+          </SpringPressable>
+
+          <SpringPressable
+            onPress={handleShowRoute}
+            haptic="selection"
+            scaleDelta={0.02}
+            style={styles.summaryCapsule}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.fitRouteA11y}
+          >
+            {item.fromTitle === item.toTitle ? (
+              <Text style={styles.headerTitle} numberOfLines={fontScale > 1.3 ? undefined : 1}>
+                {item.toTitle}
+              </Text>
+            ) : (
+              <View style={styles.headerTitleRow}>
+                <Text style={styles.headerTitle} numberOfLines={1}>
+                  {item.fromTitle}
+                </Text>
+                <ArrowRight size={14} color={scheme.primary} />
+                <Text style={styles.headerTitle} numberOfLines={1}>
                   {item.toTitle}
                 </Text>
-              ) : (
-                <View style={styles.headerTitleRow}>
-                  <Text style={styles.headerTitle} numberOfLines={1}>
-                    {item.fromTitle}
-                  </Text>
-                  <ArrowRight size={16} color={scheme.primary} />
-                  <Text style={styles.headerTitle} numberOfLines={1}>
-                    {item.toTitle}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.headerSub}>
-                {item.departAt}–{item.arriveAt} • {s.common.durMin(item.durationMin)}
-                {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
-                {delayMin !== 0 ? s.map.delaySuffix(delayMin) : ''}
-              </Text>
-            </View>
-          </View>
-          {offlineBase !== undefined && tilesDown && showOfflinePill && (
-            <View style={styles.offlineNotice} accessibilityRole="alert">
-              <WifiOff size={18} color={scheme.warning} />
-              <Text style={styles.offlineText}>
-                {mapError ? s.map.offlineTitle : s.map.offlineSub}
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View
-        style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}
-        onLayout={handlePanelLayout}
-      >
-        <View style={[styles.panelHead, compact && styles.panelHeadCompact]}>
-          <View style={[styles.panelTitleWrap, !compact && styles.panelTitleWrapRow]}>
-            <Text style={styles.panelTitle} numberOfLines={1} ellipsizeMode="tail">
-              {s.map.stagesTitle}
-            </Text>
-            <View style={styles.stageCounterChip}>
-              <Text style={styles.stageCounterText}>
-                {activeStage ? `${activeStage.stageNumber}/${stages.length}` : stages.length}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.panelActions, compact && styles.panelActionsCompact]}>
-            {stages.length > 1 && (
-              <View style={styles.stepperGroup}>
-                <Pressable
-                  onPress={() => handleStepStage(-1)}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.map.backA11y}
-                  style={({ pressed }) => [styles.stepperBtn, pressed && { opacity: 0.75 }]}
-                >
-                  <ChevronLeft size={18} color={scheme.onSurface} />
-                </Pressable>
-                <Pressable
-                  onPress={() => handleStepStage(1)}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.map.stagesTitle}
-                  style={({ pressed }) => [styles.stepperBtn, pressed && { opacity: 0.75 }]}
-                >
-                  <ChevronRight size={18} color={scheme.onSurface} />
-                </Pressable>
               </View>
             )}
-            <Pressable
-              onPress={handleShowRoute}
+            <Text style={styles.headerSub} numberOfLines={1}>
+              {item.departAt}
+              {'\u2013'}
+              {item.arriveAt} {'\u2022'} {s.common.durMin(item.durationMin)}
+              {item.transfers > 0 ? s.map.transfersSuffix(item.transfers) : ''}
+              {delayMin !== 0 ? s.map.delaySuffix(delayMin) : ''}
+            </Text>
+          </SpringPressable>
+        </View>
+
+        {offlineBase !== undefined && tilesDown && showOfflinePill && (
+          <View style={styles.offlinePill} accessibilityRole="alert">
+            <WifiOff size={16} color={scheme.warning} />
+            <Text style={styles.offlineText} numberOfLines={2}>
+              {mapError ? s.map.offlineTitle : s.map.offlineSub}
+            </Text>
+            <SpringPressable
+              onPress={() => {
+                markTilesOk();
+                mapRef.current?.reload();
+              }}
+              haptic="selection"
+              style={styles.offlineRetryBtn}
               accessibilityRole="button"
-              accessibilityState={{ selected: activeStage === null }}
-              accessibilityLabel={s.map.showWholeRoute}
-              style={({ pressed }) => [
-                styles.fitBtn,
-                activeStage === null && styles.fitBtnActive,
-                pressed && { opacity: 0.75 },
-              ]}
+              accessibilityLabel={s.map.retryMap}
             >
-              <ScanLine
-                size={20}
-                color={activeStage === null ? scheme.onPrimaryContainer : scheme.onSurface}
-              />
-              <Text
-                style={[styles.fitLabel, activeStage !== null && { color: scheme.onSurface }]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {s.map.showWholeRoute}
-              </Text>
-            </Pressable>
+              <RefreshCw size={15} color={scheme.onSecondaryContainer} />
+            </SpringPressable>
+          </View>
+        )}
+      </View>
+
+      {/* Szyna akcji po prawej krawędzi mapy */}
+      <View
+        style={[styles.railWrap, { bottom: panelHeight + (inspectedStop ? 96 : 16) }]}
+        pointerEvents="box-none"
+      >
+        <MapActionRail
+          actions={railActions}
+          zoomPair={zoomPair}
+          primaryAction={locationAction}
+        />
+      </View>
+
+      {/* Pływająca karta klikniętego przystanku (Stop Inspector) */}
+      {inspectedStop && (
+        <View
+          style={[styles.stopInspectorWrap, { bottom: panelHeight + 12 }]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.stopInspectorCard}>
+            <SpringPressable
+              onPress={() => handleLegTap(inspectedStop.legId)}
+              haptic="selection"
+              scaleDelta={0.02}
+              style={styles.stopInspectorBody}
+              accessibilityRole="button"
+              accessibilityLabel={inspectedStop.name}
+            >
+              {inspectedLeg && inspectedLeg.mode !== 'walk' && (
+                <LineBadge mode={inspectedLeg.mode} line={inspectedLeg.line} compact />
+              )}
+              <View style={styles.stopInspectorText}>
+                <View style={styles.stopRoleRow}>
+                  <View style={styles.stopRoleBadge}>
+                    <Text style={styles.stopRoleText}>{inspectedRoleLabel}</Text>
+                  </View>
+                  {inspectedTime && <Text style={styles.stopTimeText}>{inspectedTime}</Text>}
+                </View>
+                <Text style={styles.stopNameText} numberOfLines={1}>
+                  {inspectedStop.name}
+                </Text>
+              </View>
+            </SpringPressable>
+
+            <SpringPressable
+              onPress={() => setInspectedStop(null)}
+              haptic="selection"
+              style={styles.stopCloseBtn}
+              accessibilityRole="button"
+              accessibilityLabel={s.map.closeStopA11y}
+            >
+              <X size={18} color={scheme.onSurfaceVariant} />
+            </SpringPressable>
           </View>
         </View>
-        <ScrollView
-          ref={legScrollRef}
-          style={styles.legScroller}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          overScrollMode="never"
-          contentContainerStyle={styles.legScroll}
+      )}
+
+      {/* Zwijany dolny panel etapów w stylu M3 Expressive */}
+      <View
+        style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 12) + 6 }]}
+        onLayout={handlePanelLayout}
+      >
+        <SpringPressable
+          onPress={() => setDeckCollapsed((v) => !v)}
+          haptic="selection"
+          scaleDelta={0.015}
+          style={styles.panelHandleTouch}
+          accessibilityRole="button"
+          accessibilityLabel={deckCollapsed ? s.map.expandDeckA11y : s.map.collapseDeckA11y}
         >
-          {stages.map((stage) => {
-            const { leg } = stage;
-            const active = activeStage?.id === stage.id;
-            const isWalk = leg.mode === 'walk';
-            const endpointTitle =
-              stage.endpointRole === 'start'
-                ? `${s.map.board}: ${stage.fromStop}`
-                : stage.endpointRole === 'end'
-                  ? `${s.map.alight}: ${stage.toStop}`
-                  : null;
-            return (
-              <Pressable
-                key={stage.id}
-                onPress={() => handleSelectStage(stage.id)}
-                onLayout={(e) => {
-                  const { x, width: chipWidth } = e.nativeEvent.layout;
-                  chipLayoutsRef.current[stage.id] = { x, width: chipWidth };
-                  if (pendingScrollStageIdRef.current === stage.id) {
-                    scrollChipIntoView(stage.id);
-                    pendingScrollStageIdRef.current = null;
-                  }
-                }}
-                style={({ pressed }) => [
-                  styles.legCard,
-                  active
-                    ? [styles.legCardActive, { width: expandedCardWidth }]
-                    : isWalk
-                      ? styles.legCardWalkCompact
-                      : [styles.legCardTransitCompact, { maxWidth: inactiveTransitMaxWidth }],
-                  pressed && { opacity: 0.8 },
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={
-                  isWalk
-                    ? s.map.walkStageA11y(formatWalkDistance(stage.walkM ?? 0))
-                    : s.map.lineStageA11y(leg.line ?? '', stage.toStop)
-                }
-              >
-                {active ? (
-                  <>
-                    <View style={styles.legBadgeColumn}>
-                      <LineBadge mode={leg.mode} line={leg.line} compact active />
-                      {stage.segmentIndex && stage.segmentCount ? (
-                        <View style={[styles.segmentPill, styles.segmentPillActive]}>
-                          <Text style={[styles.segmentPillText, styles.segmentPillTextActive]}>
-                            {stage.segmentIndex}/{stage.segmentCount}
+          <View style={styles.panelHandle} />
+        </SpringPressable>
+
+        <View style={styles.panelHead}>
+          <View style={styles.panelTitleWrap}>
+            <Text style={styles.panelTitle} numberOfLines={1} ellipsizeMode="tail">
+              {activeStage
+                ? s.map.stageCounter(activeStage.stageNumber, stages.length)
+                : s.map.stagesTitle}
+            </Text>
+            {!activeStage && (
+              <View style={styles.stageCounterChip}>
+                <Text style={styles.stageCounterText}>{stages.length}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.panelActions}>
+            {stages.length > 1 && (
+              <View style={styles.stepperGroup}>
+                <SpringPressable
+                  onPress={() => handleStepStage(-1)}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.backA11y}
+                  style={styles.stepperBtn}
+                >
+                  <ChevronLeft size={19} color={scheme.onSurface} />
+                </SpringPressable>
+                <SpringPressable
+                  onPress={() => handleStepStage(1)}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.stagesTitle}
+                  style={styles.stepperBtn}
+                >
+                  <ChevronRight size={19} color={scheme.onSurface} />
+                </SpringPressable>
+              </View>
+            )}
+
+            <SpringPressable
+              onPress={() => setDeckCollapsed((v) => !v)}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={deckCollapsed ? s.map.expandDeckA11y : s.map.collapseDeckA11y}
+              style={styles.collapseBtn}
+            >
+              {deckCollapsed ? (
+                <ChevronUp size={20} color={scheme.onSurface} />
+              ) : (
+                <ChevronDown size={20} color={scheme.onSurface} />
+              )}
+            </SpringPressable>
+          </View>
+        </View>
+
+        {!deckCollapsed && (
+          <ScrollView
+            ref={legScrollRef}
+            style={styles.legScroller}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            overScrollMode="never"
+            contentContainerStyle={styles.legScroll}
+          >
+            {stages.map((stage) => {
+              const { leg } = stage;
+              const active = activeStage?.id === stage.id;
+              const isWalk = leg.mode === 'walk';
+              const endpointTitle =
+                stage.endpointRole === 'start'
+                  ? `${s.map.board}: ${stage.fromStop}`
+                  : stage.endpointRole === 'end'
+                    ? `${s.map.alight}: ${stage.toStop}`
+                    : null;
+              return (
+                <View
+                  key={stage.id}
+                  onLayout={(e) => {
+                    const { x, width: chipWidth } = e.nativeEvent.layout;
+                    chipLayoutsRef.current[stage.id] = { x, width: chipWidth };
+                    if (pendingScrollStageIdRef.current === stage.id) {
+                      scrollChipIntoView(stage.id);
+                      pendingScrollStageIdRef.current = null;
+                    }
+                  }}
+                >
+                  <SpringPressable
+                    onPress={() => handleSelectStage(stage.id)}
+                    haptic="selection"
+                    scaleDelta={0.03}
+                    style={[
+                      styles.legCard,
+                      active
+                        ? [styles.legCardActive, { width: expandedCardWidth }]
+                        : isWalk
+                          ? styles.legCardWalkCompact
+                          : [styles.legCardTransitCompact, { maxWidth: inactiveTransitMaxWidth }],
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={
+                      isWalk
+                        ? s.map.walkStageA11y(formatWalkDistance(stage.walkM ?? 0))
+                        : s.map.lineStageA11y(leg.line ?? '', stage.toStop)
+                    }
+                  >
+                    {active ? (
+                      <>
+                        <View style={styles.legBadgeColumn}>
+                          <LineBadge mode={leg.mode} line={leg.line} compact active />
+                          {stage.segmentIndex && stage.segmentCount ? (
+                            <View style={[styles.segmentPill, styles.segmentPillActive]}>
+                              <Text style={[styles.segmentPillText, styles.segmentPillTextActive]}>
+                                {stage.segmentIndex}/{stage.segmentCount}
+                              </Text>
+                            </View>
+                          ) : (
+                            <Text style={[styles.stageNumLabel, styles.legTitleActive]}>
+                              #{stage.stageNumber}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.legInfo}>
+                          {endpointTitle ? (
+                            <Text
+                              style={[styles.legTitle, styles.legTitleActive]}
+                              numberOfLines={fontScale > 1.3 ? undefined : 2}
+                            >
+                              {endpointTitle}
+                            </Text>
+                          ) : stage.fromStop === stage.toStop ? (
+                            <Text
+                              style={[styles.legTitle, styles.legTitleActive]}
+                              numberOfLines={fontScale > 1.3 ? undefined : 2}
+                            >
+                              {stage.toStop}
+                            </Text>
+                          ) : isWalk && isFallbackOrigin(stage.fromStop) ? (
+                            <Text
+                              style={[styles.legTitle, styles.legTitleActive]}
+                              numberOfLines={fontScale > 1.3 ? undefined : 2}
+                            >
+                              {s.connection.walkTo(stage.toStop)}
+                            </Text>
+                          ) : (
+                            <View style={styles.legTitleRow}>
+                              <Text
+                                style={[styles.legTitle, styles.legTitleActive]}
+                                numberOfLines={fontScale > 1.3 ? 2 : 1}
+                              >
+                                {stage.fromStop}
+                              </Text>
+                              <ArrowRight size={14} color={scheme.onPrimaryContainer} />
+                              <Text
+                                style={[styles.legTitle, styles.legTitleActive]}
+                                numberOfLines={fontScale > 1.3 ? 2 : 1}
+                              >
+                                {stage.toStop}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={[styles.legSub, styles.legTitleActive]}>
+                            {stage.endpointRole
+                              ? stage.departAt
+                              : `${stage.departAt}\u2013${stage.arriveAt}`}
+                            {isWalk
+                              ? ` \u2022 ${formatWalkDistance(stage.walkM ?? 0)}`
+                              : stage.stopsCount > 0
+                                ? ` \u2022 ${s.map.legStops(stage.stopsCount)}`
+                                : ''}
+                          </Text>
+                          {isWalk && (leg.toEntrance || leg.fromEntrance) ? (
+                            <Text style={[styles.legSub, styles.legTitleActive]} numberOfLines={2}>
+                              {(() => {
+                                const isTo = Boolean(leg.toEntrance);
+                                const ref = leg.toEntrance ?? leg.fromEntrance!;
+                                const label = isTo
+                                  ? s.leg.metroEntrance(ref.num)
+                                  : s.leg.metroExit(ref.num);
+                                const wc =
+                                  ref.wheelchair && !/winda|lift|aufzug|ліфт/i.test(ref.num)
+                                    ? ` (${s.leg.metroElevatorTag})`
+                                    : '';
+                                return ref.hint ? `${label}${wc} \u00b7 ${ref.hint}` : `${label}${wc}`;
+                              })()}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </>
+                    ) : isWalk ? (
+                      <>
+                        <DirectionsWalk size={18} color={scheme.onSurfaceVariant} />
+                        <Text style={styles.walkChipDist} numberOfLines={1}>
+                          {formatWalkDistance(stage.walkM ?? 0)}
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <LineBadge mode={leg.mode} line={leg.line} compact />
+                        <View style={styles.legInfoCompact}>
+                          <Text
+                            style={styles.legTitleCompact}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {endpointTitle ?? stage.toStop}
+                          </Text>
+                          <Text style={styles.legSubCompact} numberOfLines={1}>
+                            {stage.departAt}
                           </Text>
                         </View>
-                      ) : (
-                        <Text style={[styles.stageNumLabel, styles.legTitleActive]}>
-                          #{stage.stageNumber}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.legInfo}>
-                      {endpointTitle ? (
-                        <Text
-                          style={[styles.legTitle, styles.legTitleActive]}
-                          numberOfLines={fontScale > 1.3 ? undefined : 2}
-                        >
-                          {endpointTitle}
-                        </Text>
-                      ) : stage.fromStop === stage.toStop ? (
-                        <Text
-                          style={[styles.legTitle, styles.legTitleActive]}
-                          numberOfLines={fontScale > 1.3 ? undefined : 2}
-                        >
-                          {stage.toStop}
-                        </Text>
-                      ) : isWalk && isFallbackOrigin(stage.fromStop) ? (
-                        <Text
-                          style={[styles.legTitle, styles.legTitleActive]}
-                          numberOfLines={fontScale > 1.3 ? undefined : 2}
-                        >
-                          {s.connection.walkTo(stage.toStop)}
-                        </Text>
-                      ) : (
-                        <View style={styles.legTitleRow}>
-                          <Text
-                            style={[styles.legTitle, styles.legTitleActive]}
-                            numberOfLines={fontScale > 1.3 ? 2 : 1}
-                          >
-                            {stage.fromStop}
-                          </Text>
-                          <ArrowRight size={14} color={scheme.onPrimaryContainer} />
-                          <Text
-                            style={[styles.legTitle, styles.legTitleActive]}
-                            numberOfLines={fontScale > 1.3 ? 2 : 1}
-                          >
-                            {stage.toStop}
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={[styles.legSub, styles.legTitleActive]}>
-                        {stage.endpointRole
-                          ? stage.departAt
-                          : `${stage.departAt}–${stage.arriveAt}`}
-                        {isWalk
-                          ? ` • ${formatWalkDistance(stage.walkM ?? 0)}`
-                          : stage.stopsCount > 0
-                            ? ` • ${s.map.legStops(stage.stopsCount)}`
-                            : ''}
-                      </Text>
-                    </View>
-                  </>
-                ) : isWalk ? (
-                  <>
-                    <DirectionsWalk size={18} color={scheme.onSurfaceVariant} />
-                    <Text style={styles.walkChipDist} numberOfLines={1}>
-                      {formatWalkDistance(stage.walkM ?? 0)}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <LineBadge mode={leg.mode} line={leg.line} compact />
-                    <View style={styles.legInfoCompact}>
-                      <Text style={styles.legTitleCompact} numberOfLines={1} ellipsizeMode="tail">
-                        {endpointTitle ?? stage.toStop}
-                      </Text>
-                      <Text style={styles.legSubCompact} numberOfLines={1}>
-                        {stage.departAt}
-                      </Text>
-                    </View>
-                  </>
-                )}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+                      </>
+                    )}
+                  </SpringPressable>
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
     </View>
   );
@@ -784,58 +1056,161 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1, backgroundColor: scheme.surface },
 
-  header: {
+  topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   headerSafe: {
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  headerSurface: {
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.extraLarge,
-    padding: 12,
     gap: 12,
-    ...elev.level1,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
   },
   backBtn: {
     width: 48,
     height: 48,
-    borderRadius: shape.large,
+    borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
+    ...elev.level2,
   },
-  headerContent: { flex: 1, minWidth: 0, gap: 4 },
+  summaryCapsule: {
+    flex: 1,
+    minHeight: 48,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 22,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level2,
+  },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  headerTitle: { ...type.bodyLarge, fontWeight: '500', color: scheme.onSurface, flexShrink: 1 },
-  headerSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  headerTitle: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    flexShrink: 1,
+  },
+  headerSub: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
 
   mapPlaceholder: { flex: 1, backgroundColor: scheme.surface },
 
-  offlineNotice: {
+  offlinePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 8,
-    paddingBottom: 4,
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level2,
   },
-  offlineText: { ...type.bodySmall, color: scheme.onSurfaceVariant, flex: 1 },
+  offlineText: { ...type.bodySmall, color: scheme.onSurface, flex: 1 },
+  offlineRetryBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  railWrap: {
+    position: 'absolute',
+    right: 14,
+  },
+
+  stopInspectorWrap: {
+    position: 'absolute',
+    left: 14,
+    right: 76,
+  },
+  stopInspectorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    ...elev.level3,
+  },
+  stopInspectorBody: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
+  stopInspectorText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  stopRoleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stopRoleBadge: {
+    backgroundColor: scheme.secondaryContainer,
+    borderRadius: shape.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  stopRoleText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  stopTimeText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  stopNameText: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  stopCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   panel: {
     position: 'absolute',
@@ -845,46 +1220,56 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    ...elev.level3,
+  },
+  panelHandleTouch: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  panelHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.outline,
+    opacity: 0.45,
   },
   panelHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
     gap: 12,
-  },
-  panelHeadCompact: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 10,
   },
   panelTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minWidth: 0,
-  },
-  panelTitleWrapRow: {
     flex: 1,
+    minWidth: 0,
   },
   panelTitle: {
     ...type.titleMedium,
-    fontWeight: '500',
+    fontWeight: '700',
     color: scheme.onSurface,
     flexShrink: 1,
+    fontVariant: ['tabular-nums'],
   },
   stageCounterChip: {
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.primaryContainer,
     borderRadius: shape.full,
     paddingHorizontal: 9,
-    paddingVertical: 3,
+    paddingVertical: 2,
     flexShrink: 0,
   },
   stageCounterText: {
     ...type.labelSmall,
-    color: scheme.onSurfaceVariant,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
     fontVariant: ['tabular-nums'],
   },
   panelActions: {
@@ -893,40 +1278,35 @@ const styles = StyleSheet.create({
     gap: 8,
     flexShrink: 0,
   },
-  panelActionsCompact: {
-    justifyContent: 'space-between',
-  },
   stepperGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   stepperBtn: {
     width: 44,
     height: 44,
-    borderRadius: shape.large,
+    borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fitBtn: {
-    flexDirection: 'row',
+  collapseBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 8,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
   },
-  fitBtnActive: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  fitLabel: { ...type.labelLarge, color: scheme.onPrimaryContainer, flexShrink: 1 },
   legScroller: { flexGrow: 0, flexShrink: 0 },
   legScroll: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
+    paddingBottom: 4,
     gap: 8,
     alignItems: 'stretch',
   },
@@ -936,10 +1316,10 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    minHeight: 62,
-    borderRadius: shape.large,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    minHeight: 64,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerHigh,
   },
   legCardWalkCompact: {
@@ -947,9 +1327,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    minWidth: 58,
+    minWidth: 62,
   },
   legCardTransitCompact: {
     gap: 8,
@@ -957,11 +1337,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   legCardActive: {
+    borderRadius: 22,
     backgroundColor: scheme.primaryContainer,
+    borderWidth: 1.5,
     borderColor: scheme.primary,
   },
   walkChipDist: {
     ...type.labelSmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
@@ -992,10 +1375,11 @@ const styles = StyleSheet.create({
     ...type.labelSmall,
     fontSize: 10,
     lineHeight: 13,
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
-  legInfo: { flex: 1, minWidth: 0, gap: 6 },
+  legInfo: { flex: 1, minWidth: 0, gap: 4 },
   legInfoCompact: { flexShrink: 1, minWidth: 0, gap: 2 },
   legTitleRow: {
     flexDirection: 'row',
@@ -1004,18 +1388,22 @@ const styles = StyleSheet.create({
   },
   legTitle: {
     ...type.bodyMedium,
-    fontWeight: '500',
+    fontWeight: '700',
     color: scheme.onSurface,
     flex: 1,
     minWidth: 0,
   },
   legTitleCompact: {
     ...type.bodyMedium,
-    fontWeight: '500',
+    fontWeight: '600',
     color: scheme.onSurface,
   },
   legTitleActive: { color: scheme.onPrimaryContainer },
-  legSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  legSub: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
   legSubCompact: {
     ...type.labelSmall,
     color: scheme.onSurfaceVariant,
@@ -1023,15 +1411,17 @@ const styles = StyleSheet.create({
   },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
-  centeredTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },
+  centeredTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface, textAlign: 'center' },
   centeredSub: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
   primaryBtn: {
     backgroundColor: scheme.primary,
-    borderRadius: shape.large,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    minHeight: 52,
+    borderRadius: shape.full,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    minHeight: 50,
     marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryBtnText: { ...type.labelLarge, fontWeight: '700', color: scheme.onPrimary },
 });

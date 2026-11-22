@@ -1,17 +1,28 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, FadeIn, FadeOut } from 'react-native-reanimated';
+import { useCallback } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { Anchor, ArrowUpDown, X } from './icons';
 import { LineBadge } from './LineBadge';
 import { SpringPressable } from './SpringPressable';
 import { useStrings } from '../i18n';
-import { scheme, shape, type } from '../theme/tokens';
+import { motion } from '../theme/motion';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { BoardedTripOrigin } from '../types/models';
 
-// Kotwica i GPS podmieniaja sie w tym samym polu: krotki crossfade, zero
-// sprezyny. Spring tu sprezynowal cale pole przy kazdym wejsciu na ekran.
 const SWAP_IN = FadeIn.duration(140).easing(Easing.out(Easing.quad));
 const SWAP_OUT = FadeOut.duration(90).easing(Easing.in(Easing.quad));
 
+/** Karta początku i celu trasy z szyną relacji i obrotowym przyciskiem zamiany kierunków. */
 export function RouteEndpoints({
   from,
   to,
@@ -37,20 +48,66 @@ export function RouteEndpoints({
   };
 }) {
   const s = useStrings();
+  const reduceMotion = useReducedMotion();
+  const swapSpin = useSharedValue(0);
+  const swapKick = useSharedValue(0);
+
+  const handleSwap = useCallback(() => {
+    if (!reduceMotion) {
+      swapSpin.value = withSpring(swapSpin.value + 180, motion.spring.spatialFast);
+      swapKick.value = withSequence(
+        withTiming(1, { duration: 75, easing: Easing.out(Easing.quad) }),
+        withSpring(0, motion.spring.spatialFast),
+      );
+    }
+    onSwap();
+  }, [onSwap, reduceMotion, swapKick, swapSpin]);
+
+  const swapIconStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${swapSpin.value}deg` }],
+  }));
+
+  const fromShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: swapKick.value * 5 }],
+  }));
+
+  const toShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -swapKick.value * 5 }],
+  }));
+
   return (
     <View style={styles.container}>
+      <View
+        style={styles.railCol}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
+        <View style={[styles.railDotStart, (anchor || boarded) && styles.railDotAnchored]} />
+        <View style={styles.railConnector}>
+          <View style={styles.railConnectorDot} />
+          <View style={styles.railConnectorDot} />
+          <View style={styles.railConnectorDot} />
+        </View>
+        <View style={styles.railDotEnd} />
+      </View>
+
       <View style={styles.fields}>
-        <Pressable
+        <SpringPressable
           onPress={onFrom}
+          scaleDelta={0.014}
+          opacityDelta={0.07}
+          haptic="selection"
           accessibilityRole="button"
           accessibilityLabel={fromLabel}
-          style={({ pressed }) => [styles.field, pressed && styles.pressed]}
+          style={styles.field}
         >
-          <Text style={styles.label}>{s.routeDetails.origin}</Text>
+          <Text style={styles.label} numberOfLines={1}>
+            {s.routeDetails.origin}
+          </Text>
           {boarded ? (
             <Animated.View
               key="boarded"
-              style={styles.anchorRow}
+              style={[styles.anchorPill, fromShiftStyle]}
               entering={SWAP_IN}
               exiting={SWAP_OUT}
             >
@@ -61,16 +118,21 @@ export function RouteEndpoints({
                 accessibilityRole="button"
                 accessibilityLabel={boarded.dismissA11y}
                 style={styles.anchorX}
-                scaleDelta={0.05}
+                hitSlop={10}
+                scaleDelta={0.06}
+                haptic="selection"
               >
-                <X size={15} color={scheme.onSurfaceVariant} />
+                <X size={14} color={scheme.onSurface} />
               </SpringPressable>
             </Animated.View>
           ) : anchor ? (
-            // Kotwica JEST efektywnym startem: zajmuje pole originu zamiast
-            // surowego GPS, wiec user widzi jedno, to co napedza wyszukiwanie.
-            <Animated.View key="anchor" style={styles.anchorRow} entering={SWAP_IN} exiting={SWAP_OUT}>
-              <Anchor size={13} color={scheme.primary} />
+            <Animated.View
+              key="anchor"
+              style={[styles.anchorPill, fromShiftStyle]}
+              entering={SWAP_IN}
+              exiting={SWAP_OUT}
+            >
+              <Anchor size={13} color={scheme.onPrimaryContainer} />
               <Text style={styles.originAnchor} numberOfLines={1}>
                 {anchor.stopName}
               </Text>
@@ -79,39 +141,55 @@ export function RouteEndpoints({
                 accessibilityRole="button"
                 accessibilityLabel={anchor.dismissA11y}
                 style={styles.anchorX}
-                scaleDelta={0.05}
+                hitSlop={10}
+                scaleDelta={0.06}
+                haptic="selection"
               >
-                <X size={15} color={scheme.onSurfaceVariant} />
+                <X size={14} color={scheme.onSurface} />
               </SpringPressable>
             </Animated.View>
           ) : (
-            // GPS wraca na swoje miejsce po usunieciu kotwicy.
-            <Animated.View key="gps" entering={SWAP_IN} exiting={SWAP_OUT}>
+            <Animated.View key="gps" style={fromShiftStyle} entering={SWAP_IN} exiting={SWAP_OUT}>
               <Text style={styles.origin} numberOfLines={1}>
                 {from}
               </Text>
             </Animated.View>
           )}
-        </Pressable>
+        </SpringPressable>
+
         <View style={styles.divider} />
-        <Pressable
+
+        <SpringPressable
           onPress={onTo}
+          scaleDelta={0.014}
+          opacityDelta={0.07}
+          haptic="selection"
           accessibilityRole="button"
           accessibilityLabel={s.routes.changeToA11y(to)}
-          style={({ pressed }) => [styles.field, pressed && styles.pressed]}
+          style={styles.field}
         >
-          <Text style={styles.label}>{s.routeDetails.destination}</Text>
-          <Text style={styles.destination}>{to}</Text>
-        </Pressable>
+          <Text style={styles.label} numberOfLines={1}>
+            {s.routeDetails.destination}
+          </Text>
+          <Animated.View style={toShiftStyle}>
+            <Text style={styles.destination} numberOfLines={1}>
+              {to}
+            </Text>
+          </Animated.View>
+        </SpringPressable>
       </View>
+
       <SpringPressable
-        onPress={onSwap}
+        onPress={handleSwap}
         accessibilityRole="button"
         accessibilityLabel={s.routes.swapA11y}
         style={styles.swap}
-        scaleDelta={0.04}
+        scaleDelta={0.06}
+        haptic="light"
       >
-        <ArrowUpDown size={22} color={scheme.primary} />
+        <Animated.View style={swapIconStyle}>
+          <ArrowUpDown size={20} color={scheme.onSecondaryContainer} />
+        </Animated.View>
       </SpringPressable>
     </View>
   );
@@ -121,39 +199,111 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: scheme.surfaceContainerLow,
+    gap: 10,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    ...elev.level1,
   },
-  fields: { flex: 1, minWidth: 0 },
-  field: { minHeight: 48, justifyContent: 'center', gap: 3, borderRadius: shape.small },
-  label: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  origin: { ...type.titleMedium, color: scheme.onSurface },
-  destination: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface },
+  railCol: {
+    width: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 5,
+  },
+  railDotStart: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2.5,
+    borderColor: scheme.primary,
+    backgroundColor: scheme.surfaceContainer,
+  },
+  railDotAnchored: {
+    borderColor: scheme.tertiary,
+  },
+  railConnector: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 2,
+  },
+  railConnectorDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: scheme.outline,
+  },
+  railDotEnd: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: scheme.primary,
+  },
+  fields: {
+    flex: 1,
+    minWidth: 0,
+  },
+  field: {
+    minHeight: 46,
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    borderRadius: shape.medium,
+  },
+  label: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  origin: {
+    ...type.titleMedium,
+    fontWeight: '600',
+    color: scheme.onSurface,
+  },
+  destination: {
+    ...type.titleMedium,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: scheme.outlineVariant,
-    marginVertical: 8,
+    marginVertical: 4,
+    marginHorizontal: 4,
   },
   swap: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
-  pressed: { backgroundColor: scheme.surfaceContainerHighest },
-  anchorRow: {
+  anchorPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    marginTop: 2,
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: shape.full,
+    paddingLeft: 10,
+    paddingRight: 4,
+    paddingVertical: 3,
+    minHeight: 30,
   },
   originAnchor: {
-    ...type.bodyMedium,
-    fontWeight: '600',
-    color: scheme.primary,
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
     flex: 1,
     minWidth: 0,
   },
@@ -163,9 +313,9 @@ const styles = StyleSheet.create({
   anchorX: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerLow,
   },
 });

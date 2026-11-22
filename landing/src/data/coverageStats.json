@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-11-17T08:14:35.656Z",
+  "generatedAt": "2026-11-20T12:05:27.409Z",
   "cities": {
     "wroclaw": {
       "live": {
         "available": true,
-        "vehicles": 426
+        "vehicles": 465
       },
       "news": {
         "available": true
@@ -17,7 +17,7 @@
     "krakow": {
       "live": {
         "available": true,
-        "vehicles": 796
+        "vehicles": 695
       },
       "news": {
         "available": true
@@ -30,7 +30,7 @@
     "gzm": {
       "live": {
         "available": true,
-        "vehicles": 1245
+        "vehicles": 1257
       },
       "news": {
         "available": true
@@ -43,7 +43,7 @@
     "warszawa": {
       "live": {
         "available": true,
-        "vehicles": 1911
+        "vehicles": 1443
       },
       "news": {
         "available": true
@@ -56,7 +56,7 @@
     "poznan": {
       "live": {
         "available": true,
-        "vehicles": 507
+        "vehicles": 462
       },
       "news": {
         "available": true
@@ -69,7 +69,7 @@
     "trojmiasto": {
       "live": {
         "available": true,
-        "vehicles": 567
+        "vehicles": 542
       },
       "news": {
         "available": true
@@ -82,7 +82,7 @@
     "lodz": {
       "live": {
         "available": true,
-        "vehicles": 481
+        "vehicles": 0
       },
       "news": {
         "available": true
@@ -95,7 +95,7 @@
     "szczecin": {
       "live": {
         "available": true,
-        "vehicles": 232
+        "vehicles": 220
       },
       "news": {
         "available": true
@@ -108,7 +108,7 @@
     "kielce": {
       "live": {
         "available": true,
-        "vehicles": 138
+        "vehicles": 125
       },
       "news": {
         "available": true
@@ -121,7 +121,7 @@
     "olsztyn": {
       "live": {
         "available": true,
-        "vehicles": 119
+        "vehicles": 116
       },
       "news": {
         "available": false
@@ -134,7 +134,7 @@
     "bialystok": {
       "live": {
         "available": true,
-        "vehicles": 175
+        "vehicles": 163
       },
       "news": {
         "available": true
@@ -147,7 +147,7 @@
     "opole": {
       "live": {
         "available": true,
-        "vehicles": 58
+        "vehicles": 62
       },
       "news": {
         "available": true
@@ -160,7 +160,7 @@
     "rzeszow": {
       "live": {
         "available": true,
-        "vehicles": 146
+        "vehicles": 130
       },
       "news": {
         "available": true
@@ -173,7 +173,7 @@
     "lublin": {
       "live": {
         "available": true,
-        "vehicles": 264
+        "vehicles": 246
       },
       "news": {
         "available": true
@@ -186,7 +186,7 @@
     "radom": {
       "live": {
         "available": true,
-        "vehicles": 117
+        "vehicles": 127
       },
       "news": {
         "available": true
@@ -212,7 +212,7 @@
     "torun": {
       "live": {
         "available": true,
-        "vehicles": 115
+        "vehicles": 129
       },
       "news": {
         "available": false
@@ -225,7 +225,7 @@
     "elblag": {
       "live": {
         "available": true,
-        "vehicles": 42
+        "vehicles": 46
       },
       "news": {
         "available": false
@@ -238,7 +238,7 @@
     "gorzow": {
       "live": {
         "available": true,
-        "vehicles": 48
+        "vehicles": 59
       },
       "news": {
         "available": false
@@ -251,7 +251,7 @@
     "czestochowa": {
       "live": {
         "available": true,
-        "vehicles": 113
+        "vehicles": 116
       },
       "news": {
         "available": false
@@ -277,7 +277,7 @@
     "rybnik": {
       "live": {
         "available": true,
-        "vehicles": 59
+        "vehicles": 60
       },
       "news": {
         "available": false
@@ -290,7 +290,7 @@
     "slupsk": {
       "live": {
         "available": true,
-        "vehicles": 34
+        "vehicles": 36
       },
       "news": {
         "available": false
@@ -303,7 +303,7 @@
     "walbrzych": {
       "live": {
         "available": true,
-        "vehicles": 50
+        "vehicles": 53
       },
       "news": {
         "available": false
@@ -316,7 +316,7 @@
     "kalisz": {
       "live": {
         "available": true,
-        "vehicles": 54
+        "vehicles": 52
       },
       "news": {
         "available": false
@@ -329,7 +329,7 @@
     "siedlce": {
       "live": {
         "available": true,
-        "vehicles": 32
+        "vehicles": 33
       },
       "news": {
         "available": false
@@ -355,7 +355,7 @@
     "krosno": {
       "live": {
         "available": true,
-        "vehicles": 28
+        "vehicles": 30
       },
       "news": {
         "available": false
@@ -420,6 +420,1293 @@
     "ilawa": {
       "live": {
         "available": false,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "bielskobiala": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "koszalin": {
+      "live": {
+        "available": true,
+        "vehicles": 61
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "piotrkow": {
+      "live": {
+        "available": true,
+        "vehicles": 30
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "tomaszow": {
+      "live": {
+        "available": true,
+        "vehicles": 20
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "skarzysko": {
+      "live": {
+        "available": true,
+        "vehicles": 12
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "oswiecim": {
+      "live": {
+        "available": true,
+        "vehicles": 15
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "swinoujscie": {
+      "live": {
+        "available": true,
+        "vehicles": 17
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zakopane": {
+      "live": {
+        "available": true,
+        "vehicles": 10
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "plock": {
+      "live": {
+        "available": true,
+        "vehicles": 58
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "tarnow": {
+      "live": {
+        "available": true,
+        "vehicles": 46
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "legnica": {
+      "live": {
+        "available": true,
+        "vehicles": 41
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "jastrzebie": {
+      "live": {
+        "available": true,
+        "vehicles": 71
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "pila": {
+      "live": {
+        "available": true,
+        "vehicles": 25
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "konin": {
+      "live": {
+        "available": true,
+        "vehicles": 19
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "suwalki": {
+      "live": {
+        "available": true,
+        "vehicles": 16
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "ostrowiec": {
+      "live": {
+        "available": true,
+        "vehicles": 24
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "stalowawola": {
+      "live": {
+        "available": false,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "przemysl": {
+      "live": {
+        "available": false,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "elk": {
+      "live": {
+        "available": true,
+        "vehicles": 16
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "leszno": {
+      "live": {
+        "available": true,
+        "vehicles": 15
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "chelm": {
+      "live": {
+        "available": true,
+        "vehicles": 17
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "mielec": {
+      "live": {
+        "available": true,
+        "vehicles": 23
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "tczew": {
+      "live": {
+        "available": true,
+        "vehicles": 39
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "ostroleka": {
+      "live": {
+        "available": true,
+        "vehicles": 14
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "starachowice": {
+      "live": {
+        "available": true,
+        "vehicles": 18
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "kutno": {
+      "live": {
+        "available": true,
+        "vehicles": 16
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "kolobrzeg": {
+      "live": {
+        "available": true,
+        "vehicles": 12
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "radomsko": {
+      "live": {
+        "available": true,
+        "vehicles": 16
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "boleslawiec": {
+      "live": {
+        "available": true,
+        "vehicles": 15
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "cieszyn": {
+      "live": {
+        "available": true,
+        "vehicles": 10
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zywiec": {
+      "live": {
+        "available": true,
+        "vehicles": 22
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "krasnik": {
+      "live": {
+        "available": true,
+        "vehicles": 10
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "grodzisk": {
+      "live": {
+        "available": true,
+        "vehicles": 121
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "pruszkow": {
+      "live": {
+        "available": true,
+        "vehicles": 19
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "sochaczew": {
+      "live": {
+        "available": true,
+        "vehicles": 8
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "minskmazowiecki": {
+      "live": {
+        "available": true,
+        "vehicles": 8
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "otwock": {
+      "live": {
+        "available": true,
+        "vehicles": 1
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "nowydwormaz": {
+      "live": {
+        "available": true,
+        "vehicles": 4
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zabki": {
+      "live": {
+        "available": true,
+        "vehicles": 7
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "pabianice": {
+      "live": {
+        "available": true,
+        "vehicles": 20
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zgierz": {
+      "live": {
+        "available": true,
+        "vehicles": 21
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "grudziadz": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "stargard": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "gniezno": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "jaworzno": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "kedzierzynkozle": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zamosc": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "raciborz": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "belchatow": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "tarnobrzeg": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "skierniewice": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zawiercie": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "starogard": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zdunskawola": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "nysa": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "malbork": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "sieradz": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "szczecinek": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "nowasol": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "olesnica": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "czechowicedziedzice": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "ostroda": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "nowytarg": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "augustow": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "ketrzyn": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zgorzelec": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "polkowice": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "gorlice": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "jarocin": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "wrzesnia": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "walcz": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "gizycko": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zagan": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "koscierzyna": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "krotoszyn": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "sandomierz": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "bartoszyce": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "wielun": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "mragowo": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "swiecie": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "wagrowiec": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "bielskpodlaski": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "dzialdowo": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "brzesko": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "gostyn": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "chodziez": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "lidzbarkwarminski": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "pszczyna": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "wodzislaw": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "zabkowice": {
+      "live": {
+        "available": false,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "strzelin": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "srodaslaska": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "jedrzejow": {
+      "live": {
+        "available": false,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "kozienice": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "oborniki": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "wieliczka": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "myszkow": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "slubice": {
+      "live": {
+        "available": true,
+        "vehicles": null
+      },
+      "news": {
+        "available": false
+      },
+      "stopHints": {
+        "available": false,
+        "stops": null
+      }
+    },
+    "kartuzy": {
+      "live": {
+        "available": true,
         "vehicles": null
       },
       "news": {

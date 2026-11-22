@@ -2,34 +2,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
-  FlatList,
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
   FadeIn,
   FadeOut,
+  cancelAnimation,
+  interpolate,
   runOnJS,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, LocateFixed, MapPinned, Search, X } from './icons';
-import { scheme, shape, type } from '../theme/tokens';
+import { ArrowLeft, ChevronRight, LocateFixed, MapPin, MapPinned, Search, X } from './icons';
+import { motion } from '../theme/motion';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import {
@@ -65,12 +68,14 @@ type Row =
       prominent: boolean;
     };
 
-const QUICK_CHIPS = 3;
+const QUICK_CHIPS = 4;
 const PERSONAL_MAX = 3;
 /** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
 const PERSONAL_MIN_SCORE = 85;
 const SAME_PLACE_M = 60;
+const MAX_RUBBER_UP = 18;
 
+/** Arkusz wyszukiwarki M3 Expressive ze sprężystym wejściem, płynnym wyjściem i gestem ściągania. */
 export function SearchSheet({
   query,
   loading,
@@ -115,10 +120,8 @@ export function SearchSheet({
   const s = useStrings();
   const { cityId } = useActiveCity();
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
-  // Miejscownik ("w Krakowie"), nie mianownik: wchodzi po przyimku w placeholderze.
   const cityLoc = s.city.loc(cityId);
   const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
-  // Pasek nawigacji nie może zasłaniać ostatnich wyników (edge-to-edge).
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const { height: windowHeight } = useWindowDimensions();
@@ -127,31 +130,75 @@ export function SearchSheet({
   const maxOverlayHeightRef = useRef(windowHeight);
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
-  // Stabilny ref do onClose (unikamy prze-subskrypcji przy każdym renderze)
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const closingRef = useRef(false);
 
+  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.93));
+  const targetHeightRef = useRef(targetSheetHeight);
+  targetHeightRef.current = targetSheetHeight;
+
+  const translateY = useSharedValue(reducedMotion ? 0 : targetSheetHeight);
+  const backdropProgress = useSharedValue(reducedMotion ? 1 : 0);
+  const listScrollY = useSharedValue(0);
+
+  const handleListScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      listScrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const headDividerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(listScrollY.value, [2, 18], [0, 1], 'clamp'),
+  }));
+
+  useEffect(() => {
+    if (reducedMotion) {
+      translateY.value = 0;
+      backdropProgress.value = 1;
+      return;
+    }
+    translateY.value = withSpring(0, motion.spring.spatialDefault);
+    backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
+  }, [backdropProgress, reducedMotion, translateY]);
+
   const finishClose = useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    Keyboard.dismiss();
     closeRef.current();
   }, []);
+
+  const requestClose = useCallback(
+    (immediate = false) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      Keyboard.dismiss();
+      if (immediate || reducedMotion) {
+        finishClose();
+        return;
+      }
+      cancelAnimation(translateY);
+      cancelAnimation(backdropProgress);
+      backdropProgress.value = withTiming(0, motion.exit);
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
+        if (finished) runOnJS(finishClose)();
+      });
+    },
+    [backdropProgress, finishClose, reducedMotion, translateY],
+  );
 
   useEffect(() => {
     setDataStatus(getDataStatus());
     return subscribeDataStatus(setDataStatus);
   }, []);
 
-  // Android back / gest wstecz zamyka wyszukiwarkę zamiast wyjścia z apki
+  // Android back / gest wstecz płynnie zamyka wyszukiwarkę zamiast wyjścia z apki.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      finishClose();
+      requestClose();
       return true;
     });
     return () => sub.remove();
-  }, [finishClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -185,8 +232,6 @@ export function SearchSheet({
     setOverlayHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
 
-  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
   const windowShrank = maxOverlayHeightRef.current - overlayHeight > androidKeyboardHeight * 0.5;
   const extraKeyboardInset =
     Platform.OS === 'android' && androidKeyboardHeight > 0 && !windowShrank
@@ -194,30 +239,45 @@ export function SearchSheet({
       : 0;
   const keyboardOpen = Platform.OS === 'android' && (androidKeyboardHeight > 0 || windowShrank);
 
-  const translateY = useSharedValue(0);
-
   const dismissPanGesture = useMemo(
     () =>
       Gesture.Pan()
         .activeOffsetY(8)
         .failOffsetX([-20, 20])
         .onUpdate((e) => {
-          translateY.value = e.translationY > 0 ? e.translationY : 0;
+          'worklet';
+          if (e.translationY >= 0) {
+            translateY.value = e.translationY;
+          } else {
+            translateY.value = -Math.min(MAX_RUBBER_UP, Math.sqrt(-e.translationY) * 2.2);
+          }
         })
         .onEnd((e) => {
-          if (e.translationY > 110 || e.velocityY > 900) {
+          'worklet';
+          if (e.translationY > 96 || e.velocityY > 760) {
             if (reducedMotion) {
-              runOnJS(finishClose)();
+              runOnJS(requestClose)(true);
               return;
             }
-            translateY.value = withTiming(targetSheetHeight, { duration: 140 }, (finished) => {
-              if (finished) runOnJS(finishClose)();
-            });
+            const remaining = Math.max(0, targetSheetHeight - Math.max(0, translateY.value));
+            const speed = Math.max(1200, e.velocityY);
+            const duration = Math.max(100, Math.min(180, Math.round((remaining / speed) * 1000)));
+            backdropProgress.value = withTiming(0, { duration, easing: motion.exit.easing });
+            translateY.value = withTiming(
+              targetSheetHeight,
+              { duration, easing: motion.exit.easing },
+              (finished) => {
+                if (finished) runOnJS(requestClose)(true);
+              },
+            );
           } else {
-            translateY.value = withTiming(0, { duration: 140 });
+            translateY.value = withSpring(0, {
+              ...motion.spring.spatialDefault,
+              velocity: e.velocityY,
+            });
           }
         }),
-    [finishClose, reducedMotion, targetSheetHeight, translateY],
+    [backdropProgress, reducedMotion, requestClose, targetSheetHeight, translateY],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -225,8 +285,9 @@ export function SearchSheet({
   }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => {
-    const progress = 1 - Math.min(1, translateY.value / Math.max(1, targetSheetHeight * 0.7));
-    return { opacity: progress * 0.6 };
+    const dragFactor =
+      1 - Math.min(1, Math.max(0, translateY.value) / Math.max(1, targetSheetHeight * 0.72));
+    return { opacity: backdropProgress.value * dragFactor * 0.58 };
   });
 
   const trimmed = query.trim();
@@ -260,12 +321,12 @@ export function SearchSheet({
     (line: TransitLine) => {
       onSelectLine?.(line);
       if (closeOnSelect) {
-        finishClose();
+        requestClose();
       } else {
         Keyboard.dismiss();
       }
     },
-    [closeOnSelect, finishClose, onSelectLine],
+    [closeOnSelect, requestClose, onSelectLine],
   );
 
   // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
@@ -372,13 +433,7 @@ export function SearchSheet({
     return out;
   }, [trimmed, recent, ranked, s, lines, nearbyVehicles, onSelectVehicle, onOpenLiveMap]);
 
-  const lineEntering = reducedMotion
-    ? undefined
-    : FadeIn.duration(110).easing(Easing.out(Easing.quad));
-  const lineExiting = reducedMotion ? undefined : FadeOut.duration(70);
-
-  // Opóźnienie wskaźnika ładowania o 200 ms: zapobiega mignięciu
-  // spinnera na dole listy przy błyskawicznych (<2 ms) wyszukiwaniach offline.
+  // Opóźnienie wskaźnika ładowania o 200 ms zapobiega mignięciu przy błyskawicznych wynikach offline.
   const [showLoading, setShowLoading] = useState(false);
   useEffect(() => {
     if (!loading) {
@@ -395,30 +450,30 @@ export function SearchSheet({
     (item: Suggestion) => {
       onSelect(item);
       if (closeOnSelect) {
-        finishClose();
+        requestClose();
       } else {
         Keyboard.dismiss();
       }
     },
-    [closeOnSelect, finishClose, onSelect],
+    [closeOnSelect, requestClose, onSelect],
   );
 
   const handleVehicleSelect = useCallback(
     (vehicle: NearbyLiveVehicle) => {
       onSelectVehicle?.(vehicle);
       if (closeOnSelect) {
-        finishClose();
+        requestClose();
       } else {
         Keyboard.dismiss();
       }
     },
-    [closeOnSelect, finishClose, onSelectVehicle],
+    [closeOnSelect, requestClose, onSelectVehicle],
   );
 
   const handleOpenLiveMap = useCallback(() => {
-    finishClose();
+    requestClose(true);
     onOpenLiveMap?.();
-  }, [finishClose, onOpenLiveMap]);
+  }, [requestClose, onOpenLiveMap]);
 
   const keyExtractor = useCallback(
     (r: Row) =>
@@ -453,9 +508,10 @@ export function SearchSheet({
           accessibilityLabel={s.search.pickOnLiveMap}
           style={styles.liveMapRow}
           scaleDelta={0.02}
+          haptic="selection"
         >
           <View style={styles.liveMapIcon}>
-            <MapPinned size={20} color={scheme.onSecondaryContainer} />
+            <MapPinned size={20} color={scheme.onPrimaryContainer} />
           </View>
           <View style={styles.liveMapText}>
             <Text style={styles.liveMapTitle} numberOfLines={1}>
@@ -465,7 +521,9 @@ export function SearchSheet({
               {s.search.pickOnLiveMapSub}
             </Text>
           </View>
-          <ChevronRight size={20} color={scheme.onSurfaceVariant} />
+          <View style={styles.rowArrowWell}>
+            <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+          </View>
         </SpringPressable>
       ) : row.type === 'vehicle' ? (
         <SpringPressable
@@ -482,6 +540,7 @@ export function SearchSheet({
             row.last && styles.vehicleLast,
           ]}
           scaleDelta={0.02}
+          haptic="selection"
         >
           <LineBadge line={row.vehicle.line} mode={row.vehicle.mode} />
           <View style={styles.vehicleText}>
@@ -492,9 +551,7 @@ export function SearchSheet({
             </Text>
             <Text style={styles.vehicleSub} numberOfLines={1}>
               {[
-                row.vehicle.nextStopName
-                  ? s.liveMap.nextStop(row.vehicle.nextStopName)
-                  : null,
+                row.vehicle.nextStopName ? s.liveMap.nextStop(row.vehicle.nextStopName) : null,
                 s.liveMap.distanceAway(row.vehicle.distanceM),
               ]
                 .filter(Boolean)
@@ -504,47 +561,39 @@ export function SearchSheet({
           <ChevronRight size={18} color={scheme.onSurfaceVariant} />
         </SpringPressable>
       ) : row.type === 'line' ? (
-        <Animated.View entering={lineEntering} exiting={lineExiting}>
-          <TouchableOpacity
-            onPress={() => handleLineSelect(row.line)}
-            accessibilityRole="button"
-            accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
-            activeOpacity={0.7}
-            style={styles.lineResult}
-          >
-            <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
-            <View style={styles.lineText}>
-              <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
-              <Text style={styles.lineSubtitle}>
-                {row.line.longName || s.lineTimetable.searchHint}
-              </Text>
-            </View>
-            <ChevronRight size={22} color={scheme.onPrimaryContainer} />
-          </TouchableOpacity>
-        </Animated.View>
+        <SpringPressable
+          onPress={() => handleLineSelect(row.line)}
+          accessibilityRole="button"
+          accessibilityLabel={s.lineTimetable.open(row.line.shortName)}
+          style={styles.lineResult}
+          scaleDelta={0.02}
+          haptic="selection"
+        >
+          <LineBadge line={row.line.shortName} mode={row.line.mode} size="large" />
+          <View style={styles.lineText}>
+            <Text style={styles.lineTitle}>{s.lineTimetable.line(row.line.shortName)}</Text>
+            <Text style={styles.lineSubtitle} numberOfLines={2}>
+              {row.line.longName || s.lineTimetable.searchHint}
+            </Text>
+          </View>
+          <View style={styles.lineArrowWell}>
+            <ChevronRight size={18} color={scheme.onSurface} />
+          </View>
+        </SpringPressable>
       ) : (
         <SuggestionRow
           item={row.item}
           query={trimmed}
-          onPress={() => handleSelect(row.item)}
+          onSelect={handleSelect}
           segment={row.first ? (row.last ? 'single' : 'first') : row.last ? 'last' : 'middle'}
           prominent={row.prominent}
         />
       ),
-    [
-      handleLineSelect,
-      handleOpenLiveMap,
-      handleSelect,
-      handleVehicleSelect,
-      lineEntering,
-      lineExiting,
-      s,
-      trimmed,
-    ],
+    [handleLineSelect, handleOpenLiveMap, handleSelect, handleVehicleSelect, s, trimmed],
   );
 
   const listContentStyle = useMemo(
-    () => [styles.list, { paddingBottom: keyboardOpen ? 16 : 24 + insets.bottom }],
+    () => [styles.list, { paddingBottom: keyboardOpen ? 16 : 28 + insets.bottom }],
     [keyboardOpen, insets.bottom],
   );
 
@@ -571,7 +620,7 @@ export function SearchSheet({
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimatedStyle]}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={finishClose}
+          onPress={() => requestClose()}
           accessibilityRole="button"
           accessibilityLabel={s.search.closeA11y}
         />
@@ -591,20 +640,25 @@ export function SearchSheet({
                 </View>
                 {originTitle && onChangeOrigin && (
                   <View style={styles.originWrap}>
-                    <TouchableOpacity
+                    <SpringPressable
                       onPress={onChangeOrigin}
                       style={styles.originHintRow}
-                      activeOpacity={0.7}
+                      scaleDelta={0.015}
+                      haptic="selection"
                       accessibilityRole="button"
                       accessibilityLabel={s.search.originA11y(originTitle)}
                     >
-                      <LocateFixed size={16} color={scheme.onSurfaceVariant} />
+                      <View style={styles.originIconWell}>
+                        <LocateFixed size={14} color={scheme.onPrimaryContainer} />
+                      </View>
                       <Text style={styles.originHintLabel}>{s.search.fromPrefix}</Text>
                       <Text style={styles.originHintTitle} numberOfLines={1}>
                         {originTitle}
                       </Text>
-                      <Text style={styles.originHintChange}>{s.search.change}</Text>
-                    </TouchableOpacity>
+                      <View style={styles.originChangePill}>
+                        <Text style={styles.originHintChange}>{s.search.change}</Text>
+                      </View>
+                    </SpringPressable>
                   </View>
                 )}
               </View>
@@ -612,15 +666,16 @@ export function SearchSheet({
 
             <View style={styles.head}>
               <View style={[styles.inputBox, focused && styles.inputFocused]}>
-                <TouchableOpacity
-                  onPress={finishClose}
+                <SpringPressable
+                  onPress={() => requestClose()}
                   style={styles.leadingBtn}
-                  activeOpacity={0.7}
+                  scaleDelta={0.06}
+                  haptic="selection"
                   accessibilityRole="button"
                   accessibilityLabel={s.search.closeA11y}
                 >
-                  <ArrowLeft size={23} color={scheme.onSurfaceVariant} />
-                </TouchableOpacity>
+                  <ArrowLeft size={21} color={scheme.onSurface} />
+                </SpringPressable>
                 <TextInput
                   ref={inputRef}
                   autoFocus
@@ -648,32 +703,44 @@ export function SearchSheet({
                   }
                 />
                 {query ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      onQuery('');
-                      inputRef.current?.focus();
-                    }}
-                    style={styles.trailingBtn}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.search.clearA11y}
+                  <Animated.View
+                    entering={reducedMotion ? undefined : FadeIn.duration(120)}
+                    exiting={reducedMotion ? undefined : FadeOut.duration(100)}
                   >
-                    <X size={19} color={scheme.onSurfaceVariant} />
-                  </TouchableOpacity>
+                    <SpringPressable
+                      onPress={() => {
+                        onQuery('');
+                        inputRef.current?.focus();
+                      }}
+                      hitSlop={6}
+                      style={styles.trailingBtn}
+                      scaleDelta={0.08}
+                      haptic="selection"
+                      accessibilityRole="button"
+                      accessibilityLabel={s.search.clearA11y}
+                    >
+                      <X size={17} color={scheme.onSurfaceVariant} />
+                    </SpringPressable>
+                  </Animated.View>
                 ) : null}
               </View>
             </View>
+            <Animated.View style={[styles.headDivider, headDividerStyle]} pointerEvents="none" />
 
-            <FlatList
+            <Animated.FlatList
               data={rows}
               keyExtractor={keyExtractor}
               style={styles.flatList}
+              onScroll={handleListScroll}
+              scrollEventThrottle={16}
               overScrollMode="never"
+              showsVerticalScrollIndicator={false}
               contentContainerStyle={listContentStyle}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              initialNumToRender={10}
-              maxToRenderPerBatch={8}
+              removeClippedSubviews={Platform.OS === 'android'}
+              initialNumToRender={12}
+              maxToRenderPerBatch={10}
               windowSize={7}
               ListHeaderComponent={
                 <View style={styles.listHeader}>
@@ -684,22 +751,31 @@ export function SearchSheet({
                     </View>
                   )}
                   {!trimmed && savedQuick.length > 0 && (
-                    <View style={styles.quickRow}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      overScrollMode="never"
+                      style={styles.quickScroller}
+                      contentContainerStyle={styles.quickRow}
+                    >
                       {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
-                        <TouchableOpacity
+                        <SpringPressable
                           key={q.id}
                           onPress={() => handleSelect(q)}
-                          activeOpacity={0.7}
+                          scaleDelta={0.03}
+                          haptic="selection"
                           style={styles.quick}
                           accessibilityRole="button"
                           accessibilityLabel={s.search.savedA11y(q.title)}
                         >
+                          <MapPin size={14} color={scheme.primary} />
                           <Text style={styles.quickText} numberOfLines={1}>
                             {q.title}
                           </Text>
-                        </TouchableOpacity>
+                        </SpringPressable>
                       ))}
-                    </View>
+                    </ScrollView>
                   )}
                 </View>
               }
@@ -708,21 +784,21 @@ export function SearchSheet({
                 showLoading && rows.length > 0 ? (
                   <View style={styles.status} accessibilityLiveRegion="polite">
                     <ActivityIndicator size="small" color={scheme.primary} />
-                    <Text style={styles.emptySub}>{s.search.searching(cityLoc)}</Text>
+                    <Text style={styles.statusText}>{s.search.searching(cityLoc)}</Text>
                   </View>
                 ) : error && rows.length > 0 ? (
-                  <Text style={styles.error} accessibilityRole="alert">
-                    {s.search.errorHint}
-                  </Text>
+                  <View style={styles.errorBanner} accessibilityRole="alert">
+                    <Text style={styles.error}>{s.search.errorHint}</Text>
+                  </View>
                 ) : null
               }
               ListEmptyComponent={
-                <View style={styles.empty} accessibilityLiveRegion="polite">
+                <View style={styles.emptyCard} accessibilityLiveRegion="polite">
                   <View style={styles.emptyIcon}>
                     {showLoading || timetableSyncing ? (
-                      <ActivityIndicator color={scheme.primary} />
+                      <ActivityIndicator color={scheme.onPrimaryContainer} />
                     ) : (
-                      <Search size={28} color={scheme.primary} />
+                      <Search size={26} color={scheme.onPrimaryContainer} />
                     )}
                   </View>
                   <Text style={styles.emptyTitle}>
@@ -752,15 +828,16 @@ export function SearchSheet({
                     </Text>
                   )}
                   {timetableMissing && !showLoading && !error && (
-                    <TouchableOpacity
+                    <SpringPressable
                       onPress={() => void importGtfsFromNetwork().catch(() => {})}
-                      activeOpacity={0.75}
+                      scaleDelta={0.03}
+                      haptic="light"
                       style={styles.downloadBtn}
                       accessibilityRole="button"
                       accessibilityLabel={s.city.downloadAction}
                     >
                       <Text style={styles.downloadBtnText}>{s.city.downloadAction}</Text>
-                    </TouchableOpacity>
+                    </SpringPressable>
                   )}
                 </View>
               }
@@ -789,6 +866,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
   container: { flex: 1 },
@@ -807,92 +886,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 10,
   },
-  head: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 },
-  flatList: { flex: 1 },
-  listHeader: { gap: 6 },
-  syncBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginTop: 4,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainer,
-  },
-  syncBannerText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
-  },
-  liveMapRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 60,
-    marginTop: 4,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  liveMapIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  liveMapText: { flex: 1, gap: 2, minWidth: 0 },
-  liveMapTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
-  liveMapSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  vehicleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 60,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.small,
-  },
-  vehicleFirst: {
-    borderTopLeftRadius: shape.large,
-    borderTopRightRadius: shape.large,
-  },
-  vehicleLast: {
-    borderBottomLeftRadius: shape.large,
-    borderBottomRightRadius: shape.large,
-  },
-  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
-  vehicleTitle: { ...type.titleSmall, fontWeight: '600', color: scheme.onSurface },
-  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
-  lineResult: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    minHeight: 80,
-    borderRadius: shape.large,
-    backgroundColor: scheme.primaryContainer,
-  },
-  lineText: { flex: 1, gap: 4 },
-  lineTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
-  lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
   originHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: shape.medium,
+    gap: 8,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingVertical: 6,
+    borderRadius: shape.full,
     maxWidth: '100%',
-    minHeight: 48,
+    minHeight: 44,
     backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  originIconWell: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   originHintLabel: {
-    ...type.bodySmall,
+    ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     fontWeight: '700',
   },
@@ -902,94 +920,234 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  originChangePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    flexShrink: 0,
+  },
   originHintChange: {
     ...type.labelSmall,
-    color: scheme.primary,
+    color: scheme.onPrimaryContainer,
     fontWeight: '700',
-    marginLeft: 2,
+  },
+  head: { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 },
+  headDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: scheme.outlineVariant,
   },
   inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.extraLarge,
+    borderRadius: shape.full,
     borderWidth: 2,
-    borderColor: scheme.outline,
-    paddingLeft: 2,
-    paddingRight: 4,
-    minHeight: 64,
-    gap: 2,
+    borderColor: scheme.outlineVariant,
+    paddingLeft: 6,
+    paddingRight: 10,
+    minHeight: 58,
+    gap: 6,
   },
-  inputFocused: { borderColor: scheme.primary },
+  inputFocused: {
+    borderColor: scheme.primary,
+  },
   leadingBtn: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
   },
   trailingBtn: {
-    width: 48,
-    height: 48,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
   input: {
     flex: 1,
     ...type.bodyLarge,
+    fontWeight: '500',
     minWidth: 0,
     color: scheme.onSurface,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 4,
   },
-  list: { paddingHorizontal: 16, paddingBottom: 40, gap: 2 },
-  section: {
-    ...type.labelLarge,
+  flatList: { flex: 1 },
+  list: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 40, gap: 3 },
+  listHeader: { gap: 6 },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  syncBannerText: {
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    paddingHorizontal: 8,
-    paddingTop: 18,
-    paddingBottom: 8,
+    flex: 1,
+  },
+  quickScroller: {
+    marginHorizontal: -16,
   },
   quickRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 0,
-    paddingVertical: 6,
-    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   quick: {
-    backgroundColor: scheme.secondaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     borderRadius: shape.full,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 48,
-    maxWidth: '100%',
-    justifyContent: 'center',
+    minHeight: 42,
+    maxWidth: 220,
   },
   quickText: {
     ...type.labelLarge,
-    color: scheme.onSecondaryContainer,
+    color: scheme.onSurface,
     fontWeight: '600',
+    flexShrink: 1,
   },
-  empty: { paddingHorizontal: 16, paddingVertical: 28, alignItems: 'center', gap: 12 },
+  liveMapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 66,
+    marginTop: 4,
+    borderRadius: 24,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  liveMapIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  liveMapText: { flex: 1, gap: 2, minWidth: 0 },
+  liveMapTitle: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  liveMapSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  rowArrowWell: {
+    width: 32,
+    height: 32,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 64,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 6,
+  },
+  vehicleFirst: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  vehicleLast: {
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
+  vehicleTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
+  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
+  lineResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    minHeight: 76,
+    borderRadius: 24,
+    backgroundColor: scheme.primaryContainer,
+    marginBottom: 4,
+    ...elev.level1,
+  },
+  lineText: { flex: 1, gap: 3, minWidth: 0 },
+  lineTitle: {
+    ...type.titleMedium,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    color: scheme.onPrimaryContainer,
+  },
+  lineSubtitle: { ...type.bodySmall, color: scheme.onPrimaryContainer },
+  lineArrowWell: {
+    width: 34,
+    height: 34,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  section: {
+    ...type.labelSmall,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    color: scheme.onSurfaceVariant,
+    paddingHorizontal: 10,
+    paddingTop: 18,
+    paddingBottom: 6,
+  },
+  emptyCard: {
+    marginTop: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    gap: 12,
+  },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: shape.large,
+    width: 56,
+    height: 56,
+    borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { ...type.titleMedium, color: scheme.onSurface, textAlign: 'center' },
-  status: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 20,
+  emptyTitle: {
+    ...type.titleMedium,
+    fontWeight: '800',
+    color: scheme.onSurface,
+    textAlign: 'center',
   },
-  error: { ...type.bodyMedium, color: scheme.error, padding: 16 },
   emptySub: {
     ...type.bodyMedium,
     flexShrink: 1,
@@ -997,19 +1155,44 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  status: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 18,
+  },
+  statusText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  errorBanner: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: scheme.errorContainer,
+  },
+  error: {
+    ...type.bodySmall,
+    fontWeight: '600',
+    color: scheme.onErrorContainer,
+    textAlign: 'center',
+  },
   downloadBtn: {
     marginTop: 4,
     minHeight: 48,
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     paddingVertical: 12,
     borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   downloadBtnText: {
     ...type.labelLarge,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
+    color: scheme.onPrimary,
+    fontWeight: '800',
   },
 });

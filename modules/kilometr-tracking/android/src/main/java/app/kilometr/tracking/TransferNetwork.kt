@@ -85,16 +85,66 @@ internal class TransferNetwork(val root: JSONObject) {
     }
   }
 
+  private fun fallbackStops(leg: JSONObject, legIndex: Int): List<TransferStop> {
+    val timeline = root.optJSONArray("timeline")
+    val entry = if (timeline != null && legIndex < timeline.length()) timeline.optJSONObject(legIndex) else null
+    val depMs = entry?.optLong("departMs") ?: baseMs
+    val arrMs = max(depMs + 60_000L, entry?.optLong("arriveMs") ?: (depMs + 60_000L))
+    val inter = leg.optJSONArray("intermediateStops")
+    if (inter != null && inter.length() >= 2) {
+      val parsed = (0 until inter.length()).mapNotNull { idx ->
+        val s = inter.optJSONObject(idx) ?: return@mapNotNull null
+        val aSec = s.optDouble("arriveSec", Double.NaN)
+        val dSec = s.optDouble("departSec", Double.NaN)
+        val aMs = if (!aSec.isNaN()) baseMs + (aSec * 1000.0).toLong() else if (!dSec.isNaN()) baseMs + (dSec * 1000.0).toLong() else depMs
+        val dMs = if (!dSec.isNaN()) baseMs + (dSec * 1000.0).toLong() else aMs
+        TransferStop(
+          s.optString("stopId", "${leg.optString("id")}:$idx"),
+          s.optString("name", ""),
+          s.optDouble("lat", 0.0),
+          s.optDouble("lon", 0.0),
+          aMs,
+          dMs,
+          -1,
+        )
+      }
+      if (parsed.size >= 2) return parsed
+    }
+    return listOf(
+      TransferStop(
+        leg.optString("fromStopId", "${leg.optString("id")}:from"),
+        leg.optString("fromStop", ""),
+        leg.optDouble("fromLat", 0.0),
+        leg.optDouble("fromLon", 0.0),
+        depMs,
+        depMs,
+        -1,
+      ),
+      TransferStop(
+        leg.optString("toStopId", "${leg.optString("id")}:to"),
+        leg.optString("toStop", ""),
+        leg.optDouble("toLat", 0.0),
+        leg.optDouble("toLon", 0.0),
+        arrMs,
+        arrMs,
+        -1,
+      ),
+    )
+  }
+
   fun rides(connection: JSONObject): List<TransferRide> {
     val legs = connection.getJSONArray("legs")
     return (0 until legs.length()).mapNotNull { i ->
       val leg = legs.getJSONObject(i)
       if (leg.optString("mode") == "walk") return@mapNotNull null
       val tripId = leg.optString("tripId")
-      val route = tripStops(tripId)
-      val board = route.indexOfFirst { it.id == leg.optString("fromStopId") }
-      val alight = route.indexOfFirst { it.id == leg.optString("toStopId") }
-      if (board < 0 || alight <= board) null else TransferRide(i, tripId, board, alight, route)
+      val packed = if (tripId.isNotEmpty()) tripStops(tripId) else emptyList()
+      val route = if (packed.size >= 2) packed else fallbackStops(leg, i)
+      var board = route.indexOfFirst { it.id == leg.optString("fromStopId") }
+      var alight = route.indexOfFirst { it.id == leg.optString("toStopId") }
+      if (board < 0) board = 0
+      if (alight <= board) alight = route.lastIndex
+      if (alight <= board) null else TransferRide(i, tripId, board, alight, route)
     }
   }
 
@@ -157,20 +207,24 @@ internal class TransferNetwork(val root: JSONObject) {
   }
 
   fun alternatives(connection: JSONObject, ride: TransferRide, estimate: RideEstimate, nowMs: Long): TransferCandidate? {
-    if (!KilometrRaptorBridge.isLoaded) return null
+    return alternativesList(connection, ride, estimate, nowMs).firstOrNull()
+  }
+
+  fun alternativesList(connection: JSONObject, ride: TransferRide, estimate: RideEstimate, nowMs: Long): List<TransferCandidate> {
+    if (!KilometrRaptorBridge.isLoaded || destinations.length() == 0) return emptyList()
     if (!KilometrRaptorBridge.nativeHasNetwork(NET_ID)) {
-      if (!KilometrRaptorBridge.nativeLoadNetwork(NET_ID, bytes)) return null
+      if (!KilometrRaptorBridge.nativeLoadNetwork(NET_ID, bytes)) return emptyList()
     }
     val used = (0 until ride.legIndex).count {
       connection.getJSONArray("legs").getJSONObject(it).optString("mode") != "walk"
     }
     val remaining = options.getInt("maxTransfers") - used - 1
-    if (remaining < 0) return null
+    if (remaining < 0) return emptyList()
     val buffer = max(60, options.getInt("minTransferSec"))
     val first = max(ride.board + 1, floor(estimate.position).toInt() + 1)
     val candidates = ((first..min(ride.stops.lastIndex, first + 5)).toList() + ride.alight)
       .distinct().filter { it >= first && it <= ride.stops.lastIndex }
-    var best: TransferCandidate? = null
+    val all = ArrayList<TransferCandidate>()
     for (alight in candidates) {
       val stop = ride.stops[alight]
       val arrival = stop.arriveMs + estimate.delaySec * 1000L
@@ -200,13 +254,9 @@ internal class TransferNetwork(val root: JSONObject) {
       }
       for (d in activeDelays) for (value in d) query.putInt(value)
       val result = KilometrRaptorBridge.nativeRunQuery(query.array()) ?: continue
-      for (candidate in decode(result, connection, ride, alight, estimate, arrival, nowMs)) {
-        val penalty = if (candidate.alight == ride.alight) 0 else 180
-        val bestPenalty = if (best?.alight == ride.alight) 0 else 180
-        if (best == null || candidate.cost + penalty < best.cost + bestPenalty) best = candidate
-      }
+      all += decode(result, connection, ride, alight, estimate, arrival, nowMs)
     }
-    return best
+    return all.sortedBy { it.cost + if (it.alight == ride.alight) 0 else 180 }.take(3)
   }
 
   private fun leg(mode: String, from: Int, to: Int, departure: Int, arrival: Int): JSONObject {

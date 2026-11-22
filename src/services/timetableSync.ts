@@ -89,7 +89,7 @@ async function fetchManifestAt(url: string): Promise<TimetableManifest> {
     if (!res.ok) throw new Error(`manifest HTTP ${res.status}`);
     const m = (await res.json()) as TimetableManifest;
     if (!m || typeof m.version !== 'string' || !m.version
-      || !m.db || typeof m.db.sizeBytes !== 'number' || m.db.sizeBytes < 500_000
+      || !m.db || typeof m.db.sizeBytes !== 'number' || m.db.sizeBytes < 10_000
       || !m.stats || m.stats.stops <= 0 || m.stats.trips <= 0) {
       throw new Error('manifest ma niepełny kształt');
     }
@@ -399,4 +399,6 @@ export async function downloadNationalDb(
   resetRailAmenitiesCache();
   const { resetStationAmenitiesCache } = await import('./stationAmenities');
   resetStationAmenitiesCache();
+  const { resetPlatformSidesCache } = await import('./trainDoorSide');
+  resetPlatformSidesCache();
 }

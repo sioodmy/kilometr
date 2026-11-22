@@ -34,6 +34,7 @@ export interface TrackingNativeModule {
   supportsTransferProtection?(): boolean;
   supportsTransferDecisions?(): boolean;
   configureTransferProtection?(tripId: string, path: string): Promise<boolean>;
+  clearTransferProtection?(): Promise<boolean>;
   getTransferProtectionState?(): Promise<string | null>;
   /** Pomiar GPS z serwisu śledzącego (Android, działa także w tle). */
   subscribeTripLocation?(cb: (fix: OnboardLocationFix) => void): (() => void) | null;

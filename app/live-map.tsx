@@ -1,15 +1,19 @@
-// Pelnoekranowa mapa pojazdow, przystankow i utrudnien na zywo w stylu zbiorkom.live:
-// pigulki linii z ikona srodka transportu i strzalka kierunku, trasa wybranego pojazdu,
-// klikalne przystanki z tablica odjazdow, korytarze utrudnien oraz reczny wybor startu.
+// Pełnoekranowa mapa pojazdów, przystanków i utrudnień na żywo w stylu M3 Expressive:
+// pływająca wyszukiwarka linii i przystanków, filtry z licznikami live, kropki na oddaleniu
+// przechodzące w pigułki linii, prawa szyna akcji (śledzenie, cała trasa, zoom, GPS) oraz
+// rozwijane dolne karty pojazdu, przystanku i utrudnienia.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import Animated, {
   FadeIn,
@@ -22,12 +26,21 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import {
+  ArrowLeft,
   BusFront,
   CableCar,
-  ChevronLeft,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
   ExternalLink,
   LocateFixed,
+  MapPin,
+  Minus,
+  Navigation,
+  Plus,
   RefreshCw,
+  ScanLine,
+  Search,
   TrainFront,
   TramFront,
   TriangleAlert,
@@ -39,6 +52,7 @@ import {
   LiveVehiclesMap,
   type LiveVehiclesMapHandle,
 } from '../src/components/LiveVehiclesMap';
+import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
 import { SpringPressable } from '../src/components/SpringPressable';
 import type {
   LiveMapDisruptionItem,
@@ -117,6 +131,15 @@ const SMOOTH_LAYOUT = LinearTransition.duration(motion.state.duration)
   .easing(motion.state.easing)
   .reduceMotion(motion.state.reduceMotion);
 
+function normalizeSearch(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
+}
+
 function matchesFilter(mode: Exclude<LegMode, 'walk'>, filter: ModeFilter): boolean {
   if (filter === 'all') return true;
   if (filter === 'tram') return mode === 'tram';
@@ -154,20 +177,29 @@ export default function LiveVehiclesMapScreen() {
   const s = useStrings();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { cityId, city } = useActiveCity();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const returnTarget: 'home' | 'routes' = returnTo === 'routes' ? 'routes' : 'home';
 
   const mapRef = useRef<LiveVehiclesMapHandle>(null);
+  const searchInputRef = useRef<TextInput>(null);
   const { location: userLoc } = useCurrentLocation(true, false);
 
   const [vehicles, setVehicles] = useState<TrackedVehicle[]>(() => liveTracker.snapshot());
   const [filter, setFilter] = useState<ModeFilter>('all');
+  const [lineFilter, setLineFilter] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showStops, setShowStops] = useState(true);
+  const [showDisruptions, setShowDisruptions] = useState(true);
+  const [followVehicle, setFollowVehicle] = useState(false);
+  const [zoomMode, setZoomMode] = useState<'dots' | 'pills'>('pills');
+  const [sheetExpanded, setSheetExpanded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [routeStopFallback, setRouteStopFallback] = useState<LiveMapStopItem | null>(null);
   const [selectedDisruptionId, setSelectedDisruptionId] = useState<string | null>(null);
-  const [showDisruptions, setShowDisruptions] = useState(true);
   const [newsItems, setNewsItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const [gtfsLoaded, setGtfsLoaded] = useState(() => gtfsStore.isLoaded);
@@ -243,7 +275,7 @@ export default function LiveVehiclesMapScreen() {
               setNewsItems(fresh);
             }
           } catch {
-            // Ciche zachowanie istniejacego cache komunikatow przy braku sieci.
+            // Ciche zachowanie istniejącego cache komunikatów przy braku sieci.
           }
         })();
       } else {
@@ -348,7 +380,8 @@ export default function LiveVehiclesMapScreen() {
     return () => ctrl.abort();
   }, [cityId, vehicles]);
 
-  const mapItems = useMemo<LiveMapVehicleItem[]>(() => {
+  // Pełna lista pojazdów przed filtrami (do liczników i wyszukiwarki linii).
+  const allVehicleItems = useMemo<LiveMapVehicleItem[]>(() => {
     void railShapeVersion;
     const out: LiveMapVehicleItem[] = [];
     const seen = new Set<string>();
@@ -368,7 +401,8 @@ export default function LiveVehiclesMapScreen() {
         : true;
       let observedBearing = prevMotion?.bearing;
       if (prevMotion && movedFar) {
-        observedBearing = Math.round(bearingDegrees(prevMotion.lat, prevMotion.lon, v.lat, v.lon)) % 360;
+        observedBearing =
+          Math.round(bearingDegrees(prevMotion.lat, prevMotion.lon, v.lat, v.lon)) % 360;
       }
 
       const idKey = `${v.type ?? ''}\0${v.line ?? ''}`;
@@ -393,7 +427,12 @@ export default function LiveVehiclesMapScreen() {
           ? resolveVehicleBearing(v, gtfsStore)
           : undefined;
 
-      if (!prevMotion || movedFar || prevMotion.tripId !== v.matchedTripId || prevMotion.checkedGtfs !== gtfsLoaded) {
+      if (
+        !prevMotion ||
+        movedFar ||
+        prevMotion.tripId !== v.matchedTripId ||
+        prevMotion.checkedGtfs !== gtfsLoaded
+      ) {
         motionRef.current.set(v.vehicleId, {
           lat: movedFar ? v.lat : prevMotion?.lat ?? v.lat,
           lon: movedFar ? v.lon : prevMotion?.lon ?? v.lon,
@@ -404,11 +443,10 @@ export default function LiveVehiclesMapScreen() {
         });
       }
 
-      if (!matchesFilter(resolvedMode, filter)) continue;
-
-      const rawFeedB = typeof v.bearing === 'number' && Number.isFinite(v.bearing)
-        ? ((v.bearing % 360) + 360) % 360
-        : undefined;
+      const rawFeedB =
+        typeof v.bearing === 'number' && Number.isFinite(v.bearing)
+          ? ((v.bearing % 360) + 360) % 360
+          : undefined;
       const feedBearing =
         rawFeedB === 0 && observedBearing !== undefined && angleDiff(0, observedBearing) > 35
           ? undefined
@@ -482,12 +520,111 @@ export default function LiveVehiclesMapScreen() {
       if (!seen.has(key)) motionRef.current.delete(key);
     }
     return out;
-  }, [asyncRouteData, cityId, filter, gtfsLoaded, railShapeVersion, selectedId, vehicles]);
+  }, [asyncRouteData, cityId, gtfsLoaded, railShapeVersion, selectedId, vehicles]);
+
+  const modeCounts = useMemo(() => {
+    let tram = 0;
+    let bus = 0;
+    let train = 0;
+    for (const item of allVehicleItems) {
+      if (item.mode === 'tram') tram += 1;
+      else if (item.mode === 'bus' || item.mode === 'trolleybus') bus += 1;
+      else train += 1;
+    }
+    return { all: allVehicleItems.length, tram, bus, train };
+  }, [allVehicleItems]);
+
+  const mapItems = useMemo<LiveMapVehicleItem[]>(() => {
+    const normalizedLineFilter = lineFilter ? normalizeSearch(lineFilter) : null;
+    return allVehicleItems.filter((item) => {
+      if (!matchesFilter(item.mode, filter)) return false;
+      if (normalizedLineFilter && normalizeSearch(item.line) !== normalizedLineFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [allVehicleItems, filter, lineFilter]);
 
   const mapStops = useMemo<LiveMapStopItem[]>(() => {
     if (!gtfsLoaded) return [];
     return buildLiveMapStops(gtfsStore, scheduleCtx?.dayIndex ?? null, cityId);
   }, [cityId, gtfsLoaded, scheduleCtx?.dayIndex]);
+
+  // Indeks wyszukiwarki: aktywne linie live + przystanki GTFS.
+  const searchResults = useMemo(() => {
+    const q = normalizeSearch(searchQuery);
+    if (!searchOpen || q.length === 0) return { lines: [], stops: [] };
+
+    const lineMap = new Map<
+      string,
+      { line: string; mode: Exclude<LegMode, 'walk'>; count: number; nearestId: string; lat: number; lon: number; dist: number }
+    >();
+    const refLat = userLoc?.lat ?? city.center.lat;
+    const refLon = userLoc?.lon ?? city.center.lon;
+
+    for (const item of allVehicleItems) {
+      const norm = normalizeSearch(item.line);
+      if (!norm.includes(q)) continue;
+      const d = distanceMeters(refLat, refLon, item.lat, item.lon);
+      const existing = lineMap.get(item.line);
+      if (!existing) {
+        lineMap.set(item.line, {
+          line: item.line,
+          mode: item.mode,
+          count: 1,
+          nearestId: item.id,
+          lat: item.lat,
+          lon: item.lon,
+          dist: d,
+        });
+      } else {
+        existing.count += 1;
+        if (d < existing.dist) {
+          existing.nearestId = item.id;
+          existing.lat = item.lat;
+          existing.lon = item.lon;
+          existing.dist = d;
+        }
+      }
+    }
+
+    const lines = [...lineMap.values()]
+      .sort((a, b) => {
+        const aExact = normalizeSearch(a.line) === q ? 0 : 1;
+        const bExact = normalizeSearch(b.line) === q ? 0 : 1;
+        if (aExact !== bExact) return aExact - bExact;
+        const aStarts = normalizeSearch(a.line).startsWith(q) ? 0 : 1;
+        const bStarts = normalizeSearch(b.line).startsWith(q) ? 0 : 1;
+        if (aStarts !== bStarts) return aStarts - bStarts;
+        return a.line.localeCompare(b.line, undefined, { numeric: true });
+      })
+      .slice(0, 8);
+
+    const stops: LiveMapStopItem[] = [];
+    if (q.length >= 2) {
+      const seenNames = new Set<string>();
+      for (const st of mapStops) {
+        const norm = normalizeSearch(st.name);
+        if (!norm.includes(q)) continue;
+        const dedupeKey = `${norm}|${st.code ?? ''}`;
+        if (seenNames.has(dedupeKey)) continue;
+        seenNames.add(dedupeKey);
+        stops.push(st);
+        if (stops.length >= 8) break;
+      }
+      stops.sort((a, b) => {
+        const aStarts = normalizeSearch(a.name).startsWith(q) ? 0 : 1;
+        const bStarts = normalizeSearch(b.name).startsWith(q) ? 0 : 1;
+        if (aStarts !== bStarts) return aStarts - bStarts;
+        return (
+          distanceMeters(refLat, refLon, a.lat, a.lon) -
+          distanceMeters(refLat, refLon, b.lat, b.lon)
+        );
+      });
+    }
+
+    return { lines, stops: stops.slice(0, 6) };
+  }, [allVehicleItems, city.center.lat, city.center.lon, mapStops, searchOpen, searchQuery, userLoc?.lat, userLoc?.lon]);
 
   const disruptionMarkers = useMemo<LiveMapDisruptionMarker[]>(() => {
     if (!city.features.news || newsItems.length === 0) return [];
@@ -526,6 +663,16 @@ export default function LiveVehiclesMapScreen() {
     [selectedId, vehicles],
   );
 
+  // Podążanie kamery za zaznaczonym pojazdem live (z automatycznym wyłączeniem po przesunięciu mapy).
+  useEffect(() => {
+    if (!followVehicle) return;
+    if (!selectedVehicle) {
+      setFollowVehicle(false);
+      return;
+    }
+    mapRef.current?.centerOn(selectedVehicle.lat, selectedVehicle.lon);
+  }, [followVehicle, selectedVehicle]);
+
   const selectedOrigin = useMemo(
     () =>
       selectedVehicle && gtfsLoaded ? buildBoardedOriginFromVehicle(selectedVehicle, gtfsStore) : null,
@@ -556,6 +703,8 @@ export default function LiveVehiclesMapScreen() {
       bg: identity.bg,
       fg: identity.fg,
       line: identity.normalizedLine || selectedVehicle.line || '?',
+      routeId: trip?.route_id ?? null,
+      tripId: selectedVehicle.matchedTripId ?? null,
       direction,
       nextStop,
       distM,
@@ -725,6 +874,18 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers, selectedDisruptionId],
   );
 
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    Keyboard.dismiss();
+  }, []);
+
+  const handleOpenSearch = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    setSearchOpen(true);
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, []);
+
   const handleSelectVehicle = useCallback(
     (vehicleId: string) => {
       void Haptics.selectionAsync().catch(() => {});
@@ -732,9 +893,11 @@ export default function LiveVehiclesMapScreen() {
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
       setSelectedId(vehicleId);
+      setFollowVehicle(false);
+      setSheetExpanded(false);
       const found = vehicles.find((v) => v.vehicleId === vehicleId);
       if (found) {
-        mapRef.current?.centerOn(found.lat, found.lon);
+        mapRef.current?.centerOn(found.lat, found.lon, 15.2);
       }
     },
     [vehicles],
@@ -764,14 +927,16 @@ export default function LiveVehiclesMapScreen() {
         setRouteStopFallback(null);
       }
       setSelectedId(null);
+      setFollowVehicle(false);
       setSelectedDisruptionId(null);
       setSelectedStopId(stopId);
+      setSheetExpanded(false);
       const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId) ?? routeStop;
       if (st) {
         const lat = 'lat' in st ? st.lat : st.stop_lat;
         const lon = 'lon' in st ? st.lon : st.stop_lon;
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          mapRef.current?.centerOn(lat, lon, 15.4);
+          mapRef.current?.centerOn(lat, lon, 15.6);
         }
       }
     },
@@ -782,9 +947,11 @@ export default function LiveVehiclesMapScreen() {
     (disruptionId: string) => {
       void Haptics.selectionAsync().catch(() => {});
       setSelectedId(null);
+      setFollowVehicle(false);
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(disruptionId);
+      setSheetExpanded(false);
       const found = disruptionMarkers.find((d) => d.id === disruptionId);
       if (found) {
         mapRef.current?.centerOn(found.lat, found.lon, 14.4);
@@ -795,11 +962,40 @@ export default function LiveVehiclesMapScreen() {
 
   const handleClearSelection = useCallback(() => {
     setSelectedId(null);
+    setFollowVehicle(false);
     setSelectedStopId(null);
     setRouteStopFallback(null);
     setSelectedDisruptionId(null);
+    setSheetExpanded(false);
     setSheetHeight(0);
   }, []);
+
+  const handleUserDrag = useCallback(() => {
+    setFollowVehicle(false);
+  }, []);
+
+  const handlePickSearchLine = useCallback(
+    (entry: { line: string; nearestId: string; lat: number; lon: number }) => {
+      closeSearch();
+      setFilter('all');
+      setLineFilter(entry.line);
+      setSelectedStopId(null);
+      setSelectedDisruptionId(null);
+      setSelectedId(entry.nearestId);
+      setFollowVehicle(true);
+      mapRef.current?.centerOn(entry.lat, entry.lon, 15.2);
+    },
+    [closeSearch],
+  );
+
+  const handlePickSearchStop = useCallback(
+    (stop: LiveMapStopItem) => {
+      closeSearch();
+      setShowStops(true);
+      handleSelectStop(stop.id);
+    },
+    [closeSearch, handleSelectStop],
+  );
 
   const handleToggleDisruptions = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
@@ -810,12 +1006,28 @@ export default function LiveVehiclesMapScreen() {
     });
   }, []);
 
+  const handleToggleStops = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    setShowStops((prev) => {
+      const next = !prev;
+      if (!next) setSelectedStopId(null);
+      return next;
+    });
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    setFilter('all');
+    setLineFilter(null);
+  }, []);
+
   const handleRecenter = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
+    setFollowVehicle(false);
     if (userLoc) {
-      mapRef.current?.centerOn(userLoc.lat, userLoc.lon, 14.8);
+      mapRef.current?.centerOn(userLoc.lat, userLoc.lon, 15.2);
     } else {
-      mapRef.current?.centerOn(city.center.lat, city.center.lon, 13.0);
+      mapRef.current?.centerOn(city.center.lat, city.center.lon, 13.4);
     }
   }, [city.center.lat, city.center.lon, userLoc]);
 
@@ -829,6 +1041,21 @@ export default function LiveVehiclesMapScreen() {
     });
     router.back();
   }, [returnTarget, router, selectedOrigin]);
+
+  const handleOpenLineTimetable = useCallback(() => {
+    if (!selectedMeta) return;
+    void Haptics.selectionAsync().catch(() => {});
+    router.push({
+      pathname: '/line',
+      params: {
+        line: selectedMeta.line,
+        mode: selectedMeta.mode,
+        ...(selectedMeta.routeId ? { routeId: selectedMeta.routeId } : {}),
+        ...(selectedMeta.tripId ? { tripId: selectedMeta.tripId } : {}),
+        ...(selectedMeta.direction ? { direction: selectedMeta.direction } : {}),
+      },
+    });
+  }, [router, selectedMeta]);
 
   const handleOpenDisruptionArticle = useCallback(() => {
     if (!selectedDisruption) return;
@@ -862,6 +1089,8 @@ export default function LiveVehiclesMapScreen() {
   const liveState = liveTracker.getLiveState();
   const isInitialLoading = vehicles.length === 0 && liveState === 'unknown' && !liveWaitExpired;
   const hasSheet = Boolean((selectedVehicle && selectedMeta) || selectedStop || selectedDisruption);
+  const hasActiveFilter = filter !== 'all' || lineFilter !== null;
+  const expandedBoardMaxHeight = Math.round(Math.min(windowHeight * 0.44, 380));
 
   const severityLabel = useCallback(
     (severity: DisruptionAlert['severity']) => {
@@ -878,8 +1107,76 @@ export default function LiveVehiclesMapScreen() {
       ? s.liveMap.loadingVehicles
       : s.liveMap.vehiclesCount(mapItems.length);
     if (disruptionMarkers.length === 0) return base;
-    return `${base} · ${s.liveMap.disruptionsCount(disruptionMarkers.length)}`;
+    return `${base} \u00b7 ${s.liveMap.disruptionsCount(disruptionMarkers.length)}`;
   }, [disruptionMarkers.length, isInitialLoading, mapItems.length, s.liveMap]);
+
+  const railActions = useMemo<MapActionItem[]>(() => {
+    const list: MapActionItem[] = [];
+    if (selectedVehicle) {
+      list.push({
+        id: 'follow-vehicle',
+        icon: Navigation,
+        accessibilityLabel: s.liveMap.followVehicleA11y,
+        active: followVehicle,
+        onPress: () => {
+          setFollowVehicle((prev) => {
+            const next = !prev;
+            if (next) mapRef.current?.centerOn(selectedVehicle.lat, selectedVehicle.lon, 15.6);
+            return next;
+          });
+        },
+      });
+    }
+    if (selectedRoute && selectedRoute.coords.length >= 2) {
+      list.push({
+        id: 'fit-route',
+        icon: ScanLine,
+        accessibilityLabel: s.liveMap.fitRouteA11y,
+        onPress: () => {
+          setFollowVehicle(false);
+          mapRef.current?.fitRoute();
+        },
+      });
+    }
+    return list;
+  }, [
+    followVehicle,
+    s.liveMap.fitRouteA11y,
+    s.liveMap.followVehicleA11y,
+    selectedRoute,
+    selectedVehicle,
+  ]);
+
+  const zoomPair = useMemo<[MapActionItem, MapActionItem]>(
+    () => [
+      {
+        id: 'zoom-in',
+        icon: Plus,
+        accessibilityLabel: s.liveMap.zoomInA11y,
+        onPress: () => mapRef.current?.zoomBy(1.2),
+      },
+      {
+        id: 'zoom-out',
+        icon: Minus,
+        accessibilityLabel: s.liveMap.zoomOutA11y,
+        onPress: () => mapRef.current?.zoomBy(-1.2),
+      },
+    ],
+    [s.liveMap.zoomInA11y, s.liveMap.zoomOutA11y],
+  );
+
+  const locationAction = useMemo<MapActionItem>(
+    () => ({
+      id: 'recenter',
+      icon: LocateFixed,
+      accessibilityLabel: s.liveMap.recenterA11y,
+      tone: 'secondary',
+      onPress: handleRecenter,
+    }),
+    [handleRecenter, s.liveMap.recenterA11y],
+  );
+
+  const railBottom = hasSheet ? sheetHeight + 14 : Math.max(insets.bottom, 16) + 14;
 
   return (
     <View style={styles.root}>
@@ -894,6 +1191,7 @@ export default function LiveVehiclesMapScreen() {
           selectedRoute={selectedRoute}
           selectedDisruptionId={selectedDisruptionId}
           showDisruptions={showDisruptions}
+          showStops={showStops}
           userLat={userLoc?.lat ?? null}
           userLon={userLoc?.lon ?? null}
           offlineBase={offlineBase}
@@ -902,111 +1200,258 @@ export default function LiveVehiclesMapScreen() {
           onSelectStop={handleSelectStop}
           onSelectDisruption={handleSelectDisruption}
           onClearSelection={handleClearSelection}
+          onUserDrag={handleUserDrag}
+          onZoomModeChange={setZoomMode}
           onTilesStatus={handleTilesStatus}
           onError={setMapError}
           onReady={() => setMapError(null)}
         />
       )}
 
-      {/* Pasek gorny z powrotem, licznikiem i filtrami trybow */}
+      {/* Górna pływająca warstwa: powrót, wyszukiwarka/nagłówek, filtry z licznikami */}
       <View
         style={[styles.topOverlay, { paddingTop: Math.max(insets.top, 10) + 6 }]}
         pointerEvents="box-none"
       >
         <View style={styles.headerRow}>
           <SpringPressable
-            onPress={() => router.back()}
+            onPress={() => {
+              if (searchOpen) closeSearch();
+              else router.back();
+            }}
+            haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={s.liveMap.backA11y}
             style={styles.circleBtn}
             scaleDelta={0.05}
           >
-            <ChevronLeft size={22} color={scheme.onSurface} />
+            <ArrowLeft size={22} color={scheme.onSurface} />
           </SpringPressable>
 
-          <View style={styles.titlePill}>
-            <Text style={styles.titleText} numberOfLines={1}>
-              {s.liveMap.title}
-            </Text>
-            <Text style={styles.countText} numberOfLines={1}>
-              {headerSubtitle}
-            </Text>
-          </View>
-
-          <SpringPressable
-            onPress={handleRecenter}
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.recenterA11y}
-            style={styles.circleBtn}
-            scaleDelta={0.05}
-          >
-            <LocateFixed size={20} color={scheme.primary} />
-          </SpringPressable>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {(
-            [
-              { id: 'all', label: s.liveMap.filterAll, Icon: null },
-              { id: 'tram', label: s.liveMap.filterTram, Icon: TramFront },
-              { id: 'bus', label: s.liveMap.filterBus, Icon: BusFront },
-              { id: 'train', label: s.liveMap.filterTrain, Icon: TrainFront },
-            ] as const
-          ).map(({ id, label, Icon }) => {
-            const active = filter === id;
-            return (
-              <SpringPressable
-                key={id}
-                onPress={() => {
-                  void Haptics.selectionAsync().catch(() => {});
-                  setFilter(id);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={[styles.filterChip, active && styles.filterChipActive]}
-                scaleDelta={0.03}
-              >
-                {Icon && (
-                  <Icon
-                    size={15}
-                    color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                  />
-                )}
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>{label}</Text>
-              </SpringPressable>
-            );
-          })}
-
-          {disruptionMarkers.length > 0 && (
-            <SpringPressable
-              onPress={handleToggleDisruptions}
-              accessibilityRole="button"
-              accessibilityState={{ selected: showDisruptions }}
-              style={[
-                styles.filterChip,
-                showDisruptions && styles.disruptionChipActive,
-              ]}
-              scaleDelta={0.03}
-            >
-              <TriangleAlert
-                size={15}
-                color={showDisruptions ? scheme.onErrorContainer : scheme.onSurfaceVariant}
+          {searchOpen ? (
+            <View style={styles.searchPill}>
+              <Search size={18} color={scheme.primary} />
+              <TextInput
+                ref={searchInputRef}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={s.liveMap.searchPlaceholder}
+                placeholderTextColor={scheme.onSurfaceVariant}
+                returnKeyType="search"
+                autoCorrect={false}
+                style={styles.searchInput}
+                accessibilityLabel={s.liveMap.searchA11y}
               />
-              <Text
-                style={[
-                  styles.filterText,
-                  showDisruptions && styles.disruptionChipTextActive,
-                ]}
+              <SpringPressable
+                onPress={closeSearch}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityLabel={s.liveMap.clearSearchA11y}
+                style={styles.searchClearBtn}
               >
-                {`${s.liveMap.filterDisruptions} (${disruptionMarkers.length})`}
-              </Text>
+                <X size={18} color={scheme.onSurfaceVariant} />
+              </SpringPressable>
+            </View>
+          ) : (
+            <SpringPressable
+              onPress={handleOpenSearch}
+              haptic="selection"
+              scaleDelta={0.015}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.searchA11y}
+              style={styles.titlePill}
+            >
+              <View style={styles.titlePillText}>
+                <Text style={styles.titleText} numberOfLines={1}>
+                  {s.liveMap.title}
+                </Text>
+                <Text style={styles.countText} numberOfLines={1}>
+                  {headerSubtitle}
+                </Text>
+              </View>
+              <View style={styles.searchBadgeIcon}>
+                <Search size={18} color={scheme.onSecondaryContainer} />
+              </View>
             </SpringPressable>
           )}
-        </ScrollView>
+        </View>
+
+        {/* Lista wyników wyszukiwania (linie na żywo + przystanki) */}
+        {searchOpen && searchQuery.trim().length > 0 ? (
+          <Animated.View
+            entering={BADGE_ENTERING}
+            exiting={BADGE_EXITING}
+            style={styles.searchDropdown}
+          >
+            {searchResults.lines.length === 0 && searchResults.stops.length === 0 ? (
+              <Text style={styles.searchEmptyText}>{s.liveMap.searchNoResults}</Text>
+            ) : (
+              <ScrollView
+                style={styles.searchDropdownScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {searchResults.lines.length > 0 && (
+                  <View style={styles.searchSection}>
+                    <Text style={styles.searchSectionLabel}>{s.liveMap.searchLinesHeader}</Text>
+                    <View style={styles.searchLinesGrid}>
+                      {searchResults.lines.map((entry) => (
+                        <SpringPressable
+                          key={entry.line}
+                          onPress={() => handlePickSearchLine(entry)}
+                          haptic="selection"
+                          style={styles.searchLineChip}
+                        >
+                          <LineBadge mode={entry.mode} line={entry.line} compact />
+                          <Text style={styles.searchLineCount}>{entry.count}</Text>
+                        </SpringPressable>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {searchResults.stops.length > 0 && (
+                  <View style={styles.searchSection}>
+                    <Text style={styles.searchSectionLabel}>{s.liveMap.searchStopsHeader}</Text>
+                    {searchResults.stops.map((st, idx) => (
+                      <SpringPressable
+                        key={st.id}
+                        onPress={() => handlePickSearchStop(st)}
+                        haptic="selection"
+                        scaleDelta={0.015}
+                        style={[styles.searchStopRow, idx > 0 && styles.depRowBorder]}
+                      >
+                        <View style={[styles.searchStopIcon, { backgroundColor: st.bg }]}>
+                          <ModeGlyph mode={st.mode} size={15} color={st.fg} />
+                        </View>
+                        <Text style={styles.searchStopName} numberOfLines={1}>
+                          {st.name}
+                          {st.code && !st.name.includes(st.code) ? ` ${st.code}` : ''}
+                        </Text>
+                      </SpringPressable>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </Animated.View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {lineFilter && (
+              <SpringPressable
+                onPress={() => setLineFilter(null)}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityLabel={s.liveMap.clearSearchA11y}
+                style={[styles.filterChip, styles.filterChipActive]}
+              >
+                <Text style={[styles.filterText, styles.filterTextActive]}>{lineFilter}</Text>
+                <X size={15} color={scheme.onPrimaryContainer} />
+              </SpringPressable>
+            )}
+
+            {(
+              [
+                { id: 'all', label: s.liveMap.filterAll, count: modeCounts.all, Icon: null },
+                { id: 'tram', label: s.liveMap.filterTram, count: modeCounts.tram, Icon: TramFront },
+                { id: 'bus', label: s.liveMap.filterBus, count: modeCounts.bus, Icon: BusFront },
+                {
+                  id: 'train',
+                  label: s.liveMap.filterTrain,
+                  count: modeCounts.train,
+                  Icon: TrainFront,
+                },
+              ] as const
+            ).map(({ id, label, count, Icon }) => {
+              const active = filter === id && !lineFilter;
+              return (
+                <SpringPressable
+                  key={id}
+                  onPress={() => {
+                    void Haptics.selectionAsync().catch(() => {});
+                    setLineFilter(null);
+                    setFilter(id);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  scaleDelta={0.03}
+                >
+                  {Icon && (
+                    <Icon
+                      size={15}
+                      color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                    />
+                  )}
+                  <Text style={[styles.filterText, active && styles.filterTextActive]}>{label}</Text>
+                  {count > 0 && (
+                    <Text style={[styles.filterCount, active && styles.filterCountActive]}>
+                      {count}
+                    </Text>
+                  )}
+                </SpringPressable>
+              );
+            })}
+
+            {gtfsLoaded && mapStops.length > 0 && (
+              <SpringPressable
+                onPress={handleToggleStops}
+                accessibilityRole="button"
+                accessibilityState={{ selected: showStops }}
+                style={[styles.filterChip, showStops && styles.secondaryChipActive]}
+                scaleDelta={0.03}
+              >
+                <MapPin
+                  size={15}
+                  color={showStops ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+                />
+                <Text style={[styles.filterText, showStops && styles.secondaryChipTextActive]}>
+                  {s.liveMap.filterStops}
+                </Text>
+              </SpringPressable>
+            )}
+
+            {disruptionMarkers.length > 0 && (
+              <SpringPressable
+                onPress={handleToggleDisruptions}
+                accessibilityRole="button"
+                accessibilityState={{ selected: showDisruptions }}
+                style={[styles.filterChip, showDisruptions && styles.disruptionChipActive]}
+                scaleDelta={0.03}
+              >
+                <TriangleAlert
+                  size={15}
+                  color={showDisruptions ? scheme.onErrorContainer : scheme.onSurfaceVariant}
+                />
+                <Text
+                  style={[styles.filterText, showDisruptions && styles.disruptionChipTextActive]}
+                >
+                  {`${s.liveMap.filterDisruptions} (${disruptionMarkers.length})`}
+                </Text>
+              </SpringPressable>
+            )}
+          </ScrollView>
+        )}
+
+        {/* Subtelna podpowiedź przy oddaleniu (kropki zamiast pigułek) */}
+        {!searchOpen && zoomMode === 'dots' && mapItems.length > 0 && !showOfflinePill && (
+          <Animated.View entering={BADGE_ENTERING} exiting={BADGE_EXITING} layout={SMOOTH_LAYOUT}>
+            <SpringPressable
+              onPress={() => mapRef.current?.zoomBy(2.2)}
+              haptic="selection"
+              style={styles.zoomHintPill}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.zoomForLinesHint}
+            >
+              <Plus size={14} color={scheme.onSecondaryContainer} />
+              <Text style={styles.zoomHintText}>{s.liveMap.zoomForLinesHint}</Text>
+            </SpringPressable>
+          </Animated.View>
+        )}
 
         {showOfflinePill && (
           <Animated.View
@@ -1021,6 +1466,17 @@ export default function LiveVehiclesMapScreen() {
           </Animated.View>
         )}
       </View>
+
+      {/* Prawa szyna szybkich akcji mapy (śledzenie, cała trasa, zoom, GPS) */}
+      {!searchOpen && !mapError && (
+        <View style={[styles.railWrap, { bottom: railBottom }]} pointerEvents="box-none">
+          <MapActionRail
+            actions={railActions}
+            zoomPair={zoomPair}
+            primaryAction={locationAction}
+          />
+        </View>
+      )}
 
       {isInitialLoading && !mapError && (
         <Animated.View
@@ -1069,10 +1525,21 @@ export default function LiveVehiclesMapScreen() {
         >
           <Text style={styles.emptyTitle}>{s.liveMap.noVehiclesTitle}</Text>
           <Text style={styles.emptyBody}>{s.liveMap.noVehiclesBody}</Text>
+          {hasActiveFilter && (
+            <SpringPressable
+              onPress={handleResetFilters}
+              haptic="selection"
+              style={styles.resetFilterBtn}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.resetFilterCta}
+            >
+              <Text style={styles.resetFilterText}>{s.liveMap.resetFilterCta}</Text>
+            </SpringPressable>
+          )}
         </Animated.View>
       )}
 
-      {/* Dolna karta szczegolow wybranego utrudnienia */}
+      {/* Dolna karta szczegółów wybranego utrudnienia */}
       {selectedDisruption && (
         <Animated.View
           key={`disruption-${selectedDisruption.id}`}
@@ -1193,7 +1660,7 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
-      {/* Dolna tablica odjazdow wybranego przystanku */}
+      {/* Dolna tablica odjazdów wybranego przystanku */}
       {selectedStop && (
         <Animated.View
           key={`stop-${selectedStop.id}`}
@@ -1203,7 +1670,17 @@ export default function LiveVehiclesMapScreen() {
           onLayout={handleSheetLayout}
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
         >
-          <View style={styles.sheetHandle} />
+          <SpringPressable
+            onPress={() => setSheetExpanded((v) => !v)}
+            haptic="selection"
+            scaleDelta={0.015}
+            style={styles.handleTouch}
+            accessibilityRole="button"
+            accessibilityLabel={s.liveMap.toggleSheetA11y}
+          >
+            <View style={styles.sheetHandle} />
+          </SpringPressable>
+
           <View style={styles.sheetHeader}>
             <View style={[styles.stopIconBox, { backgroundColor: selectedStop.bg }]}>
               <ModeGlyph mode={selectedStop.mode} size={20} color={selectedStop.fg} />
@@ -1217,19 +1694,35 @@ export default function LiveVehiclesMapScreen() {
               </Text>
               <Text style={styles.metaMuted} numberOfLines={1}>
                 {s.liveMap.stopBoardTitle}
-                {selectedStop.code ? ` · ${s.liveMap.stopCodeLabel(selectedStop.code)}` : ''}
+                {selectedStop.code ? ` \u00b7 ${s.liveMap.stopCodeLabel(selectedStop.code)}` : ''}
               </Text>
             </View>
-            <SpringPressable
-              onPress={handleClearSelection}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={s.liveMap.closeSheetA11y}
-              style={styles.closeBtn}
-              scaleDelta={0.05}
-            >
-              <X size={20} color={scheme.onSurfaceVariant} />
-            </SpringPressable>
+            <View style={styles.sheetHeaderActions}>
+              <SpringPressable
+                onPress={() => setSheetExpanded((v) => !v)}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityLabel={s.liveMap.toggleSheetA11y}
+                style={styles.closeBtn}
+                scaleDelta={0.05}
+              >
+                {sheetExpanded ? (
+                  <ChevronDown size={20} color={scheme.onSurfaceVariant} />
+                ) : (
+                  <ChevronUp size={20} color={scheme.onSurfaceVariant} />
+                )}
+              </SpringPressable>
+              <SpringPressable
+                onPress={handleClearSelection}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={s.liveMap.closeSheetA11y}
+                style={styles.closeBtn}
+                scaleDelta={0.05}
+              >
+                <X size={20} color={scheme.onSurfaceVariant} />
+              </SpringPressable>
+            </View>
           </View>
 
           {!gtfsLoaded ? (
@@ -1242,7 +1735,10 @@ export default function LiveVehiclesMapScreen() {
             </View>
           ) : (
             <ScrollView
-              style={styles.boardScroll}
+              style={[
+                styles.boardScroll,
+                sheetExpanded && { maxHeight: expandedBoardMaxHeight },
+              ]}
               contentContainerStyle={styles.boardScrollContent}
               nestedScrollEnabled
               showsVerticalScrollIndicator={false}
@@ -1282,7 +1778,7 @@ export default function LiveVehiclesMapScreen() {
                       </Text>
                       <Text style={[styles.depSub, { color: statusColor }]} numberOfLines={1}>
                         {statusText}
-                        {' · '}
+                        {' \u00b7 '}
                         {secondsToTimeString(dep.expectedSec)}
                       </Text>
                     </View>
@@ -1297,7 +1793,7 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
-      {/* Dolna tablica kolejnych przystankow wybranego pojazdu oraz CTA */}
+      {/* Dolna tablica kolejnych przystanków wybranego pojazdu oraz akcje */}
       {selectedVehicle && selectedMeta && (
         <Animated.View
           key={`vehicle-${selectedVehicle.vehicleId}`}
@@ -1307,13 +1803,23 @@ export default function LiveVehiclesMapScreen() {
           onLayout={handleSheetLayout}
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
         >
-          <View style={styles.sheetHandle} />
+          <SpringPressable
+            onPress={() => setSheetExpanded((v) => !v)}
+            haptic="selection"
+            scaleDelta={0.015}
+            style={styles.handleTouch}
+            accessibilityRole="button"
+            accessibilityLabel={s.liveMap.toggleSheetA11y}
+          >
+            <View style={styles.sheetHandle} />
+          </SpringPressable>
+
           <View style={styles.sheetHeader}>
             <LineBadge
               mode={selectedMeta.mode}
               line={selectedVehicle.line}
               size="large"
-              maxWidth={136}
+              maxWidth={132}
             />
             <View style={styles.sheetTitleWrap}>
               <Text style={styles.sheetTitle} numberOfLines={1}>
@@ -1340,35 +1846,57 @@ export default function LiveVehiclesMapScreen() {
 
                 {selectedMeta.distM !== null && (
                   <Text style={styles.metaMuted}>
-                    {' · '}
+                    {' \u00b7 '}
                     {s.liveMap.distanceAway(selectedMeta.distM)}
                   </Text>
                 )}
               </View>
             </View>
-            <SpringPressable
-              onPress={handleClearSelection}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={s.liveMap.closeSheetA11y}
-              style={styles.closeBtn}
-              scaleDelta={0.05}
-            >
-              <X size={20} color={scheme.onSurfaceVariant} />
-            </SpringPressable>
+            <View style={styles.sheetHeaderActions}>
+              {vehicleBoard.length > 3 && (
+                <SpringPressable
+                  onPress={() => setSheetExpanded((v) => !v)}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityLabel={s.liveMap.toggleSheetA11y}
+                  style={styles.closeBtn}
+                  scaleDelta={0.05}
+                >
+                  {sheetExpanded ? (
+                    <ChevronDown size={20} color={scheme.onSurfaceVariant} />
+                  ) : (
+                    <ChevronUp size={20} color={scheme.onSurfaceVariant} />
+                  )}
+                </SpringPressable>
+              )}
+              <SpringPressable
+                onPress={handleClearSelection}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={s.liveMap.closeSheetA11y}
+                style={styles.closeBtn}
+                scaleDelta={0.05}
+              >
+                <X size={20} color={scheme.onSurfaceVariant} />
+              </SpringPressable>
+            </View>
           </View>
 
           {vehicleBoard.length > 0 ? (
             <View style={styles.vehicleBoardWrap}>
               <Text style={styles.sectionLabel}>{s.liveMap.vehicleBoardTitle}</Text>
               <ScrollView
-                style={styles.vehicleBoardScroll}
+                style={[
+                  styles.vehicleBoardScroll,
+                  sheetExpanded && { maxHeight: expandedBoardMaxHeight },
+                ]}
                 contentContainerStyle={styles.boardScrollContent}
                 nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
               >
                 {vehicleBoard.map((stop, idx) => {
                   const diffMin = Math.round((stop.expectedSec - nowSec) / 60);
+                  const isLast = idx === vehicleBoard.length - 1;
                   return (
                     <SpringPressable
                       key={`${stop.stopId}-${idx}`}
@@ -1377,17 +1905,28 @@ export default function LiveVehiclesMapScreen() {
                       style={[styles.vehStopRow, idx > 0 && styles.depRowBorder]}
                       scaleDelta={0.015}
                     >
-                      <View
-                        style={[
-                          styles.timelineDot,
-                          stop.isNext && styles.timelineDotNext,
-                        ]}
-                      />
+                      <View style={styles.timelineRail}>
+                        <View
+                          style={[
+                            styles.timelineLineTop,
+                            idx === 0 && styles.timelineLineHidden,
+                          ]}
+                        />
+                        <View
+                          style={[
+                            styles.timelineDot,
+                            stop.isNext && styles.timelineDotNext,
+                          ]}
+                        />
+                        <View
+                          style={[
+                            styles.timelineLineBottom,
+                            isLast && styles.timelineLineHidden,
+                          ]}
+                        />
+                      </View>
                       <Text
-                        style={[
-                          styles.vehStopName,
-                          stop.isNext && styles.vehStopNameNext,
-                        ]}
+                        style={[styles.vehStopName, stop.isNext && styles.vehStopNameNext]}
                         numberOfLines={1}
                       >
                         {stop.stopName}
@@ -1395,7 +1934,12 @@ export default function LiveVehiclesMapScreen() {
                       <Text style={styles.vehStopTime}>
                         {secondsToTimeString(stop.expectedSec)}
                       </Text>
-                      <Text style={styles.vehStopCountdown}>
+                      <Text
+                        style={[
+                          styles.vehStopCountdown,
+                          stop.isNext && styles.vehStopCountdownNext,
+                        ]}
+                      >
                         {s.liveMap.departInMin(diffMin)}
                       </Text>
                     </SpringPressable>
@@ -1411,21 +1955,42 @@ export default function LiveVehiclesMapScreen() {
             <Text style={styles.metaMuted}>{s.liveMap.vehicleNoStops}</Text>
           )}
 
-          {selectedOrigin ? (
+          <View style={styles.vehicleActionsRow}>
+            {selectedOrigin ? (
+              <SpringPressable
+                onPress={handleBoardVehicle}
+                accessibilityRole="button"
+                accessibilityLabel={s.liveMap.boardCta}
+                style={[styles.boardBtn, styles.boardBtnFlex]}
+              >
+                <Text style={styles.boardBtnText} numberOfLines={1}>
+                  {s.liveMap.boardCta}
+                </Text>
+              </SpringPressable>
+            ) : (
+              <View style={[styles.unmatchedBox, styles.boardBtnFlex]}>
+                <Text style={styles.unmatchedTitle} numberOfLines={1}>
+                  {s.liveMap.unmatchedTitle}
+                </Text>
+                <Text style={styles.unmatchedBody} numberOfLines={2}>
+                  {s.liveMap.unmatchedBody}
+                </Text>
+              </View>
+            )}
+
             <SpringPressable
-              onPress={handleBoardVehicle}
+              onPress={handleOpenLineTimetable}
+              haptic="selection"
               accessibilityRole="button"
-              accessibilityLabel={s.liveMap.boardCta}
-              style={styles.boardBtn}
+              accessibilityLabel={s.liveMap.openTimetableCta}
+              style={styles.timetableBtn}
             >
-              <Text style={styles.boardBtnText}>{s.liveMap.boardCta}</Text>
+              <Clock3 size={18} color={scheme.onSecondaryContainer} />
+              <Text style={styles.timetableBtnText} numberOfLines={1}>
+                {s.liveMap.openTimetableCta}
+              </Text>
             </SpringPressable>
-          ) : (
-            <View style={styles.unmatchedBox}>
-              <Text style={styles.unmatchedTitle}>{s.liveMap.unmatchedTitle}</Text>
-              <Text style={styles.unmatchedBody}>{s.liveMap.unmatchedBody}</Text>
-            </View>
-          )}
+          </View>
         </Animated.View>
       )}
     </View>
@@ -1443,7 +2008,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 14,
-    gap: 10,
+    gap: 9,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1453,8 +2018,10 @@ const styles = StyleSheet.create({
   circleBtn: {
     width: 48,
     height: 48,
-    borderRadius: shape.large,
+    borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
     ...elev.level2,
@@ -1462,12 +2029,22 @@ const styles = StyleSheet.create({
   titlePill: {
     flex: 1,
     minHeight: 48,
-    borderRadius: shape.large,
+    borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     ...elev.level2,
+  },
+  titlePillText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
   },
   titleText: {
     ...type.titleSmall,
@@ -1479,6 +2056,112 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
+  searchBadgeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchPill: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 22,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1.5,
+    borderColor: scheme.primary,
+    paddingLeft: 14,
+    paddingRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    ...elev.level3,
+  },
+  searchInput: {
+    flex: 1,
+    ...type.bodyMedium,
+    color: scheme.onSurface,
+    paddingVertical: 10,
+  },
+  searchClearBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchDropdown: {
+    borderRadius: 22,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    maxHeight: 320,
+    ...elev.level3,
+  },
+  searchDropdownScroll: {
+    maxHeight: 296,
+  },
+  searchEmptyText: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    paddingVertical: 14,
+  },
+  searchSection: {
+    gap: 8,
+    marginBottom: 10,
+  },
+  searchSectionLabel: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '700',
+  },
+  searchLinesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  searchLineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  searchLineCount: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  searchStopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    minHeight: 44,
+  },
+  searchStopIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchStopName: {
+    flex: 1,
+    ...type.bodyMedium,
+    fontWeight: '600',
+    color: scheme.onSurface,
+  },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1487,19 +2170,39 @@ const styles = StyleSheet.create({
   },
   filterChip: {
     minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: shape.full,
+    paddingHorizontal: 13,
+    borderRadius: 16,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     ...elev.level1,
   },
   filterChipActive: {
+    borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
+    borderWidth: 1.5,
+    borderColor: scheme.primary,
+  },
+  secondaryChipActive: {
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    borderColor: scheme.outlineVariant,
+  },
+  secondaryChipTextActive: {
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
   },
   disruptionChipActive: {
+    borderRadius: shape.full,
     backgroundColor: scheme.errorContainer,
+    borderColor: scheme.error,
+  },
+  disruptionChipTextActive: {
+    color: scheme.onErrorContainer,
+    fontWeight: '700',
   },
   filterText: {
     ...type.labelLarge,
@@ -1509,9 +2212,35 @@ const styles = StyleSheet.create({
     color: scheme.onPrimaryContainer,
     fontWeight: '700',
   },
-  disruptionChipTextActive: {
-    color: scheme.onErrorContainer,
+  filterCount: {
+    ...type.labelSmall,
     fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+    opacity: 0.85,
+  },
+  filterCountActive: {
+    color: scheme.onPrimaryContainer,
+    opacity: 1,
+  },
+  zoomHintPill: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level2,
+  },
+  zoomHintText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
   },
   statusBanner: {
     alignSelf: 'flex-start',
@@ -1520,50 +2249,49 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    ...elev.level1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level2,
   },
   statusBannerText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
+    ...type.labelMedium,
+    color: scheme.onSurface,
+  },
+  railWrap: {
+    position: 'absolute',
+    right: 14,
   },
   centerBadge: {
     position: 'absolute',
     alignSelf: 'center',
-    top: '48%',
+    top: '46%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    ...elev.level2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level3,
   },
   centerBadgeText: {
-    ...type.bodyMedium,
+    ...type.labelLarge,
     color: scheme.onSurface,
-  },
-  emptyCard: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    padding: 16,
-    borderRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainerHigh,
-    gap: 4,
-    ...elev.level2,
   },
   errorCard: {
     position: 'absolute',
     left: 16,
     right: 16,
-    padding: 16,
+    padding: 18,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerHigh,
-    gap: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    gap: 14,
     ...elev.level3,
   },
   errorHeader: {
@@ -1572,9 +2300,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   errorIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: scheme.errorContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1585,18 +2313,29 @@ const styles = StyleSheet.create({
   },
   retryBtn: {
     minHeight: 48,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 16,
   },
   retryBtnText: {
-    ...type.titleSmall,
+    ...type.labelLarge,
     color: scheme.onPrimary,
     fontWeight: '700',
+  },
+  emptyCard: {
+    position: 'absolute',
+    left: 16,
+    right: 76,
+    padding: 16,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    gap: 6,
+    ...elev.level3,
   },
   emptyTitle: {
     ...type.titleSmall,
@@ -1607,47 +2346,98 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
+  resetFilterBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    minHeight: 40,
+    paddingHorizontal: 16,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetFilterText: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+  },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: scheme.surfaceContainerHigh,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    paddingHorizontal: 20,
-    paddingTop: 10,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    paddingHorizontal: 18,
+    paddingTop: 4,
     gap: 12,
     ...elev.level3,
   },
+  handleTouch: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
   sheetHandle: {
+    alignSelf: 'center',
     width: 36,
     height: 4,
     borderRadius: shape.full,
-    backgroundColor: scheme.outlineVariant,
-    alignSelf: 'center',
-    marginBottom: 2,
+    backgroundColor: scheme.outline,
+    opacity: 0.45,
   },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  sheetHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   stopIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sheetTitleWrap: {
     flex: 1,
-    gap: 3,
+    gap: 2,
+    minWidth: 0,
   },
   sheetTitle: {
     ...type.titleMedium,
     color: scheme.onSurface,
     fontWeight: '700',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  delayText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  metaMuted: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   disruptionBadgeRow: {
     flexDirection: 'row',
@@ -1655,12 +2445,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   severityPill: {
+    borderRadius: shape.full,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: shape.small,
   },
   severityPillText: {
-    ...type.labelMedium,
+    ...type.labelSmall,
     fontWeight: '700',
   },
   disruptionLinesRow: {
@@ -1670,12 +2460,12 @@ const styles = StyleSheet.create({
   },
   disruptionMetaBox: {
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   disruptionCorridorText: {
-    ...type.bodyMedium,
+    ...type.labelMedium,
     color: scheme.onSurface,
     fontWeight: '600',
   },
@@ -1691,7 +2481,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: shape.small,
+    borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
   },
   replacementText: {
@@ -1699,64 +2489,11 @@ const styles = StyleSheet.create({
     color: scheme.onSecondaryContainer,
     fontWeight: '700',
   },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  delayText: {
-    ...type.labelMedium,
-    fontWeight: '700',
-  },
-  metaMuted: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-  },
-  closeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: shape.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  boardScroll: {
-    maxHeight: 290,
-  },
-  boardScrollContent: {
-    paddingBottom: 4,
-  },
   emptyBoardBox: {
     paddingVertical: 14,
   },
-  depRow: {
-    minHeight: 54,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  depRowBorder: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
-  },
-  depInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  depHeadsign: {
-    ...type.bodyLarge,
-    color: scheme.onSurface,
-    fontWeight: '600',
-  },
-  depSub: {
-    ...type.bodySmall,
-    fontVariant: ['tabular-nums'],
-  },
-  depCountdown: {
-    ...type.labelLarge,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
+  boardScroll: {
+    maxHeight: 240,
   },
   vehicleBoardWrap: {
     gap: 6,
@@ -1767,77 +2504,164 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   vehicleBoardScroll: {
-    maxHeight: 200,
+    maxHeight: 196,
+  },
+  boardScrollContent: {
+    paddingBottom: 4,
+  },
+  depRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    minHeight: 52,
+  },
+  depRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+  },
+  depInfo: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  depHeadsign: {
+    ...type.bodyMedium,
+    color: scheme.onSurface,
+    fontWeight: '600',
+  },
+  depSub: {
+    ...type.labelSmall,
+    fontVariant: ['tabular-nums'],
+  },
+  depCountdown: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   vehStopRow: {
-    minHeight: 44,
-    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    minHeight: 44,
+    paddingVertical: 6,
+  },
+  timelineRail: {
+    width: 16,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineLineTop: {
+    position: 'absolute',
+    top: -6,
+    bottom: '50%',
+    width: 2,
+    backgroundColor: scheme.outlineVariant,
+  },
+  timelineLineBottom: {
+    position: 'absolute',
+    top: '50%',
+    bottom: -6,
+    width: 2,
+    backgroundColor: scheme.outlineVariant,
+  },
+  timelineLineHidden: {
+    opacity: 0,
   },
   timelineDot: {
     width: 8,
     height: 8,
-    borderRadius: shape.full,
+    borderRadius: 4,
     backgroundColor: scheme.outline,
   },
   timelineDotNext: {
-    width: 10,
-    height: 10,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: scheme.primary,
+    borderWidth: 2,
+    borderColor: scheme.primaryContainer,
   },
   vehStopName: {
     flex: 1,
     ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
+    color: scheme.onSurface,
   },
   vehStopNameNext: {
-    color: scheme.onSurface,
     fontWeight: '700',
+    color: scheme.primary,
   },
   vehStopTime: {
-    ...type.bodyMedium,
-    color: scheme.onSurface,
-    fontWeight: '600',
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
   vehStopCountdown: {
     ...type.labelMedium,
-    color: scheme.primary,
+    color: scheme.onSurface,
     fontWeight: '700',
-    minWidth: 52,
-    textAlign: 'right',
     fontVariant: ['tabular-nums'],
+    minWidth: 50,
+    textAlign: 'right',
+  },
+  vehStopCountdownNext: {
+    color: scheme.primary,
   },
   nextStopText: {
     ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
+    color: scheme.onSurface,
+  },
+  vehicleActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   boardBtn: {
-    minHeight: 52,
-    borderRadius: shape.large,
+    minHeight: 50,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 16,
+  },
+  boardBtnFlex: {
+    flex: 1,
   },
   boardBtnText: {
-    ...type.titleSmall,
+    ...type.labelLarge,
     color: scheme.onPrimary,
     fontWeight: '700',
   },
+  timetableBtn: {
+    minHeight: 50,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  timetableBtnText: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
   unmatchedBox: {
-    padding: 12,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainer,
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainerHigh,
+    gap: 2,
   },
   unmatchedTitle: {
     ...type.labelLarge,
-    color: scheme.warning,
+    color: scheme.onSurface,
     fontWeight: '700',
   },
   unmatchedBody: {

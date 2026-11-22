@@ -8,7 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { BusFront, ChevronRight, CircleCheck, Clock3, RouteOff, TriangleAlert } from './icons';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
@@ -71,8 +71,6 @@ function getTransitActionLabel(solutionText: string, s: ReturnType<typeof useStr
 
 /**
  * Ujednolicona lista linii, których dotyczy dana zmiana / komunikat.
- * Bierzemy ze struktury AI disruption.all_lines, line_changes, temporary_lines
- * oraz item.lines (fallback scraperowy).
  */
 function getDisruptionLines(item: MpkNewsItem): string[] {
   const seen = new Set<string>();
@@ -150,8 +148,6 @@ const AlertSubCard = memo(function AlertSubCard({
   const solution = item.disruption?.glance?.solution;
   const timeframe = cleanHeaderTimeframe(item.disruption?.glance?.timeframe || item.dateLabel);
 
-  // Ujednolicona lista linii, których dotyczy zmiana:
-  // Linie pasażera z bieżącego połączenia umieszczamy na początku, potem pozostałe
   const displayLines = useMemo(() => {
     const all = getDisruptionLines(item);
     if (all.length === 0) return [];
@@ -167,7 +163,6 @@ const AlertSubCard = memo(function AlertSubCard({
     return [...matched, ...others];
   }, [item, lineSet]);
 
-  // Zmiany per-linia: nowy format line_changes, fallback do starego impacted_lines.
   const changes = useMemo(() => {
     const d = item.disruption;
     if (d?.line_changes) return d.line_changes;
@@ -178,7 +173,6 @@ const AlertSubCard = memo(function AlertSubCard({
     }));
   }, [item.disruption]);
 
-  // Znajdź ew. komunikację zastępczą dla linii z tego połączenia
   const replacementLine = useMemo(() => {
     if (changes.length === 0) return null;
     for (const imp of changes) {
@@ -192,10 +186,9 @@ const AlertSubCard = memo(function AlertSubCard({
     return null;
   }, [changes, lineSet]);
 
-  // Znajdź pomijane przystanki; nazwy z LLM podmieniamy na kanoniczne z GTFS.
   const omittedStops = useMemo(() => {
     if (changes.length === 0) return [];
-    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
+    const canonical = new Map((grounded?.stops ?? []).map((st) => [st.raw, st.name]));
     const set = new Set<string>();
     for (const imp of changes) {
       if ((!imp.line || lineSet.has(imp.line)) && Array.isArray(imp.omitted_stops)) {
@@ -212,28 +205,41 @@ const AlertSubCard = memo(function AlertSubCard({
     return [...set];
   }, [changes, lineSet, grounded]);
 
-  // Wiersze zmian per-linia: zawieszenie, objazd, linia specjalna.
   const lineChangeRows = useMemo(() => {
     const d = item.disruption;
-    const canonical = new Map((grounded?.stops ?? []).map((s) => [s.raw, s.name]));
+    const canonical = new Map((grounded?.stops ?? []).map((st) => [st.raw, st.name]));
     const rows: Array<{ key: string; kind: 'cancelled' | 'detour' | 'special'; text: string }> = [];
     const touched = (line: string) => lineSet.size === 0 || lineSet.has(line.trim().toUpperCase());
     for (const lc of d?.line_changes ?? []) {
       if (!touched(lc.line)) continue;
       const hours =
-        lc.hours && lc.hours.length > 0 ? ` (${lc.hours.map((h) => `${h.from}-${h.to}`).join(', ')})` : '';
+        lc.hours && lc.hours.length > 0
+          ? ` (${lc.hours.map((h) => `${h.from}-${h.to}`).join(', ')})`
+          : '';
       if (lc.change === 'cancelled') {
-        rows.push({ key: `c:${lc.line}`, kind: 'cancelled', text: `${s.news.lineSuspended(lc.line)}${hours}` });
+        rows.push({
+          key: `c:${lc.line}`,
+          kind: 'cancelled',
+          text: `${s.news.lineSuspended(lc.line)}${hours}`,
+        });
       } else if (lc.change === 'detour' && lc.via && lc.via.length > 0) {
-        const via = lc.via.map((v) => canonical.get(v) ?? v).join(' → ');
-        rows.push({ key: `d:${lc.line}`, kind: 'detour', text: `${s.news.lineDetour(lc.line)}: ${via}${hours}` });
+        const via = lc.via.map((v) => canonical.get(v) ?? v).join(' \u2192 ');
+        rows.push({
+          key: `d:${lc.line}`,
+          kind: 'detour',
+          text: `${s.news.lineDetour(lc.line)}: ${via}${hours}`,
+        });
       }
     }
     for (const tl of d?.temporary_lines ?? []) {
       if (tl.via && tl.via.length > 0) {
-        const via = tl.via.map((v) => canonical.get(v) ?? v).join(' → ');
+        const via = tl.via.map((v) => canonical.get(v) ?? v).join(' \u2192 ');
         const freq = tl.frequency_min ? `, ${s.news.everyNMin(tl.frequency_min)}` : '';
-        rows.push({ key: `t:${tl.line}`, kind: 'special', text: `${s.news.specialLine(tl.line)}: ${via}${freq}` });
+        rows.push({
+          key: `t:${tl.line}`,
+          kind: 'special',
+          text: `${s.news.specialLine(tl.line)}: ${via}${freq}`,
+        });
       }
     }
     return rows;
@@ -272,7 +278,6 @@ const AlertSubCard = memo(function AlertSubCard({
         animatedCardStyle,
       ]}
     >
-      {/* 1. Pasek statusu i terminu (zawsze 1 linia, bez wrapowania) */}
       <View style={styles.alertHeaderRow}>
         <View style={styles.statusChip}>
           {isResolved ? (
@@ -303,7 +308,6 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       </View>
 
-      {/* 2. Ujednolicony placement linii, których dotyczy zmiana */}
       {displayLines.length > 0 && (
         <View style={styles.linesRow}>
           {displayLines.map((line) => (
@@ -312,17 +316,14 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       )}
 
-      {/* 3. Nagłówek utrudnienia (Smart AI Headline) */}
-      <Text style={[styles.headlineText, isResolved && styles.headlineResolved]} numberOfLines={2}>
+      <Text style={styles.headlineText} numberOfLines={2}>
         {headline}
       </Text>
 
-      {/* 4. Kontekst problemu (Smart AI Glance Problem) */}
       {problem && (!headline || problem.trim() !== headline.trim()) ? (
         <Text style={styles.problemText}>{problem}</Text>
       ) : null}
 
-      {/* 5. Inteligentny boks rozwiązania / objazdu (Smart AI Glance Solution) */}
       {solution ? (
         <View style={styles.solutionBox}>
           <View style={styles.solutionHeader}>
@@ -337,7 +338,6 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       ) : null}
 
-      {/* 6. Pigułka komunikacji zastępczej */}
       {replacementLine ? (
         <View style={styles.replacementRow}>
           <BusFront size={13} color={scheme.primary} />
@@ -347,7 +347,6 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       ) : null}
 
-      {/* 7. Pomijane przystanki */}
       {omittedStops.length > 0 ? (
         <View style={styles.omittedRow}>
           <RouteOff size={13} color={scheme.onSurfaceVariant} />
@@ -357,7 +356,6 @@ const AlertSubCard = memo(function AlertSubCard({
         </View>
       ) : null}
 
-      {/* 8. Zmiany per-linia: zawieszenie, objazd, linia specjalna */}
       {lineChangeRows.map((row) => (
         <View key={row.key} style={styles.changeRow}>
           {row.kind === 'cancelled' ? (
@@ -373,8 +371,7 @@ const AlertSubCard = memo(function AlertSubCard({
 });
 
 /**
- * Karta pojedynczego utrudnienia kolejowego (PKP PLK / PKP Intercity / zbiorkom)
- * w spójnym stylu M3 Expressive z LineBadge pociągu, relacją i rozwiązaniem.
+ * Karta pojedynczego utrudnienia kolejowego (PKP PLK / PKP Intercity / zbiorkom).
  */
 const TrainAlertSubCard = memo(function TrainAlertSubCard({
   leg,
@@ -415,7 +412,7 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
     if (route) {
       parts.push(route);
     }
-    return parts.join(' · ');
+    return parts.join(' \u00b7 ');
   }, [leg.trainName, leg.direction, leg.toStop]);
 
   const canOpen = Boolean(alert.link && onPress);
@@ -426,7 +423,7 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
       onPressIn={() => canOpen && setPress(1)}
       onPressOut={() => canOpen && setPress(0)}
       accessibilityRole={canOpen ? 'button' : 'alert'}
-      accessibilityLabel={`${s.railAlerts.cardA11y(leg.line ?? leg.trainNumber ?? 'Pociąg')}. ${headline}. ${problem ?? ''}`}
+      accessibilityLabel={`${s.railAlerts.cardA11y(leg.line ?? leg.trainNumber ?? s.railAlerts.fallbackLine)}. ${headline}. ${problem ?? ''}`}
       android_ripple={canOpen ? { color: scheme.outlineVariant } : undefined}
       style={[
         styles.alertCard,
@@ -438,7 +435,6 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
         animatedCardStyle,
       ]}
     >
-      {/* 1. Pasek statusu i terminu */}
       <View style={styles.alertHeaderRow}>
         <View style={styles.statusChip}>
           {isResolved ? (
@@ -469,7 +465,6 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
         </View>
       </View>
 
-      {/* 2. Ujednolicony placement linii kolejowej: LineBadge pociągu + relacja / nazwa handlowa */}
       <View style={styles.linesRow}>
         <LineBadge mode="train" leg={leg} line={leg.line ?? leg.trainNumber} compact active />
         {trainDetail ? (
@@ -481,17 +476,14 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
         ) : null}
       </View>
 
-      {/* 3. Nagłówek utrudnienia */}
-      <Text style={[styles.headlineText, isResolved && styles.headlineResolved]} numberOfLines={2}>
+      <Text style={styles.headlineText} numberOfLines={2}>
         {headline}
       </Text>
 
-      {/* 4. Kontekst problemu */}
       {problem && (!headline || problem.trim() !== headline.trim()) ? (
         <Text style={styles.problemText}>{problem}</Text>
       ) : null}
 
-      {/* 5. Rozwiązanie / objazd / honorowanie biletów */}
       {solution ? (
         <View style={styles.solutionBox}>
           <View style={styles.solutionHeader}>
@@ -539,7 +531,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   }, [routeLines]);
   const lineKey = [...lineSet].sort().join(',');
 
-  // stop_id wszystkich przystanków na trasie połączenia (do dopasowania po GTFS).
   const routeStopIds = useMemo(() => {
     const set = new Set<string>();
     if (!connection) return set;
@@ -550,12 +541,11 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       if (leg.toStopId && leg.toStopId !== 'origin' && leg.toStopId !== 'destination') {
         set.add(leg.toStopId);
       }
-      for (const s of leg.intermediateStops ?? []) if (s.stopId) set.add(s.stopId);
+      for (const st of leg.intermediateStops ?? []) if (st.stopId) set.add(st.stopId);
     }
     return set;
   }, [connection]);
 
-  // route_id nóg tranzytowych połączenia (do dopasowania alertu po GTFS).
   const routeIdSet = useMemo(() => {
     const set = new Set<string>();
     if (!connection) return set;
@@ -565,8 +555,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return set;
   }, [connection]);
 
-  // Zadanie po animacji otwarcia: InteractionManager potrafi nie domknąć
-  // się przy animacjach, więc timer krótszy od "nigdy" domyka zadanie sam.
   const runAfterOpen = useCallback((fn: () => void) => {
     let done = false;
     const task = () => {
@@ -582,9 +570,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     };
   }, []);
 
-  // Uziemienie komunikatów w GTFS: linie -> route_id, przystanki -> stop_id.
-  // Po animacji: dziesiątki fuzzy dopasowań na wątku JS nie mogą blokować
-  // otwierania ekranu, wyrównane dodatkowo yieldem między alertami.
   useEffect(() => {
     const items = news.filter((n) => n.disruption);
     if (items.length === 0) {
@@ -610,8 +595,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     };
   }, [news, runAfterOpen]);
 
-  // 1. Ładowanie komunikatów miejskich. Cache (pamięć/dysk) od razu, sieć
-  // dopiero po animacji: parse RSS/HTML na wątku JS nie konkuruje z otwarciem.
   useEffect(() => {
     if (lineKey === '') {
       setStatus('ready');
@@ -635,10 +618,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         setStatus('ready');
       }
 
-      // Świeży cache wystarcza: fetch przy każdym otwarciu wymieniał obiekty
-      // alertów i wymuszał przeliczenie grounding'u (fuzzy po wszystkich
-      // przystankach miasta) mimo że treść się nie zmieniła.
-      // Retry (attempt > 0) wymusza fetch, to prośba użytkownika.
       if (attempt === 0 && isCachedNewsFresh(NEWS_FRESH_MS)) return;
       if (cancelled) return;
 
@@ -673,7 +652,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     [connection?.legs],
   );
 
-  // 2. Ładowanie alertów kolejowych dla bieżącego połączenia
   useEffect(() => {
     if (!connection || !trainAlertKey) {
       setTrainAlerts([]);
@@ -791,7 +769,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
   return (
     <View style={styles.container}>
-      {/* Nagłówek sekcji z M3 Expressive pill badge */}
       <View style={styles.sectionHeader}>
         <View style={styles.headerTitleGroup}>
           <View
@@ -801,7 +778,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
             ]}
           >
             <TriangleAlert
-              size={16}
+              size={17}
               color={hasUrgent ? scheme.onWarningContainer : scheme.onSecondaryContainer}
             />
           </View>
@@ -813,7 +790,6 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         </View>
       </View>
 
-      {/* Lista kart utrudnień (kolejowych i miejskich) */}
       <View style={styles.cardsList}>
         {shownTrain.map(({ leg, alert }, idx) => (
           <TrainAlertSubCard
@@ -834,16 +810,15 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
         ))}
       </View>
 
-      {/* Dolny przycisk M3 Expressive do wszystkich aktualności */}
       <Pressable
         onPress={() => router.push('/news')}
         accessibilityRole="button"
         accessibilityLabel={s.routeDetails.lineAlertsAll}
         android_ripple={{ color: scheme.outlineVariant }}
-        style={({ pressed }) => [styles.allNewsBtn, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [styles.allNewsBtn, pressed && { opacity: 0.84 }]}
       >
         <Text style={styles.allNewsBtnText}>{s.routeDetails.lineAlertsAll}</Text>
-        <ChevronRight size={18} color={scheme.primary} />
+        <ChevronRight size={17} color={scheme.primary} />
       </Pressable>
     </View>
   );
@@ -853,8 +828,11 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 14,
+    ...elev.level1,
   },
   stateContainer: {
     flexDirection: 'row',
@@ -863,7 +841,10 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    padding: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 16,
+    ...elev.level1,
   },
   stateText: {
     ...type.bodyMedium,
@@ -871,11 +852,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   retryBtn: {
-    minHeight: 48,
-    minWidth: 48,
+    minHeight: 44,
+    minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
   },
@@ -884,8 +865,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSecondaryContainer,
   },
-
-  // Nagłówek sekcji
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -899,9 +878,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerIconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: shape.medium,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -912,49 +891,50 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.secondaryContainer,
   },
   sectionTitle: {
-    ...type.titleSmall,
-    fontWeight: '700',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
     flex: 1,
   },
   counterPill: {
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     borderRadius: shape.full,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   counterText: {
     ...type.labelSmall,
-    fontWeight: '600',
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
-
-  // Karty utrudnień
   cardsList: {
-    gap: 12,
+    gap: 10,
   },
   alertCard: {
-    borderRadius: shape.large,
+    borderRadius: 20,
     padding: 14,
     gap: 10,
   },
   alertCardUrgent: {
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerLow,
     borderWidth: 1.5,
-    borderColor: scheme.warning + '55',
+    borderColor: scheme.warning + '70',
   },
   alertCardResolved: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant + '35',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   alertCardNormal: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant + '35',
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
-
-  // Wiersz nagłówka w karcie
   alertHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -977,8 +957,8 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: scheme.warningContainer,
     borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
   },
   urgentBadgeText: {
     ...type.labelSmall,
@@ -991,8 +971,8 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: scheme.primaryContainer,
     borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
   },
   resolvedBadgeText: {
     ...type.labelSmall,
@@ -1005,8 +985,8 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
   },
   infoBadgeText: {
     ...type.labelSmall,
@@ -1015,38 +995,32 @@ const styles = StyleSheet.create({
   },
   timeframeText: {
     ...type.labelSmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
     flexShrink: 1,
   },
-
-  // Ujednolicony wiersz linii, których zmiana dotyczy
   linesRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 2,
   },
   trainNameChip: {
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     paddingVertical: 3,
     maxWidth: '80%',
   },
   trainNameText: {
     ...type.labelSmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
   },
-
-  // Teksty w karcie
   headlineText: {
-    ...type.titleSmall,
-    fontWeight: '700',
-    color: scheme.onSurface,
+    fontSize: 14.5,
     lineHeight: 20,
-  },
-  headlineResolved: {
+    fontWeight: '700',
     color: scheme.onSurface,
   },
   problemText: {
@@ -1054,15 +1028,13 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     lineHeight: 19,
   },
-
-  // Tonalny boks rozwiązania (Smart AI Glance Solution)
   solutionBox: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant + '40',
-    borderRadius: shape.medium,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    borderRadius: 14,
     padding: 12,
-    gap: 6,
+    gap: 5,
   },
   solutionHeader: {
     flexDirection: 'row',
@@ -1079,22 +1051,20 @@ const styles = StyleSheet.create({
     color: scheme.onSurface,
     lineHeight: 19,
   },
-
-  // Komunikacja zastępcza i pomijane przystanki
   replacementRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant + '35',
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingVertical: 8,
+    paddingHorizontal: 11,
+    borderRadius: 12,
   },
   replacementText: {
     ...type.labelSmall,
-    fontWeight: '600',
+    fontWeight: '700',
     color: scheme.onSurface,
     flex: 1,
   },
@@ -1121,22 +1091,23 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 17,
   },
-
-  // Dolny przycisk
   allNewsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    minHeight: 44,
+    minHeight: 46,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
   allNewsBtnText: {
-    ...type.labelMedium,
-    fontWeight: '600',
-    color: scheme.primary,
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: scheme.onSurface,
   },
 });

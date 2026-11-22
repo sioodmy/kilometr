@@ -1,6 +1,9 @@
 import type { Strings } from '../i18n';
 import type { Leg } from '../types/models';
 
+const POZNAN_PST_STATIONS_RE =
+  /^(?:os\.\s*sobieskiego|szymanowskiego|kurpi[nń]skiego|lechicka|al(?:eje|\.)\s*solidarno[sś]ci|s[łl]owia[nń]ska|most\s+teatralny|rondo\s+kaponiera|dworzec\s+zachodni|pozna[nń]\s+g[łl][oó]wny)\b/i;
+
 /**
  * Etykieta odjazdu: peron / tor / słupek / stanowisko w języku użytkownika.
  */
@@ -63,7 +66,13 @@ export function formatPlatformLabel(
   // 1-2 cyfry (np. Warszawa '01', Poznań '71', '42')
   if (/^\d{1,2}$/.test(trimmed)) {
     const n = parseInt(trimmed, 10);
-    if (n >= 41 && n <= 49) {
+    if (
+      mode === 'tram' &&
+      n >= 41 &&
+      n <= 49 &&
+      stopName &&
+      POZNAN_PST_STATIONS_RE.test(stopName.trim())
+    ) {
       return t.leg.platformPst(trimmed);
     }
     if (trimmed.startsWith('0') || n >= 10) {

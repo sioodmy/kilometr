@@ -1,10 +1,10 @@
 name: Dev preview APK (queue Azure)
 
 # Azure Pipelines nie umie triggerowac sie od komentarza w GitHubie, wiec ten
-# maly workflow pelni role mostka: na komentarz kolejjkuje run pipeline'u Azure
+# maly workflow pelni role mostka: na komentarz kolejkuje run pipeline'u Azure
 # (azure-pipelines.yml) na refs/heads/dev przez REST API.
 #
-# Komentarz musi brzmiec dokladnie: build machen !!!
+# Komentarz musi brzmiec (po przycieciu bialych znakow): build machen !!!
 #
 # Sekret/zmienne (Settings -> Secrets and variables -> Actions):
 # - sekret AZURE_DEVOPS_PAT: PAT z zakresem Build (Read & execute)
@@ -28,11 +28,11 @@ concurrency:
 jobs:
   queue:
     name: Queue Azure build
-    # Tylko komentarz na PR, o tresci dokladnie "build machen !!!", od
-    # wlasciciela/czlonka/wspolpracownika repo.
+    # Komentarz na PR zawierajacy "build machen !!!" (dokladna tresc po trim
+    # sprawdzana w pierwszym kroku) od wlasciciela/czlonka/wspolpracownika repo.
     if: >-
       github.event.issue.pull_request &&
-      github.event.comment.body == 'build machen !!!' &&
+      contains(github.event.comment.body, 'build machen !!!') &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -43,6 +43,12 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const body = (context.payload.comment.body || '').trim();
+            if (body !== 'build machen !!!') {
+              core.info(`Pomijam komentarz (po trim != "build machen !!!"): ${JSON.stringify(context.payload.comment.body)}`);
+              core.setOutput('should_run', 'false');
+              return;
+            }
             const repoFull = `${context.repo.owner}/${context.repo.repo}`;
             const prNumber = context.payload.issue.number;
             const { data: pr } = await github.rest.pulls.get({
@@ -58,11 +64,13 @@ jobs:
               core.setFailed(`PR #${prNumber} nie jest dev -> main (jest ${pr.head.ref} -> ${pr.base.ref}).`);
               return;
             }
+            core.setOutput('should_run', 'true');
             core.setOutput('number', String(prNumber));
             core.setOutput('sha', pr.head.sha);
             console.log(`PR #${prNumber}: ${pr.head.ref} -> ${pr.base.ref} @ ${pr.head.sha}`);
 
       - name: Queue Azure pipeline
+        if: steps.pr.outputs.should_run == 'true'
         env:
           AZDO_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
           AZDO_ORG: ${{ vars.AZURE_ORG }}

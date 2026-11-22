@@ -4,7 +4,6 @@ import {
   Alert,
   BackHandler,
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -16,20 +15,35 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ChevronUp,
+  AlertCircle,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   Clock3,
   CloudOff,
   Flag,
+  MapPin,
+  RouteOff,
   SlidersHorizontal,
 } from '../../src/components/icons';
 import Animated, {
   Easing,
+  FadeIn,
   FadeInDown,
+  FadeOut,
   LinearTransition,
+  ReduceMotion,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
   useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
-import { scheme, shape, type } from '../../src/theme/tokens';
+import { SpringPressable } from '../../src/components/SpringPressable';
+import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync, useActiveCity } from '../../src/services/cityStore';
 import {
@@ -83,7 +97,7 @@ import {
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard } from '../../src/components/ConnectionCard';
+import { ConnectionCard, type CardLayoutInfo } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import {
@@ -113,6 +127,62 @@ function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
   } catch {
     return null;
   }
+}
+
+function SkeletonConnectionCard({
+  dimmed,
+  delay = 0,
+}: {
+  dimmed?: boolean;
+  delay?: number;
+}) {
+  const reduceMotion = useReducedMotion();
+  const pulse = useSharedValue(reduceMotion ? 0.72 : 0.45);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      pulse.value = 0.72;
+      return;
+    }
+    const timer = setTimeout(() => {
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(0.95, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.45, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+        ),
+        -1,
+        false,
+      );
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [delay, pulse, reduceMotion]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: pulse.value,
+  }));
+
+  return (
+    <View style={[styles.skelCard, dimmed && styles.skelCardDimmed]}>
+      <Animated.View style={pulseStyle}>
+        <View style={styles.skelRow}>
+          <View style={[styles.skel, { width: 108, height: 26, borderRadius: 10 }]} />
+          <View style={[styles.skel, { width: 64, height: 28, borderRadius: shape.full }]} />
+        </View>
+        <View style={styles.skelMetaRow}>
+          <View style={[styles.skel, { width: 124, height: 14, borderRadius: 7 }]} />
+          <View style={[styles.skel, { width: 92, height: 14, borderRadius: 7 }]} />
+        </View>
+        <View style={styles.skelStrip}>
+          <View style={[styles.skel, { width: '100%', height: 5, borderRadius: 3 }]} />
+          <View style={styles.skelBadges}>
+            <View style={[styles.skel, { width: 44, height: 24, borderRadius: shape.full }]} />
+            <View style={[styles.skel, { width: 58, height: 24, borderRadius: shape.full }]} />
+            <View style={[styles.skel, { width: 38, height: 24, borderRadius: shape.full }]} />
+          </View>
+        </View>
+      </Animated.View>
+    </View>
+  );
 }
 
 export default function RoutesScreen() {
@@ -1087,8 +1157,23 @@ export default function RoutesScreen() {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
-  const hasActiveFilters = modeFilter !== 'all' || transfersFilter !== 'all' || liveOnly;
+  const activeFilterCount =
+    (modeFilter !== 'all' ? 1 : 0) +
+    (transfersFilter !== 'all' ? 1 : 0) +
+    (liveOnly ? 1 : 0);
+  const hasActiveFilters = activeFilterCount > 0;
   const isCustomTime = targetTimeSec !== undefined || arrivalMode;
+
+  const listScrollY = useSharedValue(0);
+  const handleListScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      listScrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const stickyDividerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(listScrollY.value, [4, 22], [0, 1], 'clamp'),
+  }));
 
   // Wstecz z ręcznie ustawionym czasem wraca do ekranu głównego: użytkownik
   // przyszedł tu z konkretnego punktu startu i nie chce zostać na liście
@@ -1117,7 +1202,6 @@ export default function RoutesScreen() {
         : dayOffset === 1
           ? s.common.tomorrow
           : (() => {
-              // Dalej niż jutro: konkretna data (np. „pt 13.11”).
               const d = new Date();
               d.setDate(d.getDate() + dayOffset);
               const dd = String(d.getDate()).padStart(2, '0');
@@ -1153,10 +1237,16 @@ export default function RoutesScreen() {
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
   const openConnection = useCallback(
-    (item: Connection) => {
+    (item: Connection, sourceLayout?: CardLayoutInfo) => {
       rememberPlannedConnection(item);
       closePreview();
-      router.push({ pathname: '/routes/[id]', params: { id: item.id } });
+      router.push({
+        pathname: '/routes/[id]',
+        params: {
+          id: item.id,
+          ...(sourceLayout ? { fromY: String(Math.round(sourceLayout.y)) } : {}),
+        },
+      });
     },
     [closePreview, router],
   );
@@ -1181,17 +1271,19 @@ export default function RoutesScreen() {
   const renderConnection = useCallback(
     ({ item, index }: { item: Connection; index: number }) => {
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
-      // zamontowaniu ekranu zmroził nam style dłużej niż minute, bo nowy
+      // zamontowaniu ekranu zmroził nam style dłużej niż minutę, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
-      const past = !item.boarded && item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
+      const past =
+        !item.boarded && item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
       return (
         <Animated.View
           entering={
-            reduceMotion || index >= 5
+            reduceMotion || index >= 6
               ? undefined
-              : FadeInDown.delay(index * 35)
-                  .duration(220)
+              : FadeInDown.delay(index * 28)
+                  .duration(230)
                   .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                  .reduceMotion(ReduceMotion.System)
           }
         >
           <ConnectionCard
@@ -1259,56 +1351,65 @@ export default function RoutesScreen() {
         />
 
         <View style={styles.filterCardsRow}>
-          <Pressable
-            onPress={() => setFiltersOpen(true)}
-            style={({ pressed }) => [
-              styles.actionCard,
-              hasActiveFilters && styles.actionCardActive,
-              pressed && styles.actionCardPressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={s.routesFilters.filterA11y}
-          >
-            <SlidersHorizontal
-              size={18}
-              color={hasActiveFilters ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-            />
-            <Text
-              style={[styles.actionCardText, hasActiveFilters && styles.actionCardTextActive]}
-              numberOfLines={1}
-            >
-              {s.routesFilters.filterButton}
-            </Text>
-          </Pressable>
-
-          <Pressable
+          <SpringPressable
             onPress={() => setTimeSheetOpen(true)}
-            style={({ pressed }) => [
-              styles.actionCard,
-              isCustomTime && styles.actionCardActive,
-              pressed && styles.actionCardPressed,
-            ]}
+            scaleDelta={0.025}
+            haptic="selection"
+            style={[styles.actionCard, isCustomTime && styles.actionCardTimeActive]}
             accessibilityRole="button"
             accessibilityLabel={s.routesBar.timeA11y(timeDisplayLabel)}
           >
             {arrivalMode ? (
               <Flag
-                size={18}
-                color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+                size={17}
+                color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
               />
             ) : (
               <Clock3
-                size={18}
-                color={isCustomTime ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+                size={17}
+                color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
               />
             )}
             <Text
-              style={[styles.actionCardText, isCustomTime && styles.actionCardTextActive]}
+              style={[styles.actionCardText, isCustomTime && styles.actionCardTimeTextActive]}
               numberOfLines={1}
             >
               {timeDisplayLabel}
             </Text>
-          </Pressable>
+            <ChevronDown
+              size={16}
+              color={isCustomTime ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            />
+          </SpringPressable>
+
+          <SpringPressable
+            onPress={() => setFiltersOpen(true)}
+            scaleDelta={0.025}
+            haptic="selection"
+            style={[styles.actionCard, hasActiveFilters && styles.actionCardFilterActive]}
+            accessibilityRole="button"
+            accessibilityLabel={s.routesFilters.filterA11y}
+          >
+            <SlidersHorizontal
+              size={17}
+              color={hasActiveFilters ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+            />
+            <Text
+              style={[styles.actionCardText, hasActiveFilters && styles.actionCardFilterTextActive]}
+              numberOfLines={1}
+            >
+              {s.routesFilters.filterButton}
+            </Text>
+            {hasActiveFilters && (
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(140)}
+                exiting={reduceMotion ? undefined : FadeOut.duration(100)}
+                style={styles.filterCountPill}
+              >
+                <Text style={styles.filterCountPillText}>{activeFilterCount}</Text>
+              </Animated.View>
+            )}
+          </SpringPressable>
         </View>
       </View>
     ),
@@ -1324,35 +1425,62 @@ export default function RoutesScreen() {
       handleDismissAnchor,
       handleDismissBoarded,
       hasActiveFilters,
+      activeFilterCount,
       isCustomTime,
       timeDisplayLabel,
       arrivalMode,
       headerStyle,
       anchorKey,
+      reduceMotion,
     ],
   );
+
+  const showResultBadge = !samePlace && !loadError && !loading && displayed.length > 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.topBar}>
-        {/* Deep link z widgetu światkuje główny ekran; wstecz wtedy wraca do niego zamiast nic nie robić. */}
-        <Pressable
+        {/* Deep link z widgetu omija główny ekran; wstecz wtedy wraca do niego zamiast nic nie robić. */}
+        <SpringPressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          scaleDelta={0.06}
+          haptic="selection"
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel={s.map.backA11y}
         >
-          <ChevronLeft size={23} color={scheme.onSurface} />
-        </Pressable>
+          <ChevronLeft size={22} color={scheme.onSurface} />
+        </SpringPressable>
 
-        <Text style={styles.screenTitle} numberOfLines={1}>
+        <Text
+          style={styles.screenTitle}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+        >
           {s.routes.title(operator)}
         </Text>
+
+        {showResultBadge ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(160)}
+            exiting={reduceMotion ? undefined : FadeOut.duration(110)}
+            style={styles.resultBadge}
+          >
+            <Text style={styles.resultBadgeText} numberOfLines={1}>
+              {s.connection.connections(displayed.length)}
+            </Text>
+          </Animated.View>
+        ) : (
+          <View style={styles.topBarSpacer} />
+        )}
       </View>
 
-      <View style={styles.stickyHeader}>{routeHeader}</View>
+      <View style={styles.stickyHeader}>
+        {routeHeader}
+        <Animated.View style={[styles.stickyDivider, stickyDividerStyle]} pointerEvents="none" />
+      </View>
 
-      {/* 3. Lista połączeń */}
       {/* Ten sam punkt startu i celu: zamiast przejazdów w kółko mówimy
           wprost, że cel jest na miejscu. */}
       {samePlace ? (
@@ -1360,59 +1488,35 @@ export default function RoutesScreen() {
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: 16,
+            paddingTop: 12,
             paddingBottom: insets.bottom + 24,
           }}
         >
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconBadge}>
+              <MapPin size={24} color={scheme.onPrimaryContainer} />
+            </View>
             <Text style={styles.emptyTitle}>{s.routes.samePlaceTitle}</Text>
             <Text style={styles.emptySub}>{s.routes.samePlaceBody}</Text>
           </View>
         </ScrollView>
       ) : loading && items.length === 0 ? (
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            paddingBottom: insets.bottom + 24,
+          }}
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.skeletonList}>
-            <Text style={styles.loadingText}>{s.routes.searching}</Text>
-            <View style={styles.skelCard}>
-              <View style={styles.skelRow}>
-                <View style={[styles.skel, { width: 96, height: 22 }]} />
-                <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
-              </View>
-              <View style={[styles.skel, { width: '70%', height: 12, marginTop: 10 }]} />
-              <View
-                style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]}
-              />
-              <View
-                style={[
-                  styles.skel,
-                  { width: '55%', height: 28, marginTop: 12, borderRadius: shape.small },
-                ]}
-              />
+            <View style={styles.loadingPill}>
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <Text style={styles.loadingText}>{s.routes.searching}</Text>
             </View>
-            <View style={styles.skelCard}>
-              <View style={styles.skelRow}>
-                <View style={[styles.skel, { width: 84, height: 22 }]} />
-                <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
-              </View>
-              <View style={[styles.skel, { width: '62%', height: 12, marginTop: 10 }]} />
-              <View
-                style={[styles.skel, { width: '100%', height: 4, marginTop: 12, borderRadius: 2 }]}
-              />
-              <View
-                style={[
-                  styles.skel,
-                  { width: '72%', height: 28, marginTop: 12, borderRadius: shape.small },
-                ]}
-              />
-            </View>
-            <View style={[styles.skelCard, { opacity: 0.55 }]}>
-              <View style={styles.skelRow}>
-                <View style={[styles.skel, { width: 72, height: 22 }]} />
-                <View style={[styles.skel, { width: 56, height: 24, borderRadius: shape.full }]} />
-              </View>
-              <View style={[styles.skel, { width: '50%', height: 12, marginTop: 10 }]} />
-            </View>
+            <SkeletonConnectionCard delay={0} />
+            <SkeletonConnectionCard delay={120} />
+            <SkeletonConnectionCard delay={240} dimmed />
           </View>
         </ScrollView>
       ) : loadError ? (
@@ -1420,10 +1524,14 @@ export default function RoutesScreen() {
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: 16,
+            paddingTop: 12,
             paddingBottom: insets.bottom + 24,
           }}
         >
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyCard}>
+            <View style={[styles.emptyIconBadge, styles.emptyIconBadgeWarn]}>
+              <AlertCircle size={24} color={scheme.onWarningContainer} />
+            </View>
             <Text style={styles.emptyTitle}>
               {timetableReady ? s.routes.calcFail : s.routes.noTimetable}
             </Text>
@@ -1431,14 +1539,12 @@ export default function RoutesScreen() {
               {timetableReady ? s.routes.calcFailBody : s.routes.noTimetableBody}
             </Text>
             {!timetableReady && (
-              <Pressable
+              <SpringPressable
                 onPress={() => void importGtfsFromNetwork()}
                 disabled={timetableBusy}
-                style={({ pressed }) => [
-                  styles.retryBtn,
-                  timetableBusy && styles.retryBtnBusy,
-                  pressed && !timetableBusy && { opacity: 0.8 },
-                ]}
+                scaleDelta={0.025}
+                haptic="light"
+                style={[styles.retryBtn, timetableBusy && styles.retryBtnBusy]}
                 accessibilityRole="button"
                 accessibilityLabel={s.routes.downloadA11y}
               >
@@ -1456,23 +1562,27 @@ export default function RoutesScreen() {
                 ) : (
                   <Text style={styles.retryText}>{s.routes.downloadAction}</Text>
                 )}
-              </Pressable>
+              </SpringPressable>
             )}
             {timetableReady && (
-              <Pressable
+              <SpringPressable
                 onPress={() => fetchRoutes(targetTimeSec)}
-                style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                scaleDelta={0.025}
+                haptic="light"
+                style={styles.retryBtn}
                 accessibilityRole="button"
                 accessibilityLabel={s.common.retry}
               >
                 <Text style={styles.retryText}>{s.common.retry}</Text>
-              </Pressable>
+              </SpringPressable>
             )}
           </View>
         </ScrollView>
       ) : (
         <Animated.FlatList
           ref={listRef}
+          onScroll={handleListScroll}
+          scrollEventThrottle={16}
           itemLayoutAnimation={
             reduceMotion ? undefined : LinearTransition.springify().damping(26).stiffness(320)
           }
@@ -1497,71 +1607,74 @@ export default function RoutesScreen() {
           alwaysBounceVertical={!arrivalMode}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
-          // wymusza przeliczenie etykiet „za X min” bez refetchu
+          // wymusza przeliczenie etykiet "za X min" bez refetchu
           extraData={nowTick}
           keyExtractor={connectionKey}
-          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 28 }]}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
-          // Na Androidzie RN domyślnie odpija widoki spoza kadru
+          // Na Androidzie RN domyślnie odpina widoki spoza kadru
           // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
           // nagłówkiem powoduje to miganie pustych miejsc w trakcie
           // przeciągania palcem, więc trzymamy komórki podpięte.
           removeClippedSubviews={false}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
-
           renderItem={renderConnection}
           ListHeaderComponent={
-            <>
+            <View style={styles.listHeader}>
               {loading && displayed.length > 0 && (
                 <View style={styles.countRow}>
-                  <View style={styles.offlineChip}>
-                    <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
-                    <Text style={styles.offlineText}>{s.routes.searching}</Text>
+                  <View style={styles.statusChip}>
+                    <ActivityIndicator size="small" color={scheme.primary} />
+                    <Text style={styles.statusChipText}>{s.routes.searching}</Text>
                   </View>
                 </View>
               )}
               {(offline || liveStale) && (
                 <View style={styles.countRow}>
                   {offline && (
-                    <Pressable
+                    <SpringPressable
                       onPress={() => quietRefresh()}
-                      style={({ pressed }) => [styles.offlineChip, pressed && { opacity: 0.7 }]}
+                      scaleDelta={0.03}
+                      haptic="selection"
+                      style={styles.statusChip}
                       hitSlop={6}
                       accessibilityRole="button"
                       accessibilityLabel={s.routes.offlineTapA11y}
                     >
-                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.offlineText}>{s.routes.offlineChip}</Text>
-                    </Pressable>
+                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
+                    </SpringPressable>
                   )}
                   {liveStale && !offline && (
-                    <View style={styles.offlineChip}>
-                      <CloudOff size={14} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.offlineText}>{s.routes.noLiveChip}</Text>
+                    <View style={styles.statusChip}>
+                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
                     </View>
                   )}
                 </View>
               )}
               {!arrivalMode && !offline && (
-                <Pressable
+                <SpringPressable
                   onPress={handlePullEarlier}
                   onFocus={() => setEarlierFocused(true)}
                   onBlur={() => setEarlierFocused(false)}
                   disabled={earlierDisabled}
+                  scaleDelta={0.02}
+                  haptic="selection"
                   accessibilityRole="button"
                   accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
-                  style={({ pressed }) => [
+                  style={[
                     styles.earlierButton,
                     earlierFocused && styles.earlierFocused,
-                    pressed && { opacity: 0.75 },
+                    noMoreEarlier && styles.earlierButtonDone,
                   ]}
                 >
                   {loadingEarlier ? (
-                    <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
+                    <ActivityIndicator size="small" color={scheme.primary} />
                   ) : !noMoreEarlier ? (
-                    <ChevronUp size={18} color={scheme.onSurfaceVariant} />
+                    <ChevronUp size={17} color={scheme.onSurfaceVariant} />
                   ) : null}
                   <Text style={styles.earlierText} accessibilityLiveRegion="polite">
                     {loadingEarlier
@@ -1572,16 +1685,10 @@ export default function RoutesScreen() {
                           ? s.routes.earlierRetry
                           : s.routes.earlierAction}
                   </Text>
-                </Pressable>
+                </SpringPressable>
               )}
-            </>
+            </View>
           }
-          // Stopka mówi wprost, co się dzieje na końcu listy: trwa doładowanie,
-          // nic więcej nie ma albo doładowanie padło. Wcześniej jedyne co było
-          // widać, to spinner, a po błędzie: nic, czyli lista po cichu
-          // przestawała się dociągać.
-          // Stopka niczego nie dokłada, dopóki nie ma czego powiedzieć:
-          // inaczej każda lista dostałaby 36 px pustego miejsca na dole.
           ListFooterComponent={
             loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
               <View style={styles.footer}>
@@ -1590,19 +1697,23 @@ export default function RoutesScreen() {
                 ) : loadMoreFailed ? (
                   <>
                     <Text style={styles.footerText}>{s.routes.moreFail}</Text>
-                    <Pressable
+                    <SpringPressable
                       onPress={() => void handleLoadMore()}
-                      style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
+                      scaleDelta={0.025}
+                      haptic="light"
+                      style={styles.retryBtn}
                       accessibilityRole="button"
                       accessibilityLabel={s.routes.moreRetryA11y}
                     >
                       <Text style={styles.retryText}>{s.common.retry}</Text>
-                    </Pressable>
+                    </SpringPressable>
                   </>
                 ) : (
-                  <Text style={styles.footerText}>
-                    {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
-                  </Text>
+                  <View style={styles.endCapPill}>
+                    <Text style={styles.footerText}>
+                      {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
+                    </Text>
+                  </View>
                 )}
               </View>
             ) : null
@@ -1611,7 +1722,10 @@ export default function RoutesScreen() {
             intercityQuery && railDbReady === false ? (
               <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
             ) : (
-              <View style={styles.emptyContainer}>
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIconBadge}>
+                  <RouteOff size={24} color={scheme.onPrimaryContainer} />
+                </View>
                 <Text style={styles.emptyTitle}>
                   {liveOnly
                     ? s.routes.emptyLive
@@ -1634,49 +1748,57 @@ export default function RoutesScreen() {
                             ? s.routes.emptyArrival
                             : s.routes.emptyPlain}
                 </Text>
-                {transfersFilter !== 'all' && (
-                  <Pressable
-                    onPress={() => setTransfersFilter('all')}
-                    style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.routes.showWithChangesA11y}
-                  >
-                    <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
-                  </Pressable>
-                )}
-                {modeFilter !== 'all' && (
-                  <Pressable
-                    onPress={() => setModeFilter('all')}
-                    style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.routes.showAllVehiclesA11y}
-                  >
-                    <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
-                  </Pressable>
-                )}
-                {liveOnly && (
-                  <Pressable
-                    onPress={() => setLiveOnly(false)}
-                    style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={s.routes.showWithoutLive}
-                  >
-                    <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
-                  </Pressable>
-                )}
+                <View style={styles.emptyActions}>
+                  {transfersFilter !== 'all' && (
+                    <SpringPressable
+                      onPress={() => setTransfersFilter('all')}
+                      scaleDelta={0.025}
+                      haptic="selection"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.showWithChangesA11y}
+                    >
+                      <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
+                    </SpringPressable>
+                  )}
+                  {modeFilter !== 'all' && (
+                    <SpringPressable
+                      onPress={() => setModeFilter('all')}
+                      scaleDelta={0.025}
+                      haptic="selection"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.showAllVehiclesA11y}
+                    >
+                      <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
+                    </SpringPressable>
+                  )}
+                  {liveOnly && (
+                    <SpringPressable
+                      onPress={() => setLiveOnly(false)}
+                      scaleDelta={0.025}
+                      haptic="selection"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.showWithoutLive}
+                    >
+                      <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
+                    </SpringPressable>
+                  )}
+                </View>
               </View>
             )
           }
         />
       )}
 
-      {/* Bottom sheet filtrów połączeń */}
       {filtersOpen && (
         <RouteFilterSheet
           availableModes={availableModes}
           selectedMode={modeFilter}
           transfersFilter={transfersFilter}
           liveOnly={liveOnly}
+          resultCount={displayed.length}
           onSelectMode={setModeFilter}
           onSelectTransfers={setTransfersFilter}
           onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
@@ -1689,7 +1811,6 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 4. Bottom sheet wyboru daty i godziny */}
       {timeSheetOpen && (
         <DepartureTimeSheet
           initialTimeSec={targetTimeSec}
@@ -1699,7 +1820,6 @@ export default function RoutesScreen() {
         />
       )}
 
-      {/* 5. Wyszukiwarka startu / celu: ta sama co na ekranie głównym */}
       {sheetFor && (
         <SearchSheet
           placeholder={
@@ -1767,25 +1887,6 @@ export default function RoutesScreen() {
 }
 
 const styles = StyleSheet.create({
-  earlierButton: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: shape.medium,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    marginBottom: 8,
-  },
-  earlierFocused: { borderColor: scheme.primary },
-  earlierText: {
-    ...type.labelLarge,
-    color: scheme.onSurfaceVariant,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
   safe: { flex: 1, backgroundColor: scheme.surface },
   topBar: {
     flexDirection: 'row',
@@ -1795,20 +1896,53 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   back: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
   screenTitle: {
     flex: 1,
-    ...type.titleMedium,
-    fontWeight: '500',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '800',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
   },
-  // Karta aktywnej podróży nad listą połączeń
-  activeTripSlot: { paddingHorizontal: 14, paddingBottom: 12 },
+  resultBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  resultBadgeText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  topBarSpacer: {
+    width: 4,
+  },
+  stickyHeader: {
+    paddingHorizontal: 16,
+    backgroundColor: scheme.surface,
+  },
+  stickyDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: scheme.outlineVariant,
+    marginHorizontal: -16,
+  },
+  routeHeader: {
+    marginTop: 2,
+    marginBottom: 12,
+  },
   filterCardsRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1816,100 +1950,230 @@ const styles = StyleSheet.create({
   },
   actionCard: {
     flex: 1,
-    minHeight: 48,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
+    minHeight: 46,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    gap: 8,
+    gap: 7,
   },
-  actionCardActive: {
+  actionCardTimeActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderWidth: 1,
+    borderColor: scheme.primary,
+  },
+  actionCardFilterActive: {
     backgroundColor: scheme.secondaryContainer,
-  },
-  actionCardPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
+    borderWidth: 1,
+    borderColor: scheme.secondary,
   },
   actionCardText: {
     ...type.labelLarge,
     color: scheme.onSurface,
     fontWeight: '600',
     flexShrink: 1,
+    fontVariant: ['tabular-nums'],
   },
-  actionCardTextActive: {
+  actionCardTimeTextActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
+  },
+  actionCardFilterTextActive: {
     color: scheme.onSecondaryContainer,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  routeHeader: {
-    marginTop: 4,
-    marginBottom: 16,
+  filterCountPill: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  stickyHeader: {
+  filterCountPillText: {
+    ...type.labelSmall,
+    color: scheme.onPrimary,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  list: {
     paddingHorizontal: 16,
-    backgroundColor: scheme.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: scheme.outlineVariant,
+    paddingTop: 6,
+    gap: 12,
   },
-
+  listHeader: {
+    gap: 8,
+  },
   countRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    marginBottom: 12,
-    paddingHorizontal: 4,
   },
-  count: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     flexShrink: 1,
   },
-  list: {
-    paddingHorizontal: 16,
-    gap: 12,
+  statusChipText: {
+    ...type.labelMedium,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
   },
-  footer: { paddingVertical: 18, alignItems: 'center', gap: 10 },
-  footerText: { ...type.bodySmall, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  earlierButton: {
+    alignSelf: 'center',
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  earlierButtonDone: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  earlierFocused: {
+    borderColor: scheme.primary,
+    borderWidth: 2,
+  },
+  earlierText: {
+    ...type.labelLarge,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  footer: {
+    paddingVertical: 18,
+    alignItems: 'center',
+    gap: 10,
+  },
+  endCapPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  footerText: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+  },
   skeletonList: {
     flex: 1,
-    paddingTop: 12,
     gap: 12,
+  },
+  loadingPill: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    marginBottom: 2,
+  },
+  loadingText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
   },
   skelCard: {
     backgroundColor: scheme.surfaceContainer,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: scheme.outlineVariant + '44',
-    padding: 14,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    ...elev.level1,
+  },
+  skelCardDimmed: {
+    opacity: 0.62,
   },
   skelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  skelMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  skelStrip: {
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    gap: 10,
+  },
+  skelBadges: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   skel: {
     backgroundColor: scheme.surfaceContainerHighest,
     borderRadius: shape.small,
   },
-  loadingText: {
-    ...type.labelLarge,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  emptyContainer: {
-    paddingHorizontal: 28,
-    paddingVertical: 40,
+  emptyCard: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 30,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     gap: 10,
+    ...elev.level1,
+  },
+  emptyIconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyIconBadgeWarn: {
+    backgroundColor: scheme.warningContainer,
   },
   emptyTitle: {
-    ...type.titleMedium,
-    fontWeight: '700',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
     textAlign: 'center',
   },
@@ -1917,31 +2181,30 @@ const styles = StyleSheet.create({
     ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
     maxWidth: 320,
   },
+  emptyActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
   retryBtn: {
+    minHeight: 46,
     backgroundColor: scheme.primary,
     borderRadius: shape.full,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
   },
   retryBtnBusy: { opacity: 0.7 },
   retryText: {
     ...type.labelLarge,
-    fontWeight: '700',
+    fontWeight: '800',
     color: scheme.onPrimary,
-  },
-  offlineChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    minHeight: 44,
-    flexShrink: 1,
-  },
-  offlineText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
   },
 });

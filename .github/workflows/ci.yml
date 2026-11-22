@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_name == 'dev' }}
 
 jobs:
@@ -149,6 +149,9 @@ jobs:
 
       - name: Run test/*.test.ts suite
         run: npm run test:unit
+
+      - name: Run Cloudflare timetable & KP scraper tests
+        run: node --test cloudflare/scripts/build-timetable.test.mjs cloudflare/scripts/kp-gtfs.test.mjs
 
       - name: Run Cloudflare offline checks
         run: |
@@ -293,7 +296,7 @@ jobs:
       - test-unit
       - test-routing
       - test-platform
-    if: always()
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

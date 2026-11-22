@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,11 +12,16 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
+  FadeIn,
   FadeInDown,
+  FadeOut,
   FadeOutUp,
   LinearTransition,
   runOnJS,
+  useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { SpringPressable } from '../src/components/SpringPressable';
@@ -43,7 +47,7 @@ import {
   findNearbyLiveVehicles,
 } from '../src/services/onboardDetector';
 import { gtfsStore } from '../src/services/routing/store';
-import { scheme, shape, type } from '../src/theme/tokens';
+import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
 import { isIntercityRouteQuery } from '../src/services/api';
 import { defaultLocationForCity } from '../src/config';
@@ -486,7 +490,25 @@ export default function HomeScreen() {
     };
   }, [cityId]);
 
+  const reduceMotion = useReducedMotion();
   const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
+  const [tabBarWidth, setTabBarWidth] = useState(0);
+  const tabPillProgress = useSharedValue(0);
+
+  useEffect(() => {
+    const target = homeTab === 'saved' ? 1 : 0;
+    tabPillProgress.value = reduceMotion ? target : withSpring(target, motion.spring.spatialFast);
+  }, [homeTab, reduceMotion, tabPillProgress]);
+
+  const tabPillStyle = useAnimatedStyle(() => {
+    const innerWidth = Math.max(0, tabBarWidth - 10);
+    const segWidth = Math.max(0, (innerWidth - 4) / 2);
+    return {
+      width: segWidth,
+      opacity: segWidth > 0 ? 1 : 0,
+      transform: [{ translateX: tabPillProgress.value * (segWidth + 4) }],
+    };
+  }, [tabBarWidth]);
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
   // Połączenia z dołączonym biletem: ikona biletu i wyższa pozycja w „Twoich trasach”.
   const [ticketIds, setTicketIds] = useState<Set<string>>(() => new Set());
@@ -1545,7 +1567,7 @@ export default function HomeScreen() {
           'worklet';
           const opt = pullOption.value;
           pullOption.value = 0;
-          pullHeight.value = withTiming(0, { duration: 220 });
+          pullHeight.value = withSpring(0, motion.spring.spatialDefault);
           if (opt === 1) {
             runOnJS(openLastTrip)(false);
           } else if (opt === 2) {
@@ -1555,7 +1577,7 @@ export default function HomeScreen() {
         .onFinalize(() => {
           'worklet';
           pullOption.value = 0;
-          pullHeight.value = withTiming(0, { duration: 220 });
+          pullHeight.value = withSpring(0, motion.spring.spatialDefault);
         })
         .enabled(atTop && lastTrip != null && !sheetsOpen),
     [atTop, lastTrip, sheetsOpen, openLastTrip, triggerHaptic, pullOption, pullHeight],
@@ -1811,13 +1833,17 @@ export default function HomeScreen() {
                   </SpringPressable>
                 )}
                 {gpsOutsideAll && (
-                  <Text style={styles.outsideArea}>{s.home.outsideAreaShort}</Text>
+                  <View style={styles.outsideAreaPill}>
+                    <Text style={styles.outsideArea} numberOfLines={1}>
+                      {s.home.outsideAreaShort}
+                    </Text>
+                  </View>
                 )}
               </View>
               <View style={styles.topActions}>
                 {getCity(cityId).features.news && (
                   <SpringPressable
-                    style={[styles.iconBtn, styles.iconBtnStart]}
+                    style={[styles.iconBtn, styles.iconBtnStart, newsAlert && styles.iconBtnAlert]}
                     hitSlop={8}
                     onPress={() => {
                       setNewsAlert(false);
@@ -1830,7 +1856,10 @@ export default function HomeScreen() {
                     accessibilityRole="button"
                     scaleDelta={0.05}
                   >
-                    <Bell size={20} color={newsAlert ? scheme.primary : scheme.onSurfaceVariant} />
+                    <Bell
+                      size={20}
+                      color={newsAlert ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                    />
                     {newsAlert && (
                       <View style={styles.alertBadge}>
                         <Text style={styles.alertMark}>!</Text>
@@ -1947,8 +1976,10 @@ export default function HomeScreen() {
             )}
 
             {dataStatus.state === 'error' && (
-              <Pressable
+              <SpringPressable
                 style={styles.importCardError}
+                scaleDelta={0.02}
+                haptic="light"
                 accessibilityRole="button"
                 onPress={() => void importGtfsFromNetwork()}
               >
@@ -1956,7 +1987,7 @@ export default function HomeScreen() {
                 <Text style={styles.importSubError}>
                   {dataStatus.message}. {dataStatus.hint ?? s.home.importErrorRetry}
                 </Text>
-              </Pressable>
+              </SpringPressable>
             )}
 
             <View style={styles.savedSection}>
@@ -1965,20 +1996,19 @@ export default function HomeScreen() {
                   {s.home.savedTitle}
                 </Text>
                 {saved.length > 0 && (
-                  <Pressable
+                  <SpringPressable
                     onPress={() => setManageSheetOpen(true)}
                     onFocus={() => setSavedEditFocused(true)}
                     onBlur={() => setSavedEditFocused(false)}
+                    hitSlop={6}
+                    scaleDelta={0.04}
+                    haptic="selection"
                     accessibilityRole="button"
                     accessibilityLabel={s.home.editSavedA11y}
-                    style={({ pressed }) => [
-                      styles.editSaved,
-                      savedEditFocused && styles.editSavedFocused,
-                      pressed && styles.editSavedPressed,
-                    ]}
+                    style={[styles.editSaved, savedEditFocused && styles.editSavedFocused]}
                   >
                     <Text style={styles.editSavedLabel}>{s.home.editCard}</Text>
-                  </Pressable>
+                  </SpringPressable>
                 )}
               </View>
               <SavedPlacesRow
@@ -1994,19 +2024,24 @@ export default function HomeScreen() {
             <View style={styles.sectionSpacer} />
 
             {/* M3 Expressive Segmented Switcher: Ostatnie połączenia / Twoje trasy */}
-            <View style={styles.tabContainer} accessibilityRole="tablist">
+            <View
+              style={styles.tabContainer}
+              accessibilityRole="tablist"
+              onLayout={(e) => setTabBarWidth(e.nativeEvent.layout.width)}
+            >
+              <Animated.View style={[styles.tabPill, tabPillStyle]} pointerEvents="none" />
               <SpringPressable
                 onPress={() => handleTabSwitch('recent')}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: homeTab === 'recent' }}
                 accessibilityLabel={s.home.tabRecent}
                 scaleDelta={0.02}
-                style={[styles.tabBtn, homeTab === 'recent' && styles.tabBtnActive]}
+                style={styles.tabBtn}
               >
                 <History
                   size={17}
                   color={
-                    homeTab === 'recent' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                    homeTab === 'recent' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
                   }
                 />
                 <Text
@@ -2028,12 +2063,12 @@ export default function HomeScreen() {
                 accessibilityState={{ selected: homeTab === 'saved' }}
                 accessibilityLabel={s.home.tabSaved}
                 scaleDelta={0.02}
-                style={[styles.tabBtn, homeTab === 'saved' && styles.tabBtnActive]}
+                style={styles.tabBtn}
               >
                 <MapPinned
                   size={17}
                   color={
-                    homeTab === 'saved' ? scheme.onSecondaryContainer : scheme.onSurfaceVariant
+                    homeTab === 'saved' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
                   }
                 />
                 <Text
@@ -2067,43 +2102,53 @@ export default function HomeScreen() {
               </SpringPressable>
             </View>
 
-            {homeTab === 'recent' ? (
-              smartOrdered.length === 0 && smartReady ? (
-                <View style={styles.emptyCard}>
-                  <View style={styles.emptyIcon}>
-                    <History size={22} color={scheme.onSecondaryContainer} />
+            <Animated.View
+              key={homeTab}
+              entering={reduceMotion ? undefined : FadeIn.duration(160)}
+              exiting={reduceMotion ? undefined : FadeOut.duration(90)}
+            >
+              {homeTab === 'recent' ? (
+                smartOrdered.length === 0 && smartReady ? (
+                  <View style={styles.emptyCard}>
+                    <View style={styles.emptyIcon}>
+                      <History size={22} color={scheme.onSecondaryContainer} />
+                    </View>
+                    <View style={styles.emptyText}>
+                      <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+                      <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+                    </View>
                   </View>
-                  <View style={styles.emptyText}>
-                    <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-                    <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-                  </View>
-                </View>
+                ) : (
+                  <SmartHistoryList
+                    items={smartOrdered}
+                    departures={liveDepartures}
+                    lineBadges={firstLegs}
+                    onSelect={goToRoutes}
+                    onOpenConnection={goToConnection}
+                    icons={smartIcons}
+                    hideHeader={true}
+                  />
+                )
               ) : (
-                <SmartHistoryList
-                  items={smartOrdered}
-                  departures={liveDepartures}
-                  lineBadges={firstLegs}
-                  onSelect={goToRoutes}
-                  onOpenConnection={goToConnection}
-                  icons={smartIcons}
-                  hideHeader={true}
+                <SavedRoutesList
+                  routes={orderedSavedRoutes}
+                  activeId={trackedConnId}
+                  ticketIds={ticketIds}
+                  onSelect={handleSelectSavedRoute}
+                  onRemove={handleRemoveSavedRoute}
+                  onOpenTicket={handleOpenSavedTicket}
+                  onUnpin={handleUnpinSavedRoute}
                 />
-              )
-            ) : (
-              <SavedRoutesList
-                routes={orderedSavedRoutes}
-                activeId={trackedConnId}
-                ticketIds={ticketIds}
-                onSelect={handleSelectSavedRoute}
-                onRemove={handleRemoveSavedRoute}
-                onOpenTicket={handleOpenSavedTicket}
-                onUnpin={handleUnpinSavedRoute}
-              />
-            )}
+              )}
+            </Animated.View>
           </ScrollView>
         </SafeAreaView>
 
-        {!sheetMode && !manageSheetOpen && !addPlaceOpen && !citySheetOpen && (
+        <View
+          pointerEvents={sheetsOpen ? 'none' : 'auto'}
+          accessibilityElementsHidden={sheetsOpen}
+          importantForAccessibility={sheetsOpen ? 'no-hide-descendants' : 'auto'}
+        >
           <HomeThumbBar
             onOpenSearch={() => {
               pendingDestinationRef.current = null;
@@ -2128,7 +2173,7 @@ export default function HomeScreen() {
                 : null
             }
           />
-        )}
+        </View>
 
         {sheetMode && (
           <SearchSheet
@@ -2194,7 +2239,7 @@ export default function HomeScreen() {
                   sheetCloseTimerRef.current = null;
                   setSheetModeRaw(null);
                   setQuery('');
-                }, 350);
+                }, 240);
               }
             }}
             onClose={() => {
@@ -2281,32 +2326,35 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
-  body: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 28, flexGrow: 1 },
+  body: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 28, flexGrow: 1 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
     minHeight: 54,
     marginBottom: 14,
   },
-  cityContextWrap: { flex: 1, minWidth: 0, justifyContent: 'center', gap: 4 },
+  cityContextWrap: { flex: 1, minWidth: 0, justifyContent: 'center', gap: 6 },
   cityPill: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
     minHeight: 44,
-    paddingLeft: 8,
-    paddingRight: 14,
+    paddingLeft: 7,
+    paddingRight: 13,
     paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    ...elev.level1,
   },
   cityPinIcon: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
@@ -2314,14 +2362,22 @@ const styles = StyleSheet.create({
   },
   cityName: {
     ...type.labelLarge,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: -0.1,
     color: scheme.onSurface,
     flexShrink: 1,
   },
+  outsideAreaPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.warningContainer,
+  },
   outsideArea: {
     ...type.labelSmall,
-    color: scheme.warning,
-    paddingLeft: 6,
+    fontWeight: '700',
+    color: scheme.onWarningContainer,
   },
   topActions: {
     flexDirection: 'row',
@@ -2330,48 +2386,56 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
   iconBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: shape.small,
+    width: 44,
+    height: 44,
+    borderRadius: 8,
     backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
+    ...elev.level1,
+  },
+  iconBtnAlert: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
   },
   iconBtnStart: {
-    borderTopLeftRadius: shape.extraLarge,
-    borderBottomLeftRadius: shape.extraLarge,
+    borderTopLeftRadius: shape.full,
+    borderBottomLeftRadius: shape.full,
   },
   iconBtnMid: {
-    borderRadius: shape.extraSmall,
+    borderRadius: 8,
   },
   iconBtnEnd: {
-    borderTopRightRadius: shape.extraLarge,
-    borderBottomRightRadius: shape.extraLarge,
+    borderTopRightRadius: shape.full,
+    borderBottomRightRadius: shape.full,
   },
   heroBlock: {
-    marginBottom: 2,
+    marginBottom: 4,
   },
   headerTitle: {
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: '700',
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: '800',
     color: scheme.onSurface,
-    letterSpacing: -1,
+    letterSpacing: -1.2,
   },
   onboardCard: {
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
     borderWidth: 1.5,
-    borderColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
     padding: 16,
     gap: 12,
     marginTop: 14,
     marginBottom: 4,
+    ...elev.level1,
   },
   onboardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 10,
   },
   onboardTitles: {
     flex: 1,
@@ -2380,11 +2444,13 @@ const styles = StyleSheet.create({
   onboardTitle: {
     ...type.titleMedium,
     color: scheme.onSurface,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   onboardSub: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
+    lineHeight: 18,
   },
   onboardDismiss: {
     width: 40,
@@ -2392,7 +2458,9 @@ const styles = StyleSheet.create({
     marginTop: -4,
     marginRight: -4,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2429,15 +2497,15 @@ const styles = StyleSheet.create({
   onboardMapText: {
     ...type.labelLarge,
     color: scheme.onSecondaryContainer,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   alertBadge: {
     position: 'absolute',
-    top: -2,
-    right: -2,
+    top: -3,
+    right: -3,
     width: 19,
     height: 19,
-    borderRadius: 10,
+    borderRadius: shape.full,
     backgroundColor: scheme.error,
     borderWidth: 2,
     borderColor: scheme.surface,
@@ -2449,7 +2517,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.extraLarge,
+    borderRadius: shape.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     padding: 5,
     gap: 4,
     marginBottom: 12,
@@ -2459,14 +2529,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 46,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
     gap: 8,
   },
-  tabBtnActive: {
-    backgroundColor: scheme.secondaryContainer,
+  tabPill: {
+    position: 'absolute',
+    top: 5,
+    bottom: 5,
+    left: 5,
+    backgroundColor: scheme.primaryContainer,
     borderRadius: shape.full,
   },
   tabLabel: {
@@ -2475,8 +2549,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tabLabelActive: {
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
   },
   tabLabelInactive: {
     color: scheme.onSurfaceVariant,
@@ -2492,15 +2566,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabCountBadgeActive: {
-    backgroundColor: scheme.primaryContainer,
+    backgroundColor: scheme.surfaceContainerLow,
   },
   tabCountText: {
     ...type.labelSmall,
-    fontWeight: '700',
+    fontWeight: '800',
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   tabCountTextActive: {
-    color: scheme.onPrimaryContainer,
+    color: scheme.onSurface,
   },
   savedSection: { marginTop: 18 },
   sectionSpacer: { height: 22 },
@@ -2514,22 +2589,23 @@ const styles = StyleSheet.create({
   },
   section: {
     ...type.titleMedium,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
     color: scheme.onSurface,
     flex: 1,
   },
   editSaved: {
-    minHeight: 36,
+    minHeight: 38,
     paddingHorizontal: 14,
     justifyContent: 'center',
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
-  editSavedFocused: { borderColor: scheme.primary },
-  editSavedPressed: { backgroundColor: scheme.surfaceContainerHigh },
+  editSavedFocused: { borderWidth: 1.5, borderColor: scheme.primary },
   editSavedLabel: {
     ...type.labelMedium,
     fontWeight: '700',
@@ -2539,37 +2615,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    padding: 20,
+    padding: 18,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
-  emptyText: { flex: 1, gap: 4 },
+  emptyText: { flex: 1, gap: 4, minWidth: 0 },
   emptyIcon: {
     width: 48,
     height: 48,
-    borderRadius: shape.large,
-    borderTopRightRadius: shape.small,
-    borderBottomLeftRadius: shape.small,
+    borderRadius: 22,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 10,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   emptyTitle: { ...type.titleMedium, fontWeight: '700', color: scheme.onSurface },
   emptyBody: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   importCardError: {
     marginTop: 14,
-    padding: 14,
+    padding: 16,
+    minHeight: 56,
     backgroundColor: scheme.errorContainer,
-    borderRadius: shape.large,
+    borderRadius: 24,
   },
   importTitleError: {
     ...type.bodyMedium,
     color: scheme.onErrorContainer,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   importSubError: {
-    ...type.labelSmall,
+    ...type.bodySmall,
     color: scheme.onErrorContainer,
-    marginTop: 2,
+    marginTop: 3,
   },
 });

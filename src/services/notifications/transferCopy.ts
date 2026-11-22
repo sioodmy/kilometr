@@ -13,6 +13,8 @@ export function getTransferNativeCopy(): Record<string, string> {
     alternativeTitle: s.alternativeTitle,
     alternativeBody: s.alternativeBody,
     noAlternative: s.noAlternative,
+    conductorTitle: s.conductorTitle,
+    conductorBody: s.conductorBody,
     unavailable: s.unavailable,
     unavailableBody: s.unavailableBody,
     rerouting: s.rerouting,

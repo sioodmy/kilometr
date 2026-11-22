@@ -8,8 +8,16 @@ import { CITIES, getCity, type CityId } from '../src/cities';
 import { useActiveCity } from '../src/services/cityStore';
 import { scheme, shape, type } from '../src/theme/tokens';
 
-/** Portale bez HTTPS: otwieramy po HTTP, inaczej link nie działa. */
-const HTTP_ONLY_HOSTS = new Set(['zkgkm-olkusz.pl', 'zkm.ilawa.pl']);
+/** Portale bez poprawnego HTTPS: otwieramy po HTTP, inaczej link nie działa. */
+const HTTP_ONLY_HOSTS = new Set([
+  'zkgkm-olkusz.pl',
+  'zkm.ilawa.pl',
+  'zakopane.pl',
+  'mzk.nysa.pl',
+  'mpk.zdunskawola.pl',
+  'mzk.starogard.pl',
+  'pkm.czechowice-dziedzice.pl',
+]);
 
 function portalUrl(host: string): string {
   return `${HTTP_ONLY_HOSTS.has(host) ? 'http' : 'https'}://${host}`;
@@ -79,7 +87,12 @@ export default function DataSourcesScreen() {
   const d = s.dataSources;
   const router = useRouter();
   const { cityId } = useActiveCity();
-  const directLiveFeed = getCity(cityId).features.directBusPosition;
+  const activeCity = getCity(cityId);
+  const directLiveFeed = activeCity.features.directBusPosition;
+  const kpLiveHost =
+    activeCity.kpPrefix && activeCity.features.live
+      ? `${activeCity.kpPrefix}.kiedyprzyjedzie.pl`
+      : null;
   const [allCitiesOpen, setAllCitiesOpen] = useState(false);
 
   return (
@@ -128,6 +141,17 @@ export default function DataSourcesScreen() {
             hint={d.zbiorkomHint}
             a11y={d.openA11y(d.zbiorkomName)}
           />
+          {kpLiveHost && (
+            <>
+              <View style={st.divider} />
+              <SourceRow
+                name={d.kpName}
+                host={kpLiveHost}
+                hint={d.kpHint}
+                a11y={d.openA11y(d.kpName)}
+              />
+            </>
+          )}
           {directLiveFeed && (
             <>
               <View style={st.divider} />

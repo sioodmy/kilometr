@@ -8,8 +8,52 @@ import { DEFAULT_COST, mergeDayIndexes } from '../routing/raptor';
 import { gtfsStore } from '../routing/store';
 import { computeLegTimeline } from './tripProgress';
 import { getTransferNativeCopy } from './transferCopy';
+import { isProtectedTrainLeg } from './transferTypes';
 import type { TrackedTrip } from './types';
 
+function resolveLocalDestinations(
+  trip: TrackedTrip,
+  stopIndexMap: Map<string, number>,
+  maxWalkM: number,
+  walkSpeedMps: number,
+): { stopIndex: number; walkM: number; walkSec: number }[] {
+  const mapNearest = (lat: number, lon: number) =>
+    gtfsStore.findNearestStops(lat, lon, maxWalkM, 80).flatMap(({ stop, distanceM }) => {
+      const stopIndex = stopIndexMap.get(stop.stop_id);
+      return stopIndex === undefined
+        ? []
+        : [
+            {
+              stopIndex,
+              walkM: Math.round(distanceM),
+              walkSec: Math.max(0, Math.round((distanceM * 1.15) / walkSpeedMps)),
+            },
+          ];
+    });
+
+  const primary = mapNearest(trip.toLat, trip.toLon);
+  if (primary.length > 0) return primary;
+
+  // Trasa mieszana (np. tramwaj -> pociąg Intercity poza miastem): cel miejski to dworzec przesiadkowy.
+  const lastUrban = [...trip.connection.legs]
+    .reverse()
+    .find((leg) => leg.mode !== 'walk' && !isProtectedTrainLeg(leg));
+  if (lastUrban) {
+    if (lastUrban.toStopId) {
+      const exactIdx = stopIndexMap.get(lastUrban.toStopId);
+      if (exactIdx !== undefined) {
+        return [{ stopIndex: exactIdx, walkM: 0, walkSec: 0 }];
+      }
+    }
+    if (lastUrban.toLat != null && lastUrban.toLon != null) {
+      const nearStation = mapNearest(lastUrban.toLat, lastUrban.toLon);
+      if (nearStation.length > 0) return nearStation;
+    }
+  }
+  return [];
+}
+
+/** Przygotowuje lokalny snapshot sieci i parametrów podróży dla natywnej ochrony w tle. */
 export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string> {
   await gtfsStore.load();
   const settings = getSettingsSync();
@@ -44,27 +88,26 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
   }
   const net = getRaptorNet(gtfsStore, index, offsets);
   const walkSpeedMps = profileWalkSpeedMps(settings.walkPace);
-  const destinations = gtfsStore
-    .findNearestStops(trip.toLat, trip.toLon, settings.maxWalkM, 80)
-    .flatMap(({ stop, distanceM }) => {
-      const stopIndex = net.base.stopIndex.get(stop.stop_id);
-      return stopIndex === undefined
-        ? []
-        : [
-            {
-              stopIndex,
-              walkM: Math.round(distanceM),
-              walkSec: Math.max(0, Math.round((distanceM * 1.15) / walkSpeedMps)),
-            },
-          ];
-    });
-  if (!destinations.length) throw new Error('No destination stops');
+  const destinations = resolveLocalDestinations(
+    trip,
+    net.base.stopIndex,
+    settings.maxWalkM,
+    walkSpeedMps,
+  );
   const city = getActiveCitySync();
-  const dir = new Directory(Paths.document, 'transfer-protection', `${trip.startedAt}`);
+  const dir = new Directory(
+    Paths.document,
+    'transfer-protection',
+    `${trip.startedAt}-${Date.now()}`,
+  );
   dir.create({ intermediates: true, idempotent: true });
   const network = new File(dir, 'network.bin');
   network.write(packRaptorNet(net));
   const file = new File(dir, 'context.json');
+  const liveUrl =
+    city.zbiorkomSlug && city.zbiorkomBbox
+      ? `https://zbiorkom.live/api6-open/${city.zbiorkomSlug}/positions/${city.zbiorkomBbox}`
+      : '';
   file.write(
     JSON.stringify({
       version: 1,
@@ -103,7 +146,7 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
         cost: DEFAULT_COST,
       },
       destination: { name: trip.toTitle, lat: trip.toLat, lon: trip.toLon },
-      liveUrl: `https://zbiorkom.live/api6-open/${city.zbiorkomSlug}/positions/${city.zbiorkomBbox}`,
+      liveUrl,
       delays: liveTracker
         .snapshot()
         .filter((v) => v.matchedTripId && v.delaySec != null)
@@ -114,7 +157,8 @@ export async function prepareTransferSnapshot(trip: TrackedTrip): Promise<string
   return file.uri;
 }
 
-export function removeTransferSnapshot(path: string): void {
-  const dir = new File(path).parentDirectory;
+export function removeTransferSnapshot(contextPath: string): void {
+  const file = new File(contextPath);
+  const dir = file.parentDirectory;
   if (dir.exists) dir.delete();
 }

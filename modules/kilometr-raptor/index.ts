@@ -2,7 +2,20 @@ import { RAPTOR_WASM_BASE64 } from "./wasmBase64";
 
 const STATUS_NET_MISSING = -1;
 const FOOT_QUERY_MAGIC = 0x464f4f54; // "FOOT"
-const RAIL_QUERY_MAGIC = 0x5241494c;
+const RAIL_QUERY_MAGIC = 0x5241494c; // "RAIL"
+const TRAM_QUERY_MAGIC = 0x5452414d; // "TRAM"
+const SUBW_QUERY_MAGIC = 0x53554257; // "SUBW"
+const BUS_QUERY_MAGIC = 0x42555320; // "BUS "
+
+export type LocalRouteMode = "foot" | "rail" | "tram" | "subway" | "bus";
+
+function magicForRouteMode(mode: boolean | LocalRouteMode): number {
+  if (mode === true || mode === "rail") return RAIL_QUERY_MAGIC;
+  if (mode === "tram") return TRAM_QUERY_MAGIC;
+  if (mode === "subway") return SUBW_QUERY_MAGIC;
+  if (mode === "bus") return BUS_QUERY_MAGIC;
+  return FOOT_QUERY_MAGIC;
+}
 
 type NativeKilometrRaptorModule = {
   isAvailable(): boolean;
@@ -387,10 +400,13 @@ function loadFootTileSync(
   }
 }
 
-function packFootWaypoints(waypoints: ReadonlyArray<readonly [number, number]>, rail = false): Uint8Array {
+function packFootWaypoints(
+  waypoints: ReadonlyArray<readonly [number, number]>,
+  mode: boolean | LocalRouteMode = "foot",
+): Uint8Array {
   const buf = new ArrayBuffer(8 + waypoints.length * 16);
   const view = new DataView(buf);
-  view.setUint32(0, rail ? RAIL_QUERY_MAGIC : FOOT_QUERY_MAGIC, true);
+  view.setUint32(0, magicForRouteMode(mode), true);
   view.setUint32(4, waypoints.length, true);
   let offset = 8;
   for (let i = 0; i < waypoints.length; i++) {
@@ -422,10 +438,10 @@ function unpackFootRoute(bytes: Uint8Array | null): [number, number][] | null {
 /** Trasa piesza synchronicznie, przez moduł natywny albo wasm. */
 function routeFootWaypointsSync(
   waypoints: ReadonlyArray<readonly [number, number]>,
-  rail = false,
+  mode: boolean | LocalRouteMode = "foot",
 ): [number, number][] | null {
   if (waypoints.length < 2) return null;
-  const packed = packFootWaypoints(waypoints, rail);
+  const packed = packFootWaypoints(waypoints, mode);
   const nativeMod = getNativeModule();
   if (nativeMod) {
     return unpackFootRoute(nativeMod.routeFootSync(packed));
@@ -447,16 +463,16 @@ function routeFootWaypointsSync(
 
 export async function routeFootWaypointsAsync(
   waypoints: ReadonlyArray<readonly [number, number]>,
-  rail = false,
+  mode: boolean | LocalRouteMode = "foot",
 ): Promise<[number, number][] | null> {
   if (waypoints.length < 2) return null;
-  const packed = packFootWaypoints(waypoints, rail);
+  const packed = packFootWaypoints(waypoints, mode);
   const nativeMod = getNativeModule();
   if (nativeMod) {
     const res = await nativeMod.routeFoot(packed);
     return unpackFootRoute(res);
   }
-  return routeFootWaypointsSync(waypoints, rail);
+  return routeFootWaypointsSync(waypoints, mode);
 }
 
 export const CMD_FUZZY = 10;

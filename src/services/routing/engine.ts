@@ -11,6 +11,14 @@ import { isFareBoundary } from '../../gtfs/fareBoundary';
 import { refreshConnectionTimes, scheduledLegTimes } from './connectionTimes';
 import { predictDelaySec } from './delays';
 import { projectRoutePoint } from '../routeGeometry';
+import {
+  extractMetroStationId,
+  findOptimalMetroEntrance,
+  findReachableMetroStationsByEntrance,
+  isWarsawMetroStopId,
+  toMetroEntranceRef,
+  warmupMetroEntrances,
+} from '../metroEntrances';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Parametry spacerowe (spójne z raptor.ts i store.ts)
@@ -372,6 +380,134 @@ export function sortConnectionsByCost(
  * Używane i dla emisji progresywnych (po każdym oknie), i dla wyniku finalnego.
  */
 /** Łączy bezpośrednio sąsiadujące odcinki piesze w jeden. */
+
+/**
+ * Dla odcinków pieszych dochodzących do stacji metra warszawskiego lub z niej wychodzących
+ * przypina współrzędne i dystans do najbardziej optymalnego wejścia/wyjścia.
+ * Przesiadki podziemne między liniami metra na tej samej stacji (np. Świętokrzyska M1<->M2)
+ * pozostają pod ziemią i nie dostają ulicznego wejścia.
+ */
+export function snapMetroEntranceLegs(
+  legs: Leg[],
+  endpoints?: {
+    fromLat?: number;
+    fromLon?: number;
+    toLat?: number;
+    toLon?: number;
+    boardedTrip?: boolean;
+  },
+): void {
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const prev = i > 0 ? legs[i - 1] : undefined;
+    const next = i + 1 < legs.length ? legs[i + 1] : undefined;
+
+    if (leg.mode === 'walk') {
+      const sameMetroStation =
+        prev?.mode === 'subway' &&
+        next?.mode === 'subway' &&
+        Boolean(extractMetroStationId(prev.toStopId)) &&
+        extractMetroStationId(prev.toStopId) === extractMetroStationId(next.fromStopId);
+      if (sameMetroStation) continue;
+
+      if (next?.mode === 'subway' && leg.fromLat !== undefined && leg.fromLon !== undefined) {
+        const hit = findOptimalMetroEntrance(next.fromStopId, leg.fromLat, leg.fromLon);
+        if (hit) {
+          leg.toLat = hit.entrance.lat;
+          leg.toLon = hit.entrance.lon;
+          leg.walkM = hit.distanceM;
+          const ref = toMetroEntranceRef(hit.entrance);
+          leg.toEntrance = ref;
+          next.fromEntrance = ref;
+        }
+      }
+      if (prev?.mode === 'subway' && leg.toLat !== undefined && leg.toLon !== undefined) {
+        const hit = findOptimalMetroEntrance(prev.toStopId, leg.toLat, leg.toLon);
+        if (hit) {
+          leg.fromLat = hit.entrance.lat;
+          leg.fromLon = hit.entrance.lon;
+          leg.walkM = hit.distanceM;
+          const ref = toMetroEntranceRef(hit.entrance);
+          leg.fromEntrance = ref;
+          prev.toEntrance = ref;
+        }
+      }
+      continue;
+    }
+
+    if (leg.mode === 'subway') {
+      if (!leg.fromEntrance) {
+        if (i === 0 && !endpoints?.boardedTrip && endpoints?.fromLat !== undefined && endpoints?.fromLon !== undefined) {
+          const hit = findOptimalMetroEntrance(leg.fromStopId, endpoints.fromLat, endpoints.fromLon);
+          if (hit) leg.fromEntrance = toMetroEntranceRef(hit.entrance);
+        } else if (prev && prev.mode !== 'walk' && prev.mode !== 'subway' && prev.toLat !== undefined && prev.toLon !== undefined) {
+          const hit = findOptimalMetroEntrance(leg.fromStopId, prev.toLat, prev.toLon);
+          if (hit) leg.fromEntrance = toMetroEntranceRef(hit.entrance);
+        }
+      }
+      if (!leg.toEntrance) {
+        if (i === legs.length - 1 && endpoints?.toLat !== undefined && endpoints?.toLon !== undefined) {
+          const hit = findOptimalMetroEntrance(leg.toStopId, endpoints.toLat, endpoints.toLon);
+          if (hit) leg.toEntrance = toMetroEntranceRef(hit.entrance);
+        } else if (next && next.mode !== 'walk' && next.mode !== 'subway' && next.fromLat !== undefined && next.fromLon !== undefined) {
+          const hit = findOptimalMetroEntrance(leg.toStopId, next.fromLat, next.fromLon);
+          if (hit) leg.toEntrance = toMetroEntranceRef(hit.entrance);
+        }
+      }
+    }
+  }
+}
+
+function resolveNearbyAccessStops(
+  lat: number,
+  lon: number,
+  maxWalkM: number,
+  userWalkSpeed: number,
+  store: LocalGtfsStore,
+): Array<{ stopId: string; walkM: number; walkSec: number }> {
+  const nearby = store.findNearestStops(lat, lon, maxWalkM, MAX_ACCESS_STOPS);
+  const seen = new Set<string>();
+  const out: Array<{ stopId: string; walkM: number; walkSec: number }> = [];
+
+  for (const n of nearby) {
+    let distM = n.distanceM;
+    if (isWarsawMetroStopId(n.stop.stop_id)) {
+      const hit = findOptimalMetroEntrance(n.stop.stop_id, lat, lon);
+      if (hit) distM = hit.distanceM;
+    }
+    seen.add(n.stop.stop_id);
+    out.push({
+      stopId: n.stop.stop_id,
+      walkM: distM,
+      walkSec: Math.max(30, Math.round((distM * WALK_DETOUR_FACTOR) / userWalkSpeed)),
+    });
+  }
+
+  for (const reach of findReachableMetroStationsByEntrance(lat, lon, maxWalkM)) {
+    for (const suffix of [':P1', ':P2']) {
+      const platformId = `${reach.stationId}${suffix}`;
+      if (seen.has(platformId) || !store.stops.has(platformId)) continue;
+      seen.add(platformId);
+      out.push({
+        stopId: platformId,
+        walkM: reach.distanceM,
+        walkSec: Math.max(30, Math.round((reach.distanceM * WALK_DETOUR_FACTOR) / userWalkSpeed)),
+      });
+    }
+  }
+
+  return out;
+}
+
+async function maybeWarmupMetroEntrances(options: PlanOptions, store: LocalGtfsStore): Promise<void> {
+  const inWarsawBox =
+    (options.fromLat >= 52.0 && options.fromLat <= 52.4 && options.fromLon >= 20.7 && options.fromLon <= 21.3) ||
+    (options.toLat >= 52.0 && options.toLat <= 52.4 && options.toLon >= 20.7 && options.toLon <= 21.3);
+  if (inWarsawBox || store.stops.has('7014M:P1') || store.stops.has('7013M:P1')) {
+    await warmupMetroEntrances();
+  }
+}
+
 export function mergeConsecutiveWalkLegs(legs: Leg[]): Leg[] {
   const out: Leg[] = [];
   for (const leg of legs) {
@@ -498,6 +634,13 @@ function mapJourneysToConnections(
     }
 
     const mergedLegs = mergeConsecutiveWalkLegs(legs);
+    snapMetroEntranceLegs(mergedLegs, {
+      fromLat: options.fromLat,
+      fromLon: options.fromLon,
+      toLat: options.toLat,
+      toLon: options.toLon,
+      boardedTrip: Boolean(options.boardedTrip),
+    });
     const transitLegs = mergedLegs.filter((l) => l.mode !== 'walk');
     if (transitLegs.length === 0) continue;
 
@@ -573,15 +716,7 @@ export function resolveCandidateOrigins(
   anchor?: { stopId?: string; lat?: number; lon?: number },
   store: LocalGtfsStore = gtfsStore,
 ): Array<{ stopId: string; walkM: number; walkSec: number }> {
-  const originNearby = store.findNearestStops(fromLat, fromLon, maxWalkM, MAX_ACCESS_STOPS);
-  const origins = originNearby.map((n) => {
-    const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
-    return {
-      stopId: n.stop.stop_id,
-      walkM: n.distanceM,
-      walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
-    };
-  });
+  const origins = resolveNearbyAccessStops(fromLat, fromLon, maxWalkM, userWalkSpeed, store);
 
   if (
     (anchor?.stopId || (anchor?.lat !== undefined && anchor?.lon !== undefined)) &&
@@ -1017,7 +1152,8 @@ async function planFromBoardedTrip(
       walkM = Math.min(d, 50);
       walkSec = walkM <= 20 ? 0 : Math.max(30, Math.round((walkM * WALK_DETOUR_FACTOR) / userWalkSpeed));
     } else if (s.lat !== undefined && s.lon !== undefined) {
-      const d = Math.round(distanceMeters(s.lat, s.lon, options.toLat, options.toLon));
+      const entranceHit = isWarsawMetroStopId(s.stopId) ? findOptimalMetroEntrance(s.stopId, options.toLat, options.toLon) : null;
+      const d = entranceHit ? entranceHit.distanceM : Math.round(distanceMeters(s.lat, s.lon, options.toLat, options.toLon));
       if (d > maxWalkM) continue;
       walkM = d;
       walkSec = walkM <= 20 ? 0 : Math.max(30, Math.round((walkM * WALK_DETOUR_FACTOR) / userWalkSpeed));
@@ -1051,11 +1187,7 @@ async function planFromBoardedTrip(
   if (maxTransfers >= 1) {
     const destinations = options.destinationStopIds?.length
       ? options.destinationStopIds.map((stopId) => ({ stopId, walkM: 0, walkSec: 0 }))
-      : store.findNearestStops(options.toLat, options.toLon, maxWalkM, MAX_ACCESS_STOPS).map((n) => ({
-          stopId: n.stop.stop_id,
-          walkM: n.distanceM,
-          walkSec: Math.max(30, Math.round((n.distanceM * WALK_DETOUR_FACTOR) / userWalkSpeed)),
-        }));
+      : resolveNearbyAccessStops(options.toLat, options.toLon, maxWalkM, userWalkSpeed, store);
 
     if (destinations.length > 0) {
       const bestFeedByStop = new Map<string, BoardedStopFeed>();
@@ -1233,6 +1365,7 @@ export async function planConnections(
   store: LocalGtfsStore = gtfsStore,
 ): Promise<Connection[]> {
   await store.load();
+  await maybeWarmupMetroEntrances(options, store);
 
   if (options.boardedTrip) {
     return planFromBoardedTrip(options, store);
@@ -1309,17 +1442,7 @@ export async function planConnections(
   // 2. Resolve candidate alighting stops near destination
   const destinations = options.destinationStopIds?.length
     ? options.destinationStopIds.map((stopId) => ({ stopId, walkM: 0, walkSec: 0 }))
-    : (() => {
-        const destNearby = store.findNearestStops(options.toLat, options.toLon, maxWalkM, MAX_ACCESS_STOPS);
-        return destNearby.map((n) => {
-          const effectiveDist = n.distanceM * WALK_DETOUR_FACTOR;
-          return {
-            stopId: n.stop.stop_id,
-            walkM: n.distanceM,
-            walkSec: Math.max(30, Math.round(effectiveDist / userWalkSpeed)),
-          };
-        });
-      })();
+    : resolveNearbyAccessStops(options.toLat, options.toLon, maxWalkM, userWalkSpeed, store);
 
   if (!origins.length || !destinations.length) {
     return [];

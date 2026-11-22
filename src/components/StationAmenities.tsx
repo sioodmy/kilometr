@@ -11,7 +11,7 @@ import {
   ShoppingBag,
   Wc,
 } from './icons';
-import { scheme } from '../theme/tokens';
+import { scheme, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { StationAmenity } from '../types/models';
 import { getCachedStationAmenities, loadStationAmenities } from '../services/stationAmenities';
@@ -38,10 +38,12 @@ export function StationAmenities({
   stopId,
   lat,
   lon,
+  showLabel = false,
 }: {
   stopId?: string;
   lat?: number;
   lon?: number;
+  showLabel?: boolean;
 }) {
   const t = useStrings();
   const [keys, setKeys] = useState<StationAmenity[] | null>(
@@ -76,11 +78,18 @@ export function StationAmenities({
       accessible
       accessibilityLabel={t.stationAmenities.a11y(keys.map(label).join(', '))}
     >
-      {shown.map((key) => {
-        const Icon = ICONS[key];
-        return <Icon key={key} size={15} color={scheme.onSurfaceVariant} />;
-      })}
-      {hidden > 0 ? <Text style={styles.more}>{t.stationAmenities.more(hidden)}</Text> : null}
+      {showLabel ? (
+        <Text style={styles.summary} numberOfLines={1}>
+          {t.stationAmenities.summary(keys.length)}
+        </Text>
+      ) : null}
+      <View style={styles.iconsGroup}>
+        {shown.map((key) => {
+          const Icon = ICONS[key];
+          return <Icon key={key} size={14} color={scheme.onSurfaceVariant} />;
+        })}
+        {hidden > 0 ? <Text style={styles.more}>{t.stationAmenities.more(hidden)}</Text> : null}
+      </View>
     </View>
   );
 }
@@ -93,8 +102,20 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 20,
   },
+  summary: {
+    ...type.labelSmall,
+    fontSize: 12,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+  },
+  iconsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   more: {
-    fontSize: 11,
+    ...type.labelSmall,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
   },
