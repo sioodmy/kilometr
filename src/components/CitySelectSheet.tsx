@@ -16,22 +16,28 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, MapPinOff, Search, X } from './icons';
+import { SpringPressable } from './SpringPressable';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, type Strings, useStrings } from '../i18n';
 import { CITIES, type CityDef, type CityId } from '../cities';
 import { normalizePolish } from '../gtfs/geo';
 
+const MAX_RUBBER_UP = 18;
+
 const CITY_ALIASES: Record<string, string[]> = {
   wroclaw: ['wrocław', 'wroclaw', 'dolny śląsk', 'dolnyslask', 'breslau'],
-  krakow: ['kraków', 'krakow', 'małopolska', 'malopolska', 'wieliczka', 'skawina', 'cracow'],
+  krakow: ['kraków', 'krakow', 'małopolska', 'malopolska', 'skawina', 'cracow'],
   gzm: [
     'metropolia',
     'śląsk',
@@ -73,13 +79,10 @@ const CITY_ALIASES: Record<string, string[]> = {
     'warszawa',
     'warsaw',
     'stolica',
-    'pruszków',
     'piaseczno',
     'legionowo',
-    'otwock',
     'wołomin',
-    'ząbki',
-  ],
+    ],
   poznan: ['poznań', 'poznan', 'wielkopolska', 'swarzędz', 'luboń', 'kórnik'],
   trojmiasto: [
     'trójmiasto',
@@ -93,8 +96,8 @@ const CITY_ALIASES: Record<string, string[]> = {
     'rumia',
     'reda',
   ],
-  lodz: ['łódź', 'lodz', 'zgierz', 'pabianice', 'aleksandrów łódzki', 'konstantynów łódzki'],
-  szczecin: ['szczecin', 'pomorze zachodnie', 'police', 'dobra', 'gryfino', 'stargard', 'stettin'],
+  lodz: ['łódź', 'lodz', 'aleksandrów łódzki', 'konstantynów łódzki'],
+  szczecin: ['szczecin', 'pomorze zachodnie', 'police', 'dobra', 'gryfino', 'stettin'],
   kielce: [
     'kielce',
     'świętokrzyskie',
@@ -200,6 +203,105 @@ const CITY_ALIASES: Record<string, string[]> = {
   chrzanow: ['chrzanów', 'chrzanow', 'trzebinia', 'libiąż', 'libiaz', 'chełmek', 'chelmek'],
   bochnia: ['bochnia', 'bocheńskie', 'bochenskie', 'małopolska', 'malopolska'],
   ilawa: ['iława', 'ilawa', 'iławskie', 'ilawskie', 'warmia', 'mazury'],
+  bielskobiala: ["bielsko-biała","bielsko-biala","bielsko","bielsko biala","beskidy","podbeskidzie"],
+  koszalin: ["koszalin"],
+  piotrkow: ["piotrków trybunalski","piotrkow trybunalski","piotrków","piotrkow"],
+  tomaszow: ["tomaszów mazowiecki","tomaszow mazowiecki","tomaszów","tomaszow"],
+  skarzysko: ["skarżysko-kamienna","skarzysko-kamienna","skarżysko","skarzysko"],
+  oswiecim: ["oświęcim","oswiecim"],
+  swinoujscie: ["świnoujście","swinoujscie","uznam","wolin"],
+  zakopane: ["zakopane","tatry","podhale"],
+  plock: ["płock","plock"],
+  tarnow: ["tarnów","tarnow"],
+  legnica: ["legnica"],
+  jastrzebie: ["jastrzębie-zdrój","jastrzebie-zdroj","jastrzębie","jastrzebie"],
+  pila: ["piła","pila"],
+  konin: ["konin"],
+  suwalki: ["suwałki","suwalki"],
+  ostrowiec: ["ostrowiec świętokrzyski","ostrowiec swietokrzyski","ostrowiec","świętokrzyskie","swietokrzyskie"],
+  stalowawola: ["stalowa wola","podkarpacie"],
+  przemysl: ["przemyśl","przemysl"],
+  elk: ["ełk","elk"],
+  leszno: ["leszno"],
+  chelm: ["chełm","chelm"],
+  mielec: ["mielec"],
+  tczew: ["tczew"],
+  ostroleka: ["ostrołęka","ostroleka"],
+  starachowice: ["starachowice"],
+  kutno: ["kutno"],
+  kolobrzeg: ["kołobrzeg","kolobrzeg"],
+  radomsko: ["radomsko"],
+  boleslawiec: ["bolesławiec","boleslawiec"],
+  cieszyn: ["cieszyn"],
+  zywiec: ["żywiec","zywiec"],
+  krasnik: ["kraśnik","krasnik"],
+  grodzisk: ["grodzisk mazowiecki","grodzisk","milanówek","milanowek","brwinów","brwinow","podkowa leśna","podkowa lesna","gpa"],
+  pruszkow: ["pruszków","pruszkow"],
+  sochaczew: ["sochaczew"],
+  minskmazowiecki: ["mińsk mazowiecki","minsk mazowiecki"],
+  otwock: ["otwock"],
+  nowydwormaz: ["nowy dwór mazowiecki","nowy dwor mazowiecki","modlin","lotnisko modlin","nowy dwor"],
+  zabki: ["ząbki","zabki"],
+  pabianice: ["pabianice"],
+  zgierz: ["zgierz"],
+  grudziadz: ["grudziądz","grudziadz"],
+  jaworzno: ["jaworzno"],
+  stargard: ["stargard"],
+  gniezno: ["gniezno"],
+  zamosc: ["zamość","zamosc"],
+  kedzierzynkozle: ["kędzierzyn-koźle","kedzierzyn-kozle","kędzierzyn","kedzierzyn","koźle","kozle"],
+  belchatow: ["bełchatów","belchatow"],
+  raciborz: ["racibórz","raciborz"],
+  tarnobrzeg: ["tarnobrzeg","podkarpacie"],
+  skierniewice: ["skierniewice"],
+  starogard: ["starogard gdański","starogard gdanski","starogard","kociewie"],
+  zawiercie: ["zawiercie"],
+  nysa: ["nysa"],
+  zdunskawola: ["zduńska wola","zdunska wola"],
+  sieradz: ["sieradz"],
+  malbork: ["malbork"],
+  szczecinek: ["szczecinek"],
+  nowasol: ["nowa sól","nowa sol","lubuskie"],
+  olesnica: ["oleśnica","olesnica"],
+  czechowicedziedzice: ["czechowice-dziedzice","czechowice","dziedzice"],
+  ostroda: ["ostróda","ostroda"],
+  nowytarg: ["nowy targ","podhale"],
+  augustow: ["augustów","augustow"],
+  ketrzyn: ["kętrzyn","ketrzyn"],
+  gorlice: ["gorlice"],
+  zgorzelec: ["zgorzelec"],
+  jarocin: ["jarocin"],
+  polkowice: ["polkowice"],
+  zagan: ["żagań","zagan"],
+  wrzesnia: ["września","wrzesnia"],
+  walcz: ["wałcz","walcz"],
+  gizycko: ["giżycko","gizycko"],
+  krotoszyn: ["krotoszyn"],
+  koscierzyna: ["kościerzyna","koscierzyna"],
+  sandomierz: ["sandomierz"],
+  bartoszyce: ["bartoszyce"],
+  wielun: ["wieluń","wielun"],
+  mragowo: ["mrągowo","mragowo"],
+  wagrowiec: ["wągrowiec","wagrowiec"],
+  swiecie: ["świecie","swiecie"],
+  dzialdowo: ["działdowo","dzialdowo"],
+  bielskpodlaski: ["bielsk podlaski","bielsk","podlasie"],
+  gostyn: ["gostyń","gostyn"],
+  brzesko: ["brzesko"],
+  lidzbarkwarminski: ["lidzbark warmiński","lidzbark warminski","lidzbark"],
+  chodziez: ["chodzież","chodziez"],
+  pszczyna: ["pszczyna"],
+  wodzislaw: ["wodzisław śląski","wodzislaw slaski","wodzisław","wodzislaw"],
+  zabkowice: ["ząbkowice śląskie","zabkowice slaskie","ząbkowice","zabkowice"],
+  strzelin: ["strzelin"],
+  srodaslaska: ["środa śląska","sroda slaska"],
+  jedrzejow: ["jędrzejów","jedrzejow"],
+  kozienice: ["kozienice"],
+  oborniki: ["oborniki"],
+  wieliczka: ["wieliczka"],
+  myszkow: ["myszków","myszkow"],
+  kartuzy: ["kartuzy"],
+  slubice: ["słubice","slubice"],
 };
 
 type CityEntry = {
@@ -210,7 +312,7 @@ type CityEntry = {
   searchText: string;
 };
 
-// Cache po instancji słownika: unikamy ponownej normalizacji 33 miast i tworzenia
+// Cache po instancji słownika: unikamy ponownej normalizacji 132 miast i tworzenia
 // Intl.Collator przy każdym otwarciu arkusza.
 const cachedEntriesByStrings = new WeakMap<Strings, CityEntry[]>();
 
@@ -294,9 +396,8 @@ export interface CitySelectSheetProps {
 }
 
 /**
- * Arkusz wyboru miasta: montuje się natychmiast bez animacji wejścia,
- * a gest zamykania w dół siedzi wyłącznie na uchwycie i nagłówku,
- * żeby FlatList przewijał się natywnie bez blokady gestów.
+ * Arkusz wyboru miasta M3 Expressive: sprężyste wejście i wyjście, a gest
+ * zamykania siedzi na uchwycie i nagłówku, żeby FlatList przewijał się natywnie.
  */
 export function CitySelectSheet({
   selectedCityId,
@@ -325,20 +426,54 @@ export function CitySelectSheet({
   switchingRef.current = switchingCity;
   const closingRef = useRef(false);
 
+  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
+  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const targetHeightRef = useRef(targetSheetHeight);
+  targetHeightRef.current = targetSheetHeight;
+
+  const translateY = useSharedValue(reduceMotion ? 0 : targetSheetHeight);
+  const backdropProgress = useSharedValue(reduceMotion ? 1 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      translateY.value = 0;
+      backdropProgress.value = 1;
+      return;
+    }
+    translateY.value = withSpring(0, motion.spring.spatialDefault);
+    backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
+  }, [backdropProgress, reduceMotion, translateY]);
+
   const finishClose = useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    Keyboard.dismiss();
     closeRef.current();
   }, []);
 
+  const requestClose = useCallback(
+    (immediate = false) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      Keyboard.dismiss();
+      if (immediate || reduceMotion) {
+        finishClose();
+        return;
+      }
+      cancelAnimation(translateY);
+      cancelAnimation(backdropProgress);
+      backdropProgress.value = withTiming(0, motion.exit);
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
+        if (finished) runOnJS(finishClose)();
+      });
+    },
+    [backdropProgress, finishClose, reduceMotion, translateY],
+  );
+
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      finishClose();
+      requestClose();
       return true;
     });
     return () => sub.remove();
-  }, [finishClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -362,15 +497,11 @@ export function CitySelectSheet({
     setOverlayHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
 
-  const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
   const windowShrank = maxOverlayHeightRef.current - overlayHeight > androidKeyboardHeight * 0.5;
   const extraKeyboardInset =
     Platform.OS === 'android' && androidKeyboardHeight > 0 && !windowShrank
       ? androidKeyboardHeight
       : 0;
-
-  const translateY = useSharedValue(0);
 
   const dismissPanGesture = useMemo(
     () =>
@@ -378,22 +509,39 @@ export function CitySelectSheet({
         .activeOffsetY(8)
         .failOffsetX([-20, 20])
         .onUpdate((e) => {
-          translateY.value = e.translationY > 0 ? e.translationY : 0;
+          'worklet';
+          if (e.translationY >= 0) {
+            translateY.value = e.translationY;
+          } else {
+            translateY.value = -Math.min(MAX_RUBBER_UP, Math.sqrt(-e.translationY) * 2.2);
+          }
         })
         .onEnd((e) => {
-          if (e.translationY > 110 || e.velocityY > 900) {
+          'worklet';
+          if (e.translationY > 96 || e.velocityY > 760) {
             if (reduceMotion) {
-              runOnJS(finishClose)();
+              runOnJS(requestClose)(true);
               return;
             }
-            translateY.value = withTiming(targetSheetHeight, { duration: 140 }, (finished) => {
-              if (finished) runOnJS(finishClose)();
-            });
+            const remaining = Math.max(0, targetSheetHeight - Math.max(0, translateY.value));
+            const speed = Math.max(1200, e.velocityY);
+            const duration = Math.max(100, Math.min(180, Math.round((remaining / speed) * 1000)));
+            backdropProgress.value = withTiming(0, { duration, easing: motion.exit.easing });
+            translateY.value = withTiming(
+              targetSheetHeight,
+              { duration, easing: motion.exit.easing },
+              (finished) => {
+                if (finished) runOnJS(requestClose)(true);
+              },
+            );
           } else {
-            translateY.value = withTiming(0, { duration: 140 });
+            translateY.value = withSpring(0, {
+              ...motion.spring.spatialDefault,
+              velocity: e.velocityY,
+            });
           }
         }),
-    [finishClose, reduceMotion, targetSheetHeight, translateY],
+    [backdropProgress, reduceMotion, requestClose, targetSheetHeight, translateY],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -401,8 +549,9 @@ export function CitySelectSheet({
   }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => {
-    const progress = 1 - Math.min(1, translateY.value / Math.max(1, targetSheetHeight * 0.7));
-    return { opacity: progress * 0.6 };
+    const dragFactor =
+      1 - Math.min(1, Math.max(0, translateY.value) / Math.max(1, targetSheetHeight * 0.72));
+    return { opacity: backdropProgress.value * dragFactor * 0.58 };
   });
 
   const entries = useMemo(() => getCityEntries(s), [s]);
@@ -434,13 +583,13 @@ export function CitySelectSheet({
     (city: CityDef) => {
       if (switchingRef.current) return;
       if (city.id === selectedRef.current) {
-        finishClose();
+        requestClose();
         return;
       }
       selectRef.current(city.id);
-      finishClose();
+      requestClose();
     },
-    [finishClose],
+    [requestClose],
   );
 
   const renderItem = useCallback(
@@ -485,7 +634,7 @@ export function CitySelectSheet({
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropAnimatedStyle]}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={finishClose}
+          onPress={() => requestClose()}
           accessibilityRole="button"
           accessibilityLabel={s.city.closeSheetA11y}
         />
@@ -514,15 +663,16 @@ export function CitySelectSheet({
               </View>
             </GestureDetector>
 
-            <Pressable
-              onPress={finishClose}
+            <SpringPressable
+              onPress={() => requestClose()}
               hitSlop={8}
-              style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedFade]}
+              scaleDelta={0.06}
+              style={styles.closeBtn}
               accessibilityRole="button"
               accessibilityLabel={s.city.closeSheetA11y}
             >
               <X size={20} color={scheme.onSurfaceVariant} />
-            </Pressable>
+            </SpringPressable>
 
             <View style={styles.searchBox}>
               <Search size={18} color={scheme.onSurfaceVariant} />
@@ -537,17 +687,24 @@ export function CitySelectSheet({
                 autoCapitalize="none"
                 returnKeyType="search"
                 clearButtonMode="never"
+                onSubmitEditing={() => {
+                  if (filteredCities.length > 0) {
+                    handleCityPress(filteredCities[0].city);
+                  }
+                }}
               />
               {query.length > 0 ? (
-                <Pressable
+                <SpringPressable
                   onPress={() => setQuery('')}
                   hitSlop={8}
+                  scaleDelta={0.06}
+                  haptic="selection"
                   style={styles.searchClearBtn}
                   accessibilityRole="button"
                   accessibilityLabel={s.city.searchClearA11y}
                 >
                   <X size={16} color={scheme.onSurfaceVariant} />
-                </Pressable>
+                </SpringPressable>
               ) : null}
             </View>
 
@@ -558,6 +715,7 @@ export function CitySelectSheet({
               keyboardDismissMode="on-drag"
               overScrollMode="never"
               showsVerticalScrollIndicator
+              removeClippedSubviews={Platform.OS === 'android'}
               initialNumToRender={12}
               maxToRenderPerBatch={12}
               updateCellsBatchingPeriod={16}
@@ -636,9 +794,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressedFade: {
-    opacity: 0.7,
-  },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -685,7 +840,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   cityItemPressed: {
-    opacity: 0.75,
+    backgroundColor: scheme.surfaceContainerHigh,
+    transform: [{ scale: 0.992 }],
   },
   cityItemContent: {
     flex: 1,

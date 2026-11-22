@@ -45,7 +45,7 @@ function numericFallbackApplies(shortName: string | undefined): boolean {
     // i miasta z 2026: patrz BUS_ONLY_NO_TRAM w lineIdentity) oraz z własną
     // numeracją (GZM, Trójmiasto) nie powinny zgadywać tramwaju po niskim
     // numerze linii.
-    return id !== 'gzm' && id !== 'trojmiasto' && !BUS_ONLY_NO_TRAM.has(id);
+    return id !== 'gzm' && id !== 'trojmiasto' && id !== 'grudziadz' && !BUS_ONLY_NO_TRAM.has(id);
   } catch {
     return true;
   }

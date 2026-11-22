@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   DarkTheme,
   ThemeProvider,
@@ -74,6 +74,7 @@ function navigateFromNotification(res: TripResponse) {
   else router.push(target);
 }
 
+/** Główny układ nawigacji aplikacji z jednolitymi, płynnymi przejściami ekranów. */
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -81,38 +82,78 @@ export default function RootLayout() {
   const params = useGlobalSearchParams<{ trip?: string }>();
   const reduceMotion = useReducedMotion();
   const themeSetting = useThemeSetting();
-  const navigationTheme = {
-    ...DarkTheme,
-    colors: {
-      ...DarkTheme.colors,
-      primary: scheme.primary,
-      background: scheme.surface,
-      card: scheme.surface,
-      text: scheme.onSurface,
-      border: scheme.outlineVariant,
-      notification: scheme.error,
-    },
-  };
 
-  // Ustawienia trasy i język z kv-store dostępne globalnie od startu
+  const navigationTheme = useMemo(
+    () => ({
+      ...DarkTheme,
+      colors: {
+        ...DarkTheme.colors,
+        primary: scheme.primary,
+        background: scheme.surface,
+        card: scheme.surface,
+        text: scheme.onSurface,
+        border: scheme.outlineVariant,
+        notification: scheme.error,
+      },
+    }),
+    [themeSetting],
+  );
+
+  const renderScreenLayout = useCallback(
+    ({ children }: { children: ReactNode }) => <Fragment key={themeSetting}>{children}</Fragment>,
+    [themeSetting],
+  );
+
+  const stackScreenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      contentStyle: { backgroundColor: scheme.surface },
+      animation: (reduceMotion ? 'none' : 'slide_from_right') as 'none' | 'slide_from_right',
+      animationDuration: 220,
+      animationMatchesGesture: true,
+      gestureEnabled: true,
+      gestureDirection: 'horizontal' as const,
+      fullScreenGestureEnabled: true,
+    }),
+    [reduceMotion, themeSetting],
+  );
+
+  const verticalScreenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      animation: (reduceMotion
+        ? 'none'
+        : Platform.OS === 'android'
+          ? 'fade_from_bottom'
+          : 'slide_from_right') as 'none' | 'fade_from_bottom' | 'slide_from_right',
+      animationDuration: 210,
+      animationMatchesGesture: true,
+    }),
+    [reduceMotion],
+  );
+
+  const mapScreenOptions = useMemo(
+    () => ({
+      gestureEnabled: false,
+      animation: (reduceMotion ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
+      animationDuration: 210,
+    }),
+    [reduceMotion],
+  );
+
+  // Ustawienia trasy i język z kv-store dostępne globalnie od startu.
   useEffect(() => {
     let isMounted = true;
 
     const initApp = async () => {
-      // Migracja najpierw: pozostałe odczyty muszą widzieć już przeniesione klucze.
       await migrateFromSqliteKv();
-      // Język przed kanałami powiadomień: nazwy kanałów biorą się ze słownika.
       await initLocale();
-      // Reszta to niezależne odczyty i natywne mostki. Serializowane awaited
-      // sumowały czas dysku pod splash screenem, równoległe mieszczą się w jednym.
       const [seen] = await Promise.all([
         hasSeenOnboarding().catch((err) => {
           console.warn('[RootLayout] onboarding flag unreadable:', err);
-          // Błąd odczytu nie może wysłać użytkownika drugi raz w onboarding.
           return true;
         }),
         initTheme(),
-        // Miasto przed bazą: getGtfsDb() otwiera plik per-miasto po sync id.
         loadActiveCity(),
         loadSettings(),
         loadNotificationPreferences(),
@@ -122,8 +163,6 @@ export default function RootLayout() {
         }),
       ]);
       if (isMounted) setNeedsOnboarding(!seen);
-      // Pin podróży bez pierwszego przeliczenia planu: to planer i sieć, splash
-      // nie ma na co czekać. Odświeżenie leci po pierwszej klatce (niżej).
       await restoreTrackedTrip({ refresh: false }).catch((err) => {
         console.warn('[RootLayout] restore tracked trip:', err);
       });
@@ -142,8 +181,7 @@ export default function RootLayout() {
     };
   }, []);
 
-  // Ciężka praca po splashu: odświeżenie śledzonej podróży i monitor zwrotów
-  // startują dopiero, gdy pierwsza klatka jest już na ekranie.
+  // Ciężka praca po splashu startuje dopiero, gdy pierwsza klatka jest już na ekranie.
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(() => {
@@ -151,8 +189,6 @@ export default function RootLayout() {
       void cleanupExpiredTickets().catch(() => {});
       startTicketCompensationMonitor();
     }, 0);
-    // Baza kolejowa (61 MB) otwierała się leniwie przy pierwszym pociągu.
-    // Robimy to w tle po starcie, żeby ikony udogodnień nie czekały na plik.
     const nationalTimer = setTimeout(() => {
       void import('../src/services/gtfsDatabase')
         .then(async (db) => {
@@ -212,84 +248,18 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <ThemeProvider value={navigationTheme}>
           <TransferProtectionProvider key={themeSetting}>
-            <Stack
-              screenLayout={({ children }) => <Fragment key={themeSetting}>{children}</Fragment>}
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: scheme.surface },
-                // Jednolite, szybkie przejścia między ekranami Material 3 Expressive (iOS + Android).
-                // animationMatchesGesture synchronizuje animację z gestem wstecz.
-                animation: reduceMotion
-                  ? 'none'
-                  : Platform.OS === 'android'
-                    ? 'fade_from_bottom'
-                    : 'slide_from_right',
-                animationDuration: 200,
-                animationMatchesGesture: true,
-                gestureEnabled: true,
-                gestureDirection: 'horizontal',
-                fullScreenGestureEnabled: true,
-              }}
-            >
+            <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
               <Stack.Screen name="index" />
               <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-              <Stack.Screen
-                name="routes"
-                options={{
-                  headerShown: false,
-                  animation: reduceMotion ? 'none' : 'fade',
-                  animationDuration: 240,
-                }}
-              />
-
-              <Stack.Screen name="line" />
+              <Stack.Screen name="routes" options={verticalScreenOptions} />
+              <Stack.Screen name="line" options={verticalScreenOptions} />
               <Stack.Screen name="line-departures" />
-              {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby
-                przeciąganie widoku i mapa skakałaby przy powrocie. */}
-              <Stack.Screen name="map" options={{ gestureEnabled: false }} />
-              <Stack.Screen name="live-map" options={{ gestureEnabled: false }} />
-              <Stack.Screen
-                name="news"
-                options={{
-                  presentation: 'card',
-                  animation: reduceMotion
-                    ? 'none'
-                    : Platform.OS === 'android'
-                      ? 'fade_from_bottom'
-                      : 'slide_from_right',
-                  animationDuration: 200,
-                  animationMatchesGesture: true,
-                  gestureDirection: 'horizontal',
-                }}
-              />
-              <Stack.Screen
-                name="article"
-                options={{
-                  presentation: 'card',
-                  animation: reduceMotion
-                    ? 'none'
-                    : Platform.OS === 'android'
-                      ? 'fade_from_bottom'
-                      : 'slide_from_right',
-                  animationDuration: 200,
-                  animationMatchesGesture: true,
-                  gestureDirection: 'horizontal',
-                }}
-              />
-              <Stack.Screen
-                name="settings"
-                options={{
-                  presentation: 'card',
-                  animation: reduceMotion
-                    ? 'none'
-                    : Platform.OS === 'android'
-                      ? 'fade_from_bottom'
-                      : 'slide_from_right',
-                  animationDuration: 200,
-                  animationMatchesGesture: true,
-                  gestureDirection: 'horizontal',
-                }}
-              />
+              {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby przeciąganie widoku. */}
+              <Stack.Screen name="map" options={mapScreenOptions} />
+              <Stack.Screen name="live-map" options={mapScreenOptions} />
+              <Stack.Screen name="news" />
+              <Stack.Screen name="article" />
+              <Stack.Screen name="settings" />
             </Stack>
           </TransferProtectionProvider>
         </ThemeProvider>

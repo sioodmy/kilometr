@@ -37,12 +37,22 @@ test('formatPlatformLabel formats platform and track across EN, DE, UK locales',
   assert.equal(formatPlatformLabel(uk, undefined, 'train', undefined, '2'), 'Колія 2');
 });
 
-test('formatPlatformLabel preserves bus and tram behavior without track', () => {
+test('formatPlatformLabel preserves bus and tram behavior and avoids false PST labels', () => {
   assert.equal(formatPlatformLabel(pl, '01', 'bus', undefined, undefined), 'Słupek 01');
   assert.equal(
     formatPlatformLabel(pl, '2469011-00103', 'bus', undefined, undefined),
     'Stanowisko 3',
   );
+
+  // Warszawski słupek 41 NIE może dostawać poznańskiej etykiety "PST"
+  assert.equal(formatPlatformLabel(pl, '41', 'bus', 'Centrum', undefined), 'Słupek 41');
+  assert.equal(formatPlatformLabel(pl, '41', 'tram', 'Centrum', undefined), 'Słupek 41');
+
+  // Prawdziwa stacja Poznańskiego Szybkiego Tramwaju (PST) dostaje etykietę PST
+  assert.equal(formatPlatformLabel(pl, '41', 'tram', 'Most Teatralny', undefined), 'PST Słupek 41');
+  assert.equal(formatPlatformLabel(pl, '45', 'tram', 'Rondo Kaponiera', undefined), 'PST Słupek 45');
+  // Ale autobus na Poznaniu Głównym ze słupkiem 41 NIE jest trasą PST
+  assert.equal(formatPlatformLabel(pl, '41', 'bus', 'Poznań Główny', undefined), 'Słupek 41');
 });
 
 test('notification platform and track strings', () => {

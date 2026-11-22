@@ -1,6 +1,10 @@
 export type { TrackedTrip } from './types';
 export { setupNotifications } from './setup';
-export { areNotificationsSupported, isNativeTrackingSupported, isTransferProtectionSupported } from './module';
+export {
+  areNotificationsSupported,
+  isNativeTrackingSupported,
+  isTransferProtectionSupported,
+} from './module';
 export {
   canShowLiveUpdates,
   ensureNotificationPermission,
@@ -16,12 +20,15 @@ export {
   startTicketCompensationMonitor,
 } from './ticketCompensation';
 export {
-  getTrackedTripSync,
   acceptTransferAlternative,
+  getTrackedTripSync,
   refreshTrackedTrip,
+  refreshTransferAlternatives,
   restoreTrackedTrip,
-  startTracking,
+  setTransferProtectionEnabled,
   startTrackedTripListener,
+  startTracking,
   stopTracking,
+  updateTrackedConnection,
 } from './tripMonitor';
 export { useTrackedTrip } from './useTrackedTrip';

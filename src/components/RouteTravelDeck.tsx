@@ -145,6 +145,7 @@ export function RouteTravelDeck({
   const trainSummary = getTrainLegSummary(connection);
   const showTicketSegment = isTrainTrip && trainSummary !== null;
   const showTransferSegment = hasTransfers;
+  const isDual = showTicketSegment && showTransferSegment;
 
   useEffect(() => {
     let active = true;
@@ -248,7 +249,9 @@ export function RouteTravelDeck({
                   onPress: async () => {
                     await deleteTicketForConnection(connection.id);
                     setTicket(null);
-                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+                      () => {},
+                    );
                   },
                 },
               ],
@@ -363,14 +366,50 @@ export function RouteTravelDeck({
     ? (seatLabel ?? (meta?.passenger ? meta.passenger : s.railTickets.showShort))
     : s.railTickets.buyOrAdd;
 
-  const transferTitle = s.travelDeck.protection;
+  const corridorText =
+    transferActive && transferState?.currentLine && transferState?.nextLine
+      ? `${transferState.currentLine} → ${transferState.nextLine}`
+      : null;
+  const altCount =
+    transferState?.alternatives?.length ?? (transferState?.alternative ? 1 : 0);
+  const transferTitle = isWarning
+    ? transferState?.status === 'conductor'
+      ? s.transferGuard.conductorTitle
+      : s.travelDeck.transferAlert
+    : corridorText ?? s.travelDeck.protection;
   const transferSubtitle = !transferActive
     ? s.travelDeck.protectionEnable
-    : isWarning
-      ? s.travelDeck.protectionAtRisk
-      : isSafe
-        ? s.travelDeck.protectionSlack(slackMin)
-        : s.travelDeck.protectionWatching;
+    : transferState?.status === 'alternative' && altCount > 0
+      ? s.transferGuard.alternativesCount(altCount)
+      : transferState?.status === 'conductor'
+        ? s.transferGuard.conductorBody
+        : isWarning
+          ? transferState?.slackSec != null && transferState.slackSec < 0
+            ? s.transferGuard.shortBy(Math.max(1, Math.ceil(-transferState.slackSec / 60)))
+            : s.travelDeck.protectionAtRisk
+          : isSafe
+            ? s.travelDeck.protectionSlack(slackMin)
+            : s.travelDeck.protectionWatching;
+
+  const ticketIcon = ticket ? (
+    ticketHasBarcode(ticket) ? (
+      <ScanLine size={19} color={scheme.onPrimaryContainer} />
+    ) : (
+      <TrainFront size={19} color={scheme.onPrimaryContainer} />
+    )
+  ) : (
+    <TrainFront size={19} color={scheme.onSecondaryContainer} />
+  );
+
+  const transferIcon = trackingBusy ? (
+    <ActivityIndicator size="small" color={scheme.primary} />
+  ) : !transferActive ? (
+    <ShieldOff size={19} color={scheme.onSurfaceVariant} />
+  ) : isWarning ? (
+    <ShieldAlert size={19} color={scheme.onWarningContainer} />
+  ) : (
+    <ShieldCheck size={19} color={scheme.onPrimaryContainer} />
+  );
 
   return (
     <Animated.View
@@ -385,49 +424,94 @@ export function RouteTravelDeck({
             onLongPress={handleTicketLongPress}
             accessibilityLabel={`${ticketTitle}, ${ticketSubtitle}`}
             style={[
-              styles.segmentCard,
-              ticket ? styles.segmentCardTicketAttached : styles.segmentCardDefault,
+              isDual ? styles.bentoCard : styles.singleCard,
+              ticket ? styles.cardPrimaryTonal : styles.cardNeutral,
             ]}
           >
-            <View
-              style={[
-                styles.iconBadge,
-                ticket ? styles.ticketBadgeAttached : styles.ticketBadgeEmpty,
-              ]}
-            >
-              {ticket ? (
-                ticketHasBarcode(ticket) ? (
-                  <ScanLine size={18} color={scheme.onPrimaryContainer} />
-                ) : (
-                  <TrainFront size={18} color={scheme.onPrimaryContainer} />
-                )
-              ) : (
-                <TrainFront size={18} color={scheme.onSecondaryContainer} />
-              )}
-            </View>
+            {isDual ? (
+              <>
+                <View style={styles.bentoTopRow}>
+                  <View
+                    style={[
+                      styles.iconBadge,
+                      ticket ? styles.ticketBadgeAttached : styles.ticketBadgeEmpty,
+                    ]}
+                  >
+                    {ticketIcon}
+                  </View>
+                  <View
+                    style={[
+                      styles.chevronPill,
+                      ticket ? styles.chevronPillPrimary : styles.chevronPillNeutral,
+                    ]}
+                  >
+                    <ChevronRight
+                      size={15}
+                      color={ticket ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                    />
+                  </View>
+                </View>
 
-            <View style={styles.segmentTextCol}>
-              <Text
-                style={[styles.segmentTitle, ticket && styles.segmentTitleAttached]}
-                numberOfLines={1}
-              >
-                {ticketTitle}
-              </Text>
-              <Text
-                style={[
-                  styles.segmentSubtitle,
-                  ticket && styles.segmentSubtitleTicketAttached,
-                ]}
-                numberOfLines={1}
-              >
-                {ticketSubtitle}
-              </Text>
-            </View>
+                <View style={styles.bentoTextCol}>
+                  <Text
+                    style={[styles.segmentTitle, ticket && styles.segmentTitlePrimary]}
+                    numberOfLines={1}
+                  >
+                    {ticketTitle}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.segmentSubtitle,
+                      ticket && styles.segmentSubtitlePrimary,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {ticketSubtitle}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View
+                  style={[
+                    styles.iconBadgeLarge,
+                    ticket ? styles.ticketBadgeAttached : styles.ticketBadgeEmpty,
+                  ]}
+                >
+                  {ticketIcon}
+                </View>
 
-            <ChevronRight
-              size={16}
-              color={ticket ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-            />
+                <View style={styles.segmentTextCol}>
+                  <Text
+                    style={[styles.segmentTitle, ticket && styles.segmentTitlePrimary]}
+                    numberOfLines={1}
+                  >
+                    {ticketTitle}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.segmentSubtitle,
+                      ticket && styles.segmentSubtitlePrimary,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {ticketSubtitle}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.chevronPill,
+                    ticket ? styles.chevronPillPrimary : styles.chevronPillNeutral,
+                  ]}
+                >
+                  <ChevronRight
+                    size={16}
+                    color={ticket ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                  />
+                </View>
+              </>
+            )}
           </DeckSegmentButton>
         )}
 
@@ -438,54 +522,132 @@ export function RouteTravelDeck({
             disabled={trackingBusy}
             accessibilityLabel={`${transferTitle}, ${transferSubtitle}`}
             style={[
-              styles.segmentCard,
-              !transferActive && styles.segmentCardDefault,
-              transferActive && !isWarning && styles.segmentCardTransferActive,
-              isWarning && styles.segmentCardWarning,
+              isDual ? styles.bentoCard : styles.singleCard,
+              !transferActive && styles.cardNeutral,
+              transferActive && !isWarning && styles.cardActiveTonal,
+              isWarning && styles.cardWarningTonal,
             ]}
           >
-            <View
-              style={[
-                styles.iconBadge,
-                !transferActive && styles.transferBadgeInactive,
-                transferActive && isSafe && styles.transferBadgeSafe,
-                transferActive && isWarning && styles.transferBadgeWarning,
-                transferActive && !isSafe && !isWarning && styles.transferBadgeActive,
-              ]}
-            >
-              {trackingBusy ? (
-                <ActivityIndicator size="small" color={scheme.primary} />
-              ) : !transferActive ? (
-                <ShieldOff size={18} color={scheme.onSurfaceVariant} />
-              ) : isWarning ? (
-                <ShieldAlert size={18} color={scheme.onWarningContainer} />
-              ) : (
-                <ShieldCheck size={18} color={scheme.onPrimaryContainer} />
-              )}
-            </View>
+            {isDual ? (
+              <>
+                <View style={styles.bentoTopRow}>
+                  <View
+                    style={[
+                      styles.iconBadge,
+                      !transferActive && styles.transferBadgeInactive,
+                      transferActive && isSafe && styles.transferBadgeSafe,
+                      transferActive && isWarning && styles.transferBadgeWarning,
+                      transferActive && !isSafe && !isWarning && styles.transferBadgeActive,
+                    ]}
+                  >
+                    {transferIcon}
+                  </View>
+                  <View
+                    style={[
+                      styles.chevronPill,
+                      isWarning
+                        ? styles.chevronPillWarning
+                        : transferActive
+                          ? styles.chevronPillActive
+                          : styles.chevronPillNeutral,
+                    ]}
+                  >
+                    <ChevronRight
+                      size={15}
+                      color={
+                        isWarning
+                          ? scheme.onWarningContainer
+                          : transferActive
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant
+                      }
+                    />
+                  </View>
+                </View>
 
-            <View style={styles.segmentTextCol}>
-              <Text
-                style={[
-                  styles.segmentTitle,
-                  transferActive && styles.segmentTitleActive,
-                  isWarning && styles.segmentTitleWarning,
-                ]}
-                numberOfLines={1}
-              >
-                {isWarning ? s.travelDeck.transferAlert : transferTitle}
-              </Text>
-              <Text
-                style={[
-                  styles.segmentSubtitle,
-                  transferActive && styles.segmentSubtitleActive,
-                  isWarning && styles.segmentSubtitleWarning,
-                ]}
-                numberOfLines={1}
-              >
-                {transferSubtitle}
-              </Text>
-            </View>
+                <View style={styles.bentoTextCol}>
+                  <Text
+                    style={[
+                      styles.segmentTitle,
+                      transferActive && !isWarning && styles.segmentTitleActive,
+                      isWarning && styles.segmentTitleWarning,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {transferTitle}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.segmentSubtitle,
+                      transferActive && !isWarning && styles.segmentSubtitleActive,
+                      isWarning && styles.segmentSubtitleWarning,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {transferSubtitle}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View
+                  style={[
+                    styles.iconBadgeLarge,
+                    !transferActive && styles.transferBadgeInactive,
+                    transferActive && isSafe && styles.transferBadgeSafe,
+                    transferActive && isWarning && styles.transferBadgeWarning,
+                    transferActive && !isSafe && !isWarning && styles.transferBadgeActive,
+                  ]}
+                >
+                  {transferIcon}
+                </View>
+
+                <View style={styles.segmentTextCol}>
+                  <Text
+                    style={[
+                      styles.segmentTitle,
+                      transferActive && !isWarning && styles.segmentTitleActive,
+                      isWarning && styles.segmentTitleWarning,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {transferTitle}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.segmentSubtitle,
+                      transferActive && !isWarning && styles.segmentSubtitleActive,
+                      isWarning && styles.segmentSubtitleWarning,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {transferSubtitle}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.chevronPill,
+                    isWarning
+                      ? styles.chevronPillWarning
+                      : transferActive
+                        ? styles.chevronPillActive
+                        : styles.chevronPillNeutral,
+                  ]}
+                >
+                  <ChevronRight
+                    size={16}
+                    color={
+                      isWarning
+                        ? scheme.onWarningContainer
+                        : transferActive
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant
+                    }
+                  />
+                </View>
+              </>
+            )}
           </DeckSegmentButton>
         )}
       </View>
@@ -501,12 +663,14 @@ export function RouteTravelDeck({
             await deleteTicketForConnection(connection.id);
             setInspectionOpen(false);
             setTicket(null);
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+              () => {},
+            );
           }}
         />
       )}
 
-      {/* ODRZUCENIE BILETU: dialog M3 z wyjaśnieniem (zły pociąg, zła data, to nie bilet) */}
+      {/* ODRZUCENIE BILETU: dialog M3 z wyjaśnieniem */}
       {rejection && rejectionContent && (
         <M3Dialog
           visible
@@ -529,7 +693,7 @@ export function RouteTravelDeck({
         />
       )}
 
-      {/* DIALOG SZYBKIEJ AKCJI BILETU (KOLEO / IMPORT PDF) */}
+      {/* ARKUSZ SZYBKIEJ AKCJI BILETU (KOLEO / IMPORT PDF) */}
       <Modal
         visible={ticketSheetOpen}
         transparent
@@ -541,19 +705,22 @@ export function RouteTravelDeck({
           onPress={() => setTicketSheetOpen(false)}
         >
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHandle} />
+
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
+              <View style={styles.modalTitleCol}>
                 <Text style={styles.modalHeading}>{s.railTickets.deckSheetTitle}</Text>
                 {trainSummary && (
                   <Text style={styles.modalSubheading} numberOfLines={1}>
-                    {trainSummary.fromStation}{' \u2192 '}{trainSummary.toStation}
+                    {trainSummary.fromStation}
+                    {' \u2192 '}
+                    {trainSummary.toStation}
                   </Text>
                 )}
               </View>
               <Pressable
                 onPress={() => setTicketSheetOpen(false)}
-                hitSlop={8}
-                style={styles.modalCloseBtn}
+                style={({ pressed }) => [styles.modalCloseBtn, pressed && styles.tilePressed]}
                 accessibilityRole="button"
                 accessibilityLabel={s.common.close}
               >
@@ -575,11 +742,11 @@ export function RouteTravelDeck({
                 <View style={styles.actionIconBoxPrimary}>
                   <TrainFront size={20} color={scheme.onPrimary} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.modalTitleCol}>
                   <Text style={styles.actionTitlePrimary}>{s.railTickets.buyKoleo}</Text>
                   <Text style={styles.actionDescPrimary}>{s.railTickets.koleoDesc}</Text>
                 </View>
-                <ExternalLink size={16} color={scheme.onPrimaryContainer} />
+                <ExternalLink size={17} color={scheme.onPrimaryContainer} />
               </Pressable>
 
               <Pressable
@@ -600,13 +767,13 @@ export function RouteTravelDeck({
                     <FileUp size={20} color={scheme.onSecondaryContainer} />
                   )}
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.modalTitleCol}>
                   <Text style={styles.actionTitleSecondary}>
                     {importing ? s.railTickets.loading : s.railTickets.attachPdf}
                   </Text>
                   <Text style={styles.actionDescSecondary}>{s.railTickets.attachPdfDesc}</Text>
                 </View>
-                <ChevronRight size={16} color={scheme.onSurfaceVariant} />
+                <ChevronRight size={17} color={scheme.onSurfaceVariant} />
               </Pressable>
             </View>
           </View>
@@ -625,33 +792,58 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 10,
   },
-  segmentCard: {
+  bentoCard: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 24,
+    gap: 12,
+    justifyContent: 'space-between',
+    ...elev.level1,
+  },
+  singleCard: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 62,
-    paddingVertical: 11,
+    minHeight: 68,
+    paddingVertical: 12,
     paddingHorizontal: 14,
-    borderRadius: shape.extraLarge,
-    gap: 11,
+    borderRadius: 24,
+    gap: 12,
     ...elev.level1,
   },
-  segmentCardDefault: {
+  cardNeutral: {
     backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
-  segmentCardTicketAttached: {
+  cardPrimaryTonal: {
     backgroundColor: scheme.primaryContainer,
   },
-  segmentCardTransferActive: {
+  cardActiveTonal: {
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.primary + '55',
   },
-  segmentCardWarning: {
+  cardWarningTonal: {
     backgroundColor: scheme.warningContainer,
   },
+  bentoTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   iconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: shape.medium,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBadgeLarge: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -673,20 +865,42 @@ const styles = StyleSheet.create({
   transferBadgeWarning: {
     backgroundColor: scheme.onWarningContainer + '24',
   },
+  chevronPill: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chevronPillNeutral: {
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  chevronPillPrimary: {
+    backgroundColor: scheme.onPrimaryContainer + '1A',
+  },
+  chevronPillActive: {
+    backgroundColor: scheme.surfaceContainerLow,
+  },
+  chevronPillWarning: {
+    backgroundColor: scheme.onWarningContainer + '1E',
+  },
+  bentoTextCol: {
+    gap: 2,
+  },
   segmentTextCol: {
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
-    gap: 1,
+    gap: 2,
   },
   segmentTitle: {
-    ...type.labelLarge,
-    fontSize: 13.5,
-    lineHeight: 18,
+    fontSize: 14.5,
+    lineHeight: 19,
     fontWeight: '800',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
   },
-  segmentTitleAttached: {
+  segmentTitlePrimary: {
     color: scheme.onPrimaryContainer,
   },
   segmentTitleActive: {
@@ -696,19 +910,18 @@ const styles = StyleSheet.create({
     color: scheme.onWarningContainer,
   },
   segmentSubtitle: {
-    ...type.labelSmall,
-    fontSize: 11.5,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '600',
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   segmentSubtitleActive: {
     color: scheme.primary,
     fontWeight: '700',
   },
-  segmentSubtitleTicketAttached: {
+  segmentSubtitlePrimary: {
     color: scheme.onPrimaryContainer,
-    opacity: 0.9,
     fontWeight: '700',
   },
   segmentSubtitleWarning: {
@@ -721,20 +934,34 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainer,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     paddingHorizontal: 20,
-    paddingTop: 22,
+    paddingTop: 12,
     paddingBottom: 36,
     gap: 16,
     ...elev.level3,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.outlineVariant,
+    marginBottom: 2,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  modalTitleCol: {
+    flex: 1,
+    minWidth: 0,
   },
   modalHeading: {
     ...type.titleMedium,
@@ -748,12 +975,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   modalCloseBtn: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   modalActions: {
     gap: 12,
@@ -761,8 +988,9 @@ const styles = StyleSheet.create({
   actionTile: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: shape.extraLarge,
+    minHeight: 68,
+    padding: 15,
+    borderRadius: 20,
     gap: 14,
   },
   koleoTile: {
@@ -770,22 +998,24 @@ const styles = StyleSheet.create({
   },
   pdfTile: {
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   tilePressed: {
-    opacity: 0.8,
+    opacity: 0.82,
   },
   actionIconBoxPrimary: {
-    width: 42,
-    height: 42,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionIconBoxSecondary: {
-    width: 42,
-    height: 42,
-    borderRadius: shape.medium,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
@@ -798,7 +1028,6 @@ const styles = StyleSheet.create({
   actionDescPrimary: {
     ...type.bodySmall,
     color: scheme.onPrimaryContainer,
-    opacity: 0.88,
     marginTop: 2,
   },
   actionTitleSecondary: {

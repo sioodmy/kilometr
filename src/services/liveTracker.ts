@@ -22,6 +22,7 @@ import { getActiveCityIdSync } from './cityStore';
 import { DayIndex, gtfsStore } from './routing/store';
 import { distanceMeters, projectPointToPolyline, shiftWarsawDate, warsawNow } from '../gtfs/geo';
 import { kvGet, kvSet } from './storage';
+import { fetchKpCityRows } from './kpLive';
 import {
   fetchZbBialystokRows,
   fetchZbGzmRails,
@@ -152,6 +153,8 @@ export interface RawVehicleRow {
   headsign?: string;
   brigade?: string;
   upcomingStops?: { name: string; schedSec: number }[];
+  /** Model pojazdu z feedu live (np. "Konstal 105NWr"). */
+  model?: string;
 }
 
 /**
@@ -386,12 +389,14 @@ class LiveTracker {
         const prev = this.byId.get(vehicleId);
         const leg = this.nationalWatch.find((l) => l.tripId === tripId);
         const delay = this.tripDelays.get(tripId) ?? null;
+        const model = pos.model ?? prev?.model;
         if (
           !prev ||
           prev.lat !== pos.lat ||
           prev.lon !== pos.lon ||
           prev.bearing !== pos.bearing ||
-          prev.delaySec !== delay
+          prev.delaySec !== delay ||
+          prev.model !== model
         ) {
           changed = true;
         }
@@ -407,6 +412,7 @@ class LiveTracker {
           currentStopName: leg?.fromStop,
           nextStopName: leg?.toStop,
           updatedAt: pos.updatedAt,
+          ...(model ? { model } : {}),
         });
       }
       if (changed) {
@@ -867,6 +873,7 @@ class LiveTracker {
       else if (id === 'rzeszow') rows = await fetchZbRzeszowRows();
       else if (id === 'lublin') rows = await fetchZbLublinRows();
       else if (id === 'radom') rows = await fetchZbRadomRows();
+      else if (getCity(id).kpPrefix && getCity(id).features.live) rows = await fetchKpCityRows(getCity(id));
       else if (isNewLiveCity(id)) rows = await fetchZbNewCityRows(id);
       else rows = await fetchZbWroclawRows();
       this.recordSource('zbiorkom', rows !== null, rows === null ? 'brak odpowiedzi' : undefined);
@@ -1052,6 +1059,7 @@ class LiveTracker {
         currentStopName: veh.currentStopName,
         nextStopName: veh.nextStopName,
         updatedAt: veh.updatedAt,
+        model: veh.model,
       };
       // Najświeższy odczyt wygrywa: gdy pociąg zniknie z feedu, jego wpis
       // zniknie przy następnej przebudowie matchAll tak samo jak wpisy MPK.
@@ -1266,6 +1274,7 @@ class LiveTracker {
         currentStopName: bestCurrentStop,
         nextStopName: bestNextStop,
         updatedAt: at,
+        model: row.model ?? previous?.model,
       },
       score: bestTripId ? bestScore : Number.POSITIVE_INFINITY,
     };
@@ -1490,6 +1499,7 @@ class LiveTracker {
           currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
           nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
           updatedAt: sampleTime(row, now) ?? now,
+          model: row.model ?? previous?.model,
         },
         score: tripId && !delayOutOfRange ? score : Number.POSITIVE_INFINITY,
       });

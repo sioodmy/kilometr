@@ -1,11 +1,5 @@
-import { useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  useReducedMotion,
-} from 'react-native-reanimated';
 import {
   Church,
   Clock3,
@@ -32,7 +26,7 @@ import { useStrings } from '../i18n';
 import { normalizePolish } from '../gtfs/geo';
 
 /**
- * Rodzaje wierszy z motywem aplikacji. Trzymamy tu **nazwy ról**, a nie same
+ * Rodzaje wierszy z motywem aplikacji. Trzymamy tu nazwy ról, a nie same
  * kolory: na Androidzie 12+ paleta pochodzi z tapety i podmienia się po
  * imporcie modułu, więc kolory czytamy dopiero przy rysowaniu wiersza.
  */
@@ -40,12 +34,11 @@ const KIND_TONES: Record<string, { Icon: IconComponent; bg: SchemeKey; fg: Schem
   stop: { Icon: BusFront, bg: 'secondaryContainer', fg: 'onSecondaryContainer' },
   address: { Icon: MapPin, bg: 'tertiaryContainer', fg: 'onTertiaryContainer' },
   history: { Icon: Clock3, bg: 'surfaceContainerHighest', fg: 'onSurfaceVariant' },
-  // Nominatim category icons (M3 dark tonal containers)
   shop: { Icon: Store, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
   place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
 };
 
-/** Kategorie Nominatim, kolory stałe, bo są poza skalą motywu. */
+/** Kategorie Nominatim, kolory stałe poza skalą motywu. */
 const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
@@ -59,7 +52,7 @@ const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: strin
   church: { Icon: Church, bg: '#333816', fg: '#DCE775' },
 };
 
-/** Tytuł do wyświetlenia: przystanki w ALL CAPS (odróżnia je od adresów/POI). */
+/** Tytuł do wyświetlenia: przystanki w ALL CAPS odróżniają je od adresów i POI. */
 export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>): string {
   return item.kind === 'stop' ? item.title.toUpperCase() : item.title;
 }
@@ -119,33 +112,58 @@ function highlightRanges(title: string, query: string): [number, number][] {
   return merged;
 }
 
-function HighlightedTitle({ text, query }: { text: string; query?: string }) {
+function HighlightedTitle({
+  text,
+  query,
+  prominent,
+}: {
+  text: string;
+  query?: string;
+  prominent?: boolean;
+}) {
   const ranges = query ? highlightRanges(text, query) : [];
-  if (!ranges.length) return <Text style={styles.title}>{text}</Text>;
+  if (!ranges.length) {
+    return (
+      <Text style={[styles.title, prominent && styles.titleProminent]} numberOfLines={2}>
+        {text}
+      </Text>
+    );
+  }
   const parts: React.ReactNode[] = [];
   let pos = 0;
   ranges.forEach(([a, b], i) => {
     if (a > pos) parts.push(text.slice(pos, a));
     parts.push(
-      <Text key={i} style={styles.match}>
+      <Text key={i} style={[styles.match, prominent && styles.matchProminent]}>
         {text.slice(a, b)}
       </Text>,
     );
     pos = b;
   });
   if (pos < text.length) parts.push(text.slice(pos));
-  return <Text style={[styles.title, styles.dim]}>{parts}</Text>;
+  return (
+    <Text
+      style={[styles.title, prominent ? styles.dimProminent : styles.dim]}
+      numberOfLines={2}
+    >
+      {parts}
+    </Text>
+  );
 }
 
-export function SuggestionRow({
+/** Memoizowany wiersz podpowiedzi bez per-item layout entering, dla pełnej płynności listy. */
+export const SuggestionRow = memo(function SuggestionRow({
   item,
   onPress,
+  onSelect,
   query,
   segment,
   prominent = false,
 }: {
   item: Suggestion;
-  onPress: () => void;
+  onPress?: () => void;
+  /** Stabilny callback z przekazanym obiektem, unika tworzenia domknięć w renderItem. */
+  onSelect?: (item: Suggestion) => void;
   /** Zapytanie do podświetlenia pasującego fragmentu tytułu. */
   query?: string;
   segment?: 'first' | 'middle' | 'last' | 'single';
@@ -155,18 +173,15 @@ export function SuggestionRow({
   const s = useStrings();
   const meta = getSuggestionIconMeta(item);
   const Icon = meta.Icon;
-  const iconBg = meta.bg;
-  const iconFg = meta.fg;
+  const iconBg = prominent ? scheme.primaryContainer : meta.bg;
+  const iconFg = prominent ? scheme.onPrimaryContainer : meta.fg;
 
-  const reducedMotion = useReducedMotion();
-  // Płynne wejście i przesunięcie pozycji (120Hz): 110-120ms to ~14 klatek
-  // animacji bez żadnego widocznego stroboskopu / flickera.
-  const rowEntering = reducedMotion
-    ? undefined
-    : FadeIn.duration(110).easing(Easing.out(Easing.quad));
-  const rowExiting = reducedMotion ? undefined : FadeOut.duration(70);
+  const handlePress = useCallback(() => {
+    if (onSelect) onSelect(item);
+    else onPress?.();
+  }, [item, onPress, onSelect]);
 
-  // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej)
+  // Oczyszczenie adresu z ewentualnych pozostałości numeru słupka (np. z pamięci podręcznej).
   let cleanAddress = (item.address || '')
     .replace(/\s*•\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
     .replace(/\s*słup[a-ząćęłńóśźż.]*\s*\d+/gi, '')
@@ -181,56 +196,61 @@ export function SuggestionRow({
   const displayTitle = suggestionDisplayTitle(item);
 
   return (
-    <Animated.View
-      entering={rowEntering}
-      exiting={rowExiting}
-      style={styles.animatedContainer}
+    <Pressable
+      onPress={handlePress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      accessibilityRole="button"
+      accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
+      style={({ pressed }) => [
+        styles.row,
+        segment && styles.segment,
+        (segment === 'first' || segment === 'single') && styles.segmentTop,
+        (segment === 'last' || segment === 'single') && styles.segmentBottom,
+        prominent && styles.prominent,
+        pressed && (prominent ? styles.pressedProminent : styles.pressed),
+        focused && styles.focused,
+      ]}
     >
-      <Pressable
-        onPress={onPress}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        accessibilityRole="button"
-        accessibilityLabel={`${displayTitle}${subtitle ? `, ${subtitle}` : ''}`}
-        style={({ pressed }) => [
-          styles.row,
-          segment && styles.segment,
-          (segment === 'first' || segment === 'single') && styles.segmentTop,
-          (segment === 'last' || segment === 'single') && styles.segmentBottom,
-          prominent && styles.prominent,
-          pressed && { backgroundColor: scheme.surfaceContainerHighest, opacity: 0.9 },
-          focused && styles.focused,
-        ]}
-      >
-        <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
-          <Icon size={19} color={iconFg} />
+      <View style={[styles.icon, { backgroundColor: iconBg }, segment && styles.segmentIcon]}>
+        <Icon size={20} color={iconFg} />
+      </View>
+      <View style={styles.mid}>
+        <HighlightedTitle text={displayTitle} query={query} prominent={prominent} />
+        {(segment ? cleanAddress : subtitle) ? (
+          <Text
+            style={[styles.sub, prominent && styles.subProminent]}
+            numberOfLines={segment ? 2 : 1}
+          >
+            {segment ? cleanAddress : subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {segment && distanceText ? (
+        <View style={[styles.distancePill, prominent && styles.distancePillProminent]}>
+          <Text
+            style={[styles.distance, prominent && styles.distanceProminent]}
+            numberOfLines={1}
+          >
+            {distanceText}
+          </Text>
         </View>
-        <View style={styles.mid}>
-          <HighlightedTitle text={displayTitle} query={query} />
-          {(segment ? cleanAddress : subtitle) ? (
-            <Text style={styles.sub} numberOfLines={segment ? undefined : 1}>
-              {segment ? cleanAddress : subtitle}
-            </Text>
-          ) : null}
-        </View>
-        {segment && distanceText ? <Text style={styles.distance}>{distanceText}</Text> : null}
-      </Pressable>
-    </Animated.View>
+      ) : null}
+    </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
-  animatedContainer: {
-    width: '100%',
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: shape.large,
-    minHeight: 56,
+    minHeight: 60,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   icon: {
     width: 44,
@@ -238,30 +258,65 @@ const styles = StyleSheet.create({
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   segment: {
-    borderRadius: 4,
+    borderRadius: 6,
     backgroundColor: scheme.surfaceContainer,
-    minHeight: 80,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    minHeight: 74,
     gap: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
-  segmentTop: { borderTopLeftRadius: shape.large, borderTopRightRadius: shape.large },
-  segmentBottom: { borderBottomLeftRadius: shape.large, borderBottomRightRadius: shape.large },
-  segmentIcon: { borderRadius: shape.medium },
-  prominent: { backgroundColor: scheme.secondaryContainer },
-  focused: { borderColor: scheme.primary, borderWidth: 2 },
+  segmentTop: { borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  segmentBottom: { borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  segmentIcon: { borderRadius: 16 },
+  prominent: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  pressed: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    transform: [{ scale: 0.988 }],
+  },
+  pressedProminent: {
+    opacity: 0.88,
+    transform: [{ scale: 0.988 }],
+  },
+  focused: { borderColor: scheme.primary },
+  distancePill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    flexShrink: 0,
+  },
+  distancePillProminent: {
+    backgroundColor: scheme.surfaceContainerLow,
+  },
   distance: {
-    ...type.labelMedium,
+    ...type.labelSmall,
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
-    maxWidth: '24%',
-    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
-  mid: { flex: 1, minWidth: 0, gap: 4 },
-  title: { ...type.bodyLarge, color: scheme.onSurface },
-  dim: { color: scheme.onSurfaceVariant },
-  match: { color: scheme.onSurface, fontWeight: '700' },
-  sub: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
+  distanceProminent: {
+    color: scheme.onSurface,
+  },
+  mid: { flex: 1, minWidth: 0, gap: 3 },
+  title: {
+    ...type.bodyLarge,
+    fontWeight: '600',
+    letterSpacing: -0.15,
+    color: scheme.onSurface,
+  },
+  titleProminent: {
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  dim: { color: scheme.onSurfaceVariant, fontWeight: '500' },
+  dimProminent: { color: scheme.onSecondaryContainer, fontWeight: '500' },
+  match: { color: scheme.onSurface, fontWeight: '800' },
+  matchProminent: { color: scheme.onSecondaryContainer, fontWeight: '800' },
+  sub: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 17 },
+  subProminent: { color: scheme.onSecondaryContainer },
 });

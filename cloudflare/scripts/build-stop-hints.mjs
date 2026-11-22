@@ -10,27 +10,41 @@ const DATA_FILE = path.join(ROOT_DIR, `cloudflare/data/stop-hints-${CITY}.json`)
 const DIST_DIR = path.join(ROOT_DIR, `cloudflare/dist/${CITY}`);
 const OUTPUT_FILE = path.join(DIST_DIR, 'stop-hints.json');
 
-const FORBIDDEN_FLUFF = [
-  /ten przystanek/i,
-  /znajduje się tutaj/i,
-  /można skorzystać/i,
-  /warto zauważyć/i,
-  /komunikacja miejska/i,
-  /obsługuje pasażerów/i,
+const FORBIDDEN_PATTERNS = [
+  [/ten przystanek/i, 'wata słowna'],
+  [/znajduje się tutaj/i, 'wata słowna'],
+  [/można skorzystać/i, 'wata słowna'],
+  [/warto zauważyć/i, 'wata słowna'],
+  [/komunikacja miejska/i, 'wata słowna'],
+  [/obsługuje pasażerów/i, 'wata słowna'],
+  [/^Słupek\s+\d+\s*[•·-]/i, 'powielony prefiks numeru słupka (UI już go wyświetla)'],
+  [/budynku usługowego|punktu usługowego/i, 'slop kategorii (budynek/punkt usługowy)'],
+  [/zakładu pogrzebowego|pracowni\s+usg|myjni|pralni|wulkanizac|lombardu/i, 'śmieciowe POI'],
+  [/parku\s+„[^”]*(?:skwer|capital|city\s+park|villa\s+park|kieszonkowy|office|business)/i, 'fałszywy park'],
+  [/obok\s+(?:Żabka|Biedronka|Lidl|Rossmann|Empik|Kaufland|Poczta\s+Polska)(?:[.,\s]|$)/, 'nieodmieniona nazwa sieci'],
+  [/na\s+ul\.\s+(?:parking|pętla|tunel|droga|jezdnia)\b/i, 'śmieciowa nazwa ulicy'],
+  [/na\s+ul\.\s+(?:Marszałkowska|Puławska|Krakowska|Belwederska|Dolna|Chełmska|Grójecka|Głogowska|Świdnicka|Pawia|Targowa|Wołoska|Długa|Ślężna|Starowiślna|Rybna)\b/, 'nieodmieniona nazwa ulicy'],
+  [/na\s+pl\.\s+(?:Bankowy|Teatralny|Grunwaldzki|Bernardyński|Dominikański|Centralny)\b/, 'nieodmieniony plac'],
+  [/przy\s+Al\.\s+(?:Jerozolimskie|Ujazdowskie)\b/, 'nieodmienione Aleje'],
+  [/\?”/, 'śmieciowy znak zapytania w nazwie POI'],
+  [/„[^”]*„/, 'zagnieżdżone cudzysłowy'],
 ];
 
-// Wymóg fizycznego punktu odniesienia (eliminacja tautologii ulica+kierunek)
 const PHYSICAL_ANCHOR_PATTERNS = [
   /obok/i,
   /po (?:.+ )?stronie/i,
   /od (?:.+ )?strony/i,
-  /od strony/i,
   /plant/i,
   /przy/i,
   /przed/i,
+  /za (?:rondem|skrzyżowaniem|galerią|mostem)/i,
   /pod/i,
   /w wykopie/i,
   /w tunelu/i,
+  /na wysepce/i,
+  /na pętli/i,
+  /na środku/i,
+  /między/i,
   /terminal/i,
   /dworc/i,
   /dworz/i,
@@ -39,14 +53,16 @@ const PHYSICAL_ANCHOR_PATTERNS = [
   /most/i,
   /mo[sś]c/i,
   /wiadukt/i,
-  /wyspa centralna/i,
+  /wyspie centralnej/i,
   /peron \d/i,
   /stanowisko \d/i,
   /naprzeciwko/i,
   /dojście/i,
+  /zejście/i,
+  /wyjści/i,
+  /wejści/i,
 ];
 
-// Whitelist ogólnokrajowych znanych marek i gmachów (nie wymagają deskryptora kategorii)
 const FAMOUS_CHAINS_AND_LANDMARKS = [
   'żabk',
   'biedronk',
@@ -61,6 +77,8 @@ const FAMOUS_CHAINS_AND_LANDMARKS = [
   'mcdonald',
   'subway',
   'burger king',
+  'max burgers',
+  'pizza hut',
   'orlen',
   'bp',
   'shell',
@@ -68,7 +86,7 @@ const FAMOUS_CHAINS_AND_LANDMARKS = [
   'moya',
   'mol',
   'amic',
-  'castorama',
+  'castoram',
   'leroy merlin',
   'ikea',
   'obi',
@@ -78,19 +96,20 @@ const FAMOUS_CHAINS_AND_LANDMARKS = [
   'hebe',
   'pepco',
   'action',
-  'dealz',
-  'duży ben',
-  'duzego bena',
   'aldi',
   'bricomarché',
   'intermarché',
   'e.leclerc',
   'leclerc',
   'jysk',
-  'ccc',
-  'deichmann',
   'media expert',
   'rtv euro agd',
+  'stokrotk',
+  'lewiatan',
+  'polomarket',
+  'delikatesów centrum',
+  'poczty polskiej',
+  'poczty',
   'posnani',
   'avenid',
   'bałtyk',
@@ -108,22 +127,20 @@ const FAMOUS_CHAINS_AND_LANDMARKS = [
   'warsaw spire',
   'warsaw hub',
   'rondo 1',
-  'q22',
-  'varso',
-  'skyliner',
-  'generation park',
-  'capitol',
-  'fat',
-  'korona',
-  'borek',
-  'ferio gaj',
-  'tarasy grabiszyńskie',
   'mda',
   'nowy kleparz',
   'nowego kleparza',
+  'galerii',
+  'dworca',
+  'dworcem',
+  'oper',
+  'teatru',
+  'hotelu',
+  'biurowc',
+  'pętli',
+  'zjazdu',
 ];
 
-// Rdzenie dopuszczalnych deskryptorów kategorii POI (np. 'obok restauracji „... ”', 'obok sklepu spożywczego „... ”')
 const DESCRIPTOR_ROOTS = [
   'restauracj',
   'sklep',
@@ -132,18 +149,11 @@ const DESCRIPTOR_ROOTS = [
   'piekarn',
   'cukiern',
   'pizzeri',
-  'bar',
-  'pub',
-  'bistr',
-  'salon',
-  'kwiaciarn',
   'aptek',
   'stacj',
   'hotel',
-  'hostel',
-  'pensjonat',
+  'kościoł',
   'kości',
-  'cerkwi',
   'teatr',
   'oper',
   'filharmoni',
@@ -152,109 +162,43 @@ const DESCRIPTOR_ROOTS = [
   'centrum',
   'wieżowc',
   'biurowc',
-  'biur',
   'dworc',
   'dworz',
   'pętl',
   'park',
-  'kompleks',
   'budynk',
   'hal',
   'uczeln',
   'uniwersytet',
   'politechnik',
-  'wydział',
-  'liceum',
   'szkoł',
-  'przedszkol',
   'muzeum',
   'kin',
   'stadion',
   'pałac',
   'zamk',
-  'przychodn',
-  'gabinet',
-  'klinik',
-  'lecznic',
-  'warsztat',
-  'serwis',
-  'kiosk',
   'market',
-  'dyskont',
   'supermarket',
-  'lodziarn',
   'drogeri',
   'wejści',
+  'wyjści',
   'peron',
-  'torowisk',
   'most',
-  'estakad',
   'wiadukt',
   'rond',
-  'cmentarz',
-  'staw',
-  'rzek',
-  'kanał',
-  'fos',
-  'plaż',
-  'boisk',
   'bibliotek',
   'urzęd',
-  'komisariat',
-  'remiz',
   'sąd',
-  'zabytkow',
-  'pomnik',
-  'fontann',
   'skwer',
   'plac',
-  'alei',
-  'kampus',
-  'akademik',
   'domu',
-  'ds',
   'targowisk',
   'bazar',
-  'myjni',
-  'parking',
-  'przystank',
-  'zakład',
-  'ośrodk',
-  'pracowni',
-  'punkt',
   'oddział',
-  'frontu',
-  'wyjści',
-  'bram',
-  'schronisk',
-  'terminal',
-  'ch',
-  'warzywniak',
-  'księgar',
-  'delikates',
-  'rynk',
-  'ogród',
+  'poczt',
   'ogrod',
-  'jubiler',
-  'butik',
   'pasaż',
-  'pasażu',
-  'małopolsk',
-];
-
-const INHERENT_WORDS = [
-  'kebab',
-  'burger',
-  'pizza',
-  'pizzeri',
-  'barbershop',
-  'apteka',
-  'apteki',
-  'piekarnia',
-  'cukiernia',
-  'lombard',
-  'kantor',
-  'market',
+  'zjazd',
 ];
 
 function checkObokUnambiguity(trimmed, id) {
@@ -270,12 +214,19 @@ function checkObokUnambiguity(trimmed, id) {
 
   const isValid =
     DESCRIPTOR_ROOTS.some((d) => firstWord.startsWith(d)) ||
-    INHERENT_WORDS.some((w) => words.some((word) => word.includes(w))) ||
     FAMOUS_CHAINS_AND_LANDMARKS.some((f) => lower.startsWith(f));
 
   if (!isValid) {
     throw new Error(
-      `[!] Błąd antislop [${id}]: niejednoznaczny punkt orientacyjny bez kategorii typu lokalu: "obok ${target}" w "${trimmed}". Zgodnie ze skillem stop-hints ZAWSZE podaj kategorię przed nazwą własną (np. 'obok sklepu „${target}”', 'obok restauracji „${target}”'), chyba że to ogólnokrajowa znana marka sieciowa (np. Żabka, KFC, Biedronka).`,
+      `[!] Błąd antislop [${id}]: niejednoznaczny punkt orientacyjny bez kategorii: "obok ${target}" w "${trimmed}".`,
+    );
+  }
+}
+
+function validateStopKey(key) {
+  if (/^\d{1,3}$/.test(key.trim())) {
+    throw new Error(
+      `[!] Błąd integralności kluczy: klucz "${key}" jest zbyt krótki (1-3 cyfry) i powoduje kolizje słupków (np. Dolna 02 / Pl. Na Rozdrożu 06)! Użyj globalnie unikalnego stop_id lub stop_code.`,
     );
   }
 }
@@ -285,35 +236,33 @@ function validateHint(text, id) {
     throw new Error(`[${id}] Wskazówka jest pusta lub nie jest tekstem.`);
   }
   const trimmed = text.trim();
-  if (trimmed.length < 10) {
+  if (trimmed.length < 12) {
     throw new Error(`[${id}] Wskazówka jest zbyt krótka: "${trimmed}"`);
   }
-  for (const re of FORBIDDEN_FLUFF) {
+  for (const [re, reason] of FORBIDDEN_PATTERNS) {
     if (re.test(trimmed)) {
-      throw new Error(`[!] Błąd antislop [${id}]: zawiera watę słowną "${re}" -> "${trimmed}"`);
+      throw new Error(`[!] Błąd antislop [${id}]: ${reason} (${re}) -> "${trimmed}"`);
     }
   }
 
-  // Wymóg uziemienia (grounding): musi zawierać punkt odniesienia
   const hasPhysicalAnchor = PHYSICAL_ANCHOR_PATTERNS.some((pattern) => pattern.test(trimmed));
   if (!hasPhysicalAnchor) {
     throw new Error(
-      `[!] Błąd antislop [${id}]: brak fizycznego punktu odniesienia (wymagane POI, park, wiadukt itp.) -> "${trimmed}"`,
+      `[!] Błąd antislop [${id}]: brak fizycznego punktu odniesienia -> "${trimmed}"`,
     );
   }
 
-  // Twarda reguła anty-slop: zakaz enigmatycznych punktów orientacyjnych ('obok u Kingi')
   checkObokUnambiguity(trimmed, id);
 
-  // Ignorujemy kropki w skrótach typu "ul.", "al.", "pl.", "św.", "dr.", "prof.", "hab.", "sp.", "z o.o."
   const sanitizedForSentences = trimmed
     .replace(/\.{2,}/g, '_')
-    .replace(/(?<![a-ząćęłńóśźż])([a-ząćęłńóśźż]{1,6})\./gi, '_')
-    .replace(/(^|[\s(])([a-ząćęłńóśźż]{1,6})\./gi, '_')
-    .replace(/(^|[\s(])(ul|al|pl|św|pw|dr|prof|hab|sp|z o\.o|m\.st|os|gen)\./gi, '$1$2_')
-    .replace(/\b([A-Z])\./g, '$1_');
+    .replace(
+      /(^|[\s(„"])(ul|al|pl|dw|św|pw|dr|prof|hab|sp|z o\.o|m\.st|os|gen|im|nr|ks|kard|bp|abp|bł|płk|ppłk|mjr|kpt|por|rtm|marsz|inż|mgr|doc|red|st|o|s|br|jr|sr|mr|ms|mrs|no|vol|art|pkt)\./gi,
+      '$1$2_',
+    )
+    .replace(/\b(\d{1,2})\.\s/g, '$1_ ')
+    .replace(/\b([A-ZŁŚĆŻŹŃÓ])\./g, '$1_');
 
-  // Dokładnie 1 zdanie (kończące się kropką, bez wielozdaniowych tyrad)
   const sentences = sanitizedForSentences
     .split(/(?<=[.?!])\s+/)
     .map((s) => s.trim())
@@ -321,20 +270,20 @@ function validateHint(text, id) {
 
   if (sentences.length > 1) {
     throw new Error(
-      `[!] Błąd antislop [${id}]: przekroczono limit 1 zdania (${sentences.length} zdania) -> "${trimmed}"`,
+      `[!] Błąd antislop [${id}]: przekroczono limit 1 zdania (${sentences.length}) -> "${trimmed}"`,
     );
   }
 
   const words = trimmed.split(/\s+/).filter(Boolean);
-  if (words.length > 25) {
+  if (words.length > 22) {
     throw new Error(
-      `[!] Błąd antislop [${id}]: za długa wskazówka (${words.length} słów, max 25) -> "${trimmed}"`,
+      `[!] Błąd antislop [${id}]: za długa wskazówka (${words.length} słów, max 22) -> "${trimmed}"`,
     );
   }
 }
 
 function build() {
-  console.log(`[i] Kompilacja bazy wskazówek dla: ${CITY}`);
+  console.log(`[i] Kompilacja i walidacja bazy wskazówek dla: ${CITY}`);
 
   if (!fs.existsSync(DATA_FILE)) {
     console.error(`[!] Brak pliku źródłowego: ${DATA_FILE}`);
@@ -357,6 +306,7 @@ function build() {
 
   const validatedStops = {};
   for (const [id, hint] of Object.entries(data.stops)) {
+    validateStopKey(id);
     validateHint(hint, `stop:${id}`);
     validatedStops[id] = hint.trim();
   }
@@ -373,12 +323,32 @@ function build() {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
 
+  const validatedEntrances = [];
+  if (Array.isArray(data.metroEntrances)) {
+    for (const ent of data.metroEntrances) {
+      if (!ent || typeof ent.id !== 'string' || typeof ent.stationId !== 'string') {
+        throw new Error(`[!] Niepoprawny wpis metroEntrances w ${DATA_FILE}`);
+      }
+      validateHint(ent.hint, `entrance:${ent.id}`);
+      validatedEntrances.push({
+        id: ent.id,
+        num: String(ent.num || ''),
+        stationId: ent.stationId,
+        lat: ent.lat,
+        lon: ent.lon,
+        ...(ent.wheelchair ? { wheelchair: true } : {}),
+        hint: ent.hint.trim(),
+      });
+    }
+  }
+
   const compiled = {
-    schemaVersion: 1,
+    schemaVersion: typeof data.schemaVersion === 'number' ? data.schemaVersion : 2,
     city: CITY,
     generatedAt: data.generatedAt || new Date().toISOString(),
     stops: validatedStops,
     clusters: validatedClusters,
+    ...(validatedEntrances.length > 0 ? { metroEntrances: validatedEntrances } : {}),
   };
 
   const minified = JSON.stringify(compiled);
@@ -387,9 +357,10 @@ function build() {
   const inKb = (Buffer.byteLength(raw) / 1024).toFixed(1);
   const outKb = (Buffer.byteLength(minified) / 1024).toFixed(1);
 
-  console.log(`[✓] Sukces: zweryfikowano i skompilowano ${CITY.toUpperCase()}`);
+  console.log(`[✓] Sukces: zweryfikowano i skompilowano ${CITY.toUpperCase()} (schemaVersion=${compiled.schemaVersion})`);
   console.log(`    - Słupki (stops): ${Object.keys(validatedStops).length}`);
   console.log(`    - Zespoły (clusters): ${Object.keys(validatedClusters).length}`);
+  if (validatedEntrances.length > 0) console.log(`    - Wejścia metra (metroEntrances): ${validatedEntrances.length}`);
   console.log(`    - Rozmiar: ${inKb} KB -> ${outKb} KB`);
   console.log(`    - Zapisano do: ${OUTPUT_FILE}`);
 }

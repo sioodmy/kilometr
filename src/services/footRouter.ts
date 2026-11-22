@@ -3,16 +3,21 @@ import {
   hasFootTileSync,
   loadFootTileAsync,
   routeFootWaypointsAsync,
+  type LocalRouteMode,
 } from '../../modules/kilometr-raptor';
 
 export type FootCoord = [number, number];
+export type TransitLocalMode = Exclude<LocalRouteMode, 'foot'>;
 
 const MAP_SOURCE_URL =
   process.env.EXPO_PUBLIC_MAP_SOURCE_URL ?? 'https://tiles.openfreemap.org/planet';
 const TILE_ZOOM = 14;
+const TILE_COUNT = 2 ** TILE_ZOOM;
 const DEFAULT_TILE_TEMPLATE =
   'https://tiles.openfreemap.org/planet/20261004_113936_pt/{z}/{x}/{y}.pbf';
 const TILE_FETCH_TIMEOUT_MS = 8000;
+const MAX_TRANSIT_CHUNK_TILES = 64;
+const TILE_LOAD_CONCURRENCY = 6;
 
 let resolvedTileTemplate: string | null = null;
 let templatePromise: Promise<string> | null = null;
@@ -28,6 +33,11 @@ function latToTileY(lat: number, z = TILE_ZOOM): number {
   const rad = (lat * Math.PI) / 180;
   const y = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
   return Math.max(0, Math.min(n - 1, Math.floor(y)));
+}
+
+function approxDistMeters(a: FootCoord, b: FootCoord): number {
+  const cosLat = Math.cos(((a[0] + b[0]) * Math.PI) / 360);
+  return Math.hypot((b[0] - a[0]) * 111320, (b[1] - a[1]) * 111320 * cosLat);
 }
 
 function tilesForWaypoints(waypoints: ReadonlyArray<FootCoord>): Array<[number, number]> {
@@ -61,6 +71,37 @@ function tilesForWaypoints(waypoints: ReadonlyArray<FootCoord>): Array<[number, 
     }
   }
   return out;
+}
+
+function addCorridorTilesForHop(
+  from: FootCoord,
+  to: FootCoord,
+  mode: TransitLocalMode,
+  tiles: Map<string, [number, number]>,
+): boolean {
+  const padLat = mode === 'rail' ? 0.009 : 0.0052;
+  const padLon = mode === 'rail' ? 0.0145 : 0.0084;
+  const distM = approxDistMeters(from, to);
+  const steps = Math.max(1, Math.min(48, Math.ceil(distM / 600)));
+
+  for (let s = 0; s <= steps; s++) {
+    const f = s / steps;
+    const lat = from[0] + (to[0] - from[0]) * f;
+    const lon = from[1] + (to[1] - from[1]) * f;
+    const x0 = lonToTileX(lon - padLon);
+    const x1 = lonToTileX(lon + padLon);
+    const y0 = latToTileY(lat + padLat);
+    const y1 = latToTileY(lat - padLat);
+    for (let x = x0; x <= x1; x++) {
+      if (x < 0 || x >= TILE_COUNT) continue;
+      for (let y = y0; y <= y1; y++) {
+        if (y < 0 || y >= TILE_COUNT) continue;
+        tiles.set(`${x}/${y}`, [x, y]);
+      }
+    }
+    if (tiles.size > MAX_TRANSIT_CHUNK_TILES) return false;
+  }
+  return true;
 }
 
 async function resolveTileUrlTemplate(signal?: AbortSignal): Promise<string> {
@@ -156,6 +197,20 @@ async function ensureSingleFootTile(
   return task;
 }
 
+async function ensureTilesLoaded(
+  tiles: ReadonlyArray<[number, number]>,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  let anyLoaded = false;
+  for (let offset = 0; offset < tiles.length; offset += TILE_LOAD_CONCURRENCY) {
+    if (signal?.aborted) return false;
+    const batch = tiles.slice(offset, offset + TILE_LOAD_CONCURRENCY);
+    const res = await Promise.all(batch.map(([x, y]) => ensureSingleFootTile(x, y, signal)));
+    if (res.some(Boolean)) anyLoaded = true;
+  }
+  return anyLoaded && !signal?.aborted;
+}
+
 function canRouteFootSync(waypoints: ReadonlyArray<FootCoord>): boolean {
   const tiles = tilesForWaypoints(waypoints);
   if (tiles.length === 0) return false;
@@ -168,9 +223,8 @@ export async function routeFootLocal(
 ): Promise<FootCoord[] | null> {
   if (waypoints.length < 2) return null;
 
-  // Fast path: if all needed tiles are already in the Rust registry, route immediately.
   if (canRouteFootSync(waypoints)) {
-    const fast = await routeFootWaypointsAsync(waypoints);
+    const fast = await routeFootWaypointsAsync(waypoints, 'foot');
     if (fast && fast.length >= 2) return fast;
   }
 
@@ -184,50 +238,71 @@ export async function routeFootLocal(
     return null;
   }
 
-  return routeFootWaypointsAsync(waypoints);
+  return routeFootWaypointsAsync(waypoints, 'foot');
 }
 
-/** Wyznacza przebieg kolei z kafelków mapy, także z pobranego pakietu offline. */
-export async function routeRailLocal(
+/** Wyznacza przebieg linii (tramwaj, metro, kolej, autobus) po kafelkach wektorowych z14. */
+export async function routeTransitLocal(
   waypoints: ReadonlyArray<FootCoord>,
+  mode: TransitLocalMode,
   signal?: AbortSignal,
 ): Promise<FootCoord[] | null> {
   if (waypoints.length < 2 || signal?.aborted) return null;
-  const path: FootCoord[] = [];
-  for (let i = 1; i < waypoints.length; i++) {
-    if (signal?.aborted) return null;
-    const from = path.at(-1) ?? waypoints[i - 1];
-    const to = waypoints[i];
-    if (![...from, ...to].every(Number.isFinite)) return null;
-    const x0 = lonToTileX(from[1]);
-    const y0 = latToTileY(from[0]);
-    const x1 = lonToTileX(to[1]);
-    const y1 = latToTileY(to[0]);
-    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
-    const tiles = new Map<string, [number, number]>();
-    for (let step = 0; step <= steps; step++) {
-      const x = Math.round(x0 + ((x1 - x0) * step) / steps);
-      const y = Math.round(y0 + ((y1 - y0) * step) / steps);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          if (x + dx < 0 || y + dy < 0 || x + dx >= 2 ** TILE_ZOOM || y + dy >= 2 ** TILE_ZOOM) continue;
-          tiles.set(`${x + dx}/${y + dy}`, [x + dx, y + dy]);
-        }
-      }
-      if (tiles.size > 48) return null;
-    }
-    const needed = Array.from(tiles.values());
-    for (let offset = 0; offset < needed.length; offset += 4) {
-      if (signal?.aborted) return null;
-      await Promise.all(needed.slice(offset, offset + 4).map(([x, y]) => ensureSingleFootTile(x, y, signal)));
-    }
-    if (signal?.aborted) return null;
-    const part = await routeFootWaypointsAsync([from, to], true);
-    if (!part || part.length < 2) return null;
-    const start = part[0];
-    // Rzut na siatkę kafelka może przesunąć wspólny punkt o ułamek metra.
-    if (path.length && (Math.abs(start[0] - from[0]) > 1e-5 || Math.abs(start[1] - from[1]) > 1e-5)) return null;
-    path.push(...(path.length ? part.slice(1) : part));
+  for (const pt of waypoints) {
+    if (!Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) return null;
   }
-  return signal?.aborted ? null : path;
+
+  const path: FootCoord[] = [];
+  let startIdx = 0;
+
+  while (startIdx < waypoints.length - 1) {
+    if (signal?.aborted) return null;
+
+    const chunkTiles = new Map<string, [number, number]>();
+    let endIdx = startIdx;
+    const anchorStart = path.at(-1) ?? waypoints[startIdx];
+
+    for (let i = startIdx + 1; i < waypoints.length; i++) {
+      const hopFrom = i === startIdx + 1 ? anchorStart : waypoints[i - 1];
+      const hopTo = waypoints[i];
+      const trial = new Map(chunkTiles);
+      const fits = addCorridorTilesForHop(hopFrom, hopTo, mode, trial);
+      if (!fits) {
+        if (endIdx === startIdx) {
+          // Pojedynczy odcinek między dwoma przystankami przekracza budżet kafelków.
+          return null;
+        }
+        break;
+      }
+      chunkTiles.clear();
+      for (const [k, v] of trial) chunkTiles.set(k, v);
+      endIdx = i;
+    }
+
+    const needed = Array.from(chunkTiles.values());
+    if (needed.length === 0) return null;
+
+    const ok = await ensureTilesLoaded(needed, signal);
+    if (!ok || signal?.aborted) return null;
+
+    const chunkWaypoints: FootCoord[] = [anchorStart, ...waypoints.slice(startIdx + 1, endIdx + 1)];
+    const part = await routeFootWaypointsAsync(chunkWaypoints, mode);
+    if (!part || part.length < 2) return null;
+
+    if (path.length > 0) {
+      const prevEnd = path[path.length - 1];
+      const nextStart = part[0];
+      if (approxDistMeters(prevEnd, nextStart) > 250) {
+        return null;
+      }
+      const skipFirst = approxDistMeters(prevEnd, nextStart) < 2;
+      path.push(...(skipFirst ? part.slice(1) : part));
+    } else {
+      path.push(...part);
+    }
+
+    startIdx = endIdx;
+  }
+
+  return signal?.aborted || path.length < 2 ? null : path;
 }

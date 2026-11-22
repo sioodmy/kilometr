@@ -213,7 +213,7 @@ export function ConnectionPeek({
                 pressed && styles.pressed,
               ]}
             >
-              <X size={22} color={scheme.onSurface} />
+              <X size={20} color={scheme.onSurface} />
             </Pressable>
           )}
         </View>
@@ -222,6 +222,7 @@ export function ConnectionPeek({
             item={item}
             offline={offline}
             availableWidth={Math.min(width - 48, 464)}
+            showLegStrip={false}
           />
           <View style={styles.legs}>
             {item.legs.map((leg, index) => {
@@ -334,34 +335,52 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 480,
     flexShrink: 1,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 32,
-    padding: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 10,
     ...elev.level3,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 8,
   },
-  title: { ...type.titleMedium, fontWeight: '600', color: scheme.onSurface, flex: 1, minWidth: 0 },
+  title: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    color: scheme.onSurface,
+    flex: 1,
+    minWidth: 0,
+  },
   close: {
-    minWidth: 48,
-    minHeight: 48,
+    width: 44,
+    height: 44,
     flexShrink: 0,
-    borderRadius: shape.large,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  content: { gap: 8 },
-  legs: { paddingHorizontal: 16 },
+  content: { gap: 10 },
+  legs: {
+    paddingHorizontal: 14,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
   leg: {
-    paddingVertical: 14,
-    gap: 8,
+    paddingVertical: 13,
+    gap: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: scheme.outlineVariant,
   },
@@ -370,7 +389,7 @@ const styles = StyleSheet.create({
   stopRow: { flexDirection: 'row', alignItems: 'baseline', gap: 12 },
   stopTime: {
     ...type.bodyMedium,
-    fontWeight: '600',
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
     color: scheme.onSurface,
     flexShrink: 0,
@@ -383,40 +402,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    minHeight: 56,
+    minHeight: 52,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: shape.extraLarge,
+    paddingVertical: 12,
+    borderRadius: shape.full,
     overflow: 'hidden',
-    backgroundColor: 'transparent',
-    marginTop: 8,
+    backgroundColor: scheme.surfaceContainer,
+    marginTop: 10,
   },
   gestureReady: {
     backgroundColor: scheme.primaryContainer,
-    borderRadius: shape.extraLarge,
-    overflow: 'hidden',
   },
-  hintText: { ...type.labelLarge, color: scheme.onSurfaceVariant, flexShrink: 1 },
-  readyText: { color: scheme.onPrimaryContainer },
+  hintText: { ...type.labelLarge, fontWeight: '600', color: scheme.onSurfaceVariant, flexShrink: 1 },
+  readyText: { color: scheme.onPrimaryContainer, fontWeight: '800' },
   open: {
-    minHeight: 56,
+    minHeight: 54,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.primary,
-    borderRadius: shape.extraLarge,
+    borderRadius: shape.full,
     padding: 14,
     borderWidth: 2,
     borderColor: 'transparent',
-    marginTop: 8,
+    marginTop: 10,
     overflow: 'hidden',
   },
   openLabel: {
     ...type.labelLarge,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: scheme.onPrimary,
     textAlign: 'center',
   },
-  focused: { borderColor: scheme.onSurface },
+  focused: { borderColor: scheme.primary, borderWidth: 2 },
   openFocused: { borderColor: scheme.onPrimary },
-  pressed: { opacity: 0.8 },
+  pressed: { opacity: 0.85 },
 });

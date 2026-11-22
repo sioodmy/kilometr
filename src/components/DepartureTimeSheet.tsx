@@ -13,9 +13,22 @@ import {
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
+import * as Haptics from 'expo-haptics';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertCircle, Check, X } from './icons';
+import { AlertCircle, Clock3, Flag, X } from './icons';
+import { SpringPressable } from './SpringPressable';
+import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { JourneyTimeMode } from '../services/routing/types';
@@ -40,6 +53,7 @@ function pad(n: number): string {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const HANDLE_HEIGHT = 24;
+const SPRING_FAST = motion.spring.spatialFast;
 
 const timeSheetDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -65,6 +79,105 @@ function SheetHandle() {
   );
 }
 
+function ModeSegment({
+  mode,
+  compact,
+  departureLabel,
+  arrivalLabel,
+  onSelect,
+}: {
+  mode: JourneyTimeMode;
+  compact: boolean;
+  departureLabel: string;
+  arrivalLabel: string;
+  onSelect: (next: JourneyTimeMode) => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const containerWidth = useSharedValue(0);
+  const activeIndex = mode === 'arrival' ? 1 : 0;
+  const progress = useSharedValue(activeIndex);
+
+  useEffect(() => {
+    progress.value = reduceMotion ? activeIndex : withSpring(activeIndex, SPRING_FAST);
+  }, [activeIndex, progress, reduceMotion]);
+
+  const indicatorStyle = useAnimatedStyle(() => {
+    const w = containerWidth.value > 0 ? (containerWidth.value - 10) / 2 : 0;
+    return {
+      width: w,
+      transform: [{ translateX: progress.value * w }],
+      opacity: w > 0 ? 1 : 0,
+    };
+  });
+
+  const options = [
+    { value: 'departure' as const, label: departureLabel, Icon: Clock3 },
+    { value: 'arrival' as const, label: arrivalLabel, Icon: Flag },
+  ];
+
+  if (compact) {
+    return (
+      <View style={styles.modeSelectorCompact} accessibilityRole="tablist">
+        {options.map(({ value, label, Icon }) => {
+          const active = mode === value;
+          return (
+            <SpringPressable
+              key={value}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              haptic="selection"
+              scaleDelta={0.02}
+              onPress={() => onSelect(value)}
+              style={[styles.modeTabCompact, active && styles.modeTabCompactActive]}
+            >
+              <Icon
+                size={17}
+                color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+              />
+              <Text style={[styles.modeText, active && styles.modeTextActive]}>{label}</Text>
+            </SpringPressable>
+          );
+        })}
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={styles.modeSelector}
+      accessibilityRole="tablist"
+      onLayout={(e) => {
+        containerWidth.value = e.nativeEvent.layout.width;
+      }}
+    >
+      <Animated.View style={[styles.modeIndicator, indicatorStyle]} />
+      {options.map(({ value, label, Icon }) => {
+        const active = mode === value;
+        return (
+          <Pressable
+            key={value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            onPress={() => {
+              void Haptics.selectionAsync().catch(() => {});
+              onSelect(value);
+            }}
+            style={styles.modeTab}
+          >
+            <Icon
+              size={17}
+              color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+            />
+            <Text style={[styles.modeText, active && styles.modeTextActive]} numberOfLines={1}>
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function WheelPicker({
   values,
   selectedValue,
@@ -78,17 +191,21 @@ function WheelPicker({
   label: string;
   itemHeight: number;
 }) {
+  const reduceMotion = useReducedMotion();
   const scrollRef = useRef<ScrollView>(null);
   const isUserScrolling = useRef(false);
+  const didMount = useRef(false);
 
   useEffect(() => {
     const index = values.indexOf(selectedValue);
     if (index < 0 || isUserScrolling.current) return;
+    const animateScroll = didMount.current && !reduceMotion;
+    didMount.current = true;
     const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ y: index * itemHeight, animated: false });
+      scrollRef.current?.scrollTo({ y: index * itemHeight, animated: animateScroll });
     });
     return () => cancelAnimationFrame(frame);
-  }, [selectedValue, values, itemHeight]);
+  }, [selectedValue, values, itemHeight, reduceMotion]);
 
   const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     isUserScrolling.current = false;
@@ -96,7 +213,11 @@ function WheelPicker({
       0,
       Math.min(values.length - 1, Math.round(e.nativeEvent.contentOffset.y / itemHeight)),
     );
-    onValueChange(values[index]);
+    const next = values[index];
+    if (next !== selectedValue) {
+      void Haptics.selectionAsync().catch(() => {});
+    }
+    onValueChange(next);
   };
 
   return (
@@ -148,26 +269,30 @@ function WheelPicker({
         }}
         onMomentumScrollEnd={handleScrollEnd}
       >
-        {values.map((value) => (
-          <Pressable
-            key={value}
-            onPress={() => {
-              isUserScrolling.current = false;
-              onValueChange(value);
-            }}
-            style={({ pressed }) => [
-              styles.wheelItem,
-              { height: itemHeight },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text
-              style={[styles.wheelItemText, value === selectedValue && styles.wheelItemTextActive]}
+        {values.map((value) => {
+          const active = value === selectedValue;
+          return (
+            <Pressable
+              key={value}
+              onPress={() => {
+                isUserScrolling.current = false;
+                if (value !== selectedValue) {
+                  void Haptics.selectionAsync().catch(() => {});
+                }
+                onValueChange(value);
+              }}
+              style={({ pressed }) => [
+                styles.wheelItem,
+                { height: itemHeight },
+                pressed && !active && styles.wheelItemPressed,
+              ]}
             >
-              {pad(value)}
-            </Text>
-          </Pressable>
-        ))}
+              <Text style={[styles.wheelItemText, active && styles.wheelItemTextActive]}>
+                {pad(value)}
+              </Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -181,34 +306,49 @@ export function DepartureTimeSheet({
 }: DepartureTimeSheetProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const { height, width, fontScale } = useWindowDimensions();
-  const itemHeight = Math.max(56, Math.ceil(48 * fontScale));
+  const itemHeight = Math.max(54, Math.ceil(46 * fontScale));
   const compact = width / fontScale < 300;
   const sheetHeight = Math.min(
     height - insets.top - insets.bottom - 16,
-    724 + Math.max(0, fontScale - 1) * 420,
+    696 + Math.max(0, fontScale - 1) * 380,
   );
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const sheetRef = useRef<BottomSheet>(null);
+  const dayScrollRef = useRef<ScrollView>(null);
+  const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+
+  const requestClose = useCallback(() => {
+    sheetRef.current?.close();
+  }, []);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeRef.current();
+      requestClose();
       return true;
     });
     return () => sub.remove();
-  }, []);
+  }, [requestClose]);
 
   const [openedAt] = useState(() => new Date());
   const [mode, setMode] = useState(initialMode);
   const initialSeconds = initialTimeSec ?? openedAt.getHours() * 3600 + openedAt.getMinutes() * 60;
   const [isNow, setIsNow] = useState(initialTimeSec === undefined && initialMode === 'departure');
-  // Offset dni od dziś (0 = dziś, 1 = jutro, 2+ = konkretna data w przód).
   const [dayOffset, setDayOffset] = useState(() => Math.floor(initialSeconds / 86400));
   const [hour, setHour] = useState(Math.floor(initialSeconds / 3600) % 24);
   const [minute, setMinute] = useState(Math.floor((initialSeconds % 3600) / 60));
-  // Horyzont planera: koniec rozkładu miasta (i kolejowego, gdy pobrany).
   const [maxDayOffset, setMaxDayOffset] = useState(13);
+
+  const initialDayOffsetRef = useRef(dayOffset);
+  useEffect(() => {
+    const startOffset = initialDayOffsetRef.current;
+    if (startOffset <= 1) return;
+    const frame = requestAnimationFrame(() => {
+      dayScrollRef.current?.scrollTo({ x: Math.max(0, (startOffset - 1) * 86), animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -219,7 +359,9 @@ export function DepartureTimeSheet({
         ends.push(await getTimetableEndDate());
       } catch {}
       try {
-        const { hasNationalDb, getNationalTimetableEndDate } = await import('../services/gtfsDatabase');
+        const { hasNationalDb, getNationalTimetableEndDate } = await import(
+          '../services/gtfsDatabase'
+        );
         if (await hasNationalDb()) ends.push(await getNationalTimetableEndDate());
       } catch {}
       const valid = ends.filter((d): d is string => !!d && /^\d{8}$/.test(d));
@@ -230,7 +372,10 @@ export function DepartureTimeSheet({
         Number(end.slice(0, 4)),
         Number(end.slice(4, 6)) - 1,
         Number(end.slice(6, 8)),
-        23, 59, 59, 999,
+        23,
+        59,
+        59,
+        999,
       );
       const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
       setMaxDayOffset(Math.max(1, Math.min(13, daysLeft)));
@@ -248,11 +393,12 @@ export function DepartureTimeSheet({
   const nowSec = now.getHours() * 3600 + now.getMinutes() * 60;
   const selectedSec = hour * 3600 + minute * 60;
   const isPast = !isNow && dayOffset === 0 && selectedSec < nowSec;
+  const isCustomState = !isNow || mode !== 'departure';
 
   const handleQuickAdd = (addMinutes: number) => {
-    const now = new Date();
+    const current = new Date();
     const baseSec = isNow
-      ? now.getHours() * 3600 + now.getMinutes() * 60
+      ? current.getHours() * 3600 + current.getMinutes() * 60
       : dayOffset * 86400 + hour * 3600 + minute * 60;
     const totalSec = Math.min(maxDayOffset * 86400 + 86340, baseSec + addMinutes * 60);
     setIsNow(false);
@@ -262,11 +408,26 @@ export function DepartureTimeSheet({
   };
 
   const handleSetNow = () => {
-    const now = new Date();
-    setIsNow(mode === 'departure');
+    const current = new Date();
+    setMode('departure');
+    setIsNow(true);
     setDayOffset(0);
-    setHour(now.getHours());
-    setMinute(now.getMinutes());
+    setHour(current.getHours());
+    setMinute(current.getMinutes());
+    dayScrollRef.current?.scrollTo({ x: 0, animated: !reduceMotion });
+  };
+
+  const handleModeChange = (nextMode: JourneyTimeMode) => {
+    setMode(nextMode);
+    if (nextMode === 'arrival') {
+      setIsNow(false);
+      if (dayOffset === 0 && hour * 3600 + minute * 60 <= nowSec) {
+        const targetSec = nowSec + 30 * 60;
+        setHour(Math.floor(targetSec / 3600) % 24);
+        setMinute(Math.floor((targetSec % 3600) / 60));
+        if (targetSec >= 86400) setDayOffset(1);
+      }
+    }
   };
 
   const dayLabel =
@@ -279,12 +440,14 @@ export function DepartureTimeSheet({
             d.setDate(d.getDate() + dayOffset);
             return getTimeSheetDateFormatter(getLocaleSync()).format(d);
           })();
+
   const selection =
     isNow && mode === 'departure'
       ? s.common.now
       : mode === 'arrival'
         ? s.timeSheet.selectedArrival(dayLabel, pad(hour), pad(minute))
         : s.timeSheet.selectedDeparture(dayLabel, pad(hour), pad(minute));
+
   const handleConfirm = () => {
     onSelect({
       timeSec:
@@ -294,7 +457,7 @@ export function DepartureTimeSheet({
       mode,
       label: selection,
     });
-    onClose();
+    requestClose();
   };
 
   const renderBackdrop = useCallback(
@@ -303,7 +466,7 @@ export function DepartureTimeSheet({
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
-        opacity={0.55}
+        opacity={0.58}
         pressBehavior="close"
         accessibilityLabel={s.common.close}
         accessibilityRole="button"
@@ -337,10 +500,14 @@ export function DepartureTimeSheet({
     });
   }, [openedAt, s, maxDayOffset]);
 
+  const ModeIcon = mode === 'arrival' ? Flag : Clock3;
+
   return (
     <BottomSheet
+      ref={sheetRef}
       index={0}
-      snapPoints={[sheetHeight]}
+      snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
       handleComponent={SheetHandle}
       bottomInset={insets.bottom}
       enableDynamicSizing={false}
@@ -352,17 +519,46 @@ export function DepartureTimeSheet({
     >
       <View style={{ height: sheetHeight - HANDLE_HEIGHT }} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">
-            {s.timeSheet.title}
-          </Text>
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel={s.common.close}
-            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
-          >
-            <X size={22} color={scheme.onSurfaceVariant} />
-          </Pressable>
+          <View style={styles.headerTitleGroup}>
+            <View style={styles.headerIconBadge}>
+              <ModeIcon size={18} color={scheme.onPrimaryContainer} />
+            </View>
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+              {s.timeSheet.title}
+            </Text>
+          </View>
+
+          <View style={styles.headerActions}>
+            {isCustomState && (
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(140)}
+                exiting={reduceMotion ? undefined : FadeOut.duration(100)}
+              >
+                <SpringPressable
+                  onPress={handleSetNow}
+                  scaleDelta={0.04}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityLabel={s.common.now}
+                  hitSlop={4}
+                  style={styles.resetNowBtn}
+                >
+                  <Text style={styles.resetNowText}>{s.common.now}</Text>
+                </SpringPressable>
+              </Animated.View>
+            )}
+
+            <SpringPressable
+              onPress={requestClose}
+              scaleDelta={0.06}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={s.common.close}
+              style={styles.closeBtn}
+            >
+              <X size={20} color={scheme.onSurface} />
+            </SpringPressable>
+          </View>
         </View>
 
         <ScrollView
@@ -372,50 +568,14 @@ export function DepartureTimeSheet({
           nestedScrollEnabled
           overScrollMode="never"
         >
-          <View
-            style={[styles.modeSelector, compact && styles.modeSelectorCompact]}
-            accessibilityRole="tablist"
-          >
-            {(
-              [
-                { value: 'departure', label: s.timeSheet.modeDeparture },
-                { value: 'arrival', label: s.timeSheet.modeArrival },
-              ] as const
-            ).map((option) => {
-              const active = mode === option.value;
-              return (
-                <Pressable
-                  key={option.value}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => {
-                    setMode(option.value);
-                    if (option.value === 'arrival') {
-                      setIsNow(false);
-                      if (dayOffset === 0 && hour * 3600 + minute * 60 <= nowSec) {
-                        const targetSec = nowSec + 30 * 60;
-                        setHour(Math.floor(targetSec / 3600) % 24);
-                        setMinute(Math.floor((targetSec % 3600) / 60));
-                        if (targetSec >= 86400) setDayOffset(1);
-                      }
-                    }
-                  }}
-                  style={({ pressed }) => [
-                    styles.modeTab,
-                    active && styles.modeTabActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  {active && (
-                    <Check size={18} color={scheme.onPrimaryContainer} accessible={false} />
-                  )}
-                  <Text style={[styles.modeText, active && styles.presetTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ModeSegment
+            mode={mode}
+            compact={compact}
+            departureLabel={s.timeSheet.modeDeparture}
+            arrivalLabel={s.timeSheet.modeArrival}
+            onSelect={handleModeChange}
+          />
+
           <View style={[styles.presetsRow, compact && styles.presetsCompact]}>
             {(mode === 'departure'
               ? [
@@ -431,60 +591,63 @@ export function DepartureTimeSheet({
                   { label: s.common.add60, action: () => handleQuickAdd(60), active: false },
                 ]
             ).map((preset) => (
-              <Pressable
+              <SpringPressable
                 key={preset.label}
                 onPress={preset.action}
+                scaleDelta={0.035}
+                haptic="selection"
                 accessibilityRole="button"
                 accessibilityState={{ selected: preset.active }}
-                style={({ pressed }) => [
+                style={[
                   styles.preset,
                   compact && styles.presetCompact,
                   preset.active && styles.presetActive,
-                  pressed && styles.pressed,
                 ]}
               >
                 <Text style={[styles.presetText, preset.active && styles.presetTextActive]}>
                   {preset.label}
                 </Text>
-              </Pressable>
+              </SpringPressable>
             ))}
           </View>
 
           <ScrollView
+            ref={dayScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             overScrollMode="never"
-            contentContainerStyle={[styles.daySelector, compact && styles.daySelectorCompact]}
+            contentContainerStyle={styles.daySelector}
           >
             {days.map((option) => {
               const active = dayOffset === option.value;
               return (
-                <Pressable
+                <SpringPressable
                   key={option.value}
                   onPress={() => {
                     setDayOffset(option.value);
                     setIsNow(false);
                   }}
+                  scaleDelta={0.035}
+                  haptic="selection"
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.dayTab,
-                    active && styles.dayTabActive,
-                    pressed && styles.pressed,
-                  ]}
+                  style={[styles.dayTab, active && styles.dayTabActive]}
                 >
-                  <Text style={[styles.dayLabel, active && styles.dayLabelActive]}>
+                  <Text
+                    style={[styles.dayLabel, active && styles.dayLabelActive]}
+                    numberOfLines={1}
+                  >
                     {option.label}
                   </Text>
-                  <Text style={[styles.dayDate, active && styles.dayDateActive]}>
+                  <Text style={[styles.dayDate, active && styles.dayDateActive]} numberOfLines={1}>
                     {option.date}
                   </Text>
-                </Pressable>
+                </SpringPressable>
               );
             })}
           </ScrollView>
 
-          <View style={styles.timePicker}>
+          <View style={styles.wheelCard}>
             <View style={styles.labelsRow}>
               <Text style={styles.wheelColLabel}>{s.timeSheet.hourLabel}</Text>
               <View style={styles.colonSpace} />
@@ -519,72 +682,95 @@ export function DepartureTimeSheet({
                 }}
               />
             </View>
-          </View>
 
-          <View style={[styles.presetsRow, compact && styles.presetsCompact]}>
-            {[0, 15, 30, 45].map((value) => {
-              const active = !isNow && minute === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => {
-                    setIsNow(false);
-                    setMinute(value);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.timeSheet.minutePreset(pad(value))}
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.minutePreset,
-                    compact && styles.presetCompact,
-                    active && styles.minutePresetActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[styles.minutePresetText, active && styles.presetTextActive]}>
-                    :{pad(value)}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <View style={[styles.minutePresetsRow, compact && styles.presetsCompact]}>
+              {[0, 15, 30, 45].map((value) => {
+                const active = !isNow && minute === value;
+                return (
+                  <SpringPressable
+                    key={value}
+                    onPress={() => {
+                      setIsNow(false);
+                      setMinute(value);
+                    }}
+                    scaleDelta={0.035}
+                    haptic="selection"
+                    accessibilityRole="button"
+                    accessibilityLabel={s.timeSheet.minutePreset(pad(value))}
+                    accessibilityState={{ selected: active }}
+                    style={[
+                      styles.minutePreset,
+                      compact && styles.presetCompact,
+                      active && styles.minutePresetActive,
+                    ]}
+                  >
+                    <Text
+                      style={[styles.minutePresetText, active && styles.minutePresetTextActive]}
+                    >
+                      :{pad(value)}
+                    </Text>
+                  </SpringPressable>
+                );
+              })}
+            </View>
           </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        <Animated.View
+          style={styles.footer}
+          layout={reduceMotion ? undefined : LinearTransition.springify().damping(24).stiffness(320)}
+        >
           {isPast ? (
-            <View style={styles.warningBox}>
+            <Animated.View
+              key="past"
+              entering={reduceMotion ? undefined : FadeIn.duration(160)}
+              exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+              style={styles.warningBox}
+            >
               <View style={styles.warningLeft}>
-                <AlertCircle size={16} color={scheme.warning} />
+                <AlertCircle size={17} color={scheme.onWarningContainer} />
                 <Text style={styles.warningText}>{s.timeSheet.pastWarning}</Text>
               </View>
-              <Pressable
+              <SpringPressable
                 onPress={() => {
                   setDayOffset(1);
                   setIsNow(false);
                 }}
+                scaleDelta={0.04}
+                haptic="selection"
                 accessibilityRole="button"
                 accessibilityLabel={s.timeSheet.switchTomorrow}
-                hitSlop={8}
-                style={({ pressed }) => [styles.warningAction, pressed && { opacity: 0.8 }]}
+                style={styles.warningAction}
               >
                 <Text style={styles.warningActionText}>{s.timeSheet.switchTomorrow}</Text>
-              </Pressable>
-            </View>
+              </SpringPressable>
+            </Animated.View>
           ) : (
-            <Text style={styles.selection} accessibilityLiveRegion="polite">
-              {selection}
-            </Text>
+            <Animated.View
+              key="summary"
+              entering={reduceMotion ? undefined : FadeIn.duration(140)}
+              exiting={reduceMotion ? undefined : FadeOut.duration(100)}
+              style={styles.selectionPill}
+            >
+              <ModeIcon size={15} color={scheme.primary} />
+              <Text style={styles.selection} accessibilityLiveRegion="polite" numberOfLines={1}>
+                {selection}
+              </Text>
+            </Animated.View>
           )}
-          <Pressable
+
+          <SpringPressable
             onPress={handleConfirm}
+            scaleDelta={0.02}
+            haptic="light"
             accessibilityRole="button"
             accessibilityLabel={s.timeSheet.confirmAction}
             accessibilityHint={selection}
-            style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
+            style={styles.confirmBtn}
           >
             <Text style={styles.confirmText}>{s.timeSheet.confirmAction}</Text>
-          </Pressable>
-        </View>
+          </SpringPressable>
+        </Animated.View>
       </View>
     </BottomSheet>
   );
@@ -594,170 +780,364 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainer,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
-  handleContainer: { height: HANDLE_HEIGHT, alignItems: 'center', justifyContent: 'center' },
-  handle: { backgroundColor: scheme.outlineVariant, width: 36, height: 4, borderRadius: 2 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingLeft: 24,
-    paddingRight: 14,
-    paddingBottom: 12,
-  },
-  title: { ...type.titleLarge, fontWeight: '500', color: scheme.onSurface, flex: 1 },
-  closeBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.medium,
+  handleContainer: {
+    height: HANDLE_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressed: { backgroundColor: scheme.surfaceContainerHighest },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 24, paddingBottom: 24, gap: 24 },
+  handle: {
+    backgroundColor: scheme.outlineVariant,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingLeft: 20,
+    paddingRight: 16,
+    paddingBottom: 14,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  headerIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: scheme.onSurface,
+    flexShrink: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  resetNowBtn: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetNowText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  closeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    gap: 16,
+  },
   modeSelector: {
     flexDirection: 'row',
     padding: 4,
-    gap: 4,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    overflow: 'hidden',
   },
-  modeSelectorCompact: { flexDirection: 'column' },
+  modeIndicator: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    bottom: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    zIndex: 0,
+  },
   modeTab: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    borderRadius: shape.full,
+    zIndex: 1,
+  },
+  modeSelectorCompact: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  modeTabCompact: {
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: shape.medium,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
   },
-  modeTabActive: { backgroundColor: scheme.primaryContainer },
+  modeTabCompactActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
   modeText: {
     ...type.labelLarge,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     flexShrink: 1,
   },
-  presetsRow: { flexDirection: 'row', gap: 8 },
-  presetsCompact: { flexWrap: 'wrap' },
+  modeTextActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
+  },
+  presetsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  presetsCompact: {
+    flexWrap: 'wrap',
+  },
   preset: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHigh,
+    minHeight: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 10,
+    paddingHorizontal: 8,
   },
-  presetCompact: { flexBasis: '45%', flexGrow: 1 },
-  presetActive: { backgroundColor: scheme.primaryContainer },
+  presetCompact: {
+    flexBasis: '45%',
+    flexGrow: 1,
+  },
+  presetActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
   presetText: {
     ...type.labelLarge,
-    fontWeight: '500',
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
     textAlign: 'center',
   },
-  presetTextActive: { color: scheme.onPrimaryContainer },
-  daySelector: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  // Poziomy pasek chipów dni: w wąskim oknie też zostaje w rzędzie
-  // (scroll w bok), a nie kolumną 14 kart.
-  daySelectorCompact: { flexDirection: 'row' },
+  presetTextActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
+  },
+  daySelector: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
+  },
   dayTab: {
-    minWidth: 86,
-    minHeight: 76,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainer,
-    padding: 16,
-    gap: 4,
+    minWidth: 78,
+    minHeight: 62,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayTabActive: { backgroundColor: scheme.primaryContainer },
-  dayLabel: { ...type.titleMedium, fontWeight: '500', color: scheme.onSurface },
-  dayLabelActive: { color: scheme.onPrimaryContainer },
-  dayDate: { ...type.bodyMedium, color: scheme.onSurfaceVariant },
-  dayDateActive: { color: scheme.onPrimaryContainer },
-  timePicker: { gap: 8 },
-  labelsRow: { flexDirection: 'row', alignItems: 'center' },
+  dayTabActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
+  dayLabel: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  dayLabelActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '800',
+  },
+  dayDate: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  dayDateActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '600',
+  },
+  wheelCard: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  labelsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   wheelColLabel: {
     flex: 1,
-    ...type.bodyMedium,
+    ...type.labelSmall,
+    fontWeight: '700',
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
-  colonSpace: { width: 24 },
-  wheelsRow: { flexDirection: 'row', alignItems: 'center' },
-  wheelCol: { flex: 1, minWidth: 0 },
+  colonSpace: {
+    width: 24,
+  },
+  wheelsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  wheelCol: {
+    flex: 1,
+    minWidth: 0,
+  },
   wheelHighlight: {
     position: 'absolute',
     left: 0,
     right: 0,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
+    backgroundColor: scheme.primaryContainer,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.primary + '55',
   },
-  wheelItem: { alignItems: 'center', justifyContent: 'center', borderRadius: shape.medium },
+  wheelItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  wheelItemPressed: {
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
   wheelItemText: {
     fontSize: 22,
-    fontWeight: '400',
+    fontWeight: '500',
     color: scheme.onSurfaceVariant,
+    opacity: 0.72,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
   },
   wheelItemTextActive: {
-    fontSize: 40,
-    fontWeight: '600',
-    color: scheme.onSurface,
-    letterSpacing: -1,
+    fontSize: 34,
+    fontWeight: '800',
+    color: scheme.onPrimaryContainer,
+    opacity: 1,
+    letterSpacing: -0.8,
   },
   wheelColon: {
     width: 24,
-    fontSize: 32,
-    fontWeight: '500',
-    color: scheme.onSurfaceVariant,
+    fontSize: 28,
+    fontWeight: '800',
+    color: scheme.onPrimaryContainer,
     textAlign: 'center',
     includeFontPadding: false,
   },
+  minutePresetsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+  },
   minutePreset: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: shape.medium,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
-  minutePresetActive: { backgroundColor: scheme.primaryContainer },
+  minutePresetActive: {
+    backgroundColor: scheme.secondaryContainer,
+  },
   minutePresetText: {
-    ...type.bodyMedium,
+    ...type.labelLarge,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
   },
+  minutePresetTextActive: {
+    color: scheme.onSecondaryContainer,
+    fontWeight: '800',
+  },
   footer: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: 20,
+    paddingTop: 14,
     paddingBottom: 16,
     gap: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
-  selection: { ...type.bodyMedium, color: scheme.onSurfaceVariant, textAlign: 'center' },
+  selectionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  selection: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
+  },
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.warningContainer,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: shape.large,
+    borderRadius: 18,
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
   },
   warningLeft: {
     flexDirection: 'row',
@@ -767,36 +1147,35 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    fontWeight: '500',
+    color: scheme.onWarningContainer,
+    fontWeight: '600',
     flex: 1,
   },
   warningAction: {
-    minHeight: 38,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 6,
     borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
+    backgroundColor: scheme.surfaceContainer,
   },
   warningActionText: {
-    ...type.labelSmall,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '600',
+    ...type.labelMedium,
+    color: scheme.onSurface,
+    fontWeight: '700',
   },
   confirmBtn: {
-    minHeight: 56,
+    minHeight: 54,
     paddingHorizontal: 20,
-    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.primary,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
   },
   confirmText: {
     ...type.labelLarge,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '800',
     color: scheme.onPrimary,
     textAlign: 'center',
   },

@@ -1,37 +1,33 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   Pressable,
+  type GestureResponderEvent,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import Animated, {
-  ReduceMotion,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { motion } from '../theme/motion';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-const SPRING_CONFIG = {
-  damping: 24,
-  stiffness: 420,
-  reduceMotion: ReduceMotion.System,
-} as const;
 
 export interface SpringPressableProps extends Omit<PressableProps, 'style'> {
   style?: StyleProp<ViewStyle>;
   scaleDelta?: number;
   opacityDelta?: number;
+  haptic?: 'selection' | 'light' | false;
 }
 
+/** Przycisk z natychmiastową, sprężystą reakcją M3 Expressive na wątku UI. */
 export function SpringPressable({
   children,
   style,
   scaleDelta = 0.025,
-  opacityDelta = 0.1,
+  opacityDelta = 0.08,
+  haptic = false,
   disabled,
+  onPress,
   onPressIn,
   onPressOut,
   ...rest
@@ -43,22 +39,45 @@ export function SpringPressable({
     opacity: 1 - press.value * opacityDelta,
   }));
 
-  const setPressed = (val: number) => {
-    press.value = withSpring(val, SPRING_CONFIG);
-  };
+  const handlePressIn = useCallback(
+    (e: GestureResponderEvent) => {
+      if (!disabled) {
+        press.value = withSpring(1, motion.spring.press);
+      }
+      onPressIn?.(e);
+    },
+    [disabled, onPressIn, press],
+  );
+
+  const handlePressOut = useCallback(
+    (e: GestureResponderEvent) => {
+      press.value = withSpring(0, motion.spring.press);
+      onPressOut?.(e);
+    },
+    [onPressOut, press],
+  );
+
+  const handlePress = useCallback(
+    (e: GestureResponderEvent) => {
+      if (!disabled && haptic) {
+        if (haptic === 'selection') {
+          void Haptics.selectionAsync().catch(() => {});
+        } else {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }
+      }
+      onPress?.(e);
+    },
+    [disabled, haptic, onPress],
+  );
 
   return (
     <AnimatedPressable
       {...rest}
       disabled={disabled}
-      onPressIn={(e) => {
-        if (!disabled) setPressed(1);
-        onPressIn?.(e);
-      }}
-      onPressOut={(e) => {
-        setPressed(0);
-        onPressOut?.(e);
-      }}
+      onPress={onPress ? handlePress : undefined}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       style={[animStyle, style]}
     >
       {children}

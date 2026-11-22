@@ -47,6 +47,8 @@ export interface Leg {
   toLon?: number;
   platformCode?: string;
   trackCode?: string;
+  fromEntrance?: import('../../types/models').MetroEntranceRef;
+  toEntrance?: import('../../types/models').MetroEntranceRef;
   railAgency?: string;
   railLine?: string;
   railColor?: string;

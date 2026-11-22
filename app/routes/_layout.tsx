@@ -1,31 +1,30 @@
+import { useMemo } from 'react';
 import { Stack } from 'expo-router';
-import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { scheme } from '../../src/theme/tokens';
 
+/** Stos ekranów wyników i szczegółów trasy z kierunkowym przejściem M3 Expressive. */
 export default function RoutesLayout() {
   const reduceMotion = useReducedMotion();
+
+  const screenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      contentStyle: { backgroundColor: scheme.surface },
+      animation: (reduceMotion ? 'none' : 'slide_from_right') as 'none' | 'slide_from_right',
+      animationDuration: 220,
+      animationMatchesGesture: true,
+      gestureEnabled: true,
+      gestureDirection: 'horizontal' as const,
+      fullScreenGestureEnabled: true,
+    }),
+    [reduceMotion],
+  );
+
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: scheme.surface },
-        animation: reduceMotion ? 'none' : Platform.OS === 'android' ? 'fade_from_bottom' : 'slide_from_right',
-        animationDuration: 200,
-        animationMatchesGesture: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        fullScreenGestureEnabled: true,
-      }}
-    >
+    <Stack screenOptions={screenOptions}>
       <Stack.Screen name="index" />
-      <Stack.Screen
-        name="[id]"
-        options={{
-          animation: reduceMotion ? 'none' : 'fade',
-          animationDuration: 200,
-        }}
-      />
+      <Stack.Screen name="[id]" />
     </Stack>
   );
 }
