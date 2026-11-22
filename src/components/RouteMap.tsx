@@ -14,8 +14,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebMapFrame, type WebMapFrameHandle } from './WebMapFrame';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
 import { mapDocumentSource } from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
@@ -173,6 +174,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   ref,
 ) {
   const webRef = useRef<WebView>(null);
+  const webFrameRef = useRef<WebMapFrameHandle>(null);
   const firstLoad = useRef(true);
 
   const resolvedPadding = useMemo<[number, number, number, number]>(() => {
@@ -230,6 +232,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   }, [hasRoute, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
 
   const send = useCallback((msg: MapInMessage) => {
+    if (Platform.OS === 'web') {
+      webFrameRef.current?.postMessage(JSON.stringify(msg));
+      return;
+    }
     webRef.current?.injectJavaScript(
       `window.dispatchEvent(new MessageEvent('message',{data:${JSON.stringify(JSON.stringify(msg))}}));true;`,
     );
@@ -302,11 +308,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     sendSelect();
   }, [sendSelect]);
 
-  const handleMessage = useCallback(
-    (event: WebViewMessageEvent) => {
+  const handleRawMessage = useCallback(
+    (raw: string) => {
       let msg: MapOutMessage;
       try {
-        msg = JSON.parse(event.nativeEvent.data) as MapOutMessage;
+        msg = JSON.parse(raw) as MapOutMessage;
       } catch {
         return;
       }
@@ -368,6 +374,26 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       showPoi,
     ],
   );
+
+  const handleMessage = useCallback(
+    (event: WebViewMessageEvent) => handleRawMessage(event.nativeEvent.data),
+    [handleRawMessage],
+  );
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.wrap}>
+        <WebMapFrame
+          key={attempt}
+          ref={webFrameRef}
+          html={html}
+          title="Mapa trasy"
+          onMessage={handleRawMessage}
+          onError={() => onError?.('map-load-failed')}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>

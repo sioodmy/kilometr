@@ -18,7 +18,6 @@ import BottomSheet, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, Copy, Download, ImageUp, Link, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
-import { captureRef } from 'react-native-view-shot';
 import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, getLocaleSync } from '../i18n';
@@ -94,7 +93,21 @@ export function ShareConnectionSheet({
     }
   }
 
+  async function shareWebLink() {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: s.title, text: message, url });
+        return;
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      }
+    }
+    await Clipboard.setStringAsync(message);
+    setCopied(true);
+  }
+
   async function shareCard() {
+    const { captureRef } = await import('react-native-view-shot');
     const data = await captureRef(card, { format: 'png', result: 'base64' });
     const { default: NativeShare } = await import('react-native-share');
     await NativeShare.open({
@@ -111,9 +124,10 @@ export function ShareConnectionSheet({
   /** Zapisuje kartę jako PNG przez systemowy wybór miejsca (SAF na Androidzie, pliki na iOS). */
   async function downloadCard() {
     if (Platform.OS === 'web') {
-      await Share.share({ message });
+      await shareWebLink();
       return;
     }
+    const { captureRef } = await import('react-native-view-shot');
     const data = await captureRef(card, { format: 'png', result: 'base64' });
     const FileSystem = await import('expo-file-system/legacy');
     const path = `${FileSystem.cacheDirectory ?? ''}kilometr-karta.png`;
@@ -179,7 +193,7 @@ export function ShareConnectionSheet({
           )}
           <Pressable
             onPress={() =>
-              void run(Platform.OS === 'web' ? () => Share.share({ message }) : shareCard)
+              void run(Platform.OS === 'web' ? shareWebLink : shareCard)
             }
             disabled={busy || !available}
             accessibilityRole="button"
@@ -241,7 +255,13 @@ export function ShareConnectionSheet({
             </Pressable>
           </View>
           <Pressable
-            onPress={() => void run(() => Share.share({ title: s.title, message }))}
+            onPress={() =>
+              void run(
+                Platform.OS === 'web'
+                  ? shareWebLink
+                  : () => Share.share({ title: s.title, message }),
+              )
+            }
             disabled={busy || !available}
             accessibilityRole="button"
             accessibilityState={{ disabled: busy || !available }}
