@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Dimensions,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -17,182 +18,62 @@ import BottomSheet, {
   BottomSheetTextInput,
   useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
-import { motion } from '../theme/motion';
+import Animated, {
+  FadeIn,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
 // W arkuszu poziome listy wymagają ScrollView z gesture-handlera.
 import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Anchor,
-  Baby,
-  Beer,
-  Bike,
-  Briefcase,
-  BusFront,
-  CarFront,
   Check,
   ChevronLeft,
-  Church,
-  Clapperboard,
-  Coffee,
-  Compass,
-  CreditCard,
-  Dumbbell,
-  Fuel,
-  Gamepad2,
-  GraduationCap,
-  Heart,
-  Home,
-  Hospital,
-  Landmark,
-  Laptop,
-  Library,
+  ChevronRight,
   MapPin,
-  Mountain,
-  Music,
-  Package,
-  PawPrint,
   Pencil,
-  Pill,
-  Pizza,
-  Plane,
-  Sandwich,
-  Scissors,
   Search,
-  Ship,
-  ShoppingBag,
-  ShoppingCart,
-  Sparkles,
-  Star,
-  Stethoscope,
-  Store,
-  Tent,
-  Theater,
-  Ticket,
-  Train,
-  TramFront,
   Trash2,
   TriangleAlert,
-  Trees,
-  Trophy,
-  University,
-  Users,
-  UtensilsCrossed,
-  Waves,
-  Wine,
   X,
 } from './icons';
-import { scheme, shape, type } from '../theme/tokens';
+import { SpringPressable } from './SpringPressable';
+import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
+import { getSuggestionIconMeta, SuggestionRow } from './SuggestionRow';
+import { motion } from '../theme/motion';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
 import { SearchService, fetchNearestStops, type NearestStop } from '../services';
 import { getCurrentLocationSnapshot } from '../services/currentLocation';
-import { SuggestionRow } from './SuggestionRow';
-import { useStrings, type Strings } from '../i18n';
+import {
+  buildQuickIcons,
+  filterPlaceIcons,
+  PLACE_ICON_CATALOG,
+  PLACE_ICON_CATEGORY_KEYS,
+  placeIconTone,
+  suggestPlaceIcon,
+  type PlaceIconCategory,
+  type PlaceIconMeta,
+} from '../services/placeIcons';
+import { useStrings } from '../i18n';
 
-export type PlaceIconCategory =
-  | 'all'
-  | 'frequent'
-  | 'transit'
-  | 'food'
-  | 'health'
-  | 'culture'
-  | 'sport'
-  | 'services';
+type SheetView = 'form' | 'location' | 'icon' | 'anchor';
 
-export interface PlaceIconItem {
-  key: SavedPlaceIcon;
-  label: string;
-  icon: any;
-  category: Exclude<PlaceIconCategory, 'all'>;
-  keywords: string[];
+function segmentFor(index: number, total: number): 'single' | 'first' | 'middle' | 'last' {
+  if (total <= 1) return 'single';
+  if (index === 0) return 'first';
+  if (index === total - 1) return 'last';
+  return 'middle';
 }
 
-const PLACE_ICON_CATEGORY_KEYS: PlaceIconCategory[] = [
-  'all',
-  'frequent',
-  'transit',
-  'food',
-  'health',
-  'culture',
-  'sport',
-  'services',
-];
-
-function getPlaceIconCategories(s: Strings): { key: PlaceIconCategory; label: string }[] {
-  return PLACE_ICON_CATEGORY_KEYS.map((key) => ({ key, label: s.places.iconCategories[key] }));
-}
-
-const PLACE_ICON_OPTIONS: PlaceIconItem[] = [
-  // Codzienne / Częste
-  { key: 'home', label: 'Dom', icon: Home, category: 'frequent', keywords: ['dom', 'mieszkanie', 'pokój', 'chata', 'house'] },
-  { key: 'work', label: 'Praca', icon: Briefcase, category: 'frequent', keywords: ['praca', 'biuro', 'firma', 'robota', 'office', 'job'] },
-  { key: 'school', label: 'Szkoła', icon: GraduationCap, category: 'frequent', keywords: ['szkoła', 'liceum', 'technikum', 'podstawówka', 'edukacja'] },
-  { key: 'university', label: 'Uczelnia', icon: University, category: 'frequent', keywords: ['uczelnia', 'studia', 'uniwersytet', 'politechnika', 'akademia', 'wydział', 'kampus'] },
-  { key: 'gym', label: 'Siłownia', icon: Dumbbell, category: 'sport', keywords: ['siłownia', 'fitness', 'trening', 'sport', 'crossfit', 'siłka'] },
-  { key: 'coffee', label: 'Kawiarnia', icon: Coffee, category: 'food', keywords: ['kawiarnia', 'kawa', 'cafe', 'espresso', 'herbata', 'ciastko'] },
-  { key: 'shopping', label: 'Sklep', icon: ShoppingBag, category: 'frequent', keywords: ['sklep', 'zakupy', 'galeria', 'mall', 'butik'] },
-  { key: 'star', label: 'Ulubione', icon: Star, category: 'frequent', keywords: ['ulubione', 'gwiazdka', 'top', 'ważne'] },
-  { key: 'heart', label: 'Ważne', icon: Heart, category: 'frequent', keywords: ['ważne', 'serce', 'rodzina', 'partner', 'miłość'] },
-  { key: 'friends', label: 'Znajomi', icon: Users, category: 'frequent', keywords: ['znajomi', 'przyjaciele', 'ekipa', 'ludzie'] },
-
-  // Podróż i transport
-  { key: 'train', label: 'Dworzec PKP', icon: Train, category: 'transit', keywords: ['pociąg', 'dworzec', 'pkp', 'kolej', 'stacja', 'intercity', 'polregio'] },
-  { key: 'tram', label: 'Tramwaj', icon: TramFront, category: 'transit', keywords: ['tramwaj', 'mpk', 'przystanek', 'szyny', 'pętla'] },
-  { key: 'bus', label: 'Autobus', icon: BusFront, category: 'transit', keywords: ['autobus', 'mpk', 'przystanek', 'dworzec', 'pks'] },
-  { key: 'plane', label: 'Lotnisko', icon: Plane, category: 'transit', keywords: ['lotnisko', 'samolot', 'terminal', 'airport'] },
-  { key: 'bike', label: 'Rower', icon: Bike, category: 'transit', keywords: ['rower', 'ścieżka', 'stacja rowerowa', 'wr'] },
-  { key: 'car', label: 'Samochód', icon: CarFront, category: 'transit', keywords: ['samochód', 'auto', 'parking', 'garaż'] },
-  { key: 'fuel', label: 'Stacja paliw', icon: Fuel, category: 'transit', keywords: ['stacja', 'paliwo', 'orlen', 'shell', 'benzyna', 'diesel'] },
-  { key: 'ship', label: 'Prom / Port', icon: Ship, category: 'transit', keywords: ['prom', 'statek', 'odra', 'port', 'przystań', 'kajaki'] },
-  { key: 'compass', label: 'Orientacja', icon: Compass, category: 'transit', keywords: ['orientacja', 'punkt', 'kompas', 'cel'] },
-
-  // Jedzenie i napoje
-  { key: 'restaurant', label: 'Restauracja', icon: UtensilsCrossed, category: 'food', keywords: ['restauracja', 'jedzenie', 'obiad', 'lunch', 'kolacja'] },
-  { key: 'pizza', label: 'Pizzeria', icon: Pizza, category: 'food', keywords: ['pizza', 'włoska', 'pizzeria', 'jedzenie'] },
-  { key: 'sandwich', label: 'Bistro', icon: Sandwich, category: 'food', keywords: ['bistro', 'kanapka', 'piekarnia', 'śniadanie', 'fastfood'] },
-  { key: 'beer', label: 'Pub / Piwo', icon: Beer, category: 'food', keywords: ['pub', 'piwo', 'bar', 'browar', 'kraft'] },
-  { key: 'wine', label: 'Bar / Wino', icon: Wine, category: 'food', keywords: ['wino', 'bar', 'drinki', 'klub', 'cocktail'] },
-  { key: 'market', label: 'Rynek / Targ', icon: Store, category: 'food', keywords: ['rynek', 'targ', 'hala', 'bazar', 'warzywniak', 'market'] },
-  { key: 'cart', label: 'Supermarket', icon: ShoppingCart, category: 'food', keywords: ['supermarket', 'market', 'biedronka', 'lidl', 'dino', 'auchan', 'koszyk'] },
-
-  // Zdrowie i uroda
-  { key: 'pharmacy', label: 'Apteka', icon: Pill, category: 'health', keywords: ['apteka', 'leki', 'farmacja', 'zdrowie', 'recepta'] },
-  { key: 'hospital', label: 'Szpital', icon: Hospital, category: 'health', keywords: ['szpital', 'sor', 'klinika', 'zdrowie', 'pogotowie'] },
-  { key: 'doctor', label: 'Przychodnia', icon: Stethoscope, category: 'health', keywords: ['lekarz', 'przychodnia', 'doktor', 'badania', 'medycyna', 'nfz'] },
-  { key: 'scissors', label: 'Fryzjer', icon: Scissors, category: 'health', keywords: ['fryzjer', 'barber', 'salon', 'włosy', 'strzyżenie'] },
-  { key: 'sparkles', label: 'Uroda / Spa', icon: Sparkles, category: 'health', keywords: ['uroda', 'spa', 'kosmetyczka', 'paznokcie', 'relaks', 'masaż'] },
-
-  // Kultura i rozrywka
-  { key: 'cinema', label: 'Kino', icon: Clapperboard, category: 'culture', keywords: ['kino', 'film', 'seans', 'cinema', 'multikino', 'helios'] },
-  { key: 'theater', label: 'Teatr', icon: Theater, category: 'culture', keywords: ['teatr', 'spektakl', 'opera', 'filharmonia', 'sztuka'] },
-  { key: 'culture', label: 'Muzeum', icon: Landmark, category: 'culture', keywords: ['muzeum', 'galeria', 'wystawa', 'sztuka', 'zabytek'] },
-  { key: 'library', label: 'Biblioteka', icon: Library, category: 'culture', keywords: ['biblioteka', 'książki', 'czytelnia', 'nauka'] },
-  { key: 'music', label: 'Muzyka', icon: Music, category: 'culture', keywords: ['muzyka', 'koncert', 'klub', 'festiwal', 'zespół'] },
-  { key: 'ticket', label: 'Wydarzenie', icon: Ticket, category: 'culture', keywords: ['wydarzenie', 'bilet', 'impreza', 'targi', 'koncert'] },
-  { key: 'gamepad', label: 'Rozrywka', icon: Gamepad2, category: 'culture', keywords: ['gry', 'vr', 'arcade', 'kręgle', 'bilard', 'planszówki'] },
-
-  // Sport i rekreacja
-  { key: 'park', label: 'Park', icon: Trees, category: 'sport', keywords: ['park', 'las', 'drzewa', 'spacer', 'zieleń', 'ogród'] },
-  { key: 'mountain', label: 'Góry', icon: Mountain, category: 'sport', keywords: ['góry', 'szlak', 'wspinaczka', 'wycieczka', 'tatry', 'karkonosze'] },
-  { key: 'tent', label: 'Kemping', icon: Tent, category: 'sport', keywords: ['kemping', 'namiot', 'biwak', 'las', 'ognisko'] },
-  { key: 'trophy', label: 'Stadion', icon: Trophy, category: 'sport', keywords: ['stadion', 'mecz', 'zawody', 'hala', 'boisko', 'turniej'] },
-  { key: 'swimming', label: 'Basen / Plaża', icon: Waves, category: 'sport', keywords: ['basen', 'aquapark', 'plaża', 'pływanie', 'woda'] },
-
-  // Społeczność i usługi
-  { key: 'church', label: 'Kościół', icon: Church, category: 'services', keywords: ['kościół', 'parafia', 'msza', 'kaplica', 'katedra'] },
-  { key: 'baby', label: 'Przedszkole', icon: Baby, category: 'services', keywords: ['przedszkole', 'żłobek', 'dzieci', 'dziecko', 'maluch'] },
-  { key: 'pet', label: 'Zwierzak', icon: PawPrint, category: 'services', keywords: ['zwierzak', 'pies', 'kot', 'pupil', 'weterynarz'] },
-  { key: 'hotel', label: 'Hotel', icon: Landmark, category: 'services', keywords: ['hotel', 'hostel', 'nocleg', 'apartament', 'pokoje'] },
-  { key: 'bank', label: 'Bank / Bankomat', icon: CreditCard, category: 'services', keywords: ['bank', 'bankomat', 'pieniądze', 'karta', 'finanse', 'wpłatomat'] },
-  { key: 'post', label: 'Poczta / Paczka', icon: Package, category: 'services', keywords: ['poczta', 'inpost', 'paczkomat', 'kurier', 'paczka', 'list'] },
-  { key: 'laptop', label: 'Coworking', icon: Laptop, category: 'services', keywords: ['coworking', 'biuro', 'komputer', 'praca zdalna', 'desk'] },
-  { key: 'mapPin', label: 'Inne', icon: MapPin, category: 'services', keywords: ['inne', 'punkt', 'adres', 'miejsce', 'cel'] },
-];
-
-/** Wariant z etykietami w języku użytkownika (UI); keywords zostają wielojęzyczne jak wyżej. */
-function getPlaceIconOptions(s: Strings): PlaceIconItem[] {
-  return PLACE_ICON_OPTIONS.map((o) => ({ ...o, label: s.places.iconName[o.key] ?? o.label }));
-}
-
+/**
+ * Arkusz dodawania i edycji zapisanego miejsca w stylu M3 Expressive.
+ * Automatycznie proponuje ikonę z lokalizacji/nazwy bez prefillowania pola nazwy.
+ */
 export function AddPlaceSheet({
   initialPlace,
   onClose,
@@ -217,26 +98,32 @@ export function AddPlaceSheet({
   onDelete?: (id: string) => void;
 }) {
   const sheetRef = useRef<BottomSheet>(null);
-  // Formularz kończy się przyciskiem „Zapisz”; bez insetu jest pod paskiem
-  // nawigacji i w dolnej połowie nie reaguje na dotknięcie.
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
-  const iconColumns = Math.max(2, Math.min(4, Math.floor((width - 40) / (88 * Math.max(1, fontScale)))));
-  const iconGridItemSize = (width - 40) / iconColumns;
+
+  // Liczba kolumn w katalogu ikon dostosowana do szerokości i rozmiaru czcionki.
+  const iconColumns = Math.max(3, Math.min(4, Math.floor((width - 40 + 8) / (86 * Math.max(1, fontScale * 0.92)))));
+  const iconGridGap = 8;
+  const iconTileWidth = Math.floor((width - 40 - iconGridGap * (iconColumns - 1)) / iconColumns);
+
   // Stała wysokość zapobiega przesuwaniu arkusza przez klawiaturę Androida.
   const [sheetWindowHeight] = useState(() => Dimensions.get('window').height);
   const isEditing = Boolean(initialPlace);
   const s = useStrings();
-  // Katalog ikon i kategorii w języku użytkownika (etykiety ze słownika).
-  const iconOptions = useMemo(() => getPlaceIconOptions(s), [s]);
-  const iconCategories = useMemo(() => getPlaceIconCategories(s), [s]);
 
-  const [name, setName] = useState(initialPlace?.name || '');
-  const [selectedIcon, setSelectedIcon] = useState<SavedPlaceIcon>(initialPlace?.icon || 'home');
+  const [view, setView] = useState<SheetView>(initialPlace ? 'form' : 'location');
+  const [name, setName] = useState(initialPlace?.name ?? '');
+  const [nameFocused, setNameFocused] = useState(false);
+  const [selectedIcon, setSelectedIcon] = useState<SavedPlaceIcon>(initialPlace?.icon ?? 'mapPin');
+  const [iconPickedManually, setIconPickedManually] = useState(Boolean(initialPlace));
+
   const [query, setQuery] = useState('');
+  const [locSearchFocused, setLocSearchFocused] = useState(false);
   const [searching, setSearching] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [nearbyCurrentStops, setNearbyCurrentStops] = useState<NearestStop[]>([]);
   const [selectedLoc, setSelectedLoc] = useState<Suggestion | null>(
     initialPlace
       ? {
@@ -247,28 +134,11 @@ export function AddPlaceSheet({
           lon: initialPlace.lon,
           kind: 'address',
         }
-      : null
+      : null,
   );
-  const [isChangingLoc, setIsChangingLoc] = useState(!initialPlace);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const savingRef = useRef(false);
-  // Lokalny indeks odpowiada od razu; numery zapytań odrzucają stare odpowiedzi.
-  const locSearchSeq = useRef(0);
-  const anchorSearchSeq = useRef(0);
 
-  useEffect(() => {
-    return () => {
-      ++locSearchSeq.current;
-      ++anchorSearchSeq.current;
-      SearchService.cancel('add-place-address');
-      SearchService.cancel('add-place-anchor');
-    };
-  }, []);
-
-  const [isPickingIcon, setIsPickingIcon] = useState(false);
   const [iconQuery, setIconQuery] = useState('');
+  const [iconSearchFocused, setIconSearchFocused] = useState(false);
   const [selectedIconCategory, setSelectedIconCategory] = useState<PlaceIconCategory>('all');
 
   const [anchorStop, setAnchorStop] = useState<{
@@ -284,15 +154,119 @@ export function AddPlaceSheet({
           lat: initialPlace.anchorStopLat,
           lon: initialPlace.anchorStopLon,
         }
-      : null
+      : null,
   );
-  const [isPickingAnchor, setIsPickingAnchor] = useState(false);
   const [anchorQuery, setAnchorQuery] = useState('');
+  const [anchorSearchFocused, setAnchorSearchFocused] = useState(false);
   const [anchorSuggestions, setAnchorSuggestions] = useState<Suggestion[]>([]);
   const [nearestStops, setNearestStops] = useState<NearestStop[]>([]);
   const [searchingAnchor, setSearchingAnchor] = useState(false);
 
-  const snapPoints = useMemo(() => ['78%', '96%'], []);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const savingRef = useRef(false);
+
+  // Lokalny indeks odpowiada od razu; numery zapytań odrzucają stare odpowiedzi.
+  const locSearchSeq = useRef(0);
+  const anchorSearchSeq = useRef(0);
+
+  // Delikatny spring na Hero Badge przy zmianie wybranej ikony.
+  const badgeScale = useSharedValue(1);
+  const prevIconRef = useRef<SavedPlaceIcon>(selectedIcon);
+  useEffect(() => {
+    if (prevIconRef.current !== selectedIcon) {
+      prevIconRef.current = selectedIcon;
+      if (!reduceMotion) {
+        badgeScale.value = withSequence(
+          withSpring(0.88, motion.spring.spatialFast),
+          withSpring(1, motion.spring.spatialFast),
+        );
+      }
+    }
+  }, [badgeScale, reduceMotion, selectedIcon]);
+
+  const heroBadgeAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: badgeScale.value }],
+  }));
+
+  useEffect(() => {
+    return () => {
+      ++locSearchSeq.current;
+      ++anchorSearchSeq.current;
+      SearchService.cancel('add-place-address');
+      SearchService.cancel('add-place-anchor');
+    };
+  }, []);
+
+  // Przystanki wokół obecnej pozycji GPS jako punkt startowy przy wyborze adresu.
+  useEffect(() => {
+    if (view !== 'location') return;
+    const snap = getCurrentLocationSnapshot();
+    if (snap.state !== 'ok' || !snap.location) return;
+    let live = true;
+    fetchNearestStops(snap.location.lat, snap.location.lon, 5)
+      .then((stops) => {
+        if (live) setNearbyCurrentStops(stops);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [view]);
+
+  // Automatyczna propozycja ikony z wpisanej nazwy lub wybranej lokalizacji.
+  const iconSuggestion = useMemo(
+    () => suggestPlaceIcon({ name, location: selectedLoc }),
+    [name, selectedLoc],
+  );
+
+  useEffect(() => {
+    if (iconPickedManually) return;
+    const nextIcon: SavedPlaceIcon = iconSuggestion?.icon ?? 'mapPin';
+    setSelectedIcon(nextIcon);
+  }, [iconPickedManually, iconSuggestion]);
+
+  const isAutoSuggestedIcon = !iconPickedManually && Boolean(iconSuggestion);
+
+  const iconCategories = useMemo(
+    () => PLACE_ICON_CATEGORY_KEYS.map((key) => ({ key, label: s.places.iconCategories[key] })),
+    [s.places.iconCategories],
+  );
+
+  const quickIconKeys = useMemo(
+    () => buildQuickIcons(selectedIcon, iconSuggestion?.icon ?? null),
+    [selectedIcon, iconSuggestion?.icon],
+  );
+
+  const filteredCatalogIcons = useMemo(
+    () => filterPlaceIcons(iconQuery, selectedIconCategory, s.places.iconName),
+    [iconQuery, selectedIconCategory, s.places.iconName],
+  );
+
+  // Szybkie podpowiedzi nazwy wyświetlane tylko gdy pole jest puste (bez prefillu!).
+  const quickNameChips = useMemo(() => {
+    if (name.trim() || !selectedLoc) return [];
+    const chips: string[] = [];
+    const addUnique = (label: string) => {
+      const clean = label.trim();
+      if (!clean) return;
+      if (chips.some((c) => c.toLowerCase() === clean.toLowerCase())) return;
+      chips.push(clean);
+    };
+    if (selectedLoc.kind !== 'address' && selectedLoc.title.trim()) {
+      addUnique(selectedLoc.title);
+    }
+    addUnique(s.places.iconName.home);
+    addUnique(s.places.iconName.work);
+    if (selectedLoc.kind === 'address') {
+      addUnique(s.places.iconName.university);
+      addUnique(s.places.iconName.gym);
+    }
+    return chips.slice(0, 4);
+  }, [name, selectedLoc, s.places.iconName]);
+
+  const snapPoints = useMemo(() => ['84%', '96%'], []);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -300,7 +274,7 @@ export function AddPlaceSheet({
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
-        opacity={0.5}
+        opacity={0.54}
         pressBehavior="close"
         accessibilityLabel={s.common.close}
       />
@@ -308,32 +282,40 @@ export function AddPlaceSheet({
     [s.common.close],
   );
 
-  // Android back / gest wstecz
+  // Android back / gest wstecz.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (isPickingIcon) {
-        setIsPickingIcon(false);
+      if (view === 'icon') {
+        Keyboard.dismiss();
+        setView('form');
         setIconQuery('');
         return true;
       }
-      if (isPickingAnchor) {
-        setIsPickingAnchor(false);
+      if (view === 'anchor') {
+        Keyboard.dismiss();
+        setView('form');
         setAnchorQuery('');
+        setAnchorSuggestions([]);
         return true;
       }
-      if (isChangingLoc && selectedLoc) {
-        setIsChangingLoc(false);
+      if (view === 'location' && selectedLoc) {
+        Keyboard.dismiss();
+        setView('form');
         setQuery('');
         setSuggestions([]);
+        return true;
+      }
+      if (confirmDelete) {
+        setConfirmDelete(false);
         return true;
       }
       sheetRef.current?.close();
       return true;
     });
     return () => sub.remove();
-  }, [isPickingIcon, isPickingAnchor, isChangingLoc, selectedLoc]);
+  }, [confirmDelete, selectedLoc, view]);
 
-  // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki
+  // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki pod kotwicę.
   useEffect(() => {
     let live = true;
     if (selectedLoc) {
@@ -356,11 +338,31 @@ export function AddPlaceSheet({
     };
   }, [selectedLoc?.id]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
+    Keyboard.dismiss();
     sheetRef.current?.close();
-  };
+  }, []);
 
-  const handleQueryChange = (text: string) => {
+  const handleSelectLocation = useCallback((item: Suggestion) => {
+    Keyboard.dismiss();
+    setSelectedLoc(item);
+    setView('form');
+    setQuery('');
+    setSuggestions([]);
+    // Celowo nie prefillujemy pola nazwy: użytkownik sam nazywa miejsce albo wybiera 1-tapowy chip.
+  }, []);
+
+  const handlePickIcon = useCallback((key: SavedPlaceIcon, closePicker: boolean) => {
+    setSelectedIcon(key);
+    setIconPickedManually(true);
+    if (closePicker) {
+      Keyboard.dismiss();
+      setView('form');
+      setIconQuery('');
+    }
+  }, []);
+
+  const handleQueryChange = useCallback((text: string) => {
     setQuery(text);
     SearchService.cancel('add-place-address');
     const seq = ++locSearchSeq.current;
@@ -370,9 +372,6 @@ export function AddPlaceSheet({
       return;
     }
     setSearching(true);
-    // Pozycja ze snapshotu (bez własnego watcha): sortowanie po dystansie
-    // działa, gdy aplikacja ma świeży fix; bez fixa rankingu trzyma kara
-    // za dystans do przystanku.
     const snap = getCurrentLocationSnapshot();
     const coords =
       snap.state === 'ok' && snap.location
@@ -391,40 +390,44 @@ export function AddPlaceSheet({
       .finally(() => {
         if (seq === locSearchSeq.current) setSearching(false);
       });
-  };
+  }, []);
 
-  const handleAnchorQueryChange = (text: string) => {
-    setAnchorQuery(text);
-    SearchService.cancel('add-place-anchor');
-    const seq = ++anchorSearchSeq.current;
-    if (!text.trim()) {
-      setAnchorSuggestions([]);
-      setSearchingAnchor(false);
-      return;
-    }
-    setSearchingAnchor(true);
-    SearchService.search(
-      text,
-      selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined,
-      'add-place-anchor',
-      (partial) => {
-        if (seq === anchorSearchSeq.current) setAnchorSuggestions(partial);
-      },
-    )
-      .then((res) => {
-        if (seq !== anchorSearchSeq.current) return;
-        setAnchorSuggestions(res);
-      })
-      .catch(() => {
-        if (seq === anchorSearchSeq.current) setAnchorSuggestions([]);
-      })
-      .finally(() => {
-        if (seq === anchorSearchSeq.current) setSearchingAnchor(false);
-      });
-  };
+  const handleAnchorQueryChange = useCallback(
+    (text: string) => {
+      setAnchorQuery(text);
+      SearchService.cancel('add-place-anchor');
+      const seq = ++anchorSearchSeq.current;
+      if (!text.trim()) {
+        setAnchorSuggestions([]);
+        setSearchingAnchor(false);
+        return;
+      }
+      setSearchingAnchor(true);
+      SearchService.search(
+        text,
+        selectedLoc ? { lat: selectedLoc.lat, lon: selectedLoc.lon } : undefined,
+        'add-place-anchor',
+        (partial) => {
+          if (seq === anchorSearchSeq.current) setAnchorSuggestions(partial);
+        },
+      )
+        .then((res) => {
+          if (seq !== anchorSearchSeq.current) return;
+          setAnchorSuggestions(res);
+        })
+        .catch(() => {
+          if (seq === anchorSearchSeq.current) setAnchorSuggestions([]);
+        })
+        .finally(() => {
+          if (seq === anchorSearchSeq.current) setSearchingAnchor(false);
+        });
+    },
+    [selectedLoc],
+  );
 
   const handleSave = async () => {
     if (savingRef.current || !name.trim() || !selectedLoc) return;
+    Keyboard.dismiss();
     savingRef.current = true;
     setSaving(true);
     setSaveError(null);
@@ -464,49 +467,14 @@ export function AddPlaceSheet({
     }
   };
 
-  const quickIconOptions = useMemo(() => {
-    const primaryKeys: SavedPlaceIcon[] = [
-      'home',
-      'work',
-      'school',
-      'university',
-      'gym',
-      'coffee',
-      'restaurant',
-      'shopping',
-      'train',
-      'tram',
-      'bus',
-      'star',
-    ];
-    const items = primaryKeys
-      .map((k) => iconOptions.find((opt) => opt.key === k))
-      .filter(Boolean) as PlaceIconItem[];
+  const SelectedIconComp = SAVED_PLACE_ICONS[selectedIcon] ?? MapPin;
+  const selectedTone = placeIconTone(selectedIcon);
+  const selectedIconLabel = s.places.iconName[selectedIcon] ?? s.places.iconName.mapPin;
+  const canSave = Boolean(name.trim() && selectedLoc && !saving);
+  const locIconMeta = selectedLoc ? getSuggestionIconMeta(selectedLoc) : null;
+  const LocIconComp = locIconMeta?.Icon ?? MapPin;
 
-    // Wybrana ikona pozostaje widoczna także poza listą skrótów.
-    if (selectedIcon && !primaryKeys.includes(selectedIcon)) {
-      const custom = iconOptions.find((opt) => opt.key === selectedIcon);
-      if (custom) {
-        return [custom, ...items];
-      }
-    }
-    return items;
-  }, [selectedIcon, iconOptions]);
-
-  const filteredCatalogIcons = useMemo(() => {
-    const q = iconQuery.trim().toLowerCase();
-    return iconOptions.filter((item) => {
-      if (selectedIconCategory !== 'all' && item.category !== selectedIconCategory) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        item.label.toLowerCase().includes(q) ||
-        item.key.toLowerCase().includes(q) ||
-        item.keywords.some((k) => k.toLowerCase().includes(q))
-      );
-    });
-  }, [iconQuery, selectedIconCategory, iconOptions]);
+  const viewEntering = reduceMotion ? undefined : FadeIn.duration(160);
 
   return (
     <View
@@ -519,419 +487,80 @@ export function AddPlaceSheet({
         height: sheetWindowHeight,
       }}
     >
-    <BottomSheet
-      ref={sheetRef}
-      index={1}
-      snapPoints={snapPoints}
-      animationConfigs={animationConfigs}
-      topInset={insets.top}
-      bottomInset={insets.bottom}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      android_keyboardInputMode="adjustPan"
-      keyboardBehavior="extend"
-      onChange={(idx) => {
-        if (idx === -1) onClose();
-      }}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheet}
-      handleIndicatorStyle={styles.handle}
-    >
-      <View style={styles.container} accessibilityViewIsModal>
-        {isPickingIcon ? (
-          <View style={{ flex: 1 }}>
-            <View style={styles.header}>
-              <Pressable
-                onPress={() => {
-                  setIsPickingIcon(false);
-                  setIconQuery('');
-                }}
-                hitSlop={10}
-                style={styles.backBtn}
-                accessibilityRole="button"
-                accessibilityLabel={s.map.backA11y}
-              >
-                <ChevronLeft size={22} color={scheme.onSurface} />
-              </Pressable>
-              <View style={styles.headerLeft}>
-                <Text style={styles.title}>{s.places.chooseIcon}</Text>
-                <Text style={styles.subtitle}>
-                  {s.places.iconFor(name.trim() || s.places.iconForFallback)}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.searchBox}>
-              <Search size={18} color={scheme.onSurfaceVariant} />
-              <BottomSheetTextInput
-                value={iconQuery}
-                onChangeText={setIconQuery}
-                placeholder={s.places.searchIcon}
-                accessibilityLabel={s.places.searchIcon}
-                placeholderTextColor={scheme.onSurfaceVariant}
-                style={styles.searchInput}
-                autoFocus
-              />
-              {iconQuery ? (
-                <Pressable onPress={() => setIconQuery('')} style={styles.clearBtn} accessibilityRole="button" accessibilityLabel={s.search.clearA11y}>
-                  <X size={17} color={scheme.onSurfaceVariant} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              nestedScrollEnabled
-              style={styles.categoryScroll}
-              contentContainerStyle={styles.categoryRow}
-            >
-              {iconCategories.map((cat) => {
-                const isSelected = selectedIconCategory === cat.key;
-                return (
-                  <Pressable
-                    key={cat.key}
-                    onPress={() => setSelectedIconCategory(cat.key)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    style={({ pressed }) => [
-                      styles.categoryPill,
-                      isSelected && styles.categoryPillSelected,
-                      pressed && { opacity: 0.8 },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryPillText,
-                        isSelected && styles.categoryPillTextSelected,
-                      ]}
-                    >
-                      {cat.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <BottomSheetFlatList
-              key={iconColumns}
-              data={filteredCatalogIcons}
-              numColumns={iconColumns}
-              keyExtractor={(item: PlaceIconItem) => item.key}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.iconGridContent}
-              ListEmptyComponent={<Text style={styles.searchEmpty}>{s.search.noResultsFor(iconQuery)}</Text>}
-              renderItem={({ item }: { item: PlaceIconItem }) => {
-                const IconComp = item.icon;
-                const isSelected = selectedIcon === item.key;
-                return (
-                  <Pressable
-                    onPress={() => {
-                      setSelectedIcon(item.key);
-                      setIsPickingIcon(false);
-                      setIconQuery('');
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={item.label}
-                    accessibilityState={{ selected: isSelected }}
-                    style={({ pressed }) => [
-                      styles.gridItem,
-                      { width: iconGridItemSize, minHeight: iconGridItemSize },
-                      pressed && { opacity: 0.8 },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.gridIconWrap,
-                        isSelected && styles.gridIconWrapSelected,
-                      ]}
-                    >
-                      <IconComp
-                        size={20}
-                        color={isSelected ? scheme.onPrimaryContainer : scheme.onSurface}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.gridItemLabel,
-                        isSelected && styles.gridItemLabelSelected,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              }}
-            />
-          </View>
-        ) : isPickingAnchor ? (
-          <View style={{ flex: 1 }}>
-            <View style={styles.header}>
-              <Pressable
-                onPress={() => {
-                  setIsPickingAnchor(false);
-                  setAnchorQuery('');
-                  setAnchorSuggestions([]);
-                }}
-                hitSlop={10}
-                style={styles.backBtn}
-                accessibilityRole="button"
-                accessibilityLabel={s.map.backA11y}
-              >
-                <ChevronLeft size={22} color={scheme.onSurface} />
-              </Pressable>
-              <View style={styles.headerLeft}>
-                <Text style={styles.title}>{s.places.anchorTitle}</Text>
-                <Text style={styles.subtitle}>
-                  {s.places.anchorFor(name || s.places.iconForFallback)}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.searchBox}>
-              <Search size={18} color={scheme.onSurfaceVariant} />
-              <BottomSheetTextInput
-                value={anchorQuery}
-                onChangeText={handleAnchorQueryChange}
-                placeholder={s.places.searchStop}
-                accessibilityLabel={s.places.searchStop}
-                placeholderTextColor={scheme.onSurfaceVariant}
-                style={styles.searchInput}
-                autoFocus
-              />
-              {searchingAnchor && <ActivityIndicator size="small" color={scheme.primary} />}
-              {anchorQuery ? (
-                <Pressable
+      <BottomSheet
+        ref={sheetRef}
+        index={1}
+        snapPoints={snapPoints}
+        animationConfigs={animationConfigs}
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        enableDynamicSizing={false}
+        enablePanDownToClose
+        android_keyboardInputMode="adjustPan"
+        keyboardBehavior="extend"
+        onChange={(idx) => {
+          if (idx === -1) onClose();
+        }}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={styles.sheet}
+        handleIndicatorStyle={styles.handle}
+      >
+        <View style={styles.container} accessibilityViewIsModal>
+          {view === 'icon' ? (
+            <Animated.View key="icon" entering={viewEntering} style={styles.viewFill}>
+              <View style={styles.header}>
+                <SpringPressable
                   onPress={() => {
-                    setAnchorQuery('');
-                    setAnchorSuggestions([]);
+                    Keyboard.dismiss();
+                    setView('form');
+                    setIconQuery('');
                   }}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.search.clearA11y}
-                  style={({ pressed }) => [styles.clearBtn, pressed && { opacity: 0.7 }]}
-                >
-                  <X size={17} color={scheme.onSurfaceVariant} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            {anchorSuggestions.length > 0 ? (
-              <BottomSheetFlatList
-                data={anchorSuggestions}
-                keyExtractor={(i: Suggestion) => i.id}
-                overScrollMode="never"
-                keyboardShouldPersistTaps="handled"
-                style={{ flex: 1, marginTop: 10 }}
-                contentContainerStyle={styles.suggestionsList}
-                renderItem={({ item }: { item: Suggestion }) => (
-                  <SuggestionRow
-                    item={item}
-                    onPress={() => {
-                      setAnchorStop({
-                        id: item.id,
-                        name: item.title,
-                        lat: item.lat,
-                        lon: item.lon,
-                      });
-                      setIsPickingAnchor(false);
-                      setAnchorQuery('');
-                      setAnchorSuggestions([]);
-                    }}
-                  />
-                )}
-              />
-            ) : (
-              <BottomSheetScrollView
-                style={{ flex: 1, marginTop: 12 }}
-                contentContainerStyle={styles.suggestionsList}
-                keyboardShouldPersistTaps="handled"
-              >
-                <Text style={styles.sectionHint}>
-                  {nearestStops.length > 0
-                    ? s.places.nearStops
-                    : s.places.typeStopAbove}
-                </Text>
-                {nearestStops.map((stop) => (
-                  <Pressable
-                    key={stop.id}
-                    onPress={() => {
-                      setAnchorStop({
-                        id: stop.id,
-                        name: stop.name,
-                        lat: stop.lat,
-                        lon: stop.lon,
-                      });
-                      setIsPickingAnchor(false);
-                      setAnchorQuery('');
-                      setAnchorSuggestions([]);
-                    }}
-                    style={({ pressed }) => [styles.nearestStopRow, pressed && { opacity: 0.7 }]}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.nearestStopIcon}>
-                      <Anchor size={17} color={scheme.primary} />
-                    </View>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={styles.nearestStopName}>
-                        {stop.name}
-                      </Text>
-                      <Text style={styles.nearestStopDist}>
-                        {s.places.metersAway(stop.distanceM)}
-                      </Text>
-                    </View>
-                    <View style={styles.selectPill}>
-                      <Text style={styles.selectPillText}>{s.places.choose}</Text>
-                    </View>
-                  </Pressable>
-                ))}
-              </BottomSheetScrollView>
-            )}
-          </View>
-        ) : isChangingLoc ? (
-          <View style={{ flex: 1 }}>
-            <View style={styles.header}>
-              {selectedLoc ? (
-                <Pressable
-                  onPress={() => {
-                    setIsChangingLoc(false);
-                    setQuery('');
-                    setSuggestions([]);
-                  }}
-                  hitSlop={10}
-                  style={styles.backBtn}
+                  haptic="selection"
+                  style={styles.roundNavBtn}
                   accessibilityRole="button"
                   accessibilityLabel={s.map.backA11y}
                 >
                   <ChevronLeft size={22} color={scheme.onSurface} />
-                </Pressable>
-              ) : null}
-              <View style={styles.headerLeft}>
-                <Text style={styles.title}>
-                  {isEditing ? s.places.editPlace : s.places.newPlace}
-                </Text>
-                <Text style={styles.subtitle}>
-                  {s.places.chooseTarget}
-                </Text>
-              </View>
-              <Pressable
-                onPress={handleClose}
-                hitSlop={10}
-                style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                accessibilityLabel={s.common.close}
-              >
-                <X size={20} color={scheme.onSurfaceVariant} />
-              </Pressable>
-            </View>
-
-            <View style={styles.searchBox}>
-              <Search size={18} color={scheme.onSurfaceVariant} />
-              <BottomSheetTextInput
-                value={query}
-                onChangeText={handleQueryChange}
-                placeholder={s.places.queryHint}
-                accessibilityLabel={s.places.addressLabel}
-                placeholderTextColor={scheme.onSurfaceVariant}
-                style={styles.searchInput}
-                autoFocus
-              />
-              {searching && <ActivityIndicator size="small" color={scheme.primary} />}
-              {query ? (
-                <Pressable
-                  onPress={() => handleQueryChange('')}
-                  style={styles.clearBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.search.clearA11y}
-                  hitSlop={10}
-                >
-                  <X size={17} color={scheme.onSurfaceVariant} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            {query.trim().length >= 2 && !searching && suggestions.length === 0 ? (
-              <Text style={styles.searchEmpty} accessibilityRole="alert">
-                {s.search.noResultsFor(query.trim())}
-              </Text>
-            ) : (
-              <BottomSheetFlatList
-                data={suggestions}
-                keyExtractor={(i: Suggestion) => i.id}
-                overScrollMode="never"
-                keyboardShouldPersistTaps="handled"
-                style={{ flex: 1, marginTop: 10 }}
-                contentContainerStyle={styles.suggestionsList}
-                renderItem={({ item }: { item: Suggestion }) => (
-                  <SuggestionRow
-                    item={item}
-                    onPress={() => {
-                      setSelectedLoc(item);
-                      setIsChangingLoc(false);
-                      setQuery('');
-                      setSuggestions([]);
-                      if (!name.trim()) setName(item.title);
-                    }}
-                  />
-                )}
-              />
-            )}
-          </View>
-        ) : (
-          <BottomSheetScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.formScrollContent}
-          >
-            <View style={styles.header}>
-              <View style={styles.headerLeft}>
-                <Text style={styles.title}>
-                  {isEditing ? s.places.editPlace : s.places.newPlace}
-                </Text>
-                <Text style={styles.subtitle}>
-                  {isEditing ? s.places.editHint : s.places.newHint}
-                </Text>
-              </View>
-              <Pressable
-                onPress={handleClose}
-                hitSlop={10}
-                style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                accessibilityLabel={s.common.close}
-              >
-                <X size={20} color={scheme.onSurfaceVariant} />
-              </Pressable>
-            </View>
-
-            <View style={styles.inputWrap}>
-              <Text style={styles.fieldLabel}>{s.places.nameLabel}</Text>
-              <BottomSheetTextInput
-                value={name}
-                onChangeText={setName}
-                placeholder={s.places.nameHint}
-                accessibilityLabel={s.places.nameLabel}
-                placeholderTextColor={scheme.onSurfaceVariant}
-                style={styles.nameInput}
-                returnKeyType="done"
-              />
-            </View>
-
-            <View style={styles.iconSection}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.fieldLabel}>{s.places.chooseIcon}</Text>
-                <Pressable
-                  onPress={() => {
-                    setIsPickingIcon(true);
-                    sheetRef.current?.snapToIndex(1);
-                  }}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.moreIconsLink, pressed && { opacity: 0.7 }]}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.moreIconsLinkText}>
-                    {s.places.moreIcons(iconOptions.length)}
+                </SpringPressable>
+                <View style={styles.headerLeft}>
+                  <Text style={styles.title} accessibilityRole="header">
+                    {s.places.chooseIcon}
                   </Text>
-                </Pressable>
+                  <Text style={styles.subtitle} numberOfLines={1}>
+                    {s.places.iconFor(name.trim() || selectedLoc?.title || s.places.iconForFallback)}
+                  </Text>
+                </View>
+                <View
+                  style={[styles.headerPreviewBadge, { backgroundColor: scheme[selectedTone.bg] }]}
+                  accessible={false}
+                >
+                  <SelectedIconComp size={20} color={scheme[selectedTone.fg]} />
+                </View>
+              </View>
+
+              <View style={[styles.searchPill, iconSearchFocused && styles.inputFocused]}>
+                <Search size={18} color={scheme.onSurfaceVariant} />
+                <BottomSheetTextInput
+                  value={iconQuery}
+                  onChangeText={setIconQuery}
+                  onFocus={() => setIconSearchFocused(true)}
+                  onBlur={() => setIconSearchFocused(false)}
+                  placeholder={s.places.searchIcon}
+                  accessibilityLabel={s.places.searchIcon}
+                  placeholderTextColor={scheme.onSurfaceVariant}
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                />
+                {iconQuery ? (
+                  <Pressable
+                    onPress={() => setIconQuery('')}
+                    style={styles.clearBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.search.clearA11y}
+                  >
+                    <X size={18} color={scheme.onSurfaceVariant} />
+                  </Pressable>
+                ) : null}
               </View>
 
               <ScrollView
@@ -939,219 +568,892 @@ export function AddPlaceSheet({
                 showsHorizontalScrollIndicator={false}
                 nestedScrollEnabled
                 overScrollMode="never"
-                style={styles.iconRowScroll}
-                contentContainerStyle={styles.iconRow}
+                style={styles.categoryScroll}
+                contentContainerStyle={styles.categoryRow}
               >
-                {quickIconOptions.map((item) => {
-                  const IconComp = item.icon;
-                  const isSelected = selectedIcon === item.key;
+                {iconCategories.map((cat) => {
+                  const active = selectedIconCategory === cat.key;
                   return (
-                    <Pressable
-                      key={item.key}
-                      onPress={() => setSelectedIcon(item.key)}
+                    <SpringPressable
+                      key={cat.key}
+                      onPress={() => setSelectedIconCategory(cat.key)}
+                      haptic="selection"
                       accessibilityRole="button"
-                      accessibilityLabel={item.label}
-                      accessibilityState={{ selected: isSelected }}
-                      style={({ pressed }) => [
-                        styles.iconChip,
-                        isSelected && styles.iconChipSelected,
-                        pressed && { opacity: 0.8 },
-                      ]}
+                      accessibilityState={{ selected: active }}
+                      style={[styles.categoryChip, active && styles.categoryChipActive]}
                     >
-                      <IconComp
-                        size={17}
-                        color={isSelected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                      />
+                      {active ? <Check size={15} color={scheme.onSecondaryContainer} /> : null}
                       <Text
-                        style={[
-                          styles.iconLabel,
-                          isSelected && styles.iconLabelSelected,
-                        ]}
+                        style={[styles.categoryChipText, active && styles.categoryChipTextActive]}
                       >
-                        {item.label}
+                        {cat.label}
                       </Text>
-                    </Pressable>
+                    </SpringPressable>
                   );
                 })}
-
               </ScrollView>
-            </View>
 
-            <View style={styles.locSection}>
-              <Text style={styles.fieldLabel}>{s.places.addressLabel}</Text>
-              {selectedLoc && (
-                <View style={[styles.selectedCard, compact && styles.selectedCardCompact]}>
-                  <View style={styles.selectedIconWrap}>
-                    <MapPin size={18} color={scheme.primary} />
-                  </View>
-                  <View style={styles.selectedTexts}>
-                    <Text style={styles.selectedTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
-                      {selectedLoc.title}
-                    </Text>
-                    <Text style={styles.selectedSub} numberOfLines={fontScale > 1.3 ? undefined : 2}>
-                      {selectedLoc.address}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => {
-                      setIsChangingLoc(true);
-                      setQuery('');
-                      setSuggestions([]);
-                      sheetRef.current?.snapToIndex(1);
-                    }}
-                    style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
-                    accessibilityRole="button"
-                  >
-                    <Pencil size={14} color={scheme.primary} />
-                    <Text style={styles.changeBtnText}>{s.places.changeBtn}</Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-
-            {selectedLoc && (
-              <View style={styles.anchorSection}>
-                <View style={styles.anchorSectionHeader}>
-                  <Text style={styles.fieldLabel}>{s.places.anchorOptional}</Text>
-                </View>
-                {anchorStop ? (
-                  <View style={[styles.selectedCard, compact && styles.selectedCardCompact]}>
-                    <View style={[styles.selectedIconWrap, { backgroundColor: scheme.primaryContainer }]}>
-                      <Anchor size={18} color={scheme.primary} />
+              <BottomSheetFlatList
+                key={iconColumns}
+                data={filteredCatalogIcons}
+                numColumns={iconColumns}
+                keyExtractor={(item: PlaceIconMeta) => item.key}
+                keyboardShouldPersistTaps="handled"
+                overScrollMode="never"
+                columnWrapperStyle={styles.iconGridRow}
+                contentContainerStyle={styles.iconGridContent}
+                ListHeaderComponent={
+                  !iconQuery.trim() && selectedIconCategory === 'all' && iconSuggestion ? (
+                    (() => {
+                      const sugKey = iconSuggestion.icon;
+                      const SugIcon = SAVED_PLACE_ICONS[sugKey] ?? MapPin;
+                      const sugTone = placeIconTone(sugKey);
+                      const sugLabel = s.places.iconName[sugKey] ?? sugKey;
+                      const isCurrent = selectedIcon === sugKey;
+                      return (
+                        <SpringPressable
+                          onPress={() => handlePickIcon(sugKey, true)}
+                          haptic="selection"
+                          accessibilityRole="button"
+                          accessibilityLabel={`${s.places.suggestedIconTitle}: ${sugLabel}`}
+                          accessibilityState={{ selected: isCurrent }}
+                          style={[styles.suggestedBanner, isCurrent && styles.suggestedBannerActive]}
+                        >
+                          <View style={[styles.suggestedLeaf, { backgroundColor: scheme[sugTone.bg] }]}>
+                            <SugIcon size={22} color={scheme[sugTone.fg]} />
+                          </View>
+                          <View style={styles.suggestedBannerTexts}>
+                            <Text style={styles.suggestedBannerEyebrow}>
+                              {s.places.suggestedIconTitle}
+                            </Text>
+                            <Text style={styles.suggestedBannerName}>{sugLabel}</Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.suggestedBannerPill,
+                              isCurrent && styles.suggestedBannerPillActive,
+                            ]}
+                          >
+                            {isCurrent ? (
+                              <Check size={16} color={scheme.onPrimary} />
+                            ) : (
+                              <Text style={styles.suggestedBannerPillText}>{s.places.choose}</Text>
+                            )}
+                          </View>
+                        </SpringPressable>
+                      );
+                    })()
+                  ) : null
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyStateBox}>
+                    <View style={styles.emptyStateIcon}>
+                      <Search size={22} color={scheme.onSurfaceVariant} />
                     </View>
-                    <View style={styles.selectedTexts}>
-                      <Text style={styles.selectedTitle}>
-                        {anchorStop.name}
-                      </Text>
-                      <Text style={styles.selectedSub}>
-                        {s.places.anchorHint}
-                      </Text>
-                    </View>
-                    <Pressable
+                    <Text style={styles.emptyStateText}>
+                      {s.search.noResultsFor(iconQuery.trim())}
+                    </Text>
+                    <SpringPressable
                       onPress={() => {
-                        setAnchorQuery('');
-                        setAnchorSuggestions([]);
-                        setIsPickingAnchor(true);
-                        sheetRef.current?.snapToIndex(1);
+                        setIconQuery('');
+                        setSelectedIconCategory('all');
                       }}
-                      style={({ pressed }) => [styles.changeBtn, pressed && { opacity: 0.8 }]}
+                      haptic="selection"
                       accessibilityRole="button"
+                      style={styles.emptyStateBtn}
                     >
-                      <Pencil size={14} color={scheme.primary} />
-                      <Text style={styles.changeBtnText}>{s.places.changeBtn}</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setAnchorStop(null)}
-                      hitSlop={8}
-                      style={({ pressed }) => [styles.clearAnchorBtn, pressed && { opacity: 0.6 }]}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.places.clearAnchorA11y}
-                    >
-                      <X size={16} color={scheme.onSurfaceVariant} />
-                    </Pressable>
+                      <Text style={styles.emptyStateBtnText}>{s.places.clearSearch}</Text>
+                    </SpringPressable>
                   </View>
-                ) : (
+                }
+                renderItem={({ item }: { item: PlaceIconMeta }) => {
+                  const IconComp = SAVED_PLACE_ICONS[item.key] ?? MapPin;
+                  const tone = placeIconTone(item.key);
+                  const label = s.places.iconName[item.key] ?? item.key;
+                  const isSelected = selectedIcon === item.key;
+                  return (
+                    <SpringPressable
+                      onPress={() => handlePickIcon(item.key, true)}
+                      haptic="selection"
+                      accessibilityRole="button"
+                      accessibilityLabel={label}
+                      accessibilityState={{ selected: isSelected }}
+                      style={[
+                        styles.gridTile,
+                        { width: iconTileWidth },
+                        isSelected && {
+                          backgroundColor: scheme[tone.bg],
+                          borderColor: scheme.primary,
+                          borderWidth: 1.5,
+                        },
+                      ]}
+                    >
+                      {isSelected ? (
+                        <View style={styles.gridCheckBadge}>
+                          <Check size={12} color={scheme.onPrimary} />
+                        </View>
+                      ) : null}
+                      <View
+                        style={[
+                          styles.gridIconCircle,
+                          isSelected
+                            ? styles.gridIconLeafSelected
+                            : { backgroundColor: scheme.surfaceContainerHigh },
+                        ]}
+                      >
+                        <IconComp
+                          size={isSelected ? 26 : 22}
+                          color={isSelected ? scheme[tone.fg] : scheme.onSurface}
+                        />
+                      </View>
+                      <Text
+                        numberOfLines={2}
+                        style={[
+                          styles.gridTileLabel,
+                          isSelected && { color: scheme[tone.fg], fontWeight: '700' },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </SpringPressable>
+                  );
+                }}
+              />
+            </Animated.View>
+          ) : view === 'anchor' ? (
+            <Animated.View key="anchor" entering={viewEntering} style={styles.viewFill}>
+              <View style={styles.header}>
+                <SpringPressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setView('form');
+                    setAnchorQuery('');
+                    setAnchorSuggestions([]);
+                  }}
+                  haptic="selection"
+                  style={styles.roundNavBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.backA11y}
+                >
+                  <ChevronLeft size={22} color={scheme.onSurface} />
+                </SpringPressable>
+                <View style={styles.headerLeft}>
+                  <Text style={styles.title} accessibilityRole="header">
+                    {s.places.anchorTitle}
+                  </Text>
+                  <Text style={styles.subtitle} numberOfLines={1}>
+                    {s.places.anchorFor(name.trim() || selectedLoc?.title || s.places.iconForFallback)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.searchPill, anchorSearchFocused && styles.inputFocused]}>
+                <Search size={18} color={scheme.onSurfaceVariant} />
+                <BottomSheetTextInput
+                  value={anchorQuery}
+                  onChangeText={handleAnchorQueryChange}
+                  onFocus={() => setAnchorSearchFocused(true)}
+                  onBlur={() => setAnchorSearchFocused(false)}
+                  placeholder={s.places.searchStop}
+                  accessibilityLabel={s.places.searchStop}
+                  placeholderTextColor={scheme.onSurfaceVariant}
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                />
+                {searchingAnchor ? <ActivityIndicator size="small" color={scheme.primary} /> : null}
+                {anchorQuery ? (
                   <Pressable
                     onPress={() => {
                       setAnchorQuery('');
                       setAnchorSuggestions([]);
-                      setIsPickingAnchor(true);
-                      sheetRef.current?.snapToIndex(1);
                     }}
-                    style={({ pressed }) => [styles.addAnchorBtn, pressed && { opacity: 0.8 }]}
                     accessibilityRole="button"
+                    accessibilityLabel={s.search.clearA11y}
+                    style={styles.clearBtn}
                   >
-                    <Anchor size={16} color={scheme.primary} />
-                    <Text style={styles.addAnchorBtnText}>{s.places.assignAnchor}</Text>
+                    <X size={18} color={scheme.onSurfaceVariant} />
                   </Pressable>
-                )}
+                ) : null}
               </View>
-            )}
 
-            <View style={styles.bottomActions}>
+              {anchorSuggestions.length > 0 ? (
+                <BottomSheetFlatList
+                  data={anchorSuggestions}
+                  keyExtractor={(i: Suggestion) => i.id}
+                  overScrollMode="never"
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.listSpacing}
+                  contentContainerStyle={styles.suggestionsList}
+                  renderItem={({ item, index }: { item: Suggestion; index: number }) => (
+                    <SuggestionRow
+                      item={item}
+                      query={anchorQuery}
+                      segment={segmentFor(index, anchorSuggestions.length)}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setAnchorStop({
+                          id: item.id,
+                          name: item.title,
+                          lat: item.lat,
+                          lon: item.lon,
+                        });
+                        setView('form');
+                        setAnchorQuery('');
+                        setAnchorSuggestions([]);
+                      }}
+                    />
+                  )}
+                />
+              ) : anchorQuery.trim().length >= 2 && !searchingAnchor ? (
+                <View style={styles.emptyStateBox}>
+                  <Text style={styles.emptyStateText} accessibilityRole="alert">
+                    {s.search.noResultsFor(anchorQuery.trim())}
+                  </Text>
+                </View>
+              ) : (
+                <BottomSheetScrollView
+                  style={styles.listSpacing}
+                  contentContainerStyle={styles.suggestionsList}
+                  keyboardShouldPersistTaps="handled"
+                  overScrollMode="never"
+                >
+                  <Text style={styles.sectionCaption}>
+                    {nearestStops.length > 0 ? s.places.nearStops : s.places.typeStopAbove}
+                  </Text>
+                  <View style={styles.segmentGroup}>
+                    {nearestStops.map((stop, idx) => {
+                      const seg = segmentFor(idx, nearestStops.length);
+                      const isCurrent = anchorStop?.id === stop.id;
+                      return (
+                        <SpringPressable
+                          key={stop.id}
+                          onPress={() => {
+                            Keyboard.dismiss();
+                            setAnchorStop({
+                              id: stop.id,
+                              name: stop.name,
+                              lat: stop.lat,
+                              lon: stop.lon,
+                            });
+                            setView('form');
+                            setAnchorQuery('');
+                            setAnchorSuggestions([]);
+                          }}
+                          haptic="selection"
+                          accessibilityRole="button"
+                          style={[
+                            styles.stopOptionRow,
+                            (seg === 'first' || seg === 'single') && styles.segmentTop,
+                            (seg === 'last' || seg === 'single') && styles.segmentBottom,
+                            isCurrent && styles.stopOptionRowActive,
+                          ]}
+                        >
+                          <View style={styles.stopOptionIcon}>
+                            <Anchor size={18} color={scheme.onTertiaryContainer} />
+                          </View>
+                          <View style={styles.stopOptionTexts}>
+                            <Text style={styles.stopOptionName} numberOfLines={1}>
+                              {stop.name}
+                            </Text>
+                            <Text style={styles.stopOptionDist}>
+                              {s.places.metersAway(stop.distanceM)}
+                            </Text>
+                          </View>
+                          <View style={[styles.tonalPill, isCurrent && styles.tonalPillActive]}>
+                            <Text
+                              style={[
+                                styles.tonalPillText,
+                                isCurrent && styles.tonalPillTextActive,
+                              ]}
+                            >
+                              {s.places.choose}
+                            </Text>
+                          </View>
+                        </SpringPressable>
+                      );
+                    })}
+                  </View>
+                </BottomSheetScrollView>
+              )}
+            </Animated.View>
+          ) : view === 'location' ? (
+            <Animated.View key="location" entering={viewEntering} style={styles.viewFill}>
+              <View style={styles.header}>
+                {selectedLoc ? (
+                  <SpringPressable
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setView('form');
+                      setQuery('');
+                      setSuggestions([]);
+                    }}
+                    haptic="selection"
+                    style={styles.roundNavBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.map.backA11y}
+                  >
+                    <ChevronLeft size={22} color={scheme.onSurface} />
+                  </SpringPressable>
+                ) : null}
+                <View style={styles.headerLeft}>
+                  <Text style={styles.title} accessibilityRole="header">
+                    {isEditing ? s.places.editPlace : s.places.newPlace}
+                  </Text>
+                  <Text style={styles.subtitle}>{s.places.chooseTarget}</Text>
+                </View>
+                <SpringPressable
+                  onPress={handleClose}
+                  haptic="selection"
+                  style={styles.roundNavBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.common.close}
+                >
+                  <X size={20} color={scheme.onSurfaceVariant} />
+                </SpringPressable>
+              </View>
+
+              <View style={[styles.searchPill, locSearchFocused && styles.inputFocused]}>
+                <Search size={18} color={scheme.onSurfaceVariant} />
+                <BottomSheetTextInput
+                  value={query}
+                  onChangeText={handleQueryChange}
+                  onFocus={() => setLocSearchFocused(true)}
+                  onBlur={() => setLocSearchFocused(false)}
+                  placeholder={s.places.queryHint}
+                  accessibilityLabel={s.places.addressLabel}
+                  placeholderTextColor={scheme.onSurfaceVariant}
+                  style={styles.searchInput}
+                  autoFocus
+                  returnKeyType="search"
+                />
+                {searching ? <ActivityIndicator size="small" color={scheme.primary} /> : null}
+                {query ? (
+                  <Pressable
+                    onPress={() => handleQueryChange('')}
+                    style={styles.clearBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.search.clearA11y}
+                  >
+                    <X size={18} color={scheme.onSurfaceVariant} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {query.trim().length >= 2 && !searching && suggestions.length === 0 ? (
+                <View style={styles.emptyStateBox}>
+                  <View style={styles.emptyStateIcon}>
+                    <Search size={22} color={scheme.onSurfaceVariant} />
+                  </View>
+                  <Text style={styles.emptyStateText} accessibilityRole="alert">
+                    {s.search.noResultsFor(query.trim())}
+                  </Text>
+                </View>
+              ) : query.trim().length > 0 ? (
+                <BottomSheetFlatList
+                  data={suggestions}
+                  keyExtractor={(i: Suggestion) => i.id}
+                  overScrollMode="never"
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.listSpacing}
+                  contentContainerStyle={styles.suggestionsList}
+                  renderItem={({ item, index }: { item: Suggestion; index: number }) => (
+                    <SuggestionRow
+                      item={item}
+                      query={query}
+                      segment={segmentFor(index, suggestions.length)}
+                      onPress={() => handleSelectLocation(item)}
+                    />
+                  )}
+                />
+              ) : (
+                <BottomSheetScrollView
+                  style={styles.listSpacing}
+                  contentContainerStyle={styles.suggestionsList}
+                  keyboardShouldPersistTaps="handled"
+                  overScrollMode="never"
+                >
+                  {nearbyCurrentStops.length > 0 ? (
+                    <>
+                      <Text style={styles.sectionCaption}>{s.places.nearbyStopsTitle}</Text>
+                      <View style={styles.segmentGroup}>
+                        {nearbyCurrentStops.map((stop, idx) => (
+                          <SuggestionRow
+                            key={stop.id}
+                            segment={segmentFor(idx, nearbyCurrentStops.length)}
+                            item={{
+                              id: stop.id,
+                              title: stop.name,
+                              address: s.suggestion.stopFallback,
+                              lat: stop.lat,
+                              lon: stop.lon,
+                              kind: 'stop',
+                              distanceM: stop.distanceM,
+                            }}
+                            onPress={() =>
+                              handleSelectLocation({
+                                id: stop.id,
+                                title: stop.name,
+                                address: s.suggestion.stopFallback,
+                                lat: stop.lat,
+                                lon: stop.lon,
+                                kind: 'stop',
+                                distanceM: stop.distanceM,
+                              })
+                            }
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.promptHintBox}>
+                      <View style={styles.promptHintIcon}>
+                        <MapPin size={22} color={scheme.onPrimaryContainer} />
+                      </View>
+                      <Text style={styles.promptHintText}>{s.places.searchPromptHint}</Text>
+                    </View>
+                  )}
+                </BottomSheetScrollView>
+              )}
+            </Animated.View>
+          ) : (
+            <Animated.View key="form" entering={viewEntering} style={styles.viewFill}>
+              <View style={styles.header}>
+                <View style={styles.headerLeft}>
+                  <Text style={styles.title} accessibilityRole="header">
+                    {isEditing ? s.places.editPlace : s.places.newPlace}
+                  </Text>
+                  <Text style={styles.subtitle}>
+                    {isEditing ? s.places.editHint : s.places.newHint}
+                  </Text>
+                </View>
+                <SpringPressable
+                  onPress={handleClose}
+                  haptic="selection"
+                  style={styles.roundNavBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.common.close}
+                >
+                  <X size={20} color={scheme.onSurfaceVariant} />
+                </SpringPressable>
+              </View>
+
+              <BottomSheetScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                overScrollMode="never"
+                style={styles.formScroll}
+                contentContainerStyle={styles.formScrollContent}
+              >
+                {/* Karta tożsamości: liściasty badge ikony + pole nazwy bez prefillu */}
+                <View style={styles.identityCard}>
+                  <View style={[styles.identityTopRow, compact && styles.identityTopRowCompact]}>
+                    <SpringPressable
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setView('icon');
+                        sheetRef.current?.snapToIndex(1);
+                      }}
+                      haptic="selection"
+                      accessibilityRole="button"
+                      accessibilityLabel={s.places.changeIconA11y(selectedIconLabel)}
+                      style={styles.heroBadgeTrigger}
+                    >
+                      <Animated.View
+                        style={[
+                          styles.heroIconLeaf,
+                          { backgroundColor: scheme[selectedTone.bg] },
+                          heroBadgeAnimStyle,
+                        ]}
+                      >
+                        <SelectedIconComp size={30} color={scheme[selectedTone.fg]} />
+                      </Animated.View>
+                      <View style={styles.heroEditPip}>
+                        <Pencil size={11} color={scheme.onSurface} />
+                      </View>
+                    </SpringPressable>
+
+                    <View style={styles.nameColumn}>
+                      <Text style={styles.inlineFieldLabel}>{s.places.nameLabel}</Text>
+                      <View style={[styles.nameInputBox, nameFocused && styles.inputFocused]}>
+                        <BottomSheetTextInput
+                          value={name}
+                          onChangeText={setName}
+                          onFocus={() => setNameFocused(true)}
+                          onBlur={() => setNameFocused(false)}
+                          placeholder={s.places.nameHint}
+                          accessibilityLabel={s.places.nameLabel}
+                          placeholderTextColor={scheme.onSurfaceVariant}
+                          style={styles.nameInput}
+                          returnKeyType="done"
+                        />
+                        {name.length > 0 ? (
+                          <Pressable
+                            onPress={() => setName('')}
+                            style={styles.nameClearBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={s.search.clearA11y}
+                          >
+                            <X size={16} color={scheme.onSurfaceVariant} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+
+                  {quickNameChips.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      nestedScrollEnabled
+                      overScrollMode="never"
+                      style={styles.quickNamesScroll}
+                      contentContainerStyle={styles.quickNamesRow}
+                    >
+                      {quickNameChips.map((chip) => (
+                        <SpringPressable
+                          key={chip}
+                          onPress={() => setName(chip)}
+                          haptic="selection"
+                          accessibilityRole="button"
+                          accessibilityLabel={s.places.quickNameA11y(chip)}
+                          style={styles.quickNameChip}
+                        >
+                          <Text style={styles.quickNameChipText} numberOfLines={1}>
+                            {chip}
+                          </Text>
+                        </SpringPressable>
+                      ))}
+                    </ScrollView>
+                  ) : null}
+                </View>
+
+                {/* Szybki pasek ekspresyjnych kafli ikony + wejście do pełnego katalogu */}
+                <View style={styles.iconDockSection}>
+                  <View style={styles.sectionHeaderRow}>
+                    <View style={styles.sectionHeaderTexts}>
+                      <Text style={styles.sectionTitle}>{s.places.chooseIcon}</Text>
+                      {isAutoSuggestedIcon ? (
+                        <Text style={styles.autoHintText}>{s.places.autoPickedIcon}</Text>
+                      ) : null}
+                    </View>
+                    <SpringPressable
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setView('icon');
+                        sheetRef.current?.snapToIndex(1);
+                      }}
+                      haptic="selection"
+                      accessibilityRole="button"
+                      style={styles.allIconsPill}
+                    >
+                      <Text style={styles.allIconsPillText}>
+                        {s.places.allIcons(PLACE_ICON_CATALOG.length)}
+                      </Text>
+                      <ChevronRight size={16} color={scheme.onSecondaryContainer} />
+                    </SpringPressable>
+                  </View>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    nestedScrollEnabled
+                    overScrollMode="never"
+                    style={styles.quickIconsScroll}
+                    contentContainerStyle={styles.quickIconsRow}
+                  >
+                    {quickIconKeys.map((key) => {
+                      const IconComp = SAVED_PLACE_ICONS[key] ?? MapPin;
+                      const tone = placeIconTone(key);
+                      const label = s.places.iconName[key] ?? key;
+                      const isSelected = selectedIcon === key;
+                      return (
+                        <SpringPressable
+                          key={key}
+                          onPress={() => handlePickIcon(key, false)}
+                          haptic="selection"
+                          accessibilityRole="button"
+                          accessibilityLabel={label}
+                          accessibilityState={{ selected: isSelected }}
+                          style={styles.quickIconTile}
+                        >
+                          <View style={styles.quickIconBoxWrap}>
+                            <View
+                              style={[
+                                styles.quickIconBox,
+                                isSelected
+                                  ? [
+                                      styles.quickIconBoxSelected,
+                                      { backgroundColor: scheme[tone.bg] },
+                                    ]
+                                  : null,
+                              ]}
+                            >
+                              <IconComp
+                                size={22}
+                                color={isSelected ? scheme[tone.fg] : scheme.onSurfaceVariant}
+                              />
+                            </View>
+                            {isSelected ? (
+                              <View style={styles.quickCheckBadge}>
+                                <Check size={11} color={scheme.onPrimary} />
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.quickIconLabel,
+                              isSelected && styles.quickIconLabelSelected,
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </SpringPressable>
+                      );
+                    })}
+
+                    <SpringPressable
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setView('icon');
+                        sheetRef.current?.snapToIndex(1);
+                      }}
+                      haptic="selection"
+                      accessibilityRole="button"
+                      accessibilityLabel={s.places.allIcons(PLACE_ICON_CATALOG.length)}
+                      style={styles.quickIconTile}
+                    >
+                      <View style={styles.quickIconBoxWrap}>
+                        <View style={[styles.quickIconBox, styles.quickIconBoxMore]}>
+                          <Search size={20} color={scheme.onSecondaryContainer} />
+                        </View>
+                      </View>
+                      <Text numberOfLines={1} style={styles.quickIconLabel}>
+                        {s.places.moreShort}
+                      </Text>
+                    </SpringPressable>
+                  </ScrollView>
+                </View>
+
+                {/* Zgrupowana sekcja M3 Expressive: Lokalizacja + Preferowany przystanek */}
+                {selectedLoc ? (
+                  <View style={styles.segmentGroup}>
+                    <View
+                      style={[
+                        styles.groupedCard,
+                        styles.segmentTop,
+                        compact && styles.groupedCardCompact,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.rowIconBadge,
+                          { backgroundColor: locIconMeta?.bg ?? scheme.secondaryContainer },
+                        ]}
+                      >
+                        <LocIconComp
+                          size={19}
+                          color={locIconMeta?.fg ?? scheme.onSecondaryContainer}
+                        />
+                      </View>
+                      <View style={styles.groupedTexts}>
+                        <Text style={styles.groupedEyebrow}>{s.places.addressLabel}</Text>
+                        <Text
+                          style={styles.groupedTitle}
+                          numberOfLines={fontScale > 1.3 ? undefined : 2}
+                        >
+                          {selectedLoc.title}
+                        </Text>
+                        {selectedLoc.address && selectedLoc.address !== selectedLoc.title ? (
+                          <Text
+                            style={styles.groupedSub}
+                            numberOfLines={fontScale > 1.3 ? undefined : 2}
+                          >
+                            {selectedLoc.address}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <SpringPressable
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setView('location');
+                          setQuery('');
+                          setSuggestions([]);
+                          sheetRef.current?.snapToIndex(1);
+                        }}
+                        haptic="selection"
+                        style={styles.tonalActionBtn}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.tonalActionText}>{s.places.changeBtn}</Text>
+                      </SpringPressable>
+                    </View>
+
+                    {anchorStop ? (
+                      <View
+                        style={[
+                          styles.groupedCard,
+                          styles.segmentBottom,
+                          compact && styles.groupedCardCompact,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.rowIconBadge,
+                            { backgroundColor: scheme.tertiaryContainer },
+                          ]}
+                        >
+                          <Anchor size={19} color={scheme.onTertiaryContainer} />
+                        </View>
+                        <View style={styles.groupedTexts}>
+                          <Text style={styles.groupedEyebrow}>{s.places.anchorOptional}</Text>
+                          <Text style={styles.groupedTitle} numberOfLines={2}>
+                            {anchorStop.name}
+                          </Text>
+                          <Text style={styles.groupedSub} numberOfLines={2}>
+                            {s.places.anchorHint}
+                          </Text>
+                        </View>
+                        <View style={styles.anchorBtnGroup}>
+                          <SpringPressable
+                            onPress={() => {
+                              Keyboard.dismiss();
+                              setAnchorQuery('');
+                              setAnchorSuggestions([]);
+                              setView('anchor');
+                              sheetRef.current?.snapToIndex(1);
+                            }}
+                            haptic="selection"
+                            style={styles.tonalActionBtn}
+                            accessibilityRole="button"
+                          >
+                            <Text style={styles.tonalActionText}>{s.places.changeBtn}</Text>
+                          </SpringPressable>
+                          <SpringPressable
+                            onPress={() => setAnchorStop(null)}
+                            haptic="selection"
+                            style={styles.clearAnchorBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={s.places.clearAnchorA11y}
+                          >
+                            <X size={17} color={scheme.onSurfaceVariant} />
+                          </SpringPressable>
+                        </View>
+                      </View>
+                    ) : (
+                      <SpringPressable
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setAnchorQuery('');
+                          setAnchorSuggestions([]);
+                          setView('anchor');
+                          sheetRef.current?.snapToIndex(1);
+                        }}
+                        haptic="selection"
+                        accessibilityRole="button"
+                        style={[styles.groupedCard, styles.segmentBottom]}
+                      >
+                        <View
+                          style={[
+                            styles.rowIconBadge,
+                            { backgroundColor: scheme.surfaceContainerHighest },
+                          ]}
+                        >
+                          <Anchor size={19} color={scheme.onSurfaceVariant} />
+                        </View>
+                        <View style={styles.groupedTexts}>
+                          <Text style={styles.groupedEyebrow}>{s.places.anchorOptional}</Text>
+                          <Text style={styles.groupedTitle}>{s.places.assignAnchor}</Text>
+                          <Text style={styles.groupedSub} numberOfLines={2}>
+                            {s.places.anchorHint}
+                          </Text>
+                        </View>
+                        <ChevronRight size={20} color={scheme.onSurfaceVariant} />
+                      </SpringPressable>
+                    )}
+                  </View>
+                ) : null}
+              </BottomSheetScrollView>
+
+              {/* Przypięty pasek akcji na dole arkusza */}
+              <View style={styles.stickyFooter}>
                 {saveError ? (
                   <View style={styles.saveError} accessibilityRole="alert">
-                    <TriangleAlert size={16} color={scheme.error} />
+                    <TriangleAlert size={16} color={scheme.onErrorContainer} />
                     <Text style={styles.saveErrorText}>{saveError}</Text>
                   </View>
                 ) : null}
+
                 {isEditing && confirmDelete ? (
                   <View style={styles.confirmDeleteBox}>
                     <View style={styles.confirmDeleteTextGroup}>
-                      <Trash2 size={18} color={scheme.error} />
+                      <Trash2 size={18} color={scheme.onErrorContainer} />
                       <Text style={styles.confirmDeleteText}>{s.places.removeGeneric}</Text>
                     </View>
                     <View style={styles.confirmDeleteBtns}>
-                      <Pressable
+                      <SpringPressable
                         onPress={() => setConfirmDelete(false)}
-                        style={({ pressed }) => [styles.cancelDeleteBtn, pressed && { opacity: 0.8 }]}
+                        haptic="selection"
+                        style={styles.cancelDeleteBtn}
                         accessibilityRole="button"
                       >
                         <Text style={styles.cancelDeleteText}>{s.common.cancel}</Text>
-                      </Pressable>
-                      <Pressable
+                      </SpringPressable>
+                      <SpringPressable
                         onPress={handleDelete}
-                        style={({ pressed }) => [styles.confirmDeleteBtn, pressed && { opacity: 0.8 }]}
+                        haptic="light"
+                        style={styles.confirmDeleteBtn}
                         accessibilityRole="button"
                       >
                         <Text style={styles.confirmDeleteBtnText}>{s.common.yesRemove}</Text>
-                      </Pressable>
+                      </SpringPressable>
                     </View>
                   </View>
                 ) : (
                   <View style={styles.mainActionRow}>
-                    <Pressable
+                    {isEditing && onDelete ? (
+                      <SpringPressable
+                        onPress={() => setConfirmDelete(true)}
+                        haptic="selection"
+                        style={styles.deleteActionBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={s.places.removeA11y(initialPlace!.name)}
+                      >
+                        <Trash2 size={20} color={scheme.error} />
+                      </SpringPressable>
+                    ) : null}
+                    <SpringPressable
                       onPress={() => void handleSave()}
-                      disabled={saving || !name.trim() || !selectedLoc}
+                      disabled={!canSave}
+                      haptic="light"
                       accessibilityRole="button"
-                      accessibilityState={{
-                        disabled: saving || !name.trim() || !selectedLoc,
-                        busy: saving,
-                      }}
-                      style={({ pressed }) => [
-                        styles.saveActionBtn,
-                        (!name.trim() || !selectedLoc) && styles.saveActionDisabled,
-                        pressed && { opacity: 0.85 },
-                      ]}
+                      accessibilityState={{ disabled: !canSave, busy: saving }}
+                      style={[styles.saveActionBtn, !canSave && styles.saveActionDisabled]}
                     >
                       {saving ? (
                         <ActivityIndicator size="small" color={scheme.onPrimary} />
                       ) : (
                         <Check
-                          size={19}
-                          color={
-                            !name.trim() || !selectedLoc
-                              ? scheme.onSurfaceVariant
-                              : scheme.onPrimary
-                          }
+                          size={20}
+                          color={canSave ? scheme.onPrimary : scheme.onSurfaceVariant}
                         />
                       )}
                       <Text
                         style={[
                           styles.saveActionText,
-                          (!name.trim() || !selectedLoc) && styles.saveActionTextDisabled,
+                          !canSave && styles.saveActionTextDisabled,
                         ]}
                       >
                         {isEditing ? s.places.saveChanges : s.places.savePlace}
                       </Text>
-                    </Pressable>
-                    {isEditing && onDelete && (
-                      <Pressable
-                        onPress={() => setConfirmDelete(true)}
-                        style={({ pressed }) => [styles.deleteActionBtn, pressed && { opacity: 0.8 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel={s.places.removeA11y(initialPlace!.name)}
-                      >
-                        <Trash2 size={19} color={scheme.onSurfaceVariant} />
-                      </Pressable>
-                    )}
+                    </SpringPressable>
                   </View>
                 )}
               </View>
-          </BottomSheetScrollView>
-        )}
-      </View>
-    </BottomSheet>
+            </Animated.View>
+          )}
+        </View>
+      </BottomSheet>
     </View>
   );
 }
@@ -1161,211 +1463,385 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
   handle: {
     backgroundColor: scheme.outlineVariant,
-    width: 36,
+    width: 38,
+    height: 4,
+    borderRadius: 2,
   },
   container: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 6,
   },
-  formScrollContent: {
-    paddingBottom: 40,
+  viewFill: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 16,
     gap: 12,
   },
   headerLeft: {
     flex: 1,
-    gap: 6,
+    minWidth: 0,
+    gap: 2,
   },
   title: {
-    ...type.headlineSmall,
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
+    letterSpacing: -0.35,
     color: scheme.onSurface,
-    fontWeight: '500',
   },
   subtitle: {
-    ...type.bodyMedium,
+    ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
-  closeBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.large,
+  roundNavBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  headerPreviewBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 18,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  // Formularz główny
+  formScroll: {
+    flex: 1,
+  },
+  formScrollContent: {
+    paddingBottom: 20,
+    gap: 18,
+  },
+  identityCard: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 16,
+    gap: 14,
+    ...elev.level1,
+  },
+  identityTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  identityTopRowCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  heroBadgeTrigger: {
+    alignSelf: 'center',
+    position: 'relative',
+  },
+  heroIconLeaf: {
+    width: 64,
+    height: 64,
+    borderRadius: 26,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fieldLabel: {
-    ...type.bodyMedium,
+  heroEditPip: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    width: 24,
+    height: 24,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
+    borderWidth: 2,
+    borderColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nameColumn: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  inlineFieldLabel: {
+    ...type.labelMedium,
     color: scheme.onSurfaceVariant,
-    marginBottom: 6,
+    paddingLeft: 2,
+  },
+  nameInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant,
+    paddingLeft: 14,
+    paddingRight: 4,
+    minHeight: 52,
+  },
+  inputFocused: {
+    borderColor: scheme.primary,
+  },
+  nameInput: {
+    flex: 1,
+    minWidth: 0,
+    ...type.bodyLarge,
+    fontWeight: '600',
+    color: scheme.onSurface,
+    paddingVertical: 12,
+  },
+  nameClearBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickNamesScroll: {
+    flexGrow: 0,
+    marginHorizontal: -4,
+  },
+  quickNamesRow: {
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  quickNameChip: {
+    minHeight: 44,
+    maxWidth: 210,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
+    justifyContent: 'center',
+  },
+  quickNameChipText: {
+    ...type.labelMedium,
+    color: scheme.onSurface,
+    fontWeight: '600',
+  },
+
+  // Pasek szybkiego wyboru ikon
+  iconDockSection: {
+    gap: 10,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 6,
+    gap: 10,
   },
-  moreIconsLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 48,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+  sectionHeaderTexts: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
-  moreIconsLinkText: {
-    ...type.labelLarge,
+  sectionTitle: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  autoHintText: {
+    ...type.labelSmall,
     color: scheme.primary,
     fontWeight: '600',
   },
-  inputWrap: {
-    marginBottom: 24,
+  allIconsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingLeft: 14,
+    paddingRight: 10,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
   },
-  nameInput: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 56,
-    ...type.bodyLarge,
-    color: scheme.onSurface,
+  allIconsPillText: {
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
   },
-  iconSection: {
-    marginBottom: 24,
-  },
-  iconRowScroll: {
+  quickIconsScroll: {
     flexGrow: 0,
-    flexShrink: 0,
+    marginHorizontal: -20,
+  },
+  quickIconsRow: {
+    gap: 8,
+    paddingHorizontal: 20,
     paddingVertical: 4,
   },
-  iconRow: {
-    gap: 8,
-    paddingHorizontal: 1,
-    alignItems: 'center',
-  },
-  iconChip: {
-    flexDirection: 'row',
+  quickIconTile: {
+    width: 72,
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    minHeight: 52,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    paddingVertical: 4,
   },
-  iconChipSelected: {
-    backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
+  quickIconBoxWrap: {
+    position: 'relative',
   },
-  iconLabel: {
-    ...type.labelLarge,
-    color: scheme.onSurfaceVariant,
-  },
-  iconLabelSelected: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '600',
-  },
-  locSection: {
-    marginBottom: 24,
-  },
-  selectedCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: scheme.surfaceContainerHigh,
+  quickIconBox: {
+    width: 52,
+    height: 52,
     borderRadius: shape.large,
-    padding: 16,
-    gap: 12,
-  },
-  selectedCardCompact: { flexDirection: 'column', alignItems: 'stretch' },
-  selectedIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.secondaryContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedTexts: {
-    flex: 1,
-    gap: 4,
+  quickIconBoxSelected: {
+    borderRadius: 22,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+    borderWidth: 2,
+    borderColor: scheme.primary,
   },
-  selectedTitle: {
+  quickIconBoxMore: {
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  quickCheckBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    borderWidth: 2,
+    borderColor: scheme.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickIconLabel: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+  },
+  quickIconLabelSelected: {
+    color: scheme.onSurface,
+    fontWeight: '700',
+  },
+
+  // Zgrupowane wiersze lokalizacji i kotwicy (M3 Expressive segmented cards)
+  segmentGroup: {
+    gap: 3,
+  },
+  groupedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.small,
+    padding: 14,
+    gap: 12,
+    minHeight: 72,
+  },
+  groupedCardCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  segmentTop: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+  },
+  segmentBottom: {
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+  },
+  rowIconBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  groupedTexts: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  groupedEyebrow: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+  },
+  groupedTitle: {
     ...type.bodyLarge,
+    fontWeight: '600',
     color: scheme.onSurface,
   },
-  selectedSub: {
+  groupedSub: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
-  changeBtn: {
-    flexDirection: 'row',
+  tonalActionBtn: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHighest,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    minHeight: 48,
-    backgroundColor: scheme.surfaceContainerHighest,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: shape.medium,
+    flexShrink: 0,
   },
-  changeBtnText: {
-    ...type.labelLarge,
+  tonalActionText: {
+    ...type.labelMedium,
     color: scheme.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  searchBox: {
+  anchorBtnGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
+  },
+  clearAnchorBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    paddingLeft: 14,
-    paddingRight: 4,
-    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    ...type.bodyLarge,
-    color: scheme.onSurface,
-    paddingVertical: 14,
-  },
-  clearBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: shape.medium },
-  suggestionsList: {
-    paddingBottom: 24,
-  },
-  searchEmpty: { ...type.bodyMedium, color: scheme.onSurfaceVariant, paddingVertical: 16 },
-  bottomActions: {
-    width: '100%',
-    marginTop: 8,
-    paddingTop: 8,
-    paddingBottom: 16,
+
+  // Przypięty pasek dolny
+  stickyFooter: {
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    backgroundColor: scheme.surfaceContainerLow,
+    gap: 10,
   },
   saveError: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
     paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: shape.medium,
+    paddingVertical: 10,
+    borderRadius: shape.large,
     backgroundColor: scheme.errorContainer,
   },
-  saveErrorText: { ...type.bodySmall, color: scheme.onErrorContainer, flex: 1 },
+  saveErrorText: {
+    ...type.bodySmall,
+    color: scheme.onErrorContainer,
+    flex: 1,
+  },
   mainActionRow: {
-    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -1373,53 +1849,52 @@ const styles = StyleSheet.create({
   deleteActionBtn: {
     width: 56,
     height: 56,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveActionBtn: {
     flex: 1,
+    minHeight: 56,
+    paddingHorizontal: 20,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: scheme.primary,
-    minHeight: 56,
-    padding: 16,
-    borderRadius: shape.large,
   },
   saveActionDisabled: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    elevation: 0,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
   saveActionText: {
     ...type.labelLarge,
     fontWeight: '700',
     color: scheme.onPrimary,
-    flexShrink: 1,
     textAlign: 'center',
+    flexShrink: 1,
   },
   saveActionTextDisabled: {
     color: scheme.onSurfaceVariant,
   },
   confirmDeleteBox: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    borderWidth: 1,
-    borderColor: scheme.error,
-    padding: 12,
+    backgroundColor: scheme.errorContainer,
+    borderRadius: 22,
+    padding: 14,
     gap: 12,
   },
   confirmDeleteTextGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   confirmDeleteText: {
     ...type.titleSmall,
-    color: scheme.error,
-    fontWeight: '600',
+    color: scheme.onErrorContainer,
+    fontWeight: '700',
     flex: 1,
   },
   confirmDeleteBtns: {
@@ -1428,184 +1903,330 @@ const styles = StyleSheet.create({
   },
   cancelDeleteBtn: {
     flex: 1,
-    minHeight: 52,
-    padding: 12,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHighest,
+    minHeight: 46,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelDeleteText: {
-    ...type.labelMedium,
+    ...type.labelLarge,
     color: scheme.onSurface,
-    textAlign: 'center',
+    fontWeight: '600',
   },
   confirmDeleteBtn: {
     flex: 1,
-    minHeight: 52,
-    padding: 12,
-    borderRadius: shape.medium,
+    minHeight: 46,
+    borderRadius: shape.full,
     backgroundColor: scheme.error,
     alignItems: 'center',
     justifyContent: 'center',
   },
   confirmDeleteBtnText: {
-    ...type.labelMedium,
+    ...type.labelLarge,
     fontWeight: '700',
     color: scheme.onError,
-    textAlign: 'center',
   },
-  anchorSection: {
-    marginBottom: 24,
-  },
-  anchorSectionHeader: {
+
+  // Wyszukiwarka (lokalizacja / ikony / kotwica)
+  searchPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  addAnchorBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    minHeight: 56,
-  },
-  addAnchorBtnText: {
-    ...type.labelMedium,
-    color: scheme.primary,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  clearAnchorBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.medium,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.large,
+    gap: 10,
     backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    borderWidth: 1.5,
+    borderColor: scheme.outlineVariant,
+    paddingLeft: 16,
+    paddingRight: 4,
+    minHeight: 52,
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    ...type.bodyLarge,
+    color: scheme.onSurface,
+    paddingVertical: 12,
+  },
+  clearBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
   },
-  sectionHint: {
-    ...type.labelSmall,
+  listSpacing: {
+    flex: 1,
+    marginTop: 12,
+  },
+  suggestionsList: {
+    paddingBottom: 28,
+  },
+  sectionCaption: {
+    ...type.labelMedium,
     color: scheme.onSurfaceVariant,
-    marginBottom: 10,
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  promptHintBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 22,
+    padding: 16,
     marginTop: 4,
   },
-  nearestStopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: scheme.outlineVariant,
-  },
-  nearestStopIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.secondaryContainer,
+  promptHintIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 18,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+    backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  nearestStopName: {
-    ...type.titleSmall,
-    color: scheme.onSurface,
-  },
-  nearestStopDist: {
-    ...type.bodySmall,
+  promptHintText: {
+    ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
+    flex: 1,
+    lineHeight: 20,
   },
-  selectPill: {
-    backgroundColor: scheme.primaryContainer,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: shape.medium,
-  },
-  selectPillText: {
-    ...type.labelSmall,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '600',
-  },
+
+  // Pełny katalog ikon
   categoryScroll: {
     flexGrow: 0,
     flexShrink: 0,
-    marginVertical: 10,
+    marginHorizontal: -20,
+    marginTop: 12,
+    marginBottom: 8,
   },
   categoryRow: {
     gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 2,
+    paddingHorizontal: 20,
+    paddingVertical: 2,
     alignItems: 'center',
   },
-  categoryPill: {
-    paddingHorizontal: 18,
-    minHeight: 48,
-    paddingVertical: 12,
-    justifyContent: 'center',
+  categoryChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: shape.medium,
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
-  categoryPillSelected: {
-    backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
+  categoryChipActive: {
+    backgroundColor: scheme.secondaryContainer,
+    borderColor: scheme.secondaryContainer,
   },
-  categoryPillText: {
-    ...type.labelMedium,
-    fontSize: 13,
-    lineHeight: 18,
-    includeFontPadding: false,
+  categoryChipText: {
+    ...type.labelLarge,
     color: scheme.onSurfaceVariant,
   },
-  categoryPillTextSelected: {
-    color: scheme.onPrimaryContainer,
+  categoryChipTextActive: {
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
+  suggestedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 12,
+    marginBottom: 12,
+  },
+  suggestedBannerActive: {
+    borderColor: scheme.primary,
+    borderWidth: 1.5,
+  },
+  suggestedLeaf: {
+    width: 46,
+    height: 46,
+    borderRadius: 20,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestedBannerTexts: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  suggestedBannerEyebrow: {
+    ...type.labelSmall,
+    color: scheme.primary,
+    fontWeight: '600',
+  },
+  suggestedBannerName: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  suggestedBannerPill: {
+    minHeight: 36,
+    minWidth: 36,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestedBannerPillActive: {
+    paddingHorizontal: 10,
+    backgroundColor: scheme.primary,
+  },
+  suggestedBannerPillText: {
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
     fontWeight: '700',
   },
   iconGridContent: {
-    paddingBottom: 28,
     paddingTop: 4,
-    gap: 10,
+    paddingBottom: 32,
   },
-  gridItem: {
+  iconGridRow: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  gridTile: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: shape.medium,
+    minHeight: 96,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    borderRadius: 20,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    gap: 8,
+    position: 'relative',
   },
-  gridIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: shape.medium,
-    backgroundColor: scheme.surfaceContainerHighest,
+  gridCheckBadge: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 20,
+    height: 20,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
   },
-  gridIconWrapSelected: {
-    backgroundColor: scheme.secondaryContainer,
+  gridIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.large,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  gridItemLabel: {
+  gridIconLeafSelected: {
+    backgroundColor: 'transparent',
+  },
+  gridTileLabel: {
     ...type.labelSmall,
-    fontSize: 13,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 15,
+  },
+
+  // Przystanki kotwiczenia
+  stopOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.small,
+    padding: 14,
+    minHeight: 68,
+  },
+  stopOptionRowActive: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1.5,
+    borderColor: scheme.primary,
+  },
+  stopOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 16,
+    backgroundColor: scheme.tertiaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopOptionTexts: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  stopOptionName: {
+    ...type.bodyLarge,
+    fontWeight: '600',
+    color: scheme.onSurface,
+  },
+  stopOptionDist: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  tonalPill: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tonalPillActive: {
+    backgroundColor: scheme.primary,
+  },
+  tonalPillText: {
+    ...type.labelMedium,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
+  },
+  tonalPillTextActive: {
+    color: scheme.onPrimary,
+  },
+
+  // Pusty stan wyszukiwania
+  emptyStateBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  emptyStateIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    ...type.bodyMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
   },
-  gridItemLabelSelected: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '600',
+  emptyStateBtn: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateBtnText: {
+    ...type.labelLarge,
+    color: scheme.onSecondaryContainer,
+    fontWeight: '700',
   },
 });

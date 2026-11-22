@@ -21,6 +21,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import { motion } from '../theme/motion';
 import { useStrings } from '../i18n';
 import type { SavedPlace } from '../types/models';
+import { placeIconTone } from '../services/placeIcons';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 
 // Musi odpowiadać gap z listContent, inaczej sloty w przeciąganiu rozjadą się z layoutem.
@@ -135,6 +136,7 @@ function PlaceCard({
   const ty = useSharedValue(0);
   const lift = useSharedValue(0);
   const Icon = SAVED_PLACE_ICONS[place.icon] ?? MapPin;
+  const tone = placeIconTone(place.icon);
 
   useEffect(() => registerCard(place.id, ty), [place.id, registerCard, ty]);
   useLayoutEffect(() => {
@@ -172,8 +174,8 @@ function PlaceCard({
           accessibilityLabel={pressLabel}
           style={({ pressed }) => [styles.place, pressed && styles.pressed]}
         >
-          <View style={styles.placeIcon}>
-            <Icon size={22} color={scheme.onSecondaryContainer} />
+          <View style={[styles.placeIcon, { backgroundColor: scheme[tone.bg] }]}>
+            <Icon size={22} color={scheme[tone.fg]} />
           </View>
           <View style={styles.placeText}>
             <Text style={styles.name} numberOfLines={fontScale > 1.3 ? undefined : 2}>
@@ -629,9 +631,11 @@ const styles = StyleSheet.create({
     marginRight: -10,
   },
   placeIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: shape.medium,
+    width: 46,
+    height: 46,
+    borderRadius: 20,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
     backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
