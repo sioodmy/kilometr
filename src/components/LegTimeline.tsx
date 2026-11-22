@@ -636,7 +636,7 @@ const TransitLegCard = memo(function TransitLegCard({
     leg.fromStop,
     leg.mode,
   );
-  const stopHint = isTrain || isBoardedLeg ? null : (leg.stopHint ?? resolvedHint);
+  const stopHint = isTrain || isBoardedLeg ? null : (leg.stopHint?.trim() || resolvedHint);
   const departurePlatform = useMemo(
     () => formatPlatformLabel(t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode),
     [t, leg.platformCode, leg.mode, leg.fromStop, leg.trackCode],

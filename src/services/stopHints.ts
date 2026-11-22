@@ -3,6 +3,65 @@ import type { StopHintsDataset, StopHintValue } from '../types/stopHints';
 
 const cache = new Map<string, StopHintsDataset>();
 const inflightBundled = new Map<string, Promise<StopHintsDataset | null>>();
+const inflightRemote = new Map<string, Promise<void>>();
+const remoteChecked = new Set<string>();
+const cityListeners = new Map<string, Set<() => void>>();
+
+function notifyCityListeners(normCity: string): void {
+  const listeners = cityListeners.get(normCity);
+  if (!listeners) return;
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function subscribeCityHints(normCity: string, listener: () => void): () => void {
+  let set = cityListeners.get(normCity);
+  if (!set) {
+    set = new Set();
+    cityListeners.set(normCity, set);
+  }
+  set.add(listener);
+  return () => {
+    const current = cityListeners.get(normCity);
+    if (!current) return;
+    current.delete(listener);
+    if (current.size === 0) cityListeners.delete(normCity);
+  };
+}
+
+function shouldReplaceDataset(
+  current: StopHintsDataset | undefined,
+  next: StopHintsDataset,
+): boolean {
+  const nextStopsCount = Object.keys(next.stops || {}).length;
+  const nextEntrancesCount = next.metroEntrances?.length ?? 0;
+  if (nextStopsCount === 0 && nextEntrancesCount === 0) return false;
+  if (!current) return true;
+  const curSchema = current.schemaVersion ?? 1;
+  const nextSchema = next.schemaVersion ?? 1;
+  if (nextSchema < curSchema) return false;
+  if (nextSchema > curSchema) return true;
+  if (current.generatedAt && next.generatedAt && next.generatedAt < current.generatedAt) {
+    return false;
+  }
+  const curStopsCount = Object.keys(current.stops || {}).length;
+  if (nextStopsCount < curStopsCount && (!next.generatedAt || next.generatedAt === current.generatedAt)) {
+    return false;
+  }
+  return true;
+}
+
+function setCityCache(normCity: string, next: StopHintsDataset): void {
+  const prev = cache.get(normCity);
+  if (prev === next || !shouldReplaceDataset(prev, next)) return;
+  cache.set(normCity, next);
+  notifyCityListeners(normCity);
+}
 
 function extractHintText(val: StopHintValue | undefined): string | null {
   if (!val) return null;
@@ -136,8 +195,8 @@ export function ensureStopHintsLoaded(cityId: string): Promise<StopHintsDataset 
 
   const task = loadBundledStopHints(norm)
     .then((bundled) => {
-      if (bundled && !cache.has(norm)) {
-        cache.set(norm, bundled);
+      if (bundled) {
+        setCityCache(norm, bundled);
       }
       return cache.get(norm) ?? bundled ?? null;
     })
@@ -147,6 +206,22 @@ export function ensureStopHintsLoaded(cityId: string): Promise<StopHintsDataset 
     });
   inflightBundled.set(norm, task);
   return task;
+}
+
+function refreshRemoteStopHints(normCity: string): void {
+  if (!normCity || remoteChecked.has(normCity) || inflightRemote.has(normCity)) return;
+  const task = fetchRemoteStopHints(normCity)
+    .then((remote) => {
+      if (remote) {
+        remoteChecked.add(normCity);
+        setCityCache(normCity, remote);
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      inflightRemote.delete(normCity);
+    });
+  inflightRemote.set(normCity, task);
 }
 
 function useStopHints(cityId: string) {
@@ -161,54 +236,45 @@ function useStopHints(cityId: string) {
       return;
     }
 
-    const currentCached = cache.get(normCity);
-    if (currentCached !== undefined) {
-      setData((prev) => (prev === currentCached ? prev : currentCached));
-      return;
-    }
-
-    let cancelled = false;
-    const abortController = new AbortController();
-    const apply = (next: StopHintsDataset) => {
-      cache.set(normCity, next);
-      if (!cancelled) setData((prev) => (prev === next ? prev : next));
+    const syncFromCache = () => {
+      const latest = cache.get(normCity) ?? null;
+      setData((prev) => (prev === latest ? prev : latest));
     };
 
-    // Bundled hints pokazujemy od razu; remote dociąga się w tle i podmienia cache,
-    // o ile nie ma starszej wersji schematu niż baza wbudowana w aplikację.
-    const load = async () => {
-      const cached = cache.get(normCity);
-      if (cached) {
-        apply(cached);
-        return;
-      }
-      const bundled = await loadBundledStopHints(normCity).catch(() => null);
-      if (cancelled) return;
-      const raced = cache.get(normCity);
-      if (raced) {
-        apply(raced);
-        return;
-      }
-      if (bundled) {
-        apply(bundled);
-      } else {
-        setData((prev) => (prev === null ? prev : null));
-      }
-      const remote = await fetchRemoteStopHints(normCity, abortController.signal);
-      if (remote && (remote.schemaVersion ?? 1) >= (bundled?.schemaVersion ?? 1)) {
-        apply(remote);
-      }
-    };
+    syncFromCache();
+    const unsub = subscribeCityHints(normCity, syncFromCache);
 
-    void load();
+    void ensureStopHintsLoaded(normCity).then(() => {
+      syncFromCache();
+      refreshRemoteStopHints(normCity);
+    });
 
-    return () => {
-      cancelled = true;
-      abortController.abort();
-    };
+    return unsub;
   }, [normCity]);
 
   return data;
+}
+
+function lookupGloballyUniqueCode(
+  stops: Record<string, StopHintValue>,
+  rawCode: string,
+): string | null {
+  const trimmed = rawCode.trim();
+  if (!isGloballyUniqueStopCode(trimmed)) return null;
+  if (stops[trimmed]) return extractHintText(stops[trimmed]);
+  const lower = trimmed.toLowerCase();
+  if (lower !== trimmed && stops[lower]) return extractHintText(stops[lower]);
+  if (/^\d{4,5}$/.test(trimmed)) {
+    const pad5 = trimmed.padStart(5, '0');
+    if (stops[pad5]) return extractHintText(stops[pad5]);
+    const prefixed6 = `1${pad5}`;
+    if (stops[prefixed6]) return extractHintText(stops[prefixed6]);
+  }
+  if (/^1\d{5}$/.test(trimmed)) {
+    const base5 = trimmed.slice(1);
+    if (stops[base5]) return extractHintText(stops[base5]);
+  }
+  return null;
 }
 
 export function resolveStopHint(
@@ -231,6 +297,10 @@ export function resolveStopHint(
     for (const candidateId of stripKnownStopIdPrefixes(trimmedId)) {
       if (candidateId && dataset.stops[candidateId]) {
         return extractHintText(dataset.stops[candidateId]);
+      }
+      if (candidateId) {
+        const byUniqueCode = lookupGloballyUniqueCode(dataset.stops, candidateId);
+        if (byUniqueCode) return byUniqueCode;
       }
       if (candidateId && dataset.metroEntrances && /:E/i.test(candidateId)) {
         const ent = dataset.metroEntrances.find((e) => e.id === candidateId);
@@ -301,16 +371,10 @@ export function resolveStopHint(
   }
 
   // 3. Bezpośredni stopCode WYŁĄCZNIE gdy jest globalnie unikalny w skali miasta
-  // (Wrocław "20820", GZM "2469011-00101", Kraków "901-01" — NIGDY Warszawa "01"/"02"/"06" ani Poznań "41"/"71").
+  // (Wrocław "20820", GZM "2469011-00101", Kraków "901-01"; nigdy Warszawa "01"/"02"/"06" ani Poznań "41"/"71").
   if (stopCode) {
-    const trimmedCode = stopCode.trim();
-    if (isGloballyUniqueStopCode(trimmedCode)) {
-      if (dataset.stops[trimmedCode]) return extractHintText(dataset.stops[trimmedCode]);
-      if (/^\d{4,5}$/.test(trimmedCode)) {
-        const pad5 = trimmedCode.padStart(5, '0');
-        if (dataset.stops[pad5]) return extractHintText(dataset.stops[pad5]);
-      }
-    }
+    const byCode = lookupGloballyUniqueCode(dataset.stops, stopCode);
+    if (byCode) return byCode;
   }
 
   // 4. Fallback do jawnych klastrów (wyłącznie dataset.clusters, nigdy przypadkowy słupek z dataset.stops)
