@@ -14,6 +14,11 @@ import type { Connection, RouteQuery, Suggestion } from '../types/models';
 let localTimetableCache: { cityId: string; value: boolean; at: number } | null = null;
 const LOCAL_TIMETABLE_TTL_MS = 30_000;
 
+/** Zeruje pamięć obecności rozkładu po zmianie miasta lub świeżym imporcie. */
+export function invalidateLocalTimetableCache(): void {
+  localTimetableCache = null;
+}
+
 /** Presence zamiast COUNT(*): heartbeat co 60 s nie może skanować stop_times. */
 export async function hasLocalTimetable(): Promise<boolean> {
   const now = Date.now();

@@ -524,6 +524,9 @@ export default function OnboardingScreen() {
     setDownloading(true);
     try {
       await importGtfsFromNetwork();
+      void import('../src/services/nationalTimetable')
+        .then((m) => m.ensureNationalTimetable())
+        .catch(() => {});
     } catch {
       // błąd pokazuje karta statusu (state 'error') z przyciskiem ponowienia
     } finally {

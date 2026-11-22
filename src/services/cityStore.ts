@@ -4,18 +4,31 @@
 // Zmiana miasta przełącza bazę SQLite i pakiet kafli per-miasto, więc dane
 // drugiego miasta zostają nietknięte na dysku.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { DEFAULT_CITY_ID, getCity, isCityId, type CityDef, type CityId } from '../cities';
 import { kvGet, kvSet } from './storage';
 
 const KEY = 'kilometr.activeCity.v1';
 
 let cachedId: CityId = DEFAULT_CITY_ID;
+let pendingId: CityId = DEFAULT_CITY_ID;
 let loaded = false;
+let manualCitySelectedInSession = false;
 const listeners = new Set<(id: CityId) => void>();
 /** Zmiany miasta idą jedna po drugiej: dwie równoległe podmiany baz
  *  zamykałyby bazę pod zapytaniami tej drugiej i mieszały dane miast. */
 let switchQueue: Promise<unknown> = Promise.resolve();
+
+export type CitySwitchSource = 'manual' | 'auto';
+
+export interface SetActiveCityOptions {
+  source?: CitySwitchSource;
+}
+
+/** Czy użytkownik ręcznie wybrał miasto w tej sesji (blokuje powrót przez GPS). */
+export function isManualCitySelectedInSession(): boolean {
+  return manualCitySelectedInSession;
+}
 
 function enqueueSwitch<T>(task: () => Promise<T>): Promise<T> {
   const run = switchQueue.then(task, task);
@@ -52,6 +65,7 @@ export async function loadActiveCity(): Promise<CityId> {
   // synchroniczni czytelnicy (`getActiveCityIdSync`) nie mogą zobaczyć nowego
   // miasta przy jeszcze starej bazie.
   if (id !== cachedId) {
+    pendingId = id;
     await enqueueSwitch(async () => {
       if (id === cachedId) return;
       await swapStores();
@@ -60,6 +74,7 @@ export async function loadActiveCity(): Promise<CityId> {
     });
     return cachedId;
   }
+  pendingId = cachedId;
   notify();
   return cachedId;
 }
@@ -86,19 +101,21 @@ export function getActiveCitySync(): CityDef {
  */
 async function swapStores(): Promise<void> {
   try {
+    const { resetDataStatusForCity } = await import('./dataManager');
+    // Najpierw przerywamy trwający download/manifest, żeby stary import nie
+    // wszedł w podmianę pliku i nie emitował już postępu starego miasta.
+    resetDataStatusForCity();
+  } catch (err) {
+    console.warn('[CityStore] data status reset failed:', err);
+  }
+  try {
     const { closeGtfsDb, waitForGtfsSwap } = await import('./gtfsDatabase');
-    // Import mógł w tej chwili podmieniać plik (close→move). Zamknięcie bazy
+    // Import mógł w tej chwili podmieniać plik (close->move). Zamknięcie bazy
     // w trakcie `move` zostawiało otwarty uchwyt do nieistniejącego pliku.
     await waitForGtfsSwap();
     await closeGtfsDb();
   } catch (err) {
     console.warn('[CityStore] db switch failed:', err);
-  }
-  try {
-    const { resetDataStatusForCity } = await import('./dataManager');
-    resetDataStatusForCity();
-  } catch (err) {
-    console.warn('[CityStore] data status reset failed:', err);
   }
   try {
     const { gtfsStore } = await import('./routing/store');
@@ -112,6 +129,12 @@ async function swapStores(): Promise<void> {
   } catch (err) {
     console.warn('[CityStore] live tracker reset failed:', err);
   }
+  try {
+    const { invalidateLocalTimetableCache } = await import('./offlineCache');
+    invalidateLocalTimetableCache();
+  } catch (err) {
+    console.warn('[CityStore] offline cache reset failed:', err);
+  }
 }
 
 /**
@@ -120,10 +143,16 @@ async function swapStores(): Promise<void> {
  * Kolejność swap -> `cachedId`: patrz `loadActiveCity` (żaden czytelnik nie
  * widzi nowego miasta przy starej bazie).
  */
-export function setActiveCityId(id: CityId): Promise<CityDef> {
-  // To samo miasto: bez zamykania bazy i resetu store (np. sugestia GPS równa
-  // obecnemu wyborowi w onboardingu).
-  if (id === cachedId) return Promise.resolve(getCity(id));
+export function setActiveCityId(id: CityId, options?: SetActiveCityOptions): Promise<CityDef> {
+  const source: CitySwitchSource = options?.source ?? 'manual';
+  if (source === 'manual') manualCitySelectedInSession = true;
+  // To samo miasto i brak innego oczekującego przełączenia w kolejce.
+  if (id === cachedId && pendingId === id) return Promise.resolve(getCity(id));
+  pendingId = id;
+  // Przerywamy stary download natychmiast, bez czekania na koniec kolejki.
+  void import('./dataManager')
+    .then(({ cancelActiveImport }) => cancelActiveImport())
+    .catch(() => {});
   return enqueueSwitch(async () => {
     // Kolejna zmiana z kolejki mogła już ustawić to miasto.
     if (id === cachedId) return getCity(id);
@@ -150,28 +179,35 @@ export function setActiveCityId(id: CityId): Promise<CityDef> {
   });
 }
 
-/** Hook do ekranów: chipy miasta, onboarding, ustawienia. */
+function subscribeCitySnapshot(onStoreChange: () => void): () => void {
+  const listener = () => onStoreChange();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Hook do ekranów: chipy miasta, onboarding, ustawienia, nagłówki. */
 export function useActiveCity(): {
   cityId: CityId;
   city: CityDef;
-  setCity: (id: CityId) => Promise<CityDef>;
+  setCity: (id: CityId, options?: SetActiveCityOptions) => Promise<CityDef>;
 } {
-  const [cityId, setCityId] = useState<CityId>(cachedId);
+  const cityId = useSyncExternalStore(
+    subscribeCitySnapshot,
+    getActiveCityIdSync,
+    getActiveCityIdSync,
+  );
 
   useEffect(() => {
-    let mounted = true;
-    listeners.add(setCityId);
-    void loadActiveCity()
-      .then((id) => {
-        if (mounted) setCityId(id);
-      })
-      .catch(() => {});
-    return () => {
-      mounted = false;
-      listeners.delete(setCityId);
-    };
+    if (!loaded) {
+      void loadActiveCity().catch(() => {});
+    }
   }, []);
 
-  const setCity = useCallback((id: CityId) => setActiveCityId(id), []);
+  const setCity = useCallback(
+    (id: CityId, options?: SetActiveCityOptions) => setActiveCityId(id, options),
+    [],
+  );
   return { cityId, city: getCity(cityId), setCity };
 }

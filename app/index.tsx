@@ -51,7 +51,12 @@ import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
 import { isIntercityRouteQuery } from '../src/services/api';
 import { defaultLocationForCity } from '../src/config';
-import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
+import {
+  getActiveCityIdSync,
+  isManualCitySelectedInSession,
+  useActiveCity,
+  type CitySwitchSource,
+} from '../src/services/cityStore';
 import {
   FavoritesService,
   LocationService,
@@ -78,10 +83,9 @@ import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
 import {
   type DataStatus,
-  checkTimetableForUpdates,
+  ensureActiveCityTimetable,
   getDataStatus,
   importGtfsFromNetwork,
-  refreshDataStatus,
   subscribeDataStatus,
 } from '../src/services/dataManager';
 import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
@@ -248,9 +252,8 @@ export default function HomeScreen() {
   const [citySheetOpen, setCitySheetOpen] = useState(false);
   const [switchingCity, setSwitchingCity] = useState(false);
   const [switchingCityId, setSwitchingCityId] = useState<CityId | null>(null);
-  // Ref, bo stan `switchingCity` jest o jeden render spóźniony: dwa szybkie
-  // tapy (albo GPS + tap) przechodziły oba i puszczały dwie podmiany bazy.
-  const switchingCityRef = useRef(false);
+  // Generacja przełączenia: szybki drugi wybór wygrywa z poprzednim, bez gubienia tapów.
+  const switchGenRef = useRef(0);
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -344,9 +347,12 @@ export default function HomeScreen() {
   }, []);
 
   // Baza miasta, w którym jest GPS: decyduje, czy przełączyć od razu,
-  // czy pokazać przycisk pobrania.
+  // czy pokazać skrót pobrania.
   useEffect(() => {
-    if (!gpsOtherCityId) return;
+    if (!gpsOtherCityId) {
+      setGpsCityReady(null);
+      return;
+    }
     let cancelled = false;
     hasCityDb(gpsOtherCityId)
       .then((ok) => {
@@ -415,16 +421,21 @@ export default function HomeScreen() {
   // z poprzedniego miasta do najbliższego foregroundu.
   useEffect(() => {
     let cancelled = false;
+    let activeController: AbortController | null = null;
     setNewsAlert(false);
     // Miasto bez źródła komunikatów (features.news) nie odpytuje R2/feedów:
     // nie ma tam czego pokazać, a dzwonek jest ukryty.
     if (!getCity(cityId).features.news) return;
     const checkNews = async () => {
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
       try {
         const { fetchCityNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
-        const news = await fetchCityNews();
+        const news = await fetchCityNews(controller.signal);
+        if (cancelled || controller.signal.aborted || getActiveCityIdSync() !== cityId) return;
         const alert = await shouldShowNewsAlert(news);
-        if (!cancelled) setNewsAlert(alert);
+        if (!cancelled && getActiveCityIdSync() === cityId) setNewsAlert(alert);
       } catch {
         // brak internetu / błąd RSS: badge po prostu znika, bez krzykliwego błędu
       }
@@ -435,6 +446,7 @@ export default function HomeScreen() {
     });
     return () => {
       cancelled = true;
+      activeController?.abort();
       sub.remove();
     };
   }, [cityId]);
@@ -463,17 +475,14 @@ export default function HomeScreen() {
   );
 
   // Status danych: przy starcie, powrocie na foreground i co 30 s.
-  // refreshDataStatus ładuje status lokalnego GTFS: jeśli pusty, automatycznie
-  // uruchamiamy pobieranie rozkładu, aby aplikacja działała bez serwera dev.
+  // Sprawdza lokalny GTFS miasta (pusty -> auto-download) i domyślnie dba
+  // o ogólnopolski rozkład kolejowy w tle.
   useEffect(() => {
     const check = async () => {
-      const st = await refreshDataStatus().catch(() => ({ state: 'empty' }) as const);
-      if (st.state === 'empty') {
-        void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
-      } else if (st.state === 'ready') {
-        void checkTimetableForUpdates().catch((e) => console.warn('Timetable refresh failed:', e));
-        // Rozkład kolejowy odświeżamy lazy i cicho: tylko gdy już jest
-        // pobrany (nowa wersja); pierwsze pobranie robi użytkownik.
+      const st = await ensureActiveCityTimetable({ checkUpdates: true }).catch(
+        () => ({ state: 'empty' }) as const,
+      );
+      if (st.state === 'ready') {
         import('../src/services/nationalTimetable')
           .then((m) => m.ensureNationalTimetable())
           .catch(() => {});
@@ -872,6 +881,8 @@ export default function HomeScreen() {
     pendingDestinationRef.current = null;
     smartCoordsRef.current = null;
     setIsCustomStart(false);
+    setGtfsLoaded(false);
+    setGpsCityReady(null);
     setBoardedOrigin(null);
     setDismissedOnboardKey(null);
     setQuery('');
@@ -895,10 +906,13 @@ export default function HomeScreen() {
     refreshSavedRoutes();
   }, [cityId, refreshSavedRoutes, pullHeight, pullOption]);
 
-  // Po zakończeniu importu GTFS aktualizujemy odjazdy
+  // Po zakończeniu importu GTFS aktualizujemy odjazdy i uruchamiamy domyślny sync kolei
   useEffect(() => {
     if (dataStatus.state === 'ready') {
       refreshPlaces();
+      import('../src/services/nationalTimetable')
+        .then((m) => m.ensureNationalTimetable())
+        .catch(() => {});
       if (!isCustomStart) {
         LocationService.getCurrentLocation()
           .then((l) => {
@@ -1584,60 +1598,56 @@ export default function HomeScreen() {
   );
 
   const handleCityChange = useCallback(
-    async (id: CityId) => {
-      const dataBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
-      if (id === cityId || switchingCityRef.current || dataBusy) return;
-      switchingCityRef.current = true;
+    async (id: CityId, source: CitySwitchSource = 'manual') => {
+      if (id === getActiveCityIdSync() && id === cityId) return;
+      const gen = ++switchGenRef.current;
       setSwitchingCity(true);
       setSwitchingCityId(id);
       try {
-        await setCity(id);
-        const st = await refreshDataStatus().catch(() => null);
-        if (st) {
+        await setCity(id, { source });
+        if (gen !== switchGenRef.current || getActiveCityIdSync() !== id) return;
+        const st = await ensureActiveCityTimetable().catch(() => null);
+        if (st && gen === switchGenRef.current && getActiveCityIdSync() === id) {
           setDataStatus(st);
-          if (st.state === 'empty' && getActiveCityIdSync() === id) {
-            void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
-          }
         }
         const def = defaultLocationForCity(id);
-        if (!isCustomStart) {
+        if (!isCustomStartRef.current) {
           setLocTitle(def.title);
           setCurrentCoords({ lat: def.lat, lon: def.lon });
         }
         refreshPlaces();
         requestSmart(def.title, { lat: def.lat, lon: def.lon });
       } finally {
-        switchingCityRef.current = false;
-        setSwitchingCity(false);
-        setSwitchingCityId(null);
-        setCitySheetOpen(false);
+        if (gen === switchGenRef.current) {
+          setSwitchingCity(false);
+          setSwitchingCityId(null);
+        }
       }
     },
-    [cityId, dataStatus.state, isCustomStart, refreshPlaces, requestSmart, setCity],
+    [cityId, refreshPlaces, requestSmart, setCity],
   );
 
-  // Miasto z GPS ma już bazę: przełączamy od razu. Ref blokuje powrót sporu,
-  // gdy użytkownik ręcznie wróci do starego miasta, stojąc w nowym.
+  // Miasto z GPS ma już bazę: przełączamy automatycznie tylko wtedy, gdy
+  // użytkownik nie wybrał w tej sesji innego miasta ręcznie.
   const gpsAutoSwitchRef = useRef<CityId | null>(null);
   useEffect(() => {
+    if (isManualCitySelectedInSession()) return;
     if (!gpsOtherCityId || gpsCityReady?.id !== gpsOtherCityId || !gpsCityReady.ok) return;
     if (gpsAutoSwitchRef.current === gpsOtherCityId) return;
     if (switchingCity || dataStatus.state === 'downloading' || dataStatus.state === 'importing') {
       return;
     }
     gpsAutoSwitchRef.current = gpsOtherCityId;
-    void handleCityChange(gpsOtherCityId);
+    void handleCityChange(gpsOtherCityId, 'auto');
   }, [gpsOtherCityId, gpsCityReady, switchingCity, dataStatus.state, handleCityChange]);
 
-  // Przycisk w nagłówku: przełącz na miasto z GPS i od razu pobierz jego rozkład.
+  // Skrót w nagłówku: przełącz na miasto z GPS i od razu pobierz jego rozkład.
   const handleGpsCityDownload = async (id: CityId) => {
-    if (id === cityId || switchingCity) return;
-    if (dataStatus.state === 'downloading' || dataStatus.state === 'importing') return;
-    await handleCityChange(id);
+    await handleCityChange(id, 'manual');
     if (getActiveCityIdSync() !== id) return;
     const st = getDataStatus();
     if (st.state === 'empty' || st.state === 'error') {
-      void importGtfsFromNetwork().catch((e) => console.warn('City timetable download failed:', e));
+      void importGtfsFromNetwork(id).catch((e) => console.warn('City timetable download failed:', e));
     }
   };
 
@@ -1789,9 +1799,31 @@ export default function HomeScreen() {
             )}
             <View style={styles.topBar}>
               <View style={styles.cityContextWrap}>
-                {gpsDownloadCityId ? (
+                <SpringPressable
+                  style={styles.cityPill}
+                  onPress={() => setCitySheetOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+                  accessibilityHint={s.city.settingsHint}
+                  accessibilityState={{ busy: switchingCity }}
+                  hitSlop={8}
+                  scaleDelta={0.03}
+                >
+                  <View style={styles.cityPinIcon}>
+                    {switchingCity ? (
+                      <ActivityIndicator size="small" color={scheme.onPrimaryContainer} />
+                    ) : (
+                      <MapPin size={15} color={scheme.onPrimaryContainer} />
+                    )}
+                  </View>
+                  <Text style={styles.cityName} numberOfLines={1}>
+                    {s.city.name(cityId)}
+                  </Text>
+                  <ChevronDown size={16} color={scheme.onSurfaceVariant} />
+                </SpringPressable>
+                {gpsDownloadCityId && !isManualCitySelectedInSession() && (
                   <SpringPressable
-                    style={styles.cityPill}
+                    style={styles.gpsDownloadPill}
                     onPress={() => void handleGpsCityDownload(gpsDownloadCityId)}
                     disabled={switchingCityId === gpsDownloadCityId}
                     accessibilityRole="button"
@@ -1799,37 +1831,13 @@ export default function HomeScreen() {
                       s.city.gen(gpsDownloadCityId),
                     )}
                     accessibilityState={{ busy: switchingCityId === gpsDownloadCityId }}
-                    hitSlop={8}
+                    hitSlop={6}
                     scaleDelta={0.03}
                   >
-                    <View style={styles.cityPinIcon}>
-                      {switchingCityId === gpsDownloadCityId ? (
-                        <ActivityIndicator size="small" color={scheme.onPrimaryContainer} />
-                      ) : (
-                        <Download size={15} color={scheme.onPrimaryContainer} />
-                      )}
-                    </View>
-                    <Text style={styles.cityName} numberOfLines={1}>
+                    <Download size={13} color={scheme.onSecondaryContainer} />
+                    <Text style={styles.gpsDownloadText} numberOfLines={1}>
                       {s.city.name(gpsDownloadCityId)}
                     </Text>
-                  </SpringPressable>
-                ) : (
-                  <SpringPressable
-                    style={styles.cityPill}
-                    onPress={() => setCitySheetOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
-                    accessibilityHint={s.city.settingsHint}
-                    hitSlop={8}
-                    scaleDelta={0.03}
-                  >
-                    <View style={styles.cityPinIcon}>
-                      <MapPin size={15} color={scheme.onPrimaryContainer} />
-                    </View>
-                    <Text style={styles.cityName} numberOfLines={1}>
-                      {s.city.name(cityId)}
-                    </Text>
-                    <ChevronDown size={16} color={scheme.onSurfaceVariant} />
                   </SpringPressable>
                 )}
                 {gpsOutsideAll && (
@@ -2172,6 +2180,7 @@ export default function HomeScreen() {
                 ? dataStatus.progress
                 : null
             }
+            downloadStep={dataStatus.state === 'importing' ? dataStatus.step : null}
           />
         </View>
 
@@ -2298,14 +2307,10 @@ export default function HomeScreen() {
           <CitySelectSheet
             selectedCityId={cityId}
             onSelectCity={(id) => {
-              void handleCityChange(id);
+              void handleCityChange(id, 'manual');
             }}
             onClose={() => setCitySheetOpen(false)}
-            switchingCity={
-              switchingCity ||
-              dataStatus.state === 'downloading' ||
-              dataStatus.state === 'importing'
-            }
+            switchingCity={switchingCity}
             switchingCityId={switchingCityId}
           />
         )}
@@ -2365,6 +2370,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.1,
     color: scheme.onSurface,
+    flexShrink: 1,
+  },
+  gpsDownloadPill: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    minHeight: 36,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  gpsDownloadText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
     flexShrink: 1,
   },
   outsideAreaPill: {

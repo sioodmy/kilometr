@@ -58,7 +58,7 @@ import { withTimeout } from './net';
 import { TIMETABLE } from './gtfsConfig';
 import { kvGet, kvSet } from './storage';
 import { getCity, type CityId } from '../cities';
-import { getActiveCityIdSync } from './cityStore';
+import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
 import { en } from '../i18n/en';
@@ -2486,6 +2486,20 @@ let inMemoryLastSeenTs: number | null = null;
 let inMemorySeenCity: string | null = null;
 let inMemorySeenUrgentIds: Set<string> | null = null;
 
+// Zmiana miasta czyści komunikaty w pamięci, żeby nagłówki i karty innego miasta
+// nie widziały wpisów poprzedniego przewoźnika (np. MPK Wrocław po przełączeniu).
+subscribeActiveCity(() => {
+  cachedNewsItems = null;
+  cachedNewsCity = null;
+  cachedNewsFetchedAt = 0;
+  inMemoryLastSeenDate = null;
+  inMemoryLastSeenTs = null;
+  inMemorySeenCity = null;
+  inMemorySeenUrgentIds = null;
+  transientNewsItems.clear();
+  notifyNewsCacheListeners();
+});
+
 function getTodayDateString(d: Date = new Date()): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -2665,9 +2679,11 @@ export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsIt
   try {
     const items = JSON.parse(raw) as MpkNewsItem[];
     if (!Array.isArray(items) || items.length === 0) return null;
-    cachedNewsItems = items;
-    cachedNewsCity = city.id;
-    notifyNewsCacheListeners();
+    if (activeCityId() === city.id) {
+      cachedNewsItems = items;
+      cachedNewsCity = city.id;
+      notifyNewsCacheListeners();
+    }
     return items;
   } catch {
     return null;
@@ -2679,11 +2695,13 @@ async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNe
   // źródła, nie "brak newsów": pusta lista nie może nadpisać dobrego cache
   // (loadNewsCache i tak odrzuca pusty wpis, tu pojawia się zwrot starych).
   if (items.length === 0) return (await loadNewsCache(cityId)) ?? [];
-  cachedNewsItems = items;
-  cachedNewsCity = cityId;
-  cachedNewsFetchedAt = Date.now();
   void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
-  notifyNewsCacheListeners();
+  if (activeCityId() === cityId) {
+    cachedNewsItems = items;
+    cachedNewsCity = cityId;
+    cachedNewsFetchedAt = Date.now();
+    notifyNewsCacheListeners();
+  }
   return items;
 }
 
@@ -2802,13 +2820,13 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
     }
     if (richItems && richItems.length > 0) {
       cityAbort.abort();
-      if (signal?.aborted) return richItems;
+      if (signal?.aborted || activeCityId() !== city.id) return richItems;
       return rememberNews(richItems, city.id);
     }
 
     const cityItems = await cityPromise;
     if (cityItems !== null) {
-      if (signal?.aborted) return cityItems;
+      if (signal?.aborted || activeCityId() !== city.id) return cityItems;
       const saved = await rememberNews(cityItems, city.id);
       if (richTimedOut) {
         void richPromise.then((lateRich) => {
@@ -2824,7 +2842,7 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
     // Miasto bez własnego feedu (albo feed padł): R2 jest jedynym źródłem.
     const lateRich = await richPromise;
     if (lateRich && lateRich.length > 0) {
-      if (signal?.aborted) return lateRich;
+      if (signal?.aborted || activeCityId() !== city.id) return lateRich;
       return rememberNews(lateRich, city.id);
     }
     if (cityFailed) throw new Error('news');

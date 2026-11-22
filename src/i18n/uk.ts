@@ -2159,7 +2159,7 @@ export const uk: Strings = {
     gpsFailTitle: 'Помилка локації',
     gpsFailBody: 'Не вдалося отримати поточну GPS-позицію. Переконайся, що локацію ввімкнено.',
     now: 'Зараз',
-    title: (operator: string) => `Сполучення ${operator}`,
+    title: 'Сполучення',
     changeFromA11y: (t: string) => `Змінити старт, зараз ${t}`,
     changeFromAnchorA11y: (t: string, stop: string) =>
       `Змінити старт, зараз ${t}, відправлення з зупинки ${stop}`,

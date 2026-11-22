@@ -460,8 +460,8 @@ export function CitySelectSheet({
       cancelAnimation(translateY);
       cancelAnimation(backdropProgress);
       backdropProgress.value = withTiming(0, motion.exit);
-      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
-        if (finished) runOnJS(finishClose)();
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, () => {
+        runOnJS(finishClose)();
       });
     },
     [backdropProgress, finishClose, reduceMotion, translateY],

@@ -64,7 +64,11 @@ import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import { stopTracking } from '../../src/services/notifications';
 import { isIntercityRouteQuery, rememberPlannedConnection } from '../../src/services/api';
-import { nationalTimetableReady } from '../../src/services/nationalTimetable';
+import {
+  ensureNationalTimetable,
+  nationalTimetableReady,
+  subscribeNationalTimetable,
+} from '../../src/services/nationalTimetable';
 import { IntercityDownloadCard } from '../../src/components/IntercityDownloadCard';
 import {
   loadCachedConnections,
@@ -191,7 +195,6 @@ export default function RoutesScreen() {
   const { cityId } = useActiveCity();
   const cityDef = defaultLocationForCity(cityId);
   const cityGen = s.city.gen(cityId);
-  const operator = s.city.operator(cityId);
   const gpsItem: Suggestion = useMemo(
     () => ({
       id: '__gps',
@@ -618,11 +621,19 @@ export default function RoutesScreen() {
       setRailDbReady(null);
       return;
     }
+    const unsub = subscribeNationalTimetable((st) => {
+      if (alive && st.phase === 'ready') setRailDbReady(true);
+    });
     void nationalTimetableReady().then((ready) => {
-      if (alive) setRailDbReady(ready);
+      if (!alive) return;
+      setRailDbReady(ready);
+      if (!ready) {
+        void ensureNationalTimetable().catch(() => {});
+      }
     });
     return () => {
       alive = false;
+      unsub();
     };
   }, [intercityQuery, items.length]);
 
@@ -1455,7 +1466,7 @@ export default function RoutesScreen() {
           adjustsFontSizeToFit
           minimumFontScale={0.85}
         >
-          {s.routes.title(operator)}
+          {s.routes.title}
         </Text>
 
         {showResultBadge ? (

@@ -192,10 +192,15 @@ export default function RootLayout() {
     const nationalTimer = setTimeout(() => {
       void import('../src/services/gtfsDatabase')
         .then(async (db) => {
-          if (!(await db.hasNationalDb())) return;
-          const handle = await db.getNationalDb();
-          await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
-          await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
+          if (await db.hasNationalDb()) {
+            const handle = await db.getNationalDb();
+            await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
+            await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
+          }
+          if (!needsOnboarding) {
+            const national = await import('../src/services/nationalTimetable');
+            void national.ensureNationalTimetable().catch(() => {});
+          }
         })
         .catch(() => {});
     }, 2500);
@@ -203,7 +208,7 @@ export default function RootLayout() {
       clearTimeout(timer);
       clearTimeout(nationalTimer);
     };
-  }, [ready]);
+  }, [ready, needsOnboarding]);
 
   useEffect(() => {
     if (ready && needsOnboarding)

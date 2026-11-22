@@ -1684,7 +1684,7 @@ export const de: Strings = {
     gpsFailBody:
       'Aktuelle GPS-Position konnte nicht ermittelt werden. Stelle sicher, dass der Standort am Telefon aktiviert ist.',
     now: 'Jetzt',
-    title: (operator: string) => `${operator}-Verbindungen`,
+    title: 'Verbindungen',
     changeFromA11y: (t: string) => `Start ändern, aktuell ${t}`,
     changeFromAnchorA11y: (t: string, stop: string) =>
       `Start ändern, aktuell ${t}, Abfahrt ab Haltestelle ${stop}`,
