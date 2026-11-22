@@ -20,6 +20,7 @@ import {
   Heart,
   Home,
   Hospital,
+  Hotel,
   Landmark,
   Laptop,
   Library,
@@ -32,6 +33,7 @@ import {
   Pizza,
   Plane,
   Plus,
+  Restaurant,
   Sandwich,
   Scissors,
   Ship,
@@ -50,18 +52,19 @@ import {
   Trophy,
   University,
   Users,
-  UtensilsCrossed,
   Waves,
   Wine,
+  type IconComponent,
 } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { LineBadge } from './LineBadge';
 import { formatDepartIn, type SmartLineBadge } from './SmartHistoryList';
-import { elev, scheme, shape, type, type SchemeKey } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
+import { placeIconTone } from '../services/placeIcons';
 import { useStrings } from '../i18n';
 
-export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
+export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, IconComponent> = {
   home: Home,
   school: GraduationCap,
   work: Briefcase,
@@ -73,7 +76,7 @@ export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
   train: Train,
   mapPin: MapPin,
   plus: Plus,
-  restaurant: UtensilsCrossed,
+  restaurant: Restaurant,
   pharmacy: Pill,
   park: Trees,
   cinema: Clapperboard,
@@ -110,22 +113,11 @@ export const SAVED_PLACE_ICONS: Record<SavedPlaceIcon, any> = {
   swimming: Waves,
   baby: Baby,
   pet: PawPrint,
-  hotel: Landmark,
+  hotel: Hotel,
   bank: CreditCard,
   post: Package,
   laptop: Laptop,
 };
-
-/** Role tonalne ikon zapisanych miejsc: dynamiczne pod tapetę M3. */
-function placeIconTone(icon: SavedPlaceIcon): { bg: SchemeKey; fg: SchemeKey } {
-  if (icon === 'home' || icon === 'heart' || icon === 'star') {
-    return { bg: 'primaryContainer', fg: 'onPrimaryContainer' };
-  }
-  if (icon === 'work' || icon === 'school' || icon === 'university' || icon === 'laptop') {
-    return { bg: 'tertiaryContainer', fg: 'onTertiaryContainer' };
-  }
-  return { bg: 'secondaryContainer', fg: 'onSecondaryContainer' };
-}
 
 /** Wspólne wymiary kafla: stała wysokość gwarantuje zlicowanie treści między kartami. */
 function tileMetrics(width: number, fontScale: number) {
