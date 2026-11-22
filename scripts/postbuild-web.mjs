@@ -246,6 +246,36 @@ writeResized(iconSrc, 512, 'icon-512.png');
 writeResized(iconSrc, 180, 'apple-touch-icon.png');
 writeResized(splashSrc, 268, 'splash-icon.png');
 
+// Nadpisujemy dist/favicon.ico generowany przez Expo (konwersja BMP potrafiła
+// spłaszczać przezroczystość na białe tło) kontenerem ICO z PNG 32x32 i 48x48.
+function encodeIco(pngBuffersWithSizes) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(pngBuffersWithSizes.length, 4);
+  const dir = Buffer.alloc(16 * pngBuffersWithSizes.length);
+  let offset = 6 + dir.length;
+  pngBuffersWithSizes.forEach(({ size, buf }, i) => {
+    const o = i * 16;
+    dir[o] = size >= 256 ? 0 : size;
+    dir[o + 1] = size >= 256 ? 0 : size;
+    dir[o + 2] = 0;
+    dir[o + 3] = 0;
+    dir.writeUInt16LE(1, o + 4);
+    dir.writeUInt16LE(32, o + 6);
+    dir.writeUInt32LE(buf.length, o + 8);
+    dir.writeUInt32LE(offset, o + 12);
+    offset += buf.length;
+  });
+  return Buffer.concat([header, dir, ...pngBuffersWithSizes.map((e) => e.buf)]);
+}
+
+const icoEntries = [32, 48].map((size) => {
+  const img = resizeRgba(iconSrc, size, size);
+  return { size, buf: encodePng(img.width, img.height, img.rgba) };
+});
+fs.writeFileSync(path.join(DIST, 'favicon.ico'), encodeIco(icoEntries));
+
 const maskable = buildMaskableIcon(iconSrc, 512, [0x00, 0xa8, 0x84]);
 fs.writeFileSync(
   path.join(ICONS_DIR, 'icon-maskable-512.png'),
