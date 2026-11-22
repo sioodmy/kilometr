@@ -19,7 +19,6 @@ export const en: Strings = {
   language: 'Website language',
   sendSms: 'Send SMS',
   hero: {
-    eyebrow: 'Kilometr for Android',
     title: 'Your',
     accent: 'open-source',
     titleEnd: 'journey planner',
@@ -140,39 +139,33 @@ export const en: Strings = {
     ],
   },
   coverage: {
-    eyebrow: 'Coverage in Poland',
-    title: 'Find your city and its operators',
+    title: 'We cover all of Poland',
     body: (count: number) =>
-      `${count} cities and metropolitan networks in one app, including Metropolis GZM. Click a pin on the map or type a city name to check live vehicle tracking, passenger alerts and operators.`,
+      `If you can get there by public transport, you can get there with Kilometr. We cover ${countLabel(count, 'city', 'cities')} across Poland.`,
     searchPlaceholder: 'Search city, e.g. Wrocław, Katowice, Gdańsk...',
     searchLabel: 'Search supported city',
     browseListLabel: 'Toggle city list',
     clearSearch: 'Clear search',
     mapAria: 'Clickable map of Poland showing supported cities',
-    mapHint: (count: number) => `${count} covered networks · Click a pin on the map`,
     citiesListLabel: 'Supported cities list',
     emptyTitle: 'No matching city found',
     emptyBody: 'Check your spelling or reset the filter to browse all supported cities.',
     emptyReset: 'Show all cities',
+    available: 'Available',
     liveLabel: 'Live locations',
     liveValue: (vehicles: number | null) =>
       vehicles == null
-        ? 'Available (vehicle GPS)'
+        ? 'vehicle GPS'
         : vehicles === 0
-          ? 'Available (no vehicles right now)'
-          : `Available (${countLabel(vehicles, 'vehicle', 'vehicles')} live)`,
+          ? 'no vehicles right now'
+          : `${countLabel(vehicles, 'vehicle', 'vehicles')} live`,
     liveUnavailable: 'No live GPS (static timetable)',
     newsLabel: 'Passenger alerts',
-    newsAvailable: 'Available',
     newsUnavailable: 'No municipal alerts feed',
     stopHintsLabel: 'Stop hints',
-    stopHintsValue: (stops: number) =>
-      `Available (${countLabel(stops, 'stop', 'stops')})`,
+    stopHintsValue: (stops: number) => countLabel(stops, 'stop', 'stops'),
     stopHintsUnavailable: 'No stop hints',
-    statsUpdated: (date: string) => `Data as of ${date}`,
     operatorsLabel: 'Operators',
-    railGatewayNote: (stations: string) =>
-      `Intercity rail connections (PKP Intercity, POLREGIO) via: ${stations}.`,
     modes: {
       bus: 'Buses',
       tram: 'Trams',
@@ -194,13 +187,13 @@ export const en: Strings = {
   },
   themeStudio: {
     title: 'Your color in the app',
-    intro: 'Pick colors, check the preview, then send the ready code on Ko-fi.',
+    intro: 'Pick colors, check the preview, then send the ready code on BuyCoffee.',
     thanksTitle: 'Thank you!',
     thanksBody:
       'Your support keeps Kilometr growing with no ads and no tracking. As a thank you, build your own app theme.',
     thanksCta: 'Pick your theme',
     notYet: 'Not a supporter yet?',
-    notYetLink: 'Support on Ko-fi',
+    notYetLink: 'Support on BuyCoffee',
     back: 'Back to the thank you',
     customTitle: 'Custom color',
     hueLabel: 'Color',
@@ -239,13 +232,12 @@ export const en: Strings = {
       cancelled: 'cancelled',
     },
     outputTitle: 'Send your theme',
-    outputIntro: 'Copy the code and paste it into a Ko-fi message.',
+    outputIntro: 'Copy the code and paste it into a BuyCoffee message.',
     copy: 'Copy code',
     copied: 'Copied',
     copyFailed: 'Select the code and press Ctrl+C',
     codeLabel: 'Your theme code',
-    sendOn: 'Open Ko-fi',
-    footerLink: 'Theme for supporters',
+    sendOn: 'Open BuyCoffee',
   },
   footer: {
     tagline: 'See you on the way.',

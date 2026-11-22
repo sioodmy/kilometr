@@ -585,7 +585,7 @@ export default function SettingsScreen() {
               />
             </View>
             <Pressable
-              onPress={() => void Linking.openURL('https://ko-fi.com/sioodmy').catch(() => {})}
+              onPress={() => void Linking.openURL('https://buycoffee.to/sioodmy').catch(() => {})}
               accessibilityRole="link"
               accessibilityLabel={s.settings.supportA11y}
               style={({ pressed }) => [styles.supportLink, pressed && styles.menuRowPressed]}

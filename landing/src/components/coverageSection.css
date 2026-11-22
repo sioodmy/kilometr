@@ -1,41 +1,61 @@
 @layer product {
-  .coverage-section {
-    padding-block: clamp(48px, 6vw, 72px);
+  .coverage-release {
+    border-top: 1px solid rgb(255 255 255 / 6%);
+    background:
+      radial-gradient(
+        ellipse 72% 48% at 50% 0%,
+        rgb(92 219 190 / 6%) 0%,
+        transparent 68%
+      ),
+      #090e0b;
+    overflow-x: clip;
   }
 
-  .cov-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
-    grid-template-rows: auto 1fr;
-    grid-template-areas:
-      'map head'
-      'map detail';
-    column-gap: clamp(32px, 5vw, 68px);
-    row-gap: 24px;
-    align-items: start;
-  }
-
-  .cov-map-stage {
-    grid-area: map;
-    align-self: center;
+  /* Marquee strip of national rail carrier chips positioned directly above the map board. */
+  .cov-rail-band {
+    margin-top: clamp(28px, 3.8vw, 42px);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 14px;
+    gap: 6px;
+  }
+
+  /* Single obsidian architectural split board housing Poland map + City Inspector. */
+  .cov-board {
+    margin-top: clamp(20px, 2.6vw, 28px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+    border-radius: 32px;
+    border: 1px solid rgb(255 255 255 / 9%);
+    background: linear-gradient(180deg, rgb(17 26 21 / 92%) 0%, rgb(11 17 14 / 96%) 100%);
+    box-shadow:
+      0 42px 96px rgb(0 0 0 / 50%),
+      inset 0 1px 0 rgb(255 255 255 / 6%);
+    overflow: visible;
+  }
+
+  /* Left Pane: Cartographic Poland Map */
+  .cov-map-pane {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: clamp(24px, 3.6vw, 40px);
+    border-right: 1px solid rgb(255 255 255 / 7%);
+    background: radial-gradient(
+      68% 62% at 50% 46%,
+      rgb(92 219 190 / 6%) 0%,
+      transparent 74%
+    );
   }
 
   .cov-map-canvas {
     position: relative;
     width: 100%;
-    max-width: 540px;
-    aspect-ratio: 1;
+    max-width: 500px;
+    margin: auto;
+    aspect-ratio: 520 / 500;
     display: grid;
     place-items: center;
-    background: radial-gradient(
-      62% 58% at 50% 48%,
-      rgba(127, 219, 177, 0.085),
-      transparent 72%
-    );
   }
 
   .cov-map-svg {
@@ -46,10 +66,45 @@
   }
 
   .cov-poland-land {
-    fill: var(--map-land);
-    stroke: var(--line);
+    stroke: rgb(127 219 177 / 32%);
     stroke-width: 1.5;
     stroke-linejoin: round;
+  }
+
+  .cov-rail-link {
+    stroke: rgb(92 219 190 / 10%);
+    stroke-width: 1;
+    stroke-dasharray: 2.5 4.5;
+    transition:
+      stroke 0.25s ease,
+      stroke-width 0.25s ease;
+  }
+
+  .cov-rail-link.is-active {
+    stroke: rgb(255 184 58 / 38%);
+    stroke-width: 1.45;
+    stroke-dasharray: none;
+  }
+
+  /* Ultra-subtle gliding light streaks symbolizing rail flows between major cities. */
+  .cov-rail-streak {
+    stroke: rgb(127 219 177 / 30%);
+    stroke-width: 1.45;
+    stroke-linecap: round;
+    stroke-dasharray: 16 240;
+    stroke-dashoffset: 16;
+    pointer-events: none;
+    animation-name: cov-rail-streak-flow;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    transition:
+      stroke 0.3s ease,
+      stroke-width 0.3s ease;
+  }
+
+  .cov-rail-streak.is-active {
+    stroke: rgb(255 204 102 / 58%);
+    stroke-width: 1.9;
   }
 
   .cov-pin {
@@ -61,22 +116,30 @@
     fill: transparent;
   }
 
+  .cov-pin-pulse {
+    fill: none;
+    stroke: rgb(92 219 190 / 48%);
+    stroke-width: 1.25;
+    pointer-events: none;
+    animation: cov-pin-ripple 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+
   .cov-pin-halo {
-    fill: rgba(127, 219, 177, 0.14);
+    fill: rgb(92 219 190 / 16%);
     pointer-events: none;
   }
 
   .cov-pin-ring {
     fill: none;
-    stroke: rgba(127, 219, 177, 0.52);
-    stroke-width: 1.4;
+    stroke: rgb(92 219 190 / 55%);
+    stroke-width: 1.3;
     pointer-events: none;
   }
 
   .cov-pin-dot {
-    fill: #9bb8a5;
-    stroke: var(--bg);
-    stroke-width: 1.8;
+    fill: rgb(142 184 164 / 72%);
+    stroke: #0b120e;
+    stroke-width: 1.6;
     paint-order: stroke;
     transition:
       r var(--duration-fast) var(--ease-out),
@@ -84,149 +147,129 @@
       opacity var(--duration-fast) var(--ease-out);
   }
 
+  .cov-pin.has-live .cov-pin-dot {
+    fill: #7fdbb1;
+  }
+
   .cov-pin:hover .cov-pin-dot,
   .cov-pin.is-hovered .cov-pin-dot {
-    fill: var(--accent);
+    fill: #9bf3d8;
   }
 
   .cov-pin:focus-visible .cov-pin-dot {
-    fill: var(--accent);
-    stroke: var(--text);
-    stroke-width: 2.6;
+    fill: #5cdbbe;
+    stroke: #eef4ee;
+    stroke-width: 2.5;
   }
 
   .cov-pin.is-selected .cov-pin-dot {
-    fill: var(--accent);
-    stroke: var(--bg);
+    fill: #5cdbbe;
+    stroke: #090e0b;
     stroke-width: 2.2;
   }
 
+  .cov-pin-core {
+    fill: #f4f9f5;
+    pointer-events: none;
+  }
+
   .cov-pin.is-dimmed .cov-pin-dot {
-    opacity: 0.25;
+    opacity: 0.2;
   }
 
   .cov-callout rect {
-    fill: var(--surface-raised);
-    stroke: var(--accent);
-    stroke-width: 1.3;
+    fill: rgb(11 18 14 / 94%);
+    stroke: rgb(92 219 190 / 58%);
+    stroke-width: 1.25;
   }
 
   .cov-callout text {
-    fill: var(--text);
-    font-family: var(--font-sans);
-    font-size: 12.5px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  }
-
-  .cov-map-caption {
-    margin: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.875rem;
-    color: var(--muted);
-    letter-spacing: -0.005em;
-  }
-
-  .cov-map-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: var(--accent);
-    box-shadow: 0 0 0 3px rgba(127, 219, 177, 0.16);
-    flex-shrink: 0;
-  }
-
-  .cov-head {
-    grid-area: head;
-  }
-
-  .cov-head h2 {
-    margin: 0;
-    font-size: clamp(1.9rem, 3.2vw, 2.75rem);
+    fill: #f2f7f3;
+    font-family: var(--font);
+    font-size: 12px;
     font-weight: 650;
-    line-height: 1.08;
-    letter-spacing: -0.03em;
-    max-width: 18ch;
-    text-wrap: balance;
+    letter-spacing: -0.015em;
   }
 
-  .cov-body {
-    margin-top: 14px;
-    max-width: 46ch;
+  /* Right Pane: Precision City Inspector */
+  .cov-inspector-pane {
+    display: flex;
+    flex-direction: column;
+    padding: clamp(24px, 3.6vw, 40px);
+    min-width: 0;
   }
 
   .cov-picker {
     position: relative;
-    margin-top: 22px;
-    z-index: 20;
+    z-index: 25;
   }
 
   .cov-combobox {
     position: relative;
     display: flex;
     align-items: center;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
+    background: rgb(8 13 10 / 84%);
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 16px;
     transition:
       border-color var(--duration-fast) var(--ease-out),
-      background var(--duration-fast) var(--ease-out);
+      background-color var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-fast) var(--ease-out);
   }
 
   .cov-combobox:hover {
-    border-color: rgba(127, 219, 177, 0.45);
+    border-color: rgb(127 219 177 / 36%);
   }
 
   .cov-combobox:focus-within,
   .cov-combobox.is-open {
-    border-color: var(--accent);
-    background: var(--surface-raised);
+    border-color: rgb(92 219 190 / 72%);
+    background: #0d1612;
+    box-shadow: 0 0 0 3px rgb(92 219 190 / 12%);
   }
 
   .cov-combobox-icon {
     position: absolute;
-    left: 16px;
-    color: var(--muted);
+    left: 15px;
+    color: #849a8b;
     pointer-events: none;
   }
 
   .cov-combobox-input {
     width: 100%;
     height: 48px;
-    padding: 0 48px 0 44px;
+    padding: 0 46px 0 43px;
     border: 0;
     background: transparent;
-    color: var(--text);
+    color: #eef4ee;
     font-family: inherit;
-    font-size: 0.96rem;
+    font-size: 0.94rem;
     outline: none;
     min-width: 0;
   }
 
   .cov-combobox-input::placeholder {
-    color: var(--subtle);
+    color: #728578;
   }
 
   .cov-combobox-action {
     position: absolute;
-    right: 2px;
-    width: 44px;
-    height: 44px;
+    right: 3px;
+    width: 42px;
+    height: 42px;
     display: grid;
     place-items: center;
     padding: 0;
     border: 0;
-    border-radius: calc(var(--r-md) - 2px);
+    border-radius: 12px;
     background: transparent;
-    color: var(--muted);
+    color: #8ea395;
     cursor: pointer;
     transition: color var(--duration-fast) var(--ease-out);
   }
 
   .cov-combobox-action:hover {
-    color: var(--text);
+    color: #eef4ee;
   }
 
   .cov-combobox-chevron svg {
@@ -246,10 +289,10 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 6px;
-    border-radius: var(--r-md);
-    border: 1px solid var(--line);
-    background: var(--surface-raised);
-    box-shadow: 0 22px 48px rgba(0, 0, 0, 0.46);
+    border-radius: 18px;
+    border: 1px solid rgb(255 255 255 / 12%);
+    background: #101914;
+    box-shadow: 0 28px 60px rgb(0 0 0 / 64%);
   }
 
   .cov-option {
@@ -257,9 +300,9 @@
     min-height: 44px;
     padding: 9px 12px;
     border: 0;
-    border-radius: var(--r-sm);
+    border-radius: 12px;
     background: transparent;
-    color: var(--text);
+    color: #eef4ee;
     font-family: inherit;
     text-align: left;
     display: flex;
@@ -267,16 +310,16 @@
     justify-content: space-between;
     gap: 12px;
     cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out);
+    transition: background-color var(--duration-fast) var(--ease-out);
   }
 
   .cov-option:hover,
   .cov-option.is-highlighted {
-    background: rgba(127, 219, 177, 0.1);
+    background: rgb(92 219 190 / 11%);
   }
 
   .cov-option.is-selected {
-    color: var(--accent);
+    color: #7fdbb1;
   }
 
   .cov-option-main {
@@ -287,14 +330,14 @@
   }
 
   .cov-option-name {
-    font-size: 0.94rem;
-    font-weight: 550;
+    font-size: 0.93rem;
+    font-weight: 600;
     line-height: 1.25;
   }
 
   .cov-option-meta {
-    font-size: 0.8rem;
-    color: var(--muted);
+    font-size: 0.79rem;
+    color: #8ea395;
     line-height: 1.3;
   }
 
@@ -307,105 +350,114 @@
     margin: 0;
     font-size: 0.94rem;
     font-weight: 600;
-    color: var(--text);
+    color: #eef4ee;
   }
 
   .cov-empty-body {
     margin: 6px 0 0;
     font-size: 0.85rem;
-    color: var(--muted);
+    color: #93a699;
     line-height: 1.45;
   }
 
   .cov-empty-reset {
     margin-top: 12px;
-    min-height: 40px;
-    padding: 8px 14px;
-    border: 1px solid var(--line);
+    min-height: 38px;
+    padding: 7px 14px;
+    border: 1px solid rgb(92 219 190 / 32%);
     border-radius: 999px;
-    background: var(--surface);
-    color: var(--accent);
+    background: rgb(92 219 190 / 10%);
+    color: #7fdbb1;
     font-family: inherit;
-    font-size: 0.86rem;
+    font-size: 0.84rem;
     font-weight: 600;
     cursor: pointer;
   }
 
   .cov-empty-reset:hover {
-    border-color: var(--accent);
+    border-color: #5cdbbe;
   }
 
   .cov-spotlight {
-    grid-area: detail;
-    padding-top: 22px;
-    border-top: 1px solid var(--line);
+    margin-top: 26px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 22px;
+    flex: 1 1 auto;
+  }
+
+  .cov-spot-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
   }
 
   .cov-spot-head h3 {
     margin: 0;
-    font-size: clamp(1.4rem, 2.2vw, 1.85rem);
-    font-weight: 650;
-    letter-spacing: -0.025em;
-    line-height: 1.15;
+    font-size: clamp(1.6rem, 2.5vw, 2.1rem);
+    font-weight: 700;
+    letter-spacing: -0.036em;
+    line-height: 1.08;
+    color: #f4f9f5;
   }
 
   .cov-spot-sub {
     margin: 5px 0 0;
     font-size: 0.92rem;
-    color: var(--muted);
+    color: #8fa295;
   }
 
-  .cov-spot-status {
+  /* Balanced 3-column metrics strip */
+  .cov-metrics {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px 24px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid rgb(255 255 255 / 7%);
+    border-bottom: 1px solid rgb(255 255 255 / 7%);
   }
 
-  .cov-stat {
+  .cov-metric {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
+    padding: 15px 14px 15px 0;
     min-width: 0;
   }
 
-  .cov-stat-k {
+  .cov-metric + .cov-metric {
+    padding-left: 16px;
+    border-left: 1px solid rgb(255 255 255 / 7%);
+  }
+
+  .cov-metric-k {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.8rem;
-    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #86998c;
+    letter-spacing: 0.01em;
   }
 
-  .cov-stat-v {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
+  .cov-metric-v {
     font-size: 0.9rem;
-    font-weight: 550;
-    line-height: 1.35;
+    font-weight: 600;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
   }
 
-  .cov-stat-v svg {
-    flex-shrink: 0;
-    transform: translateY(2px);
+  .cov-metric.is-on .cov-metric-v {
+    color: #9bf3d8;
   }
 
-  .cov-stat.is-on .cov-stat-v {
-    color: var(--accent);
+  .cov-metric.is-off .cov-metric-v {
+    color: #7c8f83;
   }
 
-  .cov-stat.is-off .cov-stat-v {
-    color: var(--muted);
-  }
-
-  .cov-stats-note {
-    margin: -8px 0 0;
-    font-size: 0.76rem;
-    color: var(--muted);
-    letter-spacing: -0.005em;
+  .cov-metric-sub {
+    font-size: 0.78rem;
+    line-height: 1.3;
+    color: #8fa295;
   }
 
   .cov-ops {
@@ -416,18 +468,18 @@
 
   .cov-ops-label {
     margin: 0;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: #7f9486;
   }
 
   .cov-ops-list {
     margin: 0;
     padding: 0;
     list-style: none;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid rgb(255 255 255 / 7%);
   }
 
   .cov-op-row {
@@ -435,27 +487,27 @@
     align-items: center;
     gap: 12px;
     padding: 11px 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid rgb(255 255 255 / 6%);
     min-width: 0;
   }
 
   .cov-op-logo {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
-    background: var(--surface-raised);
-    border: 1px solid var(--line);
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgb(255 255 255 / 4%);
+    border: 1px solid rgb(255 255 255 / 9%);
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    color: var(--accent);
+    color: #7fdbb1;
   }
 
   .cov-op-monogram {
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: -0.02em;
-    color: var(--text);
+    color: #eef4ee;
   }
 
   .cov-op-monogram.is-sm {
@@ -466,52 +518,70 @@
     font-size: 0.53rem;
   }
 
+  .cov-op-crest img {
+    width: auto;
+    height: 22px;
+    max-width: 26px;
+    object-fit: contain;
+  }
+
   .cov-op-name {
-    font-size: 0.95rem;
-    font-weight: 550;
-    color: var(--text);
+    font-size: 0.94rem;
+    font-weight: 560;
+    color: #edf3ee;
     flex: 1 1 auto;
     min-width: 0;
   }
 
   .cov-op-modes {
-    font-size: 0.82rem;
-    color: var(--muted);
+    font-size: 0.8rem;
+    color: #8ca092;
     text-align: right;
     flex-shrink: 0;
   }
 
-  .cov-rail-note {
-    margin: 0;
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    font-size: 0.86rem;
-    color: var(--muted);
-    line-height: 1.45;
+  @keyframes cov-rail-streak-flow {
+    from {
+      stroke-dashoffset: 16;
+    }
+    to {
+      stroke-dashoffset: -240;
+    }
   }
 
-  .cov-rail-note svg {
-    flex-shrink: 0;
-    margin-top: 2px;
-    color: var(--accent);
+  @keyframes cov-pin-ripple {
+    0% {
+      opacity: 0.72;
+      transform: scale(0.75);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.42);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cov-rail-streak,
+    .cov-pin-pulse {
+      animation: none;
+    }
+
+    .cov-rail-streak {
+      display: none;
+    }
   }
 }
 
 @layer responsive {
   @media (max-width: 960px) {
-    .cov-grid {
+    .cov-board {
       grid-template-columns: 1fr;
-      grid-template-rows: auto;
-      grid-template-areas:
-        'head'
-        'map'
-        'detail';
-      gap: 24px;
+      border-radius: 26px;
     }
 
-    .cov-map-stage {
-      align-self: stretch;
+    .cov-map-pane {
+      border-right: 0;
+      border-bottom: 1px solid rgb(255 255 255 / 7%);
     }
 
     .cov-map-canvas {
@@ -520,9 +590,36 @@
   }
 
   @media (max-width: 600px) {
-    .cov-spot-status {
+    .cov-map-pane,
+    .cov-inspector-pane {
+      padding: 20px 16px;
+    }
+
+    .cov-map-canvas {
+      max-width: 300px;
+    }
+
+    .cov-metrics {
       grid-template-columns: 1fr;
-      gap: 12px;
+    }
+
+    .cov-metric {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2px 12px;
+      padding: 11px 0;
+    }
+
+    .cov-metric-v,
+    .cov-metric-sub {
+      grid-column: 2;
+      text-align: right;
+    }
+
+    .cov-metric + .cov-metric {
+      padding-left: 0;
+      border-left: 0;
+      border-top: 1px solid rgb(255 255 255 / 7%);
     }
 
     .cov-op-row {
@@ -532,7 +629,7 @@
 
     .cov-op-modes {
       width: 100%;
-      padding-left: 44px;
+      padding-left: 46px;
       text-align: left;
     }
   }
