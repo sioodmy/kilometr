@@ -36,6 +36,7 @@ export const uk: Strings = {
   install: {
     android: 'Android',
     ios: 'iOS',
+    web: 'Вебверсія',
     platform: 'Вибери систему телефона',
     newTab: '(відкриється в новій вкладці)',
   },

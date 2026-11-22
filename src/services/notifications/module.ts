@@ -62,10 +62,10 @@ export function getNotifications(): NotificationsModule | null {
   return nmod;
 }
 
-/** Czy w ogóle da się pokazać powiadomienie (dev build / produkcja / przeglądarka z Web Notifications). */
+/** Czy w ogóle da się pokazać powiadomienie (dev build / produkcja). */
 export function areNotificationsSupported(): boolean {
   if (Platform.OS === 'web') {
-    return typeof window !== 'undefined' && 'Notification' in window;
+    return false;
   }
   return getNotifications() != null;
 }

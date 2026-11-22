@@ -3,6 +3,7 @@ import {
   Alert,
   AppState,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -236,8 +237,22 @@ export default function RouteDetailsScreen() {
 
   const isPinned = isSavedRoute || isTrackedThis;
 
+  const showFullAppOnlyAlert = () => {
+    Alert.alert(s.routeDetails.fullAppOnlyTitle, s.routeDetails.fullAppOnlyBody, [
+      { text: s.common.close, style: 'cancel' },
+      {
+        text: s.routeDetails.fullAppDownload,
+        onPress: () => void Linking.openURL('https://kilometr.app'),
+      },
+    ]);
+  };
+
   const togglePin = async () => {
     if (!item || trackingBusy) return;
+    if (Platform.OS === 'web') {
+      showFullAppOnlyAlert();
+      return;
+    }
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (isPinned) {
       try {
@@ -492,13 +507,22 @@ export default function RouteDetailsScreen() {
 
               {hasTransitLeg && (
                 <SpringPressable
-                  onPress={() => setAlarmOpen(true)}
+                  onPress={() => {
+                    if (Platform.OS === 'web') {
+                      showFullAppOnlyAlert();
+                      return;
+                    }
+                    setAlarmOpen(true);
+                  }}
                   scaleDelta={0.06}
                   haptic="selection"
                   accessibilityRole="button"
                   onFocus={() => setAlarmFocused(true)}
                   onBlur={() => setAlarmFocused(false)}
-                  accessibilityState={{ selected: currentAlarm != null }}
+                  accessibilityState={{
+                    selected: currentAlarm != null,
+                    disabled: Platform.OS === 'web',
+                  }}
                   accessibilityLabel={
                     currentAlarm
                       ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
@@ -506,6 +530,7 @@ export default function RouteDetailsScreen() {
                   }
                   style={[
                     styles.clusterBtn,
+                    Platform.OS === 'web' && styles.clusterBtnLocked,
                     currentAlarm && styles.clusterBtnActive,
                     alarmFocused && styles.alarmFocused,
                   ]}
@@ -525,13 +550,20 @@ export default function RouteDetailsScreen() {
                   scaleDelta={0.06}
                   haptic="light"
                   accessibilityRole="button"
-                  accessibilityState={{ selected: isPinned }}
+                  accessibilityState={{
+                    selected: isPinned,
+                    disabled: Platform.OS === 'web' || trackingBusy,
+                  }}
                   accessibilityLabel={
                     isPinned
                       ? s.home.unpinRouteA11y(item.toTitle)
                       : s.home.pinRouteA11y(item.toTitle)
                   }
-                  style={[styles.clusterBtn, isPinned && styles.clusterBtnActive]}
+                  style={[
+                    styles.clusterBtn,
+                    Platform.OS === 'web' && styles.clusterBtnLocked,
+                    isPinned && styles.clusterBtnActive,
+                  ]}
                   hitSlop={4}
                 >
                   <Pin
@@ -709,6 +741,9 @@ const styles = StyleSheet.create({
   },
   clusterBtnActive: {
     backgroundColor: scheme.primaryContainer,
+  },
+  clusterBtnLocked: {
+    opacity: 0.42,
   },
   alarmFocused: {
     borderWidth: 2,

@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -212,6 +214,16 @@ export default function SharedJourneyScreen() {
   }
 
   function requestFollow() {
+    if (Platform.OS === 'web') {
+      Alert.alert(s.routeDetails.fullAppOnlyTitle, s.routeDetails.fullAppOnlyBody, [
+        { text: s.common.close, style: 'cancel' },
+        {
+          text: s.routeDetails.fullAppDownload,
+          onPress: () => void Linking.openURL('https://kilometr.app'),
+        },
+      ]);
+      return;
+    }
     if (tracked && !following) {
       Alert.alert(s.share.replaceTitle, s.share.replaceBody, [
         { text: s.common.cancel, style: 'cancel' },
