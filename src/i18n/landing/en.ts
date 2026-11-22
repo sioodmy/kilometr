@@ -28,6 +28,7 @@ export const en: Strings = {
   install: {
     android: 'Android',
     ios: 'iOS',
+    web: 'Web version',
     platform: 'Choose your phone system',
     newTab: '(opens in a new tab)',
   },

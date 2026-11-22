@@ -35,6 +35,7 @@ export const pl = {
   install: {
     android: 'Android',
     ios: 'iOS',
+    web: 'Wersja webowa',
     platform: 'Wybierz system telefonu',
     newTab: '(otwiera się w nowej karcie)',
   },

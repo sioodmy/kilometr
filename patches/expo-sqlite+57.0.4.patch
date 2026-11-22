@@ -1,0 +1,193 @@
+diff --git a/node_modules/expo-sqlite/web/wa-sqlite/AccessHandlePoolVFS.js b/node_modules/expo-sqlite/web/wa-sqlite/AccessHandlePoolVFS.js
+index 046fe6f..ee67efa 100644
+--- a/node_modules/expo-sqlite/web/wa-sqlite/AccessHandlePoolVFS.js
++++ b/node_modules/expo-sqlite/web/wa-sqlite/AccessHandlePoolVFS.js
+@@ -22,7 +22,7 @@ const PERSISTENT_FILE_TYPES =
+   VFS.SQLITE_OPEN_SUPER_JOURNAL |
+   VFS.SQLITE_OPEN_WAL;
+ 
+-const DEFAULT_CAPACITY = 6;
++const DEFAULT_CAPACITY = 14;
+ 
+ /**
+  * This VFS uses the updated Access Handle API with all synchronous methods
+@@ -230,8 +230,8 @@ export class AccessHandlePoolVFS extends FacadeVFS {
+       this.#directoryHandle = handle;
+ 
+       await this.#acquireAccessHandles();
+-      if (this.getCapacity() === 0) {
+-        await this.addCapacity(DEFAULT_CAPACITY);
++      if (this.getCapacity() < DEFAULT_CAPACITY) {
++        await this.addCapacity(DEFAULT_CAPACITY - this.getCapacity());
+       }
+     }
+     return true;
+diff --git a/node_modules/expo-sqlite/web/worker.ts b/node_modules/expo-sqlite/web/worker.ts
+index deaf721..0c332a4 100644
+--- a/node_modules/expo-sqlite/web/worker.ts
++++ b/node_modules/expo-sqlite/web/worker.ts
+@@ -52,8 +52,44 @@ const MAX_INT32 = 0x7fffffff;
+ const MIN_INT32 = -0x80000000;
+ 
+ let _sqlite3: SQLiteAPI | null = null;
+-let _vfs: AccessHandlePoolVFS | null = null;
++let _vfs: AccessHandlePoolVFS | MemoryVFS | null = null;
+ let _vfsMemory: MemoryVFS | null = null;
++let _messageQueue: Promise<void> = Promise.resolve();
++
++const _workerId = Math.random().toString(36).slice(2);
++const _handoffChannel =
++  typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('expo-sqlite-opfs-handoff') : null;
++
++async function releaseOpfsForHandoff(): Promise<void> {
++  if (!_vfs || !('close' in _vfs) || typeof _vfs.close !== 'function') return;
++  try {
++    if (_sqlite3) {
++      for (const stmt of statementIdMap.values()) {
++        await _sqlite3.finalize(stmt.pointer).catch(() => {});
++      }
++      for (const db of databaseIdMap.values()) {
++        await _sqlite3.close(db.pointer).catch(() => {});
++      }
++    }
++  } catch {}
++  statementIdMap.clear();
++  sessionIdMap.clear();
++  databaseIdMap.clear();
++  try {
++    await _vfs.close();
++  } catch {}
++  _vfs = null;
++  _vfsMemory = null;
++  _sqlite3 = null;
++}
++
++if (_handoffChannel) {
++  _handoffChannel.onmessage = (ev) => {
++    if (ev.data?.type === 'release-opfs' && ev.data?.sender !== _workerId) {
++      _messageQueue = _messageQueue.then(() => releaseOpfsForHandoff()).catch(() => {});
++    }
++  };
++}
+ 
+ const databaseIdMap = new Map<number, DatabaseEntity>();
+ const statementIdMap = new Map<number, StatementEntity>();
+@@ -61,27 +97,29 @@ const sessionIdMap = new Map<number, SessionEntity>();
+ 
+ class SQLiteErrorException extends Error {}
+ 
+-self.onmessage = async (event: MessageEvent<SQLiteWorkerMessage>) => {
+-  let result: ResultType | null = null;
+-  let error: Error | null = null;
+-  try {
+-    const message = event.data as MessageTypeMap[typeof event.data.type];
+-    result = await handleMessageImpl(message);
+-  } catch (e) {
+-    error = e instanceof Error ? e : new Error(String(e));
+-  }
+-
+-  const syncTrait = event.data.isSync
+-    ? {
+-        lockBuffer: event.data.lockBuffer,
+-        resultBuffer: event.data.resultBuffer,
+-      }
+-    : undefined;
+-  sendWorkerResult({
+-    id: event.data.id,
+-    result,
+-    error,
+-    syncTrait,
++self.onmessage = (event: MessageEvent<SQLiteWorkerMessage>) => {
++  _messageQueue = _messageQueue.then(async () => {
++    let result: ResultType | null = null;
++    let error: Error | null = null;
++    try {
++      const message = event.data as MessageTypeMap[typeof event.data.type];
++      result = await handleMessageImpl(message);
++    } catch (e) {
++      error = e instanceof Error ? e : new Error(String(e));
++    }
++
++    const syncTrait = event.data.isSync
++      ? {
++          lockBuffer: event.data.lockBuffer,
++          resultBuffer: event.data.resultBuffer,
++        }
++      : undefined;
++    sendWorkerResult({
++      id: event.data.id,
++      result,
++      error,
++      syncTrait,
++    });
+   });
+ };
+ 
+@@ -774,36 +812,49 @@ async function maybeFinalizeAllStatements(nativeDatabaseId: number) {
+ 
+ async function maybeInitAsync(): Promise<{
+   sqlite3: SQLiteAPI;
+-  vfs: AccessHandlePoolVFS;
++  vfs: AccessHandlePoolVFS | MemoryVFS;
+   vfsMemory: MemoryVFS;
+ }> {
+-  if (!_sqlite3) {
++  if (!_sqlite3 || !_vfs || !_vfsMemory) {
+     const module = await WaSQLiteFactory({
+       locateFile: () => wasmModule,
+     });
+-    _sqlite3 = SQLite.Factory(module) as SQLiteAPI;
+-    if (!_sqlite3) {
++    const sqlite3 = SQLite.Factory(module) as SQLiteAPI;
++    if (!sqlite3) {
+       throw new Error('Failed to initialize wa-sqlite');
+     }
+ 
+-    if (_vfs == null) {
+-      _vfs = await AccessHandlePoolVFS.create(VFS_NAME_PERSISTENT, module);
+-      if (_vfs == null) {
+-        throw new Error('Failed to initialize AccessHandlePoolVFS');
++    let vfs: AccessHandlePoolVFS | MemoryVFS | null = null;
++    for (let attempt = 0; attempt < 6; attempt++) {
++      try {
++        vfs = await AccessHandlePoolVFS.create(VFS_NAME_PERSISTENT, module);
++        if (vfs) break;
++      } catch {
++        if (attempt === 0 && _handoffChannel) {
++          try {
++            _handoffChannel.postMessage({ type: 'release-opfs', sender: _workerId });
++          } catch {}
++        }
++        await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
+       }
+     }
+-    _sqlite3.vfs_register(_vfs, true);
++    if (!vfs) {
++      vfs = await MemoryVFS.create(VFS_NAME_PERSISTENT, module);
++    }
++    if (!vfs) {
++      throw new Error('Failed to initialize AccessHandlePoolVFS');
++    }
++    sqlite3.vfs_register(vfs, true);
+ 
+-    if (_vfsMemory == null) {
+-      _vfsMemory = await MemoryVFS.create(VFS_NAME_MEMORY, module);
+-      if (_vfsMemory == null) {
+-        throw new Error('Failed to initialize MemoryVFS');
+-      }
++    const vfsMemory = await MemoryVFS.create(VFS_NAME_MEMORY, module);
++    if (!vfsMemory) {
++      throw new Error('Failed to initialize MemoryVFS');
+     }
+-    _sqlite3.vfs_register(_vfsMemory, false);
+-  }
+-  if (_vfs == null || _vfsMemory == null) {
+-    throw new Error('Invalid VFS state');
++    sqlite3.vfs_register(vfsMemory, false);
++
++    _sqlite3 = sqlite3;
++    _vfs = vfs;
++    _vfsMemory = vfsMemory;
+   }
+   return { sqlite3: _sqlite3, vfs: _vfs, vfsMemory: _vfsMemory };
+ }

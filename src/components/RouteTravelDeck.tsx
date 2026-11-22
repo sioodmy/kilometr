@@ -34,7 +34,10 @@ import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 import type { TransferProtectionState } from '../services/notifications/transferTypes';
-import { checkTicketCompensation } from '../services/notifications';
+import {
+  checkTicketCompensation,
+  isTransferProtectionSupported,
+} from '../services/notifications';
 import { transferNeedsAttention } from './TransferProtectionCard';
 import {
   getTrainLegSummary,
@@ -144,7 +147,7 @@ export function RouteTravelDeck({
   const isTrainTrip = hasTrainLegs(connection);
   const trainSummary = getTrainLegSummary(connection);
   const showTicketSegment = isTrainTrip && trainSummary !== null;
-  const showTransferSegment = hasTransfers;
+  const showTransferSegment = hasTransfers && isTransferProtectionSupported();
   const isDual = showTicketSegment && showTransferSegment;
 
   useEffect(() => {
