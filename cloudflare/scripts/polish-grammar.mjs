@@ -4,7 +4,7 @@
  */
 
 const GARBAGE_STREET_RE =
-  /^(?:progi|patelnia|parking|pętla|petla|tunel|dojazd|teren|plac budowy|droga\b|jezdnia\b|ciąg\b|ciag\b|przejście\b|przejscie\b|zjazd\b|wjazd\b|łącznica\b|lacznica\b|odcinek\b|trasa\s+bez\s+nazwy|bez\s+nazwy|n\/a|-)$/i;
+  /^(?:(?:progi|patelnia|parking|pętla|petla|tunel|dojazd|teren|plac\s+budowy|droga|jezdnia|ciąg|ciag|przejście|przejscie|zjazd|wjazd|łącznica|lacznica|odcinek)\b|trasa\s+bez\s+nazwy$|bez\s+nazwy$|n\/a$|-$)/i;
 
 /** Znane krótkie ulice przymiotnikowe (bez jednoznacznego sufiksu -ska/-cka/-zka/-owa). */
 const KNOWN_FEMININE_ADJ_STREETS = new Set([
@@ -334,7 +334,7 @@ const CHAIN_GENITIVE_RULES = [
   [/^lewiatan$/i, 'Lewiatana', 2],
   [/^polomarket$/i, 'Polomarketu', 2],
   [/^intermarch[eé]$/i, 'Intermarché', 2],
-  [/^e\.?\s*leclerc$/i, 'E.Leclerc', 2],
+  [/^e\.?\s*leclerc$/i, 'hipermarketu E.Leclerc', 2],
   [/^delikatesy\s+centrum$/i, 'Delikatesów Centrum', 2],
   [/^społem$/i, 'sklepu Społem', 3],
   [/^groszek$/i, 'sklepu Groszek', 3],
@@ -673,6 +673,7 @@ export function classifyOsmLandmark(el) {
         key: `skwer:${clean.toLowerCase()}`,
       };
     }
+    if (/\bskwer\b/i.test(name)) return null;
     if (/^ogród\b/i.test(name)) {
       if (/^ogród\s+botaniczny\b/i.test(name)) {
         return {

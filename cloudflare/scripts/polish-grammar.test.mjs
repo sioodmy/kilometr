@@ -25,6 +25,7 @@ test('formatStreetLocative: rejects garbage GTFS street names', () => {
   assert.equal(formatStreetLocative('parking'), null);
   assert.equal(formatStreetLocative('pętla'), null);
   assert.equal(formatStreetLocative('droga wzdłuż nasypu'), null);
+  assert.equal(formatStreetLocative('jezdnia w sąsiedztwie CH Targówek'), null);
   assert.equal(formatStreetLocative(''), null);
 });
 
