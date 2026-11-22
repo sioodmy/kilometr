@@ -305,3 +305,15 @@ pełnych Kolei Małopolskich i co najmniej jednej przesiadki KMŁ ↔ ZTP.
 node cloudflare/scripts/build-timetable.mjs --city=krakow
 node cloudflare/scripts/build-timetable.mjs --city=wroclaw   # wymaga PDP_API_KEY
 ```
+
+## Web PWA na Cloudflare Pages (`web.kilometr.app`)
+
+Wersja webowa (Expo Web + PWA) jest w 100% statyczna (zero Cloudflare Functions, zero własnych kafli OSM: mapa ładuje wektorowe kafelki wprost z OpenFreeMap, live idzie z `api.zbiorkom.live`, a gotowe bazy SQLite z `data.kilometr.app` lądują lokalnie w OPFS przez `expo-sqlite` WASM).
+
+- Free tier Cloudflare Pages: nielimitowane żądania statyczne i transfer; build leci w GitHub Actions (`.github/workflows/deploy-web.yml`), więc zużycie buildów Cloudflare Pages = 0.
+- Jednorazowy setup w dashboardzie Cloudflare:
+  1. **Workers & Pages → Create → Pages → Direct Upload**, nazwa projektu: `kilometr-web`.
+  2. **Custom domains → Set up a custom domain**: `web.kilometr.app`.
+  3. Token API z uprawnieniem **Cloudflare Pages: Edit** zapisz jako sekret GitHub Actions `CLOUDFLARE_PAGES_API_TOKEN` (albo dodaj uprawnienie do istniejącego `CLOUDFLARE_API_TOKEN`).
+  4. Zrób `npx wrangler deploy` w `cloudflare/`, żeby Worker na `data.kilometr.app` zaczął zwracać nagłówki CORS dla przeglądarki.
+
