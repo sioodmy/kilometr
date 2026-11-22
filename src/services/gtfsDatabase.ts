@@ -442,7 +442,7 @@ export async function hasNationalDb(): Promise<boolean> {
   }
 }
 
-/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times). */
+/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times + znacznik). */
 export async function hasCityDb(cityId: string): Promise<boolean> {
   try {
     const FileSystem = await import('expo-file-system/legacy');
@@ -452,13 +452,23 @@ export async function hasCityDb(cityId: string): Promise<boolean> {
       const info = await FileSystem.getInfoAsync(main);
       if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) return false;
     }
-    const db = await getGtfsDbByName(gtfsDbName(cityId));
+    const db = await openGtfsDbHandle(cityId);
     const row = await db.getFirstAsync<{ s: number; t: number; st: number }>(
       `SELECT EXISTS(SELECT 1 FROM stops) AS s,
               EXISTS(SELECT 1 FROM trips) AS t,
               EXISTS(SELECT 1 FROM stop_times) AS st`,
     );
-    return (row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0;
+    if (!((row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0)) return false;
+    const marker = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM meta WHERE key = ?',
+      GTFS_IMPORT_COMPLETE_META,
+    );
+    if (marker?.value === '1') return true;
+    const importedAt = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM meta WHERE key = ?',
+      'gtfs_imported_at',
+    );
+    return Boolean(importedAt?.value);
   } catch {
     return false;
   }
@@ -531,9 +541,12 @@ export async function findNearestNationalStations(
 
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
-  // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
+  // trafiłby w usunięty plik. Czekamy na bramkę i zamykanie, potem otwieramy świeży plik.
   if (swapGate) {
     return swapGate.then(() => getGtfsDb());
+  }
+  if (closingDb) {
+    return closingDb.then(() => getGtfsDb());
   }
   // Baza jest per-miasto: każde miasto ma własny plik, więc zmiana miasta
   // nigdy nie nadpisuje danych drugiego (mieszkasz w jednym, studiujesz w drugim).
@@ -1130,16 +1143,20 @@ export async function getTripStopTimes(
  * Stan bazy do statusu danych (ekran główny pyta co 30 s). COUNT(*) na
  * stop_times to skan ponad miliona wierszy, więc tu wystarcza EXISTS.
  */
-export async function getGtfsPresence(): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
-  const db = await liveHandle();
+export async function getGtfsPresence(
+  cityId?: string,
+): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
+  const db = await openGtfsDbHandle(cityId);
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
   const st = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stop_times) AS n');
   return { stops: s?.n ?? 0, trips: t?.n ?? 0, hasStopTimes: (st?.n ?? 0) > 0 };
 }
 
-export async function getGtfsStats(): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
-  const db = await liveHandle();
+export async function getGtfsStats(
+  cityId?: string,
+): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
+  const db = await openGtfsDbHandle(cityId);
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes');
   const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');

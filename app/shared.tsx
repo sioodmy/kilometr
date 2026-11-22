@@ -19,6 +19,7 @@ import { getCity } from '../src/cities';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import type { MapVehicle } from '../src/map/types';
 import { useActiveCity } from '../src/services/cityStore';
+import { ensureActiveCityTimetable } from '../src/services/dataManager';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -297,6 +298,9 @@ export default function SharedJourneyScreen() {
                   setBusy(true);
                   setError(false);
                   void setCity(journey.city)
+                    .then(() => {
+                      void ensureActiveCityTimetable();
+                    })
                     .catch(() => setError(true))
                     .finally(() => {
                       busyRef.current = false;

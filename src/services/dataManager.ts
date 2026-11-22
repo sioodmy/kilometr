@@ -22,9 +22,14 @@ import {
   readGtfsText,
   unzipGtfs,
 } from './gtfsDownloader';
-import { downloadPrebuiltDb, fetchManifest } from './timetableSync';
+import {
+  downloadPrebuiltDb,
+  fetchManifest,
+  TimetableSyncAbortedError,
+} from './timetableSync';
 import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLimits';
 import { getActiveCityIdSync } from './cityStore';
+import { invalidateLocalTimetableCache } from './offlineCache';
 import { kvGet, kvRemove, kvSet } from './storage';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -92,28 +97,70 @@ function emit(next: DataStatus): void {
   }
 }
 
+interface ActiveImport {
+  cityId: string;
+  generation: number;
+  controller: AbortController;
+  promise: Promise<ImportOutcome>;
+}
+
+let importGeneration = 0;
+let activeImport: ActiveImport | null = null;
+export let importInProgress = false;
+
+function isCurrentImportRun(runGen: number, cityId: string): boolean {
+  return runGen === importGeneration && getActiveCityIdSync() === cityId;
+}
+
+function emitForRun(runGen: number, cityId: string, next: DataStatus): void {
+  if (isCurrentImportRun(runGen, cityId)) emit(next);
+}
+
 /**
- * Zmiana miasta zeruje status: liczby z poprzedniego rozkładu nie dotyczą nowego
- * miasta, a Ustawienia pokazywałyby wtedy "gotowe" z cudzymi liczbami.
- *
- * `importInProgress` zostaje nietknięty: to blokada (muteks) importu, nie status.
- * Zdejmowanie jej w trakcie trwającego importu pozwoliłoby drugiemu importowi
- * wejść do tego samego pliku, a routing nowego miasta planowałby na bazie
- * w połowie zaimportowanej. Zamiast tego import ma token miasta i sam się
- * przerywa, gdy użytkownik zmieni miasto w trakcie (patrz `importInProgress`).
+ * Przerywa bieżący import (np. po zmianie miasta w trakcie pobierania)
+ * i zwalnia blokadę dla nowego miasta. Stary import sprząta własne pliki
+ * tymczasowe, ale nie może już dotknąć statusu ani bazy nowego miasta.
+ */
+export function cancelActiveImport(): void {
+  importGeneration++;
+  const prev = activeImport;
+  activeImport = null;
+  importInProgress = false;
+  lastCheckAttempt = 0;
+  if (prev) prev.controller.abort();
+}
+
+/**
+ * Zmiana miasta zeruje status i przerywa pobieranie poprzedniego miasta:
+ * liczby i postęp starego rozkładu nie mogą zostać na ekranie nowego miasta
+ * ani blokować pobrania jego bazy.
  */
 export function resetDataStatusForCity(): void {
-  lastCheckAttempt = 0;
+  cancelActiveImport();
   emit({ state: 'empty' });
 }
 
 /** Skąd pochodzą dane w SQLite: pełny rozkład z sieci. */
-async function getGtfsSource(): Promise<GtfsSource | null> {
+async function getGtfsSource(cityId?: string): Promise<GtfsSource | null> {
   try {
-    const v = await getMeta('gtfs_source');
+    const v = await getMeta('gtfs_source', cityId);
     return v === 'network' ? v : null;
   } catch {
     return null;
+  }
+}
+
+/** Czy lokalna baza wskazanego miasta ma pełny i kompletny zestaw tabel GTFS. */
+async function hasCompleteLocalDb(cityId: string): Promise<boolean> {
+  try {
+    const stats = await getGtfsPresence(cityId);
+    if (!(stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes)) return false;
+    const marker = await getMeta(GTFS_IMPORT_COMPLETE_META, cityId);
+    if (marker === '1') return true;
+    const importedAt = await getMeta('gtfs_imported_at', cityId);
+    return Boolean(importedAt);
+  } catch {
+    return false;
   }
 }
 
@@ -154,18 +201,20 @@ async function cleanupAbortedImport(activeCityId: string): Promise<boolean> {
 }
 
 /** Szybki start: pełny rozkład w SQLite uznajemy za gotowy. */
-export async function refreshDataStatus(): Promise<DataStatus> {
-  // Trwający import sam emituje postęp - nie nadpisuj go fałszywym statusem.
-  // Bez tego każde odświeżenie w połowie importu (przystanki już są, kursów
-  // jeszcze nie) pokazywałoby "gotowe", a UI wracałoby potem do pobierania.
-  if (importInProgress) return status;
-  const refreshCityId = getActiveCityIdSync();
-  const cityChanged = () => getActiveCityIdSync() !== refreshCityId;
+export async function refreshDataStatus(expectedCityId?: string): Promise<DataStatus> {
+  const refreshCityId = expectedCityId ?? getActiveCityIdSync();
+  if (getActiveCityIdSync() !== refreshCityId) return status;
+  // Trwający import tego samego miasta sam emituje postęp: nie nadpisuj go
+  // fałszywym statusem. Import innego miasta nie może blokować nowego.
+  if (activeImport && activeImport.cityId === refreshCityId) return status;
+  const isStale = () =>
+    getActiveCityIdSync() !== refreshCityId ||
+    (activeImport !== null && activeImport.cityId === refreshCityId);
   try {
-    const stats = await getGtfsPresence();
-    if (cityChanged()) return status;
-    const marker = await getMeta(GTFS_IMPORT_COMPLETE_META);
-    if (cityChanged()) return status;
+    const stats = await getGtfsPresence(refreshCityId);
+    if (isStale()) return status;
+    const marker = await getMeta(GTFS_IMPORT_COMPLETE_META, refreshCityId);
+    if (isStale()) return status;
     const hasData = stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes;
     // Bazy sprzed znacznika (aktualizacja z wersji bez `gtfs_import_complete`):
     // kompletny import zawsze zostawiał `gtfs_imported_at`, a nowy clear kasuje
@@ -174,7 +223,7 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     let complete = marker === '1';
     if (hasData && !complete) {
       const legacyImportedAt = await getMeta('gtfs_imported_at', refreshCityId);
-      if (cityChanged()) return status;
+      if (isStale()) return status;
       if (legacyImportedAt) {
         await setMeta(GTFS_IMPORT_COMPLETE_META, '1', refreshCityId);
         complete = true;
@@ -182,9 +231,10 @@ export async function refreshDataStatus(): Promise<DataStatus> {
     }
     if (hasData && complete) {
       await cleanupAbortedImport(refreshCityId);
-      if (cityChanged()) return status;
-      const updatedAt = await getMeta('gtfs_imported_at');
-      const source = await getGtfsSource();
+      if (isStale()) return status;
+      const updatedAt = await getMeta('gtfs_imported_at', refreshCityId);
+      const source = await getGtfsSource(refreshCityId);
+      if (isStale()) return status;
       emitForCity(refreshCityId, {
         state: 'ready',
         stops: stats.stops,
@@ -196,22 +246,50 @@ export async function refreshDataStatus(): Promise<DataStatus> {
       void ensureSearchReady(refreshCityId);
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
-      // To nie jest działający rozkład - czyścimy, żeby UI wymusił pobieranie.
+      // To nie jest działający rozkład: czyścimy, żeby UI wymusił pobieranie.
       // Gdy import szedł w innym mieście, aktywnej bazy nie ruszamy.
       const otherCityCleaned = await cleanupAbortedImport(refreshCityId);
-      if (cityChanged()) return status;
+      if (isStale()) return status;
       if (!otherCityCleaned && (stats.stops > 0 || stats.trips > 0 || stats.hasStopTimes)) {
         // Pin miasta: zmiana w trakcie nie może wyczyścić bazy nowego miasta.
         await clearGtfsTables(refreshCityId).catch(() => {});
       }
-      if (cityChanged()) return status;
+      if (isStale()) return status;
       await kvRemove(IMPORT_CITY_KEY);
       emitForCity(refreshCityId, { state: 'empty' });
     }
   } catch (err) {
-    emitForCity(refreshCityId, { state: 'error', message: err instanceof Error ? err.message : String(err) });
+    if (!isStale()) {
+      emitForCity(refreshCityId, { state: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
   }
   return status;
+}
+
+/**
+ * Sprawdza bazę aktywnego miasta i uruchamia pobieranie, gdy jest pusta.
+ * Wspólny punkt wejścia po przełączeniu miasta, starcie i powrocie aplikacji.
+ */
+export async function ensureActiveCityTimetable(options?: {
+  checkUpdates?: boolean;
+}): Promise<DataStatus> {
+  const cityId = getActiveCityIdSync();
+  const st = await refreshDataStatus(cityId).catch(() => ({ state: 'empty' }) as const);
+  if (getActiveCityIdSync() !== cityId) return getDataStatus();
+  if (st.state === 'empty') {
+    void importGtfsFromNetwork(cityId).catch((e) => {
+      if (!(e instanceof TimetableSyncAbortedError)) {
+        console.warn('[DataManager] Auto import GTFS failed:', e);
+      }
+    });
+  } else if (st.state === 'ready' && options?.checkUpdates) {
+    void checkTimetableForUpdates().catch((e) => {
+      if (!(e instanceof TimetableSyncAbortedError)) {
+        console.warn('[DataManager] Timetable refresh failed:', e);
+      }
+    });
+  }
+  return getDataStatus();
 }
 
 /** Emituje status tylko wtedy, gdy aktywne miasto nadal jest tym, dla którego go policzono. */
@@ -231,20 +309,21 @@ let lastCheckAttempt = 0;
  * pełnych pobrań z R2 (12 h) nadal obowiązuje (patrz `getTimetableDownloadGate`).
  */
 export async function checkTimetableForUpdates(): Promise<void> {
-  if (importInProgress || Date.now() - lastCheckAttempt < CHECK_RETRY_MS) return;
+  const cityId = getActiveCityIdSync();
+  if ((activeImport && activeImport.cityId === cityId) || Date.now() - lastCheckAttempt < CHECK_RETRY_MS) return;
   lastCheckAttempt = Date.now();
 
-  const cityId = getActiveCityIdSync();
   const expiring = await isTimetableExpiring();
   if (getActiveCityIdSync() !== cityId) return;
 
-  const lastCheck = await getMeta('gtfs_last_check').catch(() => null);
+  const lastCheck = await getMeta('gtfs_last_check', cityId).catch(() => null);
+  if (getActiveCityIdSync() !== cityId) return;
   const checkedRecently =
     !!lastCheck &&
     Date.now() - new Date(lastCheck).getTime() < TIMETABLE.refreshHours * 3600 * 1000;
 
   if (expiring && !checkedRecently) {
-    await importGtfsFromNetwork();
+    await importGtfsFromNetwork(cityId);
     return;
   }
   if (checkedRecently) return;
@@ -257,16 +336,16 @@ export async function checkTimetableForUpdates(): Promise<void> {
   });
   if (!manifest || getActiveCityIdSync() !== cityId) return;
 
-  const local = await getMeta('timetable_version').catch(() => null);
+  const local = await getMeta('timetable_version', cityId).catch(() => null);
   if (getActiveCityIdSync() !== cityId) return;
   if (local !== manifest.version) {
     // Pobranie i tak sprawdza manifest jeszcze raz; dwa tanie requesty
     // są prostsze niż przekazywanie manifestu przez pół pliku.
-    await importGtfsFromNetwork();
+    await importGtfsFromNetwork(cityId);
     return;
   }
-  await setMeta('gtfs_last_check', new Date().toISOString());
-  await setMeta('gtfs_remote_version', manifest.version);
+  await setMeta('gtfs_last_check', new Date().toISOString(), cityId);
+  await setMeta('gtfs_remote_version', manifest.version, cityId);
 }
 
 async function isTimetableExpiring(): Promise<boolean> {
@@ -302,8 +381,6 @@ async function ensureSearchReady(cityId: string): Promise<void> {
   }
 }
 
-export let importInProgress = false;
-
 /**
  * Czeka, aż trwający import GTFS się zakończy. Rozwiązuje się natychmiast,
  * gdy nic nie jest importowane.
@@ -336,157 +413,211 @@ export function awaitImportSettled(timeoutMs = 180000): Promise<void> {
 export type ImportOutcome = 'updated' | 'upToDate' | 'keptLocal' | 'cooldown';
 
 /** Pełny import: gotowa baza z serwera, w ostateczności klasyczny ZIP. */
-export async function importGtfsFromNetwork(): Promise<ImportOutcome> {
-  if (importInProgress) return 'upToDate';
+export function importGtfsFromNetwork(expectedCityId?: string): Promise<ImportOutcome> {
+  const importCityId = expectedCityId ?? getActiveCityIdSync();
+  if (getActiveCityIdSync() !== importCityId) return Promise.resolve('upToDate');
+
+  // Ten sam import już trwa dla tego miasta: dołączamy się do niego zamiast
+  // cicho zwracać 'upToDate' i zostawiać puste UI.
+  if (activeImport) {
+    if (activeImport.cityId === importCityId) return activeImport.promise;
+    // Import innego miasta: przerywamy natychmiast, nowe miasto ma priorytet.
+    cancelActiveImport();
+  }
+
+  const runGen = ++importGeneration;
+  const controller = new AbortController();
+  const isStale = () =>
+    !isCurrentImportRun(runGen, importCityId) || controller.signal.aborted;
+
+  const clearIfCurrent = () => {
+    if (activeImport?.generation === runGen) {
+      activeImport = null;
+      importInProgress = false;
+    }
+  };
+
   importInProgress = true;
-  // Miasto w chwili startu. Użytkownik może zmienić miasto w trakcie
-  // (pobieranie trwa minuty); wtedy import kończy się bez błędu i bez ruszania
-  // statusu, bo nowe miasto ma własny cykl pobierania.
-  const importCityId = getActiveCityIdSync();
-  const cityChanged = () => getActiveCityIdSync() !== importCityId;
-  try {
-    // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
-    // Brak parsowania na telefonie - download strumieniem + podmiana pliku.
-    if (TIMETABLE.baseUrl) {
-      const synced = await tryImportPrebuilt(importCityId).catch((err) => {
-        console.warn('[DataManager] prebuilt sync failed:', err instanceof Error ? err.message : String(err));
-        return null;
-      });
-      if (cityChanged()) {
-        console.log('[DataManager] miasto zmienione w trakcie importu, kończę bez błędu');
+  // Dla pustej bazy od razu pokazujemy start pobierania (searchbar reaguje natychmiast).
+  if (status.state === 'empty' || status.state === 'error') {
+    emitForRun(runGen, importCityId, { state: 'downloading', progress: 0 });
+  }
+
+  const promise = (async (): Promise<ImportOutcome> => {
+    try {
+      // Ścieżka 1 (domyślna po skonfigurowaniu serwera): prebuilt SQLite.
+      // Brak parsowania na telefonie: download strumieniem + podmiana pliku.
+      if (TIMETABLE.baseUrl) {
+        const synced = await tryImportPrebuilt(importCityId, runGen, controller.signal).catch(
+          (err) => {
+            if (err instanceof TimetableSyncAbortedError || isStale()) return null;
+            console.warn(
+              '[DataManager] prebuilt sync failed:',
+              err instanceof Error ? err.message : String(err),
+            );
+            return null;
+          },
+        );
+        if (isStale()) {
+          return 'upToDate';
+        }
+        if (synced) {
+          invalidateLocalTimetableCache();
+          clearIfCurrent();
+          await refreshDataStatus(importCityId);
+          return synced;
+        }
+        // Nieudany sync, ale baza działa? Nie psujemy jej i nie męczymy
+        // użytkownika importem ZIP na siłę. Pusta baza oznacza fallback do ZIP.
+        const stats = await getGtfsStats(importCityId).catch(() => null);
+        if (isStale()) return 'upToDate';
+        if (stats && stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
+          clearIfCurrent();
+          await refreshDataStatus(importCityId);
+          return 'keptLocal';
+        }
+      }
+
+      // Ścieżka 2 (fallback): katalog -> zip -> unzip -> SQLite, jak dawniej.
+      // Tylko Wrocław ma legacy feed Open Data; inne miasta biorą wyłącznie
+      // prebuilt z serwera (katalog Wrocławia do bazy Krakowa to katastrofa).
+      // Też objęta limitem, żeby nie palić Open Data / R2 przy spamie przycisku.
+      if (isStale()) return 'upToDate';
+      if (importCityId !== 'wroclaw') {
+        const detail = 'prebuilt sync failed';
+        const Terr = dataTr();
+        console.warn('[DataManager] import failed:', detail);
+        emitForRun(runGen, importCityId, {
+          state: 'error',
+          message: Terr.prepareFail,
+          hint: Terr.retryHint,
+          detail,
+        });
+        throw new Error(detail);
+      }
+      const gate = await getTimetableDownloadGate(importCityId);
+      const localStats = await getGtfsStats(importCityId).catch(() => null);
+      if (isStale()) return 'upToDate';
+      const hasLocal =
+        !!localStats &&
+        localStats.stops > 0 &&
+        localStats.trips > 0 &&
+        localStats.stopTimes > 0;
+      if (!gate.allowed && hasLocal) {
+        clearIfCurrent();
+        await refreshDataStatus(importCityId);
+        return 'cooldown';
+      }
+      const imported = await importGtfsLegacy(importCityId, runGen, controller.signal);
+      if (!imported || isStale()) {
         return 'upToDate';
       }
-      if (synced) {
-        // Flaga w dół przed końcowym odświeżeniem (ten sam powód co niżej).
-        importInProgress = false;
-        await refreshDataStatus();
-        return synced;
+      await markTimetableDownloaded(importCityId);
+      invalidateLocalTimetableCache();
+      clearIfCurrent();
+      await refreshDataStatus(importCityId);
+      return 'updated';
+    } catch (err) {
+      if (err instanceof TimetableSyncAbortedError || isStale()) {
+        return 'upToDate';
       }
-      // Nieudany sync, ale baza działa? Nie psujemy jej i nie męczymy
-      // użytkownika importem ZIP na siłę. Pusta baza → fallback do ZIP.
-      const stats = await getGtfsStats().catch(() => null);
-      if (stats && stats.stops > 0 && stats.trips > 0 && stats.stopTimes > 0) {
-        importInProgress = false;
-        await refreshDataStatus();
-        return 'keptLocal';
-      }
-    }
-
-    // Ścieżka 2 (fallback): katalog → zip → unzip → SQLite, jak dawniej.
-    // Tylko Wrocław ma legacy feed Open Data; inne miasta biorą wyłącznie
-    // prebuilt z serwera (katalog Wrocławia do bazy Krakowa to katastrofa).
-    // Też objęta limitem, żeby nie palić Open Data / R2 przy spamie przycisku.
-    const { getActiveCitySync } = await import('./cityStore');
-    if (getActiveCitySync().id !== 'wroclaw') {
-      const detail = 'prebuilt sync failed';
+      const detail = err instanceof Error ? err.message : String(err);
+      // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
+      // do UI: pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
       const Terr = dataTr();
+      const message =
+        err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
       console.warn('[DataManager] import failed:', detail);
-      emitForCity(importCityId, { state: 'error', message: Terr.prepareFail, hint: Terr.retryHint, detail });
-      throw new Error(detail);
+      emitForRun(runGen, importCityId, {
+        state: 'error',
+        message,
+        hint: err instanceof GtfsDownloadError ? err.hint : Terr.retryHint,
+        detail,
+      });
+      try {
+        await finishBulkImport(importCityId);
+      } catch {}
+      throw err;
+    } finally {
+      const wasActive = activeImport?.generation === runGen;
+      if (wasActive) {
+        activeImport = null;
+        importInProgress = false;
+        // Ścieżka błędu emituje status PRZED wyzerowaniem flagi, więc watch z
+        // awaitImportSettled nie zdążył zauważyć końca importu. Powiadamiamy tu,
+        // po zgaszeniu flagi, żeby oczekujący nie wisieli do timeoutu.
+        for (const l of listeners) l(status);
+      }
     }
-    const gate = await getTimetableDownloadGate();
-    const localStats = await getGtfsStats().catch(() => null);
-    const hasLocal =
-      !!localStats && localStats.stops > 0 && localStats.trips > 0 && localStats.stopTimes > 0;
-    if (!gate.allowed && hasLocal) {
-      importInProgress = false;
-      await refreshDataStatus();
-      return 'cooldown';
-    }
-    const imported = await importGtfsLegacy(importCityId);
-    if (!imported) {
-      console.log('[DataManager] miasto zmienione w trakcie importu ZIP, przerywam');
-      return 'upToDate';
-    }
-    await markTimetableDownloaded();
-    // Flaga w dół przed końcowym odświeżeniem - inaczej refresh uzna, że
-    // import nadal trwa, i nigdy nie wyemituje gotowości. (finally i tak czyści.)
-    importInProgress = false;
-    await refreshDataStatus();
-    return 'updated';
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    // Surowy komunikat sieciowy ("Unable to resolve host…") nigdy nie trafia
-    // do UI - pokazujemy zdanie w języku użytkownika, a szczegóły w logu.
-    const Terr = dataTr();
-    const message =
-      err instanceof GtfsDownloadError ? err.message : Terr.prepareFail;
-    console.warn('[DataManager] import failed:', detail);
-    emitForCity(importCityId, {
-      state: 'error',
-      message,
-      hint: err instanceof GtfsDownloadError ? err.hint : Terr.retryHint,
-      detail,
-    });
-    try {
-      await finishBulkImport(importCityId);
-    } catch {}
-    throw err;
-  } finally {
-    importInProgress = false;
-    // Ścieżka błędu emituje status PRZED wyzerowaniem flagi, więc watch z
-    // awaitImportSettled nie zdążył zauważyć końca importu. Powiadamiamy tu,
-    // po zgaszeniu flagi, żeby oczekujący nie wisieli do timeoutu.
-    for (const l of listeners) l(status);
-  }
+  })();
+
+  activeImport = { cityId: importCityId, generation: runGen, controller, promise };
+  return promise;
 }
 
 /**
- * Sync z serwera: manifest → przy nowej wersji download + podmiana bazy.
+ * Sync z serwera: manifest -> przy nowej wersji download + podmiana bazy.
  * 'upToDate' gdy telefon ma już tę wersję, 'updated' gdy baza właśnie wjechała,
  * 'cooldown' gdy jest nowsza wersja, ale pełne pobranie było za niedawno.
  * Rzuca przy problemach, wtedy caller decyduje o fallbacku do ZIP.
  */
-async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upToDate' | 'cooldown'> {
+async function tryImportPrebuilt(
+  pinnedCityId: string,
+  runGen: number,
+  signal: AbortSignal,
+): Promise<'updated' | 'upToDate' | 'cooldown'> {
   // Miasto pinujemy na całą operację: pobieranie trwa minuty, a użytkownik
   // może w międzyczasie zmienić miasto. Manifest, plik tymczasowy i cel
   // podmiany muszą dotyczyć tego samego miasta.
   const cityId = pinnedCityId;
-  const manifest = await fetchManifest(cityId);
-  if (getActiveCityIdSync() !== cityId) return 'upToDate';
-  // Wersja i limit to meta pliku tego miasta, więc czytamy je z jego bazy.
-  const local = await getMeta('timetable_version', cityId);
-  if (getActiveCityIdSync() !== cityId) return 'upToDate';
-  const gate = await getTimetableDownloadGate(cityId);
-  if (getActiveCityIdSync() !== cityId) return 'upToDate';
+  const isStale = () => !isCurrentImportRun(runGen, cityId) || signal.aborted;
+  const manifest = await fetchManifest(cityId, signal);
+  if (isStale()) return 'upToDate';
+  // Wersja, kompletność i limit to stan pliku tego miasta, więc czytamy je z jego bazy.
+  const [local, hasComplete, gate] = await Promise.all([
+    getMeta('timetable_version', cityId),
+    hasCompleteLocalDb(cityId),
+    getTimetableDownloadGate(cityId),
+  ]);
+  if (isStale()) return 'upToDate';
   const checkedAt = new Date().toISOString();
 
-  // Zapis mety tylko przy aktywnej bazie: po zmianie miasta w trakcie
-  // pobierania initDb otwierałby plik nowego miasta, a stary uchwyt jest już
-  // zamknięty. Świeże miasto sprawdzi się samo.
   const setMetaIfActive = async (key: string, value: string) => {
-    if (getActiveCityIdSync() !== cityId) return;
+    if (isStale()) return;
     await setMeta(key, value, cityId);
   };
 
-  if (local && local === manifest.version) {
+  if (hasComplete && local && local === manifest.version) {
     await setMetaIfActive('gtfs_remote_version', manifest.version);
     await setMetaIfActive('gtfs_last_check', checkedAt);
     return 'upToDate';
   }
 
-  // Nowa wersja na serwerze, ale lokalna baza jest: szanujemy limit R2.
-  // Nie zapisujemy `gtfs_last_check`: kolejny check (po godzinie albo przy
-  // następnym starcie) spróbuje ponownie, gdy limit już puści.
-  if (!gate.allowed && local) {
+  // Nowa wersja na serwerze, ale lokalna kompletna baza jest: szanujemy limit R2.
+  // Nie zapisujemy `gtfs_last_check`: kolejny check spróbuje ponownie, gdy limit puści.
+  if (hasComplete && !gate.allowed && local) {
     await setMetaIfActive('gtfs_remote_version', manifest.version);
     return 'cooldown';
   }
 
-  emitForCity(cityId, { state: 'downloading', progress: 0 });
+  emitForRun(runGen, cityId, { state: 'downloading', progress: 0 });
   await downloadPrebuiltDb(
     manifest,
     (written, total) => {
-      emitForCity(cityId, { state: 'downloading', progress: total > 0 ? written / total : 0 });
+      emitForRun(runGen, cityId, {
+        state: 'downloading',
+        progress: total > 0 ? written / total : 0,
+      });
     },
     cityId,
+    signal,
   );
-  if (getActiveCityIdSync() !== cityId) return 'upToDate';
+  if (isStale()) return 'upToDate';
   const T = dataTr();
-  emitForCity(cityId, { state: 'importing', step: T.stepVerify, progress: 0.97 });
+  emitForRun(runGen, cityId, { state: 'importing', step: T.stepVerify, progress: 0.97 });
   await setMetaIfActive('gtfs_last_check', new Date().toISOString());
   await setMetaIfActive('gtfs_remote_version', manifest.version);
-  if (getActiveCityIdSync() === cityId) await markTimetableDownloaded();
+  if (!isStale()) await markTimetableDownloaded(cityId);
   await resetRoutingStore();
   return 'updated';
 }
@@ -494,31 +625,35 @@ async function tryImportPrebuilt(pinnedCityId: string): Promise<'updated' | 'upT
 /**
  * Stara ścieżka ZIP. Najpierw waliduje wymagane pliki, dopiero potem czyści
  * bazę. Wszystkie zapisy idą do bazy miasta z początku importu, a każdy krok
- * sprawdza `cityChanged`: zmiana miasta w trakcie nie może wyczyścić ani
+ * sprawdza `isStale`: zmiana miasta w trakcie nie może wyczyścić ani
  * zabrudzić bazy nowego miasta. Zwraca false, gdy import przerwano.
  */
-async function importGtfsLegacy(importCityId: string): Promise<boolean> {
-  const cityChanged = () => getActiveCityIdSync() !== importCityId;
-  emit({ state: 'downloading', progress: 0 });
+async function importGtfsLegacy(
+  importCityId: string,
+  runGen: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const isStale = () => !isCurrentImportRun(runGen, importCityId) || signal.aborted;
+  emitForRun(runGen, importCityId, { state: 'downloading', progress: 0 });
   const { uri: zipUri } = await downloadArchiveWithFallback((p) => {
     const progress = p.totalBytes > 0 ? p.bytesWritten / p.totalBytes : 0;
-    emit({ state: 'downloading', progress });
+    emitForRun(runGen, importCityId, { state: 'downloading', progress });
   });
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
   const T = dataTr();
-  emit({ state: 'importing', step: T.stepUnpack, progress: 0 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepUnpack, progress: 0 });
   await unzipGtfs(zipUri);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
   // Walidacja przed clearGtfsTables: uszkodzony albo niekompletny ZIP nie
   // może skasować działającego rozkładu.
   const stopsTxt = await readGtfsText('stops.txt');
   const tripsTxt = await readGtfsText('trips.txt');
   const stopTimesTxt = await readGtfsText('stop_times.txt');
-  if (cityChanged()) return false;
+  if (isStale()) return false;
   const validated = await parseRequiredGtfsFiles({ stops: stopsTxt, trips: tripsTxt, stopTimes: stopTimesTxt });
-  if (cityChanged()) return false;
+  if (isStale()) return false;
   if (validated.stops.length === 0) throw new Error(T.errStops);
   if (validated.trips.length === 0) throw new Error(T.errTrips);
   if (validated.stopTimesRows === 0) throw new Error(T.errTimes);
@@ -526,62 +661,66 @@ async function importGtfsLegacy(importCityId: string): Promise<boolean> {
   // Od tego miejsca stara baza jest nieaktualna, więc zapamiętujemy miasto
   // do sprzątania, gdy import padnie przed znacznikiem kompletności.
   await kvSet(IMPORT_CITY_KEY, importCityId);
-  if (cityChanged()) {
+  if (isStale()) {
     await kvRemove(IMPORT_CITY_KEY);
     return false;
   }
   await clearGtfsTables(importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
   await prepareForBulkImport(importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepStops, progress: 0.05 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepStops, progress: 0.05 });
   await importStops(validated.stops, importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepLines, progress: 0.15 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepLines, progress: 0.15 });
   const routesTxt = await readGtfsText('routes.txt');
   if (routesTxt) await importRoutes(parseRoutesContent(routesTxt), importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepCalendar, progress: 0.25 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepCalendar, progress: 0.25 });
   const calTxt = await readGtfsText('calendar.txt');
   if (calTxt) await importCalendar(parseCalendarContent(calTxt), importCityId);
   const calDatesTxt = await readGtfsText('calendar_dates.txt');
   await importCalendarDates(calDatesTxt ? parseCalendarDatesContent(calDatesTxt) : [], importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepTrips, progress: 0.35 });
-  // Tripsy całego miasta na raz to ~2.2 MB tekstu - wchodzi bez chunkowania.
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepTrips, progress: 0.35 });
+  // Tripsy całego miasta na raz to ~2.2 MB tekstu: wchodzi bez chunkowania.
   await importTrips(validated.trips, importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepTimes, progress: 0.5 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepTimes, progress: 0.5 });
   let done = 0;
   let stopped = false;
   await parseStopTimesBatched(
     stopTimesTxt ?? '',
     async (batch) => {
-      if (cityChanged()) {
+      if (isStale()) {
         stopped = true;
         return;
       }
       await importStopTimesBatch(batch, importCityId);
       done += batch.length;
       // Progres orientacyjny: ~1.5M wierszy w stop_times dużego miasta.
-      emit({ state: 'importing', step: T.stepTimesK(Math.round(done / 1000)), progress: Math.min(0.95, 0.5 + done / 1500000 / 2) });
+      emitForRun(runGen, importCityId, {
+        state: 'importing',
+        step: T.stepTimesK(Math.round(done / 1000)),
+        progress: Math.min(0.95, 0.5 + done / 1500000 / 2),
+      });
     },
     { batchSize: 5000 },
   );
-  if (stopped || cityChanged()) return false;
+  if (stopped || isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepIndex, progress: 0.97 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepIndex, progress: 0.97 });
   await finishBulkImport(importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
-  emit({ state: 'importing', step: T.stepWeights, progress: 0.98 });
+  emitForRun(runGen, importCityId, { state: 'importing', step: T.stepWeights, progress: 0.98 });
   await computeStopWeights(importCityId);
-  if (cityChanged()) return false;
+  if (isStale()) return false;
 
   const importedAt = new Date().toISOString();
   await setMeta('gtfs_imported_at', importedAt, importCityId);
