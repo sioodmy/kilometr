@@ -118,6 +118,10 @@ import { useStrings } from '../../src/i18n';
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
 const connectionKey = (item: Connection) => item.id;
 
+// Szybkie wyszukiwania kończą się przed tym czasem, więc pełnoekranowy
+// wskaźnik nie mruga między wejściem w ekran a pierwszą kartą wyniku.
+const INITIAL_LOADING_DELAY_MS = 700;
+
 function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
   if (!raw) return null;
   try {
@@ -341,7 +345,16 @@ export default function RoutesScreen() {
   const [timeMode, setTimeMode] = useState<JourneyTimeMode>('departure');
   const arrivalMode = timeMode === 'arrival';
   const [loading, setLoading] = useState(true);
+  const [showInitialLoading, setShowInitialLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  useEffect(() => {
+    if (!loading || items.length > 0) {
+      setShowInitialLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowInitialLoading(true), INITIAL_LOADING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [items.length, loading]);
   const [offline, setOffline] = useState(false);
   const [preview, setPreview] = useState<{ item: Connection; sticky: boolean } | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
@@ -1472,7 +1485,7 @@ export default function RoutesScreen() {
           }}
           showsVerticalScrollIndicator={false}
         >
-          <RouteLoadingView intercity={intercityQuery} />
+          {showInitialLoading && <RouteLoadingView intercity={intercityQuery} />}
         </ScrollView>
       ) : loadError ? (
         <ScrollView
