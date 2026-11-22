@@ -270,18 +270,67 @@ function walk(dir, rel = '') {
 
 // Wrangler pomija katalogi o nazwie "node_modules" podczas `pages deploy`,
 // przez co font MaterialIcons i wa-sqlite.wasm nie trafiały na Cloudflare Pages.
+// Po przepisaniu ścieżek w bundlach przeliczamy hash w nazwach plików .js,
+// bo /_expo/static/* ma Cache-Control: immutable (1 rok).
 const assetsNodeModules = path.join(DIST, 'assets', 'node_modules');
 const assetsVendor = path.join(DIST, 'assets', 'vendor');
 if (fs.existsSync(assetsNodeModules)) {
   fs.rmSync(assetsVendor, { recursive: true, force: true });
   fs.renameSync(assetsNodeModules, assetsVendor);
-  for (const rel of walk(DIST)) {
-    if (!rel.endsWith('.js') && !rel.endsWith('.css') && !rel.endsWith('.html')) continue;
+
+  const rewriteJsWithNewHash = (rel, replacements) => {
     const full = path.join(DIST, rel);
-    const content = fs.readFileSync(full, 'utf8');
-    if (content.includes('/assets/node_modules/')) {
-      fs.writeFileSync(full, content.replaceAll('/assets/node_modules/', '/assets/vendor/'));
+    let content = fs.readFileSync(full, 'utf8');
+    let changed = false;
+    for (const [from, to] of replacements) {
+      if (content.includes(from)) {
+        content = content.replaceAll(from, to);
+        changed = true;
+      }
     }
+    if (!changed) return null;
+    const match = rel.match(/^(.*-)([0-9a-f]{16,})(\.js)$/);
+    if (!match) {
+      fs.writeFileSync(full, content);
+      return null;
+    }
+    const newHash = crypto.createHash('md5').update(content).digest('hex');
+    const newRel = `${match[1]}${newHash}${match[3]}`;
+    fs.writeFileSync(path.join(DIST, newRel), content);
+    if (newRel !== rel) fs.unlinkSync(full);
+    return [rel, newRel];
+  };
+
+  const renames = [];
+  // Najpierw pliki poboczne (np. worker-*.js), potem entry-*.js, żeby entry dostał nową nazwę workera.
+  const jsFiles = walk(DIST)
+    .filter((rel) => rel.endsWith('.js') && rel !== 'sw.js')
+    .sort((a, b) => (a.includes('/entry-') ? 1 : 0) - (b.includes('/entry-') ? 1 : 0));
+
+  for (const rel of jsFiles) {
+    const replacements = [
+      ['/assets/node_modules/', '/assets/vendor/'],
+      ...renames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
+    ];
+    const renamed = rewriteJsWithNewHash(rel, replacements);
+    if (renamed) renames.push(renamed);
+  }
+
+  for (const rel of walk(DIST)) {
+    if (!rel.endsWith('.css') && !rel.endsWith('.html')) continue;
+    const full = path.join(DIST, rel);
+    let content = fs.readFileSync(full, 'utf8');
+    let changed = false;
+    for (const [from, to] of [
+      ['/assets/node_modules/', '/assets/vendor/'],
+      ...renames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
+    ]) {
+      if (content.includes(from)) {
+        content = content.replaceAll(from, to);
+        changed = true;
+      }
+    }
+    if (changed) fs.writeFileSync(full, content);
   }
 }
 
