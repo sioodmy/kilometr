@@ -23,7 +23,3 @@ const file = raw as CoverageStatsFile;
 export function getCoverageStats(city: string): CoverageCityStats {
   return file.cities?.[city] ?? EMPTY_STATS;
 }
-
-export function getCoverageStatsGeneratedAt(): string | null {
-  return file.generatedAt ?? null;
-}
