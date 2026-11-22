@@ -8,7 +8,7 @@ export const de: Strings = {
   meta: {
     title: 'Kilometr',
     imageAlt:
-      'Kilometr. Dein quelloffener Reiseplaner. Die App auf einem iPhone, Stadtwappen und ein Liniennetz.',
+      'Kilometr. Diesmal kommst du an. Drei Handys mit der App vor einer Karte mit Reiseroute.',
     description:
       'Nahverkehr in Städten in ganz Polen. Verbindungen planen, Abfahrten prüfen und Fahrpläne offline nutzen. Kostenlos für Android.',
   },

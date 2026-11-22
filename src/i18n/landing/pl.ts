@@ -14,7 +14,7 @@ export const pl = {
   meta: {
     title: 'Kilometr',
     imageAlt:
-      'Kilometr. Twój planer podróży open source. Ekran aplikacji na iPhonie, herby miast i schemat sieci komunikacji.',
+      'Kilometr. Tym razem dojedziesz. Czym chcesz, jak chcesz. Trzy telefony z aplikacją na tle mapy z trasą przejazdu.',
     description:
       'Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie.',
   },
