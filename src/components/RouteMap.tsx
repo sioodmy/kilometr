@@ -1,12 +1,9 @@
 // Komponent mapy trasy: WebView z MapLibre GL, kafelkami OSM w stylu M3,
-// geometrią trasy i przystankami.
+// geometrią trasy, przystankami, pozycją GPS użytkownika i pojazdem na żywo.
 //
 // Cała logika mapowa żyje w `src/map/routeMapDocument.ts`, a ten komponent
-// zajmuje się:
-//  - cyklem życia WebView (restart po ubiciu procesu przez system),
-//  - mostkiem komunikatów w obie strony,
-//  - trzymaniem marginesów dopasowania do panelu,
-//  - blokadą zewnętrznych URL-i (poza atrybucją).
+// zajmuje się cyklem życia WebView, mostkiem komunikatów, marginesami kadrowania
+// oraz blokadą zewnętrznych URL-i (poza atrybucją).
 
 import React, {
   forwardRef,
@@ -25,7 +22,7 @@ import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
 import { scheme } from '../theme/tokens';
 
-interface MapStopTap {
+export interface MapStopTap {
   stopId: string;
   legId: string;
   name: string;
@@ -38,6 +35,12 @@ export interface RouteMapHandle {
   setGeometry: (legId: string, coords: [number, number][], fit?: boolean) => void;
   /** Dopasuj widok do trasy (całej albo wybranej nogi, patrz selectedLegId). */
   fit: () => void;
+  /** Wyśrodkuj kamerę na punkcie [lat, lon] z opcjonalnym zoomem. */
+  centerOn: (lat: number, lon: number, zoom?: number) => void;
+  /** Przybliż lub oddal mapę o zadany krok zoomu. */
+  zoomBy: (delta: number) => void;
+  /** Przełącz widoczność warstw POI bez przeładowywania WebView. */
+  setPoiVisible: (visible: boolean) => void;
   /** Wymuś ponowne wczytanie silnika mapy (np. po ubiciu procesu WebView). */
   reload: () => void;
 }
@@ -45,6 +48,8 @@ export interface RouteMapHandle {
 interface RouteMapProps {
   route: MapRoute | null;
   vehicle?: MapVehicle | null;
+  userLat?: number | null;
+  userLon?: number | null;
   selectedLegId?: string | null;
   /** Wycięty fragment geometrii [lat, lon][] aktywnego etapu (np. odcinek kolejowy). */
   focusCoords?: [number, number][] | null;
@@ -52,10 +57,7 @@ interface RouteMapProps {
   stopRange?: [number, number] | null;
   /** Ograniczenie maksymalnego przybliżenia przy kadrowaniu aktywnego etapu. */
   focusMaxZoom?: number | null;
-  /**
-   * Bazowy URL lokalnego serwera mapy. Gdy podany, kafle, glify i silnik
-   * mapy idą z telefonu, więc mapa działa bez internetu.
-   */
+  /** Bazowy URL lokalnego serwera mapy dla pracy offline. */
   offlineBase?: string | null;
   /** Marginesy widoku [top, right, bottom, left] w px. */
   padding?: [number, number, number, number];
@@ -65,8 +67,10 @@ interface RouteMapProps {
   paddingTop?: number;
   paddingLeft?: number;
   paddingRight?: number;
-  /** Etykiety POI pod trasą. Włącza je fullscreen szczegółów połączenia. */
+  /** Czy załadować warstwy POI do stylu (fullscreen szczegółów połączenia). */
   showPoi?: boolean;
+  /** Dynamiczna widoczność warstw POI (działa gdy showPoi=true). */
+  poiVisible?: boolean;
   /** Automatyczny re-fit po dociągnięciu geometrii każdego odcinka trasy. */
   fitOnGeometry?: boolean;
   /** Maksymalny zoom dopasowania trasy (np. 16 dla widgetu, 17 dla mapy pełnoekranowej). */
@@ -74,6 +78,7 @@ interface RouteMapProps {
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
+  onUserDrag?: () => void;
   /** false = kafelki się nie ładują, true = mapa wróciła do normy. */
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
@@ -135,11 +140,6 @@ function routeCenter(route: MapRoute | null): [number, number] | null {
   return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
 }
 
-/**
- * GeoJSON chce [lon, lat], a reszta aplikacji (routeGeometry, OSRM, projekcje)
- * trzyma [lat, lon]. Zamiana jest tu jedynym miejscem, gdzie te dwa światy
- * się stykają.
- */
 const toGeoJson = (coords: [number, number][]): [number, number][] =>
   coords.map(([lat, lon]) => [lon, lat]);
 
@@ -147,6 +147,8 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   {
     route,
     vehicle = null,
+    userLat = null,
+    userLon = null,
     selectedLegId = null,
     focusCoords = null,
     stopRange = null,
@@ -158,11 +160,13 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     paddingLeft = 42,
     paddingRight = 42,
     showPoi = false,
+    poiVisible = true,
     fitOnGeometry = false,
     maxZoom,
     onReady,
     onStopTap,
     onLegTap,
+    onUserDrag,
     onTilesStatus,
     onError,
   },
@@ -189,6 +193,13 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   latestRouteKeyRef.current = routeKey;
   const sentRouteKey = useRef<string | null>(null);
   const sentRouteId = useRef<string | null>(null);
+  const userPosRef = useRef<[number, number] | null>(
+    typeof userLat === 'number' && typeof userLon === 'number' ? [userLon, userLat] : null,
+  );
+  userPosRef.current =
+    typeof userLat === 'number' && typeof userLon === 'number' ? [userLon, userLat] : null;
+  const poiVisibleRef = useRef(poiVisible);
+  poiVisibleRef.current = poiVisible;
 
   const html = useMemo(() => {
     const bootRoute = latestRouteRef.current;
@@ -210,13 +221,12 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       offlineBase,
       center,
       showPoi,
+      poiVisible: poiVisibleRef.current,
+      userPos: userPosRef.current,
       padding: resolvedPadding,
       maxZoom,
       fitOnGeometry,
     });
-    // Tylko to, co wymaga nowego dokumentu. Podmiana trasy (np. przesunięcie karty nogi),
-    // pojazd, wybór nogi i marginesy idą wiadomościami przez mostek bez przeładowania WebView.
-    // cityId: ekran nie jest odmontowywany przy zmianie miasta (stos natywny).
   }, [hasRoute, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
 
   const send = useCallback((msg: MapInMessage) => {
@@ -243,6 +253,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
           pad: padRef.current,
         }),
       fit: () => send({ t: 'fit', pad: padRef.current }),
+      centerOn: (lat, lon, zoom) => send({ t: 'center', lat, lon, zoom }),
+      zoomBy: (delta) => send({ t: 'zoom', delta }),
+      setPoiVisible: (visible) => send({ t: 'poi', visible }),
       reload: restart,
     }),
     [restart, send],
@@ -251,8 +264,6 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useEffect(() => {
     if (!route || routeKey == null) return;
     if (sentRouteKey.current === routeKey) return;
-    // Nowy identyfikator = inna trasa, więc pierwszy kadr musi się dopasować.
-    // Tick live z tym samym id nie rusza kamery.
     const refit = sentRouteId.current !== route.id;
     sentRouteKey.current = routeKey;
     sentRouteId.current = route.id;
@@ -262,6 +273,15 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   useEffect(() => {
     send({ t: 'vehicle', vehicle });
   }, [send, vehicle]);
+
+  useEffect(() => {
+    send({ t: 'user', lat: userLat ?? null, lon: userLon ?? null });
+  }, [send, userLat, userLon]);
+
+  useEffect(() => {
+    if (!showPoi) return;
+    send({ t: 'poi', visible: poiVisible });
+  }, [poiVisible, send, showPoi]);
 
   const lastSelectKey = useRef('');
   const sendSelect = useCallback(() => {
@@ -299,6 +319,12 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
           sentRouteId.current = latest.id;
           send({ t: 'route', route: latest, fit: refit, pad: padRef.current });
         }
+        if (userPosRef.current) {
+          send({ t: 'user', lat: userPosRef.current[1], lon: userPosRef.current[0] });
+        }
+        if (showPoi) {
+          send({ t: 'poi', visible: poiVisibleRef.current });
+        }
         if (selectedLegId) {
           sendSelect();
         }
@@ -317,6 +343,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         onLegTap?.(msg.legId);
         return;
       }
+      if (msg.t === 'userDrag') {
+        onUserDrag?.();
+        return;
+      }
       if (msg.t === 'tiles') {
         onTilesStatus?.(msg.ok);
         return;
@@ -325,7 +355,18 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         void Linking.openURL(msg.url).catch(() => {});
       }
     },
-    [onError, onLegTap, onReady, onStopTap, onTilesStatus, selectedLegId, sendSelect],
+    [
+      onError,
+      onLegTap,
+      onReady,
+      onStopTap,
+      onTilesStatus,
+      onUserDrag,
+      selectedLegId,
+      send,
+      sendSelect,
+      showPoi,
+    ],
   );
 
   return (
