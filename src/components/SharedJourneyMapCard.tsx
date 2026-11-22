@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -20,6 +19,7 @@ import {
   X,
 } from './icons';
 import { LineBadge } from './LineBadge';
+import { MorphingLoader } from './MorphingLoader';
 import { RouteMap, type RouteMapHandle } from './RouteMap';
 import { useStrings } from '../i18n';
 import { buildMapStages, resolveStageSelection, type MapStage } from '../map/stages';
@@ -233,7 +233,7 @@ export function SharedJourneyMapCard({
     if (!mapRoute) {
       return (
         <View style={styles.mapEmpty}>
-          {loading && <ActivityIndicator color={scheme.primary} />}
+          {loading && <MorphingLoader variant="contained" size={30} startIndex={3} />}
           <Text style={styles.emptyText}>
             {loading ? s.share.geometryLoading : s.share.mapUnavailable}
           </Text>

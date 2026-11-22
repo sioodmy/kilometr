@@ -3,7 +3,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   InteractionManager,
   Pressable,
   ScrollView,
@@ -12,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Animated, { FadeOut, ReduceMotion } from 'react-native-reanimated';
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,6 +22,7 @@ import {
   RefreshCw,
 } from './icons';
 import { LineBadge } from './LineBadge';
+import { MorphingLoader } from './MorphingLoader';
 import { SpringPressable } from './SpringPressable';
 import { useStrings } from '../i18n';
 import type { Connection } from '../types/models';
@@ -349,8 +350,12 @@ export function RouteMapCard({
               )}
 
               {status !== 'ready' && (
-                <View style={styles.status} accessibilityLiveRegion="polite">
-                  {status === 'loading' && <ActivityIndicator color={scheme.primary} />}
+                <Animated.View
+                  exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
+                  style={styles.status}
+                  accessibilityLiveRegion="polite"
+                >
+                  {status === 'loading' && <MorphingLoader variant="contained" size={30} startIndex={3} />}
                   <Text style={styles.statusText}>
                     {status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}
                   </Text>
@@ -367,7 +372,7 @@ export function RouteMapCard({
                       <Text style={styles.retryText}>{s.map.retryMap}</Text>
                     </SpringPressable>
                   )}
-                </View>
+                </Animated.View>
               )}
             </>
           )}
