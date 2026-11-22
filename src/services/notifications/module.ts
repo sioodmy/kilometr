@@ -72,7 +72,7 @@ export function areNotificationsSupported(): boolean {
 
 /** Ostrzeżenie w konsoli zamiast cichych nulli - pomocne przy testowaniu. */
 export function warnUnsupportedOnce(what: string): void {
-  if (warnedUnsupported) return;
+  if (Platform.OS === 'web' || warnedUnsupported) return;
   warnedUnsupported = true;
   console.warn(
     `[Powiadomienia] ${what} niedostępne - potrzebny build deweloperski (Expo Go nie wspiera powiadomień).`,

@@ -2756,6 +2756,11 @@ function hasRichDisruptions(items: MpkNewsItem[] | null | undefined): boolean {
 
 /** Bezpośrednie źródła miasta: RSS/JSON/HTML scrapery. null = brak feedu. */
 function fetchCityFeed(cityId: string, signal?: AbortSignal): Promise<MpkNewsItem[] | null> {
+  // W przeglądarce bezpośrednie RSS/HTML przewoźników są blokowane przez CORS;
+  // PWA korzysta z disruptions.json z workera (CORS *).
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    return Promise.resolve(null);
+  }
   if (cityId === 'krakow') return fetchZtpNews(signal);
   if (cityId === 'gzm') return fetchGzmNews(signal);
   if (cityId === 'warszawa') return fetchWtpNews(signal);
