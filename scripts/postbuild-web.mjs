@@ -252,6 +252,11 @@ fs.writeFileSync(
   encodePng(maskable.width, maskable.height, maskable.rgba),
 );
 
+const socialPreviewSrc = path.join(ROOT, 'landing', 'public', 'social-preview.png');
+if (fs.existsSync(socialPreviewSrc)) {
+  fs.copyFileSync(socialPreviewSrc, path.join(DIST, 'social-preview.png'));
+}
+
 // ─── 2. Przeniesienie assets/node_modules + lista precache w dist/sw.js ────
 
 function walk(dir, rel = '') {
