@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   type LayoutChangeEvent,
   ScrollView,
@@ -24,6 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MorphingLoader } from '../src/components/MorphingLoader';
 import * as Haptics from 'expo-haptics';
 import {
   ArrowLeft,
@@ -1485,7 +1485,7 @@ export default function LiveVehiclesMapScreen() {
           style={styles.centerBadge}
           pointerEvents="none"
         >
-          <ActivityIndicator size="small" color={scheme.primary} />
+          <MorphingLoader size={18} color={scheme.primary} />
           <Text style={styles.centerBadgeText}>{s.liveMap.loadingVehicles}</Text>
         </Animated.View>
       )}

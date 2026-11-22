@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   AppState,
   Linking,
@@ -23,6 +22,7 @@ import {
   Share2,
 } from '../../src/components/icons';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { MorphingLoader } from '../../src/components/MorphingLoader';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
@@ -428,8 +428,9 @@ export default function RouteDetailsScreen() {
             {s.routeDetails.title}
           </Text>
         </View>
-        <View style={styles.stateWrap}>
-          <ActivityIndicator size="large" color={scheme.primary} />
+        <View style={styles.stateWrap} accessibilityLiveRegion="polite">
+          <MorphingLoader variant="contained" size={44} />
+          <Text style={styles.emptyText}>{s.routeDetails.loading}</Text>
         </View>
       </View>
     );
