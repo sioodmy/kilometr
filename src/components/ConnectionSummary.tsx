@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ChevronRight, Clock3, Footprints } from './icons';
+import { Clock3, M3SolidArrowDown, M3SolidArrowRight } from './icons';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
-import type { Connection, Leg } from '../types/models';
+import type { Connection } from '../types/models';
 import { RollingTime } from './RollingTime';
 import { LiveSensors } from './LiveDot';
-import { LineBadge } from './LineBadge';
+import { JourneyStrip } from './ConnectionCard';
+import { analyzeConnection } from './connectionInsights';
 import { boardingDepartureSec } from '../services/routing/connectionTimes';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { nowSecOfDay } from '../services/vehiclePosition';
-import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
-
-function visibleSummaryLegs(legs: Leg[]): Leg[] {
-  if (legs.length <= 1) return legs;
-  return legs.filter((leg) => {
-    if (leg.mode !== 'walk') return true;
-    return (leg.walkM ?? 0) >= 80;
-  });
-}
+import { useTransferThresholds, useWalkSpeedMps } from '../services/settings';
 
 export function ConnectionSummary({
   item,
@@ -33,12 +26,13 @@ export function ConnectionSummary({
 }) {
   const s = useStrings();
   const walkMps = useWalkSpeedMps();
+  const thresholds = useTransferThresholds();
   const { width, fontScale } = useWindowDimensions();
   const stacked = ((availableWidth ?? width - 28) - 44) / fontScale < 280;
   const boarding = useMemo(() => item.legs.filter((leg) => leg.mode !== 'walk'), [item.legs]);
-  const stripLegs = useMemo(
-    () => (showLegStrip ? visibleSummaryLegs(item.legs) : []),
-    [showLegStrip, item.legs],
+  const insights = useMemo(
+    () => (showLegStrip ? analyzeConnection(item, walkMps, thresholds) : null),
+    [showLegStrip, item, walkMps, thresholds],
   );
   const firstVehicle = boarding[0];
   const lastVehicle = boarding[boarding.length - 1];
@@ -169,13 +163,12 @@ export function ConnectionSummary({
           </View>
 
           <View style={styles.stackedBridge}>
-            <View style={styles.bridgeTrack} />
+            <M3SolidArrowDown size={20} color={scheme.primary} />
             <View style={styles.bridgePill}>
               <Text style={styles.bridgePillText} numberOfLines={1}>
                 {transfersLabel}
               </Text>
             </View>
-            <View style={styles.bridgeTrack} />
           </View>
 
           <View style={styles.stackedEndpoint}>
@@ -230,11 +223,7 @@ export function ConnectionSummary({
             </View>
 
             <View style={styles.bridgeCol}>
-              <View style={styles.bridgeLineRow}>
-                <View style={styles.bridgeStartDot} />
-                <View style={styles.bridgeTrack} />
-                <View style={styles.bridgeEndDot} />
-              </View>
+              <M3SolidArrowRight size={24} width={36} color={scheme.primary} />
               {countdownLabel ? (
                 <View style={styles.bridgePill}>
                   <Text style={styles.bridgePillText} numberOfLines={1}>
@@ -326,25 +315,7 @@ export function ConnectionSummary({
       )}
 
       {/* 3. Pasek składu podróży: kolejne linie i dojścia na jednym rzucie oka */}
-      {showLegStrip && stripLegs.length > 0 ? (
-        <View style={styles.legStrip}>
-          {stripLegs.map((leg, idx) => (
-            <View key={`${leg.id}-${idx}`} style={styles.legStripItem}>
-              {idx > 0 ? <ChevronRight size={13} color={scheme.outline} /> : null}
-              {leg.mode === 'walk' ? (
-                <View style={styles.walkChip}>
-                  <Footprints size={12} color={scheme.onSurfaceVariant} />
-                  <Text style={styles.walkChipText} numberOfLines={1}>
-                    {formatWalkTime(walkMinutesFor(leg.walkM ?? 150, walkMps))}
-                  </Text>
-                </View>
-              ) : (
-                <LineBadge leg={leg} compact />
-              )}
-            </View>
-          ))}
-        </View>
-      ) : null}
+      {showLegStrip && insights ? <JourneyStrip insights={insights} /> : null}
     </>
   );
 
@@ -450,16 +421,11 @@ const styles = StyleSheet.create({
   },
   bridgeCol: {
     flex: 1,
-    minWidth: 56,
+    minWidth: 44,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 6,
-    gap: 6,
-  },
-  bridgeLineRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingBottom: 4,
+    gap: 4,
   },
   bridgeStartDot: {
     width: 9,
@@ -468,13 +434,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: scheme.primary,
     backgroundColor: scheme.surfaceContainer,
-  },
-  bridgeTrack: {
-    flex: 1,
-    height: 2,
-    backgroundColor: scheme.outlineVariant,
-    marginHorizontal: 3,
-    borderRadius: 1,
   },
   bridgeEndDot: {
     width: 9,
@@ -596,38 +555,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSurface,
     lineHeight: 19,
-  },
-  legStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-  },
-  legStripItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  walkChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  walkChipText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '700',
-    color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
   },
 });

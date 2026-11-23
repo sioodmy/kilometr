@@ -31,35 +31,7 @@ export const en: Strings = {
     web: 'Web version',
     platform: 'Choose your phone system',
     newTab: '(opens in a new tab)',
-  },
-  android: {
-    title: 'Join the Play Store beta',
-    intro:
-      'Kilometr is in testing. To download the Android app, first join the tester group, then join the beta on Google Play.',
-    noteTitle: 'Use one Google account for both steps',
-    noteBody:
-      'Join the group and the beta with the same Google account. Use it in the Play Store on your phone too.',
-    group: {
-      title: 'Join the tester group',
-      body: 'Open the Kilometr group in Google Groups. Sign in and select “Join group”. Opening the page alone does not add you to the group.',
-      action: 'Join the Google group',
-    },
-    testing: {
-      title: 'Join the beta and download the app',
-      body: 'After joining the group, open the testing page. Confirm that you want to join the programme, then follow its Google Play link to install Kilometr.',
-      action: 'Join the Google Play beta',
-    },
-    helpTitle: 'Cannot access the test?',
-    helpBody:
-      'Check that the group, testing page and Play Store all use the same Google account. If you just joined the group, wait a little and refresh the testing page. This is a test version, so you may encounter bugs.',
-    alternative: {
-      title: 'Boycotting Google? Download straight from the source',
-      body: 'Obtainium downloads Kilometr and its updates directly from our GitHub. The button opens the configuration in Obtainium or helps you install it.',
-      obtainium: 'Add to Obtainium',
-      fdroid: 'F-Droid',
-      soon: 'Coming soon',
-      json: 'Download Obtainium configuration (JSON)',
-    },
+    play: 'Get it on Google Play',
   },
   ios: {
     title: 'Install on iOS',
@@ -244,6 +216,7 @@ export const en: Strings = {
     tagline: 'See you on the way.',
     privacy: 'Privacy',
     github: 'GitHub',
+    obtainium: 'Obtainium',
     license: 'Free software. GPL-3.0.',
     back: 'Back to the home page',
   },

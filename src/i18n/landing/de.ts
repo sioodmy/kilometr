@@ -31,35 +31,7 @@ export const de: Strings = {
     web: 'Webversion',
     platform: 'Betriebssystem des Telefons wählen',
     newTab: '(öffnet einen neuen Tab)',
-  },
-  android: {
-    title: 'An der Play-Store-Beta teilnehmen',
-    intro:
-      'Kilometr befindet sich in der Testphase. Um die Android-App herunterzuladen, tritt zuerst der Testgruppe bei und melde dich dann bei Google Play für die Beta an.',
-    noteTitle: 'Ein Google-Konto für beide Schritte',
-    noteBody:
-      'Tritt der Gruppe und der Beta mit demselben Google-Konto bei. Verwende es auch im Play Store auf deinem Telefon.',
-    group: {
-      title: 'Der Testgruppe beitreten',
-      body: 'Öffne die Kilometr-Gruppe in Google Groups. Melde dich an und wähle „Gruppe beitreten“. Das Öffnen der Seite allein reicht nicht aus.',
-      action: 'Der Google-Gruppe beitreten',
-    },
-    testing: {
-      title: 'Für die Beta anmelden und App herunterladen',
-      body: 'Öffne nach dem Gruppenbeitritt die Testseite. Bestätige deine Teilnahme und folge dann dem Link zu Google Play, um Kilometr zu installieren.',
-      action: 'An der Google-Play-Beta teilnehmen',
-    },
-    helpTitle: 'Kein Zugriff auf den Test?',
-    helpBody:
-      'Prüfe, ob die Gruppe, die Testseite und der Play Store dasselbe Google-Konto verwenden. Wenn du der Gruppe gerade beigetreten bist, warte kurz und lade die Testseite neu. Dies ist eine Testversion, in der Fehler auftreten können.',
-    alternative: {
-      title: 'Du boykottierst Google? Lade direkt von der Quelle herunter',
-      body: 'Obtainium lädt Kilometr und Updates direkt von unserem GitHub herunter. Der Button öffnet die Konfiguration in Obtainium oder hilft dir bei der Installation.',
-      obtainium: 'Zu Obtainium hinzufügen',
-      fdroid: 'F-Droid',
-      soon: 'Demnächst',
-      json: 'Obtainium-Konfiguration herunterladen (JSON)',
-    },
+    play: 'Bei Google Play laden',
   },
   ios: {
     title: 'Auf iOS installieren',
@@ -244,6 +216,7 @@ export const de: Strings = {
     tagline: 'Bis unterwegs.',
     privacy: 'Datenschutz',
     github: 'GitHub',
+    obtainium: 'Obtainium',
     license: 'Freie Software. GPL-3.0.',
     back: 'Zurück zur Startseite',
   },

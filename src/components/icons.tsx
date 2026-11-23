@@ -1,5 +1,6 @@
 // Material Icons w jednym miejscu. Nazwy zostały te same co wcześniej,
 // więc ekrany nie zmieniają się przy wymianie zestawu; mapowanie trzymamy tutaj.
+import Svg, { Path } from 'react-native-svg';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import type { ComponentProps, ComponentType } from 'react';
 import type { StyleProp, TextStyle } from 'react-native';
@@ -12,6 +13,53 @@ type IconProps = {
 };
 
 export type IconComponent = ComponentType<IconProps>;
+
+/**
+ * Gruba, solidna strzałka Material 3 z zaokrąglonymi końcami (horizontal / vertical).
+ * Używana między godziną odjazdu i przyjazdu w karcie połączenia oraz w sekcji hero.
+ */
+export function M3SolidArrowRight({
+  size = 20,
+  width,
+  color = '#5CDBBE',
+}: {
+  size?: number;
+  width?: number;
+  color?: string;
+}) {
+  const w = width ?? Math.round(size * 1.35);
+  return (
+    <Svg width={w} height={size} viewBox="0 0 32 24" fill="none" accessible={false}>
+      <Path
+        d="M4 12H26M19 5L26.5 12L19 19"
+        stroke={color}
+        strokeWidth={3.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function M3SolidArrowDown({
+  size = 18,
+  color = '#5CDBBE',
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessible={false}>
+      <Path
+        d="M12 4V19.5M6 14L12 20L18 14"
+        stroke={color}
+        strokeWidth={3.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 type MaterialName = ComponentProps<typeof MaterialIcons>['name'];
 
@@ -37,7 +85,6 @@ export const Activity = icon('monitor-heart');
 export const AlarmClock = icon('alarm');
 export const AlertCircle = icon('error-outline');
 export const Anchor = icon('anchor');
-export const ArrowDown = icon('arrow-downward');
 export const ArrowLeft = icon('arrow-back');
 export const ArrowRight = icon('arrow-forward');
 export const ArrowUp = icon('arrow-upward');

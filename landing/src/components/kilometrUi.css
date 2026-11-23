@@ -143,20 +143,30 @@
     overflow: hidden;
     width: 100%;
     padding-block: 4px;
-    mask-image: linear-gradient(
-      90deg,
-      transparent 0%,
-      #000 7%,
-      #000 93%,
-      transparent 100%
-    );
-    -webkit-mask-image: linear-gradient(
-      90deg,
-      transparent 0%,
-      #000 7%,
-      #000 93%,
-      transparent 100%
-    );
+    contain: paint;
+  }
+
+  /* Fade na krawędziach jako nakładka. mask-image na rodzicu animowanego
+     elementu spycha animację z kompozytora na mobile. */
+  .km-rail-marquee::before,
+  .km-rail-marquee::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 7%;
+    pointer-events: none;
+  }
+
+  .km-rail-marquee::before {
+    left: 0;
+    background: linear-gradient(90deg, var(--km-marquee-fade, #090e0b), transparent);
+  }
+
+  .km-rail-marquee::after {
+    right: 0;
+    background: linear-gradient(270deg, var(--km-marquee-fade, #090e0b), transparent);
   }
 
   .km-rail-marquee-track {
@@ -171,7 +181,13 @@
     animation-direction: reverse;
   }
 
-  .km-rail-marquee:hover .km-rail-marquee-track,
+  /* Pauza tylko myszką: na dotyku :hover zostaje po tapnięciu i pas staje. */
+  @media (hover: hover) and (pointer: fine) {
+    .km-rail-marquee:hover .km-rail-marquee-track {
+      animation-play-state: paused;
+    }
+  }
+
   .km-rail-marquee:focus-within .km-rail-marquee-track {
     animation-play-state: paused;
   }
@@ -263,14 +279,15 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .km-rail-marquee {
-      mask-image: none;
-      -webkit-mask-image: none;
+    .km-rail-marquee::before,
+    .km-rail-marquee::after {
+      display: none;
     }
 
     .km-rail-marquee-track {
       width: auto;
       animation: none;
+      will-change: auto;
       justify-content: center;
     }
 

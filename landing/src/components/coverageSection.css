@@ -1,6 +1,7 @@
 @layer product {
   .coverage-release {
     border-top: 1px solid rgb(255 255 255 / 6%);
+    --km-marquee-fade: #090e0b;
     background:
       radial-gradient(
         ellipse 72% 48% at 50% 0%,
@@ -573,6 +574,15 @@
 }
 
 @layer responsive {
+  /* Telefon: animowany stroke-dashoffset z rozmyciem w mapie odświeża całe SVG
+     co klatkę i zabiera klatki marquee obok. Zostawiamy statyczne kreski. */
+  @media (max-width: 760px) {
+    .cov-rail-streak {
+      animation: none;
+      filter: none;
+    }
+  }
+
   @media (max-width: 960px) {
     .cov-board {
       grid-template-columns: 1fr;
