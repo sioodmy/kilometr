@@ -6,7 +6,7 @@ import {
   IPA_URL,
   SIDELOADLY_URL,
   OBTAINIUM_URL,
-  KOFI_URL,
+  COFFEE_URL,
 } from '../data';
 import { PlatformLinks } from './PlatformLinks';
 
@@ -93,7 +93,7 @@ export function InstallPage({ page }: { page: 'android' | 'ios' }) {
           <p>{s.ios.appStore.body}</p>
           <p>{s.ios.appStore.supportBody}</p>
           <div className="install-options">
-            <a className="button button-primary" href={KOFI_URL}>
+            <a className="button button-primary" href={COFFEE_URL}>
               {s.closing.support}
             </a>
           </div>

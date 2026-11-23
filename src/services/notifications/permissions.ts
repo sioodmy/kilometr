@@ -8,6 +8,9 @@ import { getNotifications, getTrackingNative } from './module';
 
 /** Czy powiadomienia są już włączone (bez pytania użytkownika). */
 export async function hasNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    return typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  }
   const N = getNotifications();
   if (!N) return false;
   try {
@@ -23,6 +26,16 @@ export async function hasNotificationPermission(): Promise<boolean> {
 
 /** Prosi o uprawnienia. Zwraca false, gdy odmówiono lub nie ma gdzie pytać. */
 export async function ensureNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    if (typeof Notification === 'undefined') return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    try {
+      return (await Notification.requestPermission()) === 'granted';
+    } catch {
+      return false;
+    }
+  }
   const N = getNotifications();
   if (!N) return false;
   try {

@@ -4,7 +4,7 @@
 // Pakiety innych miast są niżej, z osobnym usuwaniem.
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Download, MapPinned, Trash2 } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
@@ -21,6 +21,11 @@ import {
 } from '../services/offlineMap';
 
 export function OfflineMapCard() {
+  if (Platform.OS === 'web') return null;
+  return <OfflineMapCardNative />;
+}
+
+function OfflineMapCardNative() {
   const s = useStrings();
   const { cityId, city } = useActiveCity();
   const cityName = s.city.name(cityId);

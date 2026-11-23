@@ -6,13 +6,111 @@
 // stops / routes / trips / stop_times / calendar / calendar_dates / meta.
 
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { expandTokenSynonyms, fuzzyMatchBatch } from '../gtfs/fuzzy';
 import type { GtfsCalendar, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip } from '../gtfs/types';
 import { getCity } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
+import { kvGet, kvRemove, kvSet } from './storage';
 import { isFareBoundary } from '../gtfs/fareBoundary';
 import { numberedStopBases } from '../gtfs/stopGroups';
+
+const WEB_DB_READY_PREFIX = 'kilometr.web.db_ready:';
+const WEB_DB_BYTES_PREFIX = 'kilometr.web.db_bytes:';
+const WEB_CITY_DBS_KEY = 'kilometr.web.city_dbs';
+const MAX_WEB_CITY_DBS = 2;
+
+/** Oznacza bazę SQLite w OPFS (web) jako kompletną i zapamiętuje jej rozmiar. */
+export async function markWebDbReady(
+  dbName: string,
+  sizeBytes: number,
+  isCity: boolean,
+): Promise<void> {
+  if (Platform.OS !== 'web') return;
+  await kvSet(`${WEB_DB_READY_PREFIX}${dbName}`, '1');
+  if (Number.isFinite(sizeBytes) && sizeBytes > 0) {
+    await kvSet(`${WEB_DB_BYTES_PREFIX}${dbName}`, String(Math.round(sizeBytes)));
+  }
+  if (isCity) {
+    const raw = await kvGet(WEB_CITY_DBS_KEY);
+    let list: string[] = [];
+    try {
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      if (Array.isArray(parsed)) list = parsed.filter((x): x is string => typeof x === 'string');
+    } catch {
+      list = [];
+    }
+    const next = [dbName, ...list.filter((n) => n !== dbName)];
+    await kvSet(WEB_CITY_DBS_KEY, JSON.stringify(next));
+  }
+}
+
+/** Czyści znacznik gotowości bazy w OPFS (web) po jej usunięciu. */
+export async function clearWebDbReady(dbName: string): Promise<void> {
+  if (Platform.OS !== 'web') return;
+  await kvRemove(`${WEB_DB_READY_PREFIX}${dbName}`);
+  await kvRemove(`${WEB_DB_BYTES_PREFIX}${dbName}`);
+  const raw = await kvGet(WEB_CITY_DBS_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        const next = parsed.filter((x): x is string => typeof x === 'string' && x !== dbName);
+        await kvSet(WEB_CITY_DBS_KEY, JSON.stringify(next));
+      }
+    } catch {}
+  }
+}
+
+/** Zwraca zapisany rozmiar rozpakowanej bazy SQLite na webie. */
+export async function getWebDbBytes(dbName: string): Promise<number | null> {
+  const raw = await kvGet(`${WEB_DB_BYTES_PREFIX}${dbName}`);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Czy baza SQLite na webie została już zapisana w OPFS. */
+export async function isWebDbReady(dbName: string): Promise<boolean> {
+  return (await kvGet(`${WEB_DB_READY_PREFIX}${dbName}`)) === '1';
+}
+
+/**
+ * Usuwa najstarsze nieaktywne bazy miast w OPFS, żeby nie przekroczyć limitu
+ * 6 uchwytów w AccessHandlePoolVFS (expo-sqlite web).
+ */
+export async function evictExcessWebCityDbs(keepDbName: string): Promise<void> {
+  if (Platform.OS !== 'web') return;
+  const raw = await kvGet(WEB_CITY_DBS_KEY);
+  let list: string[] = [];
+  try {
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (Array.isArray(parsed)) list = parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    list = [];
+  }
+  const ordered = [keepDbName, ...list.filter((n) => n !== keepDbName)];
+  const toEvict = ordered.slice(MAX_WEB_CITY_DBS);
+  for (const oldName of toEvict) {
+    const existing = dbPromises.get(oldName);
+    if (existing) {
+      dbPromises.delete(oldName);
+      try {
+        const db = await existing;
+        markDbClosed(db);
+        await drainDb(db);
+        await db.closeAsync();
+      } catch {}
+    }
+    try {
+      await SQLite.deleteDatabaseAsync(oldName);
+    } catch {}
+    await kvRemove(`${WEB_DB_READY_PREFIX}${oldName}`);
+    await kvRemove(`${WEB_DB_BYTES_PREFIX}${oldName}`);
+  }
+  await kvSet(WEB_CITY_DBS_KEY, JSON.stringify(ordered.slice(0, MAX_WEB_CITY_DBS)));
+}
 
 /** Plik bazy dla miasta. Każde miasto ma osobny plik; zmiana nazwy oznacza
  *  świeży pobyt (nowy plik startuje pusty, więc wersja wymusza re-download). */
@@ -163,8 +261,9 @@ function liveHandle(): Promise<GtfsDbHandle> {
 
 async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(name);
+      const journalPragma = Platform.OS === 'web' ? '' : 'PRAGMA journal_mode = WAL;';
       await db.execAsync(`
-        PRAGMA journal_mode = WAL;
+        ${journalPragma}
         PRAGMA busy_timeout = 15000;
         CREATE TABLE IF NOT EXISTS stops (
           stop_id TEXT PRIMARY KEY NOT NULL,
@@ -425,13 +524,17 @@ export interface NationalStation {
 /** Czy plik bazy krajowej istnieje i ma stacje (tani EXISTS, bez ładowania). */
 export async function hasNationalDb(): Promise<boolean> {
   try {
-    const FileSystem = await import('expo-file-system/legacy');
-    const base = FileSystem.documentDirectory;
-    if (base) {
-      const main = `${base.replace(/\/+$/, '')}/SQLite/${NATIONAL_DB_FILE}`;
-      const info = await FileSystem.getInfoAsync(main);
-      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) {
-        return false;
+    if (Platform.OS === 'web') {
+      if (!(await isWebDbReady(NATIONAL_DB_FILE))) return false;
+    } else {
+      const FileSystem = await import('expo-file-system/legacy');
+      const base = FileSystem.documentDirectory;
+      if (base) {
+        const main = `${base.replace(/\/+$/, '')}/SQLite/${NATIONAL_DB_FILE}`;
+        const info = await FileSystem.getInfoAsync(main);
+        if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) {
+          return false;
+        }
       }
     }
     const db = await getNationalDb();
@@ -442,23 +545,37 @@ export async function hasNationalDb(): Promise<boolean> {
   }
 }
 
-/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times). */
+/** Czy baza innego miasta leży na dysku i ma komplet danych (stops/trips/stop_times + znacznik). */
 export async function hasCityDb(cityId: string): Promise<boolean> {
   try {
-    const FileSystem = await import('expo-file-system/legacy');
-    const base = FileSystem.documentDirectory;
-    if (base) {
-      const main = `${base.replace(/\/+$/, '')}/SQLite/${gtfsDbName(cityId)}`;
-      const info = await FileSystem.getInfoAsync(main);
-      if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) return false;
+    if (Platform.OS === 'web') {
+      if (!(await isWebDbReady(gtfsDbName(cityId)))) return false;
+    } else {
+      const FileSystem = await import('expo-file-system/legacy');
+      const base = FileSystem.documentDirectory;
+      if (base) {
+        const main = `${base.replace(/\/+$/, '')}/SQLite/${gtfsDbName(cityId)}`;
+        const info = await FileSystem.getInfoAsync(main);
+        if (!info.exists || (typeof info.size === 'number' && info.size < 4096)) return false;
+      }
     }
-    const db = await getGtfsDbByName(gtfsDbName(cityId));
+    const db = await openGtfsDbHandle(cityId);
     const row = await db.getFirstAsync<{ s: number; t: number; st: number }>(
       `SELECT EXISTS(SELECT 1 FROM stops) AS s,
               EXISTS(SELECT 1 FROM trips) AS t,
               EXISTS(SELECT 1 FROM stop_times) AS st`,
     );
-    return (row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0;
+    if (!((row?.s ?? 0) > 0 && (row?.t ?? 0) > 0 && (row?.st ?? 0) > 0)) return false;
+    const marker = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM meta WHERE key = ?',
+      GTFS_IMPORT_COMPLETE_META,
+    );
+    if (marker?.value === '1') return true;
+    const importedAt = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM meta WHERE key = ?',
+      'gtfs_imported_at',
+    );
+    return Boolean(importedAt?.value);
   } catch {
     return false;
   }
@@ -531,9 +648,12 @@ export async function findNearestNationalStations(
 
 export function getGtfsDb(): Promise<SQLite.SQLiteDatabase> {
   // W trakcie podmiany pliku (delete+move) nie wolno otwierać bazy: uchwyt
-  // trafiłby w usunięty plik. Czekamy na bramkę, potem otwieramy świeży plik.
+  // trafiłby w usunięty plik. Czekamy na bramkę i zamykanie, potem otwieramy świeży plik.
   if (swapGate) {
     return swapGate.then(() => getGtfsDb());
+  }
+  if (closingDb) {
+    return closingDb.then(() => getGtfsDb());
   }
   // Baza jest per-miasto: każde miasto ma własny plik, więc zmiana miasta
   // nigdy nie nadpisuje danych drugiego (mieszkasz w jednym, studiujesz w drugim).
@@ -1130,16 +1250,20 @@ export async function getTripStopTimes(
  * Stan bazy do statusu danych (ekran główny pyta co 30 s). COUNT(*) na
  * stop_times to skan ponad miliona wierszy, więc tu wystarcza EXISTS.
  */
-export async function getGtfsPresence(): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
-  const db = await liveHandle();
+export async function getGtfsPresence(
+  cityId?: string,
+): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
+  const db = await openGtfsDbHandle(cityId);
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
   const st = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stop_times) AS n');
   return { stops: s?.n ?? 0, trips: t?.n ?? 0, hasStopTimes: (st?.n ?? 0) > 0 };
 }
 
-export async function getGtfsStats(): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
-  const db = await liveHandle();
+export async function getGtfsStats(
+  cityId?: string,
+): Promise<{ stops: number; routes: number; trips: number; stopTimes: number }> {
+  const db = await openGtfsDbHandle(cityId);
   const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
   const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM routes');
   const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');

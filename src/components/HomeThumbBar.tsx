@@ -1,22 +1,52 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
   FadeOut,
   LinearTransition,
+  cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withRepeat,
+  withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 import { ChevronRight, Download, LocateFixed, MapPin, MapPinOff, Search, X } from './icons';
 import { HomeDockChips, type DockChip } from './HomeDockChips';
 import { SpringPressable } from './SpringPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
+
+/** Parametry fali M3 Expressive Wavy Linear Progress Indicator. */
+const WAVE_LENGTH = 22;
+const WAVE_AMPLITUDE = 2.2;
+const WAVE_STROKE = 3;
+const WAVE_HEIGHT = 10;
+const WAVE_CENTER_Y = WAVE_HEIGHT / 2;
+const TRACK_GAP = 5;
+const STOP_DOT_SIZE = 4;
+
+/** Buduje ciągłą ścieżkę sinusoidalną (C1) na szerokość toru + 2 okresy do płynnego przesuwu fazy. */
+function buildWavePath(width: number): string {
+  const cycles = Math.max(4, Math.ceil(width / WAVE_LENGTH) + 2);
+  const half = WAVE_LENGTH / 2;
+  const quarter = WAVE_LENGTH / 4;
+  const ctrlUp = WAVE_CENTER_Y - WAVE_AMPLITUDE * 2;
+  const ctrlDown = WAVE_CENTER_Y + WAVE_AMPLITUDE * 2;
+  let d = `M 0 ${WAVE_CENTER_Y}`;
+  for (let i = 0; i < cycles; i++) {
+    const x0 = i * WAVE_LENGTH;
+    d += ` Q ${x0 + quarter} ${ctrlUp} ${x0 + half} ${WAVE_CENTER_Y}`;
+    d += ` Q ${x0 + half + quarter} ${ctrlDown} ${x0 + WAVE_LENGTH} ${WAVE_CENTER_Y}`;
+  }
+  return d;
+}
 
 interface HomeThumbBarProps {
   onOpenSearch: () => void;
@@ -27,11 +57,13 @@ interface HomeThumbBarProps {
   gpsUnsupported?: boolean;
   /** Skróty nad search barem: przypięta podróż i pociągi z biletem < 3 h. */
   chips?: DockChip[];
-  /** Postęp pobierania rozkładu; `null` oznacza zwykły tryb wyszukiwarki. */
+  /** Postęp pobierania rozkładu (0..1); `null` oznacza zwykły tryb wyszukiwarki. */
   downloadProgress?: number | null;
+  /** Opcjonalny bieżący krok importu (np. weryfikacja bazy). */
+  downloadStep?: string | null;
 }
 
-/** Dolny dock ekranu głównego ze sprężystą reakcją M3 Expressive na dotyk. */
+/** Dolny dock ekranu głównego ze sprężystą reakcją M3 Expressive i falującym paskiem postępu. */
 export function HomeThumbBar({
   onOpenSearch,
   startTitle,
@@ -41,104 +73,283 @@ export function HomeThumbBar({
   gpsUnsupported = false,
   chips = [],
   downloadProgress = null,
+  downloadStep = null,
 }: HomeThumbBarProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const [focused, setFocused] = useState<'search' | 'origin' | 'reset' | null>(null);
+  const [trackLayoutWidth, setTrackLayoutWidth] = useState(0);
   const OriginIcon = isCustomStart ? MapPin : gpsUnsupported ? MapPinOff : LocateFixed;
   const originNeedsPick = gpsUnsupported && !isCustomStart;
 
   const downloading = downloadProgress !== null;
   const clamped = Math.max(0, Math.min(1, downloadProgress ?? 0));
   const pct = Math.round(clamped * 100);
+  const indeterminate = downloading && clamped <= 0.01;
+  const updatingLabel = downloadStep || s.home.updatingTimetable;
 
-  // Wypełnienie i połysk animują się na UI thread: postęp z sieci przychodzi
-  // skokami, a użytkownik widzi płynny ruch paska.
+  const mode = useSharedValue(downloading ? 1 : 0);
   const progress = useSharedValue(downloading ? clamped : 0);
-  const shine = useSharedValue(0);
+  const isIndeterminate = useSharedValue(indeterminate ? 1 : 0);
   const trackWidth = useSharedValue(0);
+  const wavePhase = useSharedValue(0);
+  const indetPos = useSharedValue(0);
+  const iconNudge = useSharedValue(0);
+  const lastMilestoneRef = useRef(-1);
 
+  useEffect(() => {
+    isIndeterminate.value = indeterminate ? 1 : 0;
+  }, [indeterminate, isIndeterminate]);
+
+  // Przejście stanu searchbar <-> aktualizowanie: kształt i tło reagują sprężyną M3 Expressive.
+  useEffect(() => {
+    const target = downloading ? 1 : 0;
+    mode.value = reduceMotion ? target : withSpring(target, motion.spring.spatialFast);
+  }, [downloading, mode, reduceMotion]);
+
+  // Postęp pobierania wygładzony sprężyną efektową (bez odbicia).
   useEffect(() => {
     if (!downloading) {
+      cancelAnimation(progress);
       progress.value = 0;
+      lastMilestoneRef.current = -1;
       return;
     }
-    progress.value = withTiming(clamped, {
-      duration: reduceMotion ? 0 : 420,
-      easing: Easing.out(Easing.cubic),
-    });
+    progress.value = reduceMotion
+      ? clamped
+      : withSpring(clamped, motion.spring.effectsDefault);
   }, [clamped, downloading, progress, reduceMotion]);
 
+  // Subtelny impuls ikony pobierania przy realnych skokach postępu (co 10%), nigdy pusta pętla.
   useEffect(() => {
     if (!downloading || reduceMotion) {
-      shine.value = 0;
+      cancelAnimation(iconNudge);
+      iconNudge.value = 0;
       return;
     }
-    shine.value = 0;
-    shine.value = withRepeat(
-      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.quad) }),
+    const bucket = Math.floor(pct / 10);
+    if (bucket > 0 && bucket !== lastMilestoneRef.current) {
+      lastMilestoneRef.current = bucket;
+      iconNudge.value = withSequence(
+        withSpring(2.5, motion.spring.spatialFast),
+        withSpring(0, motion.spring.spatialDefault),
+      );
+    }
+  }, [downloading, iconNudge, pct, reduceMotion]);
+
+  // Faza fali M3 Expressive działa na wątku UI wyłącznie podczas aktywnego pobierania.
+  useEffect(() => {
+    if (!downloading || reduceMotion) {
+      cancelAnimation(wavePhase);
+      wavePhase.value = 0;
+      return;
+    }
+    wavePhase.value = 0;
+    wavePhase.value = withRepeat(
+      withTiming(1, { duration: 920, easing: Easing.linear }),
       -1,
       false,
     );
-  }, [downloading, reduceMotion, shine]);
+    return () => {
+      cancelAnimation(wavePhase);
+    };
+  }, [downloading, reduceMotion, wavePhase]);
 
-  const fillStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: progress.value }],
+  // Tryb wstępny (0%, łączenie z serwerem): fala przesuwa się płynnie po torze z krzywą M3 emphasized.
+  useEffect(() => {
+    if (!indeterminate || reduceMotion) {
+      cancelAnimation(indetPos);
+      indetPos.value = 0;
+      return;
+    }
+    indetPos.value = 0;
+    indetPos.value = withRepeat(
+      withTiming(1, {
+        duration: 1350,
+        easing: Easing.bezier(0.4, 0, 0.2, 1),
+      }),
+      -1,
+      false,
+    );
+    return () => {
+      cancelAnimation(indetPos);
+    };
+  }, [indeterminate, indetPos, reduceMotion]);
+
+  const waveSvgWidth = Math.max(trackLayoutWidth, 180) + WAVE_LENGTH * 2;
+  const wavePath = useMemo(() => buildWavePath(waveSvgWidth), [waveSvgWidth]);
+
+  const washStyle = useAnimatedStyle(() => ({
+    opacity: mode.value * 0.28,
   }));
-  const shineStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -64 + shine.value * (trackWidth.value + 128) }],
+
+  // Kółko wyszukiwania (19) płynnie przechodzi w zaokrąglony kwadrat M3 Expressive (12).
+  const iconWellStyle = useAnimatedStyle(() => ({
+    borderRadius: 19 - mode.value * 7,
+    transform: [{ scale: 1 + mode.value * 0.02 }],
   }));
+
+  const downloadGlyphStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: iconNudge.value }],
+  }));
+
+  const activeWaveClipStyle = useAnimatedStyle(() => {
+    const w = trackWidth.value;
+    if (w <= 0) return { width: 0, left: 0 };
+    if (isIndeterminate.value > 0.5) {
+      const seg = Math.max(44, w * 0.34);
+      const left = -seg + indetPos.value * (w + seg);
+      return { width: seg, left };
+    }
+    const filled = Math.max(14, Math.min(w, progress.value * w));
+    return { width: filled, left: 0 };
+  });
+
+  const waveShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -WAVE_LENGTH + wavePhase.value * WAVE_LENGTH }],
+  }));
+
+  const inactiveTrackStyle = useAnimatedStyle(() => {
+    const w = trackWidth.value;
+    if (w <= 0) return { left: 0, width: 0, opacity: 0 };
+    if (isIndeterminate.value > 0.5) {
+      return { left: 0, width: w, opacity: 1 };
+    }
+    const filled = Math.max(14, Math.min(w, progress.value * w));
+    const start = filled + TRACK_GAP;
+    const rem = Math.max(0, w - start);
+    return {
+      left: start,
+      width: rem,
+      opacity: rem > 4 ? 1 : 0,
+    };
+  });
+
+  const stopDotStyle = useAnimatedStyle(() => ({
+    opacity: isIndeterminate.value > 0.5 || progress.value < 0.96 ? 1 : 0,
+  }));
+
+  const searchPillContent = (
+    <>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.tonalWash, washStyle]}
+        pointerEvents="none"
+      />
+      <Animated.View
+        style={[
+          styles.searchIconWell,
+          downloading && styles.searchIconWellActive,
+          iconWellStyle,
+        ]}
+      >
+        {downloading ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(180)}
+            exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+            style={downloadGlyphStyle}
+          >
+            <Download size={18} color={scheme.onPrimary} />
+          </Animated.View>
+        ) : (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(180)}
+            exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+          >
+            <Search size={19} color={scheme.onPrimaryContainer} />
+          </Animated.View>
+        )}
+      </Animated.View>
+
+      {downloading ? (
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeIn.duration(motion.enter.duration)}
+          exiting={reduceMotion ? undefined : FadeOut.duration(motion.exit.duration)}
+          style={styles.updateColumn}
+        >
+          <View style={styles.updateTopRow}>
+            <Text style={styles.updateLabel} numberOfLines={1}>
+              {updatingLabel}
+            </Text>
+            <View style={styles.progressPill}>
+              <Text style={styles.progressPct}>{pct}%</Text>
+            </View>
+          </View>
+
+          <View
+            style={styles.waveTrackRow}
+            onLayout={(e) => {
+              const nextW = Math.round(e.nativeEvent.layout.width);
+              if (nextW > 0 && nextW !== trackLayoutWidth) {
+                setTrackLayoutWidth(nextW);
+                trackWidth.value = nextW;
+              }
+            }}
+          >
+            <Animated.View style={[styles.inactiveTrack, inactiveTrackStyle]} />
+            {reduceMotion ? (
+              <View
+                style={[
+                  styles.staticFill,
+                  { width: `${Math.max(4, pct)}%` },
+                ]}
+              />
+            ) : (
+              <Animated.View style={[styles.activeWaveClip, activeWaveClipStyle]}>
+                <Animated.View style={[styles.waveSvgWrap, waveShiftStyle]}>
+                  <Svg width={waveSvgWidth} height={WAVE_HEIGHT}>
+                    <Path
+                      d={wavePath}
+                      fill="none"
+                      stroke={scheme.primary}
+                      strokeWidth={WAVE_STROKE}
+                      strokeLinecap="round"
+                    />
+                  </Svg>
+                </Animated.View>
+              </Animated.View>
+            )}
+            <Animated.View style={[styles.stopDot, stopDotStyle]} />
+          </View>
+        </Animated.View>
+      ) : (
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeIn.duration(180)}
+          exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+          style={styles.searchLabelWrap}
+        >
+          <Text style={styles.searchLabel} numberOfLines={1}>
+            {s.home.searchLabel}
+          </Text>
+        </Animated.View>
+      )}
+    </>
+  );
 
   return (
     <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 14) }]}>
       <HomeDockChips chips={chips} />
       <View style={styles.bar}>
-        {downloading ? (
-          <View
-            style={styles.search}
-            onLayout={(e) => {
-              trackWidth.value = e.nativeEvent.layout.width;
-            }}
-            accessibilityRole="progressbar"
-            accessibilityLabel={s.home.updatingTimetable}
-            accessibilityValue={{ min: 0, max: 100, now: pct }}
-            accessibilityState={{ busy: true }}
-          >
-            <Animated.View style={[styles.searchFill, fillStyle]} />
-            <Animated.View style={[styles.shine, shineStyle]} pointerEvents="none" />
-            <View style={styles.searchContent}>
-              <View style={styles.searchIconWell}>
-                <Download size={19} color={scheme.onPrimaryContainer} />
-              </View>
-              <Text style={styles.searchLabel} numberOfLines={1}>
-                {s.home.updatingTimetable}
-              </Text>
-              <View style={styles.progressPill}>
-                <Text style={styles.progressPct}>{pct}%</Text>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <SpringPressable
-            onPress={onOpenSearch}
-            onFocus={() => setFocused('search')}
-            onBlur={() => setFocused(null)}
-            scaleDelta={0.02}
-            opacityDelta={0.05}
-            haptic="selection"
-            accessibilityRole="button"
-            accessibilityLabel={s.home.searchA11y}
-            style={[styles.search, focused === 'search' && styles.focused]}
-          >
-            <View style={styles.searchIconWell}>
-              <Search size={19} color={scheme.onPrimaryContainer} />
-            </View>
-            <Text style={styles.searchLabel} numberOfLines={1}>
-              {s.home.searchLabel}
-            </Text>
-          </SpringPressable>
-        )}
+        <SpringPressable
+          onPress={downloading ? undefined : onOpenSearch}
+          disabled={downloading}
+          onFocus={() => setFocused('search')}
+          onBlur={() => setFocused(null)}
+          scaleDelta={0.02}
+          opacityDelta={0.05}
+          haptic={downloading ? false : 'selection'}
+          accessibilityRole={downloading ? 'progressbar' : 'button'}
+          accessibilityLabel={downloading ? updatingLabel : s.home.searchA11y}
+          accessibilityValue={downloading ? { min: 0, max: 100, now: pct } : undefined}
+          accessibilityState={downloading ? { busy: true } : undefined}
+          style={[
+            styles.search,
+            downloading && styles.searchUpdating,
+            !downloading && focused === 'search' && styles.focused,
+          ]}
+        >
+          {searchPillContent}
+        </SpringPressable>
 
         <Animated.View
           layout={reduceMotion ? undefined : LinearTransition.duration(180)}
@@ -240,7 +451,7 @@ const styles = StyleSheet.create({
     gap: 12,
     minHeight: 56,
     paddingLeft: 9,
-    paddingRight: 18,
+    paddingRight: 16,
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
@@ -248,11 +459,11 @@ const styles = StyleSheet.create({
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
-  searchContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  searchUpdating: {
+    borderColor: scheme.primary,
+  },
+  tonalWash: {
+    backgroundColor: scheme.primaryContainer,
   },
   searchIconWell: {
     width: 38,
@@ -263,41 +474,84 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  searchFill: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: '100%',
-    backgroundColor: scheme.primaryContainer,
-    transformOrigin: 'left center',
+  searchIconWellActive: {
+    backgroundColor: scheme.primary,
   },
-  shine: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: 64,
-    backgroundColor: 'rgba(255,255,255,0.13)',
+  searchLabelWrap: {
+    flex: 1,
+    justifyContent: 'center',
   },
   searchLabel: {
     ...type.bodyLarge,
     fontWeight: '700',
     letterSpacing: -0.15,
     color: scheme.onSurface,
+  },
+  updateColumn: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 5,
+    minWidth: 0,
+  },
+  updateTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  updateLabel: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    letterSpacing: -0.1,
+    color: scheme.onSurface,
     flex: 1,
   },
   progressPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.primary,
+    flexShrink: 0,
   },
   progressPct: {
     ...type.labelSmall,
     fontWeight: '800',
-    color: scheme.onSurface,
+    color: scheme.onPrimary,
     fontVariant: ['tabular-nums'],
+  },
+  waveTrackRow: {
+    height: WAVE_HEIGHT,
+    width: '100%',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  inactiveTrack: {
+    position: 'absolute',
+    height: WAVE_STROKE,
+    borderRadius: WAVE_STROKE / 2,
+    backgroundColor: scheme.outlineVariant,
+  },
+  staticFill: {
+    height: WAVE_STROKE,
+    borderRadius: WAVE_STROKE / 2,
+    backgroundColor: scheme.primary,
+  },
+  activeWaveClip: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  waveSvgWrap: {
+    height: WAVE_HEIGHT,
+  },
+  stopDot: {
+    position: 'absolute',
+    right: 0,
+    width: STOP_DOT_SIZE,
+    height: STOP_DOT_SIZE,
+    borderRadius: STOP_DOT_SIZE / 2,
+    backgroundColor: scheme.primary,
   },
   originRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   origin: {

@@ -427,7 +427,11 @@ export function CitySelectSheet({
   const closingRef = useRef(false);
 
   const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
-  const targetSheetHeight = Math.max(320, Math.round((baseHeight - insets.top) * 0.92));
+  const effectiveHeight = Platform.OS === 'web' ? overlayHeight : baseHeight;
+  const targetSheetHeight = Math.max(
+    Platform.OS === 'web' ? 180 : 320,
+    Math.round((effectiveHeight - insets.top) * 0.92),
+  );
   const targetHeightRef = useRef(targetSheetHeight);
   targetHeightRef.current = targetSheetHeight;
 
@@ -460,8 +464,8 @@ export function CitySelectSheet({
       cancelAnimation(translateY);
       cancelAnimation(backdropProgress);
       backdropProgress.value = withTiming(0, motion.exit);
-      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
-        if (finished) runOnJS(finishClose)();
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, () => {
+        runOnJS(finishClose)();
       });
     },
     [backdropProgress, finishClose, reduceMotion, translateY],

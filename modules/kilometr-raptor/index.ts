@@ -64,6 +64,7 @@ type WasmExports = {
 
 let cachedNative: NativeKilometrRaptorModule | null | undefined;
 let cachedWasm: WasmExports | null = null;
+let wasmInitPromise: Promise<WasmExports | null> | null = null;
 
 const nativeLoadedNetIds = new Set<number>();
 const nativeInflightLoads = new Map<number, Promise<boolean>>();
@@ -118,6 +119,30 @@ function decodeBase64(b64: string): Uint8Array {
   return out;
 }
 
+/**
+ * Asynchroniczna inicjalizacja modułu WASM (wymagana w przeglądarce, gdzie
+ * synchroniczny `new WebAssembly.Module` ma limit 4 KB na głównym wątku).
+ */
+export async function initRaptorWasmAsync(): Promise<boolean> {
+  if (getNativeModule()) return true;
+  if (cachedWasm) return true;
+  if (typeof WebAssembly === 'undefined') return false;
+  if (!wasmInitPromise) {
+    wasmInitPromise = (async () => {
+      try {
+        const wasmBytes = decodeBase64(RAPTOR_WASM_BASE64);
+        const instantiated = await WebAssembly.instantiate(wasmBytes as BufferSource, {});
+        cachedWasm = instantiated.instance.exports as unknown as WasmExports;
+        return cachedWasm;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  const exports = await wasmInitPromise;
+  return exports != null;
+}
+
 function getWasmExports(): WasmExports | null {
   if (cachedWasm) return cachedWasm;
   if (typeof WebAssembly === 'undefined') return null;
@@ -128,6 +153,8 @@ function getWasmExports(): WasmExports | null {
     cachedWasm = instance.exports as unknown as WasmExports;
     return cachedWasm;
   } catch {
+    // Przeglądarka blokuje synchroniczne Module > 4 KB; odpalamy async w tle.
+    void initRaptorWasmAsync();
     return null;
   }
 }

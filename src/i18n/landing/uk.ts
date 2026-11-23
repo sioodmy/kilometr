@@ -16,7 +16,7 @@ export const uk: Strings = {
   meta: {
     title: 'Kilometr',
     imageAlt:
-      'Kilometr. Твій планувальник подорожей з відкритим кодом. Застосунок на iPhone, герби міст і схема транспортної мережі.',
+      'Kilometr. Цього разу ти доїдеш. Три телефони із застосунком на тлі мапи з маршрутом.',
     description:
       'Громадський транспорт у містах по всій Польщі. Плануй маршрути, перевіряй відправлення та користуйся розкладами офлайн. Безкоштовно на Android.',
   },
@@ -27,7 +27,6 @@ export const uk: Strings = {
   language: 'Мова сайту',
   sendSms: 'Надіслати SMS',
   hero: {
-    eyebrow: 'Kilometr для Android',
     title: 'Твій',
     accent: 'планувальник подорожей',
     titleEnd: 'з відкритим кодом',
@@ -37,6 +36,7 @@ export const uk: Strings = {
   install: {
     android: 'Android',
     ios: 'iOS',
+    web: 'Вебверсія',
     platform: 'Вибери систему телефона',
     newTab: '(відкриється в новій вкладці)',
   },
@@ -148,39 +148,33 @@ export const uk: Strings = {
     ],
   },
   coverage: {
-    eyebrow: 'Покриття в Польщі',
-    title: 'Перевір своє місто та перевізників',
+    title: 'Працюємо по всій Польщі',
     body: (count: number) =>
-      `${count} міста й агломерації в одному застосунку, включно з Метрополією GZM. Натисни на точку на мапі або знайди назву, щоб перевірити позиції наживо, повідомлення та перевізників.`,
+      `Якщо до місця можна доїхати громадським транспортом, Kilometr довезе тебе туди. Загалом ми охоплюємо ${countLabel(count, 'місто', 'міста', 'міст')} по всій Польщі.`,
     searchPlaceholder: 'Введи місто, напр. Wrocław, Katowice, Gdańsk...',
     searchLabel: 'Знайти підтримуване місто',
     browseListLabel: 'Відкрити список міст',
     clearSearch: 'Очистити пошук',
     mapAria: 'Інтерактивна мапа Польщі з підтримуваними містами',
-    mapHint: (count: number) => `${count} міст на мапі · Натисни точку на мапі`,
     citiesListLabel: 'Список підтримуваних міст',
     emptyTitle: 'Місто не знайдено',
     emptyBody: 'Перевір написання або скинь фільтр, щоб переглянути всі міста.',
     emptyReset: 'Показати всі міста',
+    available: 'Доступні',
     liveLabel: 'Позиції наживо',
     liveValue: (vehicles: number | null) =>
       vehicles == null
-        ? 'Доступні (GPS транспорту)'
+        ? 'GPS транспорту'
         : vehicles === 0
-          ? 'Доступні (зараз немає транспорту)'
-          : `Доступні (${countLabel(vehicles, 'транспортний засіб', 'транспортні засоби', 'транспортних засобів')} наживо)`,
+          ? 'зараз немає транспорту'
+          : `${countLabel(vehicles, 'транспортний засіб', 'транспортні засоби', 'транспортних засобів')} наживо`,
     liveUnavailable: 'Без GPS наживо (статичний розклад)',
     newsLabel: 'Повідомлення пасажирам',
-    newsAvailable: 'Доступні',
     newsUnavailable: 'Немає міських повідомлень',
     stopHintsLabel: 'Підказки до зупинок',
-    stopHintsValue: (stops: number) =>
-      `Доступні (${countLabel(stops, 'зупинка', 'зупинки', 'зупинок')})`,
+    stopHintsValue: (stops: number) => countLabel(stops, 'зупинка', 'зупинки', 'зупинок'),
     stopHintsUnavailable: 'Немає підказок до зупинок',
-    statsUpdated: (date: string) => `Стан даних: ${date}`,
     operatorsLabel: 'Перевізники в місті',
-    railGatewayNote: (stations: string) =>
-      `Міжміські залізничні сполучення (PKP Intercity, POLREGIO) через станцію: ${stations}.`,
     modes: {
       bus: 'Автобуси',
       tram: 'Трамваї',
@@ -202,13 +196,13 @@ export const uk: Strings = {
   },
   themeStudio: {
     title: 'Твій колір у застосунку',
-    intro: 'Обери кольори, глянь на перегляд і надішли готовий код на Ko-fi.',
+    intro: 'Обери кольори, глянь на перегляд і надішли готовий код на BuyCoffee.',
     thanksTitle: 'Дякую!',
     thanksBody:
       'Твоя підтримка допомагає розвивати Kilometr без реклами та стеження. На подяку створи власну тему застосунку.',
     thanksCta: 'Обрати свою тему',
     notYet: 'Ще не підтримуєш?',
-    notYetLink: 'Підтримати на Ko-fi',
+    notYetLink: 'Підтримати на BuyCoffee',
     back: 'Назад до подяки',
     customTitle: 'Власний колір',
     hueLabel: 'Колір',
@@ -247,13 +241,12 @@ export const uk: Strings = {
       cancelled: 'скасовано',
     },
     outputTitle: 'Надішли свою тему',
-    outputIntro: 'Скопіюй код і встав його в повідомлення на Ko-fi.',
+    outputIntro: 'Скопіюй код і встав його в повідомлення на BuyCoffee.',
     copy: 'Скопіювати код',
     copied: 'Скопійовано',
     copyFailed: 'Виділи код і натисни Ctrl+C',
     codeLabel: 'Код твоєї теми',
-    sendOn: 'Відкрити Ko-fi',
-    footerLink: 'Тема для прихильників',
+    sendOn: 'Відкрити BuyCoffee',
   },
   footer: {
     tagline: 'Побачимося в дорозі.',

@@ -45,6 +45,10 @@ let warnedUnsupported = false;
 
 export function getNotifications(): NotificationsModule | null {
   if (nmod !== undefined) return nmod;
+  if (Platform.OS === 'web') {
+    nmod = null;
+    return nmod;
+  }
   try {
     if (Constants.appOwnership === 'expo') {
       nmod = null;
@@ -60,12 +64,15 @@ export function getNotifications(): NotificationsModule | null {
 
 /** Czy w ogóle da się pokazać powiadomienie (dev build / produkcja). */
 export function areNotificationsSupported(): boolean {
+  if (Platform.OS === 'web') {
+    return false;
+  }
   return getNotifications() != null;
 }
 
 /** Ostrzeżenie w konsoli zamiast cichych nulli - pomocne przy testowaniu. */
 export function warnUnsupportedOnce(what: string): void {
-  if (warnedUnsupported) return;
+  if (Platform.OS === 'web' || warnedUnsupported) return;
   warnedUnsupported = true;
   console.warn(
     `[Powiadomienia] ${what} niedostępne - potrzebny build deweloperski (Expo Go nie wspiera powiadomień).`,

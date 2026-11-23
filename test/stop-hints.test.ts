@@ -304,3 +304,19 @@ test('Warsaw metroEntrances covers all 253 GTFS entrances with unique per-statio
   const directHint = resolveStopHint(STOP_HINTS_WARSZAWA, undefined, '1003M:E11', 'Dworzec Wileński', 'walk');
   assert.ok(directHint && directHint.length > 10);
 });
+
+test('resolveStopHint: Wroclaw 5/6-digit pole code mapping and GZM case-insensitive suffix', () => {
+  // Klucz 110023 istnieje w dataset bez 5-cyfrowego odpowiednika 10023
+  const halaTargowa = resolveStopHint(STOP_HINTS_WROCLAW, '10023', '9999', 'Hala Targowa', 'bus');
+  assert.ok(halaTargowa);
+  assert.match(halaTargowa, /Hali Targowej/i);
+
+  // Odwrotne mapowanie: 6-cyfrowy kod 1xxxxx gdy dataset ma tylko 5-cyfrowy xxxxx
+  const domFrom6 = resolveStopHint(STOP_HINTS_WROCLAW, '110022', '9999', 'Pl. Dominikański', 'tram');
+  assert.ok(domFrom6);
+  assert.match(domFrom6, /Dominikańskiej/i);
+
+  // GZM: wielka litera T w kodzie słupka dopasowana do klucza z małym t
+  const gzmUpper = resolveStopHint(STOP_HINTS_GZM, '2401011-02901T', '9999', 'Przystanek', 'tram');
+  assert.ok(gzmUpper);
+});

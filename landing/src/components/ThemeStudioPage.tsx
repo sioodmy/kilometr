@@ -33,7 +33,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useStrings } from '../i18n';
-import { KOFI_URL } from '../data';
+import { COFFEE_URL } from '../data';
 import { Phone } from './Phone';
 import './themeStudio.css';
 
@@ -358,7 +358,7 @@ function ThanksScreen({ onContinue }: { onContinue: () => void }) {
           </button>
           <p className="thanks-not-yet">
             {t.notYet}{' '}
-            <a href={KOFI_URL} target="_blank" rel="noopener noreferrer">
+            <a href={COFFEE_URL} target="_blank" rel="noopener noreferrer">
               {t.notYetLink}
               <span className="sr-only"> {s.install.newTab}</span>
             </a>
@@ -493,7 +493,7 @@ export function ThemeStudioPage() {
           <div className="studio-grid">
             <section className="studio-preview" aria-label={t.previewTitle}>
               <div className="studio-phone-crop">
-                <Phone className="studio-phone" label={t.previewAria}>
+                <Phone className="studio-phone" label={t.previewAria} gesturePill>
                   <MockScreen scheme={previewScheme} />
                 </Phone>
               </div>
@@ -599,7 +599,7 @@ export function ThemeStudioPage() {
                   </button>
                   <a
                     className="m3-button m3-button-tonal"
-                    href={KOFI_URL}
+                    href={COFFEE_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

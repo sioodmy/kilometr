@@ -41,11 +41,56 @@ export { ARRIVED_LINGER_MS } from './content';
  */
 let lastFallbackText = '';
 
+async function showWebNotification(
+  title: string,
+  body: string,
+  tag: string,
+  silent: boolean,
+): Promise<void> {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const options: NotificationOptions = {
+    body,
+    tag,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    silent,
+  };
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg?.showNotification) {
+        await reg.showNotification(title, options);
+        return;
+      }
+    }
+    new Notification(title, options);
+  } catch {
+    // przeglądarka może odrzucić powiadomienie bez gestu użytkownika
+  }
+}
+
+async function closeWebNotification(tag: string): Promise<void> {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const list = await reg?.getNotifications({ tag });
+      list?.forEach((n) => n.close());
+    }
+  } catch {}
+}
+
 async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void> {
-  const N = getNotifications();
-  if (!N) return;
   const copy = buildTripCopy(p, trip.connection, tr(), !!trip.sharedJourney);
   const fallbackText = `${copy.title}\n${copy.subtitle ?? ''}\n${copy.body}`;
+  if (Platform.OS === 'web') {
+    if (fallbackText === lastFallbackText) return;
+    lastFallbackText = fallbackText;
+    const body = [copy.subtitle, copy.body].filter(Boolean).join(' • ');
+    await showWebNotification(copy.title, body, TRACKING_NOTIFICATION_ID, true);
+    return;
+  }
+  const N = getNotifications();
+  if (!N) return;
   if (Platform.OS === 'ios') {
     if (fallbackText === lastFallbackText) return;
     lastFallbackText = fallbackText;
@@ -74,9 +119,13 @@ async function presentFallback(p: TripProgress, trip: TrackedTrip): Promise<void
 }
 
 async function dismissFallback(): Promise<void> {
+  lastFallbackText = '';
+  if (Platform.OS === 'web') {
+    await closeWebNotification(TRACKING_NOTIFICATION_ID);
+    return;
+  }
   const N = getNotifications();
   if (!N) return;
-  lastFallbackText = '';
   try {
     await N.dismissNotificationAsync(TRACKING_NOTIFICATION_ID);
   } catch {

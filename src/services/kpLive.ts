@@ -10,11 +10,16 @@ const MAX_ETA_MIN = 55;
 const TRIP_EXEC_CONCURRENCY = 6;
 const STOPS_CACHE_TTL_MS = 6 * 3_600_000;
 
-const KP_HEADERS = {
-  Accept: 'application/json',
-  'X-Requested-With': 'XMLHttpRequest',
-  'User-Agent': 'KilometrApp/1.0 (https://kilometr.pl)',
-};
+const KP_HEADERS: Record<string, string> =
+  typeof window === 'undefined'
+    ? {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'User-Agent': 'KilometrApp/1.0 (https://kilometr.pl)',
+      }
+    : {
+        Accept: 'application/json',
+      };
 
 /** [placeId, designator, name, lon_e6, lat_e6, onlyDisembarking, isStation, showPlatforms] */
 type KpRawStopTuple = [

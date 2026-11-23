@@ -1,11 +1,12 @@
 // Stan i sync ogólnopolskiej bazy kolejowej (dataset `polska`).
-// Pobierana LAZY: dopiero gdy użytkownik planuje podróż między miastami
-// albo włącza ją w ustawieniach. Rozkład miasta i tak działa bez niej.
+// Pobierana domyślnie w tle, żeby podróże pociągiem i między miastami
+// działały od razu offline. Rozkład miasta i tak działa niezależnie od niej.
 //
-// To nie jest "miejski" cyklus dataManagera: osobne bramki podmiany pliku
+// To nie jest "miejski" cykl dataManagera: osobne bramki podmiany pliku
 // (gtfsDatabase), osobne meta (w samej bazie polska) i osobny limit
 // pobierań, żeby nie blokował odświeżania rozkładu miasta.
 
+import { Platform } from 'react-native';
 import {
   getNationalMeta,
   getNationalTimetableEndDate,
@@ -16,6 +17,8 @@ import { downloadNationalDb, fetchNationalManifest, getNationalTimetableVersion 
 
 /** Minimalny odstęp między sprawdzeniami manifestu kolejowego. */
 const CHECK_INTERVAL_MS = 12 * 3600 * 1000;
+/** Minimalny odstęp między automatycznymi próbami pobrania po błędzie (np. offline). */
+const AUTO_RETRY_MS = 5 * 60 * 1000;
 
 export type NationalTimetableState =
   | { phase: 'idle' }
@@ -51,6 +54,7 @@ export function subscribeNationalTimetable(listener: (state: NationalTimetableSt
 }
 
 let inFlight: Promise<NationalTimetableState> | null = null;
+let lastAutoAttemptAt = 0;
 
 async function lastCheckAt(): Promise<number> {
   const raw = await getNationalMeta('plk_last_check').catch(() => null);
@@ -59,34 +63,34 @@ async function lastCheckAt(): Promise<number> {
 }
 
 /**
- * Utrzymuje bazę kolejową: sprawdza manifest i pobiera nowszą wersję.
- * Idempotentne i zserializowane (wspólny promise); nie rzuca - stan
- * błędy oddaje przez fazę 'error'.
+ * Utrzymuje bazę kolejową: gdy jej brakuje, pobiera ją domyślnie w tle;
+ * gdy już jest, sprawdza manifest i pobiera nowszą wersję.
+ * Idempotentne i zserializowane (wspólny promise); nie rzuca, błędy oddaje
+ * przez fazę 'error'.
  */
 export function ensureNationalTimetable(force = false): Promise<NationalTimetableState> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
       const present = await hasNationalDb();
-      if (!present && !force) {
-        // Bez bazy nie pobieramy sami z siebie: pobiera UI na żądanie
-        // (karta w wynikach / ustawienia), żeby nie zaskakiwać transferem.
-        setState({ phase: 'idle' });
-        return state;
-      }
-      const last = await lastCheckAt();
-      if (!force && Date.now() - last < CHECK_INTERVAL_MS) {
-        const version = await getNationalTimetableVersion();
-        const endDate = await getNationalTimetableEndDate().catch(() => null);
-        setState({ phase: 'ready', version, endDate });
+      if (present) {
+        const last = await lastCheckAt();
+        if (!force && Date.now() - last < CHECK_INTERVAL_MS) {
+          const version = await getNationalTimetableVersion();
+          const endDate = await getNationalTimetableEndDate().catch(() => null);
+          setState({ phase: 'ready', version, endDate });
+          return state;
+        }
+      } else if (!force && Date.now() - lastAutoAttemptAt < AUTO_RETRY_MS) {
         return state;
       }
 
+      if (!present) lastAutoAttemptAt = Date.now();
       setState({ phase: 'checking' });
       const manifest = await fetchNationalManifest();
-      await setNationalMeta('plk_last_check', String(Date.now())).catch(() => {});
-      const local = await getNationalTimetableVersion();
-      if (local && local === manifest.version) {
+      const local = present ? await getNationalTimetableVersion() : null;
+      if (present && local && local === manifest.version) {
+        await setNationalMeta('plk_last_check', String(Date.now())).catch(() => {});
         const endDate = await getNationalTimetableEndDate().catch(() => null);
         setState({ phase: 'ready', version: local, endDate });
         return state;
@@ -96,6 +100,7 @@ export function ensureNationalTimetable(force = false): Promise<NationalTimetabl
       await downloadNationalDb(manifest, (written, total) => {
         setState({ phase: 'downloading', progress: total > 0 ? written / total : 0 });
       });
+      await setNationalMeta('plk_last_check', String(Date.now())).catch(() => {});
       const version = await getNationalTimetableVersion();
       const endDate = await getNationalTimetableEndDate().catch(() => null);
       setState({ phase: 'ready', version, endDate });
@@ -142,21 +147,27 @@ export async function nationalTimetableReady(): Promise<boolean> {
 /** Usuwa bazę kolejową (ustawienia): zamyka uchwyt i kasuje plik. */
 export async function deleteNationalTimetable(): Promise<void> {
   const gtfs = await import('./gtfsDatabase');
-  const FileSystem = await import('expo-file-system/legacy');
   gtfs.beginNationalDbSwap();
   try {
     await gtfs.closeNationalDb();
     const { polskaStore } = await import('./routing/store');
     polskaStore.reset();
-    const base = FileSystem.documentDirectory;
-    if (base) {
-      const dir = `${base.replace(/\/+$/, '')}/SQLite`;
-      const main = `${dir}/${gtfs.NATIONAL_DB_FILE}`;
-      for (const suffix of ['', '-wal', '-shm', '-journal', '.bak']) {
-        try {
-          await FileSystem.deleteAsync(`${main}${suffix}`, { idempotent: true });
-        } catch {
-          // best-effort
+    if (Platform.OS === 'web') {
+      const SQLite = await import('expo-sqlite');
+      await SQLite.deleteDatabaseAsync(gtfs.NATIONAL_DB_FILE).catch(() => {});
+      await gtfs.clearWebDbReady(gtfs.NATIONAL_DB_FILE);
+    } else {
+      const FileSystem = await import('expo-file-system/legacy');
+      const base = FileSystem.documentDirectory;
+      if (base) {
+        const dir = `${base.replace(/\/+$/, '')}/SQLite`;
+        const main = `${dir}/${gtfs.NATIONAL_DB_FILE}`;
+        for (const suffix of ['', '-wal', '-shm', '-journal', '.bak']) {
+          try {
+            await FileSystem.deleteAsync(`${main}${suffix}`, { idempotent: true });
+          } catch {
+            // best-effort
+          }
         }
       }
     }

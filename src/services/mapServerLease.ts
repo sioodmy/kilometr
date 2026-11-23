@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { startMapServer, stopMapServer } from '../../modules/kilometr-maps';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
@@ -21,6 +22,9 @@ let stopPromise: Promise<void> | null = null;
  * przy pełnym łączu.
  */
 export async function acquireMapServer(): Promise<MapServerLease> {
+  if (Platform.OS === 'web') {
+    return { base: null, release: () => undefined };
+  }
   if (!(await hasOfflineMap(getActiveCityIdSync()))) {
     return { base: null, release: () => undefined };
   }

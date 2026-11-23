@@ -11,11 +11,31 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
+import { gunzipSync } from 'fflate';
+import { Platform } from 'react-native';
 import { TIMETABLE } from './gtfsConfig';
 import { decompressGzipFile } from '../../modules/kilometr-raptor';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync } from './cityStore';
-import { beginGtfsSwap, closeGtfsDb, endGtfsSwap, getGtfsDb, GTFS_IMPORT_COMPLETE_META, setMeta } from './gtfsDatabase';
+import {
+  beginGtfsSwap,
+  closeGtfsDb,
+  endGtfsSwap,
+  evictExcessWebCityDbs,
+  getGtfsDb,
+  GTFS_IMPORT_COMPLETE_META,
+  markWebDbReady,
+  openGtfsDbHandle,
+  setMeta,
+} from './gtfsDatabase';
+
+/** Przerwanie syncu rozkładu (np. użytkownik przełączył miasto w trakcie pobierania). */
+export class TimetableSyncAbortedError extends Error {
+  constructor(message = 'timetable sync aborted') {
+    super(message);
+    this.name = 'TimetableSyncAbortedError';
+  }
+}
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
 import { getLocaleSync, type Strings } from '../i18n';
 import { pl } from '../i18n/pl';
@@ -68,26 +88,35 @@ function dbDownloadUrl(manifest: TimetableManifest): string {
   return `${TIMETABLE.baseUrl}${path}`;
 }
 
-/** Manifest to ~500 B - tanie pytanie, które chroni limity (brak pobrań bez zmian). */
-export async function fetchManifest(cityId?: CityId | string): Promise<TimetableManifest> {
+/** Manifest to ~500 B: tanie pytanie, które chroni limity (brak pobrań bez zmian). */
+export async function fetchManifest(
+  cityId?: CityId | string,
+  signal?: AbortSignal,
+): Promise<TimetableManifest> {
   const city = getCity(typeof cityId === 'string' ? cityId : getActiveCityIdSync());
   try {
-    return await fetchManifestAt(manifestUrl(city.id));
+    return await fetchManifestAt(manifestUrl(city.id), signal);
   } catch (err) {
+    if (err instanceof TimetableSyncAbortedError) throw err;
     throw describeDownloadError(err);
   }
 }
 
-async function fetchManifestAt(url: string): Promise<TimetableManifest> {
+async function fetchManifestAt(url: string, signal?: AbortSignal): Promise<TimetableManifest> {
+  if (signal?.aborted) throw new TimetableSyncAbortedError('manifest aborted before start');
   const ctrl = new AbortController();
+  const onParentAbort = () => ctrl.abort();
+  signal?.addEventListener('abort', onParentAbort, { once: true });
   const timer = setTimeout(() => ctrl.abort(), TIMETABLE.timeoutMs);
   try {
     const res = await fetch(url, {
       headers: { Accept: 'application/json' },
       signal: ctrl.signal,
     });
+    if (signal?.aborted) throw new TimetableSyncAbortedError('manifest aborted');
     if (!res.ok) throw new Error(`manifest HTTP ${res.status}`);
     const m = (await res.json()) as TimetableManifest;
+    if (signal?.aborted) throw new TimetableSyncAbortedError('manifest aborted');
     if (!m || typeof m.version !== 'string' || !m.version
       || !m.db || typeof m.db.sizeBytes !== 'number' || m.db.sizeBytes < 10_000
       || !m.stats || m.stats.stops <= 0 || m.stats.trips <= 0) {
@@ -95,9 +124,13 @@ async function fetchManifestAt(url: string): Promise<TimetableManifest> {
     }
     return m;
   } catch (err) {
+    if (err instanceof TimetableSyncAbortedError || signal?.aborted) {
+      throw new TimetableSyncAbortedError('manifest aborted');
+    }
     throw describeDownloadError(err);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onParentAbort);
   }
 }
 
@@ -177,40 +210,56 @@ async function downloadToTemp(
   mainName: string,
   manifest: TimetableManifest,
   onProgress?: (bytesWritten: number, totalBytes: number) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
+  if (signal?.aborted) throw new TimetableSyncAbortedError('download aborted before start');
   const T = syncDlTr();
   const tempName = tempDbName(mainName);
   const destDb = await sqliteUri(tempName);
   const isCompressed = manifest.db.path.endsWith('.gz') || typeof manifest.db.uncompressedSizeBytes === 'number';
   const destDownload = isCompressed ? `${destDb}.gz` : destDb;
 
-  await deleteSidecars(destDb);
-  try {
-    await FileSystem.deleteAsync(destDb, { idempotent: true });
-  } catch {
-    // best-effort (stary niekompletny temp)
-  }
-  if (isCompressed) {
-    try {
-      await FileSystem.deleteAsync(destDownload, { idempotent: true });
-    } catch {
-      // best-effort
+  const cleanupTemp = async () => {
+    await deleteSidecars(destDb);
+    await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
+    if (isCompressed) {
+      await FileSystem.deleteAsync(destDownload, { idempotent: true }).catch(() => {});
     }
-  }
+  };
 
-  // Download strumieniem na dysk (wznawialny) - RAM-u prawie nie rusza.
+  await cleanupTemp();
+  if (signal?.aborted) throw new TimetableSyncAbortedError('download aborted before transfer');
+
+  // Download strumieniem na dysk (wznawialny): RAM-u prawie nie rusza.
   const task = FileSystem.createDownloadResumable(
     dbDownloadUrl(manifest),
     destDownload,
     { headers: { 'User-Agent': 'KilometrApp/1.0' } },
-    (p) => onProgress?.(p.totalBytesWritten, p.totalBytesExpectedToWrite),
+    (p) => {
+      if (signal?.aborted) return;
+      onProgress?.(p.totalBytesWritten, p.totalBytesExpectedToWrite);
+    },
   );
-  const result = await task.downloadAsync().catch((err: unknown) => {
-    throw describeDownloadError(err);
-  });
+  const onAbort = () => {
+    void task.cancelAsync().catch(() => {});
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  let result: FileSystem.FileSystemDownloadResult | undefined;
+  try {
+    result = await task.downloadAsync().catch((err: unknown) => {
+      if (signal?.aborted) throw new TimetableSyncAbortedError('download cancelled');
+      throw describeDownloadError(err);
+    });
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
+  if (signal?.aborted) {
+    await cleanupTemp();
+    throw new TimetableSyncAbortedError('download cancelled');
+  }
   if (!result?.uri) throw new GtfsDownloadError(T.noFile, 'download bez uri', T.hintTouch);
 
-  // Rozmiar pobranego pliku musi się zgadzać co do bajta - inaczej nie ma podmiany.
+  // Rozmiar pobranego pliku musi się zgadzać co do bajta, inaczej nie ma podmiany.
   const info = await FileSystem.getInfoAsync(destDownload);
   const size = info.exists && 'size' in info ? (info.size as number) : -1;
   if (size !== manifest.db.sizeBytes) {
@@ -223,6 +272,10 @@ async function downloadToTemp(
     const ok = await decompressGzipFile(destDownload, destDb);
     // Usuwamy pobrany .gz natychmiast po rozpakowaniu, żeby nie trzymać duplikatu na dysku
     await FileSystem.deleteAsync(destDownload, { idempotent: true }).catch(() => {});
+    if (signal?.aborted) {
+      await cleanupTemp();
+      throw new TimetableSyncAbortedError('download cancelled after decompress');
+    }
     if (!ok) {
       await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
       throw new GtfsDownloadError(T.unavailable, 'błąd dekompresji bazy rozkładu (gzip)', T.hintLater, 'unreachable');
@@ -241,6 +294,11 @@ async function downloadToTemp(
         );
       }
     }
+  }
+
+  if (signal?.aborted) {
+    await cleanupTemp();
+    throw new TimetableSyncAbortedError('download cancelled before verify');
   }
 
   // Weryfikacja zawartości na pliku tymczasowym (osobny uchwyt!).
@@ -274,6 +332,10 @@ async function downloadToTemp(
   } catch {
     // best-effort
   }
+  if (signal?.aborted) {
+    await cleanupTemp();
+    throw new TimetableSyncAbortedError('download cancelled after verify');
+  }
   return tempName;
 }
 
@@ -302,6 +364,170 @@ async function swapDbFile(mainName: string, tempName: string): Promise<void> {
   await FileSystem.deleteAsync(bakUri, { idempotent: true }).catch(() => {});
 }
 
+async function gunzipBytesWeb(compressed: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream !== 'undefined') {
+    const stream = new Blob([compressed as BlobPart])
+      .stream()
+      .pipeThrough(new DecompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  return gunzipSync(compressed);
+}
+
+/**
+ * Webowy odpowiednik downloadToTemp: pobiera strumieniem z postępem,
+ * dekompresuje w przeglądarce i weryfikuje w pamięci przed zapisem do OPFS.
+ */
+async function downloadAndVerifyWebDb(
+  manifest: TimetableManifest,
+  onProgress?: (bytesWritten: number, totalBytes: number) => void,
+  signal?: AbortSignal,
+): Promise<{ memDb: SQLite.SQLiteDatabase; byteLength: number }> {
+  if (signal?.aborted) throw new TimetableSyncAbortedError('download aborted before start');
+  const T = syncDlTr();
+  const isCompressed =
+    manifest.db.path.endsWith('.gz') || typeof manifest.db.uncompressedSizeBytes === 'number';
+
+  let res: Response;
+  try {
+    res = await fetch(dbDownloadUrl(manifest), { signal });
+  } catch (err) {
+    if (signal?.aborted) throw new TimetableSyncAbortedError('download cancelled');
+    throw describeDownloadError(err);
+  }
+  if (!res.ok) {
+    throw new GtfsDownloadError(
+      T.unavailable,
+      `HTTP response status code ${res.status}`,
+      T.hintLater,
+      'unreachable',
+    );
+  }
+
+  const expectedBytes = Number(res.headers.get('content-length')) || manifest.db.sizeBytes;
+  const chunks: Uint8Array[] = [];
+  let bytesWritten = 0;
+
+  if (res.body?.getReader) {
+    const reader = res.body.getReader();
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          await reader.cancel().catch(() => {});
+          throw new TimetableSyncAbortedError('download cancelled');
+        }
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          bytesWritten += value.byteLength;
+          onProgress?.(bytesWritten, expectedBytes);
+        }
+      }
+    } catch (err) {
+      if (err instanceof TimetableSyncAbortedError || signal?.aborted) {
+        throw new TimetableSyncAbortedError('download cancelled');
+      }
+      throw describeDownloadError(err);
+    }
+  } else {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    chunks.push(buf);
+    bytesWritten = buf.byteLength;
+    onProgress?.(bytesWritten, expectedBytes);
+  }
+
+  if (signal?.aborted) throw new TimetableSyncAbortedError('download cancelled');
+  if (bytesWritten !== manifest.db.sizeBytes) {
+    throw new GtfsDownloadError(
+      T.unavailable,
+      `rozmiar ${bytesWritten} != ${manifest.db.sizeBytes}`,
+      T.hintLater,
+      'unreachable',
+    );
+  }
+
+  const rawBytes = new Uint8Array(bytesWritten);
+  let offset = 0;
+  for (const chunk of chunks) {
+    rawBytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let dbBytes: Uint8Array = rawBytes;
+  if (isCompressed) {
+    try {
+      dbBytes = await gunzipBytesWeb(rawBytes);
+    } catch {
+      throw new GtfsDownloadError(
+        T.unavailable,
+        'błąd dekompresji bazy rozkładu (gzip)',
+        T.hintLater,
+        'unreachable',
+      );
+    }
+    if (signal?.aborted) throw new TimetableSyncAbortedError('download cancelled after decompress');
+    if (
+      typeof manifest.db.uncompressedSizeBytes === 'number' &&
+      dbBytes.byteLength !== manifest.db.uncompressedSizeBytes
+    ) {
+      throw new GtfsDownloadError(
+        T.unavailable,
+        `rozmiar po dekompresji ${dbBytes.byteLength} != ${manifest.db.uncompressedSizeBytes}`,
+        T.hintLater,
+        'unreachable',
+      );
+    }
+  }
+
+  const memDb = await SQLite.deserializeDatabaseAsync(dbBytes);
+  try {
+    const chk = await memDb.getFirstAsync<{ quick_check: string }>('PRAGMA quick_check(1)');
+    const s = await memDb.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
+    const t = await memDb.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
+    const st = await memDb.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stop_times');
+    if (chk?.quick_check !== 'ok' || !s?.n || !t?.n || !st?.n) {
+      throw new Error(
+        `weryfikacja bazy: quick_check=${chk?.quick_check} stops=${s?.n} trips=${t?.n} times=${st?.n}`,
+      );
+    }
+    await memDb.runAsync(
+      'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
+      GTFS_IMPORT_COMPLETE_META,
+      '1',
+    );
+  } catch (err) {
+    await memDb.closeAsync().catch(() => {});
+    throw err instanceof GtfsDownloadError ? err : describeDownloadError(err);
+  }
+
+  if (signal?.aborted) {
+    await memDb.closeAsync().catch(() => {});
+    throw new TimetableSyncAbortedError('download cancelled after verify');
+  }
+  return { memDb, byteLength: dbBytes.byteLength };
+}
+
+async function commitWebDb(
+  targetDbName: string,
+  memDb: SQLite.SQLiteDatabase,
+  byteLength: number,
+  isCity: boolean,
+): Promise<void> {
+  if (isCity) {
+    await evictExcessWebCityDbs(targetDbName);
+  }
+  await SQLite.deleteDatabaseAsync(targetDbName).catch(() => {});
+  const destDb = await SQLite.openDatabaseAsync(targetDbName);
+  try {
+    await SQLite.backupDatabaseAsync({ sourceDatabase: memDb, destDatabase: destDb });
+  } finally {
+    await destDb.closeAsync().catch(() => {});
+    await memDb.closeAsync().catch(() => {});
+  }
+  await markWebDbReady(targetDbName, byteLength, isCity);
+}
+
 /**
  * Pobiera, weryfikuje i podmienia bazę. Nie rusza działającej bazy,
  * dopóki plik tymczasowy nie przejdzie integrity_check.
@@ -310,41 +536,62 @@ export async function downloadPrebuiltDb(
   manifest: TimetableManifest,
   onProgress?: (bytesWritten: number, totalBytes: number) => void,
   cityId?: CityId | string,
+  signal?: AbortSignal,
 ): Promise<void> {
   // Miasto pinujemy raz, na starcie: pobieranie trwa kilka minut, a użytkownik
   // może w międzyczasie zmienić miasto. Bez pinu plik tymczasowy i cel podmiany
   // rozjeżdżałyby się (Wrocławskie dane w pliku Krakowa).
   const city = getCity(cityId ?? getActiveCityIdSync());
-  const tempName = await downloadToTemp(city.dbFile, manifest, onProgress);
 
-  // Podmiana: zamknij działającą bazę, odsuń starą do .bak i wstaw nową.
-  // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
-  // Miasto mogło się zmienić w trakcie pobierania: wtedy baza właśnie ściągnięta
-  // należy do innego miasta niż aktywne i nie wolno jej podmienić.
-  if (getActiveCityIdSync() !== city.id) {
-    const destDb = await sqliteUri(tempName);
-    await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
-    throw new GtfsDownloadError(syncDlTr().unavailable, 'city changed during download', syncDlTr().hintLater, 'unreachable');
-  }
-  beginGtfsSwap();
-  let swapFailed = false;
-  try {
-    await closeGtfsDb();
-    await swapDbFile(city.dbFile, tempName);
-  } catch (err) {
-    swapFailed = true;
-    throw err;
-  } finally {
-    endGtfsSwap();
-    // Po nieudanej podmianie otwórz z powrotem poprzednią bazę.
-    if (swapFailed) await getGtfsDb().catch(() => {});
+  if (Platform.OS === 'web') {
+    const { memDb, byteLength } = await downloadAndVerifyWebDb(manifest, onProgress, signal);
+    if (signal?.aborted || getActiveCityIdSync() !== city.id) {
+      await memDb.closeAsync().catch(() => {});
+      throw new TimetableSyncAbortedError('city changed during download');
+    }
+    beginGtfsSwap();
+    let swapFailed = false;
+    try {
+      await closeGtfsDb();
+      await commitWebDb(city.dbFile, memDb, byteLength, true);
+    } catch (err) {
+      swapFailed = true;
+      await memDb.closeAsync().catch(() => {});
+      throw err;
+    } finally {
+      endGtfsSwap();
+      if (swapFailed && getActiveCityIdSync() === city.id) await getGtfsDb().catch(() => {});
+    }
+  } else {
+    const tempName = await downloadToTemp(city.dbFile, manifest, onProgress, signal);
+
+    // Podmiana: zamknij działającą bazę, odsuń starą do .bak i wstaw nową.
+    // Bramka blokuje równoległe getGtfsDb() z UI, żeby nie otworzyły usuwanego pliku.
+    // Miasto mogło się zmienić w trakcie pobierania: wtedy baza właśnie ściągnięta
+    // należy do innego miasta niż aktywne i nie wolno jej podmienić.
+    if (signal?.aborted || getActiveCityIdSync() !== city.id) {
+      const destDb = await sqliteUri(tempName);
+      await deleteSidecars(destDb);
+      await FileSystem.deleteAsync(destDb, { idempotent: true }).catch(() => {});
+      throw new TimetableSyncAbortedError('city changed during download');
+    }
+    beginGtfsSwap();
+    let swapFailed = false;
+    try {
+      await closeGtfsDb();
+      await swapDbFile(city.dbFile, tempName);
+    } catch (err) {
+      swapFailed = true;
+      throw err;
+    } finally {
+      endGtfsSwap();
+      // Po nieudanej podmianie otwórz z powrotem poprzednią bazę (tylko jeśli miasto nadal aktywne).
+      if (swapFailed && getActiveCityIdSync() === city.id) await getGtfsDb().catch(() => {});
+    }
   }
 
-  // Reopen (initDb robi CREATE IF NOT EXISTS - na gotowej bazie to no-op)
-  // i zapisz mety wersji, żeby manifest nie ściągał w kółko tego samego.
-  // Mety idą do bazy miasta z manifestu, nie do aktualnie aktywnej: miasto
-  // mogło się zmienić w trakcie podmiany pliku.
-  await getGtfsDb();
+  // Reopen i zapis met wersji w pliku docelowego miasta (nigdy innego miasta).
+  await openGtfsDbHandle(city.id);
   await setMeta('timetable_version', manifest.version, city.id);
   await setMeta('gtfs_imported_at', new Date().toISOString(), city.id);
   await setMeta('gtfs_source', 'network', city.id);
@@ -356,7 +603,7 @@ export async function downloadPrebuiltDb(
       kml: manifest.sources.kml?.version ?? null,
     }), city.id);
   } catch {
-    // meta opisowa - nie blokuje gotowości
+    // meta opisowa nie blokuje gotowości
   }
 }
 
@@ -370,19 +617,37 @@ export async function downloadNationalDb(
   onProgress?: (bytesWritten: number, totalBytes: number) => void,
 ): Promise<void> {
   const gtfs = await import('./gtfsDatabase');
-  const tempName = await downloadToTemp(gtfs.NATIONAL_DB_FILE, manifest, onProgress);
 
-  gtfs.beginNationalDbSwap();
-  let swapFailed = false;
-  try {
-    await gtfs.closeNationalDb();
-    await swapDbFile(gtfs.NATIONAL_DB_FILE, tempName);
-  } catch (err) {
-    swapFailed = true;
-    throw err;
-  } finally {
-    gtfs.endNationalDbSwap();
-    if (swapFailed) await gtfs.getNationalDb().catch(() => {});
+  if (Platform.OS === 'web') {
+    const { memDb, byteLength } = await downloadAndVerifyWebDb(manifest, onProgress);
+    gtfs.beginNationalDbSwap();
+    let swapFailed = false;
+    try {
+      await gtfs.closeNationalDb();
+      await commitWebDb(gtfs.NATIONAL_DB_FILE, memDb, byteLength, false);
+    } catch (err) {
+      swapFailed = true;
+      await memDb.closeAsync().catch(() => {});
+      throw err;
+    } finally {
+      gtfs.endNationalDbSwap();
+      if (swapFailed) await gtfs.getNationalDb().catch(() => {});
+    }
+  } else {
+    const tempName = await downloadToTemp(gtfs.NATIONAL_DB_FILE, manifest, onProgress);
+
+    gtfs.beginNationalDbSwap();
+    let swapFailed = false;
+    try {
+      await gtfs.closeNationalDb();
+      await swapDbFile(gtfs.NATIONAL_DB_FILE, tempName);
+    } catch (err) {
+      swapFailed = true;
+      throw err;
+    } finally {
+      gtfs.endNationalDbSwap();
+      if (swapFailed) await gtfs.getNationalDb().catch(() => {});
+    }
   }
 
   // Mety w samej bazie krajowej (plik niezależny od miast).
