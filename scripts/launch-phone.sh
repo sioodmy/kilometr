@@ -2,6 +2,12 @@
 # Uruchamia apkę Kilometr na telefonie przez USB (ADB + Expo Go).
 # Sam stawia Metro i backend, jeśli nie działają - wystarczy `npm run phone`.
 #
+# Opcjonalny argument: trasa do otwarcia, np.:
+#   ./scripts/launch-phone.sh /dev/home
+#   ./scripts/launch-phone.sh /dev/search
+#   ./scripts/launch-phone.sh /dev/transfer
+#   ./scripts/launch-phone.sh /dev
+#
 # Wymagania: podłączony telefon (debugowanie USB), zainstalowane Expo Go.
 set -euo pipefail
 
@@ -10,8 +16,24 @@ METRO_STATUS="http://localhost:8081/status"
 API_HEALTH="http://localhost:3000/api/health"
 METRO_LOG="$ROOT/.expo/phone-metro.log"
 SERVER_LOG="$ROOT/.expo/phone-server.log"
-DEV_URL="exp://127.0.0.1:8081"
 EXPO_GO_PKG="host.exp.exponent"
+
+TARGET="${1:-}"
+DEV_PATH=""
+case "$TARGET" in
+  home|/dev/home) DEV_PATH="/dev/home" ;;
+  search|/dev/search) DEV_PATH="/dev/search" ;;
+  transfer|/dev/transfer) DEV_PATH="/dev/transfer" ;;
+  dev|/dev) DEV_PATH="/dev" ;;
+  "") DEV_PATH="" ;;
+  /*) DEV_PATH="$TARGET" ;;
+  *) DEV_PATH="/$TARGET" ;;
+esac
+
+DEV_URL="exp://127.0.0.1:8081"
+if [ -n "$DEV_PATH" ]; then
+  DEV_URL="exp://127.0.0.1:8081/--${DEV_PATH}"
+fi
 
 fail() { echo "❌ $1" >&2; exit 1; }
 
@@ -65,22 +87,26 @@ else
     || fail "Metro nie wstało w 120 s. Sprawdź log: $METRO_LOG"
 fi
 
-# Backend API: bez niego wyszukiwanie połączeń nie zadziała.
-if curl -sf -o /dev/null "$API_HEALTH" 2>/dev/null; then
-  echo "🟢 Backend API działa (port 3000)"
+# Backend API: potrzebny dla rzeczywistego wyszukiwania tras (dla ekranów /dev/ jest opcjonalny).
+if [ -n "$DEV_PATH" ] && [[ "$DEV_PATH" == /dev/* ]]; then
+  echo "ℹ️ Ekrany deweloperskie ($DEV_PATH) korzystają z lokalnych fixturek UI."
 else
-  echo "🟡 Backend nie działa - uruchamiam 'npm run server:dev' w tle..."
-  echo "   (pierwszy start może pobierać rozkład GTFS ~12 MB; log: $SERVER_LOG)"
-  mkdir -p "$ROOT/.expo"
-  (cd "$ROOT" && TMPDIR=/tmp nohup npm run server:dev >"$SERVER_LOG" 2>&1 &)
-  wait_for "$API_HEALTH" 180 "Backend API" \
-    || fail "Backend nie wstał w 180 s. Sprawdź log: $SERVER_LOG"
+  if curl -sf -o /dev/null "$API_HEALTH" 2>/dev/null; then
+    echo "🟢 Backend API działa (port 3000)"
+  else
+    echo "🟡 Backend nie działa - uruchamiam 'npm run server:dev' w tle..."
+    echo "   (pierwszy start może pobierać rozkład GTFS ~12 MB; log: $SERVER_LOG)"
+    mkdir -p "$ROOT/.expo"
+    (cd "$ROOT" && TMPDIR=/tmp nohup npm run server:dev >"$SERVER_LOG" 2>&1 &)
+    wait_for "$API_HEALTH" 180 "Backend API" \
+      || fail "Backend nie wstał w 180 s. Sprawdź log: $SERVER_LOG"
+  fi
 fi
 
 # Tunele USB: na telefonie 127.0.0.1:8081/3000 prowadzi do tego komputera.
 echo "🔌 Konfiguracja reverse portów (8081 Metro, 3000 Backend)..."
 adb -s "$DEVICE_ID" reverse tcp:8081 tcp:8081
-adb -s "$DEVICE_ID" reverse tcp:3000 tcp:3000
+adb -s "$DEVICE_ID" reverse tcp:3000 tcp:3000 || true
 adb -s "$DEVICE_ID" reverse --list
 
 # Expo Go musi być zainstalowane, inaczej intent ginie po cichu.
@@ -96,7 +122,7 @@ adb -s "$DEVICE_ID" shell wm dismiss-keyguard >/dev/null 2>&1 || true
 # Otwarcie Expo Go z aplikacją kilometr (błędy celowo widoczne, nie tłumione).
 echo "🚀 Uruchamianie aplikacji w Expo Go ($DEV_URL)..."
 if adb -s "$DEVICE_ID" shell am start -a android.intent.action.VIEW -d "$DEV_URL" "$EXPO_GO_PKG"; then
-  echo "🎉 Gotowe! Aplikacja powinna otworzyć się na telefonie."
+  echo "🎉 Gotowe! Aplikacja powinna otworzyć się na telefonie (${DEV_PATH:-ekran główny})."
   echo "   Jeśli telefon wisi na ekranie ładowania >30 s, sprawdź log Metro: $METRO_LOG"
 else
   fail "Komenda 'am start' nie powiodła się (szczegóły wyżej)."

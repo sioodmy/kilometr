@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStrings } from '../../src/i18n';
 import { scheme } from '../../src/theme/tokens';
 import { transferFixture } from '../../src/dev/transferFixture';
+import { DevNavHeader } from '../../src/dev/DevNavHeader';
 import {
   TransferAction,
   TransferProtectionCard,
@@ -47,7 +48,8 @@ export default function TransferPreview() {
     s.transferGuard.unavailable,
   ];
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <DevNavHeader current="transfer" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.demo}>{s.transferGuard.demo}</Text>
         <ConnectionSummary item={fixture.connection} />
@@ -118,9 +120,6 @@ const styles = StyleSheet.create({
   mode: { backgroundColor: scheme.surfaceContainerHigh },
   modeText: {
     fontSize: 14,
-    lineHeight: 20,
     color: scheme.onSurface,
-    textAlign: 'center',
-    flexShrink: 1,
   },
 });

@@ -1,8 +1,7 @@
 import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { useStrings } from '../i18n';
 import {
-  GOOGLE_GROUP_URL,
-  BETA_URL,
+  PLAY_STORE_URL,
   IPA_URL,
   SIDELOADLY_URL,
   OBTAINIUM_URL,
@@ -15,10 +14,7 @@ export function InstallPage({ page }: { page: 'android' | 'ios' }) {
   const content = s[page];
   const steps =
     page === 'android'
-      ? [
-          { ...s.android.group, href: GOOGLE_GROUP_URL },
-          { ...s.android.testing, href: BETA_URL },
-        ]
+      ? [{ ...s.android.download, href: PLAY_STORE_URL }]
       : [
           { ...s.ios.download, href: IPA_URL },
           { ...s.ios.tool, href: SIDELOADLY_URL },

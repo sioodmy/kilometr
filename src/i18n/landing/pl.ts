@@ -28,25 +28,20 @@ export const pl = {
     newTab: '(otwiera się w nowej karcie)',
   },
   android: {
-    title: 'Dołącz do bety Play Store',
+    title: 'Pobierz z Google Play',
     intro:
-      'Kilometr jest w fazie testów. Aby pobrać aplikację na Androida, najpierw dołącz do grupy testerów, a potem zapisz się do bety w Google Play.',
-    noteTitle: 'Jedno konto Google w obu krokach',
+      'Kilometr jest dostępny bezpłatnie w Google Play. Otwórz kartę aplikacji, zainstaluj i ruszaj w miasto.',
+    noteTitle: 'Darmowo i bez konta',
     noteBody:
-      'Do grupy i do bety dołącz z tego samego konta Google. Używaj go też w Sklepie Play na telefonie.',
-    group: {
-      title: 'Dołącz do grupy testerów',
-      body: 'Otwórz grupę Kilometr w Google Groups. Zaloguj się i wybierz „Dołącz do grupy”. Samo otwarcie strony nie wystarczy.',
-      action: 'Dołącz do grupy Google',
+      'Kilometr nie wymaga konta ani subskrypcji. Aktualizacje pobierzesz z Google Play, tak jak w innych aplikacjach.',
+    download: {
+      title: 'Zainstaluj Kilometr',
+      body: 'Przycisk otworzy kartę aplikacji w Sklepie Play. Wybierz „Zainstaluj” i poczekaj na koniec pobierania.',
+      action: 'Otwórz w Google Play',
     },
-    testing: {
-      title: 'Zapisz się do bety i pobierz aplikację',
-      body: 'Po dołączeniu do grupy otwórz stronę testów. Potwierdź udział w programie, a następnie przejdź z niej do Google Play i zainstaluj Kilometr.',
-      action: 'Dołącz do bety w Google Play',
-    },
-    helpTitle: 'Nie widzisz dostępu do testów?',
+    helpTitle: 'Nie możesz zainstalować aplikacji?',
     helpBody:
-      'Sprawdź, czy grupa, strona testów i Sklep Play używają tego samego konta Google. Jeśli dopiero dołączasz do grupy, odczekaj chwilę i odśwież stronę testów. To wersja testowa, więc możesz trafić na błędy.',
+      'Sprawdź połączenie z internetem i wolne miejsce na telefonie. Jeśli karta aplikacji się nie otwiera, zaktualizuj Sklep Play i spróbuj ponownie.',
     alternative: {
       title: 'Bojkotujesz Google? Pobierz prosto ze źródła',
       body: 'Obtainium pobiera Kilometr i jego aktualizacje bezpośrednio z naszego GitHuba. Przycisk otworzy konfigurację w Obtainium lub pomoże Ci je zainstalować.',

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { pl } from '../src/i18n/landing/pl';
+import { PLAY_STORE_URL } from './src/data';
 import { appLinkFiles } from './appLinks';
 
 export default defineConfig({
@@ -23,10 +24,8 @@ export default defineConfig({
           .replaceAll('%PAGE_TITLE%', pl.meta.title)
           .replaceAll('%PAGE_DESCRIPTION%', pl.meta.description)
           .replaceAll('%PAGE_IMAGE_ALT%', pl.meta.imageAlt)
-          .replaceAll('%BETA_LABEL%', pl.android.testing.action)
-          .replaceAll('%GROUP_LABEL%', pl.android.group.action)
-          .replaceAll('%BETA_INTRO%', pl.android.intro)
-          .replaceAll('%BETA_ACCOUNT%', pl.android.noteBody),
+          .replaceAll('%PLAY_STORE_URL%', PLAY_STORE_URL)
+          .replaceAll('%PLAY_STORE_LABEL%', pl.android.download.action),
     },
   ],
   base: './',

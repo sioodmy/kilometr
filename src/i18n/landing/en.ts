@@ -29,25 +29,20 @@ export const en: Strings = {
     newTab: '(opens in a new tab)',
   },
   android: {
-    title: 'Join the Play Store beta',
+    title: 'Download from Google Play',
     intro:
-      'Kilometr is in testing. To download the Android app, first join the tester group, then join the beta on Google Play.',
-    noteTitle: 'Use one Google account for both steps',
+      'Kilometr is free on Google Play. Open the app page, install it and head into town.',
+    noteTitle: 'Free and no account',
     noteBody:
-      'Join the group and the beta with the same Google account. Use it in the Play Store on your phone too.',
-    group: {
-      title: 'Join the tester group',
-      body: 'Open the Kilometr group in Google Groups. Sign in and select “Join group”. Opening the page alone does not add you to the group.',
-      action: 'Join the Google group',
+      'Kilometr needs no account and no subscription. Updates arrive through Google Play like any other app.',
+    download: {
+      title: 'Install Kilometr',
+      body: 'The button opens the app page in the Play Store. Select “Install” and wait for the download to finish.',
+      action: 'Open in Google Play',
     },
-    testing: {
-      title: 'Join the beta and download the app',
-      body: 'After joining the group, open the testing page. Confirm that you want to join the programme, then follow its Google Play link to install Kilometr.',
-      action: 'Join the Google Play beta',
-    },
-    helpTitle: 'Cannot access the test?',
+    helpTitle: 'Cannot install the app?',
     helpBody:
-      'Check that the group, testing page and Play Store all use the same Google account. If you just joined the group, wait a little and refresh the testing page. This is a test version, so you may encounter bugs.',
+      'Check your internet connection and free space on your phone. If the app page does not open, update the Play Store and try again.',
     alternative: {
       title: 'Boycotting Google? Download straight from the source',
       body: 'Obtainium downloads Kilometr and its updates directly from our GitHub. The button opens the configuration in Obtainium or helps you install it.',
