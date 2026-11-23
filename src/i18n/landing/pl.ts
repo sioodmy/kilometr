@@ -38,35 +38,7 @@ export const pl = {
     web: 'Wersja webowa',
     platform: 'Wybierz system telefonu',
     newTab: '(otwiera się w nowej karcie)',
-  },
-  android: {
-    title: 'Dołącz do bety Play Store',
-    intro:
-      'Kilometr jest w fazie testów. Aby pobrać aplikację na Androida, najpierw dołącz do grupy testerów, a potem zapisz się do bety w Google Play.',
-    noteTitle: 'Jedno konto Google w obu krokach',
-    noteBody:
-      'Do grupy i do bety dołącz z tego samego konta Google. Używaj go też w Sklepie Play na telefonie.',
-    group: {
-      title: 'Dołącz do grupy testerów',
-      body: 'Otwórz grupę Kilometr w Google Groups. Zaloguj się i wybierz „Dołącz do grupy”. Samo otwarcie strony nie wystarczy.',
-      action: 'Dołącz do grupy Google',
-    },
-    testing: {
-      title: 'Zapisz się do bety i pobierz aplikację',
-      body: 'Po dołączeniu do grupy otwórz stronę testów. Potwierdź udział w programie, a następnie przejdź z niej do Google Play i zainstaluj Kilometr.',
-      action: 'Dołącz do bety w Google Play',
-    },
-    helpTitle: 'Nie widzisz dostępu do testów?',
-    helpBody:
-      'Sprawdź, czy grupa, strona testów i Sklep Play używają tego samego konta Google. Jeśli dopiero dołączasz do grupy, odczekaj chwilę i odśwież stronę testów. To wersja testowa, więc możesz trafić na błędy.',
-    alternative: {
-      title: 'Bojkotujesz Google? Pobierz prosto ze źródła',
-      body: 'Obtainium pobiera Kilometr i jego aktualizacje bezpośrednio z naszego GitHuba. Przycisk otworzy konfigurację w Obtainium lub pomoże Ci je zainstalować.',
-      obtainium: 'Dodaj do Obtainium',
-      fdroid: 'F-Droid',
-      soon: 'Wkrótce',
-      json: 'Pobierz konfigurację Obtainium (JSON)',
-    },
+    play: 'Pobierz z Google Play',
   },
   ios: {
     title: 'Zainstaluj na iOS',
@@ -252,6 +224,7 @@ export const pl = {
     tagline: 'Do zobaczenia w drodze.',
     privacy: 'Prywatność',
     github: 'GitHub',
+    obtainium: 'Obtainium',
     license: 'Wolne oprogramowanie. GPL-3.0.',
     back: 'Wróć na stronę główną',
   },

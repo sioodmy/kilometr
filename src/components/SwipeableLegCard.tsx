@@ -250,126 +250,119 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
     slot.laterAlt != null && slot.laterAlt.line.trim().toUpperCase() !== normCurrent;
 
   const footer = showError ? (
-    <View style={styles.errorFooter}>
-      <Text style={styles.errorText} numberOfLines={2}>
-        {t.leg.swapError}
-      </Text>
-      {onRetry ? (
-        <Pressable
-          onPress={handleRetry}
-          accessibilityRole="button"
-          accessibilityLabel={t.leg.swapRetry}
-          style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
-        >
-          <RefreshCw size={14} color={scheme.primary} />
-          <Text style={styles.retryText}>{t.leg.swapRetry}</Text>
-        </Pressable>
-      ) : null}
+    <View style={styles.footerDock}>
+      <View style={styles.errorFooter}>
+        <Text style={styles.errorText} numberOfLines={2}>
+          {t.leg.swapError}
+        </Text>
+        {onRetry ? (
+          <Pressable
+            onPress={handleRetry}
+            accessibilityRole="button"
+            accessibilityLabel={t.leg.swapRetry}
+            style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+          >
+            <RefreshCw size={14} color={scheme.primary} />
+            <Text style={styles.retryText}>{t.leg.swapRetry}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   ) : showBar ? (
-    <View style={styles.footerBar}>
-      <Pressable
-        onPress={() => handleButtonSwap('earlier')}
-        disabled={!canGoEarlier || isBusy}
-        accessibilityRole="button"
-        accessibilityLabel={
-          slot.earlierAlt && earlierTime
-            ? t.leg.swapEarlierA11y(slot.earlierAlt.line, earlierTime)
-            : t.leg.swapLoadMoreEarlierA11y
-        }
-        accessibilityState={{ disabled: !canGoEarlier || isBusy }}
-        style={({ pressed }) => [
-          styles.stepBtn,
-          styles.stepBtnLeft,
-          !canGoEarlier && styles.stepBtnDisabled,
-          pressed && canGoEarlier && !isBusy && styles.pressed,
-        ]}
-      >
-        {slot.loadingDirection === 'earlier' ? (
-          <View style={styles.loadingRow}>
-            <MorphingLoader size={16} color={scheme.primary} />
-            <Text style={styles.stepLabelMuted} numberOfLines={1}>
-              {t.leg.swapLoading}
-            </Text>
-          </View>
-        ) : slot.earlierAlt && earlierTime ? (
-          <>
-            <ChevronLeft size={16} color={scheme.primary} />
-            {earlierDiffLine ? <MiniLinePill alt={slot.earlierAlt} /> : null}
-            <Text style={styles.stepTime} numberOfLines={1}>
-              {earlierTime}
-            </Text>
-          </>
-        ) : canGoEarlier ? (
-          <>
-            <ChevronLeft size={16} color={scheme.onSurfaceVariant} />
-            <Text style={styles.stepLabelMuted} numberOfLines={1}>
-              {t.leg.swapEarlier}
-            </Text>
-          </>
-        ) : (
-          <ChevronLeft size={15} color={scheme.outlineVariant} />
-        )}
-      </Pressable>
-
-      {slot.alternatives.length > 1 ? (
-        <View
-          style={styles.counterPill}
-          accessible
-          accessibilityLabel={t.leg.swapCounterA11y(
-            slot.currentIndex + 1,
-            slot.alternatives.length,
-          )}
+    <View style={styles.footerDock}>
+      <View style={styles.footerBar}>
+        <Pressable
+          onPress={() => handleButtonSwap('earlier')}
+          disabled={!canGoEarlier || isBusy}
+          accessibilityRole="button"
+          accessibilityLabel={
+            slot.earlierAlt && earlierTime
+              ? t.leg.swapEarlierA11y(slot.earlierAlt.line, earlierTime)
+              : t.leg.swapLoadMoreEarlierA11y
+          }
+          accessibilityState={{ disabled: !canGoEarlier || isBusy }}
+          style={({ pressed }) => [
+            styles.stepBtn,
+            styles.stepBtnLeft,
+            !canGoEarlier && styles.stepBtnDisabled,
+            pressed && canGoEarlier && !isBusy && styles.pressed,
+          ]}
         >
-          <Text style={styles.counterText}>
-            {slot.currentIndex + 1}/{slot.alternatives.length}
-          </Text>
-        </View>
-      ) : null}
+          {slot.loadingDirection === 'earlier' ? (
+            <View style={styles.loadingRow}>
+              <MorphingLoader size={15} color={scheme.primary} />
+              <Text style={styles.stepLabelMuted} numberOfLines={1}>
+                {t.leg.swapLoading}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <ChevronLeft
+                size={15}
+                color={canGoEarlier ? scheme.onSurfaceVariant : scheme.outlineVariant}
+              />
+              <Text style={styles.stepLabel} numberOfLines={1}>
+                {t.leg.swapEarlier}
+              </Text>
+              {slot.earlierAlt && earlierTime ? (
+                <View style={styles.stepMeta}>
+                  {earlierDiffLine ? <MiniLinePill alt={slot.earlierAlt} /> : null}
+                  <Text style={styles.stepTime} numberOfLines={1}>
+                    {earlierTime}
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          )}
+        </Pressable>
 
-      <Pressable
-        onPress={() => handleButtonSwap('later')}
-        disabled={!canGoLater || isBusy}
-        accessibilityRole="button"
-        accessibilityLabel={
-          slot.laterAlt && laterTime
-            ? t.leg.swapLaterA11y(slot.laterAlt.line, laterTime)
-            : t.leg.swapLoadMoreLaterA11y
-        }
-        accessibilityState={{ disabled: !canGoLater || isBusy }}
-        style={({ pressed }) => [
-          styles.stepBtn,
-          styles.stepBtnRight,
-          !canGoLater && styles.stepBtnDisabled,
-          pressed && canGoLater && !isBusy && styles.pressed,
-        ]}
-      >
-        {slot.loadingDirection === 'later' ? (
-          <View style={styles.loadingRow}>
-            <Text style={styles.stepLabelMuted} numberOfLines={1}>
-              {t.leg.swapLoading}
-            </Text>
-            <MorphingLoader size={16} color={scheme.primary} />
-          </View>
-        ) : slot.laterAlt && laterTime ? (
-          <>
-            <Text style={styles.stepTime} numberOfLines={1}>
-              {laterTime}
-            </Text>
-            {laterDiffLine ? <MiniLinePill alt={slot.laterAlt} /> : null}
-            <ChevronRight size={16} color={scheme.primary} />
-          </>
-        ) : canGoLater ? (
-          <>
-            <Text style={styles.stepLabelMuted} numberOfLines={1}>
-              {t.leg.swapLater}
-            </Text>
-            <ChevronRight size={16} color={scheme.onSurfaceVariant} />
-          </>
-        ) : (
-          <ChevronRight size={15} color={scheme.outlineVariant} />
-        )}
-      </Pressable>
+        <View style={styles.stepDivider} />
+
+        <Pressable
+          onPress={() => handleButtonSwap('later')}
+          disabled={!canGoLater || isBusy}
+          accessibilityRole="button"
+          accessibilityLabel={
+            slot.laterAlt && laterTime
+              ? t.leg.swapLaterA11y(slot.laterAlt.line, laterTime)
+              : t.leg.swapLoadMoreLaterA11y
+          }
+          accessibilityState={{ disabled: !canGoLater || isBusy }}
+          style={({ pressed }) => [
+            styles.stepBtn,
+            styles.stepBtnRight,
+            !canGoLater && styles.stepBtnDisabled,
+            pressed && canGoLater && !isBusy && styles.pressed,
+          ]}
+        >
+          {slot.loadingDirection === 'later' ? (
+            <View style={styles.loadingRow}>
+              <Text style={styles.stepLabelMuted} numberOfLines={1}>
+                {t.leg.swapLoading}
+              </Text>
+              <MorphingLoader size={15} color={scheme.primary} />
+            </View>
+          ) : (
+            <>
+              {slot.laterAlt && laterTime ? (
+                <View style={styles.stepMeta}>
+                  <Text style={styles.stepTime} numberOfLines={1}>
+                    {laterTime}
+                  </Text>
+                  {laterDiffLine ? <MiniLinePill alt={slot.laterAlt} /> : null}
+                </View>
+              ) : null}
+              <Text style={styles.stepLabel} numberOfLines={1}>
+                {t.leg.swapLater}
+              </Text>
+              <ChevronRight
+                size={15}
+                color={canGoLater ? scheme.onSurfaceVariant : scheme.outlineVariant}
+              />
+            </>
+          )}
+        </Pressable>
+      </View>
     </View>
   ) : null;
 
@@ -479,13 +472,21 @@ const styles = StyleSheet.create({
     ...type.labelSmall,
     color: scheme.onSurfaceVariant,
   },
+  footerDock: {
+    marginTop: 12,
+    marginHorizontal: -14,
+    marginBottom: -16,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    borderBottomLeftRadius: shape.extraLarge,
+    borderBottomRightRadius: shape.extraLarge,
+  },
   footerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     minHeight: 44,
   },
   stepBtn: {
@@ -504,7 +505,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   stepBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.36,
   },
   pressed: {
     opacity: 0.72,
@@ -515,31 +516,34 @@ const styles = StyleSheet.create({
     gap: 6,
     flexShrink: 1,
   },
-  stepTime: {
-    ...type.labelLarge,
-    color: scheme.onSurface,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
+  stepLabel: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
     flexShrink: 1,
+  },
+  stepMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  stepTime: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '500',
+    fontVariant: ['tabular-nums'],
   },
   stepLabelMuted: {
     ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     flexShrink: 1,
   },
-  counterPill: {
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.full,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+  stepDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 18,
+    backgroundColor: scheme.outlineVariant,
     marginHorizontal: 4,
-    flexShrink: 0,
-  },
-  counterText: {
-    ...type.labelSmall,
-    color: scheme.onSurfaceVariant,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
   },
   miniPill: {
     borderRadius: shape.extraSmall,
@@ -559,8 +563,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
     paddingLeft: 14,
     paddingRight: 8,
     minHeight: 44,

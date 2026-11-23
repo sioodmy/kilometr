@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { ArrowDown, Footprints, TriangleAlert } from './icons';
+import { Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
 import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
@@ -70,12 +70,12 @@ type BarSegment =
   | { key: string; kind: 'longWalk'; min: number }
   | { key: string; kind: 'riskTight' | 'riskCritical'; min: number };
 
-function JourneyStrip({
+export function JourneyStrip({
   insights,
-  dimmed,
+  dimmed = false,
 }: {
   insights: ConnectionInsights;
-  dimmed: boolean;
+  dimmed?: boolean;
 }) {
   const s = useStrings();
   const { width } = useWindowDimensions();
@@ -487,17 +487,16 @@ export const ConnectionCard = memo(function ConnectionCard({
             <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
               <Text style={[styles.departClock, dimmed && styles.textDimmed]}>{departAt}</Text>
               {verticalTimes ? (
-                <ArrowDown size={13} color={scheme.onSurfaceVariant} />
+                <M3SolidArrowDown
+                  size={15}
+                  color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
+                />
               ) : (
-                <View
-                  style={styles.miniBridge}
-                  accessible={false}
-                  importantForAccessibility="no-hide-descendants"
-                >
-                  <View style={styles.miniDotStart} />
-                  <View style={styles.miniTrack} />
-                  <View style={styles.miniDotEnd} />
-                </View>
+                <M3SolidArrowRight
+                  size={15}
+                  width={22}
+                  color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
+                />
               )}
               <Text style={[styles.arriveClock, dimmed && styles.textDimmed]}>{item.arriveAt}</Text>
               {scheduledDeparture != null && item.live && item.delayMin !== 0 && (
@@ -692,31 +691,6 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'flex-start',
     gap: 2,
-  },
-  miniBridge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 1,
-  },
-  miniDotStart: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    borderWidth: 1.5,
-    borderColor: scheme.primary,
-  },
-  miniTrack: {
-    width: 14,
-    height: 1.5,
-    borderRadius: 1,
-    backgroundColor: scheme.outlineVariant,
-  },
-  miniDotEnd: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: scheme.primary,
   },
   departClock: {
     fontSize: 15,
