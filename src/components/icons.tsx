@@ -85,7 +85,6 @@ export const Activity = icon('monitor-heart');
 export const AlarmClock = icon('alarm');
 export const AlertCircle = icon('error-outline');
 export const Anchor = icon('anchor');
-export const ArrowDown = icon('arrow-downward');
 export const ArrowLeft = icon('arrow-back');
 export const ArrowRight = icon('arrow-forward');
 export const ArrowUp = icon('arrow-upward');
