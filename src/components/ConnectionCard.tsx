@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
@@ -42,11 +42,6 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const PRESS_SPRING = motion.spring.press;
 const DASH_COUNT = 20;
 const DASH_INDICES = Array.from({ length: DASH_COUNT }, (_, i) => i);
-
-export interface CardLayoutInfo {
-  y: number;
-  height: number;
-}
 
 /** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
 export function transfersLabel(n: number): string {
@@ -271,7 +266,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   peek,
 }: {
   item: Connection;
-  onPress: (item: Connection, sourceLayout?: CardLayoutInfo) => void;
+  onPress: (item: Connection) => void;
   /** historyczne (przeszłe) połączenie: przygaszony wygląd tła karty */
   dimmed?: boolean;
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
@@ -281,7 +276,6 @@ export const ConnectionCard = memo(function ConnectionCard({
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
-  const cardRef = useRef<View>(null);
   const [focused, setFocused] = useState(false);
   const press = useSharedValue(0);
 
@@ -408,25 +402,13 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   const handlePress = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const node = cardRef.current;
-    if (!reduceMotion && node && typeof node.measureInWindow === 'function') {
-      node.measureInWindow((_x, y, _w, height) => {
-        if (Number.isFinite(y) && Number.isFinite(height) && height > 0) {
-          onPress(item, { y, height });
-        } else {
-          onPress(item);
-        }
-      });
-      return;
-    }
     onPress(item);
-  }, [item, onPress, reduceMotion]);
+  }, [item, onPress]);
 
   const showLongWalkStyle = insights.hasLongDestinationWalk && !dimmed && !item.boarded;
 
   return (
-    <View ref={cardRef} collapsable={false}>
-      <ConnectionPeekTarget item={item} handlers={peek}>
+    <ConnectionPeekTarget item={item} handlers={peek}>
         <AnimatedPressable
           collapsable={false}
           onPress={handlePress}
@@ -572,9 +554,8 @@ export const ConnectionCard = memo(function ConnectionCard({
           ) : null}
 
           {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
-        </AnimatedPressable>
-      </ConnectionPeekTarget>
-    </View>
+      </AnimatedPressable>
+    </ConnectionPeekTarget>
   );
 });
 

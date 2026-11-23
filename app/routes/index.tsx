@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
@@ -38,10 +37,9 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
 } from 'react-native-reanimated';
+import { MorphingLoader } from '../../src/components/MorphingLoader';
+import { RouteLoadingView } from '../../src/components/RouteLoadingView';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
@@ -64,7 +62,11 @@ import { typicalDurationMin } from '../../src/services/smartRanking';
 import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
 import { stopTracking } from '../../src/services/notifications';
 import { isIntercityRouteQuery, rememberPlannedConnection } from '../../src/services/api';
-import { nationalTimetableReady } from '../../src/services/nationalTimetable';
+import {
+  ensureNationalTimetable,
+  nationalTimetableReady,
+  subscribeNationalTimetable,
+} from '../../src/services/nationalTimetable';
 import { IntercityDownloadCard } from '../../src/components/IntercityDownloadCard';
 import {
   loadCachedConnections,
@@ -97,7 +99,7 @@ import {
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard, type CardLayoutInfo } from '../../src/components/ConnectionCard';
+import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import {
@@ -116,6 +118,10 @@ import { useStrings } from '../../src/i18n';
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
 const connectionKey = (item: Connection) => item.id;
 
+// Szybkie wyszukiwania kończą się przed tym czasem, więc pełnoekranowy
+// wskaźnik nie mruga między wejściem w ekran a pierwszą kartą wyniku.
+const INITIAL_LOADING_DELAY_MS = 700;
+
 function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
   if (!raw) return null;
   try {
@@ -129,69 +135,12 @@ function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
   }
 }
 
-function SkeletonConnectionCard({
-  dimmed,
-  delay = 0,
-}: {
-  dimmed?: boolean;
-  delay?: number;
-}) {
-  const reduceMotion = useReducedMotion();
-  const pulse = useSharedValue(reduceMotion ? 0.72 : 0.45);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      pulse.value = 0.72;
-      return;
-    }
-    const timer = setTimeout(() => {
-      pulse.value = withRepeat(
-        withSequence(
-          withTiming(0.95, { duration: 700, easing: Easing.inOut(Easing.quad) }),
-          withTiming(0.45, { duration: 700, easing: Easing.inOut(Easing.quad) }),
-        ),
-        -1,
-        false,
-      );
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [delay, pulse, reduceMotion]);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: pulse.value,
-  }));
-
-  return (
-    <View style={[styles.skelCard, dimmed && styles.skelCardDimmed]}>
-      <Animated.View style={pulseStyle}>
-        <View style={styles.skelRow}>
-          <View style={[styles.skel, { width: 108, height: 26, borderRadius: 10 }]} />
-          <View style={[styles.skel, { width: 64, height: 28, borderRadius: shape.full }]} />
-        </View>
-        <View style={styles.skelMetaRow}>
-          <View style={[styles.skel, { width: 124, height: 14, borderRadius: 7 }]} />
-          <View style={[styles.skel, { width: 92, height: 14, borderRadius: 7 }]} />
-        </View>
-        <View style={styles.skelStrip}>
-          <View style={[styles.skel, { width: '100%', height: 5, borderRadius: 3 }]} />
-          <View style={styles.skelBadges}>
-            <View style={[styles.skel, { width: 44, height: 24, borderRadius: shape.full }]} />
-            <View style={[styles.skel, { width: 58, height: 24, borderRadius: shape.full }]} />
-            <View style={[styles.skel, { width: 38, height: 24, borderRadius: shape.full }]} />
-          </View>
-        </View>
-      </Animated.View>
-    </View>
-  );
-}
-
 export default function RoutesScreen() {
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const { cityId } = useActiveCity();
   const cityDef = defaultLocationForCity(cityId);
   const cityGen = s.city.gen(cityId);
-  const operator = s.city.operator(cityId);
   const gpsItem: Suggestion = useMemo(
     () => ({
       id: '__gps',
@@ -396,7 +345,16 @@ export default function RoutesScreen() {
   const [timeMode, setTimeMode] = useState<JourneyTimeMode>('departure');
   const arrivalMode = timeMode === 'arrival';
   const [loading, setLoading] = useState(true);
+  const [showInitialLoading, setShowInitialLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  useEffect(() => {
+    if (!loading || items.length > 0) {
+      setShowInitialLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowInitialLoading(true), INITIAL_LOADING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [items.length, loading]);
   const [offline, setOffline] = useState(false);
   const [preview, setPreview] = useState<{ item: Connection; sticky: boolean } | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
@@ -618,11 +576,19 @@ export default function RoutesScreen() {
       setRailDbReady(null);
       return;
     }
+    const unsub = subscribeNationalTimetable((st) => {
+      if (alive && st.phase === 'ready') setRailDbReady(true);
+    });
     void nationalTimetableReady().then((ready) => {
-      if (alive) setRailDbReady(ready);
+      if (!alive) return;
+      setRailDbReady(ready);
+      if (!ready) {
+        void ensureNationalTimetable().catch(() => {});
+      }
     });
     return () => {
       alive = false;
+      unsub();
     };
   }, [intercityQuery, items.length]);
 
@@ -888,7 +854,8 @@ export default function RoutesScreen() {
       const q = queryAt(depSec);
       // Zanim planer policzy świeże wyniki, pokaż ostatnią listę z dysku.
       // Karty są klikalne od razu, a szczegóły znajdują je w pamięci procesu.
-      if (items.length === 0) {
+      let hadSeeded = items.length > 0;
+      if (!hadSeeded) {
         const cached = await loadCachedConnections(q);
         if (seq !== fetchSeq.current) return;
         if (cached) {
@@ -897,10 +864,22 @@ export default function RoutesScreen() {
             depSec,
           );
           for (const connection of seeded) rememberPlannedConnection(connection);
-          setItems(seeded);
+          if (seeded.length > 0) {
+            hadSeeded = true;
+            setItems(seeded);
+          }
         }
       }
-      let c = await RoutingService.getConnections(q);
+      // Na zimnym starcie strumieniujemy pierwsze okno RAPTOR-a od razu do listy,
+      // żeby użytkownik widział najbliższe odjazdy zanim policzą się dalsze godziny.
+      const streamPartial = hadSeeded
+        ? undefined
+        : (partial: Connection[]) => {
+            if (seq !== fetchSeq.current || noTimetable()) return;
+            const livePartial = applyLiveList(partial, depSec);
+            if (livePartial.length > 0) setItems(livePartial);
+          };
+      let c = await RoutingService.getConnections(q, streamPartial);
       // Godzinne okno wystarcza na pierwsze odjazdy i mieści się w wycinku
       // live. Gdy naprawdę nic nie ma w godzinę, dociągamy szerszy horyzont,
       // żeby nie pokazać fałszywego „brak połączeń".
@@ -1237,15 +1216,12 @@ export default function RoutesScreen() {
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
   const openConnection = useCallback(
-    (item: Connection, sourceLayout?: CardLayoutInfo) => {
+    (item: Connection) => {
       rememberPlannedConnection(item);
       closePreview();
       router.push({
         pathname: '/routes/[id]',
-        params: {
-          id: item.id,
-          ...(sourceLayout ? { fromY: String(Math.round(sourceLayout.y)) } : {}),
-        },
+        params: { id: item.id },
       });
     },
     [closePreview, router],
@@ -1458,7 +1434,7 @@ export default function RoutesScreen() {
           adjustsFontSizeToFit
           minimumFontScale={0.85}
         >
-          {s.routes.title(operator)}
+          {s.routes.title}
         </Text>
 
         {showResultBadge ? (
@@ -1500,7 +1476,7 @@ export default function RoutesScreen() {
             <Text style={styles.emptySub}>{s.routes.samePlaceBody}</Text>
           </View>
         </ScrollView>
-      ) : loading && items.length === 0 ? (
+      ) : loading && displayed.length === 0 ? (
         <ScrollView
           contentContainerStyle={{
             paddingHorizontal: 16,
@@ -1509,15 +1485,7 @@ export default function RoutesScreen() {
           }}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.skeletonList}>
-            <View style={styles.loadingPill}>
-              <ActivityIndicator size="small" color={scheme.primary} />
-              <Text style={styles.loadingText}>{s.routes.searching}</Text>
-            </View>
-            <SkeletonConnectionCard delay={0} />
-            <SkeletonConnectionCard delay={120} />
-            <SkeletonConnectionCard delay={240} dimmed />
-          </View>
+          {showInitialLoading && <RouteLoadingView intercity={intercityQuery} />}
         </ScrollView>
       ) : loadError ? (
         <ScrollView
@@ -1624,12 +1592,23 @@ export default function RoutesScreen() {
           ListHeaderComponent={
             <View style={styles.listHeader}>
               {loading && displayed.length > 0 && (
-                <View style={styles.countRow}>
+                <Animated.View
+                  entering={
+                    reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
+                  }
+                  exiting={
+                    reduceMotion
+                      ? undefined
+                      : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
+                  }
+                  style={styles.countRow}
+                  accessibilityLiveRegion="polite"
+                >
                   <View style={styles.statusChip}>
-                    <ActivityIndicator size="small" color={scheme.primary} />
-                    <Text style={styles.statusChipText}>{s.routes.searching}</Text>
+                    <MorphingLoader size={17} color={scheme.primary} />
+                    <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
                   </View>
-                </View>
+                </Animated.View>
               )}
               {(offline || liveStale) && (
                 <View style={styles.countRow}>
@@ -1672,7 +1651,7 @@ export default function RoutesScreen() {
                   ]}
                 >
                   {loadingEarlier ? (
-                    <ActivityIndicator size="small" color={scheme.primary} />
+                    <MorphingLoader size={16} color={scheme.primary} />
                   ) : !noMoreEarlier ? (
                     <ChevronUp size={17} color={scheme.onSurfaceVariant} />
                   ) : null}
@@ -1693,7 +1672,10 @@ export default function RoutesScreen() {
             loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
               <View style={styles.footer}>
                 {loadingMore ? (
-                  <ActivityIndicator size="small" color={scheme.primary} />
+                  <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
+                    <MorphingLoader size={20} color={scheme.primary} />
+                    <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
+                  </View>
                 ) : loadMoreFailed ? (
                   <>
                     <Text style={styles.footerText}>{s.routes.moreFail}</Text>
@@ -2069,6 +2051,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  footerLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
   endCapPill: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -2081,69 +2069,6 @@ const styles = StyleSheet.create({
     ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
-  },
-  skeletonList: {
-    flex: 1,
-    gap: 12,
-  },
-  loadingPill: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    marginBottom: 2,
-  },
-  loadingText: {
-    ...type.labelMedium,
-    fontWeight: '700',
-    color: scheme.onSurfaceVariant,
-  },
-  skelCard: {
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    ...elev.level1,
-  },
-  skelCardDimmed: {
-    opacity: 0.62,
-  },
-  skelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  skelMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  skelStrip: {
-    marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 18,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    gap: 10,
-  },
-  skelBadges: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  skel: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.small,
   },
   emptyCard: {
     marginTop: 8,

@@ -47,6 +47,7 @@ import { suggestCityForGps } from '../src/services/serviceArea';
 import { setOnboardingSeen } from '../src/services/onboarding';
 import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
 import {
+  areNotificationsSupported,
   ensureNotificationPermission,
   hasNotificationPermission,
 } from '../src/services/notifications';
@@ -119,7 +120,136 @@ function GhostBtn({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-const NOTIF_SUPPORTED = Constants.appOwnership !== 'expo';
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+function detectDefaultPwaPlatform(): 'ios' | 'android' {
+  if (typeof navigator !== 'undefined' && /iPad|iPhone|iPod/i.test(navigator.userAgent)) {
+    return 'ios';
+  }
+  return 'android';
+}
+
+function isRunningStandaloneWeb(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia?.('(display-mode: standalone)').matches === true || nav.standalone === true
+  );
+}
+
+function WebPwaInstallCard() {
+  const s = useStrings();
+  const [tab, setTab] = useState<'ios' | 'android'>(() => detectDefaultPwaPlatform());
+  const [standalone, setStandalone] = useState(() => isRunningStandaloneWeb());
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    setStandalone(isRunningStandaloneWeb());
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setStandalone(true);
+      setDeferredPrompt(null);
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const stepsList =
+    tab === 'ios'
+      ? [s.onboarding.pwaIos1, s.onboarding.pwaIos2, s.onboarding.pwaIos3]
+      : [s.onboarding.pwaAndroid1, s.onboarding.pwaAndroid2, s.onboarding.pwaAndroid3];
+
+  return (
+    <View style={st.card}>
+      <View style={st.cardHead}>
+        <View style={st.cardIcon}>
+          <Download size={20} color={scheme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={st.cardTitle}>{s.onboarding.pwaTitle}</Text>
+        </View>
+      </View>
+      <Text style={st.cardBody}>{s.onboarding.pwaSub}</Text>
+
+      {standalone ? (
+        <View style={st.doneRow}>
+          <Check size={16} color={scheme.success} />
+          <Text style={st.doneText}>{s.onboarding.pwaInstalled}</Text>
+        </View>
+      ) : (
+        <>
+          {deferredPrompt && (
+            <Pressable
+              onPress={async () => {
+                try {
+                  await deferredPrompt.prompt();
+                  const choice = await deferredPrompt.userChoice;
+                  if (choice.outcome === 'accepted') {
+                    setStandalone(true);
+                    setDeferredPrompt(null);
+                  }
+                } catch {}
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [st.allow, pressed && { opacity: 0.85 }]}
+            >
+              <Download size={17} color={scheme.onPrimary} />
+              <Text style={st.allowText}>{s.onboarding.pwaInstallBtn}</Text>
+            </Pressable>
+          )}
+
+          <View style={st.pwaTabs} accessibilityRole="tablist">
+            <Pressable
+              onPress={() => setTab('android')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === 'android' }}
+              style={[st.pwaTab, tab === 'android' && st.pwaTabActive]}
+            >
+              <Text style={[st.pwaTabText, tab === 'android' && st.pwaTabTextActive]}>
+                {s.onboarding.pwaTabAndroid}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setTab('ios')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === 'ios' }}
+              style={[st.pwaTab, tab === 'ios' && st.pwaTabActive]}
+            >
+              <Text style={[st.pwaTabText, tab === 'ios' && st.pwaTabTextActive]}>
+                {s.onboarding.pwaTabIos}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={st.pwaStepList}>
+            {stepsList.map((text, idx) => (
+              <View key={idx} style={st.pwaStepRow}>
+                <View style={st.pwaStepBadge}>
+                  <Text style={st.pwaStepNum}>{idx + 1}</Text>
+                </View>
+                <Text style={st.pwaStepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const NOTIF_SUPPORTED =
+  Platform.OS === 'web' ? areNotificationsSupported() : Constants.appOwnership !== 'expo';
 
 function usePermissionStates() {
   const [loc, setLoc] = useState<'unknown' | 'granted' | 'denied'>('unknown');
@@ -159,7 +289,7 @@ function usePermissionStates() {
     setBusy('loc');
     try {
       if (!locCanAskAgain) {
-        await Linking.openSettings();
+        if (Platform.OS !== 'web') await Linking.openSettings();
         return;
       }
       const r = await Location.requestForegroundPermissionsAsync();
@@ -177,7 +307,7 @@ function usePermissionStates() {
     setBusy('notif');
     try {
       if (notif === 'denied') {
-        await Linking.openSettings();
+        if (Platform.OS !== 'web') await Linking.openSettings();
         return;
       }
       setNotif((await ensureNotificationPermission()) ? 'granted' : 'denied');
@@ -524,6 +654,9 @@ export default function OnboardingScreen() {
     setDownloading(true);
     try {
       await importGtfsFromNetwork();
+      void import('../src/services/nationalTimetable')
+        .then((m) => m.ensureNationalTimetable())
+        .catch(() => {});
     } catch {
       // błąd pokazuje karta statusu (state 'error') z przyciskiem ponowienia
     } finally {
@@ -616,7 +749,11 @@ export default function OnboardingScreen() {
             overScrollMode="never"
           >
             <Text style={st.title}>{s.onboarding.permTitle}</Text>
-            <Text style={st.leadSmall}>{s.onboarding.permSub}</Text>
+            <Text style={st.leadSmall}>
+              {Platform.OS === 'web' ? s.onboarding.permSubWeb : s.onboarding.permSub}
+            </Text>
+
+            {Platform.OS === 'web' && <WebPwaInstallCard />}
 
             <View style={st.card}>
               <View style={st.cardHead}>
@@ -656,48 +793,50 @@ export default function OnboardingScreen() {
               )}
             </View>
 
-            <View style={st.card}>
-              <View style={st.cardHead}>
-                <View style={st.cardIcon}>
-                  <Bell size={20} color={scheme.primary} />
+            {Platform.OS !== 'web' && (
+              <View style={st.card}>
+                <View style={st.cardHead}>
+                  <View style={st.cardIcon}>
+                    <Bell size={20} color={scheme.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.cardTitle}>{s.onboarding.notifTitle}</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={st.cardTitle}>{s.onboarding.notifTitle}</Text>
-                </View>
+                <Text style={st.cardBody}>{s.onboarding.notifBody}</Text>
+                {perms.notif === 'denied' && (
+                  <Text style={st.fine}>{s.onboarding.permissionDenied}</Text>
+                )}
+                {perms.notif === 'granted' ? (
+                  <View style={st.doneRow}>
+                    <Check size={16} color={scheme.success} />
+                    <Text style={st.doneText}>{s.onboarding.notifOn}</Text>
+                  </View>
+                ) : !NOTIF_SUPPORTED ? (
+                  <Text style={st.fine}>{s.onboarding.notifExpoGo}</Text>
+                ) : (
+                  <Pressable
+                    onPress={() => void perms.requestNotif()}
+                    disabled={perms.busy !== null}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      disabled: perms.busy !== null,
+                      busy: perms.busy === 'notif',
+                    }}
+                    style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
+                  >
+                    {perms.busy === 'notif' ? (
+                      <ActivityIndicator size="small" color={scheme.onPrimary} />
+                    ) : (
+                      <Bell size={17} color={scheme.onPrimary} />
+                    )}
+                    <Text style={st.allowText}>
+                      {perms.notif === 'denied' ? s.onboarding.openSettings : s.onboarding.notifAllow}
+                    </Text>
+                  </Pressable>
+                )}
               </View>
-              <Text style={st.cardBody}>{s.onboarding.notifBody}</Text>
-              {perms.notif === 'denied' && (
-                <Text style={st.fine}>{s.onboarding.permissionDenied}</Text>
-              )}
-              {perms.notif === 'granted' ? (
-                <View style={st.doneRow}>
-                  <Check size={16} color={scheme.success} />
-                  <Text style={st.doneText}>{s.onboarding.notifOn}</Text>
-                </View>
-              ) : !NOTIF_SUPPORTED ? (
-                <Text style={st.fine}>{s.onboarding.notifExpoGo}</Text>
-              ) : (
-                <Pressable
-                  onPress={() => void perms.requestNotif()}
-                  disabled={perms.busy !== null}
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled: perms.busy !== null,
-                    busy: perms.busy === 'notif',
-                  }}
-                  style={({ pressed }) => [st.allow, pressed && { opacity: 0.8 }]}
-                >
-                  {perms.busy === 'notif' ? (
-                    <ActivityIndicator size="small" color={scheme.onPrimary} />
-                  ) : (
-                    <Bell size={17} color={scheme.onPrimary} />
-                  )}
-                  <Text style={st.allowText}>
-                    {perms.notif === 'denied' ? s.onboarding.openSettings : s.onboarding.notifAllow}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+            )}
             <Pressable
               onPress={handleOpenPrivacy}
               accessibilityRole="link"
@@ -1298,5 +1437,61 @@ const st = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
     paddingTop: 2,
+  },
+  pwaTabs: {
+    flexDirection: 'row',
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    padding: 4,
+    gap: 4,
+  },
+  pwaTab: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: shape.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pwaTabActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  pwaTabText: {
+    ...type.labelLarge,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  pwaTabTextActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '700',
+  },
+  pwaStepList: {
+    gap: 12,
+  },
+  pwaStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  pwaStepBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  pwaStepNum: {
+    ...type.labelMedium,
+    color: scheme.onPrimaryContainer,
+    fontWeight: '700',
+  },
+  pwaStepText: {
+    ...type.bodyMedium,
+    color: scheme.onSurface,
+    lineHeight: 21,
+    flex: 1,
   },
 });

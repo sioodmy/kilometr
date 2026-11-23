@@ -12,6 +12,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import type * as DocumentPicker from 'expo-document-picker';
+import { Platform } from 'react-native';
 import { kvGetStrict, kvSetStrict } from './storage';
 import { getLocaleSettingSync, setLocaleSetting, type LocaleSetting } from '../i18n';
 import { loadSettings, saveSettings, type RoutingSettings } from './settings';
@@ -155,6 +156,24 @@ export interface BackupExportResult {
 
 /** Zapis kopii + systemowe okno udostępniania (tam trafia plik). */
 export async function exportBackupToFile(appVersion: string | null): Promise<BackupExportResult> {
+  if (Platform.OS === 'web') {
+    const data = await collectBackupData();
+    const json = buildBackupFile(data, appVersion);
+    const filename = backupFileName(new Date());
+    if (typeof document !== 'undefined') {
+      const blob = new Blob([json], { type: BACKUP_MIME });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    }
+    return { path: filename, shared: true };
+  }
   const path = await writeBackupFile(appVersion);
   const Sharing = await import('expo-sharing');
   if (!(await Sharing.isAvailableAsync())) return { path, shared: false };
@@ -198,7 +217,44 @@ function notifyApplied(): void {
  * zawartość kopii przed potwierdzeniem (`applyBackup`).
  * `null` = użytkownik anulował wybór (nie błąd, nie pokazujemy nic).
  */
+function pickFileWeb(): Promise<File | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = `.${BACKUP_EXTENSION},application/json,text/json,text/plain`;
+    let settled = false;
+    const finish = (file: File | null) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', onFocus);
+      resolve(file);
+    };
+    const onFocus = () => {
+      setTimeout(() => finish(input.files?.[0] ?? null), 300);
+    };
+    input.addEventListener('change', () => finish(input.files?.[0] ?? null));
+    input.addEventListener('cancel', () => finish(null));
+    window.addEventListener('focus', onFocus, { once: true });
+    input.click();
+  });
+}
+
 export async function pickBackupFile(): Promise<BackupParseResult | null> {
+  if (Platform.OS === 'web') {
+    try {
+      const file = await pickFileWeb();
+      if (!file) return null;
+      const raw = await file.text();
+      return parseBackupFile(raw);
+    } catch (err) {
+      console.warn('[Backup] web read failed:', err);
+      return { ok: false, reason: 'unreadable' };
+    }
+  }
   let picked: DocumentPicker.DocumentPickerResult;
   try {
     const DocumentPicker = await import('expo-document-picker');

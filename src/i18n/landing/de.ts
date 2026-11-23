@@ -8,7 +8,7 @@ export const de: Strings = {
   meta: {
     title: 'Kilometr',
     imageAlt:
-      'Kilometr. Dein quelloffener Reiseplaner. Die App auf einem iPhone, Stadtwappen und ein Liniennetz.',
+      'Kilometr. Diesmal kommst du an. Drei Handys mit der App vor einer Karte mit Reiseroute.',
     description:
       'Nahverkehr in Städten in ganz Polen. Verbindungen planen, Abfahrten prüfen und Fahrpläne offline nutzen. Kostenlos für Android.',
   },
@@ -19,7 +19,6 @@ export const de: Strings = {
   language: 'Sprache der Website',
   sendSms: 'SMS senden',
   hero: {
-    eyebrow: 'Kilometr für Android',
     title: 'Dein',
     accent: 'quelloffener',
     titleEnd: 'Reiseplaner',
@@ -29,6 +28,7 @@ export const de: Strings = {
   install: {
     android: 'Android',
     ios: 'iOS',
+    web: 'Webversion',
     platform: 'Betriebssystem des Telefons wählen',
     newTab: '(öffnet einen neuen Tab)',
   },
@@ -140,39 +140,33 @@ export const de: Strings = {
     ],
   },
   coverage: {
-    eyebrow: 'Abdeckung in Polen',
-    title: 'Prüfe deine Stadt und Verkehrsbetriebe',
+    title: 'Wir decken ganz Polen ab',
     body: (count: number) =>
-      `${count} Städte und Ballungsräume in einer App, einschließlich der Metropole GZM. Wähle einen Punkt auf der Karte oder suche nach deiner Stadt, um Live-Positionen, Meldungen und Betreiber zu prüfen.`,
+      `Wenn ein Ort mit öffentlichen Verkehrsmitteln erreichbar ist, kommst du mit Kilometr hin. Wir decken insgesamt ${countLabel(count, 'Stadt', 'Städte')} in ganz Polen ab.`,
     searchPlaceholder: 'Stadt suchen, z. B. Wrocław, Katowice, Gdańsk...',
     searchLabel: 'Unterstützte Stadt suchen',
     browseListLabel: 'Städteliste umschalten',
     clearSearch: 'Suche löschen',
     mapAria: 'Klickbare Karte Polens mit unterstützten Städten',
-    mapHint: (count: number) => `${count} unterstützte Netze · Punkt auf der Karte wählen`,
     citiesListLabel: 'Liste unterstützter Städte',
     emptyTitle: 'Keine passende Stadt gefunden',
     emptyBody: 'Prüfe die Schreibweise oder setze den Filter zurück, um alle Städte zu sehen.',
     emptyReset: 'Alle Städte zeigen',
+    available: 'Verfügbar',
     liveLabel: 'Live-Positionen',
     liveValue: (vehicles: number | null) =>
       vehicles == null
-        ? 'Verfügbar (Fahrzeug-GPS)'
+        ? 'Fahrzeug-GPS'
         : vehicles === 0
-          ? 'Verfügbar (derzeit keine Fahrzeuge)'
-          : `Verfügbar (${countLabel(vehicles, 'Fahrzeug', 'Fahrzeuge')} live)`,
+          ? 'derzeit keine Fahrzeuge'
+          : `${countLabel(vehicles, 'Fahrzeug', 'Fahrzeuge')} live`,
     liveUnavailable: 'Kein Live-GPS (statischer Fahrplan)',
     newsLabel: 'Fahrgastmeldungen',
-    newsAvailable: 'Verfügbar',
     newsUnavailable: 'Keine städtischen Meldungen',
     stopHintsLabel: 'Haltestellenhinweise',
-    stopHintsValue: (stops: number) =>
-      `Verfügbar (${countLabel(stops, 'Haltestelle', 'Haltestellen')})`,
+    stopHintsValue: (stops: number) => countLabel(stops, 'Haltestelle', 'Haltestellen'),
     stopHintsUnavailable: 'Keine Haltestellenhinweise',
-    statsUpdated: (date: string) => `Datenstand: ${date}`,
     operatorsLabel: 'Verkehrsbetriebe',
-    railGatewayNote: (stations: string) =>
-      `Fernverkehr (PKP Intercity, POLREGIO) über den Bahnhof: ${stations}.`,
     modes: {
       bus: 'Busse',
       tram: 'Straßenbahnen',
@@ -194,13 +188,13 @@ export const de: Strings = {
   },
   themeStudio: {
     title: 'Deine Farbe in der App',
-    intro: 'Wähle Farben, schau dir die Vorschau an und schick den fertigen Code über Ko-fi.',
+    intro: 'Wähle Farben, schau dir die Vorschau an und schick den fertigen Code über BuyCoffee.',
     thanksTitle: 'Danke!',
     thanksBody:
       'Deine Unterstützung hält Kilometr frei von Werbung und Tracking. Als Dankeschön stellst du dir dein eigenes App-Design zusammen.',
     thanksCta: 'Dein Design wählen',
     notYet: 'Noch nicht dabei?',
-    notYetLink: 'Auf Ko-fi unterstützen',
+    notYetLink: 'Auf BuyCoffee unterstützen',
     back: 'Zurück zum Dankeschön',
     customTitle: 'Eigene Farbe',
     hueLabel: 'Farbe',
@@ -239,13 +233,12 @@ export const de: Strings = {
       cancelled: 'entfallen',
     },
     outputTitle: 'Schema senden',
-    outputIntro: 'Kopiere den Code und füge ihn in eine Ko-fi-Nachricht ein.',
+    outputIntro: 'Kopiere den Code und füge ihn in eine BuyCoffee-Nachricht ein.',
     copy: 'Code kopieren',
     copied: 'Kopiert',
     copyFailed: 'Code markieren und Strg+C drücken',
     codeLabel: 'Dein Schemacode',
-    sendOn: 'Ko-fi öffnen',
-    footerLink: 'Farbschema für Unterstützer',
+    sendOn: 'BuyCoffee öffnen',
   },
   footer: {
     tagline: 'Bis unterwegs.',

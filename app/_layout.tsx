@@ -13,9 +13,11 @@ import {
 import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
 import { TransferProtectionProvider } from '../src/components/TransferProtectionProvider';
+import { WebAlertHost } from '../src/components/WebAlertHost';
+import { initRaptorWasmAsync } from '../modules/kilometr-raptor';
 import { initTheme, useThemeSetting } from '../src/theme/personalization';
 import { initLocale } from '../src/i18n';
 import { loadActiveCity } from '../src/services/cityStore';
@@ -38,13 +40,49 @@ import {
 } from '../src/services/notifications';
 
 let BootSplash: { hide: (options?: { fade?: boolean }) => Promise<boolean> } = {
-  hide: async () => false,
+  hide: async (options) => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const el = document.getElementById('km-boot-splash');
+      if (el) {
+        if (options?.fade) {
+          el.classList.add('km-hide');
+          setTimeout(() => el.remove(), 260);
+        } else {
+          el.remove();
+        }
+        return true;
+      }
+    }
+    return false;
+  },
 };
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  BootSplash = require('react-native-bootsplash').default;
-} catch {
-  // W Expo Go brak natywnego TurboModule RNBootSplash.
+if (Platform.OS !== 'web') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    BootSplash = require('react-native-bootsplash').default;
+  } catch {
+    // W Expo Go brak natywnego TurboModule RNBootSplash.
+  }
+}
+
+function readWebSafeAreaMetrics(): Metrics | undefined {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+    return undefined;
+  }
+  const style = getComputedStyle(document.documentElement);
+  const px = (prop: string) => {
+    const v = parseFloat(style.getPropertyValue(prop));
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  };
+  return {
+    frame: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
+    insets: {
+      top: px('--km-sat'),
+      right: px('--km-sar'),
+      bottom: px('--km-sab'),
+      left: px('--km-sal'),
+    },
+  };
 }
 
 LogBox.ignoreAllLogs(true);
@@ -146,7 +184,10 @@ export default function RootLayout() {
     let isMounted = true;
 
     const initApp = async () => {
-      await migrateFromSqliteKv();
+      await Promise.all([
+        migrateFromSqliteKv(),
+        initRaptorWasmAsync().catch(() => false),
+      ]);
       await initLocale();
       const [seen] = await Promise.all([
         hasSeenOnboarding().catch((err) => {
@@ -192,10 +233,15 @@ export default function RootLayout() {
     const nationalTimer = setTimeout(() => {
       void import('../src/services/gtfsDatabase')
         .then(async (db) => {
-          if (!(await db.hasNationalDb())) return;
-          const handle = await db.getNationalDb();
-          await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
-          await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
+          if (await db.hasNationalDb()) {
+            const handle = await db.getNationalDb();
+            await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
+            await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
+          }
+          if (!needsOnboarding) {
+            const national = await import('../src/services/nationalTimetable');
+            void national.ensureNationalTimetable().catch(() => {});
+          }
         })
         .catch(() => {});
     }, 2500);
@@ -203,7 +249,7 @@ export default function RootLayout() {
       clearTimeout(timer);
       clearTimeout(nationalTimer);
     };
-  }, [ready]);
+  }, [ready, needsOnboarding]);
 
   useEffect(() => {
     if (ready && needsOnboarding)
@@ -240,11 +286,13 @@ export default function RootLayout() {
     return addTripResponseListener(navigateFromNotification);
   }, [ready, needsOnboarding]);
 
+  const initialMetrics = useMemo(() => readWebSafeAreaMetrics(), []);
+
   if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: scheme.surface }}>
-      <SafeAreaProvider>
+      <SafeAreaProvider initialMetrics={initialMetrics}>
         <StatusBar style="light" />
         <ThemeProvider value={navigationTheme}>
           <TransferProtectionProvider key={themeSetting}>
@@ -261,6 +309,7 @@ export default function RootLayout() {
               <Stack.Screen name="article" />
               <Stack.Screen name="settings" />
             </Stack>
+            <WebAlertHost />
           </TransferProtectionProvider>
         </ThemeProvider>
       </SafeAreaProvider>

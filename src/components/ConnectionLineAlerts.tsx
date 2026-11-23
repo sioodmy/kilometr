@@ -12,6 +12,7 @@ import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
+import { useActiveCity } from '../services/cityStore';
 import {
   fetchCityNews,
   getCachedNews,
@@ -510,6 +511,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 }) {
   const s = useStrings();
   const router = useRouter();
+  const { cityId } = useActiveCity();
   const [news, setNews] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>(
     () => getCachedAlertsForConnection(connection) ?? [],
@@ -603,15 +605,18 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
     let cancelled = false;
     let cancelScheduled: (() => void) | undefined;
+    const controller = new AbortController();
 
     async function load() {
       const mem = getCachedNews();
       if (mem && mem.length > 0) {
         setNews(mem);
         setStatus('ready');
+      } else {
+        setNews([]);
       }
 
-      const disk = await loadNewsCache();
+      const disk = await loadNewsCache(cityId);
       if (cancelled) return;
       if (disk && disk.length > 0) {
         setNews(disk);
@@ -624,7 +629,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       cancelScheduled = runAfterOpen(() => {
         void (async () => {
           try {
-            const fresh = await fetchCityNews();
+            const fresh = await fetchCityNews(controller.signal);
             if (cancelled) return;
             setNews(fresh);
             setStatus('ready');
@@ -639,9 +644,10 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     void load();
     return () => {
       cancelled = true;
+      controller.abort();
       cancelScheduled?.();
     };
-  }, [lineKey, attempt, runAfterOpen]);
+  }, [cityId, lineKey, attempt, runAfterOpen]);
 
   const trainAlertKey = useMemo(
     () =>

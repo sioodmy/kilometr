@@ -249,6 +249,12 @@ export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
   colors.warningSoft = scheme.warningContainer;
   colors.walk = scheme.onSurfaceVariant;
   repaintStyles(scheme);
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.backgroundColor = scheme.surface;
+    if (document.body) document.body.style.backgroundColor = scheme.surface;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', scheme.surface);
+  }
 }
 
 // ─── M3 shape scale ──────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -69,6 +70,7 @@ import {
   type WalkPaceProfile,
 } from '../src/services/settings';
 import {
+  ensureActiveCityTimetable,
   getDataStatus,
   importGtfsFromNetwork,
   refreshDataStatus,
@@ -76,6 +78,7 @@ import {
   type DataStatus,
   type ImportOutcome,
 } from '../src/services/dataManager';
+import { TimetableSyncAbortedError } from '../src/services/timetableSync';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
@@ -362,19 +365,15 @@ export default function SettingsScreen() {
     : s.city.downloadAction;
 
   const handleCityChange = async (id: CityId) => {
-    if (id === cityId || switchingCity || busy) return;
+    if (id === cityId) return;
     setSwitchingCity(true);
     setSwitchingCityId(id);
+    setImporting(false);
     setOutcome(null);
     try {
       await setCity(id);
-      const st = await refreshDataStatus().catch(() => null);
-      if (st) {
-        setDataStatus(st);
-        if (st.state === 'empty') {
-          void importGtfsFromNetwork().catch((e) => console.warn('Auto import GTFS failed:', e));
-        }
-      }
+      const st = await ensureActiveCityTimetable();
+      setDataStatus(st);
     } finally {
       setSwitchingCity(false);
       setSwitchingCityId(null);
@@ -394,6 +393,7 @@ export default function SettingsScreen() {
       }
       setOutcome(result);
     } catch (err) {
+      if (err instanceof TimetableSyncAbortedError) return;
       const reason = err instanceof Error ? err.message : s.settings.downloadFailFallback;
       Alert.alert(s.settings.downloadFailTitle, s.settings.downloadFailBody(reason));
     } finally {
@@ -456,15 +456,15 @@ export default function SettingsScreen() {
               >
                 <Pressable
                   onPress={() => setCitySheetOpen(true)}
-                  disabled={switchingCity || busy}
+                  disabled={switchingCity}
                   style={({ pressed }) => [
                     styles.cityTile,
                     showDownloadCta && styles.cityTileWithAction,
-                    (switchingCity || busy) && { opacity: 0.6 },
-                    pressed && !(switchingCity || busy) && { opacity: 0.8 },
+                    switchingCity && { opacity: 0.6 },
+                    pressed && !switchingCity && { opacity: 0.8 },
                   ]}
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: switchingCity || busy }}
+                  accessibilityState={{ disabled: switchingCity }}
                   accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
                   accessibilityHint={s.city.settingsHint}
                 >
@@ -534,13 +534,17 @@ export default function SettingsScreen() {
                 )}
                 onPress={() => openSection('routing')}
               />
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={BellRing}
-                title={s.notificationPrefs.title}
-                detail={s.settings.notificationsSummary}
-                onPress={() => openSection('notifications')}
-              />
+              {Platform.OS !== 'web' && (
+                <>
+                  <View style={styles.menuDivider} />
+                  <SettingsLink
+                    icon={BellRing}
+                    title={s.notificationPrefs.title}
+                    detail={s.settings.notificationsSummary}
+                    onPress={() => openSection('notifications')}
+                  />
+                </>
+              )}
               <View style={styles.menuDivider} />
               <SettingsLink
                 icon={SlidersHorizontal}
@@ -585,7 +589,7 @@ export default function SettingsScreen() {
               />
             </View>
             <Pressable
-              onPress={() => void Linking.openURL('https://ko-fi.com/sioodmy').catch(() => {})}
+              onPress={() => void Linking.openURL('https://buycoffee.to/sioodmy').catch(() => {})}
               accessibilityRole="link"
               accessibilityLabel={s.settings.supportA11y}
               style={({ pressed }) => [styles.supportLink, pressed && styles.menuRowPressed]}

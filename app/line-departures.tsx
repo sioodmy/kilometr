@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   AppState,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   RouteOff,
 } from '../src/components/icons';
 import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
+import { MorphingLoader } from '../src/components/MorphingLoader';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { TimetableDeparturesView } from '../src/components/TimetableDeparturesView';
 import { getLocaleSync, useStrings } from '../src/i18n';
@@ -224,7 +224,7 @@ export default function LineDeparturesScreen() {
           <View style={styles.stateCard} accessibilityLiveRegion="polite">
             {loading ? (
               <>
-                <ActivityIndicator color={scheme.primary} size="small" />
+                <MorphingLoader variant="contained" size={32} />
                 <Text style={styles.stateBody}>{t.loading}</Text>
               </>
             ) : error ? (

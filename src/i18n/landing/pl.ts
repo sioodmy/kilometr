@@ -14,7 +14,7 @@ export const pl = {
   meta: {
     title: 'Kilometr',
     imageAlt:
-      'Kilometr. Twój planer podróży open source. Ekran aplikacji na iPhonie, herby miast i schemat sieci komunikacji.',
+      'Kilometr. Tym razem dojedziesz. Czym chcesz, jak chcesz. Trzy telefony z aplikacją na tle mapy z trasą przejazdu.',
     description:
       'Komunikacja miejska w miastach w całej Polsce. Planuj trasy, sprawdzaj odjazdy i korzystaj z rozkładów offline. Bezpłatnie na Androidzie.',
   },
@@ -25,7 +25,6 @@ export const pl = {
   language: 'Język strony',
   sendSms: 'Wyślij SMS',
   hero: {
-    eyebrow: 'Kilometr na Androida',
     title: 'Twój',
     accent: 'open-source',
     titleEnd: 'planer podróży',
@@ -36,6 +35,7 @@ export const pl = {
   install: {
     android: 'Android',
     ios: 'iOS',
+    web: 'Wersja webowa',
     platform: 'Wybierz system telefonu',
     newTab: '(otwiera się w nowej karcie)',
   },
@@ -147,39 +147,34 @@ export const pl = {
     ],
   },
   coverage: {
-    eyebrow: 'Zasięg w Polsce',
-    title: 'Sprawdź swoje miasto i przewoźników',
+    title: 'Obsługujemy całą Polskę',
     body: (count: number) =>
-      `${count} miasta i aglomeracje w jednej aplikacji, w tym Metropolia GZM. Kliknij punkt na mapie albo wpisz nazwę, aby sprawdzić pozycje na żywo, komunikaty i przewoźników.`,
+      `Jeśli da się gdzieś dojechać komunikacją zbiorową, to dojedziesz tam z Kilometrem. Obsługujemy łącznie ${countLabel(count, 'miasto', 'miasta', 'miast')} w całej Polsce.`,
     searchPlaceholder: 'Wpisz miasto, np. Wrocław, Katowice, Gdańsk...',
     searchLabel: 'Wyszukaj obsługiwane miasto',
     browseListLabel: 'Rozwiń listę miast',
     clearSearch: 'Wyczyść wyszukiwanie',
     mapAria: 'Klikalna mapa Polski z obsługiwanymi miastami',
-    mapHint: (count: number) => `${count} obsługiwane sieci · Kliknij punkt na mapie`,
     citiesListLabel: 'Lista obsługiwanych miast',
     emptyTitle: 'Nie znaleziono tego miasta',
     emptyBody: 'Sprawdź pisownię albo wyczyść filtr, aby wybrać jedno z obsługiwanych miast.',
     emptyReset: 'Pokaż wszystkie miasta',
+    available: 'Dostępne',
     liveLabel: 'Pozycje na żywo',
     liveValue: (vehicles: number | null) =>
       vehicles == null
-        ? 'Dostępne (GPS pojazdów)'
+        ? 'GPS pojazdów'
         : vehicles === 0
-          ? 'Dostępne (brak pojazdów teraz)'
-          : `Dostępne (${countLabel(vehicles, 'pojazd', 'pojazdy', 'pojazdów')} na żywo)`,
+          ? 'brak pojazdów teraz'
+          : `${countLabel(vehicles, 'pojazd', 'pojazdy', 'pojazdów')} na żywo`,
     liveUnavailable: 'Brak danych GPS (rozkład statyczny)',
     newsLabel: 'Komunikaty pasażerskie',
-    newsAvailable: 'Dostępne',
     newsUnavailable: 'Brak komunikatów z miasta',
     stopHintsLabel: 'Wskazówki przystankowe',
     stopHintsValue: (stops: number) =>
-      `Dostępne (${countLabel(stops, 'przystanek', 'przystanki', 'przystanków')})`,
+      countLabel(stops, 'przystanek', 'przystanki', 'przystanków'),
     stopHintsUnavailable: 'Brak wskazówek dla przystanków',
-    statsUpdated: (date: string) => `Dane z ${date}`,
     operatorsLabel: 'Przewoźnicy w sieci',
-    railGatewayNote: (stations: string) =>
-      `Połączenia dalekobieżne (PKP Intercity, POLREGIO) przez stację: ${stations}.`,
     modes: {
       bus: 'Autobusy',
       tram: 'Tramwaje',
@@ -201,13 +196,13 @@ export const pl = {
   },
   themeStudio: {
     title: 'Twój kolor w aplikacji',
-    intro: 'Wybierz kolory, zerknij na podgląd i wyślij gotowy kod na Ko-fi.',
+    intro: 'Wybierz kolory, zerknij na podgląd i wyślij gotowy kod na BuyCoffee.',
     thanksTitle: 'Dziękuję!',
     thanksBody:
       'Twoje wsparcie pozwala rozwijać Kilometr bez reklam i bez śledzenia. W podziękowaniu ułóż własny motyw aplikacji.',
     thanksCta: 'Wybierz swój motyw',
     notYet: 'Jeszcze nie wspierasz?',
-    notYetLink: 'Zrób to na Ko-fi',
+    notYetLink: 'Zrób to na BuyCoffee',
     back: 'Wróć do podziękowania',
     customTitle: 'Własny kolor',
     hueLabel: 'Kolor',
@@ -246,13 +241,12 @@ export const pl = {
       cancelled: 'odwołany',
     },
     outputTitle: 'Wyślij swój motyw',
-    outputIntro: 'Skopiuj kod i wklej go w wiadomości na Ko-fi.',
+    outputIntro: 'Skopiuj kod i wklej go w wiadomości na BuyCoffee.',
     copy: 'Skopiuj kod',
     copied: 'Skopiowano',
     copyFailed: 'Zaznacz kod i naciśnij Ctrl+C',
     codeLabel: 'Kod twojego motywu',
-    sendOn: 'Otwórz Ko-fi',
-    footerLink: 'Motyw dla wspierających',
+    sendOn: 'Otwórz BuyCoffee',
   },
   footer: {
     tagline: 'Do zobaczenia w drodze.',

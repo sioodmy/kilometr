@@ -5,6 +5,7 @@ import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import {
   downloadNationalTimetable,
+  ensureNationalTimetable,
   getNationalTimetableState,
   subscribeNationalTimetable,
   type NationalTimetableState,
@@ -25,7 +26,13 @@ export function NationalRailCard() {
   const s = useStrings();
   const [state, setState] = useState<NationalTimetableState>(getNationalTimetableState());
 
-  useEffect(() => subscribeNationalTimetable(setState), []);
+  useEffect(() => {
+    const unsub = subscribeNationalTimetable(setState);
+    if (getNationalTimetableState().phase === 'idle') {
+      void ensureNationalTimetable().catch(() => {});
+    }
+    return unsub;
+  }, []);
 
   const ready = state.phase === 'ready';
   const downloading = state.phase === 'downloading';

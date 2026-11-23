@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
 import './styles.css';
+import App from './App';
 import { initWebLocale } from './i18n';
 
 if (window.location.pathname === '/t/' || window.location.pathname === '/t') {

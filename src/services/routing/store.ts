@@ -91,7 +91,9 @@ const cityBackend = (): GtfsStoreBackend => ({
   getActiveServices,
   awaitReady: () => (importInProgress ? awaitImportSettled() : Promise.resolve()),
   isImporting: () => importInProgress,
-  cable: cableInCity(),
+  get cable() {
+    return cableInCity();
+  },
   rustStopIndex: true,
 });
 

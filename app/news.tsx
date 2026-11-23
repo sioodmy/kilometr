@@ -41,9 +41,10 @@ import {
   markNewsSeen,
   formatNewsDate,
   rememberNewsItemForDetail,
+  subscribeNewsCache,
   type MpkNewsItem,
 } from '../src/services/mpkNews';
-import { useActiveCity } from '../src/services/cityStore';
+import { getActiveCityIdSync, useActiveCity } from '../src/services/cityStore';
 import { loadRecentRouteLines, newsTouchesLines } from '../src/services/recentRouteLines';
 
 type NewsFilter = 'all' | 'myLines';
@@ -234,6 +235,7 @@ export default function NewsScreen() {
   const load = useCallback(
     async (isRefresh = false) => {
       if (!mountedRef.current) return;
+      const requestedCity = cityId;
       loadAbortRef.current?.abort();
       const controller = new AbortController();
       loadAbortRef.current = controller;
@@ -241,12 +243,24 @@ export default function NewsScreen() {
       setError(null);
       try {
         const news = await fetchCityNews(controller.signal);
-        if (!mountedRef.current || controller.signal.aborted) return;
+        if (
+          !mountedRef.current ||
+          controller.signal.aborted ||
+          getActiveCityIdSync() !== requestedCity
+        ) {
+          return;
+        }
         setItems(news);
         void markNewsSeen(news);
         await refreshMyLines();
       } catch {
-        if (!mountedRef.current || controller.signal.aborted) return;
+        if (
+          !mountedRef.current ||
+          controller.signal.aborted ||
+          getActiveCityIdSync() !== requestedCity
+        ) {
+          return;
+        }
         setError(s.news.fetchFail);
       } finally {
         if (loadAbortRef.current === controller) loadAbortRef.current = null;
@@ -256,7 +270,7 @@ export default function NewsScreen() {
         }
       }
     },
-    [s, refreshMyLines],
+    [cityId, s, refreshMyLines],
   );
 
   const handleListRefresh = useCallback(() => {
@@ -280,19 +294,29 @@ export default function NewsScreen() {
   useEffect(() => {
     let live = true;
     void markNewsSeen();
+    const unsub = subscribeNewsCache(() => {
+      if (!live) return;
+      const latest = getCachedNews();
+      if (latest && latest.some((item) => Boolean(item.disruption))) {
+        setItems(latest);
+        setLoading(false);
+      }
+    });
     void (async () => {
       await refreshMyLines();
+      if (!live || getActiveCityIdSync() !== cityId) return;
       if ((getCachedNews()?.length ?? 0) === 0) {
-        const cached = await loadNewsCache();
-        if (live && cached && cached.length > 0) {
+        const cached = await loadNewsCache(cityId);
+        if (live && getActiveCityIdSync() === cityId && cached && cached.length > 0) {
           setItems(cached);
           setLoading(false);
         }
       }
-      if (live) await load(false);
+      if (live && getActiveCityIdSync() === cityId) await load(false);
     })();
     return () => {
       live = false;
+      unsub();
     };
   }, [cityId, load, refreshMyLines]);
 

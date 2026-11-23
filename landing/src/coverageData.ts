@@ -427,7 +427,7 @@ const DISPLAY_NAMES: Partial<Record<CityId, string>> = {
 };
 
 const REGION_SUBTITLES: Partial<Record<CityId, string>> = {
-  gzm: 'Katowice · Gliwice · Sosnowiec',
+  gzm: 'Wszystkie 41 miast i gmin Górnośląsko-Zagłębiowskiej Metropolii',
   trojmiasto: 'Gdańsk · Gdynia · Sopot',
 };
 

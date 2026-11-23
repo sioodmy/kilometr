@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import {
-  ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -19,6 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ChevronLeft, ChevronRight, RefreshCw } from './icons';
 import { resolveLegBadgeColors } from './LineBadge';
+import { MorphingLoader } from './MorphingLoader';
 import { secondsToTimeString } from '../gtfs/geo';
 import type { LegSwapSlotState, SwapDirection } from '../hooks/useLegAlternatives';
 import { useStrings } from '../i18n';
@@ -76,6 +77,7 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
   const canGoEarlier = Boolean(slot && (slot.hasEarlier || slot.canLoadMoreEarlier));
   const canGoLater = Boolean(slot && (slot.hasLater || slot.canLoadMoreLater));
   const gestureEnabled =
+    Platform.OS !== 'web' &&
     swappable &&
     slot?.status === 'ready' &&
     !isBusy &&
@@ -285,7 +287,7 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
       >
         {slot.loadingDirection === 'earlier' ? (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={scheme.primary} />
+            <MorphingLoader size={16} color={scheme.primary} />
             <Text style={styles.stepLabelMuted} numberOfLines={1}>
               {t.leg.swapLoading}
             </Text>
@@ -347,7 +349,7 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
             <Text style={styles.stepLabelMuted} numberOfLines={1}>
               {t.leg.swapLoading}
             </Text>
-            <ActivityIndicator size="small" color={scheme.primary} />
+            <MorphingLoader size={16} color={scheme.primary} />
           </View>
         ) : slot.laterAlt && laterTime ? (
           <>

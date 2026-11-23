@@ -185,9 +185,13 @@ export async function searchNominatimDirect(
     addressdetails: '1',
   });
   const scope = scopedSignal(5000, outer);
+  const headers: Record<string, string> =
+    typeof window === 'undefined'
+      ? { 'User-Agent': NOMINATIM.userAgent, Accept: 'application/json' }
+      : { Accept: 'application/json' };
   try {
     const res = await fetch(`${NOMINATIM.baseUrl}?${params.toString()}`, {
-      headers: { 'User-Agent': NOMINATIM.userAgent, Accept: 'application/json' },
+      headers,
       signal: scope.signal,
     });
     if (!res.ok) return [];
@@ -228,8 +232,12 @@ export async function reverseNominatimDirect(
       zoom: '16',
       addressdetails: '1',
     });
+    const headers: Record<string, string> =
+      typeof window === 'undefined'
+        ? { 'User-Agent': NOMINATIM.userAgent, Accept: 'application/json' }
+        : { Accept: 'application/json' };
     const res = await fetch(`${NOMINATIM.reverseUrl}?${params.toString()}`, {
-      headers: { 'User-Agent': NOMINATIM.userAgent, Accept: 'application/json' },
+      headers,
       signal: ctrl.signal,
     });
     if (!res.ok) return null;
