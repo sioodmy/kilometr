@@ -70,12 +70,12 @@ type BarSegment =
   | { key: string; kind: 'longWalk'; min: number }
   | { key: string; kind: 'riskTight' | 'riskCritical'; min: number };
 
-function JourneyStrip({
+export function JourneyStrip({
   insights,
-  dimmed,
+  dimmed = false,
 }: {
   insights: ConnectionInsights;
-  dimmed: boolean;
+  dimmed?: boolean;
 }) {
   const s = useStrings();
   const { width } = useWindowDimensions();
