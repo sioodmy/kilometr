@@ -120,26 +120,6 @@
     border-radius: 12px;
     text-align: center;
   }
-  .install-options .button:disabled {
-    cursor: default;
-    color: var(--muted);
-    background: transparent;
-    transform: none;
-  }
-  .coming-soon {
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: var(--surface-raised);
-    color: var(--muted);
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-  .install-alternative > .text-link {
-    margin-top: 12px;
-    color: var(--muted);
-    text-decoration: underline;
-    text-underline-offset: 4px;
-  }
 }
 
 @layer responsive {
