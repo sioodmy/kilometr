@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - prod
     paths:
       - 'app/**'
       - 'src/**'
@@ -53,5 +53,5 @@ jobs:
         run: |
           npx --yes wrangler@4 pages deploy dist \
             --project-name=kilometr-web \
-            --branch=main \
+            --branch=prod \
             --commit-dirty=true
