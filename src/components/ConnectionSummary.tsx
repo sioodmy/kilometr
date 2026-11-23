@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Clock3 } from './icons';
+import { Clock3, M3SolidArrowDown, M3SolidArrowRight } from './icons';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
@@ -163,13 +163,12 @@ export function ConnectionSummary({
           </View>
 
           <View style={styles.stackedBridge}>
-            <View style={styles.bridgeTrack} />
+            <M3SolidArrowDown size={20} color={scheme.primary} />
             <View style={styles.bridgePill}>
               <Text style={styles.bridgePillText} numberOfLines={1}>
                 {transfersLabel}
               </Text>
             </View>
-            <View style={styles.bridgeTrack} />
           </View>
 
           <View style={styles.stackedEndpoint}>
@@ -224,11 +223,7 @@ export function ConnectionSummary({
             </View>
 
             <View style={styles.bridgeCol}>
-              <View style={styles.bridgeLineRow}>
-                <View style={styles.bridgeStartDot} />
-                <View style={styles.bridgeTrack} />
-                <View style={styles.bridgeEndDot} />
-              </View>
+              <M3SolidArrowRight size={24} width={36} color={scheme.primary} />
               {countdownLabel ? (
                 <View style={styles.bridgePill}>
                   <Text style={styles.bridgePillText} numberOfLines={1}>
@@ -426,16 +421,11 @@ const styles = StyleSheet.create({
   },
   bridgeCol: {
     flex: 1,
-    minWidth: 56,
+    minWidth: 44,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 6,
-    gap: 6,
-  },
-  bridgeLineRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingBottom: 4,
+    gap: 4,
   },
   bridgeStartDot: {
     width: 9,
@@ -444,13 +434,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: scheme.primary,
     backgroundColor: scheme.surfaceContainer,
-  },
-  bridgeTrack: {
-    flex: 1,
-    height: 2,
-    backgroundColor: scheme.outlineVariant,
-    marginHorizontal: 3,
-    borderRadius: 1,
   },
   bridgeEndDot: {
     width: 9,
