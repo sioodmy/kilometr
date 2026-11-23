@@ -10,7 +10,7 @@ import { InformationPage } from './components/InformationPage';
 import { InstallPage } from './components/InstallPage';
 import { ThemeStudioPage } from './components/ThemeStudioPage';
 import { PlatformLinks } from './components/PlatformLinks';
-import { GITHUB_URL, COFFEE_URL } from './data';
+import { GITHUB_URL, COFFEE_URL, OBTAINIUM_URL } from './data';
 
 const SharedJourney = lazy(() => import('./components/SharedJourney'));
 
@@ -76,13 +76,11 @@ export default function App() {
   const page =
     hash === '#polityka'
       ? 'privacy'
-      : hash === '#android' || hash === '#beta'
-        ? 'android'
-        : hash === '#ios'
-          ? 'ios'
-          : hash === '#motyw' || hash === '#dziekuje'
-            ? 'themeStudio'
-            : null;
+      : hash === '#ios'
+        ? 'ios'
+        : hash === '#motyw' || hash === '#dziekuje'
+          ? 'themeStudio'
+          : null;
   useEffect(() => {
     const onHash = () => setHash(window.location.hash);
     window.addEventListener('hashchange', onHash);
@@ -171,7 +169,7 @@ export default function App() {
       ) : page === 'themeStudio' ? (
         <ThemeStudioPage />
       ) : page ? (
-        <InstallPage page={page} />
+        <InstallPage />
       ) : (
         <Landing />
       )}
@@ -186,6 +184,10 @@ export default function App() {
             <a href="#polityka">{s.footer.privacy}</a>
             <a href={GITHUB_URL}>
               {s.footer.github}
+              <ArrowUpRight size={13} aria-hidden="true" />
+            </a>
+            <a href={OBTAINIUM_URL}>
+              {s.footer.obtainium}
               <ArrowUpRight size={13} aria-hidden="true" />
             </a>
           </nav>
