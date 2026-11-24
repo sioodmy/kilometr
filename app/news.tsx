@@ -60,22 +60,31 @@ type Tone = 'urgent' | 'resolved' | 'quiet';
 function toneColors(tone: Tone) {
   if (tone === 'urgent') {
     return {
-      card: scheme.warningContainer,
-      ink: scheme.onWarningContainer,
-      muted: scheme.onWarningContainer,
+      card: scheme.surfaceContainerLow,
+      border: scheme.warning + '55',
+      borderWidth: 1,
+      ink: scheme.onSurface,
+      muted: scheme.onSurfaceVariant,
+      accent: scheme.warning,
     };
   }
   if (tone === 'resolved') {
     return {
       card: scheme.surfaceContainerLowest,
+      border: scheme.outlineVariant,
+      borderWidth: StyleSheet.hairlineWidth,
       ink: scheme.onSurfaceVariant,
       muted: scheme.outline,
+      accent: scheme.onSurfaceVariant,
     };
   }
   return {
     card: scheme.surfaceContainerLow,
+    border: scheme.outlineVariant,
+    borderWidth: StyleSheet.hairlineWidth,
     ink: scheme.onSurface,
     muted: scheme.onSurfaceVariant,
+    accent: scheme.onSurfaceVariant,
   };
 }
 
@@ -129,7 +138,11 @@ const NewsCard = memo(function NewsCard({
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       android_ripple={{ color: scheme.outlineVariant }}
-      style={[styles.card, { backgroundColor: c.card }, animated]}
+      style={[
+        styles.card,
+        { backgroundColor: c.card, borderColor: c.border, borderWidth: c.borderWidth },
+        animated,
+      ]}
     >
       <View style={styles.metaRow}>
         <Text style={[styles.sourceTag, { color: c.muted }]}>{sourceLabel}</Text>
@@ -144,8 +157,8 @@ const NewsCard = memo(function NewsCard({
         </View>
       ) : item.urgent ? (
         <View style={styles.urgentLabel}>
-          <TriangleAlert size={16} color={c.ink} />
-          <Text style={[styles.urgentText, { color: c.ink }]}>{s.news.chip}</Text>
+          <TriangleAlert size={15} color={c.accent} />
+          <Text style={[styles.urgentText, { color: c.accent }]}>{s.news.chip}</Text>
         </View>
       ) : null}
       <Text style={[styles.cardTitle, { color: c.ink }]}>{item.title}</Text>
@@ -165,13 +178,10 @@ const NewsCard = memo(function NewsCard({
         <Text style={[styles.cardDesc, { color: c.muted }]}>{item.description}</Text>
       ) : null}
       {solution ? (
-        <View
-          style={[
-            styles.solutionBox,
-            tone === 'urgent' && { backgroundColor: scheme.onWarningContainer + '1F' },
-          ]}
-        >
-          <Text style={[styles.solutionLabel, { color: c.muted }]}>{s.news.solutionLabel}</Text>
+        <View style={styles.solutionBox}>
+          <Text style={[styles.solutionLabel, { color: tone === 'urgent' ? c.accent : c.muted }]}>
+            {s.news.solutionLabel}
+          </Text>
           <Text style={[styles.cardSolution, { color: c.ink }]}>{solution}</Text>
         </View>
       ) : null}
@@ -448,7 +458,7 @@ export default function NewsScreen() {
           style={[styles.errorBanner, webLayout.isMedium && styles.errorBannerDesktop]}
           accessibilityRole="alert"
         >
-          <TriangleAlert size={16} color={scheme.onWarningContainer} />
+          <TriangleAlert size={16} color={scheme.warning} />
           <Text style={styles.errorBannerText}>{error}</Text>
         </View>
       ) : null}
@@ -645,9 +655,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: shape.medium,
-    backgroundColor: scheme.warningContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.warning + '55',
   },
-  errorBannerText: { ...type.bodySmall, color: scheme.onWarningContainer, flex: 1 },
+  errorBannerText: { ...type.bodySmall, color: scheme.onSurface, flex: 1 },
   segment: {
     flexDirection: 'row',
     gap: 4,
@@ -714,6 +726,8 @@ const styles = StyleSheet.create({
   resolvedText: { ...type.labelMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
   solutionBox: {
     backgroundColor: scheme.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     borderRadius: shape.large,
     padding: 12,
     gap: 4,
