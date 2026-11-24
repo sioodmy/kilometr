@@ -455,9 +455,6 @@ export function ReleaseShowcase() {
                         decoding="async"
                       />
                       <span className="story-ig-tag">{activeChapter.tag}</span>
-                      <span className="story-ig-step">
-                        {activeChapter.number} / 0{storyCount}
-                      </span>
                     </div>
 
                     <div className="story-ig-nav">

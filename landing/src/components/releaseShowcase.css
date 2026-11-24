@@ -566,14 +566,6 @@
       text-overflow: ellipsis;
     }
 
-    .story-ig-step {
-      font-size: 0.76rem;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      color: #8ea395;
-      flex-shrink: 0;
-    }
-
     .story-ig-nav {
       display: flex;
       align-items: center;
