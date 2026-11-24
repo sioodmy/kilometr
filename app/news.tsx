@@ -97,7 +97,11 @@ const NewsCard = memo(function NewsCard({
   const c = toneColors(tone);
   const solution = item.disruption?.glance?.solution;
   const sourceLabel =
-    item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal);
+    item.source === 'gps'
+      ? s.news.sourceGps
+      : item.source === 'mpk'
+        ? s.news.sourceMpk(operator)
+        : s.news.sourceCity(portal);
   const dateLabel = item.pubDate ? formatNewsDate(item.pubDate) : item.dateLabel;
   const statusLabel = resolved ? s.news.resolved : item.urgent ? s.news.urgentChip : null;
   const a11yLabel = [item.title, sourceLabel, dateLabel, statusLabel].filter(Boolean).join(', ');
@@ -347,9 +351,14 @@ export default function NewsScreen() {
   }, [filter, items, myLineSet]);
 
   const rows = useMemo(() => {
+    const gps = visibleItems.filter((i) => i.source === 'gps');
     const changes = visibleItems.filter((i) => i.source === 'mpk');
-    const city = visibleItems.filter((i) => i.source !== 'mpk');
+    const city = visibleItems.filter((i) => i.source === 'city');
     const out: Row[] = [];
+    if (gps.length) {
+      out.push({ kind: 'head', id: 'h-gps', label: s.news.sectionGps });
+      for (const item of gps) out.push({ kind: 'item', id: item.id, item });
+    }
     if (changes.length) {
       out.push({ kind: 'head', id: 'h-mpk', label: s.news.sectionChanges });
       for (const item of changes) out.push({ kind: 'item', id: item.id, item });

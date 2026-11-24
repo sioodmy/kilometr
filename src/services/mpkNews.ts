@@ -56,6 +56,11 @@
 // Nowe miasto = wpis w FEEDS + ewentualny parser; UI (news.tsx) bez zmian.
 import { withTimeout } from './net';
 import { TIMETABLE } from './gtfsConfig';
+import {
+  fetchBackendAnomalies,
+  isKilometrApiAvailable,
+  type BackendTrafficAnomaly,
+} from './kilometrApi';
 import { kvGet, kvSet } from './storage';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
@@ -71,7 +76,7 @@ function newsTitleFallback(): string {
   return (NEWS_SVC_DICTS[getLocaleSync()] ?? pl).newsSvc.untitled;
 }
 
-export type NewsSource = 'city' | 'mpk';
+export type NewsSource = 'city' | 'mpk' | 'gps';
 
 export interface DisruptionImpactedLine {
   line: string;
@@ -2751,7 +2756,7 @@ export async function fetchDisruptionsFromWorker(
 const RICH_NEWS_WAIT_MS = 3500;
 
 function hasRichDisruptions(items: MpkNewsItem[] | null | undefined): boolean {
-  return Boolean(items && items.some((item) => Boolean(item.disruption)));
+  return Boolean(items && items.some((item) => item.source !== 'gps' && Boolean(item.disruption)));
 }
 
 /** Bezpośrednie źródła miasta: RSS/JSON/HTML scrapery. null = brak feedu. */
@@ -2782,6 +2787,93 @@ function fetchCityFeed(cityId: string, signal?: AbortSignal): Promise<MpkNewsIte
   return Promise.resolve(null);
 }
 
+/** Zamienia wykryty automatycznie zator GPS z backendu na kartę alertu w tym samym formacie co MPK. */
+function anomalyToNewsItem(a: BackendTrafficAnomaly): MpkNewsItem {
+  const dict = (NEWS_SVC_DICTS[getLocaleSync()] ?? pl).news;
+  const avgMin = Math.max(1, Math.round(a.avgDelaySec / 60));
+  const durMin = Math.max(1, Math.round(a.durationSec / 60));
+  const title =
+    a.kind === 'tram_stall'
+      ? dict.gpsJamTitleTram(a.locationName)
+      : a.kind === 'bus_congestion'
+        ? dict.gpsJamTitleBus(a.locationName)
+        : dict.gpsJamTitleHub(a.locationName);
+  const baseProblem =
+    a.stalledVehicles >= 2
+      ? dict.gpsJamProblemStalled(a.stalledVehicles, avgMin, durMin)
+      : dict.gpsJamProblemAnomaly(a.affectedVehicles, avgMin);
+  const deltaMin =
+    typeof a.deltaVsNormalSec === 'number' && a.deltaVsNormalSec >= 90
+      ? Math.round(a.deltaVsNormalSec / 60)
+      : 0;
+  const problem = deltaMin > 0 ? `${baseProblem} ${dict.gpsJamDelta(deltaMin)}` : baseProblem;
+  const timeframe = dict.gpsJamTimeframe(durMin);
+  const detectedIso = new Date(a.detectedAtMs).toISOString();
+  const isEmergency = a.severity === 'blocking' || a.kind === 'tram_stall';
+
+  return {
+    id: `gps:${a.id}`,
+    title,
+    link: '',
+    description: problem,
+    imageUrl: null,
+    urgent: a.severity !== 'minor',
+    pubDate: a.updatedAtMs,
+    dateLabel: timeframe,
+    source: 'gps',
+    lines: a.lines,
+    disruption: {
+      id: `gps:${a.id}`,
+      source_title: dict.sourceGps,
+      link: '',
+      published_at: detectedIso,
+      is_transit_alert: true,
+      headline: title,
+      disruption_type: 'other',
+      is_emergency: isEmergency,
+      is_resolved: false,
+      severity: a.severity,
+      map_label: a.locationName,
+      glance: {
+        problem,
+        solution: null,
+        timeframe,
+      },
+      stop_coords: {
+        [a.locationName]: {
+          stop_id: a.id,
+          lat: a.lat,
+          lon: a.lon,
+        },
+      },
+      valid_from: detectedIso,
+      valid_to: null,
+      all_lines: a.lines,
+      impacted_lines: a.lines.map((line) => ({
+        line,
+        direction: null,
+        impact_type: 'delay',
+        omitted_stops: [],
+        temporary_stops: [],
+        replacement_line: null,
+        details: problem,
+      })),
+      stops: [],
+    },
+  };
+}
+
+function mergeAnomalies(
+  items: MpkNewsItem[],
+  anomalies: BackendTrafficAnomaly[] | null,
+): MpkNewsItem[] {
+  const withoutOldGps = items.filter((i) => i.source !== 'gps');
+  if (!anomalies || anomalies.length === 0) return withoutOldGps;
+  const gpsItems = anomalies.map(anomalyToNewsItem);
+  const seen = new Set(gpsItems.map((i) => i.id));
+  return [...gpsItems, ...withoutOldGps.filter((i) => !seen.has(i.id))];
+}
+
 /**
  * Aktualności aktywnego miasta. Bogate alerty z R2 i feed miasta lecą
  * równolegle: gdy R2 zwróci treść, przerywamy scraper, żeby nie nadpisał
@@ -2807,6 +2899,9 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
   });
 
   const richPromise = fetchDisruptionsFromWorker(city.id, signal).catch(() => null);
+  const anomaliesPromise = isKilometrApiAvailable()
+    ? fetchBackendAnomalies(city.id, signal).catch(() => null)
+    : Promise.resolve(null);
   let richTimedOut = false;
   let richTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -2825,19 +2920,23 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
     }
     if (richItems && richItems.length > 0) {
       cityAbort.abort();
-      if (signal?.aborted || activeCityId() !== city.id) return richItems;
-      return rememberNews(richItems, city.id);
+      const anomalies = await anomaliesPromise;
+      const merged = mergeAnomalies(richItems, anomalies);
+      if (signal?.aborted || activeCityId() !== city.id) return merged;
+      return rememberNews(merged, city.id);
     }
 
     const cityItems = await cityPromise;
     if (cityItems !== null) {
-      if (signal?.aborted || activeCityId() !== city.id) return cityItems;
-      const saved = await rememberNews(cityItems, city.id);
+      const anomalies = await anomaliesPromise;
+      const merged = mergeAnomalies(cityItems, anomalies);
+      if (signal?.aborted || activeCityId() !== city.id) return merged;
+      const saved = await rememberNews(merged, city.id);
       if (richTimedOut) {
         void richPromise.then((lateRich) => {
           if (signal?.aborted || activeCityId() !== city.id) return;
           if (lateRich && lateRich.length > 0) {
-            void rememberNews(lateRich, city.id);
+            void rememberNews(mergeAnomalies(lateRich, anomalies), city.id);
           }
         });
       }
@@ -2845,10 +2944,16 @@ export async function fetchCityNews(signal?: AbortSignal): Promise<MpkNewsItem[]
     }
 
     // Miasto bez własnego feedu (albo feed padł): R2 jest jedynym źródłem.
-    const lateRich = await richPromise;
+    const [lateRich, anomalies] = await Promise.all([richPromise, anomaliesPromise]);
     if (lateRich && lateRich.length > 0) {
-      if (signal?.aborted || activeCityId() !== city.id) return lateRich;
-      return rememberNews(lateRich, city.id);
+      const merged = mergeAnomalies(lateRich, anomalies);
+      if (signal?.aborted || activeCityId() !== city.id) return merged;
+      return rememberNews(merged, city.id);
+    }
+    if (anomalies && anomalies.length > 0) {
+      const merged = mergeAnomalies([], anomalies);
+      if (signal?.aborted || activeCityId() !== city.id) return merged;
+      return rememberNews(merged, city.id);
     }
     if (cityFailed) throw new Error('news');
     return [];

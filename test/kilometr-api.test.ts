@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildLocalDelayHeatmap,
+  fetchBackendAnomalies,
+  fetchBackendRouteInsights,
   fetchBackendVehicles,
   isKilometrApiAvailable,
   resetKilometrApiCircuit,
@@ -213,4 +215,135 @@ test('buildRoutingSnapshot uzywa estymacji Data Science z backendu dla tramwajow
   assert.equal(snap.delays.get('trip_no_gps'), 300);
   assert.equal(snap.confidence.get('trip_no_gps'), 'estimated');
   assert.equal(snap.transferBuffers.get('trip_no_gps'), 300);
+});
+
+test('fetchBackendRouteInsights zwraca null przy ready=false oraz pelne dane przy ready=true', async () => {
+  resetKilometrApiCircuit();
+  const originalFetch = globalThis.fetch;
+  const conn = {
+    id: 'c1',
+    fromTitle: 'Rynek',
+    toTitle: 'Krzyki',
+    departInMin: 5,
+    departureSec: 13 * 3600,
+    departAt: '13:00',
+    arriveAt: '13:25',
+    durationMin: 25,
+    transfers: 1,
+    delayMin: 0,
+    live: false,
+    legs: [
+      {
+        id: 'l1',
+        mode: 'tram' as const,
+        line: '4',
+        fromStop: 'Rynek',
+        toStop: 'Rondo Reagana',
+        departAt: '13:00',
+        arriveAt: '13:10',
+        stopsCount: 4,
+        live: false,
+      },
+    ],
+  };
+
+  try {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ ready: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    assert.equal(await fetchBackendRouteInsights('wroclaw', conn), null);
+
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          city: 'wroclaw',
+          updated_at: Date.now(),
+          ready: true,
+          risk_level: 'high',
+          day_type: 'weekday',
+          focus_hour: 13,
+          focus_line: '4',
+          focus_mode: 'tram',
+          expected_delay_sec: 300,
+          p90_delay_sec: 540,
+          late_probability: 0.65,
+          sample_count: 142,
+          hourly_profile: [
+            { hour: 11, avg_delay_sec: 120, p90_delay_sec: 240, sample_count: 30, is_departure_hour: false },
+            { hour: 12, avg_delay_sec: 180, p90_delay_sec: 300, sample_count: 35, is_departure_hour: false },
+            { hour: 13, avg_delay_sec: 300, p90_delay_sec: 540, sample_count: 42, is_departure_hour: true },
+            { hour: 14, avg_delay_sec: 420, p90_delay_sec: 660, sample_count: 35, is_departure_hour: false },
+            { hour: 15, avg_delay_sec: 240, p90_delay_sec: 420, sample_count: 28, is_departure_hour: false },
+          ],
+          transfer_risks: [
+            {
+              stop_name: 'Rondo Reagana',
+              from_line: '4',
+              to_line: 'D',
+              margin_sec: 240,
+              feeder_p90_delay_sec: 420,
+              risk: 'risky',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const res = await fetchBackendRouteInsights('wroclaw', conn);
+    assert.ok(res);
+    assert.equal(res.ready, true);
+    assert.equal(res.focusLine, '4');
+    assert.equal(res.hourlyProfile.length, 5);
+    assert.equal(res.transferRisks[0]?.risk, 'risky');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchBackendAnomalies mapuje automatyczne zatory GPS', async () => {
+  resetKilometrApiCircuit();
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          city: 'wroclaw',
+          updated_at: Date.now(),
+          anomalies: [
+            {
+              id: 'jam:wroclaw:tram_stall:16225:3412',
+              city: 'wroclaw',
+              kind: 'tram_stall',
+              severity: 'blocking',
+              mode: 'tram',
+              location_name: 'Rondo Reagana',
+              lat: 51.1112,
+              lon: 17.0615,
+              lines: ['4', '10', '33'],
+              stalled_vehicles: 3,
+              affected_vehicles: 3,
+              avg_delay_sec: 480,
+              max_delay_sec: 600,
+              typical_delay_sec: 150,
+              delta_vs_normal_sec: 330,
+              detected_at_ms: Date.now() - 360000,
+              updated_at_ms: Date.now(),
+              duration_sec: 360,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const list = await fetchBackendAnomalies('wroclaw');
+    assert.ok(list);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].kind, 'tram_stall');
+    assert.equal(list[0].stalledVehicles, 3);
+    assert.deepEqual(list[0].lines, ['4', '10', '33']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

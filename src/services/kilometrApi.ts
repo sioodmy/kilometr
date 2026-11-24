@@ -2,6 +2,7 @@
 // i pełnym fallbackiem offline. Gdy backend nie odpowiada, klient otwiera
 // obwód z backoffem, aby telefon nie marnował baterii ani czasu na timeouty.
 
+import type { Connection } from '../types/models';
 import { KILOMETR_API } from './gtfsConfig';
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
@@ -121,6 +122,71 @@ export interface SharedLiveLegOutput {
     model?: string;
     updatedAt: number;
   };
+}
+
+export interface BackendTrafficAnomaly {
+  id: string;
+  city: string;
+  kind: 'tram_stall' | 'bus_congestion' | 'hub_anomaly';
+  severity: 'minor' | 'major' | 'blocking';
+  mode: 'tram' | 'bus' | 'mixed';
+  locationName: string;
+  lat: number;
+  lon: number;
+  lines: string[];
+  stalledVehicles: number;
+  affectedVehicles: number;
+  avgDelaySec: number;
+  maxDelaySec: number;
+  typicalDelaySec?: number;
+  deltaVsNormalSec?: number;
+  detectedAtMs: number;
+  updatedAtMs: number;
+  durationSec: number;
+}
+
+interface RouteHourlyPoint {
+  hour: number;
+  avgDelaySec: number;
+  p90DelaySec: number;
+  sampleCount: number;
+  isDepartureHour: boolean;
+}
+
+interface RouteHotspotInsight {
+  name: string;
+  avgDelaySec: number;
+  typicalDelaySec?: number;
+  deltaVsTypicalSec?: number;
+  delayedCount: number;
+}
+
+interface RouteTransferRisk {
+  stopName: string;
+  fromLine: string;
+  toLine: string;
+  marginSec: number;
+  feederP90DelaySec: number;
+  risk: 'tight' | 'risky';
+}
+
+export interface RouteInsightsData {
+  city: string;
+  updatedAt: number;
+  ready: boolean;
+  riskLevel: 'low' | 'moderate' | 'high';
+  dayType: 'weekday' | 'saturday' | 'sunday';
+  focusHour: number;
+  focusLine?: string;
+  focusMode?: string;
+  expectedDelaySec: number;
+  p90DelaySec: number;
+  lateProbability: number;
+  sampleCount: number;
+  hourlyProfile: RouteHourlyPoint[];
+  hotspot?: RouteHotspotInsight;
+  transferRisks: RouteTransferRisk[];
+  activeAnomaly?: BackendTrafficAnomaly;
 }
 
 export interface BackendVehiclesBatch {
@@ -898,4 +964,187 @@ export async function fetchBackendSharedLive(
     });
   }
   return map;
+}
+
+interface RawBackendAnomaly {
+  id: string;
+  city: string;
+  kind: 'tram_stall' | 'bus_congestion' | 'hub_anomaly';
+  severity: 'minor' | 'major' | 'blocking';
+  mode: 'tram' | 'bus' | 'mixed';
+  location_name: string;
+  lat: number;
+  lon: number;
+  lines: string[];
+  stalled_vehicles: number;
+  affected_vehicles: number;
+  avg_delay_sec: number;
+  max_delay_sec: number;
+  typical_delay_sec?: number;
+  delta_vs_normal_sec?: number;
+  detected_at_ms: number;
+  updated_at_ms: number;
+  duration_sec: number;
+}
+
+function mapAnomaly(raw: RawBackendAnomaly): BackendTrafficAnomaly {
+  return {
+    id: raw.id,
+    city: raw.city,
+    kind: raw.kind,
+    severity: raw.severity,
+    mode: raw.mode,
+    locationName: raw.location_name,
+    lat: raw.lat,
+    lon: raw.lon,
+    lines: raw.lines ?? [],
+    stalledVehicles: raw.stalled_vehicles,
+    affectedVehicles: raw.affected_vehicles,
+    avgDelaySec: raw.avg_delay_sec,
+    maxDelaySec: raw.max_delay_sec,
+    typicalDelaySec: raw.typical_delay_sec,
+    deltaVsNormalSec: raw.delta_vs_normal_sec,
+    detectedAtMs: raw.detected_at_ms,
+    updatedAtMs: raw.updated_at_ms,
+    durationSec: raw.duration_sec,
+  };
+}
+
+/** Pobiera automatycznie wykryte zatory komunikacyjne z backendu (GPS, bez AI). */
+export async function fetchBackendAnomalies(
+  cityId: string,
+  signal?: AbortSignal,
+  baseUrl?: string,
+): Promise<BackendTrafficAnomaly[] | null> {
+  const raw = await fetchJson<{ anomalies?: RawBackendAnomaly[] }>(
+    `/v1/anomalies?city=${encodeURIComponent(cityId)}`,
+    2500,
+    signal ? { signal } : undefined,
+    baseUrl,
+  );
+  if (!raw || !Array.isArray(raw.anomalies)) return null;
+  return raw.anomalies.map(mapAnomaly);
+}
+
+/** Pobiera kartę prognozy punktualności i wykres godzinowy dla szczegółów połączenia. */
+export async function fetchBackendRouteInsights(
+  cityId: string,
+  connection: Connection,
+  signal?: AbortSignal,
+  baseUrl?: string,
+): Promise<RouteInsightsData | null> {
+  const transitLegs = connection.legs.filter((l) => l.mode !== 'walk');
+  if (transitLegs.length === 0) return null;
+
+  const payload = {
+    city: cityId,
+    date: connection.serviceDate,
+    departure_sec: connection.departureSec,
+    legs: transitLegs.map((l) => ({
+      id: l.id,
+      mode: l.mode,
+      line: l.line,
+      trip_id: l.tripId,
+      train_number: l.trainNumber,
+      direction: l.direction,
+      from_stop: l.fromStop,
+      to_stop: l.toStop,
+      from_lat: l.fromLat,
+      from_lon: l.fromLon,
+      to_lat: l.toLat,
+      to_lon: l.toLon,
+      scheduled_departure_sec: l.scheduledDepartureSec,
+      scheduled_arrival_sec: l.scheduledArrivalSec,
+    })),
+  };
+
+  const raw = await fetchJson<{
+    city?: string;
+    updated_at?: number;
+    ready?: boolean;
+    risk_level?: 'low' | 'moderate' | 'high';
+    day_type?: 'weekday' | 'saturday' | 'sunday';
+    focus_hour?: number;
+    focus_line?: string;
+    focus_mode?: string;
+    expected_delay_sec?: number;
+    p90_delay_sec?: number;
+    late_probability?: number;
+    sample_count?: number;
+    hourly_profile?: Array<{
+      hour: number;
+      avg_delay_sec: number;
+      p90_delay_sec: number;
+      sample_count: number;
+      is_departure_hour: boolean;
+    }>;
+    hotspot?: {
+      name: string;
+      avg_delay_sec: number;
+      typical_delay_sec?: number;
+      delta_vs_typical_sec?: number;
+      delayed_count: number;
+    };
+    transfer_risks?: Array<{
+      stop_name: string;
+      from_line: string;
+      to_line: string;
+      margin_sec: number;
+      feeder_p90_delay_sec: number;
+      risk: 'tight' | 'risky';
+    }>;
+    active_anomaly?: RawBackendAnomaly;
+  }>(
+    '/v1/routes/insights',
+    KILOMETR_API.analyticsTimeoutMs,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal,
+    },
+    baseUrl,
+  );
+
+  if (!raw || raw.ready !== true) return null;
+
+  return {
+    city: raw.city ?? cityId,
+    updatedAt: raw.updated_at ?? Date.now(),
+    ready: true,
+    riskLevel: raw.risk_level ?? 'low',
+    dayType: raw.day_type ?? 'weekday',
+    focusHour: raw.focus_hour ?? 0,
+    focusLine: raw.focus_line,
+    focusMode: raw.focus_mode,
+    expectedDelaySec: raw.expected_delay_sec ?? 0,
+    p90DelaySec: raw.p90_delay_sec ?? 0,
+    lateProbability: raw.late_probability ?? 0,
+    sampleCount: raw.sample_count ?? 0,
+    hourlyProfile: (raw.hourly_profile ?? []).map((p) => ({
+      hour: p.hour,
+      avgDelaySec: p.avg_delay_sec,
+      p90DelaySec: p.p90_delay_sec,
+      sampleCount: p.sample_count,
+      isDepartureHour: p.is_departure_hour,
+    })),
+    hotspot: raw.hotspot
+      ? {
+          name: raw.hotspot.name,
+          avgDelaySec: raw.hotspot.avg_delay_sec,
+          typicalDelaySec: raw.hotspot.typical_delay_sec,
+          deltaVsTypicalSec: raw.hotspot.delta_vs_typical_sec,
+          delayedCount: raw.hotspot.delayed_count,
+        }
+      : undefined,
+    transferRisks: (raw.transfer_risks ?? []).map((t) => ({
+      stopName: t.stop_name,
+      fromLine: t.from_line,
+      toLine: t.to_line,
+      marginSec: t.margin_sec,
+      feederP90DelaySec: t.feeder_p90_delay_sec,
+      risk: t.risk,
+    })),
+    activeAnomaly: raw.active_anomaly ? mapAnomaly(raw.active_anomaly) : undefined,
+  };
 }

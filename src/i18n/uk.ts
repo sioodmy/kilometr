@@ -2027,10 +2027,22 @@ export const uk: Strings = {
             : 'опублікував';
       return `${name} зараз не ${verb} жодних ускладнень. Потягни вниз, щоб перевірити знову.`;
     },
+    sectionGps: 'Виявлено наживо за GPS',
     sectionChanges: 'Зміни на лініях',
     sectionCity: 'Новини',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'Аналіз GPS',
+    gpsJamTitleTram: (place: string) => `Затор трамваїв: ${place}`,
+    gpsJamTitleBus: (place: string) => `Затор автобусів: ${place}`,
+    gpsJamTitleHub: (place: string) => `Великі затримки: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} одиниці стоять поруч уже ${durMin} хв. Середня затримка +${avgMin} хв.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} рейсів із затримкою в цьому районі. У середньому +${avgMin} хв.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} хв вище норми для цієї години.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Триває близько ${durMin} хв (аналіз GPS)` : 'Виявлено щойно (аналіз GPS)',
     openBrowser: 'Відкрити в браузері',
     articleFail: 'Не вдалося завантажити цю сторінку.',
     articleEmpty: 'На цій сторінці немає тексту, який застосунок може показати.',
@@ -3049,6 +3061,30 @@ export const uk: Strings = {
     delaySeverityHeavy: 'Помітні затримки',
     delaySeverityModerate: 'Уповільнення',
     delayTapLineHint: 'Натисни на лінію, щоб відфільтрувати її на мапі',
+  },
+  routeInsights: {
+    verdictLow: 'Зазвичай вчасно',
+    verdictModerate: 'Можлива невелика затримка',
+    verdictHigh: 'Часті затримки у цю годину',
+    dayWeekday: 'будні',
+    daySaturday: 'суботи',
+    daySunday: 'неділі',
+    basisLine: (line: string, day: string, n: number) =>
+      `Лінія ${line} · ${day} (${n} вимірів)`,
+    basisGeneric: (day: string, n: number) => `На основі ${n} вимірів (${day})`,
+    upToMin: (min: number) => `p90 +${min}хв`,
+    chartCaption: 'Середня затримка за годиною',
+    yourDeparture: 'Твій виїзд',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Профіль затримок лінії ${line}. О ${hour} в середньому плюс ${min} хвилин.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Активний затор біля ${place}: зараз у середньому +${min} хв затримки.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: зараз +${min} хв (+${delta} хв вище норми).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: уповільнення на маршруті, зараз +${min} хв.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Тісна пересадка (${stop}): запас ${marginMin} хв, а лінія ${fromLine} має до +${p90Min} хв.`,
   },
   widgets: {
     journeyTitle: 'Твої напрямки',

@@ -1540,10 +1540,22 @@ export const en: Strings = {
     emptyTitle: 'No announcements',
     emptyBody: (name: string) =>
       `${name} has published no disruptions right now. Pull down to check again.`,
+    sectionGps: 'Detected live from GPS',
     sectionChanges: 'Line changes',
     sectionCity: 'News',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'GPS detection',
+    gpsJamTitleTram: (place: string) => `Tram congestion: ${place}`,
+    gpsJamTitleBus: (place: string) => `Bus congestion: ${place}`,
+    gpsJamTitleHub: (place: string) => `Unusual delays: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} vehicles stopped nearby for ${durMin} min. Average delay +${avgMin} min.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} delayed vehicles in this area. Average +${avgMin} min delay.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} min above normal for this hour.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Ongoing for ~${durMin} min (GPS analysis)` : 'Just detected (GPS analysis)',
     openBrowser: 'Open in browser',
     articleFail: 'Could not load this page.',
     articleEmpty: 'This page has no text the app can show.',
@@ -2527,6 +2539,30 @@ export const en: Strings = {
     delaySeverityHeavy: 'Elevated delays',
     delaySeverityModerate: 'Slowdown',
     delayTapLineHint: 'Tap a line to filter it on the map',
+  },
+  routeInsights: {
+    verdictLow: 'Usually on time',
+    verdictModerate: 'Minor delays possible',
+    verdictHigh: 'Frequent delays at this hour',
+    dayWeekday: 'weekdays',
+    daySaturday: 'Saturdays',
+    daySunday: 'Sundays',
+    basisLine: (line: string, day: string, n: number) =>
+      `Line ${line} · ${day} (${n} samples)`,
+    basisGeneric: (day: string, n: number) => `Based on ${n} samples (${day})`,
+    upToMin: (min: number) => `p90 +${min}m`,
+    chartCaption: 'Average delay by hour',
+    yourDeparture: 'Your trip',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Delay profile for line ${line}. At ${hour}, average plus ${min} minutes.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Active congestion near ${place}: currently +${min} min on average.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: +${min} min right now (+${delta} min above normal).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: slowdown on route, currently +${min} min.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Tight transfer (${stop}): ${marginMin} min buffer, while line ${fromLine} reaches +${p90Min} min.`,
   },
   widgets: {
     journeyTitle: 'Your destinations',
