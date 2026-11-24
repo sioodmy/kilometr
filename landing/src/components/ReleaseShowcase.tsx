@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWebLocale } from '../i18n';
 import { useReleaseCopy } from '../landingCopy';
@@ -31,6 +31,7 @@ const COMBINED_TRANSFER_FRAMES: readonly CombinedTransferFrame[] = [
 ];
 
 const MOBILE_TRANSFER_DURATION_MS = 3800;
+const STORY_HOVER_DELAY_MS = 1000;
 
 function useIsMobileLayout() {
   const [isMobile, setIsMobile] = useState(() =>
@@ -117,6 +118,56 @@ export function ReleaseShowcase() {
       window.removeEventListener('resize', schedule);
     };
   }, [isMobile]);
+
+  // Desktop: hover przez sekundę przełącza rozdział, bo sam scroll spy łatwo przeoczyć.
+  const [pendingBeat, setPendingBeat] = useState<number | null>(null);
+  const hoverTimerRef = useRef(0);
+
+  const cancelBeatHover = useCallback(() => {
+    window.clearTimeout(hoverTimerRef.current);
+    setPendingBeat(null);
+  }, []);
+
+  const startBeatHover = useCallback(
+    (idx: number) => {
+      window.clearTimeout(hoverTimerRef.current);
+      if (idx === storyBeat) {
+        setPendingBeat(null);
+        return;
+      }
+      setPendingBeat(idx);
+      hoverTimerRef.current = window.setTimeout(() => {
+        setPendingBeat(null);
+        setStoryBeat(idx);
+      }, STORY_HOVER_DELAY_MS);
+    },
+    [storyBeat],
+  );
+
+  useEffect(() => () => window.clearTimeout(hoverTimerRef.current), []);
+
+  // Wskaźnik aktywnego rozdziału przeskakuje między kartami (pozycja liczona z layoutu).
+  const storyBeatsRef = useRef<HTMLDivElement>(null);
+  const storyIndicatorRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (isMobile) return;
+    const list = storyBeatsRef.current;
+    const indicator = storyIndicatorRef.current;
+    if (!list || !indicator) return;
+
+    const place = () => {
+      const card = list.querySelector<HTMLElement>(`[data-story-beat="${storyBeat}"]`);
+      if (!card) return;
+      indicator.style.transform = `translateY(${card.offsetTop}px)`;
+      indicator.style.height = `${card.offsetHeight}px`;
+    };
+
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [isMobile, storyBeat]);
 
   // Mobile: sekcja trzyma kartę na ekranie, a kolejne rozdziały sterowane są scrollem.
   useEffect(() => {
@@ -253,12 +304,24 @@ export function ReleaseShowcase() {
             {!isMobile ? (
               <>
                 {/* Desktop sticky split choreography */}
-                <div className="story-beats">
+                <div className="story-beats" ref={storyBeatsRef} onMouseLeave={cancelBeatHover}>
+                  <span
+                    className="story-beat-indicator"
+                    ref={storyIndicatorRef}
+                    aria-hidden="true"
+                  />
                   {copy.story.chapters.map((chapter, idx) => (
                     <article
                       key={chapter.id}
                       data-story-beat={idx}
-                      className={idx === storyBeat ? 'story-beat is-active' : 'story-beat'}
+                      className={
+                        idx === storyBeat
+                          ? 'story-beat is-active'
+                          : idx === pendingBeat
+                            ? 'story-beat is-pending'
+                            : 'story-beat'
+                      }
+                      onMouseEnter={() => startBeatHover(idx)}
                     >
                       <div className="story-beat-meta">
                         <span className="story-beat-num">{chapter.number}</span>
