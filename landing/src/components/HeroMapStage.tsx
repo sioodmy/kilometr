@@ -15,6 +15,12 @@ type NetworkSegment = {
   dMid: number;
 };
 
+type StopRipple = {
+  pt: HeroPoint;
+  startedAt: number;
+  isRoute: boolean;
+};
+
 const {
   width: MAP_W,
   height: MAP_H,
@@ -107,6 +113,30 @@ function easeInOutCubic(x: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+function distSqToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq <= 0.0001) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return dx * dx + dy * dy;
+  }
+  const t = clamp01(((px - ax) * abx + (py - ay) * aby) / lenSq);
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  const dx = px - cx;
+  const dy = py - cy;
+  return dx * dx + dy * dy;
+}
+
 // Oder river channel flowing north-west through central Wroclaw in normalized map coords.
 const ODER_CHANNEL: readonly HeroPoint[] = [
   [995, 290],
@@ -129,10 +159,7 @@ const ODER_BRANCH: readonly HeroPoint[] = [
 ];
 
 // Route midpoint in map coordinates for deliberate hero framing.
-const ROUTE_MID: HeroPoint = [
-  (origin.pt[0] + DEST_PT[0]) * 0.5,
-  (origin.pt[1] + DEST_PT[1]) * 0.5,
-];
+const ROUTE_MID: HeroPoint = [(origin.pt[0] + DEST_PT[0]) * 0.5, (origin.pt[1] + DEST_PT[1]) * 0.5];
 
 /**
  * Full-bleed dark city transit canvas:
@@ -159,6 +186,22 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
     let height = 780;
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
     const startTime = performance.now();
+    let lastFrameAt = startTime;
+
+    // Stan interakcji kursora nad sekcją hero (tylko mysz i rysik, bez dotyku).
+    let pointerActive = false;
+    let pointerTargetX = width * 0.5;
+    let pointerTargetY = height * 0.45;
+    let pointerTargetFade = 0;
+    let smoothX = pointerTargetX;
+    let smoothY = pointerTargetY;
+    let hoverAlpha = 0;
+    let panX = 0;
+    let panY = 0;
+    let lastSnapKey: string | null = null;
+    let lastRippleAt = 0;
+    const lastRippleByStop = new Map<string, number>();
+    const ripples: StopRipple[] = [];
 
     const resize = () => {
       const rect = host.getBoundingClientRect();
@@ -179,15 +222,62 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
 
     const project = (pt: HeroPoint): [number, number] => {
       const scale = getScale();
-      const targetMidX = width * 0.5;
-      const targetMidY = width >= 960 ? height * 0.45 : height * 0.46;
+      const targetMidX = width * 0.5 + panX;
+      const targetMidY = (width >= 960 ? height * 0.45 : height * 0.46) + panY;
       return [
         targetMidX + (pt[0] - ROUTE_MID[0]) * scale,
         targetMidY + (pt[1] - ROUTE_MID[1]) * scale,
       ];
     };
 
+    const unproject = (sx: number, sy: number): [number, number] => {
+      const scale = getScale();
+      const targetMidX = width * 0.5 + panX;
+      const targetMidY = (width >= 960 ? height * 0.45 : height * 0.46) + panY;
+      return [ROUTE_MID[0] + (sx - targetMidX) / scale, ROUTE_MID[1] + (sy - targetMidY) / scale];
+    };
+
     const drawFrame = (now: number) => {
+      const dt = Math.min(0.05, Math.max(0.001, (now - lastFrameAt) / 1000));
+      lastFrameAt = now;
+
+      if (reduced.matches) {
+        hoverAlpha = 0;
+        panX = 0;
+        panY = 0;
+        ripples.length = 0;
+      } else {
+        const wasInactive = hoverAlpha < 0.01;
+        const targetAlpha = pointerActive ? pointerTargetFade : 0;
+        const alphaRate = pointerActive ? 7.5 : 4.2;
+        hoverAlpha += (targetAlpha - hoverAlpha) * (1 - Math.exp(-dt * alphaRate));
+        if (hoverAlpha < 0.002 && !pointerActive) hoverAlpha = 0;
+
+        if (pointerActive) {
+          if (wasInactive) {
+            smoothX = pointerTargetX;
+            smoothY = pointerTargetY;
+          } else {
+            const follow = 1 - Math.exp(-dt * 12);
+            smoothX += (pointerTargetX - smoothX) * follow;
+            smoothY += (pointerTargetY - smoothY) * follow;
+          }
+        }
+
+        const allowParallax = width >= 768 && hoverAlpha > 0.002;
+        const nx = allowParallax ? Math.max(-1, Math.min(1, (smoothX / width) * 2 - 1)) : 0;
+        const ny = allowParallax ? Math.max(-1, Math.min(1, (smoothY / height) * 2 - 1)) : 0;
+        const targetPanX = -nx * 11 * hoverAlpha;
+        const targetPanY = -ny * 7 * hoverAlpha;
+        const panFollow = 1 - Math.exp(-dt * 4.5);
+        panX += (targetPanX - panX) * panFollow;
+        panY += (targetPanY - panY) * panFollow;
+        if (!pointerActive && Math.abs(panX) < 0.02 && Math.abs(panY) < 0.02) {
+          panX = 0;
+          panY = 0;
+        }
+      }
+
       const cycleSec = 14.0;
       const elapsed = reduced.matches ? 6.8 : ((now - startTime) / 1000) % cycleSec;
 
@@ -197,6 +287,27 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
       const scale = getScale();
       const [ox, oy] = project(origin.pt);
       const [dx, dy] = project(DEST_PT);
+      const lensRadius = width >= 960 ? 195 : 150;
+      const hoverVisible = !reduced.matches && hoverAlpha > 0.005;
+      const [mapCx, mapCy] = hoverVisible ? unproject(smoothX, smoothY) : [0, 0];
+
+      // Bliskość kursora do trasy Tramwaju 7 i punktów końcowych dla spójnego sprzężenia wizualnego.
+      let routeProximity = 0;
+      let originProximity = 0;
+      let destProximity = 0;
+      if (hoverVisible) {
+        let minRouteDistSq = Infinity;
+        for (let i = 1; i < journeyRide.length; i++) {
+          const a = journeyRide[i - 1];
+          const b = journeyRide[i];
+          const dSq = distSqToSegment(mapCx, mapCy, a[0], a[1], b[0], b[1]);
+          if (dSq < minRouteDistSq) minRouteDistSq = dSq;
+        }
+        const routeDistPx = Math.sqrt(minRouteDistSq) * scale;
+        routeProximity = easeOutCubic(clamp01(1 - routeDistPx / 105));
+        originProximity = easeOutCubic(clamp01(1 - Math.hypot(smoothX - ox, smoothY - oy) / 115));
+        destProximity = easeOutCubic(clamp01(1 - Math.hypot(smoothX - dx, smoothY - dy) / 115));
+      }
 
       // Cycle choreography:
       // 0.0 - 0.55s : Origin beacon charges at Sky Tower
@@ -210,12 +321,8 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
 
       const waveProgress = reduced.matches ? 1 : easeOutCubic(clamp01((elapsed - 0.35) / 4.2));
       const waveRadius = waveProgress * 680;
-      const destHitT = reduced.matches
-        ? 1
-        : clamp01((waveRadius - DIST_TO_DEST + 16) / 68);
-      const routeDrawT = reduced.matches
-        ? 1
-        : easeInOutCubic(clamp01((elapsed - 2.05) / 1.65));
+      const destHitT = reduced.matches ? 1 : clamp01((waveRadius - DIST_TO_DEST + 16) / 68);
+      const routeDrawT = reduced.matches ? 1 : easeInOutCubic(clamp01((elapsed - 2.05) / 1.65));
 
       // Calm the explored background once the winning route locks in so the route dominates.
       const networkCalm = 1 - routeDrawT * 0.38;
@@ -235,6 +342,17 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
+      // Subtelna kartograficzna poświata pod kursorem, przytłumiona w centrum przez warstwę scrim.
+      if (hoverVisible) {
+        const bloomR = lensRadius * 1.3;
+        const hoverBg = ctx.createRadialGradient(smoothX, smoothY, 0, smoothX, smoothY, bloomR);
+        hoverBg.addColorStop(0, `rgba(54, 178, 146, ${(0.075 * hoverAlpha).toFixed(4)})`);
+        hoverBg.addColorStop(0.52, `rgba(28, 96, 78, ${(0.032 * hoverAlpha).toFixed(4)})`);
+        hoverBg.addColorStop(1, 'rgba(9, 14, 11, 0)');
+        ctx.fillStyle = hoverBg;
+        ctx.fillRect(0, 0, width, height);
+      }
+
       // 2. Oder river channel (crisp dark water silhouette, no synthetic diagonal grid)
       const drawRiver = (pts: readonly HeroPoint[], riverW: number) => {
         ctx.save();
@@ -253,6 +371,23 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
         ctx.strokeStyle = 'rgba(72, 148, 166, 0.1)';
         ctx.lineWidth = 1;
         ctx.stroke();
+
+        if (hoverVisible) {
+          const riverGlint = ctx.createRadialGradient(
+            smoothX,
+            smoothY,
+            0,
+            smoothX,
+            smoothY,
+            lensRadius * 1.08,
+          );
+          riverGlint.addColorStop(0, `rgba(118, 206, 224, ${(0.22 * hoverAlpha).toFixed(4)})`);
+          riverGlint.addColorStop(0.55, `rgba(76, 162, 182, ${(0.08 * hoverAlpha).toFixed(4)})`);
+          riverGlint.addColorStop(1, 'rgba(72, 148, 166, 0)');
+          ctx.strokeStyle = riverGlint;
+          ctx.lineWidth = 1.45;
+          ctx.stroke();
+        }
         ctx.restore();
       };
       drawRiver(ODER_CHANNEL, Math.max(14, scale * 11));
@@ -285,13 +420,110 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
+      // Soczewka sieci tranzytowej: radialny gradient na jednym Path2D daje gładki blask bez przepaleń na wspólnych torowiskach.
+      if (hoverVisible) {
+        const mapR = (lensRadius + 24) / scale;
+        const minX = mapCx - mapR;
+        const maxX = mapCx + mapR;
+        const minY = mapCy - mapR;
+        const maxY = mapCy + mapR;
+
+        let hasBus = false;
+        ctx.beginPath();
+        for (const seg of SEGMENTS) {
+          if (seg.mode !== 'bus') continue;
+          if (
+            (seg.from[0] < minX && seg.to[0] < minX) ||
+            (seg.from[0] > maxX && seg.to[0] > maxX) ||
+            (seg.from[1] < minY && seg.to[1] < minY) ||
+            (seg.from[1] > maxY && seg.to[1] > maxY)
+          ) {
+            continue;
+          }
+          const [ax, ay] = project(seg.from);
+          const [bx, by] = project(seg.to);
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          hasBus = true;
+        }
+        if (hasBus) {
+          const busGrad = ctx.createRadialGradient(
+            smoothX,
+            smoothY,
+            0,
+            smoothX,
+            smoothY,
+            lensRadius,
+          );
+          busGrad.addColorStop(0, `rgba(156, 212, 236, ${(0.24 * hoverAlpha).toFixed(4)})`);
+          busGrad.addColorStop(0.55, `rgba(124, 184, 212, ${(0.1 * hoverAlpha).toFixed(4)})`);
+          busGrad.addColorStop(1, 'rgba(116, 178, 208, 0)');
+          ctx.strokeStyle = busGrad;
+          ctx.lineWidth = 1.45;
+          ctx.stroke();
+        }
+
+        let hasTram = false;
+        ctx.beginPath();
+        for (const seg of SEGMENTS) {
+          if (seg.mode !== 'tram') continue;
+          if (
+            (seg.from[0] < minX && seg.to[0] < minX) ||
+            (seg.from[0] > maxX && seg.to[0] > maxX) ||
+            (seg.from[1] < minY && seg.to[1] < minY) ||
+            (seg.from[1] > maxY && seg.to[1] > maxY)
+          ) {
+            continue;
+          }
+          const [ax, ay] = project(seg.from);
+          const [bx, by] = project(seg.to);
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          hasTram = true;
+        }
+        if (hasTram) {
+          const tramHalo = ctx.createRadialGradient(
+            smoothX,
+            smoothY,
+            0,
+            smoothX,
+            smoothY,
+            lensRadius,
+          );
+          tramHalo.addColorStop(0, `rgba(92, 219, 190, ${(0.12 * hoverAlpha).toFixed(4)})`);
+          tramHalo.addColorStop(0.5, `rgba(92, 219, 190, ${(0.045 * hoverAlpha).toFixed(4)})`);
+          tramHalo.addColorStop(1, 'rgba(92, 219, 190, 0)');
+          ctx.strokeStyle = tramHalo;
+          ctx.lineWidth = 5.4;
+          ctx.stroke();
+
+          const tramCore = ctx.createRadialGradient(
+            smoothX,
+            smoothY,
+            0,
+            smoothX,
+            smoothY,
+            lensRadius,
+          );
+          tramCore.addColorStop(0, `rgba(174, 250, 228, ${(0.42 * hoverAlpha).toFixed(4)})`);
+          tramCore.addColorStop(0.48, `rgba(104, 226, 196, ${(0.2 * hoverAlpha).toFixed(4)})`);
+          tramCore.addColorStop(1, 'rgba(92, 219, 190, 0)');
+          ctx.strokeStyle = tramCore;
+          ctx.lineWidth = 1.85;
+          ctx.stroke();
+        }
+      }
+
       // 4. Outward route-calculation wave expanding segment-by-segment strictly from Sky Tower
       if (waveRadius > 2 && masterAlpha > 0.01) {
         // Settled explored corridors (batched for crisp 60fps performance)
         ctx.beginPath();
         for (const seg of SEGMENTS) {
           if (seg.dFrom >= waveRadius) continue;
-          const t = seg.dTo <= waveRadius ? 1 : (waveRadius - seg.dFrom) / Math.max(0.001, seg.dTo - seg.dFrom);
+          const t =
+            seg.dTo <= waveRadius
+              ? 1
+              : (waveRadius - seg.dFrom) / Math.max(0.001, seg.dTo - seg.dFrom);
           const [ax, ay] = project(seg.from);
           const [bx, by] = project([
             seg.from[0] + (seg.to[0] - seg.from[0]) * t,
@@ -352,6 +584,115 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
               ? `rgba(220, 255, 246, ${((0.24 + flash * 0.68) * masterAlpha).toFixed(3)})`
               : `rgba(92, 219, 190, ${(0.22 * networkCalm * masterAlpha).toFixed(3)})`;
           ctx.fill();
+        }
+      }
+
+      // Przystanki budzące się w zasięgu kursora oraz delikatny pierścień na najbliższym węźle.
+      if (hoverVisible || ripples.length > 0) {
+        const snapRadius = 68;
+        let nearestPt: HeroPoint | null = null;
+        let nearestDist = snapRadius;
+        let nearestKey: string | null = null;
+        let nearestIsRoute = false;
+
+        if (hoverVisible) {
+          for (let i = 0; i < stops.length; i++) {
+            const pt = stops[i];
+            const [sx, sy] = project(pt);
+            const dist = Math.hypot(sx - smoothX, sy - smoothY);
+            if (dist < lensRadius) {
+              const falloff = Math.pow(1 - dist / lensRadius, 1.55);
+              ctx.beginPath();
+              ctx.arc(sx, sy, 1.25 + falloff * 2.05, 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(196, 252, 238, ${(0.56 * falloff * hoverAlpha).toFixed(3)})`;
+              ctx.fill();
+            }
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestPt = pt;
+              nearestKey = `s:${i}`;
+              nearestIsRoute = false;
+            }
+          }
+
+          if (routeDrawT > 0.15 && masterAlpha > 0.1) {
+            for (let i = 0; i < journeyStops.length; i++) {
+              const stopThreshold = i / Math.max(1, journeyStops.length - 1);
+              if (routeDrawT < stopThreshold) continue;
+              const pt = journeyStops[i].pt;
+              const [sx, sy] = project(pt);
+              const dist = Math.hypot(sx - smoothX, sy - smoothY);
+              if (dist < Math.min(snapRadius, nearestDist + 10)) {
+                nearestDist = dist;
+                nearestPt = pt;
+                nearestKey = `r:${i}`;
+                nearestIsRoute = true;
+              }
+            }
+          }
+
+          if (nearestPt && nearestKey && nearestKey !== lastSnapKey) {
+            const lastForStop = lastRippleByStop.get(nearestKey) ?? 0;
+            if (pointerActive && now - lastRippleAt > 140 && now - lastForStop > 1300) {
+              ripples.push({ pt: nearestPt, startedAt: now, isRoute: nearestIsRoute });
+              if (ripples.length > 5) ripples.shift();
+              lastRippleAt = now;
+              lastRippleByStop.set(nearestKey, now);
+            }
+            lastSnapKey = nearestKey;
+          } else if (!nearestKey) {
+            lastSnapKey = null;
+          }
+        }
+
+        // Krótkie impulsy przystankowe kończą animację płynnie nawet po przesunięciu kursora.
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          const ripple = ripples[i];
+          const progress = (now - ripple.startedAt) / 680;
+          if (progress >= 1) {
+            ripples.splice(i, 1);
+            continue;
+          }
+          const [rx, ry] = project(ripple.pt);
+          const eased = easeOutCubic(progress);
+          const alpha = (1 - progress) * (1 - progress) * 0.34;
+          ctx.beginPath();
+          ctx.arc(rx, ry, 5.5 + eased * 24, 0, Math.PI * 2);
+          ctx.strokeStyle = ripple.isRoute
+            ? `rgba(255, 194, 86, ${alpha.toFixed(3)})`
+            : `rgba(148, 244, 218, ${alpha.toFixed(3)})`;
+          ctx.lineWidth = 1.25;
+          ctx.stroke();
+        }
+
+        if (hoverVisible && nearestPt) {
+          const [nx, ny] = project(nearestPt);
+          const snapStrength = easeOutCubic(clamp01(1 - nearestDist / snapRadius)) * hoverAlpha;
+          if (snapStrength > 0.02) {
+            ctx.beginPath();
+            ctx.arc(nx, ny, 9.5 + snapStrength * 5.5, 0, Math.PI * 2);
+            ctx.fillStyle = nearestIsRoute
+              ? `rgba(255, 184, 58, ${(0.18 * snapStrength).toFixed(3)})`
+              : `rgba(92, 219, 190, ${(0.14 * snapStrength).toFixed(3)})`;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(nx, ny, 4 + snapStrength * 1.4, 0, Math.PI * 2);
+            ctx.fillStyle = '#090e0b';
+            ctx.fill();
+            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = nearestIsRoute
+              ? `rgba(255, 196, 88, ${(0.92 * snapStrength).toFixed(3)})`
+              : `rgba(142, 240, 212, ${(0.88 * snapStrength).toFixed(3)})`;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(nx, ny, 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = nearestIsRoute
+              ? `rgba(255, 246, 224, ${(0.95 * snapStrength).toFixed(3)})`
+              : `rgba(232, 255, 248, ${(0.92 * snapStrength).toFixed(3)})`;
+            ctx.fill();
+          }
         }
       }
 
@@ -439,10 +780,12 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
           });
         };
 
+        const routeBoost = routeProximity * hoverAlpha;
+
         // Soft warm amber glow halo
         traceRoute();
-        ctx.strokeStyle = `rgba(255, 179, 56, ${(0.24 * masterAlpha).toFixed(3)})`;
-        ctx.lineWidth = 18;
+        ctx.strokeStyle = `rgba(255, 179, 56, ${((0.24 + routeBoost * 0.14) * masterAlpha).toFixed(3)})`;
+        ctx.lineWidth = 18 + routeBoost * 5;
         ctx.stroke();
 
         // Dark obsidian casing so crossing background transit lines never muddy the route
@@ -454,13 +797,13 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
         // Vivid high-contrast transit amber core (separates instantly from teal/slate network)
         traceRoute();
         ctx.strokeStyle = `rgba(255, 184, 58, ${(0.98 * masterAlpha).toFixed(3)})`;
-        ctx.lineWidth = 4.4;
+        ctx.lineWidth = 4.4 + routeBoost * 0.55;
         ctx.stroke();
 
         // Razor-sharp inner champagne highlight
         traceRoute();
-        ctx.strokeStyle = `rgba(255, 246, 224, ${(0.88 * masterAlpha).toFixed(3)})`;
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = `rgba(255, 246, 224, ${(Math.min(1, 0.88 + routeBoost * 0.12) * masterAlpha).toFixed(3)})`;
+        ctx.lineWidth = 1.4 + routeBoost * 0.35;
         ctx.stroke();
 
         // Route stops along Tram 7
@@ -545,9 +888,7 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
         }
 
         // 9. Gliding live tram beacon with luminous tail along the amber route
-        const vehiclePhase = reduced.matches
-          ? 0.58
-          : clamp01((elapsed - 3.35) / 8.0);
+        const vehiclePhase = reduced.matches ? 0.58 : clamp01((elapsed - 3.35) / 8.0);
         if (vehiclePhase > 0 && vehiclePhase < 1) {
           const headT = easeInOutCubic(vehiclePhase);
           const tailStart = Math.max(0, headT - 0.14);
@@ -646,7 +987,7 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
             originLabel,
             'right',
             '#5cdbbe',
-            'rgba(92, 219, 190, 0.42)',
+            `rgba(92, 219, 190, ${(0.42 + originProximity * hoverAlpha * 0.36).toFixed(3)})`,
             masterAlpha,
           );
 
@@ -657,27 +998,69 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
             destinationLabel,
             'left',
             '#ffb638',
-            'rgba(255, 184, 58, 0.48)',
+            `rgba(255, 184, 58, ${(0.48 + destProximity * hoverAlpha * 0.34).toFixed(3)})`,
             destLabelAlpha,
           );
         }
       }
 
-      if (!reduced.matches && visible) {
+      if (!reduced.matches && visible && !document.hidden) {
         raf = requestAnimationFrame(drawFrame);
       }
     };
 
     const start = () => {
       cancelAnimationFrame(raf);
+      lastFrameAt = performance.now();
       raf = requestAnimationFrame(drawFrame);
+    };
+
+    // Nasłuch na całej sekcji hero, bo warstwa mapy ma pointer-events: none pod tekstem i nawigacją.
+    const interactionHost = host.closest('.hero-release') ?? host.parentElement ?? host;
+
+    const handlePointerMove = (event: Event) => {
+      if (reduced.matches) return;
+      const pe = event as PointerEvent;
+      if (pe.pointerType === 'touch') return;
+      const rect = host.getBoundingClientRect();
+      const x = pe.clientX - rect.left;
+      const y = pe.clientY - rect.top;
+      if (x < -48 || x > rect.width + 48 || y < -48 || y > rect.height + 48) {
+        pointerActive = false;
+        return;
+      }
+      pointerTargetX = x;
+      pointerTargetY = y;
+      // Miękkie wygaszanie przy przejściu kursora niżej na makietę telefonów.
+      const fadeStart = rect.height * 0.78;
+      const fadeEnd = rect.height * 1.02;
+      pointerTargetFade =
+        y <= fadeStart ? 1 : clamp01(1 - (y - fadeStart) / Math.max(1, fadeEnd - fadeStart));
+      pointerActive = pointerTargetFade > 0.01;
+    };
+
+    const clearPointer = () => {
+      pointerActive = false;
+      pointerTargetFade = 0;
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearPointer();
+        cancelAnimationFrame(raf);
+      } else if (visible) {
+        start();
+      }
     };
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         visible = entry.isIntersecting;
-        if (visible) start();
-        else cancelAnimationFrame(raf);
+        if (visible && !document.hidden) start();
+        else {
+          clearPointer();
+          cancelAnimationFrame(raf);
+        }
       },
       { threshold: 0.01 },
     );
@@ -690,6 +1073,10 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
     resize();
     observer.observe(host);
     resizeObserver.observe(host);
+    interactionHost.addEventListener('pointermove', handlePointerMove, { passive: true });
+    interactionHost.addEventListener('pointerleave', clearPointer);
+    window.addEventListener('blur', clearPointer);
+    document.addEventListener('visibilitychange', handleVisibility);
     reduced.addEventListener('change', start);
     start();
 
@@ -697,6 +1084,10 @@ export function HeroMapStage({ originLabel, destinationLabel }: HeroMapStageProp
       cancelAnimationFrame(raf);
       observer.disconnect();
       resizeObserver.disconnect();
+      interactionHost.removeEventListener('pointermove', handlePointerMove);
+      interactionHost.removeEventListener('pointerleave', clearPointer);
+      window.removeEventListener('blur', clearPointer);
+      document.removeEventListener('visibilitychange', handleVisibility);
       reduced.removeEventListener('change', start);
     };
   }, [originLabel, destinationLabel]);

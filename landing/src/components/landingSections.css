@@ -54,6 +54,8 @@
     padding-block: clamp(72px, 10vw, 136px) clamp(68px, 9vw, 120px);
     background: linear-gradient(180deg, var(--bg) 0%, #0b110e 100%);
     border-top: 1px solid rgb(255 255 255 / 7%);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 560px;
   }
   .promise-inner {
     width: min(1040px, calc(100% - 48px));

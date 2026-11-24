@@ -48,10 +48,7 @@ export function Hero() {
 
   return (
     <section className="hero-release" aria-labelledby="hero-title">
-      <HeroMapStage
-        originLabel={copy.hero.mapOrigin}
-        destinationLabel={copy.hero.mapDestination}
-      />
+      <HeroMapStage originLabel={copy.hero.mapOrigin} destinationLabel={copy.hero.mapDestination} />
 
       <header className="release-nav">
         <a className="release-brand" href="#top">
@@ -62,10 +59,10 @@ export function Hero() {
             height="28"
             alt=""
             aria-hidden="true"
+            decoding="async"
           />
           <span>Kilometr</span>
         </a>
-
       </header>
 
       <div className="hero-content">
@@ -95,7 +92,8 @@ export function Hero() {
                 alt=""
                 width="720"
                 height="1600"
-                loading="eager"
+                loading="lazy"
+                fetchPriority="low"
                 decoding="async"
               />
             </Phone>
@@ -123,7 +121,8 @@ export function Hero() {
                 alt=""
                 width="720"
                 height="1600"
-                loading="eager"
+                loading="lazy"
+                fetchPriority="low"
                 decoding="async"
               />
             </Phone>

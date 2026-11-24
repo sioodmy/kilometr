@@ -132,10 +132,9 @@ export function ReleaseShowcase() {
     }
     const el = storyIgRef.current;
     if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setStoryInView(entry.isIntersecting),
-      { threshold: 0.35 },
-    );
+    const observer = new IntersectionObserver(([entry]) => setStoryInView(entry.isIntersecting), {
+      threshold: 0.35,
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, [isMobile]);
@@ -262,192 +261,202 @@ export function ReleaseShowcase() {
           </div>
 
           <div className="story-grid" ref={storyRef}>
-            {/* Desktop sticky split choreography */}
-            <div className="story-beats">
-              {copy.story.chapters.map((chapter, idx) => (
-                <article
-                  key={chapter.id}
-                  data-story-beat={idx}
-                  className={idx === storyBeat ? 'story-beat is-active' : 'story-beat'}
-                >
-                  <div className="story-beat-meta">
-                    <span className="story-beat-num">{chapter.number}</span>
-                  </div>
-                  <h3 className="story-beat-title">{chapter.title}</h3>
-                  <p className="story-beat-body">{chapter.body}</p>
-                </article>
-              ))}
-            </div>
-
-            <div className="story-sticky-col" aria-live="polite">
-              <div className="story-sticky-frame">
-                <div className="story-sticky-glow" aria-hidden="true" />
-                <Phone label={activeChapter.alt} statusTime={activeChapter.statusTime}>
-                  <div className="pixel-slide-stack">
-                    {copy.story.chapters.map((chapter, idx) => (
-                      <img
-                        key={chapter.id}
-                        className={
-                          idx === storyBeat
-                            ? 'pixel-slide pixel-shot is-active'
-                            : 'pixel-slide pixel-shot'
-                        }
-                        src={chapter.shot}
-                        alt={idx === storyBeat ? chapter.alt : ''}
-                        width="720"
-                        height="1600"
-                        loading={idx === 0 ? 'eager' : 'lazy'}
-                        decoding="async"
-                      />
-                    ))}
-                  </div>
-                </Phone>
-                <div className="story-progress-rails" aria-hidden="true">
+            {!isMobile ? (
+              <>
+                {/* Desktop sticky split choreography */}
+                <div className="story-beats">
                   {copy.story.chapters.map((chapter, idx) => (
-                    <span
+                    <article
                       key={chapter.id}
-                      className={idx === storyBeat ? 'story-rail-dot is-active' : 'story-rail-dot'}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Mobile full-height Instagram Stories view */}
-            <div
-              className={`story-ig${storyPaused ? ' is-paused' : ''}${storyInView ? ' is-in-view' : ''}`}
-              ref={storyIgRef}
-              onTouchStart={handleStoryTouchStart}
-              onTouchMove={handleStoryTouchMove}
-              onTouchEnd={handleStoryTouchEnd}
-              onTouchCancel={() => {
-                if (holdTimerRef.current !== undefined) {
-                  window.clearTimeout(holdTimerRef.current);
-                  holdTimerRef.current = undefined;
-                }
-                setStoryPaused(false);
-              }}
-            >
-              <div className="story-ig-top">
-                <div className="story-ig-bars" role="tablist" aria-label={copy.story.title}>
-                  {copy.story.chapters.map((chapter, idx) => (
-                    <button
-                      key={chapter.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={idx === storyBeat}
-                      aria-label={`${chapter.number} ${chapter.tag}`}
-                      className="story-ig-bar-btn"
-                      onClick={() => goStory(idx)}
+                      data-story-beat={idx}
+                      className={idx === storyBeat ? 'story-beat is-active' : 'story-beat'}
                     >
-                      <span className="story-ig-bar-track">
-                        <span
-                          key={idx === storyBeat ? `${chapter.id}-${storyResetTick}` : chapter.id}
-                          className={
-                            idx < storyBeat
-                              ? 'story-ig-bar-fill is-done'
-                              : idx === storyBeat
-                                ? 'story-ig-bar-fill is-active'
-                                : 'story-ig-bar-fill'
-                          }
-                          style={
-                            idx === storyBeat
-                              ? { animationDuration: `${STORY_DURATION_MS}ms` }
-                              : undefined
-                          }
-                        />
-                      </span>
-                    </button>
+                      <div className="story-beat-meta">
+                        <span className="story-beat-num">{chapter.number}</span>
+                      </div>
+                      <h3 className="story-beat-title">{chapter.title}</h3>
+                      <p className="story-beat-body">{chapter.body}</p>
+                    </article>
                   ))}
                 </div>
 
-                <div className="story-ig-header">
-                  <div className="story-ig-identity">
-                    <img
-                      className="story-ig-avatar"
-                      src="./icon.png"
-                      alt=""
-                      width="28"
-                      height="28"
-                    />
-                    <span className="story-ig-tag">{activeChapter.tag}</span>
-                    <span className="story-ig-step">
-                      {activeChapter.number} / 0{storyCount}
-                    </span>
-                  </div>
-
-                  <div className="story-ig-nav">
-                    <button
-                      type="button"
-                      className="story-ig-nav-btn"
-                      aria-label={copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
-                      onClick={() => goStory(storyBeat - 1)}
-                    >
-                      <ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="story-ig-nav-btn"
-                      aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
-                      onClick={() => goStory(storyBeat + 1)}
-                    >
-                      <ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="story-ig-stage">
-                <div className="story-ig-glow" aria-hidden="true" />
-                <div className="story-ig-phone-wrap">
-                  <Phone label={activeChapter.alt} statusTime={activeChapter.statusTime}>
-                    <div className="pixel-slide-stack">
+                <div className="story-sticky-col" aria-live="polite">
+                  <div className="story-sticky-frame">
+                    <div className="story-sticky-glow" aria-hidden="true" />
+                    <Phone label={activeChapter.alt} statusTime={activeChapter.statusTime}>
+                      <div className="pixel-slide-stack">
+                        {copy.story.chapters.map((chapter, idx) => (
+                          <img
+                            key={chapter.id}
+                            className={
+                              idx === storyBeat
+                                ? 'pixel-slide pixel-shot is-active'
+                                : 'pixel-slide pixel-shot'
+                            }
+                            src={chapter.shot}
+                            alt={idx === storyBeat ? chapter.alt : ''}
+                            width="720"
+                            height="1600"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ))}
+                      </div>
+                    </Phone>
+                    <div className="story-progress-rails" aria-hidden="true">
                       {copy.story.chapters.map((chapter, idx) => (
-                        <img
+                        <span
                           key={chapter.id}
                           className={
-                            idx === storyBeat
-                              ? 'pixel-slide pixel-shot is-active'
-                              : 'pixel-slide pixel-shot'
+                            idx === storyBeat ? 'story-rail-dot is-active' : 'story-rail-dot'
                           }
-                          src={chapter.shot}
-                          alt={idx === storyBeat ? chapter.alt : ''}
-                          width="720"
-                          height="1600"
-                          loading={idx === 0 ? 'eager' : 'lazy'}
-                          decoding="async"
                         />
                       ))}
                     </div>
-                  </Phone>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Mobile full-height Instagram Stories view */
+              <div
+                className={`story-ig${storyPaused ? ' is-paused' : ''}${storyInView ? ' is-in-view' : ''}`}
+                ref={storyIgRef}
+                onTouchStart={handleStoryTouchStart}
+                onTouchMove={handleStoryTouchMove}
+                onTouchEnd={handleStoryTouchEnd}
+                onTouchCancel={() => {
+                  if (holdTimerRef.current !== undefined) {
+                    window.clearTimeout(holdTimerRef.current);
+                    holdTimerRef.current = undefined;
+                  }
+                  setStoryPaused(false);
+                }}
+              >
+                <div className="story-ig-top">
+                  <div className="story-ig-bars" role="tablist" aria-label={copy.story.title}>
+                    {copy.story.chapters.map((chapter, idx) => (
+                      <button
+                        key={chapter.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={idx === storyBeat}
+                        aria-label={`${chapter.number} ${chapter.tag}`}
+                        className="story-ig-bar-btn"
+                        onClick={() => goStory(idx)}
+                      >
+                        <span className="story-ig-bar-track">
+                          <span
+                            key={idx === storyBeat ? `${chapter.id}-${storyResetTick}` : chapter.id}
+                            className={
+                              idx < storyBeat
+                                ? 'story-ig-bar-fill is-done'
+                                : idx === storyBeat
+                                  ? 'story-ig-bar-fill is-active'
+                                  : 'story-ig-bar-fill'
+                            }
+                            style={
+                              idx === storyBeat
+                                ? { animationDuration: `${STORY_DURATION_MS}ms` }
+                                : undefined
+                            }
+                          />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="story-ig-header">
+                    <div className="story-ig-identity">
+                      <img
+                        className="story-ig-avatar"
+                        src="./icon.png"
+                        alt=""
+                        width="28"
+                        height="28"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <span className="story-ig-tag">{activeChapter.tag}</span>
+                      <span className="story-ig-step">
+                        {activeChapter.number} / 0{storyCount}
+                      </span>
+                    </div>
+
+                    <div className="story-ig-nav">
+                      <button
+                        type="button"
+                        className="story-ig-nav-btn"
+                        aria-label={
+                          copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag
+                        }
+                        onClick={() => goStory(storyBeat - 1)}
+                      >
+                        <ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="story-ig-nav-btn"
+                        aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
+                        onClick={() => goStory(storyBeat + 1)}
+                      >
+                        <ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Instagram-style invisible left/right tap zones */}
-                <button
-                  type="button"
-                  className="story-ig-tap story-ig-tap-prev"
-                  aria-label={copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
-                  onClick={() => {
-                    if (!wasHeldRef.current) goStory(storyBeat - 1);
-                  }}
-                />
-                <button
-                  type="button"
-                  className="story-ig-tap story-ig-tap-next"
-                  aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
-                  onClick={() => {
-                    if (!wasHeldRef.current) goStory(storyBeat + 1);
-                  }}
-                />
-              </div>
+                <div className="story-ig-stage">
+                  <div className="story-ig-glow" aria-hidden="true" />
+                  <div className="story-ig-phone-wrap">
+                    <Phone label={activeChapter.alt} statusTime={activeChapter.statusTime}>
+                      <div className="pixel-slide-stack">
+                        {copy.story.chapters.map((chapter, idx) => (
+                          <img
+                            key={chapter.id}
+                            className={
+                              idx === storyBeat
+                                ? 'pixel-slide pixel-shot is-active'
+                                : 'pixel-slide pixel-shot'
+                            }
+                            src={chapter.shot}
+                            alt={idx === storyBeat ? chapter.alt : ''}
+                            width="720"
+                            height="1600"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ))}
+                      </div>
+                    </Phone>
+                  </div>
 
-              <div className="story-ig-caption" aria-live="polite">
-                <div key={activeChapter.id} className="story-ig-caption-inner">
-                  <h3 className="story-ig-title">{activeChapter.title}</h3>
-                  <p className="story-ig-body">{activeChapter.body}</p>
+                  {/* Instagram-style invisible left/right tap zones */}
+                  <button
+                    type="button"
+                    className="story-ig-tap story-ig-tap-prev"
+                    aria-label={copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
+                    onClick={() => {
+                      if (!wasHeldRef.current) goStory(storyBeat - 1);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="story-ig-tap story-ig-tap-next"
+                    aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
+                    onClick={() => {
+                      if (!wasHeldRef.current) goStory(storyBeat + 1);
+                    }}
+                  />
+                </div>
+
+                <div className="story-ig-caption" aria-live="polite">
+                  <div key={activeChapter.id} className="story-ig-caption-inner">
+                    <h3 className="story-ig-title">{activeChapter.title}</h3>
+                    <p className="story-ig-body">{activeChapter.body}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </section>
@@ -468,179 +477,191 @@ export function ReleaseShowcase() {
           </div>
 
           <div className="transfer-stage">
-            {/* Desktop side-by-side dual stage */}
-            <article className="transfer-column transfer-desktop-col">
-              <div className="transfer-phone-wrap">
-                <Phone label={copy.transfers.urbanAlts[urbanIdx]} statusTime="09:07">
-                  <div className="pixel-slide-stack">
+            {!isMobile ? (
+              <>
+                {/* Desktop side-by-side dual stage */}
+                <article className="transfer-column transfer-desktop-col">
+                  <div className="transfer-phone-wrap">
+                    <Phone label={copy.transfers.urbanAlts[urbanIdx]} statusTime="09:07">
+                      <div className="pixel-slide-stack">
+                        {URBAN_TRANSFER_SHOTS.map((src, idx) => (
+                          <img
+                            key={src}
+                            className={
+                              idx === urbanIdx
+                                ? 'pixel-slide pixel-shot is-active'
+                                : 'pixel-slide pixel-shot'
+                            }
+                            src={src}
+                            alt={idx === urbanIdx ? copy.transfers.urbanAlts[idx] : ''}
+                            width="720"
+                            height="1600"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ))}
+                      </div>
+                    </Phone>
+                  </div>
+                  <div className="transfer-beat-bar" aria-hidden="true">
                     {URBAN_TRANSFER_SHOTS.map((src, idx) => (
-                      <img
+                      <span
                         key={src}
                         className={
-                          idx === urbanIdx
-                            ? 'pixel-slide pixel-shot is-active'
-                            : 'pixel-slide pixel-shot'
+                          idx === urbanIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'
                         }
-                        src={src}
-                        alt={idx === urbanIdx ? copy.transfers.urbanAlts[idx] : ''}
-                        width="720"
-                        height="1600"
-                        loading="lazy"
-                        decoding="async"
                       />
                     ))}
                   </div>
-                </Phone>
-              </div>
-              <div className="transfer-beat-bar" aria-hidden="true">
-                {URBAN_TRANSFER_SHOTS.map((src, idx) => (
-                  <span
-                    key={src}
-                    className={idx === urbanIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'}
-                  />
-                ))}
-              </div>
-              <div className="transfer-text">
-                <h3>{copy.transfers.urbanTitle}</h3>
-                <p>{copy.transfers.urbanBody}</p>
-              </div>
-            </article>
+                  <div className="transfer-text">
+                    <h3>{copy.transfers.urbanTitle}</h3>
+                    <p>{copy.transfers.urbanBody}</p>
+                  </div>
+                </article>
 
-            <article className="transfer-column transfer-desktop-col">
-              <div className="transfer-phone-wrap">
-                <Phone
-                  label={copy.transfers.railAlts[railIdx]}
-                  statusTime={railIdx === 1 ? '09:32' : '09:07'}
-                >
-                  <div className="pixel-slide-stack">
+                <article className="transfer-column transfer-desktop-col">
+                  <div className="transfer-phone-wrap">
+                    <Phone
+                      label={copy.transfers.railAlts[railIdx]}
+                      statusTime={railIdx === 1 ? '09:32' : '09:07'}
+                    >
+                      <div className="pixel-slide-stack">
+                        {RAIL_TRANSFER_SHOTS.map((src, idx) => (
+                          <img
+                            key={src}
+                            className={
+                              idx === railIdx
+                                ? 'pixel-slide pixel-shot is-active'
+                                : 'pixel-slide pixel-shot'
+                            }
+                            src={src}
+                            alt={idx === railIdx ? copy.transfers.railAlts[idx] : ''}
+                            width="720"
+                            height="1600"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ))}
+                      </div>
+                    </Phone>
+                  </div>
+                  <div className="transfer-beat-bar" aria-hidden="true">
                     {RAIL_TRANSFER_SHOTS.map((src, idx) => (
-                      <img
+                      <span
                         key={src}
                         className={
-                          idx === railIdx
-                            ? 'pixel-slide pixel-shot is-active'
-                            : 'pixel-slide pixel-shot'
+                          idx === railIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'
                         }
-                        src={src}
-                        alt={idx === railIdx ? copy.transfers.railAlts[idx] : ''}
-                        width="720"
-                        height="1600"
-                        loading="lazy"
-                        decoding="async"
                       />
                     ))}
                   </div>
-                </Phone>
-              </div>
-              <div className="transfer-beat-bar" aria-hidden="true">
-                {RAIL_TRANSFER_SHOTS.map((src, idx) => (
-                  <span
-                    key={src}
-                    className={idx === railIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'}
-                  />
-                ))}
-              </div>
-              <div className="transfer-text">
-                <h3>{copy.transfers.railTitle}</h3>
-                <p>{copy.transfers.railBody}</p>
-              </div>
-            </article>
-
-            {/* Mobile unified single-mock stage seamlessly combining urban & rail animations */}
-            <article className="transfer-column transfer-mobile-unified">
-              <div className="transfer-mode-switch" role="tablist" aria-label={copy.transfers.title}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeMobileGroup === 'urban'}
-                  className={
-                    activeMobileGroup === 'urban'
-                      ? 'transfer-mode-pill is-active'
-                      : 'transfer-mode-pill'
-                  }
-                  onClick={() => setMobileTransferIdx(0)}
-                >
-                  {copy.transfers.urbanLabel}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeMobileGroup === 'rail'}
-                  className={
-                    activeMobileGroup === 'rail'
-                      ? 'transfer-mode-pill is-active'
-                      : 'transfer-mode-pill'
-                  }
-                  onClick={() => setMobileTransferIdx(URBAN_TRANSFER_SHOTS.length)}
-                >
-                  {copy.transfers.railLabel}
-                </button>
-              </div>
-
-              <div className="transfer-phone-wrap">
-                <Phone label={activeMobileAlt} statusTime={activeMobileTransfer.statusTime}>
-                  <div className="pixel-slide-stack">
-                    {COMBINED_TRANSFER_FRAMES.map((frame, idx) => (
-                      <img
-                        key={frame.src}
-                        className={
-                          idx === mobileTransferIdx
-                            ? 'pixel-slide pixel-shot is-active'
-                            : 'pixel-slide pixel-shot'
-                        }
-                        src={frame.src}
-                        alt={idx === mobileTransferIdx ? activeMobileAlt : ''}
-                        width="720"
-                        height="1600"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ))}
+                  <div className="transfer-text">
+                    <h3>{copy.transfers.railTitle}</h3>
+                    <p>{copy.transfers.railBody}</p>
                   </div>
-                </Phone>
-              </div>
-
-              <div className="transfer-beat-bar transfer-beat-bar-unified" aria-hidden="true">
-                {COMBINED_TRANSFER_FRAMES.map((frame, idx) => (
-                  <span
-                    key={frame.src}
+                </article>
+              </>
+            ) : (
+              /* Mobile unified single-mock stage seamlessly combining urban & rail animations */
+              <article className="transfer-column transfer-mobile-unified">
+                <div
+                  className="transfer-mode-switch"
+                  role="tablist"
+                  aria-label={copy.transfers.title}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeMobileGroup === 'urban'}
                     className={
-                      idx === mobileTransferIdx
-                        ? 'transfer-bar-seg is-active'
-                        : frame.group === activeMobileGroup
-                          ? 'transfer-bar-seg is-group'
-                          : 'transfer-bar-seg'
+                      activeMobileGroup === 'urban'
+                        ? 'transfer-mode-pill is-active'
+                        : 'transfer-mode-pill'
                     }
-                  />
-                ))}
-              </div>
-
-              <div className="transfer-text transfer-text-crossfade">
-                <div
-                  className={
-                    activeMobileGroup === 'urban'
-                      ? 'transfer-text-pane is-active'
-                      : 'transfer-text-pane'
-                  }
-                  aria-hidden={activeMobileGroup !== 'urban'}
-                >
-                  <h3>{copy.transfers.urbanTitle}</h3>
-                  <p>{copy.transfers.urbanBody}</p>
+                    onClick={() => setMobileTransferIdx(0)}
+                  >
+                    {copy.transfers.urbanLabel}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeMobileGroup === 'rail'}
+                    className={
+                      activeMobileGroup === 'rail'
+                        ? 'transfer-mode-pill is-active'
+                        : 'transfer-mode-pill'
+                    }
+                    onClick={() => setMobileTransferIdx(URBAN_TRANSFER_SHOTS.length)}
+                  >
+                    {copy.transfers.railLabel}
+                  </button>
                 </div>
 
-                <div
-                  className={
-                    activeMobileGroup === 'rail'
-                      ? 'transfer-text-pane is-active'
-                      : 'transfer-text-pane'
-                  }
-                  aria-hidden={activeMobileGroup !== 'rail'}
-                >
-                  <h3>{copy.transfers.railTitle}</h3>
-                  <p>{copy.transfers.railBody}</p>
+                <div className="transfer-phone-wrap">
+                  <Phone label={activeMobileAlt} statusTime={activeMobileTransfer.statusTime}>
+                    <div className="pixel-slide-stack">
+                      {COMBINED_TRANSFER_FRAMES.map((frame, idx) => (
+                        <img
+                          key={frame.src}
+                          className={
+                            idx === mobileTransferIdx
+                              ? 'pixel-slide pixel-shot is-active'
+                              : 'pixel-slide pixel-shot'
+                          }
+                          src={frame.src}
+                          alt={idx === mobileTransferIdx ? activeMobileAlt : ''}
+                          width="720"
+                          height="1600"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ))}
+                    </div>
+                  </Phone>
                 </div>
-              </div>
-            </article>
+
+                <div className="transfer-beat-bar transfer-beat-bar-unified" aria-hidden="true">
+                  {COMBINED_TRANSFER_FRAMES.map((frame, idx) => (
+                    <span
+                      key={frame.src}
+                      className={
+                        idx === mobileTransferIdx
+                          ? 'transfer-bar-seg is-active'
+                          : frame.group === activeMobileGroup
+                            ? 'transfer-bar-seg is-group'
+                            : 'transfer-bar-seg'
+                      }
+                    />
+                  ))}
+                </div>
+
+                <div className="transfer-text transfer-text-crossfade">
+                  <div
+                    className={
+                      activeMobileGroup === 'urban'
+                        ? 'transfer-text-pane is-active'
+                        : 'transfer-text-pane'
+                    }
+                    aria-hidden={activeMobileGroup !== 'urban'}
+                  >
+                    <h3>{copy.transfers.urbanTitle}</h3>
+                    <p>{copy.transfers.urbanBody}</p>
+                  </div>
+
+                  <div
+                    className={
+                      activeMobileGroup === 'rail'
+                        ? 'transfer-text-pane is-active'
+                        : 'transfer-text-pane'
+                    }
+                    aria-hidden={activeMobileGroup !== 'rail'}
+                  >
+                    <h3>{copy.transfers.railTitle}</h3>
+                    <p>{copy.transfers.railBody}</p>
+                  </div>
+                </div>
+              </article>
+            )}
           </div>
         </div>
       </section>
