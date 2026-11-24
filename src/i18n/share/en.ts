@@ -112,4 +112,10 @@ export const en: ShareStrings = {
   invalidBody: 'The link is incomplete or damaged. Ask for the journey to be shared again.',
   home: 'Kilometr website',
   dayLater: (n) => `+${n} d`,
+  liveStatusNote: (time) => `Live delays updated at ${time}.`,
+  estimatedDelay: (min) => `Est. +${min} min`,
+  estimatedPositionLive: 'Position adjusted for current delay',
+  cancelledService: 'Cancelled',
+  scheduledTime: (time) => `scheduled ${time}`,
+  typicalDelayNote: (min) => `Usually about +${min} min at this hour`,
 };

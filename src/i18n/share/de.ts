@@ -119,4 +119,10 @@ export const de: ShareStrings = {
     'Der Link ist unvollständig oder beschädigt. Bitte darum, die Verbindung erneut zu teilen.',
   home: 'Kilometr-Website',
   dayLater: (n) => `+${n} T`,
+  liveStatusNote: (time) => `Live-Verspätungen (Stand ${time}).`,
+  estimatedDelay: (min) => `Gesch. +${min} Min.`,
+  estimatedPositionLive: 'Position an aktuelle Verspätung angepasst',
+  cancelledService: 'Fahrt fällt aus',
+  scheduledTime: (time) => `planmäßig ${time}`,
+  typicalDelayNote: (min) => `Üblich ca. +${min} Min. um diese Zeit`,
 };

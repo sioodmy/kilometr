@@ -44,6 +44,7 @@ import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
+import { RouteReliabilityCard } from '../../src/components/RouteReliabilityCard';
 import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
@@ -668,6 +669,7 @@ export default function RouteDetailsScreen() {
                   })
                 }
               />
+              <RouteReliabilityCard connection={item} />
               <ConnectionLineAlerts connection={item} />
             </View>
           )}

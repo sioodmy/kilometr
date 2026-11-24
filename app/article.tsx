@@ -135,11 +135,13 @@ export default function ArticleScreen() {
   }, [safeUrl]);
 
   const sourceLabel =
-    rawSource === 'mpk'
-      ? s.news.sourceMpk(s.city.operator(cityId))
-      : rawSource === 'city' || !rawSource
-        ? s.news.sourceCity(s.city.portal(cityId))
-        : rawSource;
+    rawSource === 'gps'
+      ? s.news.sourceGps
+      : rawSource === 'mpk'
+        ? s.news.sourceMpk(s.city.operator(cityId))
+        : rawSource === 'city' || !rawSource
+          ? s.news.sourceCity(s.city.portal(cityId))
+          : rawSource;
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
