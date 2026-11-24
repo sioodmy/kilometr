@@ -69,6 +69,39 @@ assert.deepEqual(
   JSON.parse(JSON.stringify(journey)),
 );
 assert.equal(transferCount(journey), 0);
+// Dojście lub korekta RT zaczynająca się 1 min przed departAt nie może dodać +1440 min.
+const walkBeforeDepart = createSharedConnection(
+  {
+    ...connection,
+    departAt: '16:22',
+    arriveAt: '16:35',
+    departureSec: 16 * 3600 + 22 * 60,
+    arrivalSec: 16 * 3600 + 35 * 60,
+    legs: [
+      {
+        id: 'walk-0',
+        mode: 'walk',
+        fromStop: 'Twoja lokalizacja',
+        toStop: 'Galeria Dominikańska',
+        departAt: '16:21',
+        arriveAt: '16:22',
+        stopsCount: 0,
+        walkM: 86,
+        live: false,
+      },
+      {
+        ...connection.legs[0],
+        departAt: '16:23',
+        arriveAt: '16:33',
+      },
+    ],
+  },
+  'wroclaw',
+  new Date('2026-10-19T14:00:00Z'),
+);
+assert.equal(formatShareTime(walkBeforeDepart.departure), '16:21');
+assert.equal(formatShareTime(walkBeforeDepart.arrival), '16:35');
+assert.equal(walkBeforeDepart.arrival - walkBeforeDepart.departure, 14);
 assert.equal(
   createSharedConnection(
     { ...connection, departureSec: 86400 + 86100 },

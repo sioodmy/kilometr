@@ -103,11 +103,25 @@ export function createSharedConnection(
         )
           .toISOString()
           .slice(0, 10);
-  const departure = clockMinutes(connection.departAt);
+  const rawConnDep = clockMinutes(connection.departAt);
+  const rawFirstLegDep =
+    connection.legs.length > 0 ? clockMinutes(connection.legs[0].departAt) : rawConnDep;
+  // Jeśli pierwszy odcinek (np. dojście lub korekta RT) zaczyna się do 60 min przed departAt,
+  // startujemy oś czasu od niego, żeby advance() nie przerzucił odcinka na kolejną dobę (+1440 min).
+  const firstLegBeforeConn = (rawConnDep - rawFirstLegDep + 1440) % 1440;
+  const departure =
+    firstLegBeforeConn > 0 && firstLegBeforeConn <= 60 ? rawFirstLegDep : rawConnDep;
   let cursor = departure;
   const advance = (clock: string) => {
-    let minutes = clockMinutes(clock);
-    while (minutes < cursor) minutes += 1440;
+    const dayBase = Math.floor(cursor / 1440) * 1440;
+    let minutes = dayBase + clockMinutes(clock);
+    if (minutes < cursor) {
+      if (cursor - minutes <= 60) {
+        minutes = cursor;
+      } else {
+        minutes += 1440;
+      }
+    }
     cursor = minutes;
     return minutes;
   };

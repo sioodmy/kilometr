@@ -2628,6 +2628,7 @@ export const pl = {
     mapTapToLoad: 'Dotknij, aby wczytać mapę',
     mapFailed:
       'Nie udało się wczytać mapy. Spróbuj ponownie lub pobierz mapę offline w ustawieniach.',
+    mapFailedWeb: 'Nie udało się wczytać mapy. Sprawdź połączenie i spróbuj ponownie.',
     mapRetry: 'Wczytaj mapę ponownie',
     openMap: 'Otwórz pełną mapę trasy',
     ahead: 'Prosto przed Tobą',

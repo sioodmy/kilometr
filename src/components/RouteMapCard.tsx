@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   InteractionManager,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -373,7 +374,11 @@ export function RouteMapCard({
                 >
                   {status === 'loading' && <MorphingLoader variant="contained" size={30} startIndex={3} />}
                   <Text style={styles.statusText}>
-                    {status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}
+                    {status === 'loading'
+                      ? s.compass.mapLoading
+                      : Platform.OS === 'web'
+                        ? s.compass.mapFailedWeb
+                        : s.compass.mapFailed}
                   </Text>
                   {status === 'error' && (
                     <SpringPressable
