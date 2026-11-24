@@ -16,6 +16,8 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { WebMapFrame, type WebMapFrameHandle } from './WebMapFrame';
 import {
   buildLiveVehiclesMapDocument,
+  type LiveMapDelayHubItem,
+  type LiveMapDelayZoneItem,
   type LiveMapDisruptionItem,
   type LiveMapInMessage,
   type LiveMapOutMessage,
@@ -42,11 +44,15 @@ interface LiveVehiclesMapProps {
   vehicles: LiveMapVehicleItem[];
   stops?: LiveMapStopItem[];
   disruptions?: LiveMapDisruptionItem[];
+  delayZones?: LiveMapDelayZoneItem[];
+  delayHubs?: LiveMapDelayHubItem[];
   selectedId: string | null;
   selectedStopId?: string | null;
   selectedRoute?: LiveMapSelectedRoute | null;
   selectedDisruptionId?: string | null;
+  selectedDelayHubId?: string | null;
   showDisruptions?: boolean;
+  showDelayHeatmap?: boolean;
   showStops?: boolean;
   userLat?: number | null;
   userLon?: number | null;
@@ -55,9 +61,11 @@ interface LiveVehiclesMapProps {
   onSelectVehicle?: (vehicleId: string) => void;
   onSelectStop?: (stopId: string) => void;
   onSelectDisruption?: (disruptionId: string) => void;
+  onSelectDelayHub?: (hubId: string) => void;
   onClearSelection?: () => void;
   onUserDrag?: () => void;
   onZoomModeChange?: (mode: 'dots' | 'pills') => void;
+  onViewportChange?: (bbox: [number, number, number, number], zoom: number) => void;
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
@@ -70,11 +78,15 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       vehicles,
       stops = [],
       disruptions = [],
+      delayZones = [],
+      delayHubs = [],
       selectedId,
       selectedStopId = null,
       selectedRoute = null,
       selectedDisruptionId = null,
+      selectedDelayHubId = null,
       showDisruptions = true,
+      showDelayHeatmap = false,
       showStops = true,
       userLat = null,
       userLon = null,
@@ -83,9 +95,11 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       onSelectVehicle,
       onSelectStop,
       onSelectDisruption,
+      onSelectDelayHub,
       onClearSelection,
       onUserDrag,
       onZoomModeChange,
+      onViewportChange,
       onTilesStatus,
       onError,
       onReady,
@@ -105,6 +119,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     stopsRef.current = stops;
     const disruptionsRef = useRef(disruptions);
     disruptionsRef.current = disruptions;
+    const delayZonesRef = useRef(delayZones);
+    delayZonesRef.current = delayZones;
+    const delayHubsRef = useRef(delayHubs);
+    delayHubsRef.current = delayHubs;
     const selectedIdRef = useRef(selectedId);
     selectedIdRef.current = selectedId;
     const selectedStopIdRef = useRef(selectedStopId);
@@ -113,8 +131,12 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     selectedRouteRef.current = selectedRoute;
     const selectedDisruptionIdRef = useRef(selectedDisruptionId);
     selectedDisruptionIdRef.current = selectedDisruptionId;
+    const selectedDelayHubIdRef = useRef(selectedDelayHubId);
+    selectedDelayHubIdRef.current = selectedDelayHubId;
     const showDisruptionsRef = useRef(showDisruptions);
     showDisruptionsRef.current = showDisruptions;
+    const showDelayHeatmapRef = useRef(showDelayHeatmap);
+    showDelayHeatmapRef.current = showDelayHeatmap;
     const showStopsRef = useRef(showStops);
     showStopsRef.current = showStops;
 
@@ -149,11 +171,15 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         vehicles: vehiclesRef.current,
         stops: stopsRef.current,
         disruptions: disruptionsRef.current,
+        delayZones: delayZonesRef.current,
+        delayHubs: delayHubsRef.current,
         selectedId: selectedIdRef.current,
         selectedStopId: selectedStopIdRef.current,
         selectedRoute: selectedRouteRef.current ?? null,
         selectedDisruptionId: selectedDisruptionIdRef.current,
+        selectedDelayHubId: selectedDelayHubIdRef.current,
         showDisruptions: showDisruptionsRef.current,
+        showDelayHeatmap: showDelayHeatmapRef.current,
         showStops: showStopsRef.current,
         userPos: userPosRef.current,
       });
@@ -228,6 +254,17 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
 
     useEffect(() => {
       if (!readyRef.current) return;
+      send({
+        t: 'delayHeatmap',
+        zones: delayZones,
+        hubs: delayHubs,
+        selectedDelayHubId,
+        visible: showDelayHeatmap,
+      });
+    }, [delayHubs, delayZones, selectedDelayHubId, send, showDelayHeatmap]);
+
+    useEffect(() => {
+      if (!readyRef.current) return;
       send({ t: 'user', lat: userPos?.[1] ?? null, lon: userPos?.[0] ?? null });
     }, [send, userPos]);
 
@@ -251,6 +288,13 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
             disruptions: disruptionsRef.current,
             selectedDisruptionId: selectedDisruptionIdRef.current,
             visible: showDisruptionsRef.current,
+          });
+          send({
+            t: 'delayHeatmap',
+            zones: delayZonesRef.current,
+            hubs: delayHubsRef.current,
+            selectedDelayHubId: selectedDelayHubIdRef.current,
+            visible: showDelayHeatmapRef.current,
           });
           send({ t: 'selectedRoute', route: selectedRouteRef.current ?? null });
           send({ t: 'stops', stops: stopsRef.current, selectedStopId: selectedStopIdRef.current });
@@ -277,6 +321,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           onSelectDisruption?.(msg.disruptionId);
           return;
         }
+        if (msg.t === 'selectDelayHub') {
+          onSelectDelayHub?.(msg.hubId);
+          return;
+        }
         if (msg.t === 'clearSelect') {
           onClearSelection?.();
           return;
@@ -287,6 +335,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         }
         if (msg.t === 'zoomMode') {
           onZoomModeChange?.(msg.mode);
+          return;
+        }
+        if (msg.t === 'viewport') {
+          onViewportChange?.(msg.bbox, msg.zoom);
           return;
         }
         if (msg.t === 'tiles') {
@@ -305,11 +357,13 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         onClearSelection,
         onError,
         onReady,
+        onSelectDelayHub,
         onSelectDisruption,
         onSelectStop,
         onSelectVehicle,
         onTilesStatus,
         onUserDrag,
+        onViewportChange,
         onZoomModeChange,
         send,
       ],
