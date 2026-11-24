@@ -1892,23 +1892,8 @@ export const uk: Strings = {
     brand: 'Kilometr',
     tagline: 'Цього разу доїдеш.',
     fast: 'Планування офлайн',
-    fastSub: 'Розклад завжди під рукою на телефоні',
-    citiesCoverage: (count: number) => {
-      const m10 = count % 10;
-      const m100 = count % 100;
-      const word =
-        m10 === 1 && m100 !== 11
-          ? 'місто'
-          : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)
-            ? 'міста'
-            : 'міст';
-      return `${count} ${word} і залізниця в Польщі`;
-    },
-    citiesCoverageSub: 'Міський транспорт і міжміські поїзди',
     noAds: 'Без реклами',
     noPay: 'Без мікроплатежів',
-    noAdsNoPay: 'Без реклами та мікроплатежів',
-    noAdsNoPaySub: 'Відкритий проєкт для пасажирів',
     detectGpsAction: 'Визначити моє місто за GPS',
     detectGpsHint: 'Автоматично підбере розклад для твоєї околиці',
     detectGpsBadge: 'GPS',

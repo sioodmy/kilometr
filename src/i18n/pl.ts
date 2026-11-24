@@ -1880,18 +1880,8 @@ export const pl = {
     brand: 'Kilometr',
     tagline: 'Tym razem dojedziesz.',
     fast: 'Planowanie offline',
-    fastSub: 'Rozkład zawsze pod ręką na telefonie',
-    citiesCoverage: (count: number) => {
-      const m10 = count % 10;
-      const m100 = count % 100;
-      const word = count === 1 ? 'miasto' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'miasta' : 'miast';
-      return `${count} ${word} i kolej w Polsce`;
-    },
-    citiesCoverageSub: 'Komunikacja miejska i połączenia kolejowe',
     noAds: 'Bez reklam',
     noPay: 'Bez mikropłatności',
-    noAdsNoPay: 'Bez reklam i bez mikropłatności',
-    noAdsNoPaySub: 'Otwarty projekt stworzony dla pasażerów',
     detectGpsAction: 'Wykryj moje miasto przez GPS',
     detectGpsHint: 'Automatycznie dobierze rozkład dla Twojej okolicy',
     detectGpsBadge: 'Z GPS',

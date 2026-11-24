@@ -44,13 +44,10 @@ import {
   MapPin,
   MapPinOff,
   Search,
-  ShieldCheck,
-  TrainFront,
-  WifiOff,
   X,
 } from '../src/components/icons';
 import { MorphingLoader } from '../src/components/MorphingLoader';
-import { OnboardingMorphHero } from '../src/components/OnboardingMorphHero';
+import { HERO_LOGO_SIZE, OnboardingMorphHero } from '../src/components/OnboardingMorphHero';
 import { OnboardingProgressBar } from '../src/components/OnboardingProgressBar';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { TimetableBackgroundPill } from '../src/components/TimetableBackgroundPill';
@@ -58,7 +55,7 @@ import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
 import { motion } from '../src/theme/motion';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
-import { CITIES, type CityId } from '../src/cities';
+import type { CityId } from '../src/cities';
 import { useActiveCity } from '../src/services/cityStore';
 import {
   POPULAR_CITY_IDS,
@@ -670,7 +667,7 @@ export default function OnboardingScreen() {
   const s = useStrings();
   const router = useRouter();
   const { sharedTrip } = useLocalSearchParams<{ sharedTrip?: string }>();
-  const { width, fontScale } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 360;
   const reduceMotion = useReducedMotion();
   const webKeyboardInset = useWebKeyboardInset();
@@ -678,8 +675,10 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState<StepIndex>(0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [pulseKey, setPulseKey] = useState(0);
-  const [stageWidth, setStageWidth] = useState(() => Math.max(280, Math.min(width - 48, 520)));
-  const [compactHeaderHeight, setCompactHeaderHeight] = useState(82);
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => Math.min(width, 560));
+  const [workspaceHeight, setWorkspaceHeight] = useState(() => Math.max(360, height - 200));
+  const [welcomeGroupHeight, setWelcomeGroupHeight] = useState(276);
+  const [compactHeaderHeight, setCompactHeaderHeight] = useState(86);
   const [leaving, setLeaving] = useState(false);
 
   const bumpPulse = useCallback(() => setPulseKey((k) => k + 1), []);
@@ -875,31 +874,10 @@ export default function OnboardingScreen() {
 
   const showBackgroundPill = step >= 2 || (step === 1 && timetableTouched);
 
-  const highlights = useMemo(
-    () => [
-      {
-        key: 'offline',
-        icon: WifiOff,
-        dotColor: scheme.primary,
-        title: s.onboarding.fast,
-        sub: s.onboarding.fastSub,
-      },
-      {
-        key: 'coverage',
-        icon: TrainFront,
-        dotColor: scheme.tertiary,
-        title: s.onboarding.citiesCoverage(CITIES.length),
-        sub: s.onboarding.citiesCoverageSub,
-      },
-      {
-        key: 'free',
-        icon: ShieldCheck,
-        dotColor: scheme.success,
-        title: s.onboarding.noAdsNoPay,
-        sub: s.onboarding.noAdsNoPaySub,
-      },
-    ],
-    [s],
+  // Środek Y loga na kroku powitalnym: idealnie w centrum całej kolumny (logo + teksty).
+  const welcomeCenterY = Math.max(
+    HERO_LOGO_SIZE / 2 + 12,
+    (workspaceHeight - welcomeGroupHeight) / 2 + HERO_LOGO_SIZE / 2,
   );
 
   return (
@@ -907,34 +885,14 @@ export default function OnboardingScreen() {
       <View style={st.shell}>
         <OnboardingProgressBar step={step} onBack={back} />
 
-        {/* Wspólna scena morphingowa: z dużego hero (krok 0) płynie w róg nagłówka (kroki 1..3). */}
         <View
-          style={st.heroBand}
+          style={st.workspace}
           onLayout={(e) => {
-            const w = Math.round(e.nativeEvent.layout.width);
-            if (w > 0 && Math.abs(w - stageWidth) > 1) setStageWidth(w);
+            const { width: w, height: h } = e.nativeEvent.layout;
+            if (w > 0 && Math.abs(w - workspaceWidth) > 1) setWorkspaceWidth(Math.round(w));
+            if (h > 0 && Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
           }}
         >
-          <OnboardingMorphHero
-            step={step}
-            stageWidth={stageWidth}
-            pulseKey={pulseKey}
-            compactHeight={compactHeaderHeight}
-            headerContent={
-              step > 0 ? (
-                <AnimatedStepHeader
-                  step={step}
-                  direction={direction}
-                  title={compactHeaderMeta.title}
-                  subtitle={compactHeaderMeta.subtitle}
-                  onMeasured={setCompactHeaderHeight}
-                />
-              ) : undefined
-            }
-          />
-        </View>
-
-        <View style={st.contentArea}>
           {step === 0 && (
             <StepStage step={step} direction={direction}>
               <ScrollView
@@ -942,51 +900,44 @@ export default function OnboardingScreen() {
                 showsVerticalScrollIndicator={false}
                 overScrollMode="never"
               >
-                <Animated.View
-                  entering={reduceMotion ? undefined : FadeInDown.duration(260).delay(40)}
-                  style={st.welcomeCopy}
+                <View
+                  style={st.welcomeGroup}
+                  onLayout={(e) => {
+                    const h = Math.ceil(e.nativeEvent.layout.height);
+                    if (h > 0 && Math.abs(h - welcomeGroupHeight) > 1) setWelcomeGroupHeight(h);
+                  }}
                 >
-                  <Text style={[st.brandHero, compact && st.brandHeroCompact]}>
-                    {s.onboarding.brand}
-                  </Text>
-                  <Text style={st.tagline}>{s.onboarding.tagline}</Text>
-                  <Text style={st.welcomeIntro}>{s.onboarding.intro}</Text>
-                </Animated.View>
+                  {/* Puste gniazdo, w którym spoczywa animowane logo z warstwy OnboardingMorphHero. */}
+                  <View style={st.logoPlaceholder} />
 
-                <Animated.View
-                  entering={reduceMotion ? undefined : FadeInDown.duration(280).delay(110)}
-                  style={st.routeCard}
-                >
-                  {highlights.map((item, idx) => {
-                    const Icon = item.icon;
-                    const isLast = idx === highlights.length - 1;
-                    return (
-                      <View key={item.key} style={st.routeRow}>
-                        <View style={st.routeRailCol}>
-                          <View
-                            style={[
-                              st.routeNode,
-                              { borderColor: item.dotColor },
-                            ]}
-                          >
-                            <View style={[st.routeNodeCore, { backgroundColor: item.dotColor }]} />
-                          </View>
-                          {!isLast && <View style={st.routeConnector} />}
-                        </View>
-                        <View style={[st.routeRowContent, !isLast && st.routeRowSpaced]}>
-                          <View style={st.routeRowTop}>
-                            <Icon size={17} color={item.dotColor} />
-                            <Text style={st.routeRowTitle}>{item.title}</Text>
-                          </View>
-                          <Text style={st.routeRowSub}>{item.sub}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </Animated.View>
+                  <Animated.View
+                    entering={reduceMotion ? undefined : FadeInDown.duration(300).delay(320)}
+                    style={st.welcomeCopy}
+                  >
+                    <Text style={[st.brandHero, compact && st.brandHeroCompact]}>
+                      {s.onboarding.brand}
+                    </Text>
+                    <Text style={st.tagline}>{s.onboarding.tagline}</Text>
+                    <Text style={st.welcomeIntro}>{s.onboarding.intro}</Text>
+                  </Animated.View>
+                </View>
               </ScrollView>
             </StepStage>
           )}
+
+          {step > 0 && (
+            <View style={st.stepShell}>
+              <View style={st.compactHeaderRow}>
+                <AnimatedStepHeader
+                  step={step}
+                  direction={direction}
+                  title={compactHeaderMeta.title}
+                  subtitle={compactHeaderMeta.subtitle}
+                  onMeasured={setCompactHeaderHeight}
+                />
+              </View>
+
+              <View style={st.contentArea}>
 
           {step === 1 && (
             <StepStage step={step} direction={direction}>
@@ -1414,6 +1365,18 @@ export default function OnboardingScreen() {
               </KeyboardAvoidingView>
             </StepStage>
           )}
+              </View>
+            </View>
+          )}
+
+          {/* Wspólna warstwa logo -> morfujący medalion transportowy na krokach 0..3. */}
+          <OnboardingMorphHero
+            step={step}
+            workspaceWidth={workspaceWidth}
+            welcomeCenterY={welcomeCenterY}
+            compactHeaderHeight={compactHeaderHeight}
+            pulseKey={pulseKey}
+          />
         </View>
 
         <View
@@ -1505,8 +1468,17 @@ const st = StyleSheet.create({
     alignSelf: 'center',
     overflow: 'hidden',
   },
-  heroBand: {
-    paddingHorizontal: 24,
+  workspace: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  stepShell: {
+    flex: 1,
+  },
+  compactHeaderRow: {
+    paddingLeft: 24,
+    paddingRight: 96,
   },
   compactHeaderBox: {
     gap: 4,
@@ -1532,105 +1504,50 @@ const st = StyleSheet.create({
     flex: 1,
   },
   welcomeBody: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 16,
-    gap: 24,
     flexGrow: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+  },
+  welcomeGroup: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  logoPlaceholder: {
+    width: HERO_LOGO_SIZE,
+    height: HERO_LOGO_SIZE,
+    marginBottom: 28,
   },
   welcomeCopy: {
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   brandHero: {
-    fontSize: 44,
+    fontSize: 46,
     fontWeight: '700',
     color: scheme.onSurface,
-    letterSpacing: -1.6,
+    letterSpacing: -1.8,
     textAlign: 'center',
   },
   brandHeroCompact: {
-    fontSize: 36,
-    letterSpacing: -1,
+    fontSize: 38,
+    letterSpacing: -1.2,
   },
   tagline: {
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 21,
+    lineHeight: 28,
     fontWeight: '600',
     color: scheme.primary,
     textAlign: 'center',
   },
   welcomeIntro: {
-    ...type.bodyMedium,
+    ...type.bodyLarge,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
-    lineHeight: 21,
-    maxWidth: 320,
-    marginTop: 4,
-  },
-  routeCard: {
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 14,
-  },
-  routeRailCol: {
-    width: 18,
-    alignItems: 'center',
-  },
-  routeNode: {
-    width: 16,
-    height: 16,
-    borderRadius: shape.full,
-    borderWidth: 2,
-    backgroundColor: scheme.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 3,
-  },
-  routeNodeCore: {
-    width: 6,
-    height: 6,
-    borderRadius: shape.full,
-  },
-  routeConnector: {
-    width: 2,
-    flex: 1,
-    minHeight: 18,
-    backgroundColor: scheme.outlineVariant,
-    marginVertical: 3,
-    borderRadius: 1,
-  },
-  routeRowContent: {
-    flex: 1,
-    gap: 2,
-  },
-  routeRowSpaced: {
-    paddingBottom: 14,
-  },
-  routeRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  routeRowTitle: {
-    ...type.titleSmall,
-    fontWeight: '600',
-    color: scheme.onSurface,
-    flex: 1,
-  },
-  routeRowSub: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    lineHeight: 17,
+    lineHeight: 23,
+    maxWidth: 300,
+    marginTop: 6,
   },
   cityStep: {
     flex: 1,
