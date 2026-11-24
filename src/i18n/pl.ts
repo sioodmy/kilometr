@@ -1448,6 +1448,8 @@ export const pl = {
     outsideAreaShort: 'Jesteś poza obsługiwanym obszarem',
     downloadCityTimetableA11y: (gen: string) => `Pobierz rozkład ${gen}`,
     liveMapA11y: 'Mapa pojazdów na żywo',
+    navPlanner: 'Planer',
+    navMenuA11y: 'Nawigacja główna',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Linia ${line} (${direction})` : `Linia ${line}`,
     boardedChipTitle: (line: string) => `W pojeździe ${line}`,

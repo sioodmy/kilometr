@@ -32,6 +32,13 @@ import {
 } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
+import {
+  DESKTOP_SHEET_TOP_SPACER_HEIGHT,
+  DesktopSheetTopSpacer,
+  getDesktopSheetProps,
+  useEscapeKey,
+  useWebLayout,
+} from '../theme/layout';
 import { scheme, shape, spacing, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { LegMode } from '../types/models';
@@ -78,18 +85,23 @@ export function RouteFilterSheet({
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
+  const webLayout = useWebLayout();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
-  const maxAvailable = windowHeight - insets.top - insets.bottom - 16;
+  const maxAvailable = webLayout.isMedium
+    ? windowHeight - 96
+    : windowHeight - insets.top - insets.bottom - 16;
   const baseContentHeight = 520 + Math.max(0, fontScale - 1) * 220;
   const sheetHeight = Math.min(maxAvailable, Math.max(400, baseContentHeight));
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 540, sheetHeight);
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
 
   const requestClose = useCallback(() => {
     sheetRef.current?.close();
   }, []);
+  useEscapeKey(true, requestClose);
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -198,17 +210,22 @@ export function RouteFilterSheet({
       index={0}
       snapPoints={snapPoints}
       animationConfigs={animationConfigs}
-      handleComponent={SheetHandle}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : SheetHandle}
       topInset={insets.top}
-      bottomInset={insets.bottom}
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
-      enablePanDownToClose
+      enablePanDownToClose={!webLayout.isMedium}
       onClose={onClose}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
       backdropComponent={renderBackdrop}
     >
       <View
-        style={[styles.sheetContainer, { height: sheetHeight - HANDLE_HEIGHT }]}
+        style={[
+          styles.sheetContainer,
+          { height: sheetHeight - (webLayout.isMedium ? DESKTOP_SHEET_TOP_SPACER_HEIGHT : HANDLE_HEIGHT) },
+        ]}
         accessibilityViewIsModal
       >
         <View style={styles.header}>

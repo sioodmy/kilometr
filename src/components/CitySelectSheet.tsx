@@ -28,7 +28,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, MapPinOff, Search, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
-import { scheme, shape, type } from '../theme/tokens';
+import { useEscapeKey, useWebLayout } from '../theme/layout';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { CityDef, CityId } from '../cities';
 import { filterCityEntries, getCityEntries, type CityEntry } from '../services/citySearch';
@@ -105,6 +106,7 @@ export function CitySelectSheet({
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
+  const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
 
   const [overlayHeight, setOverlayHeight] = useState(windowHeight);
@@ -123,10 +125,12 @@ export function CitySelectSheet({
 
   const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
   const effectiveHeight = Platform.OS === 'web' ? overlayHeight : baseHeight;
-  const targetSheetHeight = Math.max(
-    Platform.OS === 'web' ? 180 : 320,
-    Math.round((effectiveHeight - insets.top) * 0.92),
-  );
+  const targetSheetHeight = webLayout.isMedium
+    ? Math.min(680, Math.max(360, Math.round(effectiveHeight * 0.82)))
+    : Math.max(
+        Platform.OS === 'web' ? 180 : 320,
+        Math.round((effectiveHeight - insets.top) * 0.92),
+      );
   const targetHeightRef = useRef(targetSheetHeight);
   targetHeightRef.current = targetSheetHeight;
 
@@ -173,6 +177,7 @@ export function CitySelectSheet({
     });
     return () => sub.remove();
   }, [requestClose]);
+  useEscapeKey(true, () => requestClose());
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -205,6 +210,7 @@ export function CitySelectSheet({
   const dismissPanGesture = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(!webLayout.isMedium)
         .activeOffsetY(8)
         .failOffsetX([-20, 20])
         .onUpdate((e) => {
@@ -240,7 +246,7 @@ export function CitySelectSheet({
             });
           }
         }),
-    [backdropProgress, reduceMotion, requestClose, targetSheetHeight, translateY],
+    [backdropProgress, reduceMotion, requestClose, targetSheetHeight, translateY, webLayout.isMedium],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -323,16 +329,26 @@ export function CitySelectSheet({
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.kav}
+        style={[styles.kav, webLayout.isMedium && styles.kavDesktop]}
         pointerEvents="box-none"
       >
-        <Animated.View style={[styles.sheet, { height: targetSheetHeight }, sheetAnimatedStyle]}>
-          <View style={styles.container}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            webLayout.isMedium && styles.sheetDesktop,
+            webLayout.isMedium && elev.level3,
+            { height: targetSheetHeight },
+            sheetAnimatedStyle,
+          ]}
+        >
+          <View style={[styles.container, webLayout.isMedium && styles.containerDesktop]}>
             <GestureDetector gesture={dismissPanGesture}>
               <View collapsable={false}>
-                <View style={styles.handleRow}>
-                  <View style={styles.handle} />
-                </View>
+                {!webLayout.isMedium && (
+                  <View style={styles.handleRow}>
+                    <View style={styles.handle} />
+                  </View>
+                )}
                 <View style={styles.header}>
                   <View style={styles.headerText}>
                     <Text style={styles.title} accessibilityRole="header">
@@ -425,6 +441,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  kavDesktop: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
   sheet: {
     maxHeight: '100%',
     borderTopLeftRadius: shape.extraLarge,
@@ -432,9 +454,19 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     overflow: 'hidden',
   },
+  sheetDesktop: {
+    width: '100%',
+    maxWidth: 560,
+    borderRadius: shape.extraLarge,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+  },
   container: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  containerDesktop: {
+    paddingTop: 18,
   },
   handleRow: {
     alignItems: 'center',

@@ -31,6 +31,7 @@ import {
   RefreshCw,
   TriangleAlert,
 } from '../src/components/icons';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
@@ -187,6 +188,7 @@ function SkeletonCard() {
 export default function NewsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const operator = s.city.operator(cityId);
   const portal = s.city.portal(cityId);
@@ -387,15 +389,17 @@ export default function NewsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel={s.map.backA11y}
-        >
-          <ChevronLeft size={23} color={scheme.onSurface} />
-        </Pressable>
+      <View style={[styles.header, webLayout.isMedium && styles.mediumCentered]}>
+        {!webLayout.isDesktop && (
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
+            <ChevronLeft size={23} color={scheme.onSurface} />
+          </Pressable>
+        )}
         <Text style={styles.headerCity}>{cityName}</Text>
         <Pressable
           onPress={handleManualRefresh}
@@ -417,7 +421,7 @@ export default function NewsScreen() {
           )}
         </Pressable>
       </View>
-      <View style={styles.headerText}>
+      <View style={[styles.headerText, webLayout.isMedium && styles.mediumCentered]}>
         <Text style={styles.headerTitle} accessibilityRole="header">
           {s.news.title}
         </Text>
@@ -431,60 +435,65 @@ export default function NewsScreen() {
       </View>
 
       {error && items.length > 0 ? (
-        <View style={styles.errorBanner} accessibilityRole="alert">
+        <View
+          style={[styles.errorBanner, webLayout.isMedium && styles.errorBannerDesktop]}
+          accessibilityRole="alert"
+        >
           <TriangleAlert size={16} color={scheme.onWarningContainer} />
           <Text style={styles.errorBannerText}>{error}</Text>
         </View>
       ) : null}
 
       {items.length > 0 || myLines.length > 0 ? (
-        <View style={styles.segment}>
-          <Pressable
-            onPress={() => {
-              if (filter !== 'all') {
-                void Haptics.selectionAsync().catch(() => {});
-                setFilter('all');
-              }
-            }}
-            style={({ pressed }) => [
-              styles.segmentItem,
-              filter === 'all' && styles.segmentItemOn,
-              pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: filter === 'all' }}
-          >
-            {filter === 'all' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
-            <Text style={[styles.segmentText, filter === 'all' && styles.segmentTextOn]}>
-              {s.news.filterAll}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              if (filter !== 'myLines') {
-                void Haptics.selectionAsync().catch(() => {});
-                setFilter('myLines');
-              }
-            }}
-            style={({ pressed }) => [
-              styles.segmentItem,
-              filter === 'myLines' && styles.segmentItemOn,
-              pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: filter === 'myLines' }}
-            accessibilityLabel={s.news.filterMyLinesA11y}
-          >
-            {filter === 'myLines' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
-            <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
-              {s.news.filterMyLines}
-            </Text>
-          </Pressable>
+        <View style={webLayout.isMedium ? styles.segmentDesktopWrap : undefined}>
+          <View style={[styles.segment, webLayout.isMedium && styles.segmentDesktop]}>
+            <Pressable
+              onPress={() => {
+                if (filter !== 'all') {
+                  void Haptics.selectionAsync().catch(() => {});
+                  setFilter('all');
+                }
+              }}
+              style={({ pressed }) => [
+                styles.segmentItem,
+                filter === 'all' && styles.segmentItemOn,
+                pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filter === 'all' }}
+            >
+              {filter === 'all' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
+              <Text style={[styles.segmentText, filter === 'all' && styles.segmentTextOn]}>
+                {s.news.filterAll}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (filter !== 'myLines') {
+                  void Haptics.selectionAsync().catch(() => {});
+                  setFilter('myLines');
+                }
+              }}
+              style={({ pressed }) => [
+                styles.segmentItem,
+                filter === 'myLines' && styles.segmentItemOn,
+                pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filter === 'myLines' }}
+              accessibilityLabel={s.news.filterMyLinesA11y}
+            >
+              {filter === 'myLines' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
+              <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
+                {s.news.filterMyLines}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
       {loading && items.length === 0 ? (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView contentContainerStyle={[styles.list, webLayout.isMedium && styles.mediumCentered]}>
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -494,7 +503,7 @@ export default function NewsScreen() {
           </View>
         </ScrollView>
       ) : error && items.length === 0 ? (
-        <ScrollView contentContainerStyle={styles.center}>
+        <ScrollView contentContainerStyle={[styles.center, webLayout.isMedium && styles.mediumCentered]}>
           <View style={styles.stateIcon}>
             <Newspaper size={28} color={scheme.primary} />
           </View>
@@ -515,7 +524,7 @@ export default function NewsScreen() {
         <FlatList
           data={rows}
           keyExtractor={keyExtractor}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, webLayout.isMedium && styles.mediumCentered]}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           removeClippedSubviews={false}
@@ -560,6 +569,29 @@ export default function NewsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  mediumCentered: {
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+  },
+  errorBannerDesktop: {
+    marginHorizontal: 0,
+    width: '100%',
+    maxWidth: 780,
+    alignSelf: 'center',
+  },
+  segmentDesktopWrap: {
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+  },
+  segmentDesktop: {
+    marginHorizontal: 0,
+    width: '100%',
+    maxWidth: 380,
+    alignSelf: 'flex-start',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

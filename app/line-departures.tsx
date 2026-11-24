@@ -30,6 +30,7 @@ import {
 } from '../src/services/lineTimetable';
 import { useLineTimetable } from '../src/services/useLineTimetable';
 import { resolveRailStrokeColor } from '../src/theme/colorContrast';
+import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 
 /** Zwraca aktualny czas dnia w sekundach w strefie Europe/Warsaw. */
@@ -84,6 +85,7 @@ export default function LineDeparturesScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const s = useStrings();
   const t = s.lineTimetable;
   const { data, loading, error, retry } = useLineTimetable(routeId, date, { dbTarget });
@@ -123,7 +125,7 @@ export default function LineDeparturesScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, webLayout.isMedium && styles.topBarDesktop]}>
         <SpringPressable
           onPress={goBack}
           haptic="selection"
@@ -280,6 +282,11 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
+  },
+  topBarDesktop: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
   },
   backBtn: {
     width: 44,

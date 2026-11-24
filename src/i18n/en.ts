@@ -1027,6 +1027,8 @@ export const en: Strings = {
     outsideAreaShort: 'You are outside the supported area',
     downloadCityTimetableA11y: (gen: string) => `Download the ${gen} timetable`,
     liveMapA11y: 'Live vehicle map',
+    navPlanner: 'Planner',
+    navMenuA11y: 'Main navigation',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Line ${line} (${direction})` : `Line ${line}`,
     boardedChipTitle: (line: string) => `Onboard ${line}`,

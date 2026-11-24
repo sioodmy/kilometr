@@ -54,6 +54,7 @@ import {
 } from '../src/components/LiveVehiclesMap';
 import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
 import { SpringPressable } from '../src/components/SpringPressable';
+import { useWebLayout } from '../src/theme/layout';
 import type {
   LiveMapDisruptionItem,
   LiveMapSelectedRoute,
@@ -177,6 +178,7 @@ export default function LiveVehiclesMapScreen() {
   const s = useStrings();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
   const { cityId, city } = useActiveCity();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -1177,6 +1179,12 @@ export default function LiveVehiclesMapScreen() {
   );
 
   const railBottom = hasSheet ? sheetHeight + 14 : Math.max(insets.bottom, 16) + 14;
+  const desktopSheetWidth = Math.min(400, Math.max(320, webLayout.contentWidth - 104));
+  const desktopSheetStyle = webLayout.isMedium
+    ? [styles.sheetDesktop, { width: desktopSheetWidth }]
+    : undefined;
+  const desktopBoardDefaultMaxHeight = Math.round(Math.min(360, webLayout.height * 0.42));
+  const desktopBoardExpandedMaxHeight = Math.round(Math.min(540, webLayout.height * 0.65));
 
   return (
     <View style={styles.root}>
@@ -1195,7 +1203,9 @@ export default function LiveVehiclesMapScreen() {
           userLat={userLoc?.lat ?? null}
           userLon={userLoc?.lon ?? null}
           offlineBase={offlineBase}
-          bottomOffset={hasSheet ? sheetHeight : Math.max(insets.bottom, 12)}
+          bottomOffset={
+            webLayout.isMedium ? 24 : hasSheet ? sheetHeight : Math.max(insets.bottom, 12)
+          }
           onSelectVehicle={handleSelectVehicle}
           onSelectStop={handleSelectStop}
           onSelectDisruption={handleSelectDisruption}
@@ -1213,20 +1223,23 @@ export default function LiveVehiclesMapScreen() {
         style={[styles.topOverlay, { paddingTop: Math.max(insets.top, 10) + 6 }]}
         pointerEvents="box-none"
       >
-        <View style={styles.headerRow}>
-          <SpringPressable
-            onPress={() => {
-              if (searchOpen) closeSearch();
-              else router.back();
-            }}
-            haptic="selection"
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.backA11y}
-            style={styles.circleBtn}
-            scaleDelta={0.05}
-          >
-            <ArrowLeft size={22} color={scheme.onSurface} />
-          </SpringPressable>
+        <View style={[styles.headerRow, webLayout.isMedium && styles.headerRowDesktop]}>
+          {(!webLayout.isMedium || searchOpen || router.canGoBack()) && (
+            <SpringPressable
+              onPress={() => {
+                if (searchOpen) closeSearch();
+                else if (router.canGoBack()) router.back();
+                else router.replace('/');
+              }}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.backA11y}
+              style={styles.circleBtn}
+              scaleDelta={0.05}
+            >
+              <ArrowLeft size={22} color={scheme.onSurface} />
+            </SpringPressable>
+          )}
 
           {searchOpen ? (
             <View style={styles.searchPill}>
@@ -1281,7 +1294,7 @@ export default function LiveVehiclesMapScreen() {
           <Animated.View
             entering={BADGE_ENTERING}
             exiting={BADGE_EXITING}
-            style={styles.searchDropdown}
+            style={[styles.searchDropdown, webLayout.isMedium && styles.searchDropdownDesktop]}
           >
             {searchResults.lines.length === 0 && searchResults.stops.length === 0 ? (
               <Text style={styles.searchEmptyText}>{s.liveMap.searchNoResults}</Text>
@@ -1469,7 +1482,14 @@ export default function LiveVehiclesMapScreen() {
 
       {/* Prawa szyna szybkich akcji mapy (śledzenie, cała trasa, zoom, GPS) */}
       {!searchOpen && !mapError && (
-        <View style={[styles.railWrap, { bottom: railBottom }]} pointerEvents="box-none">
+        <View
+          style={[
+            styles.railWrap,
+            { bottom: webLayout.isMedium ? 20 : railBottom },
+            webLayout.isMedium && styles.railWrapDesktop,
+          ]}
+          pointerEvents="box-none"
+        >
           <MapActionRail
             actions={railActions}
             zoomPair={zoomPair}
@@ -1494,7 +1514,11 @@ export default function LiveVehiclesMapScreen() {
         <Animated.View
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
-          style={[styles.errorCard, { bottom: Math.max(insets.bottom, 16) + 12 }]}
+          style={[
+            styles.errorCard,
+            { bottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 12 },
+            webLayout.isMedium && styles.floatingCardDesktop,
+          ]}
         >
           <View style={styles.errorHeader}>
             <View style={styles.errorIconBox}>
@@ -1521,7 +1545,11 @@ export default function LiveVehiclesMapScreen() {
         <Animated.View
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
-          style={[styles.emptyCard, { bottom: Math.max(insets.bottom, 16) + 12 }]}
+          style={[
+            styles.emptyCard,
+            { bottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 12 },
+            webLayout.isMedium && styles.floatingCardDesktop,
+          ]}
         >
           <Text style={styles.emptyTitle}>{s.liveMap.noVehiclesTitle}</Text>
           <Text style={styles.emptyBody}>{s.liveMap.noVehiclesBody}</Text>
@@ -1547,7 +1575,11 @@ export default function LiveVehiclesMapScreen() {
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
           onLayout={handleSheetLayout}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
         >
           {(() => {
             const tone = getDisruptionTone(selectedDisruption.severity);
@@ -1565,7 +1597,7 @@ export default function LiveVehiclesMapScreen() {
 
             return (
               <>
-                <View style={styles.sheetHandle} />
+                {!webLayout.isMedium && <View style={styles.sheetHandle} />}
                 <View style={styles.sheetHeader}>
                   <View style={[styles.stopIconBox, { backgroundColor: tone.bg }]}>
                     <TriangleAlert size={20} color={tone.fg} />
@@ -1668,18 +1700,24 @@ export default function LiveVehiclesMapScreen() {
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
           onLayout={handleSheetLayout}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
         >
-          <SpringPressable
-            onPress={() => setSheetExpanded((v) => !v)}
-            haptic="selection"
-            scaleDelta={0.015}
-            style={styles.handleTouch}
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.toggleSheetA11y}
-          >
-            <View style={styles.sheetHandle} />
-          </SpringPressable>
+          {!webLayout.isMedium && (
+            <SpringPressable
+              onPress={() => setSheetExpanded((v) => !v)}
+              haptic="selection"
+              scaleDelta={0.015}
+              style={styles.handleTouch}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.toggleSheetA11y}
+            >
+              <View style={styles.sheetHandle} />
+            </SpringPressable>
+          )}
 
           <View style={styles.sheetHeader}>
             <View style={[styles.stopIconBox, { backgroundColor: selectedStop.bg }]}>
@@ -1737,7 +1775,12 @@ export default function LiveVehiclesMapScreen() {
             <ScrollView
               style={[
                 styles.boardScroll,
-                sheetExpanded && { maxHeight: expandedBoardMaxHeight },
+                webLayout.isMedium && { maxHeight: desktopBoardDefaultMaxHeight },
+                sheetExpanded && {
+                  maxHeight: webLayout.isMedium
+                    ? desktopBoardExpandedMaxHeight
+                    : expandedBoardMaxHeight,
+                },
               ]}
               contentContainerStyle={styles.boardScrollContent}
               nestedScrollEnabled
@@ -1801,18 +1844,24 @@ export default function LiveVehiclesMapScreen() {
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
           onLayout={handleSheetLayout}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
         >
-          <SpringPressable
-            onPress={() => setSheetExpanded((v) => !v)}
-            haptic="selection"
-            scaleDelta={0.015}
-            style={styles.handleTouch}
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.toggleSheetA11y}
-          >
-            <View style={styles.sheetHandle} />
-          </SpringPressable>
+          {!webLayout.isMedium && (
+            <SpringPressable
+              onPress={() => setSheetExpanded((v) => !v)}
+              haptic="selection"
+              scaleDelta={0.015}
+              style={styles.handleTouch}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.toggleSheetA11y}
+            >
+              <View style={styles.sheetHandle} />
+            </SpringPressable>
+          )}
 
           <View style={styles.sheetHeader}>
             <LineBadge
@@ -1888,7 +1937,12 @@ export default function LiveVehiclesMapScreen() {
               <ScrollView
                 style={[
                   styles.vehicleBoardScroll,
-                  sheetExpanded && { maxHeight: expandedBoardMaxHeight },
+                  webLayout.isMedium && { maxHeight: desktopBoardDefaultMaxHeight },
+                  sheetExpanded && {
+                    maxHeight: webLayout.isMedium
+                      ? desktopBoardExpandedMaxHeight
+                      : expandedBoardMaxHeight,
+                  },
                 ]}
                 contentContainerStyle={styles.boardScrollContent}
                 nestedScrollEnabled
@@ -2015,6 +2069,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  headerRowDesktop: {
+    maxWidth: 420,
+    width: '100%',
+  },
   circleBtn: {
     width: 48,
     height: 48,
@@ -2100,6 +2158,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     maxHeight: 320,
     ...elev.level3,
+  },
+  searchDropdownDesktop: {
+    maxWidth: 420,
+    width: '100%',
   },
   searchDropdownScroll: {
     maxHeight: 296,
@@ -2263,6 +2325,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
   },
+  railWrapDesktop: {
+    right: 20,
+  },
+  floatingCardDesktop: {
+    left: 16,
+    right: undefined,
+    width: 420,
+    maxWidth: '82%',
+  },
   centerBadge: {
     position: 'absolute',
     alignSelf: 'center',
@@ -2375,6 +2446,15 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     gap: 12,
     ...elev.level3,
+  },
+  sheetDesktop: {
+    left: 16,
+    right: undefined,
+    bottom: 16,
+    borderRadius: shape.extraLarge,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    paddingTop: 14,
   },
   handleTouch: {
     alignItems: 'center',

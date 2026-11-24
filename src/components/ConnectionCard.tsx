@@ -167,7 +167,7 @@ export function JourneyStrip({
                   key={step.key}
                   leg={step.leg}
                   compact
-                  maxWidth={width - 128}
+                  maxWidth={Math.min(width, 640) - 128}
                 />
               );
             }

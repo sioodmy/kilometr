@@ -1451,6 +1451,8 @@ export const uk: Strings = {
     outsideAreaShort: 'Ти поза підтримуваною територією',
     downloadCityTimetableA11y: (gen: string) => `Завантажити розклад ${gen}`,
     liveMapA11y: 'Мапа транспорту наживо',
+    navPlanner: 'Планувальник',
+    navMenuA11y: 'Головна навігація',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Лінія ${line} (${direction})` : `Лінія ${line}`,
     boardedChipTitle: (line: string) => `У транспорті ${line}`,

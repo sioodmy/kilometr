@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { ChevronDown, ChevronLeft, ChevronUp, ExternalLink } from '../src/components/icons';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { useActiveCity } from '../src/services/cityStore';
@@ -29,6 +30,7 @@ import {
 
 export default function ArticleScreen() {
   const s = useStrings();
+  const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const router = useRouter();
   // Inset z kontekstu od razu, nie z natywnego SafeAreaView: przy ciężkim
@@ -143,7 +145,7 @@ export default function ArticleScreen() {
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.header}>
+      <View style={[styles.header, webLayout.isMedium && styles.mediumCentered]}>
         <Pressable
           onPress={goBack}
           style={({ pressed }) => [
@@ -162,7 +164,7 @@ export default function ArticleScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, webLayout.isMedium && styles.mediumCentered]}
         showsVerticalScrollIndicator={false}
         overScrollMode="never"
       >
@@ -320,6 +322,11 @@ export default function ArticleScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  mediumCentered: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

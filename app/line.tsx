@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Maximize2,
   RefreshCw,
   RouteOff,
   Ticket,
@@ -33,6 +34,7 @@ import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
 import { MorphingLoader } from '../src/components/MorphingLoader';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { StopDeparturesSheet } from '../src/components/StopDeparturesSheet';
+import { TimetableDeparturesView } from '../src/components/TimetableDeparturesView';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import { isFareBoundary, parseFareBoundary } from '../src/gtfs/fareBoundary';
 import {
@@ -43,14 +45,17 @@ import {
   findTripSegment,
   formatTimetableDateCompact,
   parseClockToSeconds,
+  physicalStopOrdinal,
   selectInitialPattern,
   shiftTimetableDate,
+  stepPhysicalStopIndex,
   timetableClock,
   timetableToday,
   type LineStop,
 } from '../src/services/lineTimetable';
 import { useLineTimetable } from '../src/services/useLineTimetable';
 import { resolveRailStrokeColor } from '../src/theme/colorContrast';
+import { useWebLayout } from '../src/theme/layout';
 import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import type { LegMode } from '../src/types/models';
@@ -109,6 +114,7 @@ export default function LineScreen() {
   const s = useStrings();
   const t = s.lineTimetable;
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const reduceMotion = useReducedMotion();
   const { width, fontScale } = useWindowDimensions();
   const stackTwoDirections = width / fontScale < 360;
@@ -319,6 +325,15 @@ export default function LineScreen() {
 
   const hasTripContext = Boolean(fromStop || toStop);
   const stopsData = loading || error ? [] : (pattern?.stops ?? []);
+  const desktopStopIndex =
+    webLayout.isDesktop && stopsData.length > 0
+      ? (sheetStopIndex ??
+        (boardingIndex >= 0 && boardingIndex < stopsData.length
+          ? boardingIndex
+          : firstPhysicalIdx >= 0
+            ? firstPhysicalIdx
+            : 0))
+      : null;
 
   const renderStopItem = useCallback(
     ({ item, index }: { item: LineStop; index: number }) => {
@@ -378,9 +393,12 @@ export default function LineScreen() {
         ? findNextDeparture(item.departures, nowSec, isToday)
         : null;
       const highlightedRow = isBoarding || isAlighting;
-      const rowBg = highlightedRow
-        ? scheme.surfaceContainerHigh
-        : scheme.surfaceContainer;
+      const selectedOnDesktop = webLayout.isDesktop && index === desktopStopIndex;
+      const rowBg = selectedOnDesktop
+        ? scheme.primaryContainer
+        : highlightedRow
+          ? scheme.surfaceContainerHigh
+          : scheme.surfaceContainer;
 
       const rowA11y = [
         t.selectStop(item.name),
@@ -409,6 +427,7 @@ export default function LineScreen() {
             isFirstRow && styles.stopCardFirst,
             isLastRow && styles.stopCardLast,
             highlightedRow && styles.stopCardHighlighted,
+            selectedOnDesktop && styles.stopCardSelectedDesktop,
           ]}
         >
           <SpringPressable
@@ -464,8 +483,10 @@ export default function LineScreen() {
                 <Text
                   style={[
                     styles.stopName,
-                    (isFirst || isTerminal || highlightedRow) && styles.stopNameStrong,
-                    hasFullSegment && !inSegment && styles.stopNameMuted,
+                    (isFirst || isTerminal || highlightedRow || selectedOnDesktop) &&
+                      styles.stopNameStrong,
+                    hasFullSegment && !inSegment && !selectedOnDesktop && styles.stopNameMuted,
+                    selectedOnDesktop && styles.stopNameSelectedDesktop,
                   ]}
                   numberOfLines={2}
                 >
@@ -531,6 +552,7 @@ export default function LineScreen() {
     [
       alightingIndex,
       boardingIndex,
+      desktopStopIndex,
       firstPhysicalIdx,
       hasFullSegment,
       isToday,
@@ -542,236 +564,311 @@ export default function LineScreen() {
       s.common.departNow,
       s.leg,
       t,
+      webLayout.isDesktop,
     ],
   );
 
-  return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.topBar}>
-        <SpringPressable
-          onPress={goBack}
-          haptic="selection"
-          scaleDelta={0.05}
-          accessibilityRole="button"
-          accessibilityLabel={t.back}
-          style={styles.backBtn}
-        >
-          <ChevronLeft size={22} color={scheme.onSurface} />
-        </SpringPressable>
-        <Text style={styles.topBarTitle} numberOfLines={1}>
-          {t.title}
-        </Text>
-        {patterns.length >= 2 && (
-          <View style={styles.actionCluster}>
-            <SpringPressable
-              onPress={handleCycleDirection}
-              haptic="selection"
-              scaleDelta={0.05}
-              accessibilityRole="button"
-              accessibilityLabel={t.reverseDirection}
-              style={styles.clusterBtn}
-            >
-              <ArrowUpDown size={19} color={scheme.onSurfaceVariant} />
-            </SpringPressable>
-          </View>
-        )}
-      </View>
+  const topBarContent = (
+    <>
+      <SpringPressable
+        onPress={goBack}
+        haptic="selection"
+        scaleDelta={0.05}
+        accessibilityRole="button"
+        accessibilityLabel={t.back}
+        style={styles.backBtn}
+      >
+        <ChevronLeft size={22} color={scheme.onSurface} />
+      </SpringPressable>
+      <Text style={styles.topBarTitle} numberOfLines={1}>
+        {t.title}
+      </Text>
+      {patterns.length >= 2 && (
+        <View style={styles.actionCluster}>
+          <SpringPressable
+            onPress={handleCycleDirection}
+            haptic="selection"
+            scaleDelta={0.05}
+            accessibilityRole="button"
+            accessibilityLabel={t.reverseDirection}
+            style={styles.clusterBtn}
+          >
+            <ArrowUpDown size={19} color={scheme.onSurfaceVariant} />
+          </SpringPressable>
+        </View>
+      )}
+    </>
+  );
 
-      <FlatList
-        data={stopsData}
-        keyExtractor={(item, index) => `${item.id}:${index}`}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: Math.max(insets.bottom, 16) + 28 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View style={styles.headerStack}>
-            {!!displayLine && (
-              <Animated.View
-                ref={heroViewRef}
-                onLayout={handleHeroLayout}
-                style={[styles.heroCard, heroAnimStyle]}
-              >
-                <View style={styles.heroTopRow}>
-                  <View style={styles.heroBadgeGroup}>
-                    <LineBadge line={displayLine} mode={displayMode} size="large" />
-                    <View style={styles.heroLineMeta}>
-                      <Text style={styles.heroLineTitle} numberOfLines={1}>
-                        {t.line(displayLine)}
+  const lineList = (
+    <FlatList
+      data={stopsData}
+      keyExtractor={(item, index) => `${item.id}:${index}`}
+      contentContainerStyle={[
+        styles.listContent,
+        webLayout.isDesktop && styles.listContentDesktop,
+        { paddingBottom: Math.max(insets.bottom, 16) + 28 },
+      ]}
+      showsVerticalScrollIndicator={false}
+      ListHeaderComponent={
+        <View style={styles.headerStack}>
+          {!!displayLine && (
+            <Animated.View
+              ref={heroViewRef}
+              onLayout={handleHeroLayout}
+              style={[styles.heroCard, heroAnimStyle]}
+            >
+              <View style={styles.heroTopRow}>
+                <View style={styles.heroBadgeGroup}>
+                  <LineBadge line={displayLine} mode={displayMode} size="large" />
+                  <View style={styles.heroLineMeta}>
+                    <Text style={styles.heroLineTitle} numberOfLines={1}>
+                      {t.line(displayLine)}
+                    </Text>
+                    {!!data?.line?.longName && (
+                      <Text style={styles.heroLineLongName} numberOfLines={1}>
+                        {data.line.longName}
                       </Text>
-                      {!!data?.line?.longName && (
-                        <Text style={styles.heroLineLongName} numberOfLines={1}>
-                          {data.line.longName}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.heroPillsRow}>
-                    {pattern && (
-                      <View style={styles.secondaryPill}>
-                        <Text style={styles.secondaryPillText}>
-                          {t.stopsCount(physicalStopsCount)}
-                        </Text>
-                      </View>
-                    )}
-                    {heroNextDep && (
-                      <View style={styles.primaryPill}>
-                        <Clock3 size={13} color={scheme.onPrimaryContainer} />
-                        <Text style={styles.primaryPillText}>
-                          {timetableClock(heroNextDep.seconds)} {'\u00b7'}{' '}
-                          {heroNextDep.minutesUntil <= 0
-                            ? s.common.departNow
-                            : s.common.departIn(heroNextDep.minutesUntil)}
-                        </Text>
-                      </View>
                     )}
                   </View>
                 </View>
-
-                {!!displayHeadsign && (
-                  <View style={styles.corridorBlock}>
-                    <Text style={styles.corridorEyebrow}>{t.direction}</Text>
-                    <Text style={styles.corridorHeadsign} numberOfLines={2}>
-                      {displayHeadsign}
-                    </Text>
-                    <View style={styles.corridorBridgeRow}>
-                      <View
-                        style={[styles.bridgeStartDot, { borderColor: railStroke }]}
-                      />
-                      <View
-                        style={[styles.bridgeLine, { backgroundColor: railStroke }]}
-                      />
-                      <View
-                        style={[styles.bridgeEndDot, { backgroundColor: railStroke }]}
-                      />
-                    </View>
-                    {!!originStop && (
-                      <Text style={styles.corridorOrigin} numberOfLines={1}>
-                        {t.fromOrigin(originStop.name)}
+                <View style={styles.heroPillsRow}>
+                  {pattern && (
+                    <View style={styles.secondaryPill}>
+                      <Text style={styles.secondaryPillText}>
+                        {t.stopsCount(physicalStopsCount)}
                       </Text>
-                    )}
-                  </View>
-                )}
-
-                {hasTripContext && (
-                  <SpringPressable
-                    onPress={() => {
-                      if (boardingIndex >= 0) setSheetStopIndex(boardingIndex);
-                    }}
-                    disabled={boardingIndex < 0}
-                    haptic="selection"
-                    scaleDelta={0.015}
-                    accessibilityRole={boardingIndex >= 0 ? 'button' : undefined}
-                    accessibilityLabel={
-                      boardingIndex >= 0 && fromStop
-                        ? t.selectStop(fromStop)
-                        : t.yourTrip
-                    }
-                    style={styles.tripContextCard}
-                  >
-                    <View style={styles.tripContextHeader}>
-                      <View style={styles.tripContextTag}>
-                        <Text style={styles.tripContextTagText}>{t.yourTrip}</Text>
-                      </View>
-                      {!!departAt && (
-                        <Text style={styles.tripContextTimes}>
-                          {departAt}
-                          {arriveAt ? ` \u2192 ${arriveAt}` : ''}
-                        </Text>
-                      )}
                     </View>
-                    <View style={styles.tripContextRouteRow}>
-                      <Text style={styles.tripContextStops} numberOfLines={1}>
-                        {fromStop ?? ''}
+                  )}
+                  {heroNextDep && (
+                    <View style={styles.primaryPill}>
+                      <Clock3 size={13} color={scheme.onPrimaryContainer} />
+                      <Text style={styles.primaryPillText}>
+                        {timetableClock(heroNextDep.seconds)} {'\u00b7'}{' '}
+                        {heroNextDep.minutesUntil <= 0
+                          ? s.common.departNow
+                          : s.common.departIn(heroNextDep.minutesUntil)}
                       </Text>
-                      {!!fromStop && !!toStop && (
-                        <ArrowRight size={14} color={scheme.onSurfaceVariant} />
-                      )}
-                      {!!toStop && (
-                        <Text style={styles.tripContextStops} numberOfLines={1}>
-                          {toStop}
-                        </Text>
-                      )}
-                      {boardingIndex >= 0 && (
-                        <ChevronRight size={18} color={scheme.onSurfaceVariant} />
-                      )}
                     </View>
-                  </SpringPressable>
-                )}
-              </Animated.View>
-            )}
-
-            <Animated.View style={[styles.controlsStack, bodyAnimStyle]}>
-              <View style={styles.dateBar}>
-                <SpringPressable
-                  onPress={() => {
-                    setDate(shiftTimetableDate(date, -1));
-                    setSheetStopIndex(null);
-                  }}
-                  haptic="selection"
-                  scaleDelta={0.06}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.previousDay}
-                  style={styles.dateStepBtn}
-                >
-                  <ChevronLeft size={20} color={scheme.onSurface} />
-                </SpringPressable>
-
-                <View style={styles.dateCenter}>
-                  <Text style={styles.dateLabel} numberOfLines={1}>
-                    {dateCompact}
-                  </Text>
-                  {!isToday && (
-                    <SpringPressable
-                      onPress={() => {
-                        setDate(timetableToday());
-                        setSheetStopIndex(null);
-                      }}
-                      haptic="selection"
-                      scaleDelta={0.04}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      accessibilityRole="button"
-                      style={styles.todayPill}
-                    >
-                      <Text style={styles.todayPillText}>{s.common.today}</Text>
-                    </SpringPressable>
                   )}
                 </View>
-
-                <SpringPressable
-                  onPress={() => {
-                    setDate(shiftTimetableDate(date, 1));
-                    setSheetStopIndex(null);
-                  }}
-                  haptic="selection"
-                  scaleDelta={0.06}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.nextDay}
-                  style={styles.dateStepBtn}
-                >
-                  <ChevronRight size={20} color={scheme.onSurface} />
-                </SpringPressable>
               </View>
 
-              {patterns.length > 1 && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionEyebrow} accessibilityRole="header">
-                    {t.direction}
+              {!!displayHeadsign && (
+                <View style={styles.corridorBlock}>
+                  <Text style={styles.corridorEyebrow}>{t.direction}</Text>
+                  <Text style={styles.corridorHeadsign} numberOfLines={2}>
+                    {displayHeadsign}
                   </Text>
-                  {patterns.length === 2 ? (
-                    <View
-                      style={[
-                        styles.twoDirRow,
-                        stackTwoDirections && styles.twoDirColumn,
-                      ]}
-                    >
-                      {patterns.map((item, index) => {
-                        const selected = item.id === pattern?.id;
-                        const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
-                        return (
+                  <View style={styles.corridorBridgeRow}>
+                    <View style={[styles.bridgeStartDot, { borderColor: railStroke }]} />
+                    <View style={[styles.bridgeLine, { backgroundColor: railStroke }]} />
+                    <View style={[styles.bridgeEndDot, { backgroundColor: railStroke }]} />
+                  </View>
+                  {!!originStop && (
+                    <Text style={styles.corridorOrigin} numberOfLines={1}>
+                      {t.fromOrigin(originStop.name)}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {hasTripContext && (
+                <SpringPressable
+                  onPress={() => {
+                    if (boardingIndex >= 0) setSheetStopIndex(boardingIndex);
+                  }}
+                  disabled={boardingIndex < 0}
+                  haptic="selection"
+                  scaleDelta={0.015}
+                  accessibilityRole={boardingIndex >= 0 ? 'button' : undefined}
+                  accessibilityLabel={
+                    boardingIndex >= 0 && fromStop ? t.selectStop(fromStop) : t.yourTrip
+                  }
+                  style={styles.tripContextCard}
+                >
+                  <View style={styles.tripContextHeader}>
+                    <View style={styles.tripContextTag}>
+                      <Text style={styles.tripContextTagText}>{t.yourTrip}</Text>
+                    </View>
+                    {!!departAt && (
+                      <Text style={styles.tripContextTimes}>
+                        {departAt}
+                        {arriveAt ? ` \u2192 ${arriveAt}` : ''}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.tripContextRouteRow}>
+                    <Text style={styles.tripContextStops} numberOfLines={1}>
+                      {fromStop ?? ''}
+                    </Text>
+                    {!!fromStop && !!toStop && (
+                      <ArrowRight size={14} color={scheme.onSurfaceVariant} />
+                    )}
+                    {!!toStop && (
+                      <Text style={styles.tripContextStops} numberOfLines={1}>
+                        {toStop}
+                      </Text>
+                    )}
+                    {boardingIndex >= 0 && (
+                      <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+                    )}
+                  </View>
+                </SpringPressable>
+              )}
+            </Animated.View>
+          )}
+
+          <Animated.View style={[styles.controlsStack, bodyAnimStyle]}>
+            <View style={styles.dateBar}>
+              <SpringPressable
+                onPress={() => {
+                  setDate(shiftTimetableDate(date, -1));
+                  setSheetStopIndex(null);
+                }}
+                haptic="selection"
+                scaleDelta={0.06}
+                accessibilityRole="button"
+                accessibilityLabel={t.previousDay}
+                style={styles.dateStepBtn}
+              >
+                <ChevronLeft size={20} color={scheme.onSurface} />
+              </SpringPressable>
+
+              <View style={styles.dateCenter}>
+                <Text style={styles.dateLabel} numberOfLines={1}>
+                  {dateCompact}
+                </Text>
+                {!isToday && (
+                  <SpringPressable
+                    onPress={() => {
+                      setDate(timetableToday());
+                      setSheetStopIndex(null);
+                    }}
+                    haptic="selection"
+                    scaleDelta={0.04}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    style={styles.todayPill}
+                  >
+                    <Text style={styles.todayPillText}>{s.common.today}</Text>
+                  </SpringPressable>
+                )}
+              </View>
+
+              <SpringPressable
+                onPress={() => {
+                  setDate(shiftTimetableDate(date, 1));
+                  setSheetStopIndex(null);
+                }}
+                haptic="selection"
+                scaleDelta={0.06}
+                accessibilityRole="button"
+                accessibilityLabel={t.nextDay}
+                style={styles.dateStepBtn}
+              >
+                <ChevronRight size={20} color={scheme.onSurface} />
+              </SpringPressable>
+            </View>
+
+            {patterns.length > 1 && (
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionEyebrow} accessibilityRole="header">
+                  {t.direction}
+                </Text>
+                {patterns.length === 2 ? (
+                  <View
+                    style={[
+                      styles.twoDirRow,
+                      stackTwoDirections && styles.twoDirColumn,
+                    ]}
+                  >
+                    {patterns.map((item, index) => {
+                      const selected = item.id === pattern?.id;
+                      const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
+                      return (
+                        <SpringPressable
+                          key={item.id}
+                          onPress={() => {
+                            setPatternId(item.id);
+                            setSheetStopIndex(null);
+                          }}
+                          haptic="selection"
+                          scaleDelta={0.02}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected }}
+                          style={[
+                            styles.dirCard,
+                            !stackTwoDirections && styles.dirCardEqual,
+                            selected && styles.dirCardSelected,
+                          ]}
+                        >
+                          <View style={styles.dirCardHeader}>
+                            <View
+                              style={[
+                                styles.dirDot,
+                                {
+                                  backgroundColor: selected
+                                    ? scheme.onPrimaryContainer
+                                    : railStroke,
+                                },
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                styles.dirHeadsign,
+                                selected && styles.dirHeadsignSelected,
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {item.headsign}
+                            </Text>
+                            {selected && (
+                              <Check size={16} color={scheme.onPrimaryContainer} />
+                            )}
+                          </View>
+                          <Text
+                            style={[
+                              styles.dirOrigin,
+                              selected && styles.dirOriginSelected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {(item.stops.find((st) => !isFareBoundary(st.name)) ?? item.stops[0]).name}
+                            {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
+                          </Text>
+                        </SpringPressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <ScrollView
+                    ref={directionsScrollRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dirScrollContent}
+                  >
+                    {patterns.map((item, index) => {
+                      const selected = item.id === pattern?.id;
+                      const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
+                      return (
+                        <View
+                          key={item.id}
+                          onLayout={(e) => {
+                            if (!selected || patternId) return;
+                            const key = `${resolvedRouteId}:${item.id}`;
+                            if (scrolledForKeyRef.current === key) return;
+                            scrolledForKeyRef.current = key;
+                            const x = e.nativeEvent.layout.x;
+                            if (x > 24) {
+                              directionsScrollRef.current?.scrollTo({
+                                x: Math.max(0, x - 14),
+                                animated: false,
+                              });
+                            }
+                          }}
+                        >
                           <SpringPressable
-                            key={item.id}
                             onPress={() => {
                               setPatternId(item.id);
                               setSheetStopIndex(null);
@@ -782,7 +879,7 @@ export default function LineScreen() {
                             accessibilityState={{ selected }}
                             style={[
                               styles.dirCard,
-                              !stackTwoDirections && styles.dirCardEqual,
+                              styles.dirCardScrollItem,
                               selected && styles.dirCardSelected,
                             ]}
                           >
@@ -821,171 +918,239 @@ export default function LineScreen() {
                               {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
                             </Text>
                           </SpringPressable>
-                        );
-                      })}
-                    </View>
-                  ) : (
-                    <ScrollView
-                      ref={directionsScrollRef}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.dirScrollContent}
-                    >
-                      {patterns.map((item, index) => {
-                        const selected = item.id === pattern?.id;
-                        const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
-                        return (
-                          <View
-                            key={item.id}
-                            onLayout={(e) => {
-                              if (!selected || patternId) return;
-                              const key = `${resolvedRouteId}:${item.id}`;
-                              if (scrolledForKeyRef.current === key) return;
-                              scrolledForKeyRef.current = key;
-                              const x = e.nativeEvent.layout.x;
-                              if (x > 24) {
-                                directionsScrollRef.current?.scrollTo({
-                                  x: Math.max(0, x - 14),
-                                  animated: false,
-                                });
-                              }
-                            }}
-                          >
-                            <SpringPressable
-                              onPress={() => {
-                                setPatternId(item.id);
-                                setSheetStopIndex(null);
-                              }}
-                              haptic="selection"
-                              scaleDelta={0.02}
-                              accessibilityRole="radio"
-                              accessibilityState={{ selected }}
-                              style={[
-                                styles.dirCard,
-                                styles.dirCardScrollItem,
-                                selected && styles.dirCardSelected,
-                              ]}
-                            >
-                              <View style={styles.dirCardHeader}>
-                                <View
-                                  style={[
-                                    styles.dirDot,
-                                    {
-                                      backgroundColor: selected
-                                        ? scheme.onPrimaryContainer
-                                        : railStroke,
-                                    },
-                                  ]}
-                                />
-                                <Text
-                                  style={[
-                                    styles.dirHeadsign,
-                                    selected && styles.dirHeadsignSelected,
-                                  ]}
-                                  numberOfLines={2}
-                                >
-                                  {item.headsign}
-                                </Text>
-                                {selected && (
-                                  <Check size={16} color={scheme.onPrimaryContainer} />
-                                )}
-                              </View>
-                              <Text
-                                style={[
-                                  styles.dirOrigin,
-                                  selected && styles.dirOriginSelected,
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {(item.stops.find((st) => !isFareBoundary(st.name)) ?? item.stops[0]).name}
-                                {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
-                              </Text>
-                            </SpringPressable>
-                          </View>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-                </View>
-              )}
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            )}
 
-              {stopsData.length > 0 && (
-                <View style={styles.stopsHeaderRow}>
-                  <Text style={styles.sectionEyebrow} accessibilityRole="header">
-                    {t.stops}
-                  </Text>
-                  <Text style={styles.stopsHint}>{t.stopsHint}</Text>
-                </View>
-              )}
-            </Animated.View>
-          </View>
-        }
-        renderItem={renderStopItem}
-        ListEmptyComponent={
-          <View style={styles.stateCard} accessibilityLiveRegion="polite">
-            {loading ? (
-              <>
-                <MorphingLoader variant="contained" size={32} />
-                <Text style={styles.stateTitle}>{t.loading}</Text>
-              </>
-            ) : error ? (
-              <>
-                <View style={styles.stateIconCircle}>
-                  <AlertCircle size={24} color={scheme.onSecondaryContainer} />
-                </View>
-                <Text style={styles.stateBody} accessibilityRole="alert">
-                  {t.error}
+            {stopsData.length > 0 && (
+              <View style={styles.stopsHeaderRow}>
+                <Text style={styles.sectionEyebrow} accessibilityRole="header">
+                  {t.stops}
                 </Text>
+                <Text style={styles.stopsHint}>{t.stopsHint}</Text>
+              </View>
+            )}
+          </Animated.View>
+        </View>
+      }
+      renderItem={renderStopItem}
+      ListEmptyComponent={
+        <View style={styles.stateCard} accessibilityLiveRegion="polite">
+          {loading ? (
+            <>
+              <MorphingLoader variant="contained" size={32} />
+              <Text style={styles.stateTitle}>{t.loading}</Text>
+            </>
+          ) : error ? (
+            <>
+              <View style={styles.stateIconCircle}>
+                <AlertCircle size={24} color={scheme.onSecondaryContainer} />
+              </View>
+              <Text style={styles.stateBody} accessibilityRole="alert">
+                {t.error}
+              </Text>
+              <SpringPressable
+                onPress={retry}
+                haptic="selection"
+                accessibilityRole="button"
+                style={styles.statePrimaryBtn}
+              >
+                <RefreshCw size={16} color={scheme.onPrimary} />
+                <Text style={styles.statePrimaryBtnText}>{s.common.retry}</Text>
+              </SpringPressable>
+            </>
+          ) : (
+            <>
+              <View style={styles.stateIconCircle}>
+                <RouteOff size={24} color={scheme.onSecondaryContainer} />
+              </View>
+              <Text style={styles.stateBody}>{data?.line ? t.empty : t.missing}</Text>
+              {data?.line && !isToday && (
                 <SpringPressable
-                  onPress={retry}
+                  onPress={() => setDate(timetableToday())}
                   haptic="selection"
                   accessibilityRole="button"
                   style={styles.statePrimaryBtn}
                 >
-                  <RefreshCw size={16} color={scheme.onPrimary} />
-                  <Text style={styles.statePrimaryBtnText}>{s.common.retry}</Text>
+                  <Text style={styles.statePrimaryBtnText}>{s.common.today}</Text>
                 </SpringPressable>
-              </>
-            ) : (
-              <>
-                <View style={styles.stateIconCircle}>
-                  <RouteOff size={24} color={scheme.onSecondaryContainer} />
-                </View>
-                <Text style={styles.stateBody}>
-                  {data?.line ? t.empty : t.missing}
-                </Text>
-                {data?.line && !isToday && (
+              )}
+            </>
+          )}
+        </View>
+      }
+    />
+  );
+
+  const desktopSelectedStop =
+    desktopStopIndex != null && pattern ? pattern.stops[desktopStopIndex] : undefined;
+  const desktopPrevIndex =
+    desktopStopIndex != null && pattern
+      ? stepPhysicalStopIndex(pattern.stops, desktopStopIndex, -1)
+      : -1;
+  const desktopNextIndex =
+    desktopStopIndex != null && pattern
+      ? stepPhysicalStopIndex(pattern.stops, desktopStopIndex, 1)
+      : -1;
+  const desktopTotalStops = pattern ? countPhysicalLineStops(pattern.stops) : 0;
+  const desktopCurrentOrdinal =
+    desktopStopIndex != null && pattern ? physicalStopOrdinal(pattern.stops, desktopStopIndex) : 0;
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      {webLayout.isDesktop ? (
+        <View style={styles.desktopSplit}>
+          <View style={[styles.desktopLeftCol, { width: webLayout.isWide ? 460 : 410 }]}>
+            <View style={styles.desktopTopBar}>{topBarContent}</View>
+            {lineList}
+          </View>
+          <View style={styles.desktopRightCol}>
+            {desktopSelectedStop && data?.line && pattern && desktopStopIndex != null ? (
+              <View style={styles.desktopDetailCard}>
+                <View style={styles.desktopDetailHeader}>
+                  <LineBadge line={data.line.shortName} mode={data.line.mode} size="medium" />
+                  <View style={styles.desktopDetailTitleCol}>
+                    <Text style={styles.desktopDetailStopName} numberOfLines={2}>
+                      {desktopSelectedStop.name}
+                    </Text>
+                    <View style={styles.desktopDetailMetaRow}>
+                      {!!desktopSelectedStop.code && (
+                        <View style={styles.platformBadge}>
+                          <Text style={styles.platformBadgeText}>
+                            {t.stopCode(desktopSelectedStop.code)}
+                          </Text>
+                        </View>
+                      )}
+                      {desktopStopIndex === boardingIndex && (
+                        <View style={styles.tripStopBadge}>
+                          <Text style={styles.tripStopBadgeText}>{t.boardingStop}</Text>
+                        </View>
+                      )}
+                      {desktopStopIndex === alightingIndex && (
+                        <View style={styles.tripStopBadge}>
+                          <Text style={styles.tripStopBadgeText}>{t.alightingStop}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                   <SpringPressable
-                    onPress={() => setDate(timetableToday())}
+                    onPress={() => handleOpenFullDepartures(desktopStopIndex)}
                     haptic="selection"
+                    scaleDelta={0.05}
                     accessibilityRole="button"
-                    style={styles.statePrimaryBtn}
+                    accessibilityLabel={t.openFullScreen}
+                    style={styles.desktopFullBtn}
                   >
-                    <Text style={styles.statePrimaryBtnText}>{s.common.today}</Text>
+                    <Maximize2 size={18} color={scheme.onSurfaceVariant} />
                   </SpringPressable>
+                </View>
+
+                <View style={styles.desktopStopNavBar}>
+                  <SpringPressable
+                    onPress={() => desktopPrevIndex >= 0 && setSheetStopIndex(desktopPrevIndex)}
+                    disabled={desktopPrevIndex < 0}
+                    haptic="selection"
+                    scaleDelta={0.06}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.previousStop}
+                    accessibilityState={{ disabled: desktopPrevIndex < 0 }}
+                    style={[
+                      styles.desktopStepBtn,
+                      desktopPrevIndex < 0 && styles.desktopStepBtnDisabled,
+                    ]}
+                  >
+                    <ChevronLeft
+                      size={20}
+                      color={desktopPrevIndex >= 0 ? scheme.onSurface : scheme.outline}
+                    />
+                  </SpringPressable>
+                  <View style={styles.desktopStopNavCenter}>
+                    <Text style={styles.desktopStopNavHeadsign} numberOfLines={1}>
+                      {pattern.headsign}
+                    </Text>
+                    <Text style={styles.desktopStopNavMeta} numberOfLines={1}>
+                      {desktopCurrentOrdinal} / {desktopTotalStops} {'\u00b7'} {dateCompact}
+                    </Text>
+                  </View>
+                  <SpringPressable
+                    onPress={() => desktopNextIndex >= 0 && setSheetStopIndex(desktopNextIndex)}
+                    disabled={desktopNextIndex < 0}
+                    haptic="selection"
+                    scaleDelta={0.06}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.nextStop}
+                    accessibilityState={{ disabled: desktopNextIndex < 0 }}
+                    style={[
+                      styles.desktopStepBtn,
+                      desktopNextIndex < 0 && styles.desktopStepBtnDisabled,
+                    ]}
+                  >
+                    <ChevronRight
+                      size={20}
+                      color={desktopNextIndex >= 0 ? scheme.onSurface : scheme.outline}
+                    />
+                  </SpringPressable>
+                </View>
+
+                <ScrollView
+                  style={styles.desktopDetailScroll}
+                  contentContainerStyle={styles.desktopDetailScrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <TimetableDeparturesView
+                    stop={desktopSelectedStop}
+                    terminal={desktopStopIndex === lastPhysicalIdx}
+                    isToday={isToday}
+                    nowSec={nowSec}
+                    railStroke={railStroke}
+                    plannedDepartSec={
+                      desktopStopIndex === boardingIndex ? plannedDepartSec : null
+                    }
+                  />
+                </ScrollView>
+              </View>
+            ) : (
+              <View style={styles.stateCard} accessibilityLiveRegion="polite">
+                {loading ? (
+                  <>
+                    <MorphingLoader variant="contained" size={32} />
+                    <Text style={styles.stateTitle}>{t.loading}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.stateBody}>{t.stopsHint}</Text>
                 )}
-              </>
+              </View>
             )}
           </View>
-        }
-      />
-
-      {sheetStopIndex != null && data?.line && pattern && pattern.stops[sheetStopIndex] && (
-        <StopDeparturesSheet
-          line={data.line}
-          pattern={pattern}
-          stopIndex={sheetStopIndex}
-          dateLabel={dateCompact}
-          isToday={isToday}
-          nowSec={nowSec}
-          railStroke={railStroke}
-          boardingIndex={boardingIndex}
-          alightingIndex={alightingIndex}
-          plannedDepartSec={plannedDepartSec}
-          onSelectStopIndex={setSheetStopIndex}
-          onOpenFullScreen={() => handleOpenFullDepartures(sheetStopIndex)}
-          onClose={() => setSheetStopIndex(null)}
-        />
+        </View>
+      ) : (
+        <>
+          <View style={[styles.topBar, webLayout.isMedium && styles.topBarMedium]}>
+            {topBarContent}
+          </View>
+          {lineList}
+          {sheetStopIndex != null && data?.line && pattern && pattern.stops[sheetStopIndex] && (
+            <StopDeparturesSheet
+              line={data.line}
+              pattern={pattern}
+              stopIndex={sheetStopIndex}
+              dateLabel={dateCompact}
+              isToday={isToday}
+              nowSec={nowSec}
+              railStroke={railStroke}
+              boardingIndex={boardingIndex}
+              alightingIndex={alightingIndex}
+              plannedDepartSec={plannedDepartSec}
+              onSelectStopIndex={setSheetStopIndex}
+              onOpenFullScreen={() => handleOpenFullDepartures(sheetStopIndex)}
+              onClose={() => setSheetStopIndex(null)}
+            />
+          )}
+        </>
       )}
     </SafeAreaView>
   );
@@ -1002,6 +1167,134 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
+  },
+  topBarMedium: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+  },
+  desktopSplit: {
+    flex: 1,
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 1240,
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 16,
+    paddingBottom: 20,
+    gap: 24,
+    minHeight: 0,
+  },
+  desktopLeftCol: {
+    flexShrink: 0,
+    minHeight: 0,
+  },
+  desktopTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 10,
+  },
+  listContentDesktop: {
+    paddingHorizontal: 0,
+    maxWidth: undefined,
+  },
+  desktopRightCol: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
+  desktopDetailCard: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    overflow: 'hidden',
+    ...elev.level1,
+  },
+  desktopDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 12,
+  },
+  desktopDetailTitleCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  desktopDetailStopName: {
+    ...type.titleLarge,
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: scheme.onSurface,
+  },
+  desktopDetailMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  desktopFullBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopStopNavBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 18,
+    marginBottom: 12,
+    padding: 4,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  desktopStepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopStepBtnDisabled: {
+    backgroundColor: scheme.surfaceContainerLow,
+    opacity: 0.45,
+  },
+  desktopStopNavCenter: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 4,
+  },
+  desktopStopNavHeadsign: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  desktopStopNavMeta: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  desktopDetailScroll: {
+    flex: 1,
+  },
+  desktopDetailScrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 24,
   },
   backBtn: {
     width: 44,
@@ -1366,6 +1659,9 @@ const styles = StyleSheet.create({
   stopCardHighlighted: {
     backgroundColor: scheme.surfaceContainerHigh,
   },
+  stopCardSelectedDesktop: {
+    backgroundColor: scheme.primaryContainer,
+  },
   stopRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -1480,6 +1776,9 @@ const styles = StyleSheet.create({
   },
   stopNameMuted: {
     color: scheme.onSurfaceVariant,
+  },
+  stopNameSelectedDesktop: {
+    color: scheme.onPrimaryContainer,
   },
   stopBadgesRow: {
     flexDirection: 'row',

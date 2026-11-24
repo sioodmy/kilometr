@@ -7,6 +7,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import BottomSheet, {
@@ -19,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, Copy, Download, ImageUp, Link, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
 import { motion } from '../theme/motion';
+import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, getLocaleSync } from '../i18n';
 import { getActiveCityIdSync } from '../services/cityStore';
@@ -35,8 +37,16 @@ export function ShareConnectionSheet({
 }) {
   const { share: s } = useStrings();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
+  const { height: windowHeight } = useWindowDimensions();
+  const desktopHeight = Math.min(windowHeight - 96, 680);
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 560, desktopHeight);
   const sheet = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['90%'], []);
+  useEscapeKey(true, () => sheet.current?.close());
+  const snapPoints = useMemo(
+    () => (webLayout.isMedium ? [desktopHeight] : ['90%']),
+    [desktopHeight, webLayout.isMedium],
+  );
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -149,9 +159,13 @@ export function ShareConnectionSheet({
       animationConfigs={animationConfigs}
       enableDynamicSizing={false}
       topInset={insets.top}
-      enablePanDownToClose
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
+      enablePanDownToClose={!webLayout.isMedium}
       onClose={onClose}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}
       handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >
