@@ -89,6 +89,7 @@ export function LastTripPull({
   const containerStyle = useAnimatedStyle(() => ({
     height: height.value,
     opacity: interpolate(height.value, [0, 40], [0, 1]),
+    display: height.value <= 0.5 ? ('none' as const) : ('flex' as const),
   }));
 
   const normalTextStyle = useAnimatedStyle(() => ({
