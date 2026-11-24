@@ -74,3 +74,11 @@ scripts/vagonweb/log/
 
 # generowane przez plugin react-native-bootsplash w prebuildzie
 assets/bootsplash/
+
+# artefakty backendu Rust (VPS api.kilometr.app)
+backend/target/
+backend/backups/
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/.env
