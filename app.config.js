@@ -155,6 +155,20 @@ const withAndroidSigning = (config) =>
 // w crash logu były czytelne.
 const DEV_DEBUGGABLE = process.env.ANDROID_DEV_DEBUGGABLE === '1';
 
+const withAndroidMaterial = (config) =>
+  withAppBuildGradle(config, (mod) => {
+    const dependency = '    implementation("com.google.android.material:material:1.14.0")';
+    if (mod.modResults.contents.includes(dependency)) return mod;
+    if (!mod.modResults.contents.includes('dependencies {')) {
+      throw new Error('Nie dodam Material 1.14: android/app/build.gradle bez bloku dependencies.');
+    }
+    mod.modResults.contents = mod.modResults.contents.replace(
+      'dependencies {',
+      `dependencies {\n${dependency}`,
+    );
+    return mod;
+  });
+
 // Release bez R8 nie przechodzi progu Google Play (min. 25% zaciemniania,
 // shrinkingu i optymalizacji DEX). Szablon Expo SDK 57 ma R8 wyłączony,
 // więc włączamy go w gradle.properties razem z usuwaniem nieużywanych zasobów.
@@ -246,22 +260,24 @@ module.exports = ({ config }) => {
   const expo = staticExpo(config);
   const version = process.env.APP_VERSION || expo.version || '1.0.0';
 
-  return withReleaseMinify(
-    withOptimizePreset(
-      withProguardRules(
-        withAndroidSigning(
-          withDevDebuggable({
-            ...expo,
-            version,
-            ios: {
-              ...(expo.ios || {}),
-              buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
-            },
-            android: {
-              ...(expo.android || {}),
-              versionCode: versionCodeFromVersion(version),
-            },
-          }),
+  return withAndroidMaterial(
+    withReleaseMinify(
+      withOptimizePreset(
+        withProguardRules(
+          withAndroidSigning(
+            withDevDebuggable({
+              ...expo,
+              version,
+              ios: {
+                ...(expo.ios || {}),
+                buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
+              },
+              android: {
+                ...(expo.android || {}),
+                versionCode: versionCodeFromVersion(version),
+              },
+            }),
+          ),
         ),
       ),
     ),

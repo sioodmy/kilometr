@@ -22,6 +22,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import org.json.JSONObject
 
 class DepartureAlarmActivity : Activity() {
@@ -89,19 +93,31 @@ class DepartureAlarmActivity : Activity() {
 
   private fun render() {
     val labels = data.getJSONObject("labels")
-    window.statusBarColor = color("surface")
-    window.navigationBarColor = color("surface")
-    window.decorView.systemUiVisibility = 0
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    WindowInsetsControllerCompat(window, window.decorView).apply {
+      isAppearanceLightStatusBars = false
+      isAppearanceLightNavigationBars = false
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      window.isStatusBarContrastEnforced = false
+      window.isNavigationBarContrastEnforced = false
+    }
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       setBackgroundColor(color("surface"))
       setPadding(dp(24), dp(24), dp(24), dp(24))
-      setOnApplyWindowInsetsListener { view, insets ->
-        if (Build.VERSION.SDK_INT >= 30) {
-          val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
-          view.setPadding(dp(24) + bars.left, dp(16) + bars.top, dp(24) + bars.right, dp(16) + bars.bottom)
-        }
+      ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+        val bars =
+            insets.getInsets(
+              WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+        view.setPadding(
+          dp(24) + bars.left,
+          dp(16) + bars.top,
+          dp(24) + bars.right,
+          dp(16) + bars.bottom,
+        )
         insets
       }
     }
@@ -148,6 +164,7 @@ class DepartureAlarmActivity : Activity() {
       finish()
     }, 12)
     setContentView(root)
+    ViewCompat.requestApplyInsets(root)
   }
 
   @Deprecated("Deprecated in Java")
