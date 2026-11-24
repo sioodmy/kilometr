@@ -47,6 +47,22 @@ export interface LiveMapDisruptionItem {
   stopPoints?: [number, number][];
 }
 
+export interface LiveMapDelayZoneItem {
+  id: string;
+  lat: number;
+  lon: number;
+  intensity: number;
+  severity: 'moderate' | 'heavy' | 'severe';
+}
+
+export interface LiveMapDelayHubItem {
+  id: string;
+  label: string;
+  severity: 'moderate' | 'heavy' | 'severe';
+  lat: number;
+  lon: number;
+}
+
 interface LiveMapSelectedRouteStop {
   id: string;
   name: string;
@@ -103,6 +119,13 @@ export type LiveMapInMessage =
       visible?: boolean;
     }
   | {
+      t: 'delayHeatmap';
+      zones: LiveMapDelayZoneItem[];
+      hubs: LiveMapDelayHubItem[];
+      selectedDelayHubId: string | null;
+      visible?: boolean;
+    }
+  | {
       t: 'stopsVisible';
       visible: boolean;
     }
@@ -123,10 +146,12 @@ export type LiveMapOutMessage =
   | { t: 'select'; vehicleId: string }
   | { t: 'selectStop'; stopId: string }
   | { t: 'selectDisruption'; disruptionId: string }
+  | { t: 'selectDelayHub'; hubId: string }
   | { t: 'clearSelect' }
   | { t: 'tiles'; ok: boolean }
   | { t: 'userDrag' }
   | { t: 'zoomMode'; mode: 'dots' | 'pills' }
+  | { t: 'viewport'; bbox: [number, number, number, number]; zoom: number }
   | { t: 'error'; message: string }
   | { t: 'open'; url: string };
 
@@ -141,6 +166,10 @@ export interface LiveVehiclesMapDocumentOptions {
   disruptions?: LiveMapDisruptionItem[];
   selectedDisruptionId?: string | null;
   showDisruptions?: boolean;
+  delayZones?: LiveMapDelayZoneItem[];
+  delayHubs?: LiveMapDelayHubItem[];
+  selectedDelayHubId?: string | null;
+  showDelayHeatmap?: boolean;
   showStops?: boolean;
   userPos: [number, number] | null;
 }
@@ -200,7 +229,12 @@ const runtime = [
   'var disruptions = Array.isArray(P.disruptions) ? P.disruptions : [];',
   'var selectedDisruptionId = P.selectedDisruptionId || null;',
   'var showDisruptions = P.showDisruptions !== false;',
+  'var delayZones = Array.isArray(P.delayZones) ? P.delayZones : [];',
+  'var delayHubs = Array.isArray(P.delayHubs) ? P.delayHubs : [];',
+  'var selectedDelayHubId = P.selectedDelayHubId || null;',
+  'var showDelayHeatmap = P.showDelayHeatmap === true;',
   'var showStops = P.showStops !== false;',
+  'var viewportTimer = null;',
   'var lastZoomMode = null;',
   'var bottomPadPx = 0;',
   'var userPos = P.userPos || null;',
@@ -660,6 +694,132 @@ const runtime = [
   '  pinSrc.setData({ type: "FeatureCollection", features: pinFeatures });',
   '}',
   '',
+  'function delayHubTheme(severity) {',
+  '  if (severity === "severe") {',
+  '    return { bg: "#93000A", fg: "#FFDAD6", border: "#FFB4AB", dot: "#FF897D", halo: "rgba(255, 137, 125, 0.34)" };',
+  '  }',
+  '  if (severity === "heavy") {',
+  '    return { bg: "#633F00", fg: "#FFDDB5", border: "#FFB957", dot: "#FFB957", halo: "rgba(255, 185, 87, 0.30)" };',
+  '  }',
+  '  return { bg: "#2B3130", fg: "#FFDDB5", border: "#FFB957", dot: "#FFB957", halo: "rgba(255, 185, 87, 0.22)" };',
+  '}',
+  '',
+  'function ensureDelayHubSprite(label, severity, isSelected) {',
+  '  var text = String(label || "+3m").slice(0, 8);',
+  '  var spriteId = "dhub:" + severity + ":" + (isSelected ? "1" : "0") + ":" + text;',
+  '  if (spriteCache[spriteId]) return spriteId;',
+  '  var theme = delayHubTheme(severity);',
+  '  var scale = Math.min(3, Math.max(2, window.devicePixelRatio || 2));',
+  '  var font = "700 11px system-ui, -apple-system, sans-serif";',
+  '  ctx.font = font;',
+  '  var textW = Math.ceil(ctx.measureText(text).width);',
+  '  var padX = 8;',
+  '  var dotR = 3.2;',
+  '  var dotGap = 5;',
+  '  var pillW = Math.max(42, padX + dotR * 2 + dotGap + textW + padX);',
+  '  var pillH = isSelected ? 26 : 23;',
+  '  var margin = 7;',
+  '  var totalW = Math.ceil(pillW + margin * 2);',
+  '  var totalH = Math.ceil(pillH + margin * 2);',
+  '  canvas.width = totalW * scale;',
+  '  canvas.height = totalH * scale;',
+  '  ctx.setTransform(scale, 0, 0, scale, 0, 0);',
+  '  ctx.clearRect(0, 0, totalW, totalH);',
+  '  if (isSelected) {',
+  '    roundRectPath(ctx, margin - 3, margin - 3, pillW + 6, pillH + 6, (pillH + 6) / 2);',
+  '    ctx.fillStyle = theme.halo;',
+  '    ctx.fill();',
+  '  }',
+  '  ctx.shadowColor = "rgba(0,0,0,0.48)";',
+  '  ctx.shadowBlur = isSelected ? 6 : 4;',
+  '  ctx.shadowOffsetY = 1.5;',
+  '  roundRectPath(ctx, margin, margin, pillW, pillH, pillH / 2);',
+  '  ctx.fillStyle = theme.bg;',
+  '  ctx.fill();',
+  '  ctx.shadowColor = "transparent";',
+  '  ctx.lineWidth = isSelected ? 2 : 1.35;',
+  '  ctx.strokeStyle = theme.border;',
+  '  ctx.stroke();',
+  '  var cy = totalH / 2;',
+  '  var dotCx = margin + padX + dotR;',
+  '  ctx.beginPath();',
+  '  ctx.arc(dotCx, cy, dotR, 0, Math.PI * 2);',
+  '  ctx.fillStyle = theme.dot;',
+  '  ctx.fill();',
+  '  ctx.font = font;',
+  '  ctx.fillStyle = theme.fg;',
+  '  ctx.textAlign = "left";',
+  '  ctx.textBaseline = "middle";',
+  '  ctx.fillText(text, dotCx + dotR + dotGap, cy + 0.5);',
+  '  var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);',
+  '  map.addImage(spriteId, { width: canvas.width, height: canvas.height, data: imgData.data }, { pixelRatio: scale });',
+  '  spriteCache[spriteId] = true;',
+  '  return spriteId;',
+  '}',
+  '',
+  'function drawDelayHeatmap() {',
+  '  if (!map || !styleReady) return;',
+  '  var heatSrc = map.getSource("live-delay-heat-geo");',
+  '  var hubSrc = map.getSource("live-delay-hubs-geo");',
+  '  if (!heatSrc || !hubSrc) return;',
+  '  if (!showDelayHeatmap) {',
+  '    heatSrc.setData({ type: "FeatureCollection", features: [] });',
+  '    hubSrc.setData({ type: "FeatureCollection", features: [] });',
+  '    return;',
+  '  }',
+  '  var heatFeatures = [];',
+  '  for (var i = 0; i < delayZones.length; i++) {',
+  '    var z = delayZones[i];',
+  '    if (!z || !isFinite(z.lat) || !isFinite(z.lon)) continue;',
+  '    heatFeatures.push({',
+  '      type: "Feature",',
+  '      geometry: { type: "Point", coordinates: [z.lon, z.lat] },',
+  '      properties: { intensity: Math.max(0.1, Math.min(1, Number(z.intensity) || 0.3)), severity: z.severity || "moderate" },',
+  '    });',
+  '  }',
+  '  var hubFeatures = [];',
+  '  for (var j = 0; j < delayHubs.length; j++) {',
+  '    var h = delayHubs[j];',
+  '    if (!h || !isFinite(h.lat) || !isFinite(h.lon)) continue;',
+  '    var isSel = selectedDelayHubId != null && h.id === selectedDelayHubId;',
+  '    var spriteId = ensureDelayHubSprite(h.label, h.severity || "moderate", isSel);',
+  '    hubFeatures.push({',
+  '      type: "Feature",',
+  '      geometry: { type: "Point", coordinates: [h.lon, h.lat] },',
+  '      properties: { id: h.id, spriteId: spriteId, selected: isSel },',
+  '    });',
+  '  }',
+  '  heatSrc.setData({ type: "FeatureCollection", features: heatFeatures });',
+  '  hubSrc.setData({ type: "FeatureCollection", features: hubFeatures });',
+  '}',
+  '',
+  'function emitViewport() {',
+  '  if (!map || !map.getBounds) return;',
+  '  var b = map.getBounds();',
+  '  if (!b) return;',
+  '  var sw = b.getSouthWest();',
+  '  var ne = b.getNorthEast();',
+  '  if (!isFinite(sw.lng) || !isFinite(sw.lat) || !isFinite(ne.lng) || !isFinite(ne.lat)) return;',
+  '  post({',
+  '    t: "viewport",',
+  '    bbox: [',
+  '      Math.round(sw.lng * 100000) / 100000,',
+  '      Math.round(sw.lat * 100000) / 100000,',
+  '      Math.round(ne.lng * 100000) / 100000,',
+  '      Math.round(ne.lat * 100000) / 100000,',
+  '    ],',
+  '    zoom: Math.round(map.getZoom() * 100) / 100,',
+  '  });',
+  '}',
+  '',
+  'function scheduleViewportEmit() {',
+  '  if (viewportTimer) clearTimeout(viewportTimer);',
+  '  viewportTimer = setTimeout(function () {',
+  '    viewportTimer = null;',
+  '    emitViewport();',
+  '  }, 240);',
+  '}',
+  '',
   'function drawSelectedRoute() {',
   '  if (!map || !styleReady) return;',
   '  var lineSrc = map.getSource("live-selected-route-geo");',
@@ -936,6 +1096,30 @@ const runtime = [
   '',
   'function setupLayers() {',
   '  addStopArrowSprite();',
+  '  if (!map.getSource("live-delay-heat-geo")) {',
+  '    map.addSource("live-delay-heat-geo", { type: "geojson", data: { type: "FeatureCollection", features: [] } });',
+  '  }',
+  '  if (!map.getLayer("live-delay-heat")) {',
+  '    map.addLayer({',
+  '      id: "live-delay-heat",',
+  '      type: "heatmap",',
+  '      source: "live-delay-heat-geo",',
+  '      paint: {',
+  '        "heatmap-weight": ["interpolate", ["linear"], ["get", "intensity"], 0, 0, 1, 1],',
+  '        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 9, 0.85, 13, 1.15, 16, 1.35],',
+  '        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 9, 18, 12, 34, 15, 58, 17, 78],',
+  '        "heatmap-color": [',
+  '          "interpolate", ["linear"], ["heatmap-density"],',
+  '          0, "rgba(0,0,0,0)",',
+  '          0.18, "rgba(255,185,87,0.18)",',
+  '          0.45, "rgba(255,160,72,0.34)",',
+  '          0.72, "rgba(255,120,100,0.52)",',
+  '          1, "rgba(255,84,73,0.68)"',
+  '        ],',
+  '        "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.86, 15, 0.72, 17, 0.50],',
+  '      },',
+  '    });',
+  '  }',
   '  if (!map.getSource("live-disruption-lines")) {',
   '    map.addSource("live-disruption-lines", { type: "geojson", data: { type: "FeatureCollection", features: [] } });',
   '  }',
@@ -1211,6 +1395,32 @@ const runtime = [
   '      },',
   '    });',
   '  }',
+  '  if (!map.getSource("live-delay-hubs-geo")) {',
+  '    map.addSource("live-delay-hubs-geo", { type: "geojson", data: { type: "FeatureCollection", features: [] } });',
+  '  }',
+  '  if (!map.getLayer("live-delay-hub-hit")) {',
+  '    map.addLayer({',
+  '      id: "live-delay-hub-hit",',
+  '      type: "circle",',
+  '      source: "live-delay-hubs-geo",',
+  '      minzoom: 11.2,',
+  '      paint: { "circle-radius": 22, "circle-opacity": 0, "circle-pitch-alignment": "viewport" },',
+  '    });',
+  '  }',
+  '  if (!map.getLayer("live-delay-hub-badges")) {',
+  '    map.addLayer({',
+  '      id: "live-delay-hub-badges",',
+  '      type: "symbol",',
+  '      source: "live-delay-hubs-geo",',
+  '      minzoom: 11.2,',
+  '      layout: {',
+  '        "icon-image": ["get", "spriteId"],',
+  '        "icon-allow-overlap": false,',
+  '        "icon-ignore-placement": false,',
+  '        "symbol-sort-key": ["case", ["==", ["get", "selected"], true], 950, 650],',
+  '      },',
+  '    });',
+  '  }',
   '  if (!map.getSource("live-disruptions")) {',
   '    map.addSource("live-disruptions", { type: "geojson", data: { type: "FeatureCollection", features: [] } });',
   '  }',
@@ -1270,6 +1480,14 @@ const runtime = [
   '    selectedDisruptionId = msg.selectedDisruptionId || null;',
   '    if (typeof msg.visible === "boolean") showDisruptions = msg.visible;',
   '    drawDisruptions();',
+  '    return;',
+  '  }',
+  '  if (msg.t === "delayHeatmap") {',
+  '    delayZones = Array.isArray(msg.zones) ? msg.zones : [];',
+  '    delayHubs = Array.isArray(msg.hubs) ? msg.hubs : [];',
+  '    selectedDelayHubId = msg.selectedDelayHubId || null;',
+  '    if (typeof msg.visible === "boolean") showDelayHeatmap = msg.visible;',
+  '    drawDelayHeatmap();',
   '    return;',
   '  }',
   '  if (msg.t === "selectedStop") {',
@@ -1369,6 +1587,7 @@ const runtime = [
   '    isMapMoving = false;',
   '    if (!styleReady) return;',
   '    syncZoomMode();',
+  '    scheduleViewportEmit();',
   '    scheduleIntersectionsRebuild();',
   '    if (renderVehiclesFrame(Date.now(), false)) ensureMotionLoop();',
   '  });',
@@ -1378,6 +1597,11 @@ const runtime = [
   '    if (disrPinHits && disrPinHits.length > 0) {',
   '      var did = disrPinHits[0].properties && disrPinHits[0].properties.id;',
   '      if (did) { post({ t: "selectDisruption", disruptionId: String(did) }); return; }',
+  '    }',
+  '    var delayHubHits = map.queryRenderedFeatures(e.point, { layers: ["live-delay-hub-badges", "live-delay-hub-hit"] });',
+  '    if (delayHubHits && delayHubHits.length > 0) {',
+  '      var dhid = delayHubHits[0].properties && delayHubHits[0].properties.id;',
+  '      if (dhid) { post({ t: "selectDelayHub", hubId: String(dhid) }); return; }',
   '    }',
   '    var vehHits = map.queryRenderedFeatures(e.point, { layers: ["live-veh-badges", "live-veh-hit", "live-veh-dots", "live-veh-dots-hit"] });',
   '    if (vehHits && vehHits.length > 0) {',
@@ -1416,6 +1640,7 @@ const runtime = [
   '  map.on("style.load", function () {',
   '    styleReady = true;',
   '    setupLayers();',
+  '    drawDelayHeatmap();',
   '    drawDisruptions();',
   '    drawSelectedRoute();',
   '    drawStops();',
@@ -1423,6 +1648,7 @@ const runtime = [
   '    drawUser();',
   '    drawVehicles();',
   '    syncZoomMode();',
+  '    emitViewport();',
   '    post({ t: "ready" });',
   '  });',
   '  setTimeout(function () {',
@@ -1458,6 +1684,10 @@ function bootstrapPayload(opts: LiveVehiclesMapDocumentOptions): string {
     disruptions: opts.disruptions ?? [],
     selectedDisruptionId: opts.selectedDisruptionId ?? null,
     showDisruptions: opts.showDisruptions ?? true,
+    delayZones: opts.delayZones ?? [],
+    delayHubs: opts.delayHubs ?? [],
+    selectedDelayHubId: opts.selectedDelayHubId ?? null,
+    showDelayHeatmap: opts.showDelayHeatmap ?? false,
     showStops: opts.showStops ?? true,
     userPos: opts.userPos,
   };

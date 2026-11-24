@@ -77,6 +77,17 @@ export const ZBIORKOM = {
   timeoutMs: 10000,
 } as const;
 
+/**
+ * Backend realtime i analityki opóźnień Kilometr (VPS api.kilometr.app).
+ * Zawsze działa z bezpiecznym fallbackiem: przy awarii lub offline aplikacja
+ * natychmiast wraca do bezpośrednich źródeł (zbiorkom, KP, MPK, Worker).
+ */
+export const KILOMETR_API = {
+  baseUrl: (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://api.kilometr.app').replace(/\/$/, ''),
+  liveTimeoutMs: 3500,
+  analyticsTimeoutMs: 4500,
+} as const;
+
 export const NOMINATIM = {
   baseUrl: 'https://nominatim.openstreetmap.org/search',
   reverseUrl: 'https://nominatim.openstreetmap.org/reverse',

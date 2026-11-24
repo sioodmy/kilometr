@@ -2034,10 +2034,22 @@ export const pl = {
             : 'opublikował';
       return `${name} nie ${verb} teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`;
     },
+    sectionGps: 'Wykryto z GPS na żywo',
     sectionChanges: 'Zmiany na liniach',
     sectionCity: 'Wiadomości',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'Wykryto z GPS',
+    gpsJamTitleTram: (place: string) => `Zator tramwajowy: ${place}`,
+    gpsJamTitleBus: (place: string) => `Zator autobusowy: ${place}`,
+    gpsJamTitleHub: (place: string) => `Duże opóźnienia: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} pojazdy stoją w pobliżu od ${durMin} min. Średnie opóźnienie +${avgMin} min.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} opóźnione pojazdy w tym rejonie. Średnio +${avgMin} min opóźnienia.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} min powyżej normy dla tej godziny.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Trwa od ok. ${durMin} min (analiza GPS)` : 'Wykryto przed chwilą (analiza GPS)',
     openBrowser: 'Otwórz w przeglądarce',
     articleFail: 'Nie udało się wczytać treści tej strony.',
     articleEmpty: 'Na tej stronie nie ma treści, którą da się pokazać w aplikacji.',
@@ -3047,6 +3059,43 @@ export const pl = {
     zoomForLinesHint: 'Przybliż, aby zobaczyć numery linii',
     openTimetableCta: 'Rozkład linii',
     toggleSheetA11y: 'Rozwiń lub zwiń szczegóły',
+    filterDelays: 'Opóźnienia',
+    delayZoneSheetTitle: 'Węzeł opóźnień',
+    delayAvgNow: (min: number) => `Średnio +${min} min`,
+    delayP90: (min: number) => `Szczyt (p90): +${min} min`,
+    delayVsTypicalHigher: (min: number) => `+${min} min powyżej normy`,
+    delayVsTypicalLower: (min: number) => `${min} min mniej niż zwykle`,
+    delayVehiclesAffected: (delayed: number, total: number) =>
+      `${delayed} z ${total} pojazdów ma opóźnienie`,
+    delayAffectedLines: 'Opóźnione linie',
+    delaySeveritySevere: 'Duży zator',
+    delaySeverityHeavy: 'Spore opóźnienia',
+    delaySeverityModerate: 'Spowolnienie',
+    delayTapLineHint: 'Dotknij linii, aby zobaczyć ją na mapie',
+  },
+  routeInsights: {
+    verdictLow: 'Zwykle punktualnie',
+    verdictModerate: 'Możliwe niewielkie opóźnienie',
+    verdictHigh: 'Częste opóźnienia o tej porze',
+    dayWeekday: 'dni robocze',
+    daySaturday: 'soboty',
+    daySunday: 'niedziele',
+    basisLine: (line: string, day: string, n: number) =>
+      `Linia ${line} · ${day} (${n} pomiarów)`,
+    basisGeneric: (day: string, n: number) => `Na podstawie ${n} pomiarów (${day})`,
+    upToMin: (min: number) => `p90 +${min}m`,
+    chartCaption: 'Średnie opóźnienie wg godziny',
+    yourDeparture: 'Twój wyjazd',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Profil opóźnień linii ${line}. O godzinie ${hour} średnio plus ${min} minut.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Aktywny zator przy ${place}: obecnie średnio +${min} min opóźnienia.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: teraz +${min} min (+${delta} min powyżej normy).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: spowolnienie na trasie, obecnie +${min} min.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Ciasna przesiadka (${stop}): ${marginMin} min zapasu, a linia ${fromLine} miewa do +${p90Min} min.`,
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',

@@ -45,6 +45,7 @@ import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
+import { RouteReliabilityCard } from '../../src/components/RouteReliabilityCard';
 import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
@@ -685,6 +686,7 @@ export default function RouteDetailsScreen() {
                 {summaryAndMeta}
                 <View style={styles.detailsContent}>
                   {legSections}
+                  <RouteReliabilityCard connection={item} />
                   <ConnectionLineAlerts connection={item} />
                 </View>
                 <View style={{ height: 24 }} />
@@ -729,6 +731,7 @@ export default function RouteDetailsScreen() {
                 <View style={styles.detailsContent}>
                   {legSections}
                   <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                  <RouteReliabilityCard connection={item} />
                   <ConnectionLineAlerts connection={item} />
                 </View>
               )}

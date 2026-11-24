@@ -1569,10 +1569,22 @@ export const de: Strings = {
     emptyTitle: 'Keine Meldungen',
     emptyBody: (name: string) =>
       `${name} hat gerade keine Störungen veröffentlicht. Zum Aktualisieren nach unten ziehen.`,
+    sectionGps: 'Live per GPS erkannt',
     sectionChanges: 'Linienänderungen',
     sectionCity: 'Nachrichten',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'GPS-Analyse',
+    gpsJamTitleTram: (place: string) => `Tram-Stau: ${place}`,
+    gpsJamTitleBus: (place: string) => `Bus-Stau: ${place}`,
+    gpsJamTitleHub: (place: string) => `Starke Verspätungen: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} Fahrzeuge stehen seit ${durMin} Min. in der Nähe. Schnitt +${avgMin} Min. Verspätung.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} verspätete Fahrzeuge in diesem Bereich. Schnitt +${avgMin} Min.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} Min. über dem Normalwert dieser Stunde.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Seit ca. ${durMin} Min. (GPS-Analyse)` : 'Gerade erkannt (GPS-Analyse)',
     openBrowser: 'Im Browser öffnen',
     articleFail: 'Dieser Beitrag konnte nicht geladen werden.',
     articleEmpty: 'Auf dieser Seite steht kein Text, den die App anzeigen kann.',
@@ -2557,6 +2569,43 @@ export const de: Strings = {
     zoomForLinesHint: 'Hineinzoomen für Liniennummern',
     openTimetableCta: 'Linienfahrplan',
     toggleSheetA11y: 'Details erweitern oder einklappen',
+    filterDelays: 'Verspätungen',
+    delayZoneSheetTitle: 'Verspätungsknoten',
+    delayAvgNow: (min: number) => `Schnitt +${min} Min.`,
+    delayP90: (min: number) => `Spitze (p90): +${min} Min.`,
+    delayVsTypicalHigher: (min: number) => `+${min} Min. über Normal`,
+    delayVsTypicalLower: (min: number) => `${min} Min. unter Normal`,
+    delayVehiclesAffected: (delayed: number, total: number) =>
+      `${delayed} von ${total} Fahrzeugen verspätet`,
+    delayAffectedLines: 'Betroffene Linien',
+    delaySeveritySevere: 'Starker Stau',
+    delaySeverityHeavy: 'Hohe Verspätung',
+    delaySeverityModerate: 'Verlangsamung',
+    delayTapLineHint: 'Linie antippen, um sie auf der Karte zu filtern',
+  },
+  routeInsights: {
+    verdictLow: 'Meist pünktlich',
+    verdictModerate: 'Leichte Verspätung möglich',
+    verdictHigh: 'Häufige Verspätungen um diese Zeit',
+    dayWeekday: 'werktags',
+    daySaturday: 'samstags',
+    daySunday: 'sonntags',
+    basisLine: (line: string, day: string, n: number) =>
+      `Linie ${line} · ${day} (${n} Messungen)`,
+    basisGeneric: (day: string, n: number) => `Basierend auf ${n} Messungen (${day})`,
+    upToMin: (min: number) => `p90 +${min}m`,
+    chartCaption: 'Ø Verspätung nach Uhrzeit',
+    yourDeparture: 'Deine Abfahrt',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Verspätungsprofil für Linie ${line}. Um ${hour} im Schnitt plus ${min} Minuten.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Aktiver Stau bei ${place}: derzeit im Schnitt +${min} Min. Verspätung.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: aktuell +${min} Min. (+${delta} Min. über Normal).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: Verlangsamung auf der Strecke, derzeit +${min} Min.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Knapper Umstieg (${stop}): ${marginMin} Min. Puffer, Linie ${fromLine} erreicht bis +${p90Min} Min.`,
   },
   widgets: {
     journeyTitle: 'Deine Ziele',

@@ -33,6 +33,12 @@ import {
 import { getLineColors } from '../../../src/services/lineIdentity';
 import { getWebShareStrings } from '../../../src/i18n/webShare';
 import { useStrings, useWebLocale } from '../i18n';
+import {
+  fetchSharedJourneyLive,
+  isJourneyInLiveWindow,
+  type SharedWebLegLive,
+  type SharedWebLiveSnapshot,
+} from '../sharedLive';
 import { loadSharedStops } from '../sharedTimetable';
 import './sharedJourney.css';
 
@@ -68,10 +74,25 @@ function Vehicle({ mode }: { mode: SharedLeg['mode'] }) {
   return <Icon size={18} aria-hidden="true" />;
 }
 
-function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]; now: number }) {
+function StopTimeline({
+  leg,
+  stops,
+  now,
+  legLive,
+}: {
+  leg: SharedLeg;
+  stops: StaticStop[];
+  now: number;
+  legLive?: SharedWebLegLive | null;
+}) {
   const s = useShareStrings();
   const isTrain = leg.mode === 'train';
-  const position = leg.mode === 'walk' ? null : scheduledVehiclePosition(stops, now);
+  const liveDelaySec =
+    legLive && (legLive.status === 'live' || legLive.status === 'estimated') ? legLive.delaySec : 0;
+  // Przesuwamy zegar wzgledem rozkladu o biezace opoznienie, aby ikonka pojazdu
+  // odzwierciedlala realne polozenie zamiast suchego rozkladu.
+  const effectiveNow = now - liveDelaySec;
+  const position = leg.mode === 'walk' ? null : scheduledVehiclePosition(stops, effectiveNow);
   const current = position ? stops[position.index] : null;
   const label =
     position && current
@@ -79,11 +100,15 @@ function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]
         ? s.vehicleAt(s.modes[leg.mode], current.name)
         : s.vehicleBetween(s.modes[leg.mode], current.name, stops[position.index + 1].name)
       : '';
-  const platform = s.platformLabel(leg.platform, leg.track);
+  const platform = s.platformLabel(legLive?.platform ?? leg.platform, legLive?.track ?? leg.track);
 
   return (
     <>
-      {position && <p className="journey-position-label">{s.estimatedPosition}</p>}
+      {position && (
+        <p className="journey-position-label">
+          {liveDelaySec !== 0 ? s.estimatedPositionLive : s.estimatedPosition}
+        </p>
+      )}
       <ol
         className={`journey-stop-list${isTrain ? ' journey-stop-list-train' : ''}`}
         aria-label={s.timetable}
@@ -92,11 +117,11 @@ function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]
           const isFirst = index === 0;
           const isLast = index === stops.length - 1;
           const endpoint = isFirst || isLast;
-          const arr = clockLabel(stop.arrival);
-          const dep = clockLabel(stop.departure);
+          const arr = clockLabel(stop.arrival + liveDelaySec);
+          const dep = clockLabel(stop.departure + liveDelaySec);
           const showDual =
             isTrain && !isFirst && !isLast && Math.abs(stop.departure - stop.arrival) >= 60;
-          const primarySec = isLast ? stop.arrival : stop.departure;
+          const primarySec = (isLast ? stop.arrival : stop.departure) + liveDelaySec;
           const primary = clockLabel(primarySec);
           const dwellMin = Math.round((stop.departure - stop.arrival) / 60);
           return (
@@ -161,12 +186,42 @@ export default function SharedJourney({ hash }: { hash: string }) {
     [tripToken],
   );
   const [stops, setStops] = useState<StaticStop[][]>([]);
+  const [liveSnapshot, setLiveSnapshot] = useState<SharedWebLiveSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [copied, setCopied] = useState(false);
   const [shareError, setShareError] = useState(false);
   const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    setLiveSnapshot(null);
+    if (!journey || journey.legs.every((leg) => leg.mode === 'walk')) return;
+    let active = true;
+    let controller: AbortController | null = null;
+
+    const poll = () => {
+      if (!active || document.hidden || !isJourneyInLiveWindow(journey, new Date())) return;
+      controller?.abort();
+      controller = new AbortController();
+      void fetchSharedJourneyLive(journey, controller.signal).then((snapshot) => {
+        if (active && snapshot) setLiveSnapshot(snapshot);
+      });
+    };
+
+    poll();
+    const timer = setInterval(poll, 20000);
+    const onVis = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      controller?.abort();
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [journey]);
 
   useEffect(() => {
     if (!journey) return;
@@ -238,10 +293,52 @@ export default function SharedJourney({ hash }: { hash: string }) {
     month: 'long',
     timeZone: 'UTC',
   }).format(new Date(`${journey.date}T12:00:00Z`));
-  const arrivalDay = Math.floor(journey.arrival / 1440);
+  const liveLegs = liveSnapshot?.legs ?? [];
+  const legSchedule = journey.legs.map((leg, idx) => {
+    const live = liveLegs[idx] ?? null;
+    const activeDelay =
+      live && (live.status === 'live' || live.status === 'estimated')
+        ? Math.round(live.delaySec / 60)
+        : 0;
+    const arrDelay =
+      live && (live.status === 'live' || live.status === 'estimated')
+        ? Math.round((live.arrivalDelaySec ?? live.delaySec) / 60)
+        : 0;
+    const baseDep =
+      leg.scheduledDeparture !== undefined
+        ? leg.scheduledDeparture +
+          Math.round((leg.departure - leg.scheduledDeparture) / 1440) * 1440
+        : leg.departure;
+    const baseArr =
+      leg.scheduledArrival !== undefined
+        ? leg.scheduledArrival + Math.round((leg.arrival - leg.scheduledArrival) / 1440) * 1440
+        : leg.arrival;
+    const hasOverride = live != null && (live.status === 'live' || live.status === 'estimated');
+    return {
+      live,
+      delayMin: activeDelay,
+      arrDelayMin: arrDelay,
+      departure: hasOverride ? baseDep + activeDelay : leg.departure,
+      arrival: hasOverride ? baseArr + arrDelay : leg.arrival,
+      baseDep,
+      baseArr,
+    };
+  });
+
+  const effectiveDeparture = legSchedule[0]?.departure ?? journey.departure;
+  const effectiveArrival = legSchedule[legSchedule.length - 1]?.arrival ?? journey.arrival;
+  const overallArrivalDelayMin = effectiveArrival - journey.arrival;
+  const hasAnyLive = Boolean(liveSnapshot?.hasAnyLive);
+  const anyCancelled = legSchedule.some((item) => item.live?.cancelled);
+  const anyEstimatedOnly =
+    hasAnyLive &&
+    !legSchedule.some((item) => item.live?.status === 'live') &&
+    legSchedule.some((item) => item.live?.status === 'estimated');
+
+  const arrivalDay = Math.floor(effectiveArrival / 1440);
   const elapsed = sharedJourneySeconds(journey.date, now);
-  const depSec = journey.departure * 60;
-  const arrSec = journey.arrival * 60;
+  const depSec = effectiveDeparture * 60;
+  const arrSec = effectiveArrival * 60;
   const ended = elapsed > arrSec;
   const started = elapsed >= depSec && !ended;
   const etaMin = started ? Math.max(1, Math.round((arrSec - elapsed) / 60)) : 0;
@@ -257,6 +354,12 @@ export default function SharedJourney({ hash }: { hash: string }) {
       : showDepartBadge
         ? s.upcoming
         : s.planned;
+
+  const liveClockLabel = liveSnapshot
+    ? new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(
+        new Date(liveSnapshot.updatedAt),
+      )
+    : '';
 
   const url = window.location.href;
   const message = shareMessage(journey, s);
@@ -341,11 +444,35 @@ export default function SharedJourney({ hash }: { hash: string }) {
 
               <p className="journey-hero-label">{s.arrival}</p>
               <div className="journey-arrival-row">
-                <div className="journey-time">{formatShareTime(journey.arrival)}</div>
+                <div className="journey-time">{formatShareTime(effectiveArrival)}</div>
                 {arrivalDay > 0 && (
                   <span className="journey-day-later">{s.dayLater(arrivalDay)}</span>
                 )}
+                {hasAnyLive && overallArrivalDelayMin !== 0 && (
+                  <span className="journey-scheduled-strike">
+                    {s.scheduledTime(formatShareTime(journey.arrival))}
+                  </span>
+                )}
               </div>
+              {hasAnyLive && (
+                <div className="journey-delay-row">
+                  <span
+                    className={`journey-delay-pill${
+                      anyCancelled || overallArrivalDelayMin > 0
+                        ? ' journey-delay-pill-late'
+                        : overallArrivalDelayMin < 0 || anyEstimatedOnly
+                          ? ' journey-delay-pill-warn'
+                          : ' journey-delay-pill-ontime'
+                    }`}
+                  >
+                    {anyCancelled
+                      ? s.cancelledService
+                      : anyEstimatedOnly && overallArrivalDelayMin > 0
+                        ? s.estimatedDelay(overallArrivalDelayMin)
+                        : s.liveDelay(overallArrivalDelayMin)}
+                  </span>
+                </div>
+              )}
               <h2 className="journey-destination">{journey.to}</h2>
 
               {started && !ended && (
@@ -359,12 +486,12 @@ export default function SharedJourney({ hash }: { hash: string }) {
               <div className="journey-meta-row">
                 <div className="journey-origin-col">
                   <p className="journey-meta-label">
-                    {s.departure} · <time>{formatShareTime(journey.departure)}</time>
+                    {s.departure} · <time>{formatShareTime(effectiveDeparture)}</time>
                   </p>
                   <p className="journey-origin-name">{journey.from}</p>
                 </div>
                 <div className="journey-facts-col">
-                  <strong>{s.duration(journey.arrival - journey.departure)}</strong>
+                  <strong>{s.duration(Math.max(0, effectiveArrival - effectiveDeparture))}</strong>
                   <span>{allWalk ? s.walk : s.transfers(transferCount(journey))}</span>
                 </div>
               </div>
@@ -410,8 +537,14 @@ export default function SharedJourney({ hash }: { hash: string }) {
           </div>
 
           <p className="journey-note">
-            {s.snapshot}
-            {journey.legs.some((leg) => leg.mode !== 'walk') && <> {s.positionNote}</>}
+            {hasAnyLive ? (
+              s.liveStatusNote(liveClockLabel)
+            ) : (
+              <>
+                {s.snapshot}
+                {journey.legs.some((leg) => leg.mode !== 'walk') && <> {s.positionNote}</>}
+              </>
+            )}
           </p>
 
           {shareError && (
@@ -424,63 +557,124 @@ export default function SharedJourney({ hash }: { hash: string }) {
         <section className="journey-itinerary" aria-labelledby="itinerary-title">
           <h2 id="itinerary-title">{s.itinerary}</h2>
           <ol className="journey-legs">
-            {journey.legs.map((leg, i) => (
-              <li
-                key={i}
-                className={`journey-leg${leg.mode === 'walk' ? ' journey-leg-walk' : ''}`}
-                data-mode={leg.mode}
-                style={lineStyle(leg, journey.city)}
-              >
-                <div className="journey-leg-heading">
-                  <span className="journey-leg-icon">
-                    <Vehicle mode={leg.mode} />
-                    {leg.line && <strong>{leg.line}</strong>}
-                  </span>
-                  <div>
-                    <h3>{leg.direction || s.modes[leg.mode]}</h3>
-                    {leg.mode !== 'walk' && <p>{s.modes[leg.mode]}</p>}
-                    {leg.mode === 'walk' && leg.walk != null && <p>{s.walkDistance(leg.walk)}</p>}
-                  </div>
-                  <span className="journey-leg-duration">
-                    {s.duration(leg.arrival - leg.departure)}
-                  </span>
-                </div>
-                {stops[i]?.length > 2 ? (
-                  <>
-                    <div className="journey-leg-summary">
-                      <p>
-                        <span>{s.from}</span> <strong>{leg.from}</strong>{' '}
-                        <time>{formatShareTime(leg.departure)}</time>
-                        {leg.platform || leg.track ? (
-                          <> · {s.platformLabel(leg.platform, leg.track)}</>
-                        ) : null}
-                      </p>
-                      <p>
-                        <span>{s.to}</span> <strong>{leg.to}</strong>{' '}
-                        <time>
-                          {formatShareTime(leg.arrival)}
-                          {leg.arrival >= 1440 && (
-                            <> {s.dayLater(Math.floor(leg.arrival / 1440))}</>
-                          )}
-                        </time>
-                      </p>
+            {journey.legs.map((leg, i) => {
+              const sched = legSchedule[i];
+              const legLive = sched?.live ?? null;
+              const livePlatform = legLive?.platform ?? leg.platform;
+              const liveTrack = legLive?.track ?? leg.track;
+              const typicalMin =
+                legLive?.typicalDelaySec && legLive.typicalDelaySec >= 120
+                  ? Math.round(legLive.typicalDelaySec / 60)
+                  : 0;
+              return (
+                <li
+                  key={i}
+                  className={`journey-leg${leg.mode === 'walk' ? ' journey-leg-walk' : ''}`}
+                  data-mode={leg.mode}
+                  style={lineStyle(leg, journey.city)}
+                >
+                  <div className="journey-leg-heading">
+                    <span className="journey-leg-icon">
+                      <Vehicle mode={leg.mode} />
+                      {leg.line && <strong>{leg.line}</strong>}
+                    </span>
+                    <div>
+                      <h3>{leg.direction || s.modes[leg.mode]}</h3>
+                      {leg.mode !== 'walk' && <p>{s.modes[leg.mode]}</p>}
+                      {leg.mode === 'walk' && leg.walk != null && <p>{s.walkDistance(leg.walk)}</p>}
                     </div>
-                    <details className="journey-stops">
-                      <summary>
-                        <span className="journey-expand-pill">
-                          <span className="journey-show-stops">{s.showStops(stops[i].length)}</span>
-                          <span className="journey-hide-stops">{s.hideStops}</span>
+                    <span className="journey-leg-duration">
+                      {s.duration(Math.max(0, (sched?.arrival ?? leg.arrival) - (sched?.departure ?? leg.departure)))}
+                    </span>
+                  </div>
+                  {legLive && (legLive.status === 'live' || legLive.status === 'estimated' || legLive.cancelled) && (
+                    <div className="journey-leg-live-row">
+                      <span
+                        className={`journey-delay-pill${
+                          legLive.cancelled || sched.delayMin > 0
+                            ? ' journey-delay-pill-late'
+                            : legLive.status === 'estimated' || sched.delayMin < 0
+                              ? ' journey-delay-pill-warn'
+                              : ' journey-delay-pill-ontime'
+                        }`}
+                      >
+                        {legLive.cancelled
+                          ? s.cancelledService
+                          : legLive.status === 'estimated' && sched.delayMin > 0
+                            ? s.estimatedDelay(sched.delayMin)
+                            : s.liveDelay(sched.delayMin)}
+                      </span>
+                      {legLive.nextStop && (
+                        <span className="journey-leg-live-meta">
+                          {s.nextStopLabel(legLive.nextStop)}
                         </span>
-                        <ChevronDown size={18} aria-hidden="true" />
-                      </summary>
-                      <StopTimeline leg={leg} stops={sharedLegStops(leg, stops[i])} now={elapsed} />
-                    </details>
-                  </>
-                ) : (
-                  <StopTimeline leg={leg} stops={sharedLegStops(leg, stops[i])} now={elapsed} />
-                )}
-              </li>
-            ))}
+                      )}
+                      {!legLive.nextStop && typicalMin >= 2 && legLive.status !== 'live' && (
+                        <span className="journey-leg-live-meta">
+                          {s.typicalDelayNote(typicalMin)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {stops[i]?.length > 2 ? (
+                    <>
+                      <div className="journey-leg-summary">
+                        <p>
+                          <span>{s.from}</span> <strong>{leg.from}</strong>{' '}
+                          <time>{formatShareTime(sched?.departure ?? leg.departure)}</time>
+                          {sched && sched.delayMin !== 0 && (
+                            <span className="journey-leg-strike">
+                              {' '}
+                              {formatShareTime(sched.baseDep)}
+                            </span>
+                          )}
+                          {livePlatform || liveTrack ? (
+                            <> · {s.platformLabel(livePlatform, liveTrack)}</>
+                          ) : null}
+                        </p>
+                        <p>
+                          <span>{s.to}</span> <strong>{leg.to}</strong>{' '}
+                          <time>
+                            {formatShareTime(sched?.arrival ?? leg.arrival)}
+                            {(sched?.arrival ?? leg.arrival) >= 1440 && (
+                              <> {s.dayLater(Math.floor((sched?.arrival ?? leg.arrival) / 1440))}</>
+                            )}
+                          </time>
+                          {sched && sched.arrDelayMin !== 0 && (
+                            <span className="journey-leg-strike">
+                              {' '}
+                              {formatShareTime(sched.baseArr)}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <details className="journey-stops">
+                        <summary>
+                          <span className="journey-expand-pill">
+                            <span className="journey-show-stops">{s.showStops(stops[i].length)}</span>
+                            <span className="journey-hide-stops">{s.hideStops}</span>
+                          </span>
+                          <ChevronDown size={18} aria-hidden="true" />
+                        </summary>
+                        <StopTimeline
+                          leg={leg}
+                          stops={sharedLegStops(leg, stops[i])}
+                          now={elapsed}
+                          legLive={legLive}
+                        />
+                      </details>
+                    </>
+                  ) : (
+                    <StopTimeline
+                      leg={leg}
+                      stops={sharedLegStops(leg, stops[i])}
+                      now={elapsed}
+                      legLive={legLive}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ol>
           <div aria-live="polite" className="journey-data-state">
             {loading && <p role="status">{s.loading}</p>}
