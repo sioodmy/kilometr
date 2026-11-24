@@ -274,15 +274,6 @@
     justify-content: center;
   }
 
-  @keyframes story-ig-progress {
-    from {
-      transform: scaleX(0);
-    }
-    to {
-      transform: scaleX(1);
-    }
-  }
-
   @keyframes story-ig-caption-in {
     from {
       opacity: 0;
@@ -405,18 +396,7 @@
 
     .story-ig-bar-fill.is-active {
       background: var(--accent);
-      animation-name: story-ig-progress;
-      animation-timing-function: linear;
-      animation-fill-mode: forwards;
-      animation-play-state: paused;
-    }
-
-    .story-ig.is-in-view .story-ig-bar-fill.is-active {
-      animation-play-state: running;
-    }
-
-    .story-ig.is-paused .story-ig-bar-fill.is-active {
-      animation-play-state: paused;
+      transform: scaleX(var(--story-progress, 0));
     }
 
     .story-ig-header {
@@ -703,6 +683,19 @@
 
     .story-ig-phone-wrap {
       width: min(56vw, 200px, calc((100dvh - 230px) * 0.44));
+    }
+  }
+
+  @media (max-width: 960px) and (prefers-reduced-motion: no-preference) {
+    /* Karta zostaje przypięta na czas trzech rozdziałów, żeby nie dało się jej przewinąć jednym gestem. */
+    .story-section .release-inner {
+      min-height: 300svh;
+    }
+
+    .story-grid {
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
   }
 

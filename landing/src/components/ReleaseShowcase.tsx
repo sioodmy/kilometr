@@ -30,7 +30,6 @@ const COMBINED_TRANSFER_FRAMES: readonly CombinedTransferFrame[] = [
   { src: RAIL_TRANSFER_SHOTS[2], group: 'rail', groupIdx: 2, statusTime: '09:07' },
 ];
 
-const STORY_DURATION_MS = 5600;
 const MOBILE_TRANSFER_DURATION_MS = 3800;
 
 function useIsMobileLayout() {
@@ -54,17 +53,13 @@ export function ReleaseShowcase() {
   const copy = useReleaseCopy(locale);
   const isMobile = useIsMobileLayout();
 
-  // Act II: scroll-driven sticky choreography on desktop, full-height IG Stories on mobile
+  // Act II: sticky story choreography on desktop, scroll-driven pinned IG Stories on mobile
+  const storySectionRef = useRef<HTMLElement>(null);
   const storyRef = useRef<HTMLDivElement>(null);
   const storyIgRef = useRef<HTMLDivElement>(null);
   const [storyBeat, setStoryBeat] = useState(0);
-  const [storyResetTick, setStoryResetTick] = useState(0);
-  const [storyInView, setStoryInView] = useState(false);
-  const [storyPaused, setStoryPaused] = useState(false);
 
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const holdTimerRef = useRef<number | undefined>(undefined);
-  const wasHeldRef = useRef(false);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Act III: ambient cycling on desktop (2 phones) + unified single-phone sequence on mobile
   const transfersRef = useRef<HTMLElement>(null);
@@ -79,7 +74,6 @@ export function ReleaseShowcase() {
     (nextIndex: number) => {
       const wrapped = ((nextIndex % storyCount) + storyCount) % storyCount;
       setStoryBeat(wrapped);
-      setStoryResetTick((t) => t + 1);
     },
     [storyCount],
   );
@@ -124,40 +118,56 @@ export function ReleaseShowcase() {
     };
   }, [isMobile]);
 
-  // Mobile-only viewport observer for IG Stories auto-advance
+  // Mobile: sekcja trzyma kartę na ekranie, a kolejne rozdziały sterowane są scrollem.
   useEffect(() => {
-    if (!isMobile) {
-      setStoryInView(false);
-      return;
-    }
-    const el = storyIgRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(([entry]) => setStoryInView(entry.isIntersecting), {
-      threshold: 0.35,
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [isMobile]);
-
-  // Mobile IG Stories timer (auto-advances and loops cleanly while visible and unpaused)
-  useEffect(() => {
-    if (!isMobile || !storyInView || storyPaused) return;
+    if (!isMobile) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const timer = window.setTimeout(() => {
-      setStoryBeat((prev) => (prev + 1) % storyCount);
-      setStoryResetTick((t) => t + 1);
-    }, STORY_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [isMobile, storyInView, storyPaused, storyBeat, storyResetTick, storyCount]);
+    const section = storySectionRef.current;
+    const grid = storyRef.current;
+    const root = storyIgRef.current;
+    if (!section || !grid || !root) return;
+    const inner = section.querySelector<HTMLElement>('.release-inner');
+    const head = section.querySelector<HTMLElement>('.release-head');
+    if (!inner || !head) return;
+    let raf = 0;
 
-  // Cleanup hold timer on unmount
-  useEffect(() => {
-    return () => {
-      if (holdTimerRef.current !== undefined) {
-        window.clearTimeout(holdTimerRef.current);
-      }
+    const update = () => {
+      raf = 0;
+      const scrollY = window.scrollY;
+      const sectionRect = section.getBoundingClientRect();
+      const gridStyle = window.getComputedStyle(grid);
+      const sectionStyle = window.getComputedStyle(section);
+      const start =
+        sectionRect.top +
+        scrollY +
+        (Number.parseFloat(sectionStyle.paddingTop) || 0) +
+        head.offsetHeight +
+        (Number.parseFloat(gridStyle.marginTop) || 0);
+      const innerRect = inner.getBoundingClientRect();
+      const cardHeight = grid.getBoundingClientRect().height;
+      const end = scrollY + innerRect.bottom - cardHeight;
+      const range = Math.max(1, end - start);
+      const progress = Math.min(1, Math.max(0, (scrollY - start) / range));
+      const scaled = progress * storyCount;
+      const beat = Math.min(storyCount - 1, Math.floor(scaled));
+      const local = Math.min(1, scaled - beat);
+      root.style.setProperty('--story-progress', local.toFixed(4));
+      setStoryBeat((prev) => (prev === beat ? prev : beat));
     };
-  }, []);
+
+    const schedule = () => {
+      if (!raf) raf = window.requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [isMobile, storyCount]);
 
   // Observe Transfer section visibility
   useEffect(() => {
@@ -195,39 +205,13 @@ export function ReleaseShowcase() {
   const handleStoryTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    wasHeldRef.current = false;
-    if (holdTimerRef.current !== undefined) window.clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = window.setTimeout(() => {
-      wasHeldRef.current = true;
-      setStoryPaused(true);
-    }, 200);
-  };
-
-  const handleStoryTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    const start = touchStartRef.current;
-    if (!start || e.touches.length !== 1) return;
-    const dx = Math.abs(e.touches[0].clientX - start.x);
-    const dy = Math.abs(e.touches[0].clientY - start.y);
-    if (dx > 10 || dy > 10) {
-      if (holdTimerRef.current !== undefined) {
-        window.clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = undefined;
-      }
-      setStoryPaused(false);
-    }
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
   };
 
   const handleStoryTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (holdTimerRef.current !== undefined) {
-      window.clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = undefined;
-    }
-    if (storyPaused) setStoryPaused(false);
-
     const start = touchStartRef.current;
     touchStartRef.current = null;
-    if (!start || wasHeldRef.current) return;
+    if (!start) return;
 
     const touch = e.changedTouches[0];
     if (!touch) return;
@@ -250,8 +234,13 @@ export function ReleaseShowcase() {
 
   return (
     <div className="release-showcase">
-      {/* ACT II: Scroll-choreographed 3-beat product story (desktop) / Full-height IG Stories (mobile) */}
-      <section className="release-section story-section" id="trasa" aria-labelledby="story-title">
+      {/* Akt II: przypięta opowieść produktowa na desktopie i scrollowana historia IG na mobile */}
+      <section
+        className="release-section story-section"
+        id="trasa"
+        aria-labelledby="story-title"
+        ref={storySectionRef}
+      >
         <div className="release-inner">
           <div className="release-head release-head-center">
             <h2 className="release-title" id="story-title">
@@ -319,18 +308,10 @@ export function ReleaseShowcase() {
             ) : (
               /* Mobile full-height Instagram Stories view */
               <div
-                className={`story-ig${storyPaused ? ' is-paused' : ''}${storyInView ? ' is-in-view' : ''}`}
+                className="story-ig"
                 ref={storyIgRef}
                 onTouchStart={handleStoryTouchStart}
-                onTouchMove={handleStoryTouchMove}
                 onTouchEnd={handleStoryTouchEnd}
-                onTouchCancel={() => {
-                  if (holdTimerRef.current !== undefined) {
-                    window.clearTimeout(holdTimerRef.current);
-                    holdTimerRef.current = undefined;
-                  }
-                  setStoryPaused(false);
-                }}
               >
                 <div className="story-ig-top">
                   <div className="story-ig-bars" role="tablist" aria-label={copy.story.title}>
@@ -346,18 +327,13 @@ export function ReleaseShowcase() {
                       >
                         <span className="story-ig-bar-track">
                           <span
-                            key={idx === storyBeat ? `${chapter.id}-${storyResetTick}` : chapter.id}
+                            key={chapter.id}
                             className={
                               idx < storyBeat
                                 ? 'story-ig-bar-fill is-done'
                                 : idx === storyBeat
                                   ? 'story-ig-bar-fill is-active'
                                   : 'story-ig-bar-fill'
-                            }
-                            style={
-                              idx === storyBeat
-                                ? { animationDuration: `${STORY_DURATION_MS}ms` }
-                                : undefined
                             }
                           />
                         </span>
@@ -435,17 +411,13 @@ export function ReleaseShowcase() {
                     type="button"
                     className="story-ig-tap story-ig-tap-prev"
                     aria-label={copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
-                    onClick={() => {
-                      if (!wasHeldRef.current) goStory(storyBeat - 1);
-                    }}
+                    onClick={() => goStory(storyBeat - 1)}
                   />
                   <button
                     type="button"
                     className="story-ig-tap story-ig-tap-next"
                     aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
-                    onClick={() => {
-                      if (!wasHeldRef.current) goStory(storyBeat + 1);
-                    }}
+                    onClick={() => goStory(storyBeat + 1)}
                   />
                 </div>
 
