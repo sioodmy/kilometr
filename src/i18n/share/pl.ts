@@ -125,6 +125,12 @@ export const pl = {
   invalidBody: 'Link jest niepełny lub uszkodzony. Poproś o ponowne udostępnienie połączenia.',
   home: 'Strona Kilometra',
   dayLater: (n: number) => `+${n} d`,
+  liveStatusNote: (time: string) => `Opóźnienia na żywo (stan z ${time}).`,
+  estimatedDelay: (min: number) => `Szac. +${min} min`,
+  estimatedPositionLive: 'Pozycja skorygowana o bieżące opóźnienie',
+  cancelledService: 'Kurs odwołany',
+  scheduledTime: (time: string) => `planowo ${time}`,
+  typicalDelayNote: (min: number) => `Zwykle ok. +${min} min o tej porze`,
 };
 
 export type ShareStrings = typeof pl;
