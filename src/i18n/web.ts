@@ -5,11 +5,16 @@ type LandingStrings = typeof pl;
 
 const cache: Partial<Record<Locale, LandingStrings>> = { pl };
 const pending = new Map<Locale, Promise<void>>();
-const loaders: Record<Exclude<Locale, 'pl'>, () => Promise<LandingStrings>> = {
-  en: () => import('./landing/en').then((m) => m.en),
-  de: () => import('./landing/de').then((m) => m.de),
-  uk: () => import('./landing/uk').then((m) => m.uk),
-};
+function loadLocale(target: Exclude<Locale, 'pl'>): Promise<LandingStrings> {
+  switch (target) {
+    case 'en':
+      return import('./landing/en').then((m) => m.en);
+    case 'de':
+      return import('./landing/de').then((m) => m.de);
+    case 'uk':
+      return import('./landing/uk').then((m) => m.uk);
+  }
+}
 
 const key = 'kilometr.website.language';
 const listeners = new Set<() => void>();
@@ -25,7 +30,7 @@ function notify() {
 
 function ensureLocaleLoaded(target: Locale) {
   if (target === 'pl' || cache[target] || pending.has(target)) return;
-  const task = loaders[target]()
+  const task = loadLocale(target)
     .then((dict) => {
       cache[target] = dict;
       if (locale === target) notify();
