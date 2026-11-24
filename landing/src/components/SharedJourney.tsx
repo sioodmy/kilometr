@@ -31,9 +31,15 @@ import {
   sharedLegStops,
 } from '../../../src/sharing/progress';
 import { getLineColors } from '../../../src/services/lineIdentity';
-import { useShareStrings, useStrings, useWebLocale } from '../i18n';
+import { getWebShareStrings } from '../../../src/i18n/webShare';
+import { useStrings, useWebLocale } from '../i18n';
 import { loadSharedStops } from '../sharedTimetable';
 import './sharedJourney.css';
+
+function useShareStrings() {
+  const locale = useWebLocale();
+  return getWebShareStrings(locale);
+}
 
 function lineStyle(leg: SharedLeg, city: string): CSSProperties {
   if (leg.mode === 'walk') return {};
@@ -103,9 +109,7 @@ function StopTimeline({ leg, stops, now }: { leg: SharedLeg; stops: StaticStop[]
               </span>
               <span className="journey-stop-copy">
                 <span className="journey-stop-name">{stop.name}</span>
-                {isFirst && platform ? (
-                  <span className="journey-stop-meta">{platform}</span>
-                ) : null}
+                {isFirst && platform ? <span className="journey-stop-meta">{platform}</span> : null}
                 {showDual && dwellMin >= 2 ? (
                   <span className="journey-stop-meta">{s.dwellMin(dwellMin)}</span>
                 ) : null}
@@ -369,11 +373,7 @@ export default function SharedJourney({ hash }: { hash: string }) {
                 {journey.legs.map((leg, i) => (
                   <div key={i} className="journey-service-step">
                     {i > 0 && (
-                      <ArrowRight
-                        className="journey-chain-arrow"
-                        size={13}
-                        aria-hidden="true"
-                      />
+                      <ArrowRight className="journey-chain-arrow" size={13} aria-hidden="true" />
                     )}
                     <span
                       className="journey-service"

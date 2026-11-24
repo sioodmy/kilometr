@@ -1,10 +1,6 @@
 @import './layers.css';
-@import './components/coverageSection.css';
 @import './components/donateSection.css';
 @import './components/landingSections.css';
-@import './components/installPage.css';
-@import './components/themeStudio.css';
-@import './components/kilometrUi.css';
 @import './components/hero.css';
 @import './components/releaseShowcase.css';
 

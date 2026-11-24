@@ -1,6 +1,7 @@
 import { TrainFront } from 'lucide-react';
 import { RAIL_ICON_SPECS, type RailIconSpec } from '../../../src/services/railIconPaths';
 import { getRailAgencyColor } from '../../../src/services/railIdentity';
+import './kilometrUi.css';
 
 type RailIconKey = keyof typeof RAIL_ICON_SPECS;
 
@@ -115,8 +116,20 @@ export const CITY_CRESTS: readonly CityCrestItem[] = [
   { cityKey: 'trojmiasto', name: 'Gdańsk', src: './cities/gdansk.webp', width: 47, height: 56 },
   { cityKey: 'szczecin', name: 'Szczecin', src: './cities/szczecin.webp', width: 43, height: 56 },
   { cityKey: 'lublin', name: 'Lublin', src: './cities/lublin.webp', width: 45, height: 56 },
-  { cityKey: 'bydgoszcz', name: 'Bydgoszcz', src: './cities/bydgoszcz.webp', width: 46, height: 56 },
-  { cityKey: 'bialystok', name: 'Białystok', src: './cities/bialystok.webp', width: 45, height: 56 },
+  {
+    cityKey: 'bydgoszcz',
+    name: 'Bydgoszcz',
+    src: './cities/bydgoszcz.webp',
+    width: 46,
+    height: 56,
+  },
+  {
+    cityKey: 'bialystok',
+    name: 'Białystok',
+    src: './cities/bialystok.webp',
+    width: 45,
+    height: 56,
+  },
   { cityKey: 'rzeszow', name: 'Rzeszów', src: './cities/rzeszow.webp', width: 45, height: 56 },
   { cityKey: 'torun', name: 'Toruń', src: './cities/torun.webp', width: 46, height: 56 },
   { cityKey: 'olsztyn', name: 'Olsztyn', src: './cities/olsztyn.webp', width: 45, height: 56 },
@@ -146,7 +159,9 @@ function CityCrestChips({
               type="button"
               tabIndex={duplicate ? -1 : undefined}
               aria-pressed={!duplicate ? isSelected : undefined}
-              className={isSelected ? 'km-rail-chip km-city-chip is-selected' : 'km-rail-chip km-city-chip'}
+              className={
+                isSelected ? 'km-rail-chip km-city-chip is-selected' : 'km-rail-chip km-city-chip'
+              }
               onClick={() => onSelectCity?.(city.cityKey)}
             >
               <span className="km-city-crest-box" aria-hidden="true">
@@ -156,7 +171,7 @@ function CityCrestChips({
                   alt=""
                   width={city.width}
                   height={city.height}
-                  loading="eager"
+                  loading="lazy"
                   decoding="async"
                 />
               </span>
