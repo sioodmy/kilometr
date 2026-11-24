@@ -173,6 +173,14 @@
   .skip-link:focus {
     transform: translateY(0);
   }
+  .platform-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .platform-links svg {
+    flex-shrink: 0;
+  }
   .button {
     display: inline-flex;
     align-items: center;

@@ -147,6 +147,7 @@
   }
   .closing {
     position: relative;
+    isolation: isolate;
     overflow: hidden;
     border: 1px solid rgb(255 255 255 / 9%);
     border-radius: 32px;
@@ -163,6 +164,232 @@
       inset 0 1px 0 rgb(255 255 255 / 7%);
     padding: clamp(48px, 7.5vw, 96px) clamp(22px, 5vw, 72px);
     text-align: center;
+    transition:
+      border-color 0.45s ease,
+      box-shadow 0.45s ease;
+  }
+  .closing::before,
+  .closing::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .closing::before {
+    inset: -24% -36%;
+    background:
+      radial-gradient(40% 54% at 34% 22%, rgb(127 219 177 / 9%), transparent 70%),
+      radial-gradient(34% 44% at 68% 30%, rgb(92 219 190 / 6%), transparent 72%);
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    animation: closing-aurora 16s ease-in-out infinite alternate;
+    animation-play-state: paused;
+  }
+  .closing::after {
+    background: radial-gradient(
+      26rem circle at var(--closing-glow-x, 50%) var(--closing-glow-y, 22%),
+      rgb(127 219 177 / 14%) 0%,
+      rgb(92 219 190 / 5%) 34%,
+      transparent 68%
+    );
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .closing > * {
+    position: relative;
+    z-index: 1;
+  }
+  .closing {
+    --closing-line-dim: 0.05;
+    --closing-node-dim: 0.06;
+    --closing-line-hover: 0.2;
+    --closing-node-hover: 0.22;
+  }
+  .closing > .closing-network {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    transform: translate3d(var(--closing-net-x, 0px), var(--closing-net-y, 0px), 0) scale(1.035);
+    transform-origin: 50% 50%;
+    transition: transform 1.1s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .closing-net-line {
+    stroke: rgb(127 219 177 / 50%);
+    stroke-width: 1;
+    opacity: var(--closing-line-dim);
+    vector-effect: non-scaling-stroke;
+    transition:
+      opacity 0.45s ease var(--net-delay, 0s),
+      stroke 0.25s ease,
+      stroke-width 0.25s ease;
+  }
+  .closing-net-line.is-lit {
+    stroke: rgb(159 241 207 / 72%);
+    stroke-width: 1.3;
+  }
+  .closing-net-route {
+    stroke: #9cf0cb;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-dasharray: 0.035 0.965;
+    stroke-dashoffset: 0;
+    opacity: 0;
+    vector-effect: non-scaling-stroke;
+    filter: drop-shadow(0 0 3px rgb(127 219 177 / 45%));
+  }
+  .closing-net-route.is-lit {
+    animation: closing-route 3.8s linear infinite;
+  }
+  .closing-net-streak {
+    stroke: #b6f7dc;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-dasharray: 0.09 0.91;
+    stroke-dashoffset: 0;
+    opacity: 0;
+    vector-effect: non-scaling-stroke;
+    filter: drop-shadow(0 0 4px rgb(127 219 177 / 65%));
+  }
+  .closing-net-streak--alt {
+    stroke-width: 1.2;
+    stroke-dasharray: 0.05 0.95;
+  }
+  .closing-net-node {
+    opacity: var(--closing-node-dim);
+    transition: opacity 0.45s ease var(--net-delay, 0s);
+  }
+  .closing-net-node.is-lit {
+    opacity: 1;
+  }
+  .closing-net-halo {
+    fill: rgb(127 219 177 / 13%);
+    opacity: 0.5;
+    animation: closing-node-pulse 5.4s ease-in-out infinite;
+    animation-play-state: paused;
+    transition: fill 0.25s ease;
+  }
+  .closing-net-node.is-lit .closing-net-halo {
+    animation-play-state: running;
+    fill: rgb(127 219 177 / 30%);
+  }
+  .closing-net-ring {
+    fill: none;
+    stroke: rgb(127 219 177 / 32%);
+    stroke-width: 1;
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: closing-node-ring 5.6s ease-out infinite;
+    animation-play-state: paused;
+  }
+  .closing-net-node.is-lit .closing-net-ring {
+    animation-play-state: running;
+  }
+  .closing-net-dot {
+    fill: #b9f3dc;
+    transition: fill 0.2s ease;
+  }
+  .closing-net-node.is-lit .closing-net-dot {
+    fill: #e8fff6;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .closing:hover {
+      --closing-line-dim: 0.22;
+      --closing-node-dim: 0.24;
+      border-color: rgb(127 219 177 / 20%);
+      box-shadow:
+        0 36px 84px rgb(0 0 0 / 50%),
+        0 0 46px -18px rgb(127 219 177 / 30%),
+        inset 0 1px 0 rgb(255 255 255 / 10%);
+    }
+    .closing:hover::before {
+      opacity: 1;
+      animation-play-state: running;
+    }
+    .closing:hover::after {
+      opacity: 1;
+    }
+    .closing:hover .closing-net-line {
+      opacity: var(--closing-line-hover);
+    }
+    .closing:hover .closing-net-node {
+      opacity: var(--closing-node-hover);
+    }
+    .closing:hover .closing-net-line.is-lit,
+    .closing:hover .closing-net-node.is-lit {
+      opacity: 1;
+      transition-delay: 0s;
+    }
+    .closing:hover .closing-net-streak {
+      animation: closing-streak 6.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+    }
+    .closing:hover .closing-net-streak--alt {
+      animation-duration: 8.6s;
+    }
+  }
+  @keyframes closing-aurora {
+    from {
+      transform: translate3d(-3%, -1%, 0) scale(1);
+    }
+    to {
+      transform: translate3d(3%, 1%, 0) scale(1.06);
+    }
+  }
+  @keyframes closing-route {
+    0% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.85;
+    }
+    68% {
+      opacity: 0.85;
+    }
+    100% {
+      stroke-dashoffset: -1;
+      opacity: 0;
+    }
+  }
+  @keyframes closing-streak {
+    0% {
+      stroke-dashoffset: 0.04;
+      opacity: 0;
+    }
+    8% {
+      opacity: 0.75;
+    }
+    58% {
+      opacity: 0.75;
+    }
+    100% {
+      stroke-dashoffset: -1;
+      opacity: 0;
+    }
+  }
+  @keyframes closing-node-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 0.9;
+    }
+  }
+  @keyframes closing-node-ring {
+    0% {
+      transform: scale(0.5);
+      opacity: 0.6;
+    }
+    70%,
+    100% {
+      transform: scale(2.1);
+      opacity: 0;
+    }
   }
   .closing-mark {
     display: inline-flex;
@@ -199,13 +426,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
+    gap: 20px;
     width: min(100%, 480px);
     margin: 34px auto 0;
   }
   .closing-actions .platform-links {
     justify-content: center;
-    gap: 12px;
+    gap: 16px;
   }
   .closing-actions .button {
     min-width: 148px;

@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { ArrowUpRight, ChevronDown, Coffee } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import { setWebLocale, useStrings, useWebLocale, type Locale } from './i18n';
 import { Hero } from './components/Hero';
 import { ReleaseShowcase } from './components/ReleaseShowcase';
 import { DonateSection } from './components/DonateSection';
 import { PromiseSection } from './components/Promise';
-import { PlatformLinks } from './components/PlatformLinks';
-import { GITHUB_URL, COFFEE_URL, OBTAINIUM_URL } from './data';
+import { ClosingSection } from './components/ClosingSection';
+import { GITHUB_URL, OBTAINIUM_URL } from './data';
 
 const loadCoverageSection = () => import('./components/CoverageSection');
 
@@ -45,7 +45,6 @@ function DisplaySettings() {
 }
 
 function Landing() {
-  const s = useStrings();
   return (
     <main id="main" tabIndex={-1}>
       <Hero />
@@ -64,27 +63,7 @@ function Landing() {
       </Suspense>
       <DonateSection />
       <PromiseSection />
-      <section id="pobierz" className="closing-section" aria-labelledby="closing-title">
-        <div className="closing section-shell reveal">
-          <div className="closing-mark" aria-hidden="true">
-            <img src="./icon.png" alt="" width={64} height={64} loading="lazy" decoding="async" />
-          </div>
-          <h2 id="closing-title">{s.closing.title}</h2>
-          <p className="section-body">{s.closing.body}</p>
-          <div className="closing-actions">
-            <PlatformLinks />
-            <a
-              className="closing-support"
-              href={COFFEE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Coffee size={16} aria-hidden="true" />
-              <span>{s.closing.support}</span>
-            </a>
-          </div>
-        </div>
-      </section>
+      <ClosingSection />
     </main>
   );
 }
