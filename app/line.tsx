@@ -1325,8 +1325,8 @@ const styles = StyleSheet.create({
     borderColor: scheme.outlineVariant,
   },
   clusterBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1352,10 +1352,8 @@ const styles = StyleSheet.create({
     ...elev.level1,
   },
   heroTopRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: 10,
   },
   heroBadgeGroup: {

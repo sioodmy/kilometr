@@ -1304,6 +1304,11 @@ export default function OnboardingScreen() {
                             <View style={st.searchBar}>
                               <Search size={17} color={scheme.onSurfaceVariant} />
                               <TextInput
+                                ref={(node) => {
+                                  if (node && Platform.OS === 'web') {
+                                    requestAnimationFrame(() => node.focus());
+                                  }
+                                }}
                                 value={slots.query}
                                 onChangeText={slots.setQuery}
                                 onFocus={() => scrollSlotIntoView(slot.key)}
@@ -1648,8 +1653,8 @@ const st = StyleSheet.create({
     paddingVertical: 11,
   },
   clearBtn: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHighest,
     alignItems: 'center',
@@ -1661,7 +1666,7 @@ const st = StyleSheet.create({
   },
   popularChip: {
     paddingHorizontal: 14,
-    minHeight: 38,
+    minHeight: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
     borderWidth: StyleSheet.hairlineWidth,
@@ -1979,7 +1984,7 @@ const st = StyleSheet.create({
   },
   pwaTab: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { Platform } from 'react-native';
 import { argbFromHex, Hct, hexFromArgb, SchemeTonalSpot } from '@material/material-color-utilities';
 import { kvGet, kvSetStrict } from '../services/storage';
 import { initDynamicColors } from './dynamic';
@@ -16,8 +17,9 @@ export const THEME_SEEDS = {
 export type ThemeSetting = 'system' | keyof typeof THEME_SEEDS;
 
 const STORAGE_KEY = 'kilometr.theme.v1';
+const DEFAULT_SETTING: ThemeSetting = Platform.OS === 'web' ? 'teal' : 'system';
 const listeners = new Set<() => void>();
-let setting: ThemeSetting = 'system';
+let setting: ThemeSetting = DEFAULT_SETTING;
 let wallpaperScheme: Readonly<Record<SchemeKey, string>> = defaultScheme;
 let wallpaperAvailable = false;
 
@@ -62,7 +64,9 @@ export async function initTheme(): Promise<void> {
   wallpaperAvailable = await initDynamicColors();
   wallpaperScheme = { ...scheme };
   const stored = await kvGet(STORAGE_KEY);
-  applySetting(isThemeSetting(stored) ? stored : 'system');
+  const resolved = isThemeSetting(stored) ? stored : DEFAULT_SETTING;
+  // Przeglądarka nie udostępnia kolorów tapety, więc na Web wybieramy domyślny preset.
+  applySetting(Platform.OS === 'web' && resolved === 'system' ? 'teal' : resolved);
 }
 
 export async function setThemeSetting(next: ThemeSetting): Promise<void> {

@@ -1000,8 +1000,8 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
   },
   trailingBtn: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.full,
