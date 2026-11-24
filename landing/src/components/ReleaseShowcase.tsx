@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWebLocale } from '../i18n';
 import { useReleaseCopy } from '../landingCopy';
@@ -15,22 +15,7 @@ const RAIL_TRANSFER_SHOTS = [
   './screenshots/transfer-rail.webp',
 ] as const;
 
-type CombinedTransferFrame = {
-  src: string;
-  group: 'urban' | 'rail';
-  groupIdx: number;
-  statusTime: string;
-};
-
-const COMBINED_TRANSFER_FRAMES: readonly CombinedTransferFrame[] = [
-  { src: URBAN_TRANSFER_SHOTS[0], group: 'urban', groupIdx: 0, statusTime: '09:07' },
-  { src: URBAN_TRANSFER_SHOTS[1], group: 'urban', groupIdx: 1, statusTime: '09:07' },
-  { src: RAIL_TRANSFER_SHOTS[0], group: 'rail', groupIdx: 0, statusTime: '09:07' },
-  { src: RAIL_TRANSFER_SHOTS[1], group: 'rail', groupIdx: 1, statusTime: '09:32' },
-  { src: RAIL_TRANSFER_SHOTS[2], group: 'rail', groupIdx: 2, statusTime: '09:07' },
-];
-
-const MOBILE_TRANSFER_DURATION_MS = 3800;
+const DISRUPTIONS_SHOT = './screenshots/news-disruptions.webp';
 const STORY_HOVER_DELAY_MS = 1000;
 
 function useIsMobileLayout() {
@@ -67,9 +52,46 @@ export function ReleaseShowcase() {
   const [transfersInView, setTransfersInView] = useState(false);
   const [urbanIdx, setUrbanIdx] = useState(0);
   const [railIdx, setRailIdx] = useState(0);
-  const [mobileTransferIdx, setMobileTransferIdx] = useState(0);
 
-  const storyCount = copy.story.chapters.length;
+  // Mobile: ochrona przesiadek i utrudnienia to kolejne rozdziały historii zamiast osobnych sekcji.
+  const chapters = useMemo(() => {
+    if (!isMobile) return copy.story.chapters;
+    const extra = [
+      {
+        id: 'transfers-urban',
+        tag: copy.transfers.urbanLabel,
+        title: copy.transfers.urbanTitle,
+        body: copy.transfers.urbanBody,
+        shot: URBAN_TRANSFER_SHOTS[1],
+        alt: copy.transfers.urbanAlts[1],
+        statusTime: '09:07',
+      },
+      {
+        id: 'transfers-rail',
+        tag: copy.transfers.railLabel,
+        title: copy.transfers.railTitle,
+        body: copy.transfers.railBody,
+        shot: RAIL_TRANSFER_SHOTS[2],
+        alt: copy.transfers.railAlts[2],
+        statusTime: '09:07',
+      },
+      {
+        id: 'disruptions',
+        tag: copy.disruptions.title,
+        title: copy.disruptions.title,
+        body: copy.disruptions.body,
+        shot: DISRUPTIONS_SHOT,
+        alt: copy.disruptions.phoneAlt,
+        statusTime: '09:26',
+      },
+    ];
+    const base = copy.story.chapters.length;
+    return [
+      ...copy.story.chapters,
+      ...extra.map((c, i) => ({ ...c, number: String(base + i + 1).padStart(2, '0') })),
+    ];
+  }, [isMobile, copy]);
+  const storyCount = chapters.length;
 
   const goStory = useCallback(
     (nextIndex: number) => {
@@ -144,6 +166,12 @@ export function ReleaseShowcase() {
     [storyBeat],
   );
 
+  const selectBeat = useCallback((idx: number) => {
+    window.clearTimeout(hoverTimerRef.current);
+    setPendingBeat(null);
+    setStoryBeat(idx);
+  }, []);
+
   useEffect(() => () => window.clearTimeout(hoverTimerRef.current), []);
 
   // Wskaźnik aktywnego rozdziału przeskakuje między kartami (pozycja liczona z layoutu).
@@ -169,56 +197,76 @@ export function ReleaseShowcase() {
     return () => observer.disconnect();
   }, [isMobile, storyBeat]);
 
-  // Mobile: sekcja trzyma kartę na ekranie, a kolejne rozdziały sterowane są scrollem.
+  // Mobile: historia działa jak kotwica. Po wjechaniu w ekran dociąga się do góry i przechodzi
+  // w pełny ekran, aż do końca ostatniej karty albo do pierwszego pionowego gestu usera.
+  const [immersive, setImmersive] = useState(false);
+  const storyDoneRef = useRef(false);
+
+  const exitImmersive = useCallback(() => {
+    storyDoneRef.current = true;
+    setImmersive(false);
+  }, []);
+
   useEffect(() => {
     if (!isMobile) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const section = storySectionRef.current;
-    const grid = storyRef.current;
     const root = storyIgRef.current;
-    if (!section || !grid || !root) return;
-    const inner = section.querySelector<HTMLElement>('.release-inner');
-    const head = section.querySelector<HTMLElement>('.release-head');
-    if (!inner || !head) return;
-    let raf = 0;
+    if (!root) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let anchored = false;
 
-    const update = () => {
-      raf = 0;
-      const scrollY = window.scrollY;
-      const sectionRect = section.getBoundingClientRect();
-      const gridStyle = window.getComputedStyle(grid);
-      const sectionStyle = window.getComputedStyle(section);
-      const start =
-        sectionRect.top +
-        scrollY +
-        (Number.parseFloat(sectionStyle.paddingTop) || 0) +
-        head.offsetHeight +
-        (Number.parseFloat(gridStyle.marginTop) || 0);
-      const innerRect = inner.getBoundingClientRect();
-      const cardHeight = grid.getBoundingClientRect().height;
-      const end = scrollY + innerRect.bottom - cardHeight;
-      const range = Math.max(1, end - start);
-      const progress = Math.min(1, Math.max(0, (scrollY - start) / range));
-      const scaled = progress * storyCount;
-      const beat = Math.min(storyCount - 1, Math.floor(scaled));
-      const local = Math.min(1, scaled - beat);
-      root.style.setProperty('--story-progress', local.toFixed(4));
-      setStoryBeat((prev) => (prev === beat ? prev : beat));
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.intersectionRatio < 0.05) {
+          anchored = false;
+          storyDoneRef.current = false;
+          setImmersive(false);
+          return;
+        }
+        if (
+          !anchored &&
+          !storyDoneRef.current &&
+          entry.intersectionRatio >= 0.35 &&
+          entry.boundingClientRect.top > 0
+        ) {
+          anchored = true;
+          setStoryBeat(0);
+          setImmersive(true);
+          root.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+        }
+      },
+      { threshold: [0, 0.05, 0.35] },
+    );
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!immersive) return;
+    let startY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      startY = e.touches[0]?.clientY ?? null;
     };
-
-    const schedule = () => {
-      if (!raf) raf = window.requestAnimationFrame(update);
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      if (startY !== null && y !== undefined && Math.abs(y - startY) > 24) exitImmersive();
     };
-
-    update();
-    window.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) > 8) exitImmersive();
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('wheel', onWheel, { passive: true });
     return () => {
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('wheel', onWheel);
     };
-  }, [isMobile, storyCount]);
+  }, [immersive, exitImmersive]);
+
+  const handleStoryFillEnd = () => {
+    if (storyBeat < storyCount - 1) goStory(storyBeat + 1);
+    else exitImmersive();
+  };
 
   // Observe Transfer section visibility
   useEffect(() => {
@@ -243,16 +291,6 @@ export function ReleaseShowcase() {
     return () => window.clearInterval(timer);
   }, [isMobile, transfersInView]);
 
-  // Mobile unified single-mock cycling across Urban -> Rail -> Urban seamlessly
-  useEffect(() => {
-    if (!isMobile || !transfersInView) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const timer = window.setTimeout(() => {
-      setMobileTransferIdx((prev) => (prev + 1) % COMBINED_TRANSFER_FRAMES.length);
-    }, MOBILE_TRANSFER_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [isMobile, transfersInView, mobileTransferIdx]);
-
   const handleStoryTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
@@ -274,14 +312,7 @@ export function ReleaseShowcase() {
     }
   };
 
-  const activeChapter = copy.story.chapters[storyBeat] ?? copy.story.chapters[0];
-  const activeMobileTransfer =
-    COMBINED_TRANSFER_FRAMES[mobileTransferIdx] ?? COMBINED_TRANSFER_FRAMES[0];
-  const activeMobileGroup = activeMobileTransfer.group;
-  const activeMobileAlt =
-    activeMobileGroup === 'urban'
-      ? copy.transfers.urbanAlts[activeMobileTransfer.groupIdx]
-      : copy.transfers.railAlts[activeMobileTransfer.groupIdx];
+  const activeChapter = chapters[storyBeat] ?? chapters[0];
 
   return (
     <div className="release-showcase">
@@ -323,6 +354,13 @@ export function ReleaseShowcase() {
                       }
                       onMouseEnter={() => startBeatHover(idx)}
                     >
+                      <button
+                        type="button"
+                        className="story-beat-hit"
+                        aria-label={chapter.title}
+                        aria-current={idx === storyBeat ? 'true' : undefined}
+                        onClick={() => selectBeat(idx)}
+                      />
                       <div className="story-beat-meta">
                         <span className="story-beat-num">{chapter.number}</span>
                       </div>
@@ -371,14 +409,14 @@ export function ReleaseShowcase() {
             ) : (
               /* Mobile full-height Instagram Stories view */
               <div
-                className="story-ig"
+                className={immersive ? 'story-ig is-immersive' : 'story-ig'}
                 ref={storyIgRef}
                 onTouchStart={handleStoryTouchStart}
                 onTouchEnd={handleStoryTouchEnd}
               >
                 <div className="story-ig-top">
                   <div className="story-ig-bars" role="tablist" aria-label={copy.story.title}>
-                    {copy.story.chapters.map((chapter, idx) => (
+                    {chapters.map((chapter, idx) => (
                       <button
                         key={chapter.id}
                         type="button"
@@ -390,7 +428,8 @@ export function ReleaseShowcase() {
                       >
                         <span className="story-ig-bar-track">
                           <span
-                            key={chapter.id}
+                            key={idx === storyBeat ? `${chapter.id}-active` : chapter.id}
+                            onAnimationEnd={idx === storyBeat ? handleStoryFillEnd : undefined}
                             className={
                               idx < storyBeat
                                 ? 'story-ig-bar-fill is-done'
@@ -425,9 +464,7 @@ export function ReleaseShowcase() {
                       <button
                         type="button"
                         className="story-ig-nav-btn"
-                        aria-label={
-                          copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag
-                        }
+                        aria-label={chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
                         onClick={() => goStory(storyBeat - 1)}
                       >
                         <ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true" />
@@ -435,7 +472,7 @@ export function ReleaseShowcase() {
                       <button
                         type="button"
                         className="story-ig-nav-btn"
-                        aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
+                        aria-label={chapters[(storyBeat + 1) % storyCount].tag}
                         onClick={() => goStory(storyBeat + 1)}
                       >
                         <ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" />
@@ -449,7 +486,7 @@ export function ReleaseShowcase() {
                   <div className="story-ig-phone-wrap">
                     <Phone label={activeChapter.alt} statusTime={activeChapter.statusTime}>
                       <div className="pixel-slide-stack">
-                        {copy.story.chapters.map((chapter, idx) => (
+                        {chapters.map((chapter, idx) => (
                           <img
                             key={chapter.id}
                             className={
@@ -473,13 +510,13 @@ export function ReleaseShowcase() {
                   <button
                     type="button"
                     className="story-ig-tap story-ig-tap-prev"
-                    aria-label={copy.story.chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
+                    aria-label={chapters[(storyBeat - 1 + storyCount) % storyCount].tag}
                     onClick={() => goStory(storyBeat - 1)}
                   />
                   <button
                     type="button"
                     className="story-ig-tap story-ig-tap-next"
-                    aria-label={copy.story.chapters[(storyBeat + 1) % storyCount].tag}
+                    aria-label={chapters[(storyBeat + 1) % storyCount].tag}
                     onClick={() => goStory(storyBeat + 1)}
                   />
                 </div>
@@ -497,154 +534,37 @@ export function ReleaseShowcase() {
       </section>
 
       {/* ACT III: Transfer Protection & Nationwide Rail */}
-      <section
-        className="release-section transfers-section"
-        id="przesiadki"
-        ref={transfersRef}
-        aria-labelledby="transfers-title"
-      >
-        <div className="release-inner">
-          <div className="release-head release-head-center">
-            <h2 className="release-title" id="transfers-title">
-              {copy.transfers.title}
-            </h2>
-            <p className="release-lead">{copy.transfers.body}</p>
-          </div>
+      {!isMobile && (
+        <section
+          className="release-section transfers-section"
+          id="przesiadki"
+          ref={transfersRef}
+          aria-labelledby="transfers-title"
+        >
+          <div className="release-inner">
+            <div className="release-head release-head-center">
+              <h2 className="release-title" id="transfers-title">
+                {copy.transfers.title}
+              </h2>
+              <p className="release-lead">{copy.transfers.body}</p>
+            </div>
 
-          <div className="transfer-stage">
-            {!isMobile ? (
-              <>
-                {/* Desktop side-by-side dual stage */}
-                <article className="transfer-column transfer-desktop-col">
-                  <div className="transfer-phone-wrap">
-                    <Phone label={copy.transfers.urbanAlts[urbanIdx]} statusTime="09:07">
-                      <div className="pixel-slide-stack">
-                        {URBAN_TRANSFER_SHOTS.map((src, idx) => (
-                          <img
-                            key={src}
-                            className={
-                              idx === urbanIdx
-                                ? 'pixel-slide pixel-shot is-active'
-                                : 'pixel-slide pixel-shot'
-                            }
-                            src={src}
-                            alt={idx === urbanIdx ? copy.transfers.urbanAlts[idx] : ''}
-                            width="720"
-                            height="1600"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ))}
-                      </div>
-                    </Phone>
-                  </div>
-                  <div className="transfer-beat-bar" aria-hidden="true">
-                    {URBAN_TRANSFER_SHOTS.map((src, idx) => (
-                      <span
-                        key={src}
-                        className={
-                          idx === urbanIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'
-                        }
-                      />
-                    ))}
-                  </div>
-                  <div className="transfer-text">
-                    <h3>{copy.transfers.urbanTitle}</h3>
-                    <p>{copy.transfers.urbanBody}</p>
-                  </div>
-                </article>
-
-                <article className="transfer-column transfer-desktop-col">
-                  <div className="transfer-phone-wrap">
-                    <Phone
-                      label={copy.transfers.railAlts[railIdx]}
-                      statusTime={railIdx === 1 ? '09:32' : '09:07'}
-                    >
-                      <div className="pixel-slide-stack">
-                        {RAIL_TRANSFER_SHOTS.map((src, idx) => (
-                          <img
-                            key={src}
-                            className={
-                              idx === railIdx
-                                ? 'pixel-slide pixel-shot is-active'
-                                : 'pixel-slide pixel-shot'
-                            }
-                            src={src}
-                            alt={idx === railIdx ? copy.transfers.railAlts[idx] : ''}
-                            width="720"
-                            height="1600"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ))}
-                      </div>
-                    </Phone>
-                  </div>
-                  <div className="transfer-beat-bar" aria-hidden="true">
-                    {RAIL_TRANSFER_SHOTS.map((src, idx) => (
-                      <span
-                        key={src}
-                        className={
-                          idx === railIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'
-                        }
-                      />
-                    ))}
-                  </div>
-                  <div className="transfer-text">
-                    <h3>{copy.transfers.railTitle}</h3>
-                    <p>{copy.transfers.railBody}</p>
-                  </div>
-                </article>
-              </>
-            ) : (
-              /* Mobile unified single-mock stage seamlessly combining urban & rail animations */
-              <article className="transfer-column transfer-mobile-unified">
-                <div
-                  className="transfer-mode-switch"
-                  role="tablist"
-                  aria-label={copy.transfers.title}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeMobileGroup === 'urban'}
-                    className={
-                      activeMobileGroup === 'urban'
-                        ? 'transfer-mode-pill is-active'
-                        : 'transfer-mode-pill'
-                    }
-                    onClick={() => setMobileTransferIdx(0)}
-                  >
-                    {copy.transfers.urbanLabel}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeMobileGroup === 'rail'}
-                    className={
-                      activeMobileGroup === 'rail'
-                        ? 'transfer-mode-pill is-active'
-                        : 'transfer-mode-pill'
-                    }
-                    onClick={() => setMobileTransferIdx(URBAN_TRANSFER_SHOTS.length)}
-                  >
-                    {copy.transfers.railLabel}
-                  </button>
-                </div>
-
+            <div className="transfer-stage">
+              {/* Desktop side-by-side dual stage */}
+              <article className="transfer-column transfer-desktop-col">
                 <div className="transfer-phone-wrap">
-                  <Phone label={activeMobileAlt} statusTime={activeMobileTransfer.statusTime}>
+                  <Phone label={copy.transfers.urbanAlts[urbanIdx]} statusTime="09:07">
                     <div className="pixel-slide-stack">
-                      {COMBINED_TRANSFER_FRAMES.map((frame, idx) => (
+                      {URBAN_TRANSFER_SHOTS.map((src, idx) => (
                         <img
-                          key={frame.src}
+                          key={src}
                           className={
-                            idx === mobileTransferIdx
+                            idx === urbanIdx
                               ? 'pixel-slide pixel-shot is-active'
                               : 'pixel-slide pixel-shot'
                           }
-                          src={frame.src}
-                          alt={idx === mobileTransferIdx ? activeMobileAlt : ''}
+                          src={src}
+                          alt={idx === urbanIdx ? copy.transfers.urbanAlts[idx] : ''}
                           width="720"
                           height="1600"
                           loading="lazy"
@@ -654,84 +574,101 @@ export function ReleaseShowcase() {
                     </div>
                   </Phone>
                 </div>
-
-                <div className="transfer-beat-bar transfer-beat-bar-unified" aria-hidden="true">
-                  {COMBINED_TRANSFER_FRAMES.map((frame, idx) => (
+                <div className="transfer-beat-bar" aria-hidden="true">
+                  {URBAN_TRANSFER_SHOTS.map((src, idx) => (
                     <span
-                      key={frame.src}
+                      key={src}
                       className={
-                        idx === mobileTransferIdx
-                          ? 'transfer-bar-seg is-active'
-                          : frame.group === activeMobileGroup
-                            ? 'transfer-bar-seg is-group'
-                            : 'transfer-bar-seg'
+                        idx === urbanIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'
                       }
                     />
                   ))}
                 </div>
-
-                <div className="transfer-text transfer-text-crossfade">
-                  <div
-                    className={
-                      activeMobileGroup === 'urban'
-                        ? 'transfer-text-pane is-active'
-                        : 'transfer-text-pane'
-                    }
-                    aria-hidden={activeMobileGroup !== 'urban'}
-                  >
-                    <h3>{copy.transfers.urbanTitle}</h3>
-                    <p>{copy.transfers.urbanBody}</p>
-                  </div>
-
-                  <div
-                    className={
-                      activeMobileGroup === 'rail'
-                        ? 'transfer-text-pane is-active'
-                        : 'transfer-text-pane'
-                    }
-                    aria-hidden={activeMobileGroup !== 'rail'}
-                  >
-                    <h3>{copy.transfers.railTitle}</h3>
-                    <p>{copy.transfers.railBody}</p>
-                  </div>
+                <div className="transfer-text">
+                  <h3>{copy.transfers.urbanTitle}</h3>
+                  <p>{copy.transfers.urbanBody}</p>
                 </div>
               </article>
-            )}
+
+              <article className="transfer-column transfer-desktop-col">
+                <div className="transfer-phone-wrap">
+                  <Phone
+                    label={copy.transfers.railAlts[railIdx]}
+                    statusTime={railIdx === 1 ? '09:32' : '09:07'}
+                  >
+                    <div className="pixel-slide-stack">
+                      {RAIL_TRANSFER_SHOTS.map((src, idx) => (
+                        <img
+                          key={src}
+                          className={
+                            idx === railIdx
+                              ? 'pixel-slide pixel-shot is-active'
+                              : 'pixel-slide pixel-shot'
+                          }
+                          src={src}
+                          alt={idx === railIdx ? copy.transfers.railAlts[idx] : ''}
+                          width="720"
+                          height="1600"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ))}
+                    </div>
+                  </Phone>
+                </div>
+                <div className="transfer-beat-bar" aria-hidden="true">
+                  {RAIL_TRANSFER_SHOTS.map((src, idx) => (
+                    <span
+                      key={src}
+                      className={
+                        idx === railIdx ? 'transfer-bar-seg is-active' : 'transfer-bar-seg'
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="transfer-text">
+                  <h3>{copy.transfers.railTitle}</h3>
+                  <p>{copy.transfers.railBody}</p>
+                </div>
+              </article>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ACT IV: Disruptions & Material You craft */}
-      <section
-        className="release-section disruptions-section"
-        id="utrudnienia"
-        aria-labelledby="disruptions-title"
-      >
-        <div className="release-inner">
-          <div className="disruptions-grid">
-            <div className="disruptions-copy">
-              <h2 className="release-title" id="disruptions-title">
-                {copy.disruptions.title}
-              </h2>
-              <p className="release-lead">{copy.disruptions.body}</p>
-            </div>
+      {!isMobile && (
+        <section
+          className="release-section disruptions-section"
+          id="utrudnienia"
+          aria-labelledby="disruptions-title"
+        >
+          <div className="release-inner">
+            <div className="disruptions-grid">
+              <div className="disruptions-copy">
+                <h2 className="release-title" id="disruptions-title">
+                  {copy.disruptions.title}
+                </h2>
+                <p className="release-lead">{copy.disruptions.body}</p>
+              </div>
 
-            <div className="disruptions-phone">
-              <Phone label={copy.disruptions.phoneAlt} statusTime="09:26">
-                <img
-                  className="pixel-shot"
-                  src="./screenshots/news-disruptions.webp"
-                  alt={copy.disruptions.phoneAlt}
-                  width="720"
-                  height="1600"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </Phone>
+              <div className="disruptions-phone">
+                <Phone label={copy.disruptions.phoneAlt} statusTime="09:26">
+                  <img
+                    className="pixel-shot"
+                    src={DISRUPTIONS_SHOT}
+                    alt={copy.disruptions.phoneAlt}
+                    width="720"
+                    height="1600"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </Phone>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
