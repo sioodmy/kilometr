@@ -162,6 +162,12 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
 
           <View
             style={styles.chartSvgWrap}
+            accessible
+            accessibilityLabel={t.chartA11y(
+              insights.focusLine ?? '',
+              formatHour(insights.focusHour),
+              expectedMin,
+            )}
             onLayout={(e) => {
               const w = Math.round(e.nativeEvent.layout.width);
               if (w >= 200 && Math.abs(w - chartWidth) > 2) setChartWidth(w);
@@ -171,12 +177,6 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
               width={chartWidth}
               height={CHART_H}
               viewBox={`0 0 ${chartWidth} ${CHART_H}`}
-              accessible
-              accessibilityLabel={t.chartA11y(
-                insights.focusLine ?? '',
-                formatHour(insights.focusHour),
-                expectedMin,
-              )}
             >
             {profile.map((point, idx) => {
               const cx = idx * slotW + slotW / 2;
