@@ -4,7 +4,6 @@ import Animated, {
   Easing,
   cancelAnimation,
   interpolate,
-  interpolateColor,
   useAnimatedProps,
   useAnimatedStyle,
   useReducedMotion,
@@ -356,10 +355,18 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
     const from = SHIELD_SHAPES[shieldFrom.value] ?? SHIELD_SHAPES[0];
     const to = SHIELD_SHAPES[shieldTo.value] ?? SHIELD_SHAPES[0];
     const d = Number.isFinite(rawT) ? interpolateShieldPath(from, to, rawT) : staticShield;
-    const fill = interpolateColor(expand.value, [0, 1], [scheme.primaryContainer, scheme.primary]);
-    const strokeOpacity = interpolate(expand.value, [0, 1], [0.34, 0]);
-    return { d, fill, strokeOpacity };
+    return { d };
   });
+
+  // Osobna warstwa z opacity zamiast interpolateColor w SVG fill, bo na Webie
+  // animowany atrybut fill nie zawsze aktualizuje DOM po przejściu z kroku 0.
+  const shieldPrimaryOverlayStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(expand.value, [0.15, 0.85], [0, 1], 'clamp'),
+  }));
+
+  const shieldContainerStrokeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(expand.value, [0, 0.75], [1, 0], 'clamp'),
+  }));
 
   // Warstwa loga (widoczna na kroku 0, płynnie zwija się podczas morfingu w krok 1).
   const logoLayerStyle = useAnimatedStyle(() => {
@@ -511,18 +518,29 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
         </Svg>
       </Animated.View>
 
-      {/* Morfująca tarcza tła: squircle loga -> koło przystanku -> romb -> drogowskaz */}
+      {/* Morfująca tarcza tła: ciemny kontener pod piktogramy (kroki 1..3) + nakładka loga (krok 0) */}
       <Animated.View style={[styles.shieldLayer, shieldTiltStyle]}>
-        <Svg width={HERO_LOGO_SIZE - 8} height={HERO_LOGO_SIZE - 8} viewBox="0 0 120 120">
-          <AnimatedPath
-            d={staticShield}
-            animatedProps={reduceMotion ? undefined : shieldAnimatedProps}
-            fill={step === 0 ? scheme.primary : scheme.primaryContainer}
-            stroke={scheme.primary}
-            strokeOpacity={step === 0 ? 0 : 0.34}
-            strokeWidth={1.6}
-          />
-        </Svg>
+        <Animated.View style={shieldContainerStrokeStyle}>
+          <Svg width={HERO_LOGO_SIZE - 8} height={HERO_LOGO_SIZE - 8} viewBox="0 0 120 120">
+            <AnimatedPath
+              d={staticShield}
+              animatedProps={reduceMotion ? undefined : shieldAnimatedProps}
+              fill={scheme.primaryContainer}
+              stroke={scheme.primary}
+              strokeOpacity={0.34}
+              strokeWidth={1.6}
+            />
+          </Svg>
+        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFill, shieldPrimaryOverlayStyle]}>
+          <Svg width={HERO_LOGO_SIZE - 8} height={HERO_LOGO_SIZE - 8} viewBox="0 0 120 120">
+            <AnimatedPath
+              d={staticShield}
+              animatedProps={reduceMotion ? undefined : shieldAnimatedProps}
+              fill={scheme.primary}
+            />
+          </Svg>
+        </Animated.View>
       </Animated.View>
 
       {/* Logo aplikacji Kilometr (szyny, zwrotnica, węzeł, strzałka, przystanek) */}
