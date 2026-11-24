@@ -1793,11 +1793,11 @@ export const uk: Strings = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Обери місто й завантаж розклад. Планувати поїздки можна й без інтернету.',
+    intro: 'Обери місто, і розклад завантажиться у фоні. Планувати поїздки можна й без інтернету.',
     openSettings: 'Відкрити налаштування',
     permissionDenied:
       'Можна продовжити без цього дозволу та змінити його пізніше в налаштуваннях телефона.',
-    steps: ['Вітаємо', 'Доступи', 'Місто', 'Розклад', 'Місця'],
+    steps: ['Вітаємо', 'Місто', 'Доступи', 'Місця'],
     granted: 'Увімкнено',
     denied: 'Вимкнено',
     slotHome: 'Дім',
@@ -1892,8 +1892,39 @@ export const uk: Strings = {
     brand: 'Kilometr',
     tagline: 'Цього разу доїдеш.',
     fast: 'Планування офлайн',
+    fastSub: 'Розклад завжди під рукою на телефоні',
+    citiesCoverage: (count: number) => {
+      const m10 = count % 10;
+      const m100 = count % 100;
+      const word =
+        m10 === 1 && m100 !== 11
+          ? 'місто'
+          : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)
+            ? 'міста'
+            : 'міст';
+      return `${count} ${word} і залізниця в Польщі`;
+    },
+    citiesCoverageSub: 'Міський транспорт і міжміські поїзди',
     noAds: 'Без реклами',
     noPay: 'Без мікроплатежів',
+    noAdsNoPay: 'Без реклами та мікроплатежів',
+    noAdsNoPaySub: 'Відкритий проєкт для пасажирів',
+    detectGpsAction: 'Визначити моє місто за GPS',
+    detectGpsHint: 'Автоматично підбере розклад для твоєї околиці',
+    detectGpsBadge: 'GPS',
+    citySearchPlaceholder: 'Шукай місто або агломерацію…',
+    cityNoSearchMatch: (q: string) => `Місто „${q}“ не знайдено.`,
+    cityClearSearchA11y: 'Очистити пошук',
+    citySubtitleAuto: 'Розклад завантажиться автоматично у фоні.',
+    bgDlDownloading: (gen: string, pct: number) => `Завантажую розклад ${gen}… ${pct}%`,
+    bgDlImporting: (gen: string, pct: number) => `Готую розклад ${gen}… ${pct}%`,
+    bgDlReady: (gen: string) => `Розклад ${gen} готовий офлайн`,
+    bgDlReadyDetail: (stops: number) => `${stops} зупинок`,
+    bgDlError: 'Не вдалося завантажити розклад',
+    bgDlPending: (gen: string) => `Розклад ${gen} завантажиться у фоні`,
+    bgDlRetry: 'Повторити',
+    bgDlStart: 'Завантажити',
+    startUsing: 'Почати користуватися',
     permTitle: 'Доступи',
     permSub: 'Локація та сповіщення. Обидва необов’язкові.',
     permSubWeb: 'Додай застосунок на головний екран і дозволь локацію.',
