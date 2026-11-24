@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { useStrings } from '../i18n';
 import { IPA_URL, SIDELOADLY_URL, COFFEE_URL } from '../data';
 import { PlatformLinks } from './PlatformLinks';
+import './installPage.css';
 
 export function InstallPage() {
   const s = useStrings();

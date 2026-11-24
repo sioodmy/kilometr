@@ -1,10 +1,6 @@
 @import './layers.css';
-@import './components/coverageSection.css';
 @import './components/donateSection.css';
 @import './components/landingSections.css';
-@import './components/installPage.css';
-@import './components/themeStudio.css';
-@import './components/kilometrUi.css';
 @import './components/hero.css';
 @import './components/releaseShowcase.css';
 
@@ -176,6 +172,14 @@
   }
   .skip-link:focus {
     transform: translateY(0);
+  }
+  .platform-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .platform-links svg {
+    flex-shrink: 0;
   }
   .button {
     display: inline-flex;
