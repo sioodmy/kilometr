@@ -5,10 +5,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, RwLock};
 
 use crate::models::{
-    Bbox, DelayEstimateLegInput, DelayEstimateLegOutput, DelayEstimateRequest,
-    DelayEstimateResponse, HeatmapCitySummary, HeatmapResponse, HeatmapZone, HubDelaySummary,
-    HubsDelayResponse, LineDelaySummary, LinesDelayResponse, MatchedVehicleInfo, RailTripLive,
-    VehicleSnapshot, VehiclesResponse,
+    AnomaliesResponse, Bbox, DelayEstimateLegInput, DelayEstimateLegOutput, DelayEstimateRequest,
+    DelayEstimateResponse, HeatmapCitySummary, HeatmapResponse, HeatmapZone, HourlyDelayPoint,
+    HubDelaySummary, HubsDelayResponse, LineDelaySummary, LinesDelayResponse, MatchedVehicleInfo,
+    RailTripLive, RouteHotspotInsight, RouteInsightsRequest, RouteInsightsResponse, TrafficAnomaly,
+    TransferRiskInsight, VehicleSnapshot, VehiclesResponse,
 };
 use crate::storage::{
     CellProfileDelta, CellProfileKey, HistoricalProfile, HubProfileDelta, HubProfileKey,
@@ -31,6 +32,20 @@ const MAX_URBAN_DELAY_SEC: i32 = 7200;
 const MAX_RAIL_DELAY_SEC: i32 = 18_000;
 /// Limit rozmiaru surowego batcha obserwacji w jednym oknie zrzutu.
 const MAX_OBSERVATIONS_PER_BATCH: usize = 4000;
+/// Promien dryfu GPS [m], ponizej ktorego uznajemy, ze pojazd stoi w miejscu.
+const STATIONARY_RADIUS_M: f64 = 38.0;
+/// Minimalny czas postoju z opoznieniem [ms], aby uznac pojazd za zablokowany w zatorze.
+const STALL_MIN_MS: i64 = 150_000;
+/// Czas wygaszania wykrytej anomalii po udroznieniu ruchu [ms].
+const ANOMALY_HOLD_MS: i64 = 180_000;
+
+#[derive(Debug, Clone)]
+struct VehicleMotionState {
+    anchor_lat: f64,
+    anchor_lon: f64,
+    stationary_since_ms: i64,
+    last_seen_ms: i64,
+}
 
 #[derive(Debug, Default)]
 struct CityVehicleBucket {
@@ -40,6 +55,10 @@ struct CityVehicleBucket {
     rail_updated_at: i64,
     /// Ostatnia minuta (epoch_sec / 60) zapisu obserwacji danego pojazdu (deduplikacja).
     last_recorded_min: HashMap<String, i64>,
+    /// Stan ruchu pojazdow do deterministycznego wykrywania zatorow.
+    motion: HashMap<String, VehicleMotionState>,
+    /// Aktywne anomalie z histereza i czasem trwania.
+    anomalies: HashMap<String, TrafficAnomaly>,
 }
 
 #[derive(Debug, Clone)]
@@ -255,9 +274,36 @@ impl AnalyticsEngine {
                 bucket.rail = clean;
                 bucket.rail_updated_at = now_ms;
             } else {
+                // Aktualizacja stanu ruchu kazdego pojazdu miejskiego pod detektor zatorow.
+                if bucket.motion.len() > 2500 {
+                    bucket
+                        .motion
+                        .retain(|_, st| now_ms - st.last_seen_ms <= 600_000);
+                }
+                for v in &clean {
+                    let entry = bucket.motion.entry(v.vehicle_id.clone()).or_insert(
+                        VehicleMotionState {
+                            anchor_lat: v.lat,
+                            anchor_lon: v.lon,
+                            stationary_since_ms: v.timestamp_ms,
+                            last_seen_ms: v.timestamp_ms,
+                        },
+                    );
+                    let moved = distance_meters_approx(entry.anchor_lat, entry.anchor_lon, v.lat, v.lon);
+                    if moved >= STATIONARY_RADIUS_M {
+                        entry.anchor_lat = v.lat;
+                        entry.anchor_lon = v.lon;
+                        entry.stationary_since_ms = v.timestamp_ms;
+                    }
+                    entry.last_seen_ms = now_ms;
+                }
                 bucket.urban = clean;
                 bucket.urban_updated_at = now_ms;
             }
+        }
+
+        if !is_rail {
+            self.recompute_anomalies(city, now_ms);
         }
 
         if new_samples.is_empty() {
@@ -1434,6 +1480,646 @@ impl AnalyticsEngine {
             .filter(|p| p.sample_count >= 10)
             .map(|p| p.shrunk_delay_sec().round() as i32)
     }
+
+    /// Deterministyczne wykrywanie zatorow komunikacyjnych ze strumienia GPS (bez AI):
+    /// 1. Zator/zatrzymanie tramwajowe: >=2 tramwaje blisko siebie stojace z opoznieniem >=3 min.
+    /// 2. Zator autobusowy: >=3 autobusy z >=2 linii z wysokim opoznieniem i postojem.
+    /// 3. Silny odchyl od normy na wezle: >=2 pojazdy z >=2 linii i odchyl >=+3.5 min od historii.
+    fn recompute_anomalies(&self, city: &str, now_ms: i64) {
+        let (day_type, hour_bucket) = warsaw_time_bucket(now_ms);
+        let Some(mut bucket) = self.cities.get_mut(city) else {
+            return;
+        };
+
+        struct ZoneProbe {
+            lat_sum: f64,
+            lon_sum: f64,
+            count: u32,
+            tram_count: u32,
+            tram_stalled: u32,
+            bus_count: u32,
+            bus_stalled: u32,
+            delays: Vec<i32>,
+            lines: HashMap<String, u32>,
+            hub_votes: HashMap<String, (String, u32)>,
+        }
+
+        let mut zones: HashMap<(i32, i32), ZoneProbe> = HashMap::new();
+        for v in &bucket.urban {
+            if now_ms - v.timestamp_ms > MAX_VEHICLE_AGE_MS {
+                continue;
+            }
+            let Some(delay) = v.delay_sec else {
+                continue;
+            };
+            // Odrzucamy postoje na petli: pojazd na petli ma opoznienie bliskie 0 lub ujemne.
+            if delay < LATE_THRESHOLD_SEC {
+                continue;
+            }
+            let stalled = bucket
+                .motion
+                .get(&v.vehicle_id)
+                .map(|m| now_ms - m.stationary_since_ms >= STALL_MIN_MS)
+                .unwrap_or(false);
+
+            let (clat, clon) = cell_coords(v.lat, v.lon);
+            let probe = zones.entry((clat, clon)).or_insert_with(|| ZoneProbe {
+                lat_sum: 0.0,
+                lon_sum: 0.0,
+                count: 0,
+                tram_count: 0,
+                tram_stalled: 0,
+                bus_count: 0,
+                bus_stalled: 0,
+                delays: Vec::new(),
+                lines: HashMap::new(),
+                hub_votes: HashMap::new(),
+            });
+            probe.lat_sum += v.lat;
+            probe.lon_sum += v.lon;
+            probe.count += 1;
+            probe.delays.push(delay);
+            *probe.lines.entry(v.line.to_ascii_uppercase()).or_insert(0) += 1;
+            if v.mode == "tram" {
+                probe.tram_count += 1;
+                if stalled {
+                    probe.tram_stalled += 1;
+                }
+            } else {
+                probe.bus_count += 1;
+                if stalled {
+                    probe.bus_stalled += 1;
+                }
+            }
+            let raw_hub = v
+                .current_stop
+                .as_deref()
+                .or(v.next_stop.as_deref())
+                .or_else(|| v.upcoming_stops.first().map(|s| s.name.as_str()));
+            if let Some(name) = raw_hub {
+                let hkey = normalize_hub_name(name);
+                if hkey.len() >= 2 {
+                    let e = probe
+                        .hub_votes
+                        .entry(hkey)
+                        .or_insert_with(|| (name.trim().to_string(), 0));
+                    e.1 += 1;
+                }
+            }
+        }
+
+        let mut detected_ids: HashSet<String> = HashSet::new();
+        for ((clat, clon), mut p) in zones {
+            if p.count < 2 {
+                continue;
+            }
+            p.delays.sort_unstable();
+            let avg =
+                (p.delays.iter().map(|&d| d as f64).sum::<f64>() / p.count as f64).round() as i32;
+            let max_d = *p.delays.last().unwrap_or(&0);
+            let best_hub = p
+                .hub_votes
+                .iter()
+                .max_by_key(|(_, (_, cnt))| *cnt)
+                .map(|(k, (name, _))| (k.clone(), name.clone()));
+            let typical = best_hub
+                .as_ref()
+                .and_then(|(hkey, _)| {
+                    self.hub_profiles
+                        .get(&(city.to_string(), hkey.clone(), day_type.clone(), hour_bucket))
+                        .filter(|hp| hp.sample_count >= 10)
+                        .map(|hp| hp.shrunk_delay_sec().round() as i32)
+                })
+                .or_else(|| {
+                    self.cell_profiles
+                        .get(&(city.to_string(), clat, clon, day_type.clone(), hour_bucket))
+                        .filter(|cp| cp.sample_count >= 10)
+                        .map(|cp| cp.shrunk_delay_sec().round() as i32)
+                });
+            let delta = typical.map(|t| avg - t);
+
+            let is_tram_stall = p.tram_stalled >= 2
+                || (p.tram_count >= 2 && p.tram_stalled >= 1 && avg >= 300);
+            let is_bus_jam = p.bus_count >= 3
+                && p.lines.len() >= 2
+                && avg >= 300
+                && (p.bus_stalled >= 2 || avg >= 420);
+            let is_hub_anomaly = p.count >= 2
+                && p.lines.len() >= 2
+                && avg >= 300
+                && delta.map(|d| d >= 210).unwrap_or(false);
+
+            if !is_tram_stall && !is_bus_jam && !is_hub_anomaly {
+                continue;
+            }
+
+            let (kind, mode) = if is_tram_stall {
+                ("tram_stall", "tram")
+            } else if is_bus_jam {
+                ("bus_congestion", "bus")
+            } else {
+                let m = if p.tram_count > 0 && p.bus_count > 0 {
+                    "mixed"
+                } else if p.tram_count > 0 {
+                    "tram"
+                } else {
+                    "bus"
+                };
+                ("hub_anomaly", m)
+            };
+
+            let severity = if (is_tram_stall && (p.tram_stalled >= 3 || avg >= 480))
+                || avg >= 600
+                || delta.map(|d| d >= 420).unwrap_or(false)
+            {
+                "blocking"
+            } else if avg >= 330 || p.tram_stalled >= 2 || p.bus_stalled >= 2 {
+                "major"
+            } else {
+                "minor"
+            };
+
+            let id = format!("jam:{city}:{kind}:{clat}:{clon}");
+            detected_ids.insert(id.clone());
+
+            let mut lines: Vec<(String, u32)> = p.lines.into_iter().collect();
+            lines.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            let line_list: Vec<String> = lines.into_iter().take(8).map(|(l, _)| l).collect();
+
+            let location_name = best_hub
+                .map(|(_, name)| name)
+                .unwrap_or_else(|| format!("{:.4}, {:.4}", p.lat_sum / p.count as f64, p.lon_sum / p.count as f64));
+            let stalled_total = p.tram_stalled + p.bus_stalled;
+
+            let detected_at_ms = bucket
+                .anomalies
+                .get(&id)
+                .map(|prev| prev.detected_at_ms)
+                .unwrap_or(now_ms);
+            let duration_sec = ((now_ms - detected_at_ms).max(0) / 1000) as u64;
+
+            bucket.anomalies.insert(
+                id.clone(),
+                TrafficAnomaly {
+                    id,
+                    city: city.to_string(),
+                    kind: kind.to_string(),
+                    severity: severity.to_string(),
+                    mode: mode.to_string(),
+                    location_name,
+                    lat: p.lat_sum / p.count as f64,
+                    lon: p.lon_sum / p.count as f64,
+                    lines: line_list,
+                    stalled_vehicles: stalled_total,
+                    affected_vehicles: p.count,
+                    avg_delay_sec: avg,
+                    max_delay_sec: max_d,
+                    typical_delay_sec: typical,
+                    delta_vs_normal_sec: delta,
+                    detected_at_ms,
+                    updated_at_ms: now_ms,
+                    duration_sec,
+                },
+            );
+        }
+
+        // Histereza: utrzymujemy anomalie przez ANOMALY_HOLD_MS po ostatnim potwierdzeniu.
+        bucket
+            .anomalies
+            .retain(|id, a| detected_ids.contains(id) || now_ms - a.updated_at_ms <= ANOMALY_HOLD_MS);
+    }
+
+    pub fn query_anomalies(&self, city: &str, now_ms: i64) -> AnomaliesResponse {
+        self.mark_city_demand(city, now_ms);
+        let mut anomalies: Vec<TrafficAnomaly> = self
+            .cities
+            .get(city)
+            .map(|b| {
+                b.anomalies
+                    .values()
+                    .filter(|a| now_ms - a.updated_at_ms <= ANOMALY_HOLD_MS)
+                    .cloned()
+                    .map(|mut a| {
+                        a.duration_sec = ((now_ms - a.detected_at_ms).max(0) / 1000) as u64;
+                        a
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        anomalies.sort_by(|a, b| {
+            severity_rank(&b.severity)
+                .cmp(&severity_rank(&a.severity))
+                .then_with(|| b.avg_delay_sec.cmp(&a.avg_delay_sec))
+        });
+
+        AnomaliesResponse {
+            city: city.to_string(),
+            updated_at: now_ms,
+            anomalies,
+        }
+    }
+
+    /// Pelna karta prognozy punktualnosci dla szczegolow polaczenia:
+    /// 5-godzinny profil historyczny linii, najgoretszy wezel na trasie i ocena przesiadek.
+    pub fn query_route_insights(
+        &self,
+        req: &RouteInsightsRequest,
+        now_ms: i64,
+    ) -> RouteInsightsResponse {
+        self.mark_city_demand(&req.city, now_ms);
+        let day_type = day_type_for_date_or_now(req.date.as_deref(), now_ms);
+        let focus_hour = ((req.departure_sec.rem_euclid(86_400)) / 3600) as u8;
+
+        let transit_legs: Vec<&DelayEstimateLegInput> = req
+            .legs
+            .iter()
+            .filter(|l| l.mode != "walk" && l.line.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false))
+            .collect();
+
+        if transit_legs.is_empty() {
+            return empty_route_insights(&req.city, now_ms, &day_type, focus_hour);
+        }
+
+        // Wybieramy glowna linie o najwiekszej liczbie danych lub najwyzszym ryzyku opoznienia.
+        let mut best_line: Option<(String, String, u64, i32, i32, f32)> = None;
+        for leg in &transit_legs {
+            let line = leg.line.as_deref().unwrap_or("").trim().to_ascii_uppercase();
+            let prof = self
+                .line_profiles
+                .get(&(req.city.clone(), line.clone(), day_type.clone(), focus_hour))
+                .map(|r| r.clone());
+            let (samples, mean_d, p90_d, late_r) = match prof {
+                Some(p) => (
+                    p.sample_count,
+                    p.shrunk_delay_sec().round() as i32,
+                    p.p90_delay_sec.round() as i32,
+                    p.late_rate as f32,
+                ),
+                None => (0, 0, 0, 0.0),
+            };
+            let score = mean_d + if samples >= 15 { 1000 } else { (samples as i32) * 10 };
+            let replace = match &best_line {
+                None => true,
+                Some((_, _, b_samples, b_mean, _, _)) => {
+                    let b_score = *b_mean + if *b_samples >= 15 { 1000 } else { (*b_samples as i32) * 10 };
+                    score > b_score
+                }
+            };
+            if replace {
+                best_line = Some((line, leg.mode.clone(), samples, mean_d, p90_d, late_r));
+            }
+        }
+
+        let (focus_line, focus_mode, base_samples, mut expected_delay, mut p90_delay, mut late_prob) =
+            match best_line {
+                Some(t) => t,
+                None => return empty_route_insights(&req.city, now_ms, &day_type, focus_hour),
+            };
+
+        // 5-godzinne okno wokol godziny odjazdu (-2h..+2h) z profili SQLite/RAM.
+        let mut hourly_profile = Vec::with_capacity(5);
+        let mut window_samples: u64 = 0;
+        for offset in -2_i8..=2_i8 {
+            let h = ((focus_hour as i8 + offset).rem_euclid(24)) as u8;
+            let p = self
+                .line_profiles
+                .get(&(req.city.clone(), focus_line.clone(), day_type.clone(), h))
+                .map(|r| r.clone());
+            let (avg_s, p90_s, cnt) = match p {
+                Some(prof) if prof.sample_count >= 5 => (
+                    prof.shrunk_delay_sec().round() as i32,
+                    prof.p90_delay_sec.round() as i32,
+                    prof.sample_count,
+                ),
+                Some(prof) => (0, 0, prof.sample_count),
+                None => (0, 0, 0),
+            };
+            window_samples += cnt;
+            hourly_profile.push(HourlyDelayPoint {
+                hour: h,
+                avg_delay_sec: avg_s,
+                p90_delay_sec: p90_s,
+                sample_count: cnt,
+                is_departure_hour: offset == 0,
+            });
+        }
+
+        // Sprawdzamy tez biezace dane live dla linii i wezlow na trasie.
+        let heatmap = self.query_heatmap(&req.city, None, now_ms);
+        let hubs_by_key: HashMap<String, &HubDelaySummary> = heatmap
+            .hubs
+            .iter()
+            .map(|h| (h.id.trim_start_matches("hub:").to_string(), h))
+            .collect();
+
+        let mut hotspot: Option<RouteHotspotInsight> = None;
+        for leg in &transit_legs {
+            for stop_opt in [leg.from_stop.as_deref(), leg.to_stop.as_deref()] {
+                if let Some(stop_name) = stop_opt {
+                    let key = normalize_hub_name(stop_name);
+                    if let Some(hub) = hubs_by_key.get(&key) {
+                        if hub.avg_delay_sec >= 150
+                            && hotspot
+                                .as_ref()
+                                .map_or(true, |cur| hub.avg_delay_sec > cur.avg_delay_sec)
+                        {
+                            hotspot = Some(RouteHotspotInsight {
+                                name: hub.name.clone(),
+                                avg_delay_sec: hub.avg_delay_sec,
+                                typical_delay_sec: hub.typical_delay_sec,
+                                delta_vs_typical_sec: hub.delta_vs_typical_sec,
+                                delayed_count: hub.delayed_count,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Aktywna anomalia zatoru dotykajaca ktorejkolwiek z linii na trasie.
+        let route_lines: HashSet<String> = transit_legs
+            .iter()
+            .filter_map(|l| l.line.as_deref().map(|s| s.trim().to_ascii_uppercase()))
+            .collect();
+        let active_anomaly = self
+            .query_anomalies(&req.city, now_ms)
+            .anomalies
+            .into_iter()
+            .find(|a| a.lines.iter().any(|l| route_lines.contains(l)));
+
+        // Ocena ryzyka przesiadek miedzy kolejnymi odcinkami tranzytowymi.
+        let mut transfer_risks = Vec::new();
+        for pair in transit_legs.windows(2) {
+            let prev = pair[0];
+            let next = pair[1];
+            let (Some(arr), Some(dep)) = (prev.scheduled_arrival_sec, next.scheduled_departure_sec)
+            else {
+                continue;
+            };
+            let margin = dep - arr;
+            if margin < 0 || margin > 1800 {
+                continue;
+            }
+            let feeder_line = prev.line.as_deref().unwrap_or("").trim().to_ascii_uppercase();
+            let feeder_p90 = self
+                .line_profiles
+                .get(&(req.city.clone(), feeder_line.clone(), day_type.clone(), focus_hour))
+                .filter(|p| p.sample_count >= 10)
+                .map(|p| p.p90_delay_sec.round() as i32)
+                .unwrap_or(0);
+            if feeder_p90 >= 180 && feeder_p90 >= margin - 60 {
+                let risk = if feeder_p90 >= margin + 60 {
+                    "risky"
+                } else {
+                    "tight"
+                };
+                transfer_risks.push(TransferRiskInsight {
+                    stop_name: prev
+                        .to_stop
+                        .clone()
+                        .or_else(|| next.from_stop.clone())
+                        .unwrap_or_default(),
+                    from_line: feeder_line,
+                    to_line: next.line.as_deref().unwrap_or("").trim().to_ascii_uppercase(),
+                    margin_sec: margin,
+                    feeder_p90_delay_sec: feeder_p90,
+                    risk: risk.to_string(),
+                });
+            }
+        }
+
+        // Jesli mamy aktywna anomalie albo goracy wezel, podnosimy oczekiwane opoznienie.
+        if let Some(ref a) = active_anomaly {
+            expected_delay = expected_delay.max(a.avg_delay_sec);
+            p90_delay = p90_delay.max(a.max_delay_sec);
+            late_prob = late_prob.max(0.85);
+        } else if let Some(ref hs) = hotspot {
+            expected_delay = expected_delay.max(hs.avg_delay_sec);
+            late_prob = late_prob.max(0.55);
+        }
+
+        // Karta pokazuje sie TYLKO gdy mamy realna, sensowna baze danych.
+        let has_enough_history = base_samples >= 15 || window_samples >= 35;
+        let ready = has_enough_history
+            || active_anomaly.is_some()
+            || hotspot.as_ref().map(|h| h.delayed_count >= 2).unwrap_or(false)
+            || !transfer_risks.is_empty();
+
+        let risk_level = if active_anomaly.is_some()
+            || expected_delay >= 300
+            || p90_delay >= 540
+            || transfer_risks.iter().any(|t| t.risk == "risky")
+        {
+            "high"
+        } else if expected_delay >= 150
+            || p90_delay >= 300
+            || late_prob >= 0.35
+            || !transfer_risks.is_empty()
+        {
+            "moderate"
+        } else {
+            "low"
+        };
+
+        RouteInsightsResponse {
+            city: req.city.clone(),
+            updated_at: now_ms,
+            ready,
+            risk_level: risk_level.to_string(),
+            day_type,
+            focus_hour,
+            focus_line: Some(focus_line),
+            focus_mode: Some(focus_mode),
+            expected_delay_sec: expected_delay,
+            p90_delay_sec: p90_delay,
+            late_probability: (late_prob.clamp(0.0, 1.0) * 100.0).round() / 100.0,
+            sample_count: base_samples.max(window_samples),
+            hourly_profile,
+            hotspot,
+            transfer_risks,
+            active_anomaly,
+        }
+    }
+
+    /// Zasiewa realistyczne dane testowe wylacznie w trybie lokalnego dema (KILOMETR_SEED_DEMO=true).
+    pub fn seed_demo_data(&self, now_ms: i64) {
+        let (day_type, cur_hour) = warsaw_time_bucket(now_ms);
+        let demo_lines: &[(&str, &str)] = &[
+            ("wroclaw", "4"),
+            ("wroclaw", "10"),
+            ("wroclaw", "D"),
+            ("wroclaw", "145"),
+            ("wroclaw", "K"),
+            ("warszawa", "9"),
+            ("warszawa", "17"),
+            ("warszawa", "116"),
+            ("krakow", "4"),
+            ("krakow", "50"),
+            ("krakow", "52"),
+        ];
+
+        for &(city, line) in demo_lines {
+            for offset in -4_i8..=4_i8 {
+                let h = ((cur_hour as i8 + offset).rem_euclid(24)) as u8;
+                // Typowy profil szczytu: mniejsze opoznienia poza szczytem, wyzsze o cur_hour / cur_hour+1.
+                let base_delay = match offset {
+                    -4 | -3 => 70.0,
+                    -2 => 110.0,
+                    -1 => 195.0,
+                    0 => 320.0,
+                    1 => 430.0,
+                    2 => 260.0,
+                    _ => 120.0,
+                };
+                self.line_profiles.insert(
+                    (city.to_string(), line.to_string(), day_type.clone(), h),
+                    HistoricalProfile {
+                        sample_count: 68,
+                        mean_delay_sec: base_delay,
+                        p90_delay_sec: base_delay * 1.65,
+                        late_rate: (base_delay / 550.0).clamp(0.12, 0.88),
+                        ema_delay_sec: base_delay * 1.05,
+                    },
+                );
+            }
+        }
+
+        // Historyczny profil wezla dla wyliczenia odchylu od normy.
+        let demo_hubs: &[(&str, &str, &str, f64, f64, &[&str])] = &[
+            (
+                "wroclaw",
+                "rondo reagana",
+                "Rondo Reagana",
+                51.1112,
+                17.0615,
+                &["4", "10", "33", "D", "145"],
+            ),
+            (
+                "warszawa",
+                "rondo dmowskiego",
+                "Rondo Dmowskiego",
+                52.2297,
+                21.0122,
+                &["7", "9", "24", "25"],
+            ),
+            (
+                "krakow",
+                "rondo mogilskie",
+                "Rondo Mogilskie",
+                50.0658,
+                19.9593,
+                &["4", "5", "50", "52"],
+            ),
+        ];
+
+        for &(city, hkey, hname, lat, lon, lines) in demo_hubs {
+            self.hub_profiles.insert(
+                (city.to_string(), hkey.to_string(), day_type.clone(), cur_hour),
+                HistoricalProfile {
+                    sample_count: 95,
+                    mean_delay_sec: 150.0,
+                    p90_delay_sec: 280.0,
+                    late_rate: 0.28,
+                    ema_delay_sec: 155.0,
+                },
+            );
+
+            // Trzy tramwaje stojace blisko siebie od 6 min: wyzwala realny detektor `tram_stall`.
+            let stalled_since = now_ms - 360_000;
+            let mut vehs = Vec::new();
+            for (idx, line) in lines.iter().take(3).enumerate() {
+                let vid = format!("demo-tram-{city}-{idx}");
+                vehs.push(VehicleSnapshot {
+                    city: city.to_string(),
+                    vehicle_id: vid.clone(),
+                    line: (*line).to_string(),
+                    mode: "tram".to_string(),
+                    lat: lat + (idx as f64) * 0.00018,
+                    lon: lon + (idx as f64) * 0.00022,
+                    bearing: Some(90.0),
+                    delay_sec: Some(460 + (idx as i32) * 75),
+                    timestamp_ms: now_ms,
+                    headsign: Some(hname.to_string()),
+                    brigade: Some(format!("0{}", idx + 1)),
+                    model: Some("Pesa Twist".to_string()),
+                    agency: None,
+                    current_stop: Some(hname.to_string()),
+                    next_stop: Some(hname.to_string()),
+                    upcoming_stops: Vec::new(),
+                    source: "demo".to_string(),
+                    is_rail: false,
+                });
+                let mut bucket = self.cities.entry(city.to_string()).or_default();
+                bucket.motion.insert(
+                    vid,
+                    VehicleMotionState {
+                        anchor_lat: lat + (idx as f64) * 0.00018,
+                        anchor_lon: lon + (idx as f64) * 0.00022,
+                        stationary_since_ms: stalled_since,
+                        last_seen_ms: now_ms,
+                    },
+                );
+            }
+            self.ingest_city_vehicles(city, vehs, false, now_ms);
+        }
+    }
+}
+
+fn empty_route_insights(
+    city: &str,
+    now_ms: i64,
+    day_type: &str,
+    focus_hour: u8,
+) -> RouteInsightsResponse {
+    RouteInsightsResponse {
+        city: city.to_string(),
+        updated_at: now_ms,
+        ready: false,
+        risk_level: "low".to_string(),
+        day_type: day_type.to_string(),
+        focus_hour,
+        focus_line: None,
+        focus_mode: None,
+        expected_delay_sec: 0,
+        p90_delay_sec: 0,
+        late_probability: 0.0,
+        sample_count: 0,
+        hourly_profile: Vec::new(),
+        hotspot: None,
+        transfer_risks: Vec::new(),
+        active_anomaly: None,
+    }
+}
+
+fn day_type_for_date_or_now(date_opt: Option<&str>, now_ms: i64) -> String {
+    if let Some(raw) = date_opt {
+        if let Ok(nd) = chrono::NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d") {
+            return match nd.weekday() {
+                Weekday::Sat => "saturday",
+                Weekday::Sun => "sunday",
+                _ => "weekday",
+            }
+            .to_string();
+        }
+    }
+    warsaw_time_bucket(now_ms).0
+}
+
+fn severity_rank(s: &str) -> u8 {
+    match s {
+        "blocking" => 3,
+        "major" => 2,
+        "minor" => 1,
+        _ => 0,
+    }
+}
+
+fn distance_meters_approx(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let dlat = (lat2 - lat1) * 111_320.0;
+    let avg_lat_rad = ((lat1 + lat2) * 0.5).to_radians();
+    let dlon = (lon2 - lon1) * 111_320.0 * avg_lat_rad.cos();
+    (dlat * dlat + dlon * dlon).sqrt()
 }
 
 pub fn warsaw_time_bucket(now_ms: i64) -> (String, u8) {
@@ -1866,5 +2552,105 @@ mod tests {
         assert_eq!(out.legs[0].source, "blended");
         assert!(out.legs[0].delay_sec >= 240);
         assert!(out.legs[0].confidence >= 0.7);
+    }
+
+    #[test]
+    fn detects_tram_stall_anomaly_and_ignores_on_time_terminus_layover() {
+        let t0 = 1_795_518_000_000;
+        let t1 = t0 + 210_000; // 3.5 min pozniej
+        let engine = AnalyticsEngine::new(LoadedProfiles::default());
+
+        // Scenariusz 1: 2 tramwaje stoja na petli (delay = 0) -> brak falszywego alarmu.
+        let layover = vec![
+            sample_vehicle("wroclaw", "t1", "4", 51.105, 17.105, 0, Some("Biskupin"), t0),
+            sample_vehicle("wroclaw", "t2", "10", 51.1051, 17.1051, 20, Some("Biskupin"), t0),
+        ];
+        engine.ingest_city_vehicles("wroclaw", layover.clone(), false, t0);
+        let layover_t1: Vec<_> = layover
+            .into_iter()
+            .map(|mut v| {
+                v.timestamp_ms = t1;
+                v
+            })
+            .collect();
+        engine.ingest_city_vehicles("wroclaw", layover_t1, false, t1);
+        assert!(engine.query_anomalies("wroclaw", t1).anomalies.is_empty());
+
+        // Scenariusz 2: 2 tramwaje stoja w miejscu na trasie i nabijaja opoznienie -> zator tramwajowy!
+        let jam_t0 = vec![
+            sample_vehicle("wroclaw", "j1", "4", 51.111, 17.061, 360, Some("Rondo Reagana"), t0),
+            sample_vehicle("wroclaw", "j2", "10", 51.1111, 17.0612, 420, Some("Rondo Reagana"), t0),
+        ];
+        engine.ingest_city_vehicles("wroclaw", jam_t0, false, t0);
+        let jam_t1 = vec![
+            sample_vehicle("wroclaw", "j1", "4", 51.11105, 17.06102, 540, Some("Rondo Reagana"), t1),
+            sample_vehicle("wroclaw", "j2", "10", 51.11112, 17.06121, 600, Some("Rondo Reagana"), t1),
+        ];
+        engine.ingest_city_vehicles("wroclaw", jam_t1, false, t1);
+
+        let res = engine.query_anomalies("wroclaw", t1);
+        assert_eq!(res.anomalies.len(), 1);
+        assert_eq!(res.anomalies[0].kind, "tram_stall");
+        assert_eq!(res.anomalies[0].stalled_vehicles, 2);
+        assert_eq!(res.anomalies[0].location_name, "Rondo Reagana");
+    }
+
+    #[test]
+    fn route_insights_reports_ready_only_with_sufficient_data_and_evaluates_transfers() {
+        let now_ms = 1_795_518_000_000;
+        let engine = AnalyticsEngine::new(LoadedProfiles::default());
+
+        let req = RouteInsightsRequest {
+            city: "wroclaw".to_string(),
+            date: None,
+            departure_sec: 13 * 3600,
+            legs: vec![
+                DelayEstimateLegInput {
+                    id: "l1".to_string(),
+                    mode: "tram".to_string(),
+                    line: Some("4".to_string()),
+                    trip_id: None,
+                    train_number: None,
+                    direction: Some("Biskupin".to_string()),
+                    from_stop: Some("Rynek".to_string()),
+                    to_stop: Some("Rondo Reagana".to_string()),
+                    from_lat: None,
+                    from_lon: None,
+                    to_lat: None,
+                    to_lon: None,
+                    scheduled_departure_sec: Some(13 * 3600),
+                    scheduled_arrival_sec: Some(13 * 3600 + 600),
+                },
+                DelayEstimateLegInput {
+                    id: "l2".to_string(),
+                    mode: "bus".to_string(),
+                    line: Some("D".to_string()),
+                    trip_id: None,
+                    train_number: None,
+                    direction: Some("Krzyki".to_string()),
+                    from_stop: Some("Rondo Reagana".to_string()),
+                    to_stop: Some("Krzyki".to_string()),
+                    from_lat: None,
+                    from_lon: None,
+                    to_lat: None,
+                    to_lon: None,
+                    // Ciasna przesiadka: tylko 4 min zapasu (240s).
+                    scheduled_departure_sec: Some(13 * 3600 + 840),
+                    scheduled_arrival_sec: Some(13 * 3600 + 1800),
+                },
+            ],
+        };
+
+        // Bez danych -> ready = false (karta ukryta).
+        let empty = engine.query_route_insights(&req, now_ms);
+        assert!(!empty.ready);
+
+        // Po zasileniu historia demo -> ready = true, 5 godzin w profilu, wykryta ciasna przesiadka.
+        engine.seed_demo_data(now_ms);
+        let filled = engine.query_route_insights(&req, now_ms);
+        assert!(filled.ready);
+        assert_eq!(filled.hourly_profile.len(), 5);
+        assert!(filled.hourly_profile.iter().any(|p| p.is_departure_hour));
+        assert!(!filled.transfer_risks.is_empty());
     }
 }

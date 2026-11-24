@@ -28,9 +28,35 @@ Aplikacja mobilna, Web PWA i strona udostepnionego polaczenia korzystaja z niego
 | `GET` | `/v1/delays/lines?city=wroclaw&lines=4,D` | Statystyki per linia (avg, p50, p90, trend, estymacja bez GPS) |
 | `GET` | `/v1/delays/hubs?city=wroclaw&limit=20` | Ranking najbardziej opoznionych wezlow komunikacyjnych |
 | `POST` | `/v1/delays/estimate` | Batchowe szacowanie opoznien dla odcinkow trasy |
+| `POST` | `/v1/routes/insights` | Karta prognozy punktualnosci: 5-godzinny wykres, wezly, ryzyko przesiadek |
+| `GET` | `/v1/anomalies?city=wroclaw` | Automatycznie wykryte zatory komunikacyjne (stojace tramwaje/autobusy, odchyl od normy) |
 | `POST` | `/v1/shared/live` | Live opoznien i estymacji dla udostepnionego polaczenia |
 | `GET` | `/v1/rail/delays?trips=...&numbers=...` | Opoznienia i perony PKP PLK (kompatybilne z Workerem) |
 | `GET` | `/metrics` | Metryki Prometheus |
+
+## Testowanie lokalne na wlasnym komputerze
+
+Najprosciej uruchomic backend bez Dockera jednym poleceniem z katalogu glownego repozytorium:
+
+```bash
+# Prawdziwe dane live (domyslnie Wroclaw, Warszawa, Krakow)
+npm run backend:dev
+
+# Tryb demo: natychmiast zasiewa 24h profil historyczny i przykladowy zator tramwajowy
+npm run backend:demo
+
+# Wlasne miasta lub wszystkie 120 miast
+./backend/dev-local.sh --cities=wroclaw,poznan
+./backend/dev-local.sh --all-cities
+```
+
+Skrypt automatycznie zapisuje baze w `backend/local-data/`, wlacza czytelne logi i wykonuje `adb reverse tcp:8080 tcp:8080`, jesli telefon jest podlaczony po USB. Aby aplikacja laczyla sie z lokalnym backendem, ustaw w `.env`:
+
+```env
+EXPO_PUBLIC_BACKEND_URL=http://127.0.0.1:8080
+```
+
+(dla telefonu po Wi-Fi uzyj adresu LAN wypisanego przy starcie skryptu, np. `http://192.168.1.50:8080`).
 
 ## Szybkie wdrozenie na Mikrus 3.5
 

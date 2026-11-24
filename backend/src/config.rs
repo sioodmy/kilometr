@@ -29,6 +29,10 @@ pub struct AppConfig {
     pub rate_limit_rps: u32,
     pub rate_limit_burst: u32,
     pub log_json: bool,
+    /// Opcjonalna lista miast (oddzielona przecinkami) ograniczajaca polling przy testach lokalnych.
+    pub only_cities: Option<Vec<String>>,
+    /// Tryb lokalnego dema: zasiewa przykladowy profil historyczny i zator bez czekania na dane.
+    pub seed_demo: bool,
 }
 
 impl AppConfig {
@@ -70,6 +74,16 @@ impl AppConfig {
             rate_limit_rps: env_parse("KILOMETR_RATE_LIMIT_RPS", 30),
             rate_limit_burst: env_parse("KILOMETR_RATE_LIMIT_BURST", 90),
             log_json: env_bool("KILOMETR_LOG_JSON", true),
+            only_cities: env::var("KILOMETR_ONLY_CITIES")
+                .ok()
+                .map(|raw| {
+                    raw.split(',')
+                        .map(|s| s.trim().to_ascii_lowercase())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                })
+                .filter(|v| !v.is_empty()),
+            seed_demo: env_bool("KILOMETR_SEED_DEMO", false),
         }
     }
 }

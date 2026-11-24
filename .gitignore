@@ -78,6 +78,7 @@ assets/bootsplash/
 # artefakty backendu Rust (VPS api.kilometr.app)
 backend/target/
 backend/backups/
+backend/local-data/
 backend/*.db
 backend/*.db-shm
 backend/*.db-wal

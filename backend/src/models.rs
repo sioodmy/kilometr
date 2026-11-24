@@ -325,6 +325,109 @@ pub struct DelayEstimateResponse {
     pub legs: Vec<DelayEstimateLegOutput>,
 }
 
+/// Automatycznie wykryty zator komunikacyjny na podstawie strumienia GPS (bez AI).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrafficAnomaly {
+    pub id: String,
+    pub city: String,
+    /// "tram_stall", "bus_congestion", "hub_anomaly".
+    pub kind: String,
+    /// "minor", "major", "blocking".
+    pub severity: String,
+    /// "tram", "bus", "mixed".
+    pub mode: String,
+    pub location_name: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub lines: Vec<String>,
+    pub stalled_vehicles: u32,
+    pub affected_vehicles: u32,
+    pub avg_delay_sec: i32,
+    pub max_delay_sec: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub typical_delay_sec: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delta_vs_normal_sec: Option<i32>,
+    pub detected_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub duration_sec: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnomaliesResponse {
+    pub city: String,
+    pub updated_at: i64,
+    pub anomalies: Vec<TrafficAnomaly>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RouteInsightsRequest {
+    pub city: String,
+    #[serde(default)]
+    pub date: Option<String>,
+    /// Sekunda doby planowego wyjazdu (Europe/Warsaw).
+    pub departure_sec: i32,
+    pub legs: Vec<DelayEstimateLegInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HourlyDelayPoint {
+    pub hour: u8,
+    pub avg_delay_sec: i32,
+    pub p90_delay_sec: i32,
+    pub sample_count: u64,
+    pub is_departure_hour: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteHotspotInsight {
+    pub name: String,
+    pub avg_delay_sec: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub typical_delay_sec: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delta_vs_typical_sec: Option<i32>,
+    pub delayed_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferRiskInsight {
+    pub stop_name: String,
+    pub from_line: String,
+    pub to_line: String,
+    pub margin_sec: i32,
+    pub feeder_p90_delay_sec: i32,
+    /// "tight", "risky".
+    pub risk: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteInsightsResponse {
+    pub city: String,
+    pub updated_at: i64,
+    /// True wylacznie gdy backend ma wystarczajaco danych historycznych lub live dla tej trasy.
+    pub ready: bool,
+    /// "low", "moderate", "high".
+    pub risk_level: String,
+    pub day_type: String,
+    pub focus_hour: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_line: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_mode: Option<String>,
+    pub expected_delay_sec: i32,
+    pub p90_delay_sec: i32,
+    pub late_probability: f32,
+    pub sample_count: u64,
+    pub hourly_profile: Vec<HourlyDelayPoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hotspot: Option<RouteHotspotInsight>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transfer_risks: Vec<TransferRiskInsight>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_anomaly: Option<TrafficAnomaly>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceHealthSummary {
     pub source: String,

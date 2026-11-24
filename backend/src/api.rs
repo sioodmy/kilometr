@@ -22,7 +22,7 @@ use crate::analytics::AnalyticsEngine;
 use crate::cities::CityRegistry;
 use crate::collectors::SourceHealthRegistry;
 use crate::config::AppConfig;
-use crate::models::{Bbox, DelayEstimateRequest, SystemStatus};
+use crate::models::{Bbox, DelayEstimateRequest, RouteInsightsRequest, SystemStatus};
 use crate::storage::StorageHandle;
 
 pub struct AppState {
@@ -87,6 +87,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/v1/delays/lines", get(handle_lines))
         .route("/v1/delays/hubs", get(handle_hubs))
         .route("/v1/delays/estimate", post(handle_estimate))
+        .route("/v1/routes/insights", post(handle_route_insights))
+        .route("/v1/anomalies", get(handle_anomalies))
         .route("/v1/shared/live", post(handle_estimate))
         .route("/v1/rail/delays", get(handle_rail_delays))
         .route("/metrics", get(handle_metrics))
@@ -399,6 +401,62 @@ async fn handle_estimate(
     (
         StatusCode::OK,
         [(CACHE_CONTROL, "public, max-age=5")],
+        Json(res),
+    )
+        .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct AnomaliesQuery {
+    city: String,
+}
+
+async fn handle_anomalies(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<AnomaliesQuery>,
+) -> Response {
+    let city_id = q.city.trim().to_ascii_lowercase();
+    if state.cities.get(&city_id).is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown_city" })),
+        )
+            .into_response();
+    }
+    let now_ms = Utc::now().timestamp_millis();
+    let res = state.engine.query_anomalies(&city_id, now_ms);
+    (
+        StatusCode::OK,
+        [(CACHE_CONTROL, "public, max-age=10")],
+        Json(res),
+    )
+        .into_response()
+}
+
+async fn handle_route_insights(
+    State(state): State<Arc<AppState>>,
+    Json(mut req): Json<RouteInsightsRequest>,
+) -> Response {
+    req.city = req.city.trim().to_ascii_lowercase();
+    if state.cities.get(&req.city).is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown_city", "city": req.city })),
+        )
+            .into_response();
+    }
+    if req.legs.is_empty() || req.legs.len() > 32 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid_legs_count" })),
+        )
+            .into_response();
+    }
+    let now_ms = Utc::now().timestamp_millis();
+    let res = state.engine.query_route_insights(&req, now_ms);
+    (
+        StatusCode::OK,
+        [(CACHE_CONTROL, "public, max-age=20")],
         Json(res),
     )
         .into_response()

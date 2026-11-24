@@ -196,6 +196,11 @@ pub fn spawn_background_tasks(
                     _ = ticker.tick() => {
                         let now_ms = Utc::now().timestamp_millis();
                         for city in reg.live_cities() {
+                            if let Some(ref only) = cfg.only_cities {
+                                if !only.iter().any(|id| id == &city.id) {
+                                    continue;
+                                }
+                            }
                             if city.kp_prefix.is_some() && !cfg.enable_kp_collector {
                                 continue;
                             }
