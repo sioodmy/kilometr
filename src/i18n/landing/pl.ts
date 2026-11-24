@@ -162,7 +162,7 @@ export const pl = {
     forever: 'Na zawsze.',
   },
   closing: {
-    title: 'Zasługujesz na więcej niż jakdojade',
+    title: 'Do zobaczenia w drodze',
     body: 'Planuj podróże i sprawdzaj odjazdy, także offline. Pobierz Kilometr, a jeśli Ci się przyda, wesprzyj jego rozwój.',
     support: 'Wesprzyj rozwój',
   },

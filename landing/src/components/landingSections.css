@@ -426,13 +426,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
+    gap: 20px;
     width: min(100%, 480px);
     margin: 34px auto 0;
   }
   .closing-actions .platform-links {
     justify-content: center;
-    gap: 12px;
+    gap: 16px;
   }
   .closing-actions .button {
     min-width: 148px;
