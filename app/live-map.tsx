@@ -2413,8 +2413,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   searchClearBtn: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',

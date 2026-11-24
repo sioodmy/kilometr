@@ -1138,18 +1138,23 @@ const styles = StyleSheet.create({
   },
   lineCardHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 10,
   },
   lineIdentity: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
     flex: 1,
+    minWidth: 0,
   },
   lineIdentityMeta: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 120,
     gap: 3,
   },
   lineDirection: {

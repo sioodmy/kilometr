@@ -220,6 +220,8 @@ export function ShareConnectionSheet({
           >
             {busy ? (
               <ActivityIndicator color={scheme.onPrimary} />
+            ) : Platform.OS === 'web' ? (
+              <Link size={22} color={scheme.onPrimary} />
             ) : (
               <ImageUp size={22} color={scheme.onPrimary} />
             )}
@@ -228,20 +230,22 @@ export function ShareConnectionSheet({
             </Text>
           </Pressable>
           <View style={styles.actions}>
-            <Pressable
-              onPress={() => void run(downloadCard, true)}
-              disabled={busy || !available}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: busy || !available }}
-              style={({ pressed }) => [
-                styles.action,
-                pressed && styles.pressed,
-                (busy || !available) && styles.disabled,
-              ]}
-            >
-              <Download size={22} color={scheme.onSecondaryContainer} />
-              <Text style={styles.actionText}>{s.download}</Text>
-            </Pressable>
+            {Platform.OS !== 'web' && (
+              <Pressable
+                onPress={() => void run(downloadCard, true)}
+                disabled={busy || !available}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy || !available }}
+                style={({ pressed }) => [
+                  styles.action,
+                  pressed && styles.pressed,
+                  (busy || !available) && styles.disabled,
+                ]}
+              >
+                <Download size={22} color={scheme.onSecondaryContainer} />
+                <Text style={styles.actionText}>{s.download}</Text>
+              </Pressable>
+            )}
             <Pressable
               onPress={() =>
                 void run(async () => {
@@ -268,26 +272,22 @@ export function ShareConnectionSheet({
               </Text>
             </Pressable>
           </View>
-          <Pressable
-            onPress={() =>
-              void run(
-                Platform.OS === 'web'
-                  ? shareWebLink
-                  : () => Share.share({ title: s.title, message }),
-              )
-            }
-            disabled={busy || !available}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !available }}
-            style={({ pressed }) => [
-              styles.linkAction,
-              pressed && styles.pressed,
-              (busy || !available) && styles.disabled,
-            ]}
-          >
-            <Link size={20} color={scheme.primary} />
-            <Text style={styles.linkText}>{s.linkOnly}</Text>
-          </Pressable>
+          {Platform.OS !== 'web' && (
+            <Pressable
+              onPress={() => void run(() => Share.share({ title: s.title, message }))}
+              disabled={busy || !available}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: busy || !available }}
+              style={({ pressed }) => [
+                styles.linkAction,
+                pressed && styles.pressed,
+                (busy || !available) && styles.disabled,
+              ]}
+            >
+              <Link size={20} color={scheme.primary} />
+              <Text style={styles.linkText}>{s.linkOnly}</Text>
+            </Pressable>
+          )}
           <Text style={styles.note}>{s.privacy}</Text>
         </BottomSheetScrollView>
       </View>

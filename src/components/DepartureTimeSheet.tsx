@@ -3,6 +3,7 @@ import {
   BackHandler,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -202,6 +203,14 @@ function WheelPicker({
   const scrollRef = useRef<ScrollView>(null);
   const isUserScrolling = useRef(false);
   const didMount = useRef(false);
+  const webScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (webScrollTimer.current) clearTimeout(webScrollTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     const index = values.indexOf(selectedValue);
@@ -214,17 +223,32 @@ function WheelPicker({
     return () => cancelAnimationFrame(frame);
   }, [selectedValue, values, itemHeight, reduceMotion]);
 
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const commitOffset = (offsetY: number) => {
     isUserScrolling.current = false;
     const index = Math.max(
       0,
-      Math.min(values.length - 1, Math.round(e.nativeEvent.contentOffset.y / itemHeight)),
+      Math.min(values.length - 1, Math.round(offsetY / itemHeight)),
     );
     const next = values[index];
     if (next !== selectedValue) {
       void Haptics.selectionAsync().catch(() => {});
     }
     onValueChange(next);
+  };
+
+  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    commitOffset(e.nativeEvent.contentOffset.y);
+  };
+
+  // Na Web RNW nie wywołuje onMomentumScrollEnd, więc zatwierdzamy pozycję po ustaniu scrolla.
+  const handleWebScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (Platform.OS !== 'web') return;
+    const y = e.nativeEvent.contentOffset.y;
+    isUserScrolling.current = true;
+    if (webScrollTimer.current) clearTimeout(webScrollTimer.current);
+    webScrollTimer.current = setTimeout(() => {
+      commitOffset(y);
+    }, 90);
   };
 
   return (
@@ -258,16 +282,26 @@ function WheelPicker({
     >
       <ScrollView
         ref={scrollRef}
-        style={{ height: itemHeight * 3 }}
+        style={[
+          { height: itemHeight * 3 },
+          Platform.OS === 'web'
+            ? ({
+                scrollSnapType: 'y mandatory',
+                scrollbarWidth: 'none',
+              } as unknown as Record<string, string>)
+            : null,
+        ]}
         showsVerticalScrollIndicator={false}
         snapToInterval={itemHeight}
         decelerationRate="fast"
         nestedScrollEnabled
         overScrollMode="never"
+        scrollEventThrottle={16}
         contentOffset={{ x: 0, y: Math.max(0, values.indexOf(selectedValue)) * itemHeight }}
         contentContainerStyle={{ paddingVertical: itemHeight }}
         importantForAccessibility="no-hide-descendants"
         accessibilityElementsHidden
+        onScroll={Platform.OS === 'web' ? handleWebScroll : undefined}
         onScrollBeginDrag={() => {
           isUserScrolling.current = true;
         }}
@@ -291,6 +325,9 @@ function WheelPicker({
               style={({ pressed }) => [
                 styles.wheelItem,
                 { height: itemHeight },
+                Platform.OS === 'web'
+                  ? ({ scrollSnapAlign: 'center' } as unknown as Record<string, string>)
+                  : null,
                 pressed && !active && styles.wheelItemPressed,
               ]}
             >
@@ -634,6 +671,11 @@ export function DepartureTimeSheet({
             horizontal
             showsHorizontalScrollIndicator={false}
             overScrollMode="never"
+            style={
+              Platform.OS === 'web'
+                ? ({ scrollbarWidth: 'none' } as unknown as Record<string, string>)
+                : undefined
+            }
             contentContainerStyle={styles.daySelector}
           >
             {days.map((option) => {

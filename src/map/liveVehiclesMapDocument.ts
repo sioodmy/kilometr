@@ -1666,7 +1666,11 @@ const runtime = [
   '  }',
   '});',
   '',
-  'init();',
+  'try {',
+  '  init();',
+  '} catch (err) {',
+  '  postError(err && err.message ? err.message : "ERR_MAP_INIT");',
+  '}',
   '})();',
 ].join('\n');
 

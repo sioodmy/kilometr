@@ -2157,6 +2157,7 @@ export const de: Strings = {
     mapTapToLoad: 'Tippen, um die Karte zu laden',
     mapFailed:
       'Karte konnte nicht geladen werden. Versuche es erneut oder lade in den Einstellungen eine Offline-Karte herunter.',
+    mapFailedWeb: 'Karte konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.',
     mapRetry: 'Karte erneut laden',
     openMap: 'Vollständige Routenkarte öffnen',
     ahead: 'Geradeaus',

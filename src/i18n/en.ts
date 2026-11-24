@@ -2138,6 +2138,7 @@ export const en: Strings = {
     mapLoading: 'Loading map…',
     mapTapToLoad: 'Tap to load the map',
     mapFailed: 'Could not load the map. Try again or download an offline map in settings.',
+    mapFailedWeb: 'Could not load the map. Check your connection and try again.',
     mapRetry: 'Reload map',
     openMap: 'Open the full route map',
     ahead: 'Straight ahead',

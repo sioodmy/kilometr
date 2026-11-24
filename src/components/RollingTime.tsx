@@ -62,14 +62,19 @@ const RollingDigit = memo(function RollingDigit({
     <View style={styles.digit}>
       <Text
         style={[style, styles.measure]}
+        selectable={false}
         onLayout={(event) => {
           digitHeight.value = event.nativeEvent.layout.height;
         }}
       >
         0
       </Text>
-      <Animated.Text style={[style, styles.layer, outgoing]}>{pair.from}</Animated.Text>
-      <Animated.Text style={[style, styles.layer, incoming]}>{pair.to}</Animated.Text>
+      <Animated.Text style={[style, styles.layer, outgoing]} selectable={false}>
+        {pair.from}
+      </Animated.Text>
+      <Animated.Text style={[style, styles.layer, incoming]} selectable={false}>
+        {pair.to}
+      </Animated.Text>
     </View>
   );
 });
@@ -84,6 +89,7 @@ export function RollingTime({ value, style }: { value: string; style: StyleProp<
   return (
     <View accessible accessibilityLabel={value} style={styles.time}>
       <View
+        aria-hidden
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
         style={styles.time}
