@@ -54,7 +54,10 @@ import {
 } from '../src/components/LiveVehiclesMap';
 import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
 import { SpringPressable } from '../src/components/SpringPressable';
+import { useEscapeKey, useWebLayout } from '../src/theme/layout';
 import type {
+  LiveMapDelayHubItem,
+  LiveMapDelayZoneItem,
   LiveMapDisruptionItem,
   LiveMapSelectedRoute,
   LiveMapStopItem,
@@ -86,6 +89,12 @@ import {
   buildLiveMapDisruptions,
   type LiveMapDisruptionMarker,
 } from '../src/services/liveMapDisruptions';
+import {
+  buildLocalDelayHeatmap,
+  fetchBackendHeatmap,
+  type DelayHeatmapData,
+  type ViewportBbox,
+} from '../src/services/kilometrApi';
 import { liveTracker, type TrackedVehicle } from '../src/services/liveTracker';
 import { acquireMapServer } from '../src/services/mapServerLease';
 import {
@@ -177,6 +186,7 @@ export default function LiveVehiclesMapScreen() {
   const s = useStrings();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
   const { cityId, city } = useActiveCity();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -193,6 +203,7 @@ export default function LiveVehiclesMapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showStops, setShowStops] = useState(true);
   const [showDisruptions, setShowDisruptions] = useState(true);
+  const [showDelayHeatmap, setShowDelayHeatmap] = useState(true);
   const [followVehicle, setFollowVehicle] = useState(false);
   const [zoomMode, setZoomMode] = useState<'dots' | 'pills'>('pills');
   const [sheetExpanded, setSheetExpanded] = useState(false);
@@ -200,6 +211,9 @@ export default function LiveVehiclesMapScreen() {
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [routeStopFallback, setRouteStopFallback] = useState<LiveMapStopItem | null>(null);
   const [selectedDisruptionId, setSelectedDisruptionId] = useState<string | null>(null);
+  const [selectedDelayHubId, setSelectedDelayHubId] = useState<string | null>(null);
+  const [backendHeatmap, setBackendHeatmap] = useState<DelayHeatmapData | null>(null);
+  const viewportRef = useRef<ViewportBbox | null>(null);
   const [newsItems, setNewsItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const [gtfsLoaded, setGtfsLoaded] = useState(() => gtfsStore.isLoaded);
@@ -291,13 +305,25 @@ export default function LiveVehiclesMapScreen() {
       const clock = setInterval(() => {
         setNowSec(warsawNow().sec);
       }, 15000);
+      const refreshHeatmap = () => {
+        if (cancelled) return;
+        void fetchBackendHeatmap(cityId, viewportRef.current)
+          .then((data) => {
+            if (!cancelled && data) setBackendHeatmap(data);
+          })
+          .catch(() => {});
+      };
+      refreshHeatmap();
+      const heatmapTimer = setInterval(refreshHeatmap, 20000);
       return () => {
         cancelled = true;
         newsController.abort();
         clearInterval(clock);
+        clearInterval(heatmapTimer);
         clearTimeout(liveWaitTimer);
         unsubNews();
         unsub();
+        liveTracker.setMapViewport(null);
         liveTracker.release(true);
       };
     }, [city.features.news, cityId]),
@@ -874,6 +900,52 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers, selectedDisruptionId],
   );
 
+  // Aktywna warstwa opóźnień: świeże dane Data Science z backendu lub bezpieczny lokalny fallback.
+  const activeHeatmap = useMemo<DelayHeatmapData>(() => {
+    if (
+      backendHeatmap &&
+      backendHeatmap.city === cityId &&
+      Date.now() - backendHeatmap.updatedAt < 90_000
+    ) {
+      return backendHeatmap;
+    }
+    return buildLocalDelayHeatmap(vehicles, cityId);
+  }, [backendHeatmap, cityId, vehicles]);
+
+  const mapDelayZones = useMemo<LiveMapDelayZoneItem[]>(
+    () =>
+      activeHeatmap.zones.map((z) => ({
+        id: z.id,
+        lat: z.lat,
+        lon: z.lon,
+        intensity: z.intensity,
+        severity: z.severity,
+      })),
+    [activeHeatmap.zones],
+  );
+
+  const mapDelayHubs = useMemo<LiveMapDelayHubItem[]>(
+    () =>
+      activeHeatmap.hubs
+        .filter((h) => h.severity !== 'normal')
+        .map((h) => ({
+          id: h.id,
+          label: `+${Math.max(1, Math.round(h.avgDelaySec / 60))}m`,
+          severity: h.severity === 'normal' ? 'moderate' : h.severity,
+          lat: h.lat,
+          lon: h.lon,
+        })),
+    [activeHeatmap.hubs],
+  );
+
+  const selectedDelayHub = useMemo(
+    () =>
+      selectedDelayHubId
+        ? (activeHeatmap.hubs.find((h) => h.id === selectedDelayHubId) ?? null)
+        : null,
+    [activeHeatmap.hubs, selectedDelayHubId],
+  );
+
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQuery('');
@@ -892,6 +964,7 @@ export default function LiveVehiclesMapScreen() {
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
+      setSelectedDelayHubId(null);
       setSelectedId(vehicleId);
       setFollowVehicle(false);
       setSheetExpanded(false);
@@ -929,6 +1002,7 @@ export default function LiveVehiclesMapScreen() {
       setSelectedId(null);
       setFollowVehicle(false);
       setSelectedDisruptionId(null);
+      setSelectedDelayHubId(null);
       setSelectedStopId(stopId);
       setSheetExpanded(false);
       const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId) ?? routeStop;
@@ -950,6 +1024,7 @@ export default function LiveVehiclesMapScreen() {
       setFollowVehicle(false);
       setSelectedStopId(null);
       setRouteStopFallback(null);
+      setSelectedDelayHubId(null);
       setSelectedDisruptionId(disruptionId);
       setSheetExpanded(false);
       const found = disruptionMarkers.find((d) => d.id === disruptionId);
@@ -960,12 +1035,39 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers],
   );
 
+  const handleSelectDelayHub = useCallback(
+    (hubId: string) => {
+      void Haptics.selectionAsync().catch(() => {});
+      setSelectedId(null);
+      setFollowVehicle(false);
+      setSelectedStopId(null);
+      setRouteStopFallback(null);
+      setSelectedDisruptionId(null);
+      setSelectedDelayHubId(hubId);
+      setSheetExpanded(false);
+      const found = activeHeatmap.hubs.find((h) => h.id === hubId);
+      if (found) {
+        mapRef.current?.centerOn(found.lat, found.lon, 14.6);
+      }
+    },
+    [activeHeatmap.hubs],
+  );
+
+  const handleViewportChange = useCallback(
+    (bbox: ViewportBbox) => {
+      viewportRef.current = bbox;
+      liveTracker.setMapViewport(bbox);
+    },
+    [],
+  );
+
   const handleClearSelection = useCallback(() => {
     setSelectedId(null);
     setFollowVehicle(false);
     setSelectedStopId(null);
     setRouteStopFallback(null);
     setSelectedDisruptionId(null);
+    setSelectedDelayHubId(null);
     setSheetExpanded(false);
     setSheetHeight(0);
   }, []);
@@ -1002,6 +1104,15 @@ export default function LiveVehiclesMapScreen() {
     setShowDisruptions((prev) => {
       const next = !prev;
       if (!next) setSelectedDisruptionId(null);
+      return next;
+    });
+  }, []);
+
+  const handleToggleDelayHeatmap = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    setShowDelayHeatmap((prev) => {
+      const next = !prev;
+      if (!next) setSelectedDelayHubId(null);
       return next;
     });
   }, []);
@@ -1088,7 +1199,10 @@ export default function LiveVehiclesMapScreen() {
 
   const liveState = liveTracker.getLiveState();
   const isInitialLoading = vehicles.length === 0 && liveState === 'unknown' && !liveWaitExpired;
-  const hasSheet = Boolean((selectedVehicle && selectedMeta) || selectedStop || selectedDisruption);
+  const hasSheet = Boolean(
+    (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelayHub,
+  );
+  useEscapeKey(hasSheet && !searchOpen, handleClearSelection);
   const hasActiveFilter = filter !== 'all' || lineFilter !== null;
   const expandedBoardMaxHeight = Math.round(Math.min(windowHeight * 0.44, 380));
 
@@ -1177,6 +1291,12 @@ export default function LiveVehiclesMapScreen() {
   );
 
   const railBottom = hasSheet ? sheetHeight + 14 : Math.max(insets.bottom, 16) + 14;
+  const desktopSheetWidth = Math.min(400, Math.max(320, webLayout.contentWidth - 104));
+  const desktopSheetStyle = webLayout.isMedium
+    ? [styles.sheetDesktop, { width: desktopSheetWidth }]
+    : undefined;
+  const desktopBoardDefaultMaxHeight = Math.round(Math.min(360, webLayout.height * 0.42));
+  const desktopBoardExpandedMaxHeight = Math.round(Math.min(540, webLayout.height * 0.65));
 
   return (
     <View style={styles.root}>
@@ -1186,22 +1306,30 @@ export default function LiveVehiclesMapScreen() {
           vehicles={mapItems}
           stops={mapStops}
           disruptions={mapDisruptionItems}
+          delayZones={mapDelayZones}
+          delayHubs={mapDelayHubs}
           selectedId={selectedId}
           selectedStopId={selectedStopId}
           selectedRoute={selectedRoute}
           selectedDisruptionId={selectedDisruptionId}
+          selectedDelayHubId={selectedDelayHubId}
           showDisruptions={showDisruptions}
+          showDelayHeatmap={showDelayHeatmap}
           showStops={showStops}
           userLat={userLoc?.lat ?? null}
           userLon={userLoc?.lon ?? null}
           offlineBase={offlineBase}
-          bottomOffset={hasSheet ? sheetHeight : Math.max(insets.bottom, 12)}
+          bottomOffset={
+            webLayout.isMedium ? 24 : hasSheet ? sheetHeight : Math.max(insets.bottom, 12)
+          }
           onSelectVehicle={handleSelectVehicle}
           onSelectStop={handleSelectStop}
           onSelectDisruption={handleSelectDisruption}
+          onSelectDelayHub={handleSelectDelayHub}
           onClearSelection={handleClearSelection}
           onUserDrag={handleUserDrag}
           onZoomModeChange={setZoomMode}
+          onViewportChange={handleViewportChange}
           onTilesStatus={handleTilesStatus}
           onError={setMapError}
           onReady={() => setMapError(null)}
@@ -1213,20 +1341,23 @@ export default function LiveVehiclesMapScreen() {
         style={[styles.topOverlay, { paddingTop: Math.max(insets.top, 10) + 6 }]}
         pointerEvents="box-none"
       >
-        <View style={styles.headerRow}>
-          <SpringPressable
-            onPress={() => {
-              if (searchOpen) closeSearch();
-              else router.back();
-            }}
-            haptic="selection"
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.backA11y}
-            style={styles.circleBtn}
-            scaleDelta={0.05}
-          >
-            <ArrowLeft size={22} color={scheme.onSurface} />
-          </SpringPressable>
+        <View style={[styles.headerRow, webLayout.isMedium && styles.headerRowDesktop]}>
+          {(!webLayout.isMedium || searchOpen || router.canGoBack()) && (
+            <SpringPressable
+              onPress={() => {
+                if (searchOpen) closeSearch();
+                else if (router.canGoBack()) router.back();
+                else router.replace('/');
+              }}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.backA11y}
+              style={styles.circleBtn}
+              scaleDelta={0.05}
+            >
+              <ArrowLeft size={22} color={scheme.onSurface} />
+            </SpringPressable>
+          )}
 
           {searchOpen ? (
             <View style={styles.searchPill}>
@@ -1281,7 +1412,7 @@ export default function LiveVehiclesMapScreen() {
           <Animated.View
             entering={BADGE_ENTERING}
             exiting={BADGE_EXITING}
-            style={styles.searchDropdown}
+            style={[styles.searchDropdown, webLayout.isMedium && styles.searchDropdownDesktop]}
           >
             {searchResults.lines.length === 0 && searchResults.stops.length === 0 ? (
               <Text style={styles.searchEmptyText}>{s.liveMap.searchNoResults}</Text>
@@ -1415,6 +1546,28 @@ export default function LiveVehiclesMapScreen() {
               </SpringPressable>
             )}
 
+            {mapDelayZones.length > 0 && (
+              <SpringPressable
+                onPress={handleToggleDelayHeatmap}
+                accessibilityRole="button"
+                accessibilityState={{ selected: showDelayHeatmap }}
+                style={[styles.filterChip, showDelayHeatmap && styles.delayChipActive]}
+                scaleDelta={0.03}
+              >
+                <Clock3
+                  size={15}
+                  color={showDelayHeatmap ? scheme.onWarningContainer : scheme.onSurfaceVariant}
+                />
+                <Text
+                  style={[styles.filterText, showDelayHeatmap && styles.delayChipTextActive]}
+                >
+                  {mapDelayHubs.length > 0
+                    ? `${s.liveMap.filterDelays} (${mapDelayHubs.length})`
+                    : s.liveMap.filterDelays}
+                </Text>
+              </SpringPressable>
+            )}
+
             {disruptionMarkers.length > 0 && (
               <SpringPressable
                 onPress={handleToggleDisruptions}
@@ -1469,7 +1622,14 @@ export default function LiveVehiclesMapScreen() {
 
       {/* Prawa szyna szybkich akcji mapy (śledzenie, cała trasa, zoom, GPS) */}
       {!searchOpen && !mapError && (
-        <View style={[styles.railWrap, { bottom: railBottom }]} pointerEvents="box-none">
+        <View
+          style={[
+            styles.railWrap,
+            { bottom: webLayout.isMedium ? 20 : railBottom },
+            webLayout.isMedium && styles.railWrapDesktop,
+          ]}
+          pointerEvents="box-none"
+        >
           <MapActionRail
             actions={railActions}
             zoomPair={zoomPair}
@@ -1494,7 +1654,11 @@ export default function LiveVehiclesMapScreen() {
         <Animated.View
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
-          style={[styles.errorCard, { bottom: Math.max(insets.bottom, 16) + 12 }]}
+          style={[
+            styles.errorCard,
+            { bottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 12 },
+            webLayout.isMedium && styles.floatingCardDesktop,
+          ]}
         >
           <View style={styles.errorHeader}>
             <View style={styles.errorIconBox}>
@@ -1521,7 +1685,11 @@ export default function LiveVehiclesMapScreen() {
         <Animated.View
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
-          style={[styles.emptyCard, { bottom: Math.max(insets.bottom, 16) + 12 }]}
+          style={[
+            styles.emptyCard,
+            { bottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 12 },
+            webLayout.isMedium && styles.floatingCardDesktop,
+          ]}
         >
           <Text style={styles.emptyTitle}>{s.liveMap.noVehiclesTitle}</Text>
           <Text style={styles.emptyBody}>{s.liveMap.noVehiclesBody}</Text>
@@ -1547,7 +1715,11 @@ export default function LiveVehiclesMapScreen() {
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
           onLayout={handleSheetLayout}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
         >
           {(() => {
             const tone = getDisruptionTone(selectedDisruption.severity);
@@ -1565,7 +1737,7 @@ export default function LiveVehiclesMapScreen() {
 
             return (
               <>
-                <View style={styles.sheetHandle} />
+                {!webLayout.isMedium && <View style={styles.sheetHandle} />}
                 <View style={styles.sheetHeader}>
                   <View style={[styles.stopIconBox, { backgroundColor: tone.bg }]}>
                     <TriangleAlert size={20} color={tone.fg} />
@@ -1600,6 +1772,7 @@ export default function LiveVehiclesMapScreen() {
                 {selectedDisruption.lines.length > 0 && (
                   <ScrollView
                     horizontal
+                    style={styles.delayLinesScroll}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.disruptionLinesRow}
                   >
@@ -1660,6 +1833,135 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
+      {/* Dolna karta wybranego węzła opóźnień (heatmapa M3 Expressive) */}
+      {selectedDelayHub && (
+        <Animated.View
+          key={`delay-hub-${selectedDelayHub.id}`}
+          entering={SHEET_ENTERING}
+          exiting={SHEET_EXITING}
+          layout={SMOOTH_LAYOUT}
+          onLayout={handleSheetLayout}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
+        >
+          {(() => {
+            const avgMin = Math.max(1, Math.round(selectedDelayHub.avgDelaySec / 60));
+            const p90Min = Math.max(avgMin, Math.round(selectedDelayHub.p90DelaySec / 60));
+            const deltaMin =
+              selectedDelayHub.deltaVsTypicalSec != null
+                ? Math.round(selectedDelayHub.deltaVsTypicalSec / 60)
+                : null;
+            const isSevere = selectedDelayHub.severity === 'severe';
+            const tone = isSevere
+              ? { bg: scheme.errorContainer, fg: scheme.onErrorContainer }
+              : { bg: scheme.warningContainer, fg: scheme.onWarningContainer };
+            const sevLabel =
+              selectedDelayHub.severity === 'severe'
+                ? s.liveMap.delaySeveritySevere
+                : selectedDelayHub.severity === 'heavy'
+                  ? s.liveMap.delaySeverityHeavy
+                  : s.liveMap.delaySeverityModerate;
+            return (
+              <>
+                {!webLayout.isMedium && <View style={styles.sheetHandle} />}
+                <View style={styles.sheetHeader}>
+                  <View style={[styles.stopIconBox, { backgroundColor: tone.bg }]}>
+                    <Clock3 size={22} color={tone.fg} />
+                  </View>
+                  <View style={styles.sheetTitleWrap}>
+                    <View style={styles.disruptionBadgeRow}>
+                      <View style={[styles.severityPill, { backgroundColor: tone.bg }]}>
+                        <Text style={[styles.severityPillText, { color: tone.fg }]}>
+                          {sevLabel}
+                        </Text>
+                      </View>
+                      <Text style={styles.metaMuted}>{s.liveMap.delayZoneSheetTitle}</Text>
+                    </View>
+                    <Text style={styles.sheetTitle} numberOfLines={2}>
+                      {selectedDelayHub.name}
+                    </Text>
+                  </View>
+                  <SpringPressable
+                    onPress={handleClearSelection}
+                    haptic="selection"
+                    accessibilityRole="button"
+                    accessibilityLabel={s.liveMap.closeSheetA11y}
+                    style={styles.closeBtn}
+                  >
+                    <X size={20} color={scheme.onSurfaceVariant} />
+                  </SpringPressable>
+                </View>
+
+                <View style={styles.delayMetricsRow}>
+                  <View style={[styles.delayMetricCard, { backgroundColor: tone.bg }]}>
+                    <Text style={[styles.delayMetricPrimary, { color: tone.fg }]}>
+                      {s.liveMap.delayAvgNow(avgMin)}
+                    </Text>
+                    <Text style={[styles.delayMetricSub, { color: tone.fg }]}>
+                      {s.liveMap.delayP90(p90Min)}
+                    </Text>
+                  </View>
+                  <View style={styles.delayMetricCardNeutral}>
+                    <Text style={styles.delayMetricNeutralTitle} numberOfLines={1}>
+                      {s.liveMap.delayVehiclesAffected(
+                        selectedDelayHub.delayedCount,
+                        selectedDelayHub.vehicleCount,
+                      )}
+                    </Text>
+                    {deltaMin != null && Math.abs(deltaMin) >= 1 ? (
+                      <Text
+                        style={[
+                          styles.delayMetricNeutralSub,
+                          { color: deltaMin > 0 ? scheme.warning : scheme.success },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {deltaMin > 0
+                          ? s.liveMap.delayVsTypicalHigher(deltaMin)
+                          : s.liveMap.delayVsTypicalLower(Math.abs(deltaMin))}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                {selectedDelayHub.topLines.length > 0 && (
+                  <View style={styles.delayLinesSection}>
+                    <Text style={styles.metaMuted}>{s.liveMap.delayAffectedLines}</Text>
+                    <ScrollView
+                      horizontal
+                      style={styles.delayLinesScroll}
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.disruptionLinesRow}
+                    >
+                      {selectedDelayHub.topLines.map((line) => (
+                        <SpringPressable
+                          key={line}
+                          onPress={() => {
+                            void Haptics.selectionAsync().catch(() => {});
+                            setFilter('all');
+                            setLineFilter(line);
+                            setSelectedDelayHubId(null);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={line}
+                          scaleDelta={0.04}
+                        >
+                          <LineBadge line={line} compact />
+                        </SpringPressable>
+                      ))}
+                    </ScrollView>
+                    <Text style={styles.metaMuted}>{s.liveMap.delayTapLineHint}</Text>
+                  </View>
+                )}
+              </>
+            );
+          })()}
+        </Animated.View>
+      )}
+
       {/* Dolna tablica odjazdów wybranego przystanku */}
       {selectedStop && (
         <Animated.View
@@ -1668,18 +1970,24 @@ export default function LiveVehiclesMapScreen() {
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
           onLayout={handleSheetLayout}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
         >
-          <SpringPressable
-            onPress={() => setSheetExpanded((v) => !v)}
-            haptic="selection"
-            scaleDelta={0.015}
-            style={styles.handleTouch}
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.toggleSheetA11y}
-          >
-            <View style={styles.sheetHandle} />
-          </SpringPressable>
+          {!webLayout.isMedium && (
+            <SpringPressable
+              onPress={() => setSheetExpanded((v) => !v)}
+              haptic="selection"
+              scaleDelta={0.015}
+              style={styles.handleTouch}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.toggleSheetA11y}
+            >
+              <View style={styles.sheetHandle} />
+            </SpringPressable>
+          )}
 
           <View style={styles.sheetHeader}>
             <View style={[styles.stopIconBox, { backgroundColor: selectedStop.bg }]}>
@@ -1737,7 +2045,12 @@ export default function LiveVehiclesMapScreen() {
             <ScrollView
               style={[
                 styles.boardScroll,
-                sheetExpanded && { maxHeight: expandedBoardMaxHeight },
+                webLayout.isMedium && { maxHeight: desktopBoardDefaultMaxHeight },
+                sheetExpanded && {
+                  maxHeight: webLayout.isMedium
+                    ? desktopBoardExpandedMaxHeight
+                    : expandedBoardMaxHeight,
+                },
               ]}
               contentContainerStyle={styles.boardScrollContent}
               nestedScrollEnabled
@@ -1801,18 +2114,24 @@ export default function LiveVehiclesMapScreen() {
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
           onLayout={handleSheetLayout}
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 4 }]}
+          style={[
+            styles.sheet,
+            { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+            desktopSheetStyle,
+          ]}
         >
-          <SpringPressable
-            onPress={() => setSheetExpanded((v) => !v)}
-            haptic="selection"
-            scaleDelta={0.015}
-            style={styles.handleTouch}
-            accessibilityRole="button"
-            accessibilityLabel={s.liveMap.toggleSheetA11y}
-          >
-            <View style={styles.sheetHandle} />
-          </SpringPressable>
+          {!webLayout.isMedium && (
+            <SpringPressable
+              onPress={() => setSheetExpanded((v) => !v)}
+              haptic="selection"
+              scaleDelta={0.015}
+              style={styles.handleTouch}
+              accessibilityRole="button"
+              accessibilityLabel={s.liveMap.toggleSheetA11y}
+            >
+              <View style={styles.sheetHandle} />
+            </SpringPressable>
+          )}
 
           <View style={styles.sheetHeader}>
             <LineBadge
@@ -1888,7 +2207,12 @@ export default function LiveVehiclesMapScreen() {
               <ScrollView
                 style={[
                   styles.vehicleBoardScroll,
-                  sheetExpanded && { maxHeight: expandedBoardMaxHeight },
+                  webLayout.isMedium && { maxHeight: desktopBoardDefaultMaxHeight },
+                  sheetExpanded && {
+                    maxHeight: webLayout.isMedium
+                      ? desktopBoardExpandedMaxHeight
+                      : expandedBoardMaxHeight,
+                  },
                 ]}
                 contentContainerStyle={styles.boardScrollContent}
                 nestedScrollEnabled
@@ -2015,6 +2339,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  headerRowDesktop: {
+    maxWidth: 420,
+    width: '100%',
+  },
   circleBtn: {
     width: 48,
     height: 48,
@@ -2100,6 +2428,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     maxHeight: 320,
     ...elev.level3,
+  },
+  searchDropdownDesktop: {
+    maxWidth: 420,
+    width: '100%',
   },
   searchDropdownScroll: {
     maxHeight: 296,
@@ -2204,6 +2536,61 @@ const styles = StyleSheet.create({
     color: scheme.onErrorContainer,
     fontWeight: '700',
   },
+  delayChipActive: {
+    borderRadius: shape.full,
+    backgroundColor: scheme.warningContainer,
+    borderColor: scheme.warning,
+  },
+  delayChipTextActive: {
+    color: scheme.onWarningContainer,
+    fontWeight: '700',
+  },
+  delayMetricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  delayMetricCard: {
+    borderRadius: shape.large,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  delayMetricPrimary: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  delayMetricSub: {
+    ...type.labelSmall,
+    opacity: 0.9,
+    fontVariant: ['tabular-nums'],
+  },
+  delayMetricCardNeutral: {
+    flex: 1,
+    borderRadius: shape.large,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: scheme.surfaceContainerHigh,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  delayMetricNeutralTitle: {
+    ...type.labelMedium,
+    color: scheme.onSurface,
+    fontWeight: '600',
+  },
+  delayMetricNeutralSub: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  delayLinesSection: {
+    gap: 6,
+  },
+  delayLinesScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   filterText: {
     ...type.labelLarge,
     color: scheme.onSurfaceVariant,
@@ -2262,6 +2649,15 @@ const styles = StyleSheet.create({
   railWrap: {
     position: 'absolute',
     right: 14,
+  },
+  railWrapDesktop: {
+    right: 20,
+  },
+  floatingCardDesktop: {
+    left: 16,
+    right: undefined,
+    width: 420,
+    maxWidth: '82%',
   },
   centerBadge: {
     position: 'absolute',
@@ -2375,6 +2771,15 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     gap: 12,
     ...elev.level3,
+  },
+  sheetDesktop: {
+    left: 16,
+    right: undefined,
+    bottom: 16,
+    borderRadius: shape.extraLarge,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    paddingTop: 14,
   },
   handleTouch: {
     alignItems: 'center',

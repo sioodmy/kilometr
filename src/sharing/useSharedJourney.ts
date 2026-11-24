@@ -8,6 +8,7 @@ import { useActiveCity } from '../services/cityStore';
 import { gtfsStore } from '../services/routing/store';
 import { RoutingService } from '../services/api';
 import { liveTracker } from '../services/liveTracker';
+import { fetchBackendSharedLive, type SharedLiveLegOutput } from '../services/kilometrApi';
 import type { LegStop } from '../types/models';
 import { getSharedJourneyData } from '../services/sharedJourneyData';
 import type { SharedConnection } from './connection';
@@ -21,6 +22,7 @@ export function useSharedJourney(encoded: string) {
     stops: LegStop[][];
     journey: SharedConnection;
   } | null>(null);
+  const [backendLive, setBackendLive] = useState<Map<string, SharedLiveLegOutput> | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -69,25 +71,64 @@ export function useSharedJourney(encoded: string) {
 
   useFocusEffect(
     useCallback(() => {
-      if (!journey || !sameCity) return;
-      // Współdzielona podróż pokazuje pojazd na żywo, więc trzyma poll,
-      // dopóki ekran jest widoczny.
-      liveTracker.acquire();
+      if (!journey) return;
+      if (sameCity) {
+        // Współdzielona podróż pokazuje pojazd na żywo, więc trzyma poll,
+        // dopóki ekran jest widoczny.
+        liveTracker.acquire();
+      }
+      let active = true;
+      let lastBackendAt = 0;
+      const pollBackend = () => {
+        const clock = new Date();
+        const elapsed = sharedJourneySeconds(journey.date, clock);
+        if (elapsed < journey.departure * 60 - 2700 || elapsed > journey.arrival * 60 + 3600) {
+          return;
+        }
+        if (Date.now() - lastBackendAt < 18000) return;
+        lastBackendAt = Date.now();
+        const legs = journey.legs
+          .map((leg, idx) => ({ leg, idx }))
+          .filter(({ leg }) => leg.mode !== 'walk')
+          .map(({ leg, idx }) => ({
+            id: String(idx),
+            mode: leg.mode,
+            line: leg.line,
+            tripId: leg.trip,
+            trainNumber: leg.mode === 'train' ? leg.line : undefined,
+            direction: leg.direction,
+            fromStop: leg.from,
+            toStop: leg.to,
+            fromLat: leg.fromLat,
+            fromLon: leg.fromLon,
+            toLat: leg.toLat,
+            toLon: leg.toLon,
+            scheduledDepartureSec: (leg.scheduledDeparture ?? leg.departure) * 60,
+            scheduledArrivalSec: (leg.scheduledArrival ?? leg.arrival) * 60,
+          }));
+        void fetchBackendSharedLive(journey.city, legs)
+          .then((res) => {
+            if (active && res) setBackendLive(res);
+          })
+          .catch(() => {});
+      };
       const update = () => {
         if (AppState.currentState !== 'active') return;
         const clock = new Date();
         setNow(clock);
         const elapsed = sharedJourneySeconds(journey.date, clock);
-        if (elapsed >= journey.departure * 60 - 1800 && elapsed <= journey.arrival * 60 + 1800)
+        if (sameCity && elapsed >= journey.departure * 60 - 1800 && elapsed <= journey.arrival * 60 + 1800)
           void liveTracker.ensureFresh().catch(() => {});
+        pollBackend();
       };
       update();
       const timer = setInterval(update, 5000);
       const sub = AppState.addEventListener('change', update);
       return () => {
+        active = false;
         clearInterval(timer);
         sub.remove();
-        liveTracker.release();
+        if (sameCity) liveTracker.release();
       };
     }, [journey, sameCity]),
   );
@@ -103,20 +144,23 @@ export function useSharedJourney(encoded: string) {
         : null,
     [journey, encoded, loaded, sameCity],
   );
-  const connection = useMemo(
-    () =>
-      base && journey
-        ? sharedLiveConnection(
-            base,
-            journey,
-            sameCity && liveTracker.getLiveState() === 'fresh'
-              ? liveTracker.getTripDelays()
-              : new Map(),
-            now,
-          )
-        : null,
-    [base, journey, now, sameCity],
-  );
+  const connection = useMemo(() => {
+    if (!base || !journey) return null;
+    const delays = new Map<string, number>();
+    if (sameCity && liveTracker.getLiveState() === 'fresh') {
+      for (const [k, v] of liveTracker.getTripDelays()) delays.set(k, v);
+    }
+    if (backendLive) {
+      journey.legs.forEach((leg, idx) => {
+        if (!leg.trip || delays.has(leg.trip)) return;
+        const item = backendLive.get(String(idx));
+        if (item && (item.status === 'live' || item.status === 'estimated')) {
+          delays.set(leg.trip, item.delaySec);
+        }
+      });
+    }
+    return sharedLiveConnection(base, journey, delays, now);
+  }, [backendLive, base, journey, now, sameCity]);
   const match =
     connection && sameCity ? sharedVehicle(connection, liveTracker.snapshot(), now) : null;
   return {

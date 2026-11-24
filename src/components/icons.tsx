@@ -1,9 +1,9 @@
 // Material Icons w jednym miejscu. Nazwy zostały te same co wcześniej,
 // więc ekrany nie zmieniają się przy wymianie zestawu; mapowanie trzymamy tutaj.
+import { Platform, type StyleProp, type TextStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import type { ComponentProps, ComponentType } from 'react';
-import type { StyleProp, TextStyle } from 'react-native';
 
 type IconProps = {
   size?: number;
@@ -29,7 +29,13 @@ export function M3SolidArrowRight({
 }) {
   const w = width ?? Math.round(size * 1.35);
   return (
-    <Svg width={w} height={size} viewBox="0 0 32 24" fill="none" accessible={false}>
+    <Svg
+      width={w}
+      height={size}
+      viewBox="0 0 32 24"
+      fill="none"
+      accessible={Platform.OS === 'web' ? undefined : false}
+    >
       <Path
         d="M4 12H26M19 5L26.5 12L19 19"
         stroke={color}
@@ -49,7 +55,13 @@ export function M3SolidArrowDown({
   color?: string;
 }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessible={false}>
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      accessible={Platform.OS === 'web' ? undefined : false}
+    >
       <Path
         d="M12 4V19.5M6 14L12 20L18 14"
         stroke={color}
@@ -115,7 +127,6 @@ export const Coffee = icon('local-cafe');
 export const Compass = icon('explore');
 export const Copy = icon('content-copy');
 export const CreditCard = icon('credit-card');
-export const Database = icon('storage');
 export const DatabaseBackup = icon('backup');
 export const DirectionsBike = icon('directions-bike');
 export const Download = icon('download');

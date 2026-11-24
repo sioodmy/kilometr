@@ -1448,6 +1448,8 @@ export const pl = {
     outsideAreaShort: 'Jesteś poza obsługiwanym obszarem',
     downloadCityTimetableA11y: (gen: string) => `Pobierz rozkład ${gen}`,
     liveMapA11y: 'Mapa pojazdów na żywo',
+    navPlanner: 'Planer',
+    navMenuA11y: 'Nawigacja główna',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Linia ${line} (${direction})` : `Linia ${line}`,
     boardedChipTitle: (line: string) => `W pojeździe ${line}`,
@@ -1781,11 +1783,11 @@ export const pl = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Wybierz miasto i pobierz rozkład. Połączenia wyszukasz też bez internetu.',
+    intro: 'Wybierz miasto, a rozkład pobierze się w tle. Połączenia wyszukasz także bez internetu.',
     openSettings: 'Otwórz ustawienia',
     permissionDenied:
       'Możesz kontynuować bez tej zgody i zmienić ją później w ustawieniach telefonu.',
-    steps: ['Witaj', 'Uprawnienia', 'Miasto', 'Rozkład', 'Miejsca'] as string[],
+    steps: ['Witaj', 'Miasto', 'Dostęp', 'Miejsca'] as string[],
     granted: 'Włączone',
     denied: 'Wyłączone',
     slotHome: 'Dom',
@@ -1882,6 +1884,22 @@ export const pl = {
     fast: 'Planowanie offline',
     noAds: 'Bez reklam',
     noPay: 'Bez mikropłatności',
+    detectGpsAction: 'Wykryj moje miasto przez GPS',
+    detectGpsHint: 'Automatycznie dobierze rozkład dla Twojej okolicy',
+    detectGpsBadge: 'Z GPS',
+    citySearchPlaceholder: 'Szukaj miasta lub aglomeracji…',
+    cityNoSearchMatch: (q: string) => `Nie znaleziono miasta „${q}”.`,
+    cityClearSearchA11y: 'Wyczyść wyszukiwanie',
+    citySubtitleAuto: 'Rozkład pobierze się automatycznie w tle.',
+    bgDlDownloading: (gen: string, pct: number) => `Pobieram rozkład ${gen}… ${pct}%`,
+    bgDlImporting: (gen: string, pct: number) => `Przygotowuję rozkład ${gen}… ${pct}%`,
+    bgDlReady: (gen: string) => `Rozkład ${gen} gotowy offline`,
+    bgDlReadyDetail: (stops: number) => `${stops} przystanków`,
+    bgDlError: 'Nie udało się pobrać rozkładu',
+    bgDlPending: (gen: string) => `Rozkład ${gen} pobierze się w tle`,
+    bgDlRetry: 'Ponów',
+    bgDlStart: 'Pobierz',
+    startUsing: 'Zacznij korzystać',
     permTitle: 'Dostęp aplikacji',
     permSub: 'Lokalizacja i powiadomienia. Oba opcjonalne.',
     permSubWeb: 'Dodaj aplikację do ekranu głównego i włącz lokalizację.',
@@ -2016,10 +2034,22 @@ export const pl = {
             : 'opublikował';
       return `${name} nie ${verb} teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`;
     },
+    sectionGps: 'Wykryto z GPS na żywo',
     sectionChanges: 'Zmiany na liniach',
     sectionCity: 'Wiadomości',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'Wykryto z GPS',
+    gpsJamTitleTram: (place: string) => `Zator tramwajowy: ${place}`,
+    gpsJamTitleBus: (place: string) => `Zator autobusowy: ${place}`,
+    gpsJamTitleHub: (place: string) => `Duże opóźnienia: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} pojazdy stoją w pobliżu od ${durMin} min. Średnie opóźnienie +${avgMin} min.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} opóźnione pojazdy w tym rejonie. Średnio +${avgMin} min opóźnienia.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} min powyżej normy dla tej godziny.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Trwa od ok. ${durMin} min (analiza GPS)` : 'Wykryto przed chwilą (analiza GPS)',
     openBrowser: 'Otwórz w przeglądarce',
     articleFail: 'Nie udało się wczytać treści tej strony.',
     articleEmpty: 'Na tej stronie nie ma treści, którą da się pokazać w aplikacji.',
@@ -3029,6 +3059,43 @@ export const pl = {
     zoomForLinesHint: 'Przybliż, aby zobaczyć numery linii',
     openTimetableCta: 'Rozkład linii',
     toggleSheetA11y: 'Rozwiń lub zwiń szczegóły',
+    filterDelays: 'Opóźnienia',
+    delayZoneSheetTitle: 'Węzeł opóźnień',
+    delayAvgNow: (min: number) => `Średnio +${min} min`,
+    delayP90: (min: number) => `Szczyt (p90): +${min} min`,
+    delayVsTypicalHigher: (min: number) => `+${min} min powyżej normy`,
+    delayVsTypicalLower: (min: number) => `${min} min mniej niż zwykle`,
+    delayVehiclesAffected: (delayed: number, total: number) =>
+      `${delayed} z ${total} pojazdów ma opóźnienie`,
+    delayAffectedLines: 'Opóźnione linie',
+    delaySeveritySevere: 'Duży zator',
+    delaySeverityHeavy: 'Spore opóźnienia',
+    delaySeverityModerate: 'Spowolnienie',
+    delayTapLineHint: 'Dotknij linii, aby zobaczyć ją na mapie',
+  },
+  routeInsights: {
+    verdictLow: 'Zwykle punktualnie',
+    verdictModerate: 'Możliwe niewielkie opóźnienie',
+    verdictHigh: 'Częste opóźnienia o tej porze',
+    dayWeekday: 'dni robocze',
+    daySaturday: 'soboty',
+    daySunday: 'niedziele',
+    basisLine: (line: string, day: string, n: number) =>
+      `Linia ${line} · ${day} (${n} pomiarów)`,
+    basisGeneric: (day: string, n: number) => `Na podstawie ${n} pomiarów (${day})`,
+    upToMin: (min: number) => `p90 +${min}m`,
+    chartCaption: 'Średnie opóźnienie wg godziny',
+    yourDeparture: 'Twój wyjazd',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Profil opóźnień linii ${line}. O godzinie ${hour} średnio plus ${min} minut.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Aktywny zator przy ${place}: obecnie średnio +${min} min opóźnienia.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: teraz +${min} min (+${delta} min powyżej normy).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: spowolnienie na trasie, obecnie +${min} min.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Ciasna przesiadka (${stop}): ${marginMin} min zapasu, a linia ${fromLine} miewa do +${p90Min} min.`,
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',

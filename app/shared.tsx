@@ -34,6 +34,7 @@ import { getNotificationPreferencesSync } from '../src/services/notifications/pr
 import { computeTripProgress } from '../src/services/notifications/tripProgress';
 import { buildMapRoute } from '../src/services/routeGeometry';
 import { useSharedJourney } from '../src/sharing/useSharedJourney';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 
 function ActionButton({
@@ -98,6 +99,7 @@ export default function SharedJourneyScreen() {
   const s = useStrings();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const { trip: param } = useLocalSearchParams<{ trip?: string }>();
   const encoded = typeof param === 'string' ? param : '';
   const { base, journey, connection, match, sameCity, now, loading, failed, retry } =
@@ -234,9 +236,16 @@ export default function SharedJourneyScreen() {
     }
   }
 
+  const desktopTwoCol = webLayout.isDesktop && Boolean(journey && connection && sameCity);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          desktopTwoCol ? styles.headerDesktop : webLayout.isMedium && styles.headerMedium,
+        ]}
+      >
         <Pressable
           onPress={goBack}
           onFocus={() => setBackFocused(true)}
@@ -274,6 +283,76 @@ export default function SharedJourneyScreen() {
             </Text>
             <Text style={styles.emptyBody}>{s.share.invalidBody}</Text>
             <ActionButton title={s.map.backA11y} onPress={goBack} />
+          </View>
+        </View>
+      ) : desktopTwoCol ? (
+        <View style={styles.desktopSplit}>
+          <ScrollView
+            style={styles.desktopLeftScroll}
+            contentContainerStyle={[
+              styles.desktopLeftContent,
+              { paddingBottom: insets.bottom + 28 },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <SharedJourneyHero
+              journey={journey}
+              connection={connection}
+              progress={progress}
+              hasVehicle={!!vehicle}
+              pingKey={pingKey}
+              sameCity={sameCity}
+              following={following}
+              followBusy={busy}
+              onFollowPress={requestFollow}
+            />
+
+            <View style={styles.itinerarySection}>
+              <View style={styles.itineraryHeader}>
+                <Text style={styles.itineraryTitle} accessibilityRole="header">
+                  {s.share.itinerary}
+                </Text>
+                {loading && (
+                  <View style={styles.loadingChip} accessibilityLiveRegion="polite">
+                    <MorphingLoader size={16} color={scheme.primary} />
+                    <Text style={styles.loadingText} numberOfLines={1}>
+                      {s.share.loading}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <LegTimeline legs={connection.legs} observeOnly />
+
+              {failed && (
+                <View style={styles.retryCard}>
+                  <Text style={styles.retryText}>{s.share.stopsUnavailable}</Text>
+                  <ActionButton
+                    title={s.share.retry}
+                    tonal
+                    onPress={retry}
+                    disabled={loading}
+                    icon={<RefreshCw size={18} color={scheme.onSecondaryContainer} />}
+                  />
+                </View>
+              )}
+            </View>
+
+            {error && (
+              <View style={styles.errorBanner} accessibilityRole="alert">
+                <Text style={styles.errorText}>{s.share.trackError}</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.desktopRightCol}>
+            <SharedJourneyMapCard
+              mapRoute={mapRoute}
+              vehicle={vehicle}
+              ended={ended}
+              loading={loading}
+              onRetryData={retry}
+            />
           </View>
         </View>
       ) : (
@@ -386,6 +465,41 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
+  },
+  headerMedium: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+  },
+  headerDesktop: {
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 14,
+  },
+  desktopSplit: {
+    flex: 1,
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 8,
+    gap: 24,
+    minHeight: 0,
+  },
+  desktopLeftScroll: {
+    width: 480,
+    flexShrink: 0,
+    flexGrow: 0,
+  },
+  desktopLeftContent: {
+    gap: 18,
+  },
+  desktopRightCol: {
+    flex: 1,
+    minWidth: 0,
   },
   back: {
     width: 48,

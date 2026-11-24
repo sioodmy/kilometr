@@ -29,6 +29,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCircle, Clock3, Flag, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
+import {
+  DESKTOP_SHEET_TOP_SPACER_HEIGHT,
+  DesktopSheetTopSpacer,
+  getDesktopSheetProps,
+  useEscapeKey,
+  useWebLayout,
+} from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { JourneyTimeMode } from '../services/routing/types';
@@ -308,13 +315,19 @@ export function DepartureTimeSheet({
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const { height, width, fontScale } = useWindowDimensions();
+  const webLayout = useWebLayout();
   const itemHeight = Math.max(54, Math.ceil(46 * fontScale));
-  const compact = width / fontScale < 300;
-  const sheetHeight = Math.min(
-    height - insets.top - insets.bottom - 16,
-    696 + Math.max(0, fontScale - 1) * 380,
-  );
+  const sheetHeight = webLayout.isMedium
+    ? Math.min(height - 72, 704 + Math.max(0, fontScale - 1) * 220)
+    : Math.min(
+        height - insets.top - insets.bottom - 16,
+        696 + Math.max(0, fontScale - 1) * 380,
+      );
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 520, sheetHeight);
+  const effectiveWidth = webLayout.isMedium ? sheetProps.innerWidth : width;
+  const compact = effectiveWidth / fontScale < 300;
   const sheetRef = useRef<BottomSheet>(null);
+  useEscapeKey(true, () => sheetRef.current?.close());
   const dayScrollRef = useRef<ScrollView>(null);
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
@@ -508,16 +521,21 @@ export function DepartureTimeSheet({
       index={0}
       snapPoints={snapPoints}
       animationConfigs={animationConfigs}
-      handleComponent={SheetHandle}
-      bottomInset={insets.bottom}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : SheetHandle}
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
-      enablePanDownToClose
+      enablePanDownToClose={!webLayout.isMedium}
       enableContentPanningGesture={false}
       onClose={onClose}
       backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
     >
-      <View style={{ height: sheetHeight - HANDLE_HEIGHT }} accessibilityViewIsModal>
+      <View
+        style={{ height: sheetHeight - (webLayout.isMedium ? DESKTOP_SHEET_TOP_SPACER_HEIGHT : HANDLE_HEIGHT) }}
+        accessibilityViewIsModal
+      >
         <View style={styles.header}>
           <View style={styles.headerTitleGroup}>
             <View style={styles.headerIconBadge}>

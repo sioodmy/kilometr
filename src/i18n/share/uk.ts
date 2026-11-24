@@ -131,4 +131,10 @@ export const uk: ShareStrings = {
   invalidBody: 'Посилання неповне або пошкоджене. Попроси надіслати поїздку ще раз.',
   home: 'Сайт Kilometr',
   dayLater: (n) => `+${n} д`,
+  liveStatusNote: (time) => `Затримки наживо (станом на ${time}).`,
+  estimatedDelay: (min) => `Орієнт. +${min} хв`,
+  estimatedPositionLive: 'Положення скориговано за поточною затримкою',
+  cancelledService: 'Рейс скасовано',
+  scheduledTime: (time) => `за планом ${time}`,
+  typicalDelayNote: (min) => `Зазвичай близько +${min} хв у цю годину`,
 };

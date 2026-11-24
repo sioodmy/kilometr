@@ -1,0 +1,2924 @@
+[
+  {
+    "id": "wroclaw",
+    "name": "Wrocław",
+    "center": {
+      "lat": 51.1079,
+      "lon": 17.0385
+    },
+    "bounds": {
+      "minLat": 50.95,
+      "maxLat": 51.25,
+      "minLon": 16.7,
+      "maxLon": 17.25
+    },
+    "zbiorkom_slug": "wroclaw",
+    "zbiorkom_bbox": "16.7,50.95,17.25,51.25",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [
+      "KD"
+    ],
+    "live": true,
+    "direct_bus_position": true,
+    "tier": 1
+  },
+  {
+    "id": "krakow",
+    "name": "Kraków",
+    "center": {
+      "lat": 50.0614,
+      "lon": 19.9366
+    },
+    "bounds": {
+      "minLat": 49.95,
+      "maxLat": 50.17,
+      "minLon": 19.7,
+      "maxLon": 20.3
+    },
+    "zbiorkom_slug": "krakow",
+    "zbiorkom_bbox": "19.7,49.95,20.3,50.17",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [
+      "KML"
+    ],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "gzm",
+    "name": "GZM",
+    "center": {
+      "lat": 50.2649,
+      "lon": 19.0238
+    },
+    "bounds": {
+      "minLat": 49.95,
+      "maxLat": 50.6,
+      "minLon": 18.35,
+      "maxLon": 19.8
+    },
+    "zbiorkom_slug": "gzm",
+    "zbiorkom_bbox": "18.35,49.95,19.8,50.6",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [
+      "KS",
+      "IC",
+      "PR"
+    ],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "warszawa",
+    "name": "Warszawa",
+    "center": {
+      "lat": 52.2297,
+      "lon": 21.0122
+    },
+    "bounds": {
+      "minLat": 52,
+      "maxLat": 52.4,
+      "minLon": 20.8,
+      "maxLon": 21.3
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "20.8,52.0,21.3,52.4",
+    "zbiorkom_agencies": "default",
+    "kp_prefix": null,
+    "rail_agencies": [
+      "KM",
+      "WKD"
+    ],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "poznan",
+    "name": "Poznań",
+    "center": {
+      "lat": 52.4084,
+      "lon": 16.9336
+    },
+    "bounds": {
+      "minLat": 52.15,
+      "maxLat": 52.65,
+      "minLon": 16.6,
+      "maxLon": 17.3
+    },
+    "zbiorkom_slug": "poznan",
+    "zbiorkom_bbox": "16.6,52.15,17.3,52.65",
+    "zbiorkom_agencies": "default,PKSPOZNAN",
+    "kp_prefix": null,
+    "rail_agencies": [
+      "KW",
+      "PR"
+    ],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "trojmiasto",
+    "name": "Trójmiasto",
+    "center": {
+      "lat": 54.4418,
+      "lon": 18.5629
+    },
+    "bounds": {
+      "minLat": 54.1,
+      "maxLat": 54.66,
+      "minLon": 18.15,
+      "maxLon": 18.98
+    },
+    "zbiorkom_slug": "tricity",
+    "zbiorkom_bbox": "18.15,54.1,18.98,54.66",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [
+      "SKMT"
+    ],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "lodz",
+    "name": "Łódź",
+    "center": {
+      "lat": 51.7592,
+      "lon": 19.455
+    },
+    "bounds": {
+      "minLat": 51.55,
+      "maxLat": 51.97,
+      "minLon": 19.05,
+      "maxLon": 19.85
+    },
+    "zbiorkom_slug": "lodz",
+    "zbiorkom_bbox": "19.05,51.55,19.85,51.97",
+    "zbiorkom_agencies": "default",
+    "kp_prefix": null,
+    "rail_agencies": [
+      "LKA"
+    ],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "szczecin",
+    "name": "Szczecin",
+    "center": {
+      "lat": 53.4285,
+      "lon": 14.5528
+    },
+    "bounds": {
+      "minLat": 53.3,
+      "maxLat": 53.6,
+      "minLon": 14.35,
+      "maxLon": 14.75
+    },
+    "zbiorkom_slug": "szczecin",
+    "zbiorkom_bbox": "14.35,53.3,14.75,53.6",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "kielce",
+    "name": "Kielce",
+    "center": {
+      "lat": 50.8711,
+      "lon": 20.6312
+    },
+    "bounds": {
+      "minLat": 50.65,
+      "maxLat": 51.02,
+      "minLon": 20.3,
+      "maxLon": 20.95
+    },
+    "zbiorkom_slug": "kielce",
+    "zbiorkom_bbox": "20.3,50.65,20.95,51.02",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "olsztyn",
+    "name": "Olsztyn",
+    "center": {
+      "lat": 53.7784,
+      "lon": 20.4802
+    },
+    "bounds": {
+      "minLat": 53.6,
+      "maxLat": 53.95,
+      "minLon": 20.2,
+      "maxLon": 20.75
+    },
+    "zbiorkom_slug": "olsztyn",
+    "zbiorkom_bbox": "20.2,53.6,20.75,53.95",
+    "zbiorkom_agencies": "default",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "bialystok",
+    "name": "Białystok",
+    "center": {
+      "lat": 53.1325,
+      "lon": 23.1688
+    },
+    "bounds": {
+      "minLat": 52.9,
+      "maxLat": 53.26,
+      "minLon": 22.9,
+      "maxLon": 23.35
+    },
+    "zbiorkom_slug": "bialystok",
+    "zbiorkom_bbox": "22.9,52.9,23.35,53.26",
+    "zbiorkom_agencies": "default",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "opole",
+    "name": "Opole",
+    "center": {
+      "lat": 50.6667,
+      "lon": 17.9233
+    },
+    "bounds": {
+      "minLat": 50.55,
+      "maxLat": 50.8,
+      "minLon": 17.7,
+      "maxLon": 18.1
+    },
+    "zbiorkom_slug": "opole",
+    "zbiorkom_bbox": "17.7,50.55,18.1,50.8",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "rzeszow",
+    "name": "Rzeszów",
+    "center": {
+      "lat": 50.0412,
+      "lon": 21.9991
+    },
+    "bounds": {
+      "minLat": 49.9,
+      "maxLat": 50.15,
+      "minLon": 21.78,
+      "maxLon": 22.26
+    },
+    "zbiorkom_slug": "rzeszow",
+    "zbiorkom_bbox": "21.78,49.9,22.26,50.15",
+    "zbiorkom_agencies": "default",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "lublin",
+    "name": "Lublin",
+    "center": {
+      "lat": 51.2465,
+      "lon": 22.5684
+    },
+    "bounds": {
+      "minLat": 51.05,
+      "maxLat": 51.42,
+      "minLon": 22.3,
+      "maxLon": 22.8
+    },
+    "zbiorkom_slug": "lublin",
+    "zbiorkom_bbox": "22.3,51.05,22.8,51.42",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "radom",
+    "name": "Radom",
+    "center": {
+      "lat": 51.4027,
+      "lon": 21.1471
+    },
+    "bounds": {
+      "minLat": 51.28,
+      "maxLat": 51.5,
+      "minLon": 21,
+      "maxLon": 21.36
+    },
+    "zbiorkom_slug": "radom",
+    "zbiorkom_bbox": "21.0,51.28,21.36,51.5",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 1
+  },
+  {
+    "id": "bydgoszcz",
+    "name": "Bydgoszcz",
+    "center": {
+      "lat": 53.1235,
+      "lon": 18.0117
+    },
+    "bounds": {
+      "minLat": 52.94,
+      "maxLat": 53.34,
+      "minLon": 17.78,
+      "maxLon": 18.35
+    },
+    "zbiorkom_slug": "bydgoszcz",
+    "zbiorkom_bbox": "17.78,52.94,18.35,53.34",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "torun",
+    "name": "Toruń",
+    "center": {
+      "lat": 53.0138,
+      "lon": 18.5983
+    },
+    "bounds": {
+      "minLat": 52.91,
+      "maxLat": 53.11,
+      "minLon": 18.31,
+      "maxLon": 18.94
+    },
+    "zbiorkom_slug": "torun",
+    "zbiorkom_bbox": "18.31,52.91,18.94,53.11",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "elblag",
+    "name": "Elbląg",
+    "center": {
+      "lat": 54.1522,
+      "lon": 19.3947
+    },
+    "bounds": {
+      "minLat": 54.12,
+      "maxLat": 54.25,
+      "minLon": 19.33,
+      "maxLon": 19.59
+    },
+    "zbiorkom_slug": "elblag",
+    "zbiorkom_bbox": "19.33,54.12,19.59,54.25",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "gorzow",
+    "name": "Gorzów Wielkopolski",
+    "center": {
+      "lat": 52.733,
+      "lon": 15.233
+    },
+    "bounds": {
+      "minLat": 52.67,
+      "maxLat": 52.78,
+      "minLon": 15.03,
+      "maxLon": 15.34
+    },
+    "zbiorkom_slug": "gorzow",
+    "zbiorkom_bbox": "15.03,52.67,15.34,52.78",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "czestochowa",
+    "name": "Częstochowa",
+    "center": {
+      "lat": 50.812,
+      "lon": 19.124
+    },
+    "bounds": {
+      "minLat": 50.72,
+      "maxLat": 50.89,
+      "minLon": 18.95,
+      "maxLon": 19.3
+    },
+    "zbiorkom_slug": "czestochowa",
+    "zbiorkom_bbox": "18.95,50.72,19.3,50.89",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "zielonagora",
+    "name": "Zielona Góra",
+    "center": {
+      "lat": 51.939,
+      "lon": 15.506
+    },
+    "bounds": {
+      "minLat": 51.82,
+      "maxLat": 52.01,
+      "minLon": 15.43,
+      "maxLon": 15.67
+    },
+    "zbiorkom_slug": "zielonagora",
+    "zbiorkom_bbox": "15.43,51.82,15.67,52.01",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "rybnik",
+    "name": "Rybnik",
+    "center": {
+      "lat": 50.0972,
+      "lon": 18.5414
+    },
+    "bounds": {
+      "minLat": 49.99,
+      "maxLat": 50.2,
+      "minLon": 18.37,
+      "maxLon": 18.71
+    },
+    "zbiorkom_slug": "rybnik",
+    "zbiorkom_bbox": "18.37,49.99,18.71,50.2",
+    "zbiorkom_agencies": "default",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "slupsk",
+    "name": "Słupsk",
+    "center": {
+      "lat": 54.464,
+      "lon": 17.047
+    },
+    "bounds": {
+      "minLat": 54.4,
+      "maxLat": 54.52,
+      "minLon": 16.93,
+      "maxLon": 17.16
+    },
+    "zbiorkom_slug": "slupsk",
+    "zbiorkom_bbox": "16.93,54.4,17.16,54.52",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "walbrzych",
+    "name": "Wałbrzych",
+    "center": {
+      "lat": 50.771,
+      "lon": 16.25
+    },
+    "bounds": {
+      "minLat": 50.61,
+      "maxLat": 50.87,
+      "minLon": 16.08,
+      "maxLon": 16.4
+    },
+    "zbiorkom_slug": "walbrzych",
+    "zbiorkom_bbox": "16.08,50.61,16.40,50.87",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "kalisz",
+    "name": "Kalisz",
+    "center": {
+      "lat": 51.765,
+      "lon": 18.083
+    },
+    "bounds": {
+      "minLat": 51.6,
+      "maxLat": 51.92,
+      "minLon": 17.75,
+      "maxLon": 18.35
+    },
+    "zbiorkom_slug": "kalisz",
+    "zbiorkom_bbox": "17.75,51.60,18.35,51.92",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "siedlce",
+    "name": "Siedlce",
+    "center": {
+      "lat": 52.167,
+      "lon": 22.283
+    },
+    "bounds": {
+      "minLat": 52.05,
+      "maxLat": 52.27,
+      "minLon": 22.11,
+      "maxLon": 22.59
+    },
+    "zbiorkom_slug": "siedlce",
+    "zbiorkom_bbox": "22.11,52.05,22.59,52.27",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "lomza",
+    "name": "Łomża",
+    "center": {
+      "lat": 53.178,
+      "lon": 22.068
+    },
+    "bounds": {
+      "minLat": 53.13,
+      "maxLat": 53.23,
+      "minLon": 22.01,
+      "maxLon": 22.13
+    },
+    "zbiorkom_slug": "lomza",
+    "zbiorkom_bbox": "22.01,53.13,22.13,53.23",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "krosno",
+    "name": "Krosno",
+    "center": {
+      "lat": 49.687,
+      "lon": 21.746
+    },
+    "bounds": {
+      "minLat": 49.61,
+      "maxLat": 49.84,
+      "minLon": 21.58,
+      "maxLon": 21.89
+    },
+    "zbiorkom_slug": "krosno",
+    "zbiorkom_bbox": "21.58,49.61,21.89,49.84",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "jaslo",
+    "name": "Jasło",
+    "center": {
+      "lat": 49.745,
+      "lon": 21.473
+    },
+    "bounds": {
+      "minLat": 49.63,
+      "maxLat": 49.86,
+      "minLon": 21.33,
+      "maxLon": 21.71
+    },
+    "zbiorkom_slug": "jaslo",
+    "zbiorkom_bbox": "21.33,49.63,21.71,49.86",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "olkusz",
+    "name": "Olkusz",
+    "center": {
+      "lat": 50.281,
+      "lon": 19.562
+    },
+    "bounds": {
+      "minLat": 50.19,
+      "maxLat": 50.42,
+      "minLon": 19.37,
+      "maxLon": 19.7
+    },
+    "zbiorkom_slug": "olkusz",
+    "zbiorkom_bbox": "19.37,50.19,19.70,50.42",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "chrzanow",
+    "name": "Chrzanów",
+    "center": {
+      "lat": 50.133,
+      "lon": 19.402
+    },
+    "bounds": {
+      "minLat": 50.03,
+      "maxLat": 50.22,
+      "minLon": 19.21,
+      "maxLon": 19.58
+    },
+    "zbiorkom_slug": "chrzanow",
+    "zbiorkom_bbox": "19.21,50.03,19.58,50.22",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "bochnia",
+    "name": "Bochnia",
+    "center": {
+      "lat": 49.968,
+      "lon": 20.434
+    },
+    "bounds": {
+      "minLat": 49.88,
+      "maxLat": 50.1,
+      "minLon": 20.3,
+      "maxLon": 20.55
+    },
+    "zbiorkom_slug": "bochnia",
+    "zbiorkom_bbox": "20.30,49.88,20.55,50.10",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "ilawa",
+    "name": "Iława",
+    "center": {
+      "lat": 53.596,
+      "lon": 19.568
+    },
+    "bounds": {
+      "minLat": 53.55,
+      "maxLat": 53.63,
+      "minLon": 19.52,
+      "maxLon": 19.62
+    },
+    "zbiorkom_slug": "ilawa",
+    "zbiorkom_bbox": "19.52,53.55,19.62,53.63",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "bielskobiala",
+    "name": "Bielsko-Biała",
+    "center": {
+      "lat": 49.8425,
+      "lon": 19.0454
+    },
+    "bounds": {
+      "minLat": 49.7274,
+      "maxLat": 49.9576,
+      "minLon": 18.945,
+      "maxLon": 19.1457
+    },
+    "zbiorkom_slug": "bielskoBiala",
+    "zbiorkom_bbox": "18.9494,49.7317,19.1416,49.9564",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "bielsko",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "koszalin",
+    "name": "Koszalin",
+    "center": {
+      "lat": 54.198,
+      "lon": 16.2133
+    },
+    "bounds": {
+      "minLat": 54.1033,
+      "maxLat": 54.2927,
+      "minLon": 16.1127,
+      "maxLon": 16.314
+    },
+    "zbiorkom_slug": "koszalin",
+    "zbiorkom_bbox": "16.1167,54.1033,16.3095,54.2923",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "piotrkow",
+    "name": "Piotrków Trybunalski",
+    "center": {
+      "lat": 51.4067,
+      "lon": 19.6906
+    },
+    "bounds": {
+      "minLat": 51.3485,
+      "maxLat": 51.4648,
+      "minLon": 19.6151,
+      "maxLon": 19.7661
+    },
+    "zbiorkom_slug": "piotrkowTrybunalski",
+    "zbiorkom_bbox": "19.6036,51.3514,19.7658,51.461",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "tomaszow",
+    "name": "Tomaszów Mazowiecki",
+    "center": {
+      "lat": 51.5231,
+      "lon": 20.0197
+    },
+    "bounds": {
+      "minLat": 51.4186,
+      "maxLat": 51.6275,
+      "minLon": 19.8399,
+      "maxLon": 20.1994
+    },
+    "zbiorkom_slug": "tomaszowMazowiecki",
+    "zbiorkom_bbox": "19.8404,51.4216,20.2026,51.6271",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "skarzysko",
+    "name": "Skarżysko-Kamienna",
+    "center": {
+      "lat": 51.1182,
+      "lon": 20.8665
+    },
+    "bounds": {
+      "minLat": 51.0609,
+      "maxLat": 51.1755,
+      "minLon": 20.7809,
+      "maxLon": 20.9521
+    },
+    "zbiorkom_slug": "skarzyskoKamienna",
+    "zbiorkom_bbox": "20.7855,51.0633,20.9583,51.1729",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "oswiecim",
+    "name": "Oświęcim",
+    "center": {
+      "lat": 50.0342,
+      "lon": 19.2108
+    },
+    "bounds": {
+      "minLat": 49.9197,
+      "maxLat": 50.062,
+      "minLon": 19.135,
+      "maxLon": 19.3626
+    },
+    "zbiorkom_slug": "oswiecim",
+    "zbiorkom_bbox": "19.0585,49.92,19.3589,50.1292",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "swinoujscie",
+    "name": "Świnoujście",
+    "center": {
+      "lat": 53.8897,
+      "lon": 14.3363
+    },
+    "bounds": {
+      "minLat": 53.8263,
+      "maxLat": 53.9531,
+      "minLon": 14.1928,
+      "maxLon": 14.4797
+    },
+    "zbiorkom_slug": "swinoujscie",
+    "zbiorkom_bbox": "14.1963,53.8312,14.4755,53.9485",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "zakopane",
+    "name": "Zakopane",
+    "center": {
+      "lat": 49.2964,
+      "lon": 19.9607
+    },
+    "bounds": {
+      "minLat": 49.2452,
+      "maxLat": 49.3476,
+      "minLon": 19.8809,
+      "maxLon": 20.0405
+    },
+    "zbiorkom_slug": "zakopane",
+    "zbiorkom_bbox": "19.8859,49.2502,20.0355,49.3426",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "plock",
+    "name": "Płock",
+    "center": {
+      "lat": 52.584,
+      "lon": 19.7421
+    },
+    "bounds": {
+      "minLat": 52.4084,
+      "maxLat": 52.7595,
+      "minLon": 19.5536,
+      "maxLon": 19.9306
+    },
+    "zbiorkom_slug": "plock",
+    "zbiorkom_bbox": "19.5549,52.3802,19.9339,52.7591",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "tarnow",
+    "name": "Tarnów",
+    "center": {
+      "lat": 50.0245,
+      "lon": 20.9768
+    },
+    "bounds": {
+      "minLat": 49.9635,
+      "maxLat": 50.0854,
+      "minLon": 20.8869,
+      "maxLon": 21.0666
+    },
+    "zbiorkom_slug": "tarnow",
+    "zbiorkom_bbox": "20.8915,49.9668,21.0617,50.0805",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "legnica",
+    "name": "Legnica",
+    "center": {
+      "lat": 51.2095,
+      "lon": 16.2383
+    },
+    "bounds": {
+      "minLat": 51.087,
+      "maxLat": 51.3319,
+      "minLon": 16.0867,
+      "maxLon": 16.3899
+    },
+    "zbiorkom_slug": "legnica",
+    "zbiorkom_bbox": "16.0893,51.0911,16.3895,51.3443",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "jastrzebie",
+    "name": "Jastrzębie-Zdrój",
+    "center": {
+      "lat": 49.9508,
+      "lon": 18.5758
+    },
+    "bounds": {
+      "minLat": 49.8527,
+      "maxLat": 50.145,
+      "minLon": 18.346,
+      "maxLon": 18.8312
+    },
+    "zbiorkom_slug": "rybnik",
+    "zbiorkom_bbox": "18.3309,49.8512,18.8314,50.2152",
+    "zbiorkom_agencies": "JASTRZEBIE",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "pila",
+    "name": "Piła",
+    "center": {
+      "lat": 53.1093,
+      "lon": 16.6973
+    },
+    "bounds": {
+      "minLat": 53.0088,
+      "maxLat": 53.2098,
+      "minLon": 16.5866,
+      "maxLon": 16.8079
+    },
+    "zbiorkom_slug": "pila",
+    "zbiorkom_bbox": "16.5787,53.0129,16.8096,53.205",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "konin",
+    "name": "Konin",
+    "center": {
+      "lat": 52.2255,
+      "lon": 18.2661
+    },
+    "bounds": {
+      "minLat": 52.0876,
+      "maxLat": 52.3634,
+      "minLon": 18.0633,
+      "maxLon": 18.4688
+    },
+    "zbiorkom_slug": "konin",
+    "zbiorkom_bbox": "18.0682,52.0832,18.4703,52.3613",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "suwalki",
+    "name": "Suwałki",
+    "center": {
+      "lat": 54.0883,
+      "lon": 22.938
+    },
+    "bounds": {
+      "minLat": 53.9953,
+      "maxLat": 54.1812,
+      "minLon": 22.804,
+      "maxLon": 23.072
+    },
+    "zbiorkom_slug": "suwalki",
+    "zbiorkom_bbox": "22.8006,53.9964,23.0795,54.1816",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "ostrowiec",
+    "name": "Ostrowiec Świętokrzyski",
+    "center": {
+      "lat": 50.934,
+      "lon": 21.3736
+    },
+    "bounds": {
+      "minLat": 50.8595,
+      "maxLat": 51.0085,
+      "minLon": 21.1813,
+      "maxLon": 21.5659
+    },
+    "zbiorkom_slug": "ostrowiecSwietokrzyski",
+    "zbiorkom_bbox": "21.1862,50.8641,21.5611,51.0038",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "stalowawola",
+    "name": "Stalowa Wola",
+    "center": {
+      "lat": 50.5743,
+      "lon": 22.0463
+    },
+    "bounds": {
+      "minLat": 50.4739,
+      "maxLat": 50.6747,
+      "minLon": 21.8663,
+      "maxLon": 22.2263
+    },
+    "zbiorkom_slug": "stalowaWola",
+    "zbiorkom_bbox": "21.8713,50.4789,22.2213,50.6697",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "przemysl",
+    "name": "Przemyśl",
+    "center": {
+      "lat": 49.7721,
+      "lon": 22.7618
+    },
+    "bounds": {
+      "minLat": 49.6777,
+      "maxLat": 49.8666,
+      "minLon": 22.6433,
+      "maxLon": 22.8803
+    },
+    "zbiorkom_slug": "przemysl",
+    "zbiorkom_bbox": "22.6482,49.681,22.8753,49.8639",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "elk",
+    "name": "Ełk",
+    "center": {
+      "lat": 53.8408,
+      "lon": 22.3272
+    },
+    "bounds": {
+      "minLat": 53.7173,
+      "maxLat": 53.9643,
+      "minLon": 22.1448,
+      "maxLon": 22.5096
+    },
+    "zbiorkom_slug": "elk",
+    "zbiorkom_bbox": "22.1492,53.7202,22.5059,53.9599",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "leszno",
+    "name": "Leszno",
+    "center": {
+      "lat": 51.8549,
+      "lon": 16.582
+    },
+    "bounds": {
+      "minLat": 51.7314,
+      "maxLat": 51.9784,
+      "minLon": 16.469,
+      "maxLon": 16.695
+    },
+    "zbiorkom_slug": "leszno",
+    "zbiorkom_bbox": "16.474,51.7364,16.6901,51.9746",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "chelm",
+    "name": "Chełm",
+    "center": {
+      "lat": 51.1371,
+      "lon": 23.4828
+    },
+    "bounds": {
+      "minLat": 51.0856,
+      "maxLat": 51.1885,
+      "minLon": 23.4014,
+      "maxLon": 23.5642
+    },
+    "zbiorkom_slug": "chelm",
+    "zbiorkom_bbox": "23.4064,51.0906,23.5592,51.1835",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "mielec",
+    "name": "Mielec",
+    "center": {
+      "lat": 50.3023,
+      "lon": 21.4655
+    },
+    "bounds": {
+      "minLat": 50.2046,
+      "maxLat": 50.4,
+      "minLon": 21.3426,
+      "maxLon": 21.5883
+    },
+    "zbiorkom_slug": "mielec",
+    "zbiorkom_bbox": "21.3407,50.1967,21.5879,50.3988",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "tczew",
+    "name": "Tczew",
+    "center": {
+      "lat": 54.2087,
+      "lon": 18.7165
+    },
+    "bounds": {
+      "minLat": 54.0373,
+      "maxLat": 54.3801,
+      "minLon": 18.6034,
+      "maxLon": 18.8297
+    },
+    "zbiorkom_slug": "tczew",
+    "zbiorkom_bbox": "18.608,54.0418,18.8247,54.3751",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "ostroleka",
+    "name": "Ostrołęka",
+    "center": {
+      "lat": 53.0575,
+      "lon": 21.6114
+    },
+    "bounds": {
+      "minLat": 52.9632,
+      "maxLat": 53.1518,
+      "minLon": 21.5134,
+      "maxLon": 21.7095
+    },
+    "zbiorkom_slug": "ostroleka",
+    "zbiorkom_bbox": "21.5085,52.9642,21.7128,53.1493",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "starachowice",
+    "name": "Starachowice",
+    "center": {
+      "lat": 51.0364,
+      "lon": 21.0785
+    },
+    "bounds": {
+      "minLat": 50.9746,
+      "maxLat": 51.0982,
+      "minLon": 20.9845,
+      "maxLon": 21.1724
+    },
+    "zbiorkom_slug": "starachowice",
+    "zbiorkom_bbox": "20.9889,50.9793,21.1676,51.0932",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "kutno",
+    "name": "Kutno",
+    "center": {
+      "lat": 52.2297,
+      "lon": 19.371
+    },
+    "bounds": {
+      "minLat": 52.1716,
+      "maxLat": 52.2878,
+      "minLon": 19.2732,
+      "maxLon": 19.4687
+    },
+    "zbiorkom_slug": "kutno",
+    "zbiorkom_bbox": "19.2782,52.1766,19.4639,52.2828",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "kolobrzeg",
+    "name": "Kołobrzeg",
+    "center": {
+      "lat": 54.1591,
+      "lon": 15.5746
+    },
+    "bounds": {
+      "minLat": 54.1006,
+      "maxLat": 54.2175,
+      "minLon": 15.4548,
+      "maxLon": 15.6945
+    },
+    "zbiorkom_slug": "kolobrzeg",
+    "zbiorkom_bbox": "15.4598,54.1056,15.6895,54.2125",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "radomsko",
+    "name": "Radomsko",
+    "center": {
+      "lat": 51.1145,
+      "lon": 19.453
+    },
+    "bounds": {
+      "minLat": 50.995,
+      "maxLat": 51.2339,
+      "minLon": 19.3241,
+      "maxLon": 19.5819
+    },
+    "zbiorkom_slug": "radomsko",
+    "zbiorkom_bbox": "19.329,50.9998,19.5773,51.229",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "boleslawiec",
+    "name": "Bolesławiec",
+    "center": {
+      "lat": 51.2566,
+      "lon": 15.4308
+    },
+    "bounds": {
+      "minLat": 51.1958,
+      "maxLat": 51.3173,
+      "minLon": 15.2393,
+      "maxLon": 15.6223
+    },
+    "zbiorkom_slug": "boleslawiec",
+    "zbiorkom_bbox": "15.2443,51.2008,15.6173,51.3123",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "cieszyn",
+    "name": "Cieszyn",
+    "center": {
+      "lat": 49.7833,
+      "lon": 18.6325
+    },
+    "bounds": {
+      "minLat": 49.703,
+      "maxLat": 49.8635,
+      "minLon": 18.5533,
+      "maxLon": 18.7116
+    },
+    "zbiorkom_slug": "cieszyn",
+    "zbiorkom_bbox": "18.5583,49.708,18.7066,49.8585",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "zywiec",
+    "name": "Żywiec",
+    "center": {
+      "lat": 49.7052,
+      "lon": 19.227
+    },
+    "bounds": {
+      "minLat": 49.5922,
+      "maxLat": 49.8181,
+      "minLon": 19.0905,
+      "maxLon": 19.3636
+    },
+    "zbiorkom_slug": "zywiec",
+    "zbiorkom_bbox": "19.0906,49.5964,19.3638,49.8197",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "krasnik",
+    "name": "Kraśnik",
+    "center": {
+      "lat": 50.9532,
+      "lon": 22.1567
+    },
+    "bounds": {
+      "minLat": 50.8539,
+      "maxLat": 51.0524,
+      "minLon": 21.9684,
+      "maxLon": 22.345
+    },
+    "zbiorkom_slug": "krasnik",
+    "zbiorkom_bbox": "21.9692,50.8588,22.34,51.0481",
+    "zbiorkom_agencies": null,
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "grodzisk",
+    "name": "Grodzisk Mazowiecki",
+    "center": {
+      "lat": 52.106,
+      "lon": 20.631
+    },
+    "bounds": {
+      "minLat": 52,
+      "maxLat": 52.22,
+      "minLon": 20.38,
+      "maxLon": 20.78
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "20.2177,51.905,20.9646,52.3689",
+    "zbiorkom_agencies": "GPA",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "pruszkow",
+    "name": "Pruszków",
+    "center": {
+      "lat": 52.1721,
+      "lon": 20.8075
+    },
+    "bounds": {
+      "minLat": 52.13,
+      "maxLat": 52.21,
+      "minLon": 20.76,
+      "maxLon": 20.85
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "20.7463,52.1139,20.8687,52.2302",
+    "zbiorkom_agencies": "PRUSZKOW",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "sochaczew",
+    "name": "Sochaczew",
+    "center": {
+      "lat": 52.2555,
+      "lon": 20.3278
+    },
+    "bounds": {
+      "minLat": 52.1616,
+      "maxLat": 52.3494,
+      "minLon": 20.1679,
+      "maxLon": 20.4876
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "20.1729,52.1666,20.4826,52.3444",
+    "zbiorkom_agencies": "SOCHACZEW",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "minskmazowiecki",
+    "name": "Mińsk Mazowiecki",
+    "center": {
+      "lat": 52.1807,
+      "lon": 21.5581
+    },
+    "bounds": {
+      "minLat": 52.1402,
+      "maxLat": 52.2212,
+      "minLon": 21.4996,
+      "maxLon": 21.6167
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "21.5046,52.1407,21.6117,52.2207",
+    "zbiorkom_agencies": "MINSK",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "otwock",
+    "name": "Otwock",
+    "center": {
+      "lat": 52.106,
+      "lon": 21.261
+    },
+    "bounds": {
+      "minLat": 52.08,
+      "maxLat": 52.16,
+      "minLon": 21.18,
+      "maxLon": 21.32
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "21.0259,52.0718,21.3241,52.1693",
+    "zbiorkom_agencies": "OTWOCK",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "nowydwormaz",
+    "name": "Nowy Dwór Mazowiecki",
+    "center": {
+      "lat": 52.4329,
+      "lon": 20.7149
+    },
+    "bounds": {
+      "minLat": 52.389,
+      "maxLat": 52.4768,
+      "minLon": 20.6413,
+      "maxLon": 20.7885
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "20.6463,52.3929,20.7835,52.4729",
+    "zbiorkom_agencies": "NDM",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "zabki",
+    "name": "Ząbki",
+    "center": {
+      "lat": 52.292,
+      "lon": 21.116
+    },
+    "bounds": {
+      "minLat": 52.26,
+      "maxLat": 52.31,
+      "minLon": 21.08,
+      "maxLon": 21.16
+    },
+    "zbiorkom_slug": "warsaw",
+    "zbiorkom_bbox": "21.03,52.233,21.1811,52.329",
+    "zbiorkom_agencies": "ZABKI",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "pabianice",
+    "name": "Pabianice",
+    "center": {
+      "lat": 51.664,
+      "lon": 19.354
+    },
+    "bounds": {
+      "minLat": 51.62,
+      "maxLat": 51.7,
+      "minLon": 19.3,
+      "maxLon": 19.44
+    },
+    "zbiorkom_slug": "lodz",
+    "zbiorkom_bbox": "19.274,51.5366,19.5141,51.7187",
+    "zbiorkom_agencies": "PABIANICE",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "zgierz",
+    "name": "Zgierz",
+    "center": {
+      "lat": 51.855,
+      "lon": 19.406
+    },
+    "bounds": {
+      "minLat": 51.82,
+      "maxLat": 51.92,
+      "minLon": 19.35,
+      "maxLon": 19.48
+    },
+    "zbiorkom_slug": "lodz",
+    "zbiorkom_bbox": "19.2527,51.7355,19.5088,51.9823",
+    "zbiorkom_agencies": "ZGIERZ",
+    "kp_prefix": null,
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 2
+  },
+  {
+    "id": "grudziadz",
+    "name": "Grudziądz",
+    "center": {
+      "lat": 53.4851,
+      "lon": 18.7682
+    },
+    "bounds": {
+      "minLat": 53.376,
+      "maxLat": 53.61,
+      "minLon": 18.67,
+      "maxLon": 19.068
+    },
+    "zbiorkom_slug": "grudziadz",
+    "zbiorkom_bbox": "18.67,53.376,19.068,53.61",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "grudziadz",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "stargard",
+    "name": "Stargard",
+    "center": {
+      "lat": 53.3354,
+      "lon": 15.0257
+    },
+    "bounds": {
+      "minLat": 53.229,
+      "maxLat": 53.425,
+      "minLon": 14.863,
+      "maxLon": 15.133
+    },
+    "zbiorkom_slug": "stargard",
+    "zbiorkom_bbox": "14.863,53.229,15.133,53.425",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "stargard",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "gniezno",
+    "name": "Gniezno",
+    "center": {
+      "lat": 52.534,
+      "lon": 17.6042
+    },
+    "bounds": {
+      "minLat": 52.44,
+      "maxLat": 52.629,
+      "minLon": 17.481,
+      "maxLon": 17.706
+    },
+    "zbiorkom_slug": "gniezno",
+    "zbiorkom_bbox": "17.481,52.44,17.706,52.629",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "gniezno",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "jaworzno",
+    "name": "Jaworzno",
+    "center": {
+      "lat": 50.2099,
+      "lon": 19.2636
+    },
+    "bounds": {
+      "minLat": 50.145,
+      "maxLat": 50.285,
+      "minLon": 19.16,
+      "maxLon": 19.41
+    },
+    "zbiorkom_slug": "jaworzno",
+    "zbiorkom_bbox": "18.977,50.092,19.457,50.345",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "jaworzno",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "kedzierzynkozle",
+    "name": "Kędzierzyn-Koźle",
+    "center": {
+      "lat": 50.348,
+      "lon": 18.207
+    },
+    "bounds": {
+      "minLat": 50.254,
+      "maxLat": 50.423,
+      "minLon": 18.074,
+      "maxLon": 18.371
+    },
+    "zbiorkom_slug": "kedzierzynkozle",
+    "zbiorkom_bbox": "18.074,50.254,18.371,50.423",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "mzkkk",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "zamosc",
+    "name": "Zamość",
+    "center": {
+      "lat": 50.7264,
+      "lon": 23.2557
+    },
+    "bounds": {
+      "minLat": 50.59,
+      "maxLat": 50.968,
+      "minLon": 23.036,
+      "maxLon": 23.553
+    },
+    "zbiorkom_slug": "zamosc",
+    "zbiorkom_bbox": "23.036,50.59,23.553,50.968",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "zamosc",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "raciborz",
+    "name": "Racibórz",
+    "center": {
+      "lat": 50.0873,
+      "lon": 18.2146
+    },
+    "bounds": {
+      "minLat": 50.014,
+      "maxLat": 50.162,
+      "minLon": 18.122,
+      "maxLon": 18.331
+    },
+    "zbiorkom_slug": "raciborz",
+    "zbiorkom_bbox": "18.122,50.014,18.331,50.162",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "raciborz",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "belchatow",
+    "name": "Bełchatów",
+    "center": {
+      "lat": 51.3645,
+      "lon": 19.3736
+    },
+    "bounds": {
+      "minLat": 51.289,
+      "maxLat": 51.428,
+      "minLon": 19.285,
+      "maxLon": 19.458
+    },
+    "zbiorkom_slug": "belchatow",
+    "zbiorkom_bbox": "19.285,51.289,19.458,51.428",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "belchatow",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "tarnobrzeg",
+    "name": "Tarnobrzeg",
+    "center": {
+      "lat": 50.5747,
+      "lon": 21.6915
+    },
+    "bounds": {
+      "minLat": 50.481,
+      "maxLat": 50.686,
+      "minLon": 21.571,
+      "maxLon": 21.808
+    },
+    "zbiorkom_slug": "tarnobrzeg",
+    "zbiorkom_bbox": "21.571,50.481,21.808,50.686",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "tarnobrzeg",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "skierniewice",
+    "name": "Skierniewice",
+    "center": {
+      "lat": 51.9583,
+      "lon": 20.1491
+    },
+    "bounds": {
+      "minLat": 51.887,
+      "maxLat": 52.026,
+      "minLon": 20.063,
+      "maxLon": 20.266
+    },
+    "zbiorkom_slug": "skierniewice",
+    "zbiorkom_bbox": "20.063,51.887,20.266,52.026",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "skierniewice",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "zawiercie",
+    "name": "Zawiercie",
+    "center": {
+      "lat": 50.487,
+      "lon": 19.417
+    },
+    "bounds": {
+      "minLat": 50.43,
+      "maxLat": 50.592,
+      "minLon": 19.31,
+      "maxLon": 19.615
+    },
+    "zbiorkom_slug": "zawiercie",
+    "zbiorkom_bbox": "19.19,50.43,19.615,50.592",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "zawiercie",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "starogard",
+    "name": "Starogard Gdański",
+    "center": {
+      "lat": 53.964,
+      "lon": 18.5225
+    },
+    "bounds": {
+      "minLat": 53.884,
+      "maxLat": 54.057,
+      "minLon": 18.433,
+      "maxLon": 18.61
+    },
+    "zbiorkom_slug": "starogard",
+    "zbiorkom_bbox": "18.433,53.884,18.61,54.057",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "starogard",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "zdunskawola",
+    "name": "Zduńska Wola",
+    "center": {
+      "lat": 51.5982,
+      "lon": 18.9332
+    },
+    "bounds": {
+      "minLat": 51.469,
+      "maxLat": 51.744,
+      "minLon": 18.661,
+      "maxLon": 19.102
+    },
+    "zbiorkom_slug": "zdunskawola",
+    "zbiorkom_bbox": "18.661,51.469,19.102,51.744",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "zdw",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "nysa",
+    "name": "Nysa",
+    "center": {
+      "lat": 50.4669,
+      "lon": 17.3359
+    },
+    "bounds": {
+      "minLat": 50.311,
+      "maxLat": 50.555,
+      "minLon": 17.091,
+      "maxLon": 17.524
+    },
+    "zbiorkom_slug": "nysa",
+    "zbiorkom_bbox": "17.091,50.311,17.524,50.555",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "nysa",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "malbork",
+    "name": "Malbork",
+    "center": {
+      "lat": 54.029,
+      "lon": 19.0384
+    },
+    "bounds": {
+      "minLat": 53.969,
+      "maxLat": 54.085,
+      "minLon": 18.963,
+      "maxLon": 19.122
+    },
+    "zbiorkom_slug": "malbork",
+    "zbiorkom_bbox": "18.963,53.969,19.122,54.085",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "malbork",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "sieradz",
+    "name": "Sieradz",
+    "center": {
+      "lat": 51.5956,
+      "lon": 18.737
+    },
+    "bounds": {
+      "minLat": 51.526,
+      "maxLat": 51.672,
+      "minLon": 18.619,
+      "maxLon": 19.053
+    },
+    "zbiorkom_slug": "sieradz",
+    "zbiorkom_bbox": "18.619,51.526,19.053,51.672",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "sieradz",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "szczecinek",
+    "name": "Szczecinek",
+    "center": {
+      "lat": 53.708,
+      "lon": 16.6945
+    },
+    "bounds": {
+      "minLat": 53.633,
+      "maxLat": 53.771,
+      "minLon": 16.589,
+      "maxLon": 16.776
+    },
+    "zbiorkom_slug": "szczecinek",
+    "zbiorkom_bbox": "16.589,53.633,16.776,53.771",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "szczecinek",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "nowasol",
+    "name": "Nowa Sól",
+    "center": {
+      "lat": 51.7978,
+      "lon": 15.7047
+    },
+    "bounds": {
+      "minLat": 51.657,
+      "maxLat": 52.068,
+      "minLon": 15.438,
+      "maxLon": 16.049
+    },
+    "zbiorkom_slug": "nowasol",
+    "zbiorkom_bbox": "15.438,51.657,16.049,52.068",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "nowasol",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "olesnica",
+    "name": "Oleśnica",
+    "center": {
+      "lat": 51.2063,
+      "lon": 17.3882
+    },
+    "bounds": {
+      "minLat": 51.151,
+      "maxLat": 51.262,
+      "minLon": 17.309,
+      "maxLon": 17.481
+    },
+    "zbiorkom_slug": "olesnica",
+    "zbiorkom_bbox": "17.309,51.151,17.481,51.262",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "olesnica",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "czechowicedziedzice",
+    "name": "Czechowice-Dziedzice",
+    "center": {
+      "lat": 49.8926,
+      "lon": 19.0038
+    },
+    "bounds": {
+      "minLat": 49.785,
+      "maxLat": 49.976,
+      "minLon": 18.862,
+      "maxLon": 19.1
+    },
+    "zbiorkom_slug": "czechowicedziedzice",
+    "zbiorkom_bbox": "18.862,49.785,19.1,49.976",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "czechowice-dziedzice",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "ostroda",
+    "name": "Ostróda",
+    "center": {
+      "lat": 53.6969,
+      "lon": 19.9677
+    },
+    "bounds": {
+      "minLat": 53.632,
+      "maxLat": 53.784,
+      "minLon": 19.841,
+      "maxLon": 20.093
+    },
+    "zbiorkom_slug": "ostroda",
+    "zbiorkom_bbox": "19.841,53.632,20.093,53.784",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "ostroda",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "nowytarg",
+    "name": "Nowy Targ",
+    "center": {
+      "lat": 49.4824,
+      "lon": 20.0272
+    },
+    "bounds": {
+      "minLat": 49.397,
+      "maxLat": 49.589,
+      "minLon": 19.914,
+      "maxLon": 20.183
+    },
+    "zbiorkom_slug": "nowytarg",
+    "zbiorkom_bbox": "19.914,49.397,20.183,49.589",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "nowytarg",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "augustow",
+    "name": "Augustów",
+    "center": {
+      "lat": 53.8479,
+      "lon": 22.9919
+    },
+    "bounds": {
+      "minLat": 53.792,
+      "maxLat": 53.902,
+      "minLon": 22.873,
+      "maxLon": 23.088
+    },
+    "zbiorkom_slug": "augustow",
+    "zbiorkom_bbox": "22.873,53.792,23.088,53.902",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "augustow",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "ketrzyn",
+    "name": "Kętrzyn",
+    "center": {
+      "lat": 54.079,
+      "lon": 21.3781
+    },
+    "bounds": {
+      "minLat": 54.015,
+      "maxLat": 54.137,
+      "minLon": 21.302,
+      "maxLon": 21.556
+    },
+    "zbiorkom_slug": "ketrzyn",
+    "zbiorkom_bbox": "21.302,54.015,21.556,54.137",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "ketrzyn",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "zgorzelec",
+    "name": "Zgorzelec",
+    "center": {
+      "lat": 51.15,
+      "lon": 15.0138
+    },
+    "bounds": {
+      "minLat": 51.085,
+      "maxLat": 51.219,
+      "minLon": 14.954,
+      "maxLon": 15.082
+    },
+    "zbiorkom_slug": "zgorzelec",
+    "zbiorkom_bbox": "14.954,51.085,15.082,51.219",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "zgorzelec",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "polkowice",
+    "name": "Polkowice",
+    "center": {
+      "lat": 51.5048,
+      "lon": 16.068
+    },
+    "bounds": {
+      "minLat": 51.402,
+      "maxLat": 51.641,
+      "minLon": 15.931,
+      "maxLon": 16.231
+    },
+    "zbiorkom_slug": "polkowice",
+    "zbiorkom_bbox": "15.931,51.402,16.231,51.641",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "polkowice",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "gorlice",
+    "name": "Gorlice",
+    "center": {
+      "lat": 49.6637,
+      "lon": 21.1765
+    },
+    "bounds": {
+      "minLat": 49.549,
+      "maxLat": 49.796,
+      "minLon": 20.978,
+      "maxLon": 21.379
+    },
+    "zbiorkom_slug": "gorlice",
+    "zbiorkom_bbox": "20.978,49.549,21.379,49.796",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "gorlice",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "jarocin",
+    "name": "Jarocin",
+    "center": {
+      "lat": 51.967,
+      "lon": 17.5019
+    },
+    "bounds": {
+      "minLat": 51.826,
+      "maxLat": 52.129,
+      "minLon": 17.197,
+      "maxLon": 17.794
+    },
+    "zbiorkom_slug": "jarocin",
+    "zbiorkom_bbox": "17.197,51.826,17.794,52.129",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "jarocin",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "wrzesnia",
+    "name": "Września",
+    "center": {
+      "lat": 52.3273,
+      "lon": 17.5771
+    },
+    "bounds": {
+      "minLat": 52.219,
+      "maxLat": 52.442,
+      "minLon": 17.449,
+      "maxLon": 17.774
+    },
+    "zbiorkom_slug": "wrzesnia",
+    "zbiorkom_bbox": "17.449,52.219,17.774,52.442",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "wrzesnia",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "walcz",
+    "name": "Wałcz",
+    "center": {
+      "lat": 53.2757,
+      "lon": 16.4684
+    },
+    "bounds": {
+      "minLat": 53.136,
+      "maxLat": 53.423,
+      "minLon": 16.335,
+      "maxLon": 16.618
+    },
+    "zbiorkom_slug": "walcz",
+    "zbiorkom_bbox": "16.335,53.136,16.618,53.423",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "walcz",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "gizycko",
+    "name": "Giżycko",
+    "center": {
+      "lat": 54.0375,
+      "lon": 21.7693
+    },
+    "bounds": {
+      "minLat": 53.958,
+      "maxLat": 54.132,
+      "minLon": 21.545,
+      "maxLon": 21.965
+    },
+    "zbiorkom_slug": "gizycko",
+    "zbiorkom_bbox": "21.545,53.958,21.965,54.132",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "gizycko",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "zagan",
+    "name": "Żagań",
+    "center": {
+      "lat": 51.617,
+      "lon": 15.314
+    },
+    "bounds": {
+      "minLat": 51.55,
+      "maxLat": 51.68,
+      "minLon": 15.22,
+      "maxLon": 15.42
+    },
+    "zbiorkom_slug": "zagan",
+    "zbiorkom_bbox": "15.21,51.54,15.43,51.69",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "zagan",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "koscierzyna",
+    "name": "Kościerzyna",
+    "center": {
+      "lat": 54.121,
+      "lon": 17.9736
+    },
+    "bounds": {
+      "minLat": 54.07,
+      "maxLat": 54.173,
+      "minLon": 17.903,
+      "maxLon": 18.059
+    },
+    "zbiorkom_slug": "koscierzyna",
+    "zbiorkom_bbox": "17.903,54.07,18.059,54.173",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "miastokoscierzyna",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "krotoszyn",
+    "name": "Krotoszyn",
+    "center": {
+      "lat": 51.6958,
+      "lon": 17.4532
+    },
+    "bounds": {
+      "minLat": 51.471,
+      "maxLat": 52.007,
+      "minLon": 17.217,
+      "maxLon": 17.856
+    },
+    "zbiorkom_slug": "krotoszyn",
+    "zbiorkom_bbox": "17.217,51.471,17.856,52.007",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "krotoszyn",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "sandomierz",
+    "name": "Sandomierz",
+    "center": {
+      "lat": 50.6846,
+      "lon": 21.7558
+    },
+    "bounds": {
+      "minLat": 50.604,
+      "maxLat": 50.748,
+      "minLon": 21.666,
+      "maxLon": 21.84
+    },
+    "zbiorkom_slug": "sandomierz",
+    "zbiorkom_bbox": "21.666,50.604,21.84,50.748",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "sandomierz",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "bartoszyce",
+    "name": "Bartoszyce",
+    "center": {
+      "lat": 54.2524,
+      "lon": 20.8151
+    },
+    "bounds": {
+      "minLat": 54.197,
+      "maxLat": 54.325,
+      "minLon": 20.748,
+      "maxLon": 20.892
+    },
+    "zbiorkom_slug": "bartoszyce",
+    "zbiorkom_bbox": "20.748,54.197,20.892,54.325",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "bartoszyce",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "wielun",
+    "name": "Wieluń",
+    "center": {
+      "lat": 51.2239,
+      "lon": 18.5796
+    },
+    "bounds": {
+      "minLat": 51.123,
+      "maxLat": 51.314,
+      "minLon": 18.388,
+      "maxLon": 18.762
+    },
+    "zbiorkom_slug": "wielun",
+    "zbiorkom_bbox": "18.388,51.123,18.762,51.314",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "wielun",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "mragowo",
+    "name": "Mrągowo",
+    "center": {
+      "lat": 53.8656,
+      "lon": 21.3022
+    },
+    "bounds": {
+      "minLat": 53.801,
+      "maxLat": 53.943,
+      "minLon": 21.226,
+      "maxLon": 21.368
+    },
+    "zbiorkom_slug": "mragowo",
+    "zbiorkom_bbox": "21.226,53.801,21.368,53.943",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "mragowo",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "swiecie",
+    "name": "Świecie",
+    "center": {
+      "lat": 53.4079,
+      "lon": 18.4189
+    },
+    "bounds": {
+      "minLat": 53.309,
+      "maxLat": 53.477,
+      "minLon": 18.267,
+      "maxLon": 18.521
+    },
+    "zbiorkom_slug": "swiecie",
+    "zbiorkom_bbox": "18.267,53.309,18.521,53.477",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "swiecie",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "wagrowiec",
+    "name": "Wągrowiec",
+    "center": {
+      "lat": 52.8086,
+      "lon": 17.2053
+    },
+    "bounds": {
+      "minLat": 52.713,
+      "maxLat": 52.9,
+      "minLon": 17.116,
+      "maxLon": 17.306
+    },
+    "zbiorkom_slug": "wagrowiec",
+    "zbiorkom_bbox": "17.116,52.713,17.306,52.9",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "wagrowiec",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "bielskpodlaski",
+    "name": "Bielsk Podlaski",
+    "center": {
+      "lat": 52.7686,
+      "lon": 23.1892
+    },
+    "bounds": {
+      "minLat": 52.704,
+      "maxLat": 52.842,
+      "minLon": 23.073,
+      "maxLon": 23.301
+    },
+    "zbiorkom_slug": "bielskpodlaski",
+    "zbiorkom_bbox": "23.073,52.704,23.301,52.842",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "bielskpodlaski",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "dzialdowo",
+    "name": "Działdowo",
+    "center": {
+      "lat": 53.2359,
+      "lon": 20.1777
+    },
+    "bounds": {
+      "minLat": 53.174,
+      "maxLat": 53.292,
+      "minLon": 20.092,
+      "maxLon": 20.274
+    },
+    "zbiorkom_slug": "dzialdowo",
+    "zbiorkom_bbox": "20.092,53.174,20.274,53.292",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "dzialdowo",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "brzesko",
+    "name": "Brzesko",
+    "center": {
+      "lat": 49.9716,
+      "lon": 20.6101
+    },
+    "bounds": {
+      "minLat": 49.898,
+      "maxLat": 50.081,
+      "minLon": 20.481,
+      "maxLon": 20.745
+    },
+    "zbiorkom_slug": "brzesko",
+    "zbiorkom_bbox": "20.481,49.898,20.745,50.081",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "brzesko",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "gostyn",
+    "name": "Gostyń",
+    "center": {
+      "lat": 51.8816,
+      "lon": 17.0059
+    },
+    "bounds": {
+      "minLat": 51.786,
+      "maxLat": 51.989,
+      "minLon": 16.846,
+      "maxLon": 17.105
+    },
+    "zbiorkom_slug": "gostyn",
+    "zbiorkom_bbox": "16.846,51.786,17.105,51.989",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "gostyn",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "chodziez",
+    "name": "Chodzież",
+    "center": {
+      "lat": 52.9952,
+      "lon": 16.9142
+    },
+    "bounds": {
+      "minLat": 52.919,
+      "maxLat": 53.083,
+      "minLon": 16.779,
+      "maxLon": 17.018
+    },
+    "zbiorkom_slug": "chodziez",
+    "zbiorkom_bbox": "16.779,52.919,17.018,53.083",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "chodziez",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "lidzbarkwarminski",
+    "name": "Lidzbark Warmiński",
+    "center": {
+      "lat": 54.126,
+      "lon": 20.5758
+    },
+    "bounds": {
+      "minLat": 54.072,
+      "maxLat": 54.193,
+      "minLon": 20.503,
+      "maxLon": 20.664
+    },
+    "zbiorkom_slug": "lidzbarkwarminski",
+    "zbiorkom_bbox": "20.503,54.072,20.664,54.193",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "lidzbarkwarminski",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "pszczyna",
+    "name": "Pszczyna",
+    "center": {
+      "lat": 49.9781,
+      "lon": 18.9419
+    },
+    "bounds": {
+      "minLat": 49.885,
+      "maxLat": 50.045,
+      "minLon": 18.644,
+      "maxLon": 19.175
+    },
+    "zbiorkom_slug": "pszczyna",
+    "zbiorkom_bbox": "18.644,49.885,19.175,50.156",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "pszczyna",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "wodzislaw",
+    "name": "Wodzisław Śląski",
+    "center": {
+      "lat": 49.9933,
+      "lon": 18.4483
+    },
+    "bounds": {
+      "minLat": 49.864,
+      "maxLat": 50.136,
+      "minLon": 18.18,
+      "maxLon": 18.655
+    },
+    "zbiorkom_slug": "wodzislaw",
+    "zbiorkom_bbox": "18.18,49.864,18.655,50.136",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "powiatwodzislawski",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "zabkowice",
+    "name": "Ząbkowice Śląskie",
+    "center": {
+      "lat": 50.5936,
+      "lon": 16.8167
+    },
+    "bounds": {
+      "minLat": 50.5,
+      "maxLat": 50.696,
+      "minLon": 16.688,
+      "maxLon": 16.967
+    },
+    "zbiorkom_slug": "zabkowice",
+    "zbiorkom_bbox": "16.688,50.5,16.967,50.696",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "zabkowice",
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "strzelin",
+    "name": "Strzelin",
+    "center": {
+      "lat": 50.7788,
+      "lon": 17.0685
+    },
+    "bounds": {
+      "minLat": 50.657,
+      "maxLat": 50.875,
+      "minLon": 16.914,
+      "maxLon": 17.225
+    },
+    "zbiorkom_slug": "strzelin",
+    "zbiorkom_bbox": "16.914,50.657,17.225,50.875",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "strzelin",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "srodaslaska",
+    "name": "Środa Śląska",
+    "center": {
+      "lat": 51.1639,
+      "lon": 16.6024
+    },
+    "bounds": {
+      "minLat": 51.033,
+      "maxLat": 51.282,
+      "minLon": 16.41,
+      "maxLon": 16.952
+    },
+    "zbiorkom_slug": "srodaslaska",
+    "zbiorkom_bbox": "16.41,51.033,16.952,51.282",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "srodaslaska",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "jedrzejow",
+    "name": "Jędrzejów",
+    "center": {
+      "lat": 50.6397,
+      "lon": 20.2958
+    },
+    "bounds": {
+      "minLat": 50.547,
+      "maxLat": 50.738,
+      "minLon": 20.152,
+      "maxLon": 20.465
+    },
+    "zbiorkom_slug": "jedrzejow",
+    "zbiorkom_bbox": "20.152,50.547,20.465,50.738",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "jedrzejow",
+    "rail_agencies": [],
+    "live": false,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "kozienice",
+    "name": "Kozienice",
+    "center": {
+      "lat": 51.5862,
+      "lon": 21.5405
+    },
+    "bounds": {
+      "minLat": 51.5,
+      "maxLat": 51.749,
+      "minLon": 21.334,
+      "maxLon": 21.711
+    },
+    "zbiorkom_slug": "kozienice",
+    "zbiorkom_bbox": "21.334,51.5,21.711,51.749",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "kozienice",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "oborniki",
+    "name": "Oborniki",
+    "center": {
+      "lat": 52.6497,
+      "lon": 16.8022
+    },
+    "bounds": {
+      "minLat": 52.516,
+      "maxLat": 52.8,
+      "minLon": 16.479,
+      "maxLon": 17.05
+    },
+    "zbiorkom_slug": "oborniki",
+    "zbiorkom_bbox": "16.479,52.516,17.05,52.8",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "oborniki",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "wieliczka",
+    "name": "Wieliczka",
+    "center": {
+      "lat": 49.9729,
+      "lon": 20.068
+    },
+    "bounds": {
+      "minLat": 49.871,
+      "maxLat": 50.109,
+      "minLon": 19.901,
+      "maxLon": 20.221
+    },
+    "zbiorkom_slug": "wieliczka",
+    "zbiorkom_bbox": "19.901,49.871,20.221,50.109",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "wieliczka",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "myszkow",
+    "name": "Myszków",
+    "center": {
+      "lat": 50.576,
+      "lon": 19.326
+    },
+    "bounds": {
+      "minLat": 50.48,
+      "maxLat": 50.68,
+      "minLon": 19.18,
+      "maxLon": 19.5
+    },
+    "zbiorkom_slug": "myszkow",
+    "zbiorkom_bbox": "19.17,50.47,19.51,50.69",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "jedzmyrazem",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "slubice",
+    "name": "Słubice",
+    "center": {
+      "lat": 52.3483,
+      "lon": 14.5853
+    },
+    "bounds": {
+      "minLat": 52.267,
+      "maxLat": 52.416,
+      "minLon": 14.516,
+      "maxLon": 14.696
+    },
+    "zbiorkom_slug": "slubice",
+    "zbiorkom_bbox": "14.516,52.267,14.696,52.416",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "slubice",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  },
+  {
+    "id": "kartuzy",
+    "name": "Kartuzy",
+    "center": {
+      "lat": 54.334,
+      "lon": 18.201
+    },
+    "bounds": {
+      "minLat": 54.22,
+      "maxLat": 54.43,
+      "minLon": 17.92,
+      "maxLon": 18.35
+    },
+    "zbiorkom_slug": "kartuzy",
+    "zbiorkom_bbox": "17.91,54.21,18.36,54.44",
+    "zbiorkom_agencies": null,
+    "kp_prefix": "gryf",
+    "rail_agencies": [],
+    "live": true,
+    "direct_bus_position": false,
+    "tier": 3
+  }
+]

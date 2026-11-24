@@ -15,6 +15,8 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
+import { useWebLayout } from '../src/theme/layout';
+import { DesktopShell } from '../src/components/DesktopShell';
 import { TransferProtectionProvider } from '../src/components/TransferProtectionProvider';
 import { WebAlertHost } from '../src/components/WebAlertHost';
 import { initRaptorWasmAsync } from '../modules/kilometr-raptor';
@@ -120,6 +122,8 @@ export default function RootLayout() {
   const params = useGlobalSearchParams<{ trip?: string }>();
   const reduceMotion = useReducedMotion();
   const themeSetting = useThemeSetting();
+  const webLayout = useWebLayout();
+  const disableScreenAnim = reduceMotion || webLayout.isMedium;
 
   const navigationTheme = useMemo(
     () => ({
@@ -146,20 +150,20 @@ export default function RootLayout() {
     () => ({
       headerShown: false,
       contentStyle: { backgroundColor: scheme.surface },
-      animation: (reduceMotion ? 'none' : 'slide_from_right') as 'none' | 'slide_from_right',
+      animation: (disableScreenAnim ? 'none' : 'slide_from_right') as 'none' | 'slide_from_right',
       animationDuration: 220,
       animationMatchesGesture: true,
-      gestureEnabled: true,
+      gestureEnabled: !webLayout.isMedium,
       gestureDirection: 'horizontal' as const,
       fullScreenGestureEnabled: true,
     }),
-    [reduceMotion, themeSetting],
+    [disableScreenAnim, themeSetting, webLayout.isMedium],
   );
 
   const verticalScreenOptions = useMemo(
     () => ({
       headerShown: false,
-      animation: (reduceMotion
+      animation: (disableScreenAnim
         ? 'none'
         : Platform.OS === 'android'
           ? 'fade_from_bottom'
@@ -167,16 +171,16 @@ export default function RootLayout() {
       animationDuration: 210,
       animationMatchesGesture: true,
     }),
-    [reduceMotion],
+    [disableScreenAnim],
   );
 
   const mapScreenOptions = useMemo(
     () => ({
       gestureEnabled: false,
-      animation: (reduceMotion ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
+      animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
       animationDuration: 210,
     }),
-    [reduceMotion],
+    [disableScreenAnim],
   );
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu.
@@ -296,19 +300,21 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <ThemeProvider value={navigationTheme}>
           <TransferProtectionProvider key={themeSetting}>
-            <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-              <Stack.Screen name="routes" options={verticalScreenOptions} />
-              <Stack.Screen name="line" options={verticalScreenOptions} />
-              <Stack.Screen name="line-departures" />
-              {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby przeciąganie widoku. */}
-              <Stack.Screen name="map" options={mapScreenOptions} />
-              <Stack.Screen name="live-map" options={mapScreenOptions} />
-              <Stack.Screen name="news" />
-              <Stack.Screen name="article" />
-              <Stack.Screen name="settings" />
-            </Stack>
+            <DesktopShell>
+              <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="routes" options={verticalScreenOptions} />
+                <Stack.Screen name="line" options={verticalScreenOptions} />
+                <Stack.Screen name="line-departures" />
+                {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby przeciąganie widoku. */}
+                <Stack.Screen name="map" options={mapScreenOptions} />
+                <Stack.Screen name="live-map" options={mapScreenOptions} />
+                <Stack.Screen name="news" />
+                <Stack.Screen name="article" />
+                <Stack.Screen name="settings" />
+              </Stack>
+            </DesktopShell>
             <WebAlertHost />
           </TransferProtectionProvider>
         </ThemeProvider>
