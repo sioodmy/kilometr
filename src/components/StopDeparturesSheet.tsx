@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -21,6 +21,7 @@ import {
   type TransitLine,
 } from '../services/lineTimetable';
 import { motion } from '../theme/motion';
+import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 
 export interface StopDeparturesSheetProps {
@@ -58,11 +59,19 @@ export function StopDeparturesSheet({
   const s = useStrings();
   const t = s.lineTimetable;
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
+  const { height: windowHeight } = useWindowDimensions();
+  const desktopHeight = Math.min(windowHeight - 96, 680);
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 560, desktopHeight);
   const sheetRef = useRef<BottomSheet>(null);
+  useEscapeKey(true, () => sheetRef.current?.close());
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  const snapPoints = useMemo(() => ['74%', '92%'], []);
+  const snapPoints = useMemo(
+    () => (webLayout.isMedium ? [desktopHeight] : ['74%', '92%']),
+    [desktopHeight, webLayout.isMedium],
+  );
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -106,9 +115,13 @@ export function StopDeparturesSheet({
       animationConfigs={animationConfigs}
       enableDynamicSizing={false}
       topInset={insets.top}
-      enablePanDownToClose
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
+      enablePanDownToClose={!webLayout.isMedium}
       onClose={() => onCloseRef.current()}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}
       handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >

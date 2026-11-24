@@ -37,7 +37,13 @@ const CHIP_H = 44;
 const ROW_H = CHIP_H + 14;
 
 /** Animowany pasek skrótów nad wyszukiwarką ze sprężystym pojawianiem M3 Expressive. */
-export function HomeDockChips({ chips }: { chips: DockChip[] }) {
+export function HomeDockChips({
+  chips,
+  fullWidth = false,
+}: {
+  chips: DockChip[];
+  fullWidth?: boolean;
+}) {
   const reduceMotion = useReducedMotion();
   const open = useSharedValue(chips.length > 0 ? 1 : 0);
   const lastChipsRef = useRef(chips);
@@ -74,7 +80,7 @@ export function HomeDockChips({ chips }: { chips: DockChip[] }) {
 
   return (
     <Animated.View
-      style={[styles.wrap, wrapStyle]}
+      style={[styles.wrap, fullWidth && styles.wrapFullWidth, wrapStyle]}
       accessibilityElementsHidden={chips.length === 0}
       importantForAccessibility={chips.length === 0 ? 'no-hide-descendants' : 'auto'}
     >
@@ -165,6 +171,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     overflow: 'hidden',
     justifyContent: 'flex-start',
+  },
+  wrapFullWidth: {
+    maxWidth: '100%',
   },
   row: { alignItems: 'center', gap: 10, paddingRight: 16 },
   chip: {

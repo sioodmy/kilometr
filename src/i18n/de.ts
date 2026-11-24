@@ -1030,6 +1030,8 @@ export const de: Strings = {
     outsideAreaShort: 'Du bist außerhalb des unterstützten Gebiets',
     downloadCityTimetableA11y: (gen: string) => `Fahrplan für ${gen} herunterladen`,
     liveMapA11y: 'Live-Fahrzeugkarte',
+    navPlanner: 'Planer',
+    navMenuA11y: 'Hauptnavigation',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Linie ${line} (${direction})` : `Linie ${line}`,
     boardedChipTitle: (line: string) => `Im Fahrzeug ${line}`,

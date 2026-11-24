@@ -20,6 +20,7 @@ import { HomeDockChips, type DockChip } from './HomeDockChips';
 import { SpringPressable } from './SpringPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { motion } from '../theme/motion';
+import { useWebLayout } from '../theme/layout';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 
@@ -61,6 +62,8 @@ interface HomeThumbBarProps {
   downloadProgress?: number | null;
   /** Opcjonalny bieżący krok importu (np. weryfikacja bazy). */
   downloadStep?: string | null;
+  /** Tryb renderowania: przyklejony dolny dock mobilny albo karta planera w treści desktopu. */
+  variant?: 'dock' | 'planner';
 }
 
 /** Dolny dock ekranu głównego ze sprężystą reakcją M3 Expressive i falującym paskiem postępu. */
@@ -74,10 +77,14 @@ export function HomeThumbBar({
   chips = [],
   downloadProgress = null,
   downloadStep = null,
+  variant = 'dock',
 }: HomeThumbBarProps) {
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const layout = useWebLayout();
   const reduceMotion = useReducedMotion();
+  const isPlanner = variant === 'planner';
+  const plannerRow = isPlanner && layout.isDesktop;
   const [focused, setFocused] = useState<'search' | 'origin' | 'reset' | null>(null);
   const [trackLayoutWidth, setTrackLayoutWidth] = useState(0);
   const OriginIcon = isCustomStart ? MapPin : gpsUnsupported ? MapPinOff : LocateFixed;
@@ -327,9 +334,20 @@ export function HomeThumbBar({
   );
 
   return (
-    <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-      <HomeDockChips chips={chips} />
-      <View style={styles.bar}>
+    <View
+      style={[
+        isPlanner ? styles.plannerCard : styles.dock,
+        !isPlanner && { paddingBottom: Math.max(insets.bottom, 14) },
+      ]}
+    >
+      <HomeDockChips chips={chips} fullWidth={isPlanner} />
+      <View
+        style={[
+          styles.bar,
+          isPlanner && styles.barPlanner,
+          plannerRow && styles.barPlannerRow,
+        ]}
+      >
         <SpringPressable
           onPress={downloading ? undefined : onOpenSearch}
           disabled={downloading}
@@ -344,6 +362,7 @@ export function HomeThumbBar({
           accessibilityState={downloading ? { busy: true } : undefined}
           style={[
             styles.search,
+            plannerRow && styles.searchPlannerRow,
             downloading && styles.searchUpdating,
             !downloading && focused === 'search' && styles.focused,
           ]}
@@ -353,7 +372,7 @@ export function HomeThumbBar({
 
         <Animated.View
           layout={reduceMotion ? undefined : LinearTransition.duration(180)}
-          style={styles.originRow}
+          style={[styles.originRow, plannerRow && styles.originRowPlanner]}
         >
           <SpringPressable
             onPress={onOpenStart}
@@ -368,6 +387,7 @@ export function HomeThumbBar({
             }
             style={[
               styles.origin,
+              plannerRow && styles.originPlanner,
               originNeedsPick && styles.originWarning,
               focused === 'origin' && styles.focused,
             ]}
@@ -606,6 +626,34 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerHigh,
     borderWidth: 1.5,
     borderColor: scheme.outlineVariant,
+  },
+  plannerCard: {
+    marginTop: 14,
+    padding: 16,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    ...elev.level2,
+  },
+  barPlanner: {
+    maxWidth: '100%',
+  },
+  barPlannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchPlannerRow: {
+    flex: 1.35,
+    minWidth: 0,
+  },
+  originRowPlanner: {
+    flex: 1,
+    minWidth: 0,
+  },
+  originPlanner: {
+    minHeight: 56,
   },
   focused: { borderColor: scheme.primary },
 });

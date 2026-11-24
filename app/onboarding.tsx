@@ -52,8 +52,9 @@ import { OnboardingProgressBar } from '../src/components/OnboardingProgressBar';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { TimetableBackgroundPill } from '../src/components/TimetableBackgroundPill';
 import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
+import { useWebLayout } from '../src/theme/layout';
 import { motion } from '../src/theme/motion';
-import { scheme, shape, type } from '../src/theme/tokens';
+import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import type { CityId } from '../src/cities';
 import { useActiveCity } from '../src/services/cityStore';
@@ -666,6 +667,7 @@ const cityKeyExtractor = (entry: CityEntry) => entry.city.id;
 export default function OnboardingScreen() {
   const s = useStrings();
   const router = useRouter();
+  const webLayout = useWebLayout();
   const { sharedTrip } = useLocalSearchParams<{ sharedTrip?: string }>();
   const { width, height, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 360;
@@ -881,8 +883,11 @@ export default function OnboardingScreen() {
   );
 
   return (
-    <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
-      <View style={st.shell}>
+    <SafeAreaView
+      style={[st.safe, webLayout.isMedium && st.safeDesktop]}
+      edges={['top', 'bottom']}
+    >
+      <View style={[st.shell, webLayout.isMedium && st.shellDesktop]}>
         <OnboardingProgressBar step={step} onBack={back} />
 
         <View
@@ -1461,12 +1466,27 @@ const st = StyleSheet.create({
     flex: 1,
     backgroundColor: scheme.surface,
   },
+  safeDesktop: {
+    backgroundColor: scheme.surfaceContainerLowest,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
   shell: {
     flex: 1,
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
     overflow: 'hidden',
+  },
+  shellDesktop: {
+    maxWidth: 540,
+    maxHeight: 780,
+    borderRadius: 32,
+    backgroundColor: scheme.surface,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+    ...elev.level3,
   },
   workspace: {
     flex: 1,

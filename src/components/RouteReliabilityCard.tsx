@@ -53,6 +53,7 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
   const s = useStrings();
   const { cityId } = useActiveCity();
   const [insights, setInsights] = useState<RouteInsightsData | null>(null);
+  const [chartWidth, setChartWidth] = useState(CHART_W);
 
   const requestKey = `${cityId}|${connection.id}|${connection.serviceDate ?? ''}|${connection.departureSec}`;
 
@@ -104,8 +105,8 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
     ...profile.map((p) => Math.max(p.avgDelaySec, 0)),
   );
 
-  const slotW = profile.length > 0 ? CHART_W / profile.length : CHART_W;
-  const barW = Math.min(34, Math.max(20, slotW - 18));
+  const slotW = profile.length > 0 ? chartWidth / profile.length : chartWidth;
+  const barW = Math.min(44, Math.max(20, Math.round(slotW * 0.44)));
 
   return (
     <View style={styles.card} accessible={false}>
@@ -147,25 +148,36 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
             {insights.focusLine ? (
               <View style={styles.chartLineTag}>
                 <LineBadge line={insights.focusLine} compact />
-                <Text style={styles.chartCaption}>{t.chartCaption}</Text>
+                <Text style={styles.chartCaption} numberOfLines={1}>
+                  {t.chartCaption}
+                </Text>
               </View>
             ) : (
-              <Text style={styles.chartCaption}>{t.chartCaption}</Text>
+              <Text style={styles.chartCaption} numberOfLines={1}>
+                {t.chartCaption}
+              </Text>
             )}
             <Text style={styles.chartLegend}>{t.yourDeparture}</Text>
           </View>
 
-          <Svg
-            width="100%"
-            height={CHART_H}
-            viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+          <View
+            style={styles.chartSvgWrap}
             accessible
             accessibilityLabel={t.chartA11y(
               insights.focusLine ?? '',
               formatHour(insights.focusHour),
               expectedMin,
             )}
+            onLayout={(e) => {
+              const w = Math.round(e.nativeEvent.layout.width);
+              if (w >= 200 && Math.abs(w - chartWidth) > 2) setChartWidth(w);
+            }}
           >
+            <Svg
+              width={chartWidth}
+              height={CHART_H}
+              viewBox={`0 0 ${chartWidth} ${CHART_H}`}
+            >
             {profile.map((point, idx) => {
               const cx = idx * slotW + slotW / 2;
               const x = cx - barW / 2;
@@ -215,7 +227,8 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
                 </G>
               );
             })}
-          </Svg>
+            </Svg>
+          </View>
         </View>
       )}
 
@@ -336,6 +349,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 7,
     alignItems: 'flex-end',
+    flexShrink: 0,
   },
   metricValue: {
     ...type.labelLarge,
@@ -368,10 +382,14 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  chartSvgWrap: {
+    width: '100%',
+  },
   chartCaption: {
     ...type.labelMedium,
     color: scheme.onSurfaceVariant,
     fontWeight: '600',
+    flexShrink: 1,
   },
   chartLegend: {
     ...type.labelSmall,
