@@ -26,6 +26,7 @@ import { isOutsideServiceArea } from './serviceArea';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
 import { distanceMeters } from '../gtfs/geo';
+import { recordJourney } from './userStats';
 
 export { SearchService } from './searchService';
 
@@ -466,6 +467,7 @@ export const RoutingService: IRoutingService = {
         await kvSetStrict(storageKey, JSON.stringify(all));
         savedRoutesCache.set(storageKey, all);
         notifySavedRoutesChanged();
+        void recordJourney(connection, 'saved');
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
         throw err;

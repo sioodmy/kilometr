@@ -1546,7 +1546,7 @@ export const pl = {
     planningTitle: 'Planowanie podróży',
     offlineTitle: 'Rozkład i mapy',
     notificationsSummary: 'Śledzenie podróży i alerty',
-    backupSummary: 'Zapisane miejsca, historia i ustawienia',
+    backupSummary: 'Statystyki, podsumowanie i kopia zapasowa',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Przywróć ustawienia tras',
@@ -3135,6 +3135,89 @@ export const pl = {
     tripEmptyBody: 'Wybierz połączenie i włącz śledzenie.',
     placesEmpty: 'Dodaj swoje pierwsze miejsce',
     search: 'Dokąd jedziesz?',
+  },
+  yourData: {
+    distanceLabel: 'Przejechany dystans',
+    tripsLabel: 'Kursy',
+    timeLabel: 'Czas w trasie',
+    citiesLabel: 'Miasta',
+    stopsLabel: 'Przystanki',
+    walkLabel: 'Pieszo',
+    co2Label: 'Mniej CO₂',
+    co2Hint: 'względem auta',
+    railSectionTitle: 'Kolej i środki transportu',
+    railTitle: 'Kolej',
+    railTrips: (n: number) =>
+      n === 1 ? '1 przejazd koleją' : isFew(n) ? `${n} przejazdy koleją` : `${n} przejazdów koleją`,
+    railTickets: (n: number) =>
+      n === 1 ? '1 bilet' : isFew(n) ? `${n} bilety` : `${n} biletów`,
+    railEmpty: 'Brak zapisanych przejazdów kolejowych',
+    topLinesTitle: 'Najczęstsze linie',
+    topLinesSubtitle: 'Dotknij segmentu lub linii, żeby sprawdzić udział',
+    topLinesEmpty: 'Po wybraniu lub zapisaniu tras pojawi się wykres Twoich najczęstszych linii.',
+    topLinesTotal: 'Odcinki',
+    topLinesOther: 'Pozostałe',
+    lineTrips: (n: number) =>
+      n === 1 ? '1 kurs' : isFew(n) ? `${n} kursy` : `${n} kursów`,
+    topDestinationsTitle: 'Najczęstsze cele podróży',
+    topDestinationLead: 'Najczęstszy cel',
+    topDestinationsEmpty: 'Wyszukaj połączenia, żeby zobaczyć swoje główne kierunki.',
+    avgTime: (min: number) => `śr. ${min} min`,
+    backupSectionTitle: 'Kopia zapasowa i przenoszenie',
+    placesShort: 'Miejsca',
+    routesShort: 'Zapisane trasy',
+    historyShort: 'Historia',
+    emptyTitle: 'Twoje statystyki dopiero się zbierają',
+    emptyBody:
+      'Wyszukuj i śledź połączenia, a zobaczysz tu przejechane kilometry, wykres ulubionych linii i podsumowanie gotowe do udostępnienia. Wszystkie dane zostają wyłącznie na tym urządzeniu.',
+    localOnlyNote: 'Wszystkie statystyki liczone są lokalnie na Twoim urządzeniu.',
+    shareCardCta: 'Podsumowanie na social media',
+    shareCardSub: 'Bez nazw celów, miast i numerów linii',
+    shareSheetTitle: 'Podsumowanie podróży',
+    shareSheetSubtitle: 'Gotowa grafika do udostępnienia na Instagramie, X lub znajomym.',
+    sharePrivacyNote:
+      'Dla Twojej prywatności grafika ukrywa cele podróży, przystanki, nazwy miast i numery linii.',
+    shareAction: 'Udostępnij grafikę',
+    shareDownload: 'Zapisz PNG',
+    sharePreparing: 'Generuję grafikę…',
+    shareError: 'Nie udało się wygenerować grafiki. Spróbuj ponownie.',
+    shareSaved: 'Grafika została zapisana.',
+    themeEmerald: 'Szmaragd',
+    themeNight: 'Nocny kurs',
+    themeRail: 'Szyna',
+    wrappedFooter: 'Podsumowanie podróży',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('pl-PL')} km`
+        : `${km.toLocaleString('pl-PL', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} kg`
+        : `~${kg.toLocaleString('pl-PL', { maximumFractionDigits: 1 })} kg`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} min`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} h ${m} min` : `${h} h`;
+    },
+    modes: {
+      tram: 'Tramwaj',
+      bus: 'Autobus',
+      train: 'Kolej',
+      subway: 'Metro',
+      trolleybus: 'Trolejbus',
+      cable: 'Kolej linowa',
+      walk: 'Pieszo',
+    },
+    archetypes: {
+      rail_express: 'Kolejowy ekspres',
+      tram_regular: 'Stały pasażer tramwajów',
+      bus_rider: 'Mistrz linii autobusowych',
+      metro_commuter: 'Podziemny ekspres',
+      city_walker: 'Miejski piechur',
+      multi_city: 'Podróżnik międzymiastowy',
+      explorer: 'Odkrywca tras',
+    },
   },
 };
 

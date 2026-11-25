@@ -83,7 +83,7 @@ import { TimetableSyncAbortedError } from '../src/services/timetableSync';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
-import { BackupCard } from '../src/components/BackupCard';
+import { YourDataDashboard } from '../src/components/YourDataDashboard';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { NationalRailCard } from '../src/components/NationalRailCard';
@@ -928,7 +928,7 @@ export default function SettingsScreen() {
       )}
 
       {targetSection === 'notifications' && <NotificationPrefsCard />}
-      {targetSection === 'backup' && <BackupCard />}
+      {targetSection === 'backup' && <YourDataDashboard />}
     </>
   );
 
