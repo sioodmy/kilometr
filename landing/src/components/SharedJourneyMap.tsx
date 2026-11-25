@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -459,6 +459,35 @@ function createVehicleElement(color: string): HTMLDivElement {
   return el;
 }
 
+class MapErrorBoundary extends Component<
+  { onError: () => void; children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch() {
+    this.props.onError();
+  }
+
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
+function hasWebGlContext(): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
 function MapCanvas({
   stages,
   selectedIndex,
@@ -597,6 +626,10 @@ function MapCanvas({
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
+    if (!hasWebGlContext()) {
+      onErrorRef.current();
+      return;
+    }
 
     const firstPts = stages.flatMap((st) => st.coords);
     const initialCenter: [number, number] = firstPts[0] ?? [17.0385, 51.1079];
@@ -899,16 +932,18 @@ export default function SharedJourneyMap({
     return (
       <div className={isFs ? 'km-map-viewport is-fullscreen' : 'km-map-viewport'}>
         {!mapFailed && (
-          <MapCanvas
-            key={`${attempt}-${isFs ? 'fs' : 'card'}`}
-            stages={stages}
-            selectedIndex={selectedIndex}
-            vehiclePos={vehiclePos}
-            isFullscreen={isFs}
-            onSelectIndex={handleToggleStage}
-            onError={() => setMapFailed(true)}
-            mapInstanceRef={mapRef}
-          />
+          <MapErrorBoundary onError={() => setMapFailed(true)}>
+            <MapCanvas
+              key={`${attempt}-${isFs ? 'fs' : 'card'}`}
+              stages={stages}
+              selectedIndex={selectedIndex}
+              vehiclePos={vehiclePos}
+              isFullscreen={isFs}
+              onSelectIndex={handleToggleStage}
+              onError={() => setMapFailed(true)}
+              mapInstanceRef={mapRef}
+            />
+          </MapErrorBoundary>
         )}
 
         {(activeStage || vehiclePos) && !mapFailed && (
