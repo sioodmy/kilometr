@@ -3,7 +3,6 @@ pub mod mpk_wroclaw;
 pub mod rail_plk;
 pub mod zbiorkom;
 
-use chrono::Utc;
 use dashmap::DashMap;
 use reqwest::Client;
 use std::sync::Arc;
@@ -194,7 +193,7 @@ pub fn spawn_background_tasks(
                 tokio::select! {
                     _ = rx.changed() => break,
                     _ = ticker.tick() => {
-                        let now_ms = Utc::now().timestamp_millis();
+                        let now_ms = jiff::Timestamp::now().as_millisecond();
                         for city in reg.live_cities() {
                             if let Some(ref only) = cfg.only_cities {
                                 if !only.iter().any(|id| id == &city.id) {
@@ -270,7 +269,7 @@ pub fn spawn_background_tasks(
                 tokio::select! {
                     _ = rx.changed() => break,
                     _ = ticker.tick() => {
-                        let now_ms = Utc::now().timestamp_millis();
+                        let now_ms = jiff::Timestamp::now().as_millisecond();
                         if hlt.should_skip("plk_updates", now_ms) {
                             continue;
                         }
@@ -306,7 +305,7 @@ async fn poll_single_city(
     health: &SourceHealthRegistry,
     kp_cache: &KpCollectorCache,
 ) {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
 
     if city.kp_prefix.is_some() {
         let key = format!("kp:{}", city.id);

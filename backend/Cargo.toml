@@ -8,11 +8,10 @@ license = "GPL-3.0-or-later"
 [dependencies]
 axum = { version = "0.8", features = ["json", "query", "macros"] }
 base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
 dashmap = "6"
+jiff = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

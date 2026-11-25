@@ -1,4 +1,3 @@
-use chrono::DateTime;
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -82,10 +81,11 @@ pub async fn fetch_plk_updates(
 
     let timestamp_iso = raw
         .timestamp
-        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-    let feed_ms = DateTime::parse_from_rfc3339(&timestamp_iso)
-        .map(|d| d.timestamp_millis())
-        .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
+        .unwrap_or_else(|| jiff::Timestamp::now().to_string());
+    let feed_ms = timestamp_iso
+        .parse::<jiff::Timestamp>()
+        .map(|d| d.as_millisecond())
+        .unwrap_or_else(|_| jiff::Timestamp::now().as_millisecond());
 
     let mut by_trip_id: HashMap<String, RailTripLive> = HashMap::with_capacity(raw.trip_updates.len() * 2);
     let mut by_number: HashMap<String, Vec<RailTripLive>> = HashMap::new();
@@ -139,8 +139,8 @@ fn is_finished(u: &RawTripUpdate, feed_ms: i64) -> bool {
     let Some(iso) = last.arrival.as_deref().or(last.departure.as_deref()) else {
         return false;
     };
-    DateTime::parse_from_rfc3339(iso)
-        .map(|d| d.timestamp_millis() < feed_ms - 15 * 60_000)
+    iso.parse::<jiff::Timestamp>()
+        .map(|d| d.as_millisecond() < feed_ms - 15 * 60_000)
         .unwrap_or(false)
 }
 

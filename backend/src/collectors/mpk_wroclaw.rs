@@ -1,4 +1,3 @@
-use chrono::Utc;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -59,7 +58,7 @@ pub async fn fetch_mpk_wroclaw_fallback(
         .await
         .map_err(|e| format!("mpk_wroclaw JSON: {e}"))?;
 
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
         let line = r.name.trim().to_string();
