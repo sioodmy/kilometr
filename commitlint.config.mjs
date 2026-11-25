@@ -7,6 +7,15 @@
 // więc pomijamy dokładnie ten temat. Nowych wpisów tu nie dodawaj.
 const LEGACY_SUBJECTS = new Set(['Redesign home screen and search sheet in M3 Expressive style']);
 
+// Squash-merge z GitHuba ("Dev (#1004)") nie ma typu, a poprawa wymagałaby
+// przepisania historii main, więc pomijamy nagłówek z numerem PR-a bez typu.
+const CONVENTIONAL_HEADER = /^[a-z]+(\([^)]*\))?!?: /;
+
+function isGithubSquash(message) {
+  const header = message.split('\n')[0].trim();
+  return /\(#\d+\)$/.test(header) && !CONVENTIONAL_HEADER.test(header);
+}
+
 export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
@@ -18,5 +27,6 @@ export default {
   ignores: [
     (message) => message.startsWith('Merge '),
     (message) => LEGACY_SUBJECTS.has(message.split('\n')[0].trim()),
+    isGithubSquash,
   ],
 };
