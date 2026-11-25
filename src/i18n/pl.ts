@@ -3171,8 +3171,8 @@ export const pl = {
     emptyBody:
       'Wyszukuj i śledź połączenia, a zobaczysz tu przejechane kilometry, wykres ulubionych linii i podsumowanie gotowe do udostępnienia. Wszystkie dane zostają wyłącznie na tym urządzeniu.',
     localOnlyNote: 'Wszystkie statystyki liczone są lokalnie na Twoim urządzeniu.',
-    shareCardCta: 'Podsumowanie na social media',
-    shareCardSub: 'Bez nazw celów, miast i numerów linii',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Udostępnij podsumowanie twoich tras',
     shareSheetTitle: 'Podsumowanie podróży',
     shareSheetSubtitle: 'Gotowa grafika do udostępnienia na Instagramie, X lub znajomym.',
     sharePrivacyNote:

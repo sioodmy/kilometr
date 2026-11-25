@@ -3178,8 +3178,8 @@ export const uk: Strings = {
     emptyBody:
       'Шукайте й відстежуйте маршрути, щоб побачити кілометри, діаграму улюблених ліній і картку підсумку для соцмереж. Усі дані зберігаються лише на цьому пристрої.',
     localOnlyNote: 'Уся статистика рахується локально на вашому пристрої.',
-    shareCardCta: 'Підсумок для соцмереж',
-    shareCardSub: 'Без цілей, назв міст і номерів ліній',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Поділися підсумком своїх поїздок',
     shareSheetTitle: 'Підсумок поїздок',
     shareSheetSubtitle: 'Готова графіка для Instagram, X або друзів.',
     sharePrivacyNote:

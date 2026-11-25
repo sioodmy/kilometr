@@ -134,9 +134,6 @@ export function WrappedShareCard({
           fill="none"
           strokeLinecap="round"
         />
-        <Circle cx="258" cy="64" r="4.5" fill={palette.bgTop} stroke={palette.accent} strokeWidth="2" />
-        <Circle cx="318" cy="96" r="4.5" fill={palette.bgTop} stroke={palette.accent} strokeWidth="2" />
-        <Circle cx="290" cy="112" r="4.5" fill={palette.bgTop} stroke={palette.accent} strokeWidth="2" />
         <Circle cx="76" cy="368" r="4.5" fill={palette.bgBottom} stroke={palette.accent} strokeWidth="2" />
       </Svg>
 

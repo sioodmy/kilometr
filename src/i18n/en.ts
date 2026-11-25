@@ -2653,8 +2653,8 @@ export const en: Strings = {
     emptyBody:
       'Search and track routes to see your kilometres, favourite lines chart and a shareable recap card. Everything stays locally on this device.',
     localOnlyNote: 'All statistics are computed locally on your device.',
-    shareCardCta: 'Social media recap card',
-    shareCardSub: 'Hides destinations, cities and line numbers',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Share a recap of your journeys',
     shareSheetTitle: 'Travel recap',
     shareSheetSubtitle: 'Ready to share on Instagram, X or with friends.',
     sharePrivacyNote:

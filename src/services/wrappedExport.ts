@@ -223,20 +223,13 @@ async function renderWrappedCanvasBlob(
   ctx.bezierCurveTo(220, 1040, 410, 1160, 560, 1380);
   ctx.stroke();
 
-  for (const [cx, cy] of [
-    [775, 195],
-    [955, 292],
-    [870, 336],
-    [225, 1105],
-  ]) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 11, 0, Math.PI * 2);
-    ctx.fillStyle = palette.bgTop;
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = palette.accent;
-    ctx.stroke();
-  }
+  ctx.beginPath();
+  ctx.arc(225, 1105, 11, 0, Math.PI * 2);
+  ctx.fillStyle = palette.bgBottom;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = palette.accent;
+  ctx.stroke();
   ctx.restore();
 
   const pad = 76;

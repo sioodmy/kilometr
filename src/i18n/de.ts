@@ -2684,8 +2684,8 @@ export const de: Strings = {
     emptyBody:
       'Suche und verfolge Verbindungen, um Kilometer, Lieblingslinien und eine teilbare Rückblick-Grafik zu sehen. Alle Daten bleiben lokal auf diesem Gerät.',
     localOnlyNote: 'Alle Statistiken werden lokal auf deinem Gerät berechnet.',
-    shareCardCta: 'Rückblick für Social Media',
-    shareCardSub: 'Ohne Ziele, Städtenamen und Liniennummern',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Teile deine Fahrten-Zusammenfassung',
     shareSheetTitle: 'Fahrten-Rückblick',
     shareSheetSubtitle: 'Fertige Grafik zum Teilen auf Instagram, X oder mit Freunden.',
     sharePrivacyNote:
