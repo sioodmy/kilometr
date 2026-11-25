@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -130,6 +131,18 @@ export default function RouteMapScreen() {
       liveTracker.acquire();
       return () => liveTracker.release();
     }, []),
+  );
+
+  // Gest wstecz zamyka kartę klikniętego przystanku przed wyjściem z mapy.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!inspectedStop) return false;
+        setInspectedStop(null);
+        return true;
+      });
+      return () => sub.remove();
+    }, [inspectedStop]),
   );
   const shownVehicleRef = useRef<string | null>(null);
 
