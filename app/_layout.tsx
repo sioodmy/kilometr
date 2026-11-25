@@ -1,7 +1,15 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   DarkTheme,
   ThemeProvider,
@@ -15,6 +23,8 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { scheme } from '../src/theme/tokens';
+import { useWebLayout } from '../src/theme/layout';
+import { DesktopShell } from '../src/components/DesktopShell';
 import { TransferProtectionProvider } from '../src/components/TransferProtectionProvider';
 import { WebAlertHost } from '../src/components/WebAlertHost';
 import { initRaptorWasmAsync } from '../modules/kilometr-raptor';
@@ -112,14 +122,49 @@ function navigateFromNotification(res: TripResponse) {
   else router.push(target);
 }
 
+/** Izoluje subskrypcję ścieżki wyłącznie na czas onboardingu, żeby RootLayout nie przerysowywał się przy każdej nawigacji. */
+function OnboardingGuard({ onCompleted }: { onCompleted: () => void }) {
+  const pathname = usePathname();
+  const params = useGlobalSearchParams<{ trip?: string }>();
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    router.replace({
+      pathname: '/onboarding',
+      params: pathname === '/shared' && params.trip ? { sharedTrip: params.trip } : {},
+    });
+  }, [pathname, params.trip]);
+
+  useEffect(() => {
+    if (pathname === '/onboarding') return;
+    void hasSeenOnboarding()
+      .then((seen) => {
+        if (seen) onCompleted();
+      })
+      .catch(() => {});
+  }, [pathname, onCompleted]);
+
+  useEffect(() => {
+    if (pathname !== '/onboarding') return;
+    const frame = requestAnimationFrame(() => {
+      void BootSplash.hide({ fade: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
+
+  return null;
+}
+
 /** Główny układ nawigacji aplikacji z jednolitymi, płynnymi przejściami ekranów. */
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const pathname = usePathname();
-  const params = useGlobalSearchParams<{ trip?: string }>();
   const reduceMotion = useReducedMotion();
   const themeSetting = useThemeSetting();
+  const webLayout = useWebLayout();
+  const disableScreenAnim = reduceMotion || webLayout.isMedium;
 
   const navigationTheme = useMemo(
     () => ({
@@ -146,37 +191,28 @@ export default function RootLayout() {
     () => ({
       headerShown: false,
       contentStyle: { backgroundColor: scheme.surface },
-      animation: (reduceMotion ? 'none' : 'slide_from_right') as 'none' | 'slide_from_right',
-      animationDuration: 220,
-      animationMatchesGesture: true,
-      gestureEnabled: true,
+      animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
+      animationDuration: 200,
+      animationMatchesGesture: false,
+      gestureEnabled: !webLayout.isMedium,
       gestureDirection: 'horizontal' as const,
       fullScreenGestureEnabled: true,
     }),
-    [reduceMotion, themeSetting],
-  );
-
-  const verticalScreenOptions = useMemo(
-    () => ({
-      headerShown: false,
-      animation: (reduceMotion
-        ? 'none'
-        : Platform.OS === 'android'
-          ? 'fade_from_bottom'
-          : 'slide_from_right') as 'none' | 'fade_from_bottom' | 'slide_from_right',
-      animationDuration: 210,
-      animationMatchesGesture: true,
-    }),
-    [reduceMotion],
+    [disableScreenAnim, themeSetting, webLayout.isMedium],
   );
 
   const mapScreenOptions = useMemo(
     () => ({
-      gestureEnabled: false,
-      animation: (reduceMotion ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
-      animationDuration: 210,
+      gestureEnabled: !webLayout.isMedium,
+      gestureDirection: 'horizontal' as const,
+      // Na mapie gest z lewej krawędzi wraca wstecz bez przejmowania przesuwania mapy.
+      fullScreenGestureEnabled: false,
+      gestureResponseDistance: { start: 32 },
+      animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
+      animationDuration: 200,
+      animationMatchesGesture: false,
     }),
-    [reduceMotion],
+    [disableScreenAnim, webLayout.isMedium],
   );
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu.
@@ -251,30 +287,17 @@ export default function RootLayout() {
     };
   }, [ready, needsOnboarding]);
 
-  useEffect(() => {
-    if (ready && needsOnboarding)
-      router.replace({
-        pathname: '/onboarding',
-        params: pathname === '/shared' && params.trip ? { sharedTrip: params.trip } : {},
-      });
-  }, [ready, needsOnboarding]);
+  const handleOnboardingCompleted = useCallback(() => {
+    setNeedsOnboarding(false);
+  }, []);
 
   useEffect(() => {
-    if (!ready || !needsOnboarding || pathname === '/onboarding') return;
-    void hasSeenOnboarding()
-      .then((seen) => {
-        if (seen) setNeedsOnboarding(false);
-      })
-      .catch(() => {});
-  }, [ready, needsOnboarding, pathname]);
-
-  useEffect(() => {
-    if (!ready || (needsOnboarding && pathname !== '/onboarding')) return;
+    if (!ready || needsOnboarding) return;
     const frame = requestAnimationFrame(() => {
       void BootSplash.hide({ fade: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, needsOnboarding, pathname]);
+  }, [ready, needsOnboarding]);
 
   useEffect(() => {
     if (!ready || needsOnboarding) return;
@@ -296,19 +319,22 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <ThemeProvider value={navigationTheme}>
           <TransferProtectionProvider key={themeSetting}>
-            <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-              <Stack.Screen name="routes" options={verticalScreenOptions} />
-              <Stack.Screen name="line" options={verticalScreenOptions} />
-              <Stack.Screen name="line-departures" />
-              {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby przeciąganie widoku. */}
-              <Stack.Screen name="map" options={mapScreenOptions} />
-              <Stack.Screen name="live-map" options={mapScreenOptions} />
-              <Stack.Screen name="news" />
-              <Stack.Screen name="article" />
-              <Stack.Screen name="settings" />
-            </Stack>
+            <DesktopShell>
+              {needsOnboarding && <OnboardingGuard onCompleted={handleOnboardingCompleted} />}
+              <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="routes" />
+                <Stack.Screen name="line" />
+                <Stack.Screen name="line-departures" />
+                {/* Mapa ma własny gest przesuwania: cofanie działa z lewej krawędzi bez zjadania mapy. */}
+                <Stack.Screen name="map" options={mapScreenOptions} />
+                <Stack.Screen name="live-map" options={mapScreenOptions} />
+                <Stack.Screen name="news" />
+                <Stack.Screen name="article" />
+                <Stack.Screen name="settings" />
+              </Stack>
+            </DesktopShell>
             <WebAlertHost />
           </TransferProtectionProvider>
         </ThemeProvider>

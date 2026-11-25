@@ -1,5 +1,5 @@
-// Flaga ukończenia onboardingu startowego (welcome → uprawnienia →
-// rozkład offline → zapisane miejsca). Dopiero po niej _layout puszcza
+// Flaga ukończenia onboardingu startowego (witaj, miasto z pobieraniem w tle,
+// dostęp aplikacji, zapisane miejsca). Dopiero po niej _layout puszcza
 // użytkownika na ekran główny.
 import { kvGet, kvSet } from './storage';
 

@@ -112,6 +112,31 @@ jobs:
           cargo check --locked --all-targets --manifest-path modules/kilometr-raptor/rust/Cargo.toml
           cargo test --locked --manifest-path modules/kilometr-raptor/rust/Cargo.toml
 
+  rust-backend:
+    name: Rust Backend API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust Backend target
+        uses: actions/cache@v5
+        with:
+          path: backend/target
+          key: rust-backend-ci-${{ runner.os }}-${{ hashFiles('backend/Cargo.toml', 'backend/Cargo.lock', 'backend/src/**') }}
+          restore-keys: |
+            rust-backend-ci-${{ runner.os }}-
+
+      - name: Cargo check & tests
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets --manifest-path backend/Cargo.toml
+          cargo test --locked --manifest-path backend/Cargo.toml
+
   fdroid-audit:
     name: F-Droid Prebuild & Audit
     runs-on: ubuntu-latest

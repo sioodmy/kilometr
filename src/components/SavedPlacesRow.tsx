@@ -134,6 +134,7 @@ interface SavedPlaceCardProps {
   tileHeight: number;
   tileWidth?: number;
   flexGrid?: boolean;
+  desktopGrid?: boolean;
   textLines: number;
   departInMin?: number;
   badge?: SmartLineBadge;
@@ -147,6 +148,7 @@ const SavedPlaceCard = memo(function SavedPlaceCard({
   tileHeight,
   tileWidth,
   flexGrid,
+  desktopGrid,
   textLines,
   departInMin,
   badge,
@@ -181,7 +183,11 @@ const SavedPlaceCard = memo(function SavedPlaceCard({
       haptic="selection"
       style={[
         styles.tile,
-        flexGrid ? styles.tileFlex : { width: tileWidth },
+        desktopGrid
+          ? styles.tileDesktopGrid
+          : flexGrid
+            ? styles.tileFlex
+            : { width: tileWidth },
         { height: tileHeight },
         focused && styles.focused,
       ]}
@@ -219,11 +225,18 @@ interface AddTileProps {
   tileHeight: number;
   tileWidth?: number;
   flexGrid?: boolean;
+  desktopGrid?: boolean;
   onAdd: () => void;
 }
 
 /** Kafelek „Dodaj”: otwarty slot z przerywanym konturem, ten sam rytm co zapisane miejsca. */
-const AddTile = memo(function AddTile({ tileHeight, tileWidth, flexGrid, onAdd }: AddTileProps) {
+const AddTile = memo(function AddTile({
+  tileHeight,
+  tileWidth,
+  flexGrid,
+  desktopGrid,
+  onAdd,
+}: AddTileProps) {
   const s = useStrings();
   const [focused, setFocused] = useState(false);
 
@@ -239,7 +252,11 @@ const AddTile = memo(function AddTile({ tileHeight, tileWidth, flexGrid, onAdd }
       style={[
         styles.tile,
         styles.tileAdd,
-        flexGrid ? styles.tileFlex : { width: tileWidth },
+        desktopGrid
+          ? styles.tileDesktopGrid
+          : flexGrid
+            ? styles.tileFlex
+            : { width: tileWidth },
         { height: tileHeight },
         focused && styles.focused,
       ]}
@@ -264,6 +281,7 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
   onSelect,
   onAdd,
   onEdit,
+  desktopGrid = false,
 }: {
   places: SavedPlace[];
   /** Najszybszy odjazd do miejsca w minutach, kluczem placeId. */
@@ -273,6 +291,7 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
   onSelect: (p: SavedPlace) => void;
   onAdd: () => void;
   onEdit?: (p: SavedPlace) => void;
+  desktopGrid?: boolean;
 }) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
@@ -309,6 +328,27 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
           <ChevronRight size={18} color={scheme.onSurfaceVariant} />
         </View>
       </SpringPressable>
+    );
+  }
+
+  if (desktopGrid) {
+    return (
+      <View style={styles.desktopGrid}>
+        {places.map((p) => (
+          <SavedPlaceCard
+            key={p.id}
+            place={p}
+            desktopGrid
+            tileHeight={metrics.height}
+            textLines={metrics.textLines}
+            departInMin={departures?.[p.placeId]}
+            badge={lineBadges?.[p.placeId]}
+            onSelect={handleSelect}
+            onEdit={onEdit}
+          />
+        ))}
+        <AddTile desktopGrid tileHeight={metrics.height} onAdd={onAdd} />
+      </View>
     );
   }
 
@@ -373,6 +413,12 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 10,
   },
+  desktopGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'stretch',
+    gap: 12,
+  },
   scroller: {
     flexGrow: 0,
     flexShrink: 0,
@@ -394,6 +440,12 @@ const styles = StyleSheet.create({
   tileFlex: {
     flex: 1,
     minWidth: 0,
+  },
+  tileDesktopGrid: {
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 190,
+    maxWidth: 260,
   },
   tileAdd: {
     backgroundColor: scheme.surfaceContainerLow,

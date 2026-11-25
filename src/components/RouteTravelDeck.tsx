@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import Animated, {
-  LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
@@ -124,9 +123,11 @@ export type RouteTravelDeckProps = {
   onTransferPress: () => void;
   /** Z powiadomienia „Bilet": po wczytaniu otwórz kontrolę / PDF. */
   autoInspectTicket?: boolean;
+  /** Odracza odczyt biletu z dysku do końca animacji otwarcia ekranu. */
+  deferLoad?: boolean;
 };
 
-export function RouteTravelDeck({
+export const RouteTravelDeck = memo(function RouteTravelDeck({
   connection,
   hasTransfers,
   transferState,
@@ -134,6 +135,7 @@ export function RouteTravelDeck({
   trackingBusy,
   onTransferPress,
   autoInspectTicket = false,
+  deferLoad = false,
 }: RouteTravelDeckProps) {
   const s = useStrings();
   const [ticket, setTicket] = useState<AttachedRailTicket | null>(null);
@@ -151,6 +153,12 @@ export function RouteTravelDeck({
   const isDual = showTicketSegment && showTransferSegment;
 
   useEffect(() => {
+    if (!showTicketSegment) {
+      setTicket(null);
+      autoInspectDone.current = false;
+      return;
+    }
+    if (deferLoad && !autoInspectTicket) return;
     let active = true;
     setTicket(null);
     autoInspectDone.current = false;
@@ -175,7 +183,7 @@ export function RouteTravelDeck({
       active = false;
       sub.remove();
     };
-  }, [connection.id, connection.serviceDate]);
+  }, [connection.id, connection.serviceDate, showTicketSegment, deferLoad, autoInspectTicket]);
 
   useEffect(() => {
     if (!autoInspectTicket || !ticket || autoInspectDone.current) return;
@@ -415,10 +423,7 @@ export function RouteTravelDeck({
   );
 
   return (
-    <Animated.View
-      layout={LinearTransition.springify().damping(28).stiffness(320)}
-      style={styles.container}
-    >
+    <View style={styles.container}>
       <View style={styles.deckGrid}>
         {/* SEGMENT 1: BILET KOLEJOWY (tylko trasy z pociągiem) */}
         {showTicketSegment && (
@@ -697,12 +702,13 @@ export function RouteTravelDeck({
       )}
 
       {/* ARKUSZ SZYBKIEJ AKCJI BILETU (KOLEO / IMPORT PDF) */}
-      <Modal
-        visible={ticketSheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTicketSheetOpen(false)}
-      >
+      {ticketSheetOpen && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setTicketSheetOpen(false)}
+        >
         <Pressable
           style={styles.modalOverlay}
           onPress={() => setTicketSheetOpen(false)}
@@ -782,9 +788,10 @@ export function RouteTravelDeck({
           </View>
         </Pressable>
       </Modal>
-    </Animated.View>
+      )}
+    </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

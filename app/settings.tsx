@@ -34,11 +34,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Coffee,
   Download,
   DatabaseBackup,
   ExternalLink,
   Footprints,
+  Heart,
   Landmark,
   MapPin,
   SlidersHorizontal,
@@ -53,6 +53,7 @@ import {
   Turtle,
 } from '../src/components/icons';
 import type { TransitVehicleMode } from '../src/services/routing/types';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import { type CityId } from '../src/cities';
@@ -82,7 +83,7 @@ import { TimetableSyncAbortedError } from '../src/services/timetableSync';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
-import { BackupCard } from '../src/components/BackupCard';
+import { YourDataDashboard } from '../src/components/YourDataDashboard';
 import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
 import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { NationalRailCard } from '../src/components/NationalRailCard';
@@ -215,26 +216,36 @@ function SettingsLink({
   detail,
   icon: Icon,
   onPress,
+  active = false,
 }: {
   title: string;
   detail: string;
   icon: typeof MapPin;
   onPress: () => void;
+  active?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+      accessibilityState={active ? { selected: true } : undefined}
+      style={({ pressed }) => [
+        styles.menuRow,
+        active && styles.menuRowActive,
+        pressed && !active && styles.menuRowPressed,
+      ]}
     >
       <View style={styles.menuIcon}>
-        <Icon size={22} color={scheme.onSurfaceVariant} />
+        <Icon size={22} color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant} />
       </View>
       <View style={styles.settingText}>
-        <Text style={styles.menuTitle}>{title}</Text>
-        <Text style={styles.menuDetail}>{detail}</Text>
+        <Text style={[styles.menuTitle, active && styles.menuTitleActive]}>{title}</Text>
+        <Text style={[styles.menuDetail, active && styles.menuDetailActive]}>{detail}</Text>
       </View>
-      <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+      <ChevronRight
+        size={18}
+        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+      />
     </Pressable>
   );
 }
@@ -243,6 +254,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { section } = useLocalSearchParams<{ section?: string }>();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
   const { settings, update, reset } = useRoutingSettings();
@@ -278,8 +290,21 @@ export default function SettingsScreen() {
     section && Object.hasOwn(sectionTitles, section)
       ? (section as SettingsSection)
       : null;
-  const openSection = (value: SettingsSection) =>
+  const [selectedDesktopSection, setSelectedDesktopSection] = useState<SettingsSection>(
+    activeSection ?? 'routing',
+  );
+  useEffect(() => {
+    if (activeSection) setSelectedDesktopSection(activeSection);
+  }, [activeSection]);
+  const desktopSection: SettingsSection = selectedDesktopSection;
+  const openSection = (value: SettingsSection) => {
+    if (webLayout.isDesktop) {
+      setSelectedDesktopSection(value);
+      router.setParams({ section: value });
+      return;
+    }
     router.push({ pathname: '/settings', params: { section: value } });
+  };
   const goBack = () =>
     router.canGoBack() ? router.back() : router.replace(activeSection ? '/settings' : '/');
 
@@ -413,522 +438,592 @@ export default function SettingsScreen() {
             ? s.settings.downloadCooldown(cooldownHours)
             : null;
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={goBack}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel={s.map.backA11y}
-        >
-          <ChevronLeft size={23} color={scheme.onSurface} />
-        </Pressable>
-        <Text style={styles.headerTitle} accessibilityRole="header">
-          {activeSection ? sectionTitles[activeSection] : s.settings.title}
-        </Text>
-      </View>
-
-      <ScrollView
-        key={activeSection ?? 'index'}
-        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 32 }]}
-        showsVerticalScrollIndicator={false}
-        overScrollMode="never"
+  const cityPanelContent = (
+    <View style={styles.cityPanel}>
+      <Animated.View
+        layout={
+          reduceMotion
+            ? undefined
+            : LinearTransition.duration(260).easing(Easing.bezier(0.2, 0, 0, 1))
+        }
+        style={styles.cityCard}
       >
-        <Animated.View
-          entering={
-            reduceMotion
-              ? undefined
-              : FadeIn.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-          }
-          style={styles.sectionAnimatedWrap}
+        <Pressable
+          onPress={() => setCitySheetOpen(true)}
+          disabled={switchingCity}
+          style={({ pressed }) => [
+            styles.cityTile,
+            showDownloadCta && styles.cityTileWithAction,
+            switchingCity && { opacity: 0.6 },
+            pressed && !switchingCity && { opacity: 0.8 },
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: switchingCity }}
+          accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+          accessibilityHint={s.city.settingsHint}
         >
-        {!activeSection && (
-          <>
-            <View style={styles.cityPanel}>
-              <Animated.View
-                layout={
-                  reduceMotion
-                    ? undefined
-                    : LinearTransition.duration(260).easing(Easing.bezier(0.2, 0, 0, 1))
-                }
-                style={styles.cityCard}
-              >
-                <Pressable
-                  onPress={() => setCitySheetOpen(true)}
-                  disabled={switchingCity}
-                  style={({ pressed }) => [
-                    styles.cityTile,
-                    showDownloadCta && styles.cityTileWithAction,
-                    switchingCity && { opacity: 0.6 },
-                    pressed && !switchingCity && { opacity: 0.8 },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: switchingCity }}
-                  accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
-                  accessibilityHint={s.city.settingsHint}
-                >
-                  <View style={styles.cityTileIconWrap}>
-                    <MapPin size={22} color={scheme.primary} />
-                  </View>
-                  <View style={styles.cityTileInfo}>
-                    <View style={styles.cityTileHeaderRow}>
-                      <Text style={styles.cityLabel}>{s.city.section}</Text>
-                    </View>
-                    <Text style={styles.cityTileName}>{s.city.name(cityId)}</Text>
-                    <Text style={styles.cityTileFeeds}>{s.city.feeds(cityId)}</Text>
-                  </View>
-                  {switchingCity ? (
-                    <ActivityIndicator size="small" color={scheme.primary} />
-                  ) : (
-                    <ChevronRight size={22} color={scheme.primary} />
-                  )}
-                </Pressable>
-                {showDownloadCta && (
-                  <Animated.View
-                    entering={
-                      reduceMotion
-                        ? undefined
-                        : FadeInDown.duration(220).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-                    }
-                    exiting={
-                      reduceMotion
-                        ? undefined
-                        : FadeOut.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
-                    }
-                    style={styles.cityDownloadSection}
-                  >
-                    <Pressable
-                      onPress={() => {
-                        void Haptics.selectionAsync().catch(() => {});
-                        void handleDownload();
-                      }}
-                      disabled={busy}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.city.downloadAction}
-                      accessibilityState={{ busy, disabled: busy }}
-                      style={({ pressed }) => [
-                        styles.cityDownloadBtn,
-                        busy && styles.cityDownloadBtnBusy,
-                        pressed && !busy && { opacity: 0.85, transform: [{ scale: 0.99 }] },
-                      ]}
-                    >
-                      {busy ? (
-                        <ActivityIndicator size="small" color={scheme.onPrimary} />
-                      ) : (
-                        <Download size={18} color={scheme.onPrimary} />
-                      )}
-                      <Text style={styles.cityDownloadText}>{downloadBtnText}</Text>
-                    </Pressable>
-                  </Animated.View>
-                )}
-              </Animated.View>
+          <View style={styles.cityTileIconWrap}>
+            <MapPin size={22} color={scheme.primary} />
+          </View>
+          <View style={styles.cityTileInfo}>
+            <View style={styles.cityTileHeaderRow}>
+              <Text style={styles.cityLabel}>{s.city.section}</Text>
             </View>
-
-            <View style={styles.menuGroup}>
-              <SettingsLink
-                icon={Navigation}
-                title={s.settings.planningTitle}
-                detail={s.settings.planningSummary(
-                  paceOptions.find((option) => option.value === settings.walkPace)?.label ?? '',
-                )}
-                onPress={() => openSection('routing')}
-              />
-              {Platform.OS !== 'web' && (
-                <>
-                  <View style={styles.menuDivider} />
-                  <SettingsLink
-                    icon={BellRing}
-                    title={s.notificationPrefs.title}
-                    detail={s.settings.notificationsSummary}
-                    onPress={() => openSection('notifications')}
-                  />
-                </>
-              )}
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={SlidersHorizontal}
-                title={s.settings.sectionApp}
-                detail={s.settings.appSummary(
-                  s.settings[
-                    LANG_OPTIONS.find((option) => option.value === langSetting)?.label ??
-                      'langSystem'
-                  ],
-                  s.personalization[themeSetting],
-                )}
-                onPress={() => openSection('app')}
-              />
-            </View>
-            <View style={styles.menuGroup}>
-              <SettingsLink
-                icon={Download}
-                title={s.settings.offlineTitle}
-                detail={dataStatusLabel(dataStatus)}
-                onPress={() => openSection('offline')}
-              />
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={DatabaseBackup}
-                title={s.settings.backupTitle}
-                detail={s.settings.backupSummary}
-                onPress={() => openSection('backup')}
-              />
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={Landmark}
-                title={s.dataSources.title}
-                detail={`${s.dataSources.menuDetail} · ${s.city.portal(cityId)}`}
-                onPress={() => router.push('/data-sources')}
-              />
-              <View style={styles.menuDivider} />
-              <SettingsLink
-                icon={ShieldCheck}
-                title={s.landing.privacy.linkLabel}
-                detail={s.landing.privacy.locationTitle}
-                onPress={() => router.push('/privacy')}
-              />
-            </View>
-            <Pressable
-              onPress={() => void Linking.openURL('https://buycoffee.to/sioodmy').catch(() => {})}
-              accessibilityRole="link"
-              accessibilityLabel={s.settings.supportA11y}
-              style={({ pressed }) => [styles.supportLink, pressed && styles.menuRowPressed]}
-            >
-              <Coffee size={20} color={scheme.onSurfaceVariant} />
-              <View style={styles.settingText}>
-                <Text style={styles.settingTitle}>{s.settings.supportTitle}</Text>
-                <Text style={styles.settingHint}>{s.settings.supportHint}</Text>
-              </View>
-              <ExternalLink size={18} color={scheme.onSurfaceVariant} />
-            </Pressable>
-          </>
-        )}
-
-        {activeSection === 'offline' && (
-          <>
-            <SectionLabel>{s.settings.sectionOffline}</SectionLabel>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{s.settings.dataTitle(operatorShort)}</Text>
-              <Text style={styles.settingHint}>{s.settings.dataHint(feeds)}</Text>
-              <Text style={styles.statusText}>{dataStatusLabel(dataStatus)}</Text>
-              <Pressable
-                onPress={handleDownload}
-                disabled={busy}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  hasTimetable ? styles.checkBtn : styles.downloadBtn,
-                  busy && styles.stepBtnDisabled,
-                  pressed && !busy && { opacity: 0.7 },
-                ]}
-                accessibilityLabel={
-                  hasTimetable ? s.settings.downloadCheckA11y : s.settings.downloadA11y
-                }
-                accessibilityState={{ busy, disabled: busy }}
-              >
-                {busy ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={hasTimetable ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
-                  />
-                ) : (
-                  <Download
-                    size={18}
-                    color={hasTimetable ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
-                  />
-                )}
-                <Text style={hasTimetable ? styles.checkText : styles.downloadText}>
-                  {busy
-                    ? dataStatusLabel(dataStatus)
-                    : hasTimetable
-                      ? s.settings.downloadReady
-                      : s.settings.downloadEmpty}
-                </Text>
-              </Pressable>
-              {outcomeLabel ? (
-                <Text
-                  style={[
-                    styles.outcomeText,
-                    (outcome === 'keptLocal' || outcome === 'cooldown') && {
-                      color: scheme.warning,
-                    },
-                  ]}
-                >
-                  {outcomeLabel}
-                </Text>
-              ) : null}
-            </View>
-            <NationalRailCard />
-            <OfflineMapCard />
-            <DiagnosticsCard />
-          </>
-        )}
-
-        {activeSection === 'app' && (
-          <>
-            <PersonalizationCard />
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{s.settings.langTitle}</Text>
-              <View style={styles.languageList}>
-                {LANG_OPTIONS.map((opt) => {
-                  const active = langSetting === opt.value;
-                  const label = s.settings[opt.label];
-                  return (
-                    <Pressable
-                      key={opt.value}
-                      onPress={() => {
-                        if (langSetting !== opt.value) {
-                          void Haptics.selectionAsync().catch(() => {});
-                          setLang(opt.value);
-                        }
-                      }}
-                      style={({ pressed }) => [
-                        styles.languageOption,
-                        active && styles.langChipActive,
-                        pressed && { opacity: 0.85, transform: [{ scale: 0.985 }] },
-                      ]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: active }}
-                      accessibilityLabel={label}
-                    >
-                      <Text style={[styles.languageText, active && styles.langChipTextActive]}>
-                        {label}
-                      </Text>
-                      {active && <Check size={20} color={scheme.onPrimaryContainer} />}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          </>
-        )}
-
-        {activeSection === 'routing' && (
-          <>
-            <SectionLabel>{s.settings.sectionRoute}</SectionLabel>
-            <View style={styles.card}>
-
-              <SettingRow title={s.settings.transfersTitle} hint={s.settings.transfersHintShort}>
-                <Stepper
-                  label={s.settings.transfersTitle}
-                  value={
-                    settings.maxTransfers === 0
-                      ? s.settings.directValue
-                      : transfersLabel(settings.maxTransfers)
-                  }
-                  onMinus={() => update({ maxTransfers: settings.maxTransfers - maxT.step })}
-                  onPlus={() => update({ maxTransfers: settings.maxTransfers + maxT.step })}
-                  minusDisabled={settings.maxTransfers <= maxT.min}
-                  plusDisabled={settings.maxTransfers >= maxT.max}
-                />
-              </SettingRow>
-
-              <SettingRow title={s.settings.walkTitle} hint={s.settings.walkHintShort}>
-                <Stepper
-                  label={s.settings.walkTitle}
-                  value={formatWalkDistance(settings.maxWalkM, walkMps)}
-                  onMinus={() => update({ maxWalkM: settings.maxWalkM - walk.step })}
-                  onPlus={() => update({ maxWalkM: settings.maxWalkM + walk.step })}
-                  minusDisabled={settings.maxWalkM <= walk.min}
-                  plusDisabled={settings.maxWalkM >= walk.max}
-                />
-              </SettingRow>
-
-              <View style={styles.divider} />
-
-              <Text style={styles.subTitle}>{s.settings.speedTitle}</Text>
-              <View style={[styles.paceRow, compact && styles.paceRowCompact]}>
-                {paceOptions.map((opt) => {
-                  const active = settings.walkPace === opt.value;
-                  const Icon = opt.icon;
-                  const a11y = `${opt.label}, ${opt.desc}, ${formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}`;
-                  return (
-                    <Pressable
-                      key={opt.value}
-                      onPress={() => {
-                        if (settings.walkPace !== opt.value) {
-                          void Haptics.selectionAsync().catch(() => {});
-                          update({ walkPace: opt.value });
-                        }
-                      }}
-                      style={({ pressed }) => [
-                        styles.paceOpt,
-                        active && styles.optActive,
-                        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
-                      ]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: active }}
-                      accessibilityLabel={a11y}
-                    >
-                      <Icon
-                        size={20}
-                        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                      />
-                      <Text style={[styles.paceLabel, active && styles.optLabelActive]}>
-                        {opt.label}
-                      </Text>
-                      <Text style={[styles.paceKmh, active && styles.optDescActive]}>
-                        {formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <SectionLabel>{s.settings.sectionTransport}</SectionLabel>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{s.settings.allowTransferTitle}</Text>
-              <Text style={styles.settingHint}>{s.settings.allowTransferHint}</Text>
-              <View style={styles.langRow}>
-                {modePills.map((pill) => {
-                  const active = settings.allowedModes[pill.value];
-                  const lastEnabled = active && enabledModes.length === 1;
-                  const Icon = pill.icon;
-                  return (
-                    <Pressable
-                      key={pill.value}
-                      onPress={() => {
-                        void Haptics.selectionAsync().catch(() => {});
-                        update({
-                          allowedModes: { ...settings.allowedModes, [pill.value]: !active },
-                        });
-                      }}
-                      disabled={lastEnabled}
-                      style={({ pressed }) => [
-                        styles.transportOption,
-                        compact && styles.transportOptionCompact,
-                        active && styles.langChipActive,
-                        lastEnabled && styles.langChipDisabled,
-                        pressed && !lastEnabled && { opacity: 0.85, transform: [{ scale: 0.96 }] },
-                      ]}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: active, disabled: lastEnabled }}
-                      accessibilityLabel={pill.label}
-                      accessibilityHint={s.settings.allowTransferHint}
-                    >
-                      <Icon
-                        size={16}
-                        color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                      />
-                      <Text style={[styles.transportText, active && styles.langChipTextActive]}>
-                        {pill.label}
-                      </Text>
-                      {active && <Check size={14} color={scheme.onPrimaryContainer} />}
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {!hasTrains ? <Text style={styles.warnHint}>{s.settings.trainNoData}</Text> : null}
-              {settings.allowedModes.train && hasTrains ? (
-                <>
-                  <View style={styles.divider} />
-                  <SettingRow title={s.settings.trainBufferTitle}>
-                    <Stepper
-                      label={s.settings.trainBufferTitle}
-                      value={formatTransferTime(settings.trainMinTransferSec)}
-                      onMinus={() =>
-                        update({
-                          trainMinTransferSec: settings.trainMinTransferSec - trainBuf.step,
-                        })
-                      }
-                      onPlus={() =>
-                        update({
-                          trainMinTransferSec: settings.trainMinTransferSec + trainBuf.step,
-                        })
-                      }
-                      minusDisabled={settings.trainMinTransferSec <= trainBuf.min}
-                      plusDisabled={settings.trainMinTransferSec >= trainBuf.max}
-                    />
-                  </SettingRow>
-                </>
-              ) : null}
-            </View>
-
+            <Text style={styles.cityTileName}>{s.city.name(cityId)}</Text>
+            <Text style={styles.cityTileFeeds}>{s.city.feeds(cityId)}</Text>
+          </View>
+          {switchingCity ? (
+            <ActivityIndicator size="small" color={scheme.primary} />
+          ) : (
+            <ChevronRight size={22} color={scheme.primary} />
+          )}
+        </Pressable>
+        {showDownloadCta && (
+          <Animated.View
+            entering={
+              reduceMotion
+                ? undefined
+                : FadeInDown.duration(220).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+            }
+            exiting={
+              reduceMotion
+                ? undefined
+                : FadeOut.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
+            }
+            style={styles.cityDownloadSection}
+          >
             <Pressable
               onPress={() => {
                 void Haptics.selectionAsync().catch(() => {});
-                setAdvancedOpen((v) => !v);
+                void handleDownload();
               }}
-              style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.75 }]}
+              disabled={busy}
               accessibilityRole="button"
-              accessibilityState={{ expanded: advancedOpen }}
-              accessibilityLabel={advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
+              accessibilityLabel={s.city.downloadAction}
+              accessibilityState={{ busy, disabled: busy }}
+              style={({ pressed }) => [
+                styles.cityDownloadBtn,
+                busy && styles.cityDownloadBtnBusy,
+                pressed && !busy && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+              ]}
             >
-              <Text style={styles.advancedToggleText}>
-                {advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
-              </Text>
-              <Animated.View style={chevronAnimatedStyle}>
-                <ChevronDown size={18} color={scheme.onSurfaceVariant} />
-              </Animated.View>
+              {busy ? (
+                <ActivityIndicator size="small" color={scheme.onPrimary} />
+              ) : (
+                <Download size={18} color={scheme.onPrimary} />
+              )}
+              <Text style={styles.cityDownloadText}>{downloadBtnText}</Text>
             </Pressable>
+          </Animated.View>
+        )}
+      </Animated.View>
+    </View>
+  );
 
-            {advancedOpen ? (
+  const menuContent = (
+    <>
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync().catch(() => {});
+          void Linking.openURL('https://buycoffee.to/sioodmy').catch(() => {});
+        }}
+        accessibilityRole="link"
+        accessibilityLabel={s.settings.supportA11y}
+        style={({ pressed }) => [styles.supportCard, pressed && styles.supportCardPressed]}
+      >
+        <View style={styles.supportIconWrap}>
+          <Heart size={20} color={scheme.onTertiary} />
+        </View>
+        <View style={styles.settingText}>
+          <Text style={styles.supportTitle}>{s.settings.supportTitle}</Text>
+          <Text style={styles.supportHint}>{s.settings.supportHint}</Text>
+        </View>
+        <ExternalLink size={18} color={scheme.onTertiaryContainer} />
+      </Pressable>
+      <View style={styles.menuGroup}>
+        <SettingsLink
+          icon={Navigation}
+          title={s.settings.planningTitle}
+          detail={s.settings.planningSummary(
+            paceOptions.find((option) => option.value === settings.walkPace)?.label ?? '',
+          )}
+          active={webLayout.isDesktop && desktopSection === 'routing'}
+          onPress={() => openSection('routing')}
+        />
+        {Platform.OS !== 'web' && (
+          <>
+            <View style={styles.menuDivider} />
+            <SettingsLink
+              icon={BellRing}
+              title={s.notificationPrefs.title}
+              detail={s.settings.notificationsSummary}
+              active={webLayout.isDesktop && desktopSection === 'notifications'}
+              onPress={() => openSection('notifications')}
+            />
+          </>
+        )}
+        <View style={styles.menuDivider} />
+        <SettingsLink
+          icon={SlidersHorizontal}
+          title={s.settings.sectionApp}
+          detail={s.settings.appSummary(
+            s.settings[
+              LANG_OPTIONS.find((option) => option.value === langSetting)?.label ?? 'langSystem'
+            ],
+            s.personalization[themeSetting],
+          )}
+          active={webLayout.isDesktop && desktopSection === 'app'}
+          onPress={() => openSection('app')}
+        />
+      </View>
+      <View style={styles.menuGroup}>
+        <SettingsLink
+          icon={Download}
+          title={s.settings.offlineTitle}
+          detail={dataStatusLabel(dataStatus)}
+          active={webLayout.isDesktop && desktopSection === 'offline'}
+          onPress={() => openSection('offline')}
+        />
+        <View style={styles.menuDivider} />
+        <SettingsLink
+          icon={DatabaseBackup}
+          title={s.settings.backupTitle}
+          detail={s.settings.backupSummary}
+          active={webLayout.isDesktop && desktopSection === 'backup'}
+          onPress={() => openSection('backup')}
+        />
+        <View style={styles.menuDivider} />
+        <SettingsLink
+          icon={Landmark}
+          title={s.dataSources.title}
+          detail={`${s.dataSources.menuDetail} · ${s.city.portal(cityId)}`}
+          onPress={() => router.push('/data-sources')}
+        />
+        <View style={styles.menuDivider} />
+        <SettingsLink
+          icon={ShieldCheck}
+          title={s.landing.privacy.linkLabel}
+          detail={s.landing.privacy.locationTitle}
+          onPress={() => router.push('/privacy')}
+        />
+      </View>
+    </>
+  );
+
+  const renderSectionBody = (targetSection: SettingsSection) => (
+    <>
+      {targetSection === 'offline' && (
+        <>
+          <SectionLabel>{s.settings.sectionOffline}</SectionLabel>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{s.settings.dataTitle(operatorShort)}</Text>
+            <Text style={styles.settingHint}>{s.settings.dataHint(feeds)}</Text>
+            <Text style={styles.statusText}>{dataStatusLabel(dataStatus)}</Text>
+            <Pressable
+              onPress={handleDownload}
+              disabled={busy}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                hasTimetable ? styles.checkBtn : styles.downloadBtn,
+                busy && styles.stepBtnDisabled,
+                pressed && !busy && { opacity: 0.7 },
+              ]}
+              accessibilityLabel={
+                hasTimetable ? s.settings.downloadCheckA11y : s.settings.downloadA11y
+              }
+              accessibilityState={{ busy, disabled: busy }}
+            >
+              {busy ? (
+                <ActivityIndicator
+                  size="small"
+                  color={hasTimetable ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
+                />
+              ) : (
+                <Download
+                  size={18}
+                  color={hasTimetable ? scheme.onSurfaceVariant : scheme.onSecondaryContainer}
+                />
+              )}
+              <Text style={hasTimetable ? styles.checkText : styles.downloadText}>
+                {busy
+                  ? dataStatusLabel(dataStatus)
+                  : hasTimetable
+                    ? s.settings.downloadReady
+                    : s.settings.downloadEmpty}
+              </Text>
+            </Pressable>
+            {outcomeLabel ? (
+              <Text
+                style={[
+                  styles.outcomeText,
+                  (outcome === 'keptLocal' || outcome === 'cooldown') && {
+                    color: scheme.warning,
+                  },
+                ]}
+              >
+                {outcomeLabel}
+              </Text>
+            ) : null}
+          </View>
+          <NationalRailCard />
+          <OfflineMapCard />
+          <DiagnosticsCard />
+        </>
+      )}
+
+      {targetSection === 'app' && (
+        <>
+          <PersonalizationCard />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{s.settings.langTitle}</Text>
+            <View style={styles.languageList}>
+              {LANG_OPTIONS.map((opt) => {
+                const active = langSetting === opt.value;
+                const label = s.settings[opt.label];
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      if (langSetting !== opt.value) {
+                        void Haptics.selectionAsync().catch(() => {});
+                        setLang(opt.value);
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.languageOption,
+                      active && styles.langChipActive,
+                      pressed && { opacity: 0.85, transform: [{ scale: 0.985 }] },
+                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    accessibilityLabel={label}
+                  >
+                    <Text style={[styles.languageText, active && styles.langChipTextActive]}>
+                      {label}
+                    </Text>
+                    {active && <Check size={20} color={scheme.onPrimaryContainer} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </>
+      )}
+
+      {targetSection === 'routing' && (
+        <>
+          <SectionLabel>{s.settings.sectionRoute}</SectionLabel>
+          <View style={styles.card}>
+            <SettingRow title={s.settings.transfersTitle} hint={s.settings.transfersHintShort}>
+              <Stepper
+                label={s.settings.transfersTitle}
+                value={
+                  settings.maxTransfers === 0
+                    ? s.settings.directValue
+                    : transfersLabel(settings.maxTransfers)
+                }
+                onMinus={() => update({ maxTransfers: settings.maxTransfers - maxT.step })}
+                onPlus={() => update({ maxTransfers: settings.maxTransfers + maxT.step })}
+                minusDisabled={settings.maxTransfers <= maxT.min}
+                plusDisabled={settings.maxTransfers >= maxT.max}
+              />
+            </SettingRow>
+
+            <SettingRow title={s.settings.walkTitle} hint={s.settings.walkHintShort}>
+              <Stepper
+                label={s.settings.walkTitle}
+                value={formatWalkDistance(settings.maxWalkM, walkMps)}
+                onMinus={() => update({ maxWalkM: settings.maxWalkM - walk.step })}
+                onPlus={() => update({ maxWalkM: settings.maxWalkM + walk.step })}
+                minusDisabled={settings.maxWalkM <= walk.min}
+                plusDisabled={settings.maxWalkM >= walk.max}
+              />
+            </SettingRow>
+
+            <View style={styles.divider} />
+
+            <Text style={styles.subTitle}>{s.settings.speedTitle}</Text>
+            <View style={[styles.paceRow, compact && styles.paceRowCompact]}>
+              {paceOptions.map((opt) => {
+                const active = settings.walkPace === opt.value;
+                const Icon = opt.icon;
+                const a11y = `${opt.label}, ${opt.desc}, ${formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}`;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      if (settings.walkPace !== opt.value) {
+                        void Haptics.selectionAsync().catch(() => {});
+                        update({ walkPace: opt.value });
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.paceOpt,
+                      active && styles.optActive,
+                      pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    accessibilityLabel={a11y}
+                  >
+                    <Icon
+                      size={20}
+                      color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                    />
+                    <Text style={[styles.paceLabel, active && styles.optLabelActive]}>
+                      {opt.label}
+                    </Text>
+                    <Text style={[styles.paceKmh, active && styles.optDescActive]}>
+                      {formatWalkSpeed(WALK_PACE_DEFAULTS_MPS[opt.value])}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <SectionLabel>{s.settings.sectionTransport}</SectionLabel>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{s.settings.allowTransferTitle}</Text>
+            <Text style={styles.settingHint}>{s.settings.allowTransferHint}</Text>
+            <View style={styles.langRow}>
+              {modePills.map((pill) => {
+                const active = settings.allowedModes[pill.value];
+                const lastEnabled = active && enabledModes.length === 1;
+                const Icon = pill.icon;
+                return (
+                  <Pressable
+                    key={pill.value}
+                    onPress={() => {
+                      void Haptics.selectionAsync().catch(() => {});
+                      update({
+                        allowedModes: { ...settings.allowedModes, [pill.value]: !active },
+                      });
+                    }}
+                    disabled={lastEnabled}
+                    style={({ pressed }) => [
+                      styles.transportOption,
+                      compact && styles.transportOptionCompact,
+                      active && styles.langChipActive,
+                      lastEnabled && styles.langChipDisabled,
+                      pressed && !lastEnabled && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+                    ]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: active, disabled: lastEnabled }}
+                    accessibilityLabel={pill.label}
+                    accessibilityHint={s.settings.allowTransferHint}
+                  >
+                    <Icon
+                      size={16}
+                      color={active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                    />
+                    <Text style={[styles.transportText, active && styles.langChipTextActive]}>
+                      {pill.label}
+                    </Text>
+                    {active && <Check size={14} color={scheme.onPrimaryContainer} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+            {!hasTrains ? <Text style={styles.warnHint}>{s.settings.trainNoData}</Text> : null}
+            {settings.allowedModes.train && hasTrains ? (
+              <>
+                <View style={styles.divider} />
+                <SettingRow title={s.settings.trainBufferTitle}>
+                  <Stepper
+                    label={s.settings.trainBufferTitle}
+                    value={formatTransferTime(settings.trainMinTransferSec)}
+                    onMinus={() =>
+                      update({
+                        trainMinTransferSec: settings.trainMinTransferSec - trainBuf.step,
+                      })
+                    }
+                    onPlus={() =>
+                      update({
+                        trainMinTransferSec: settings.trainMinTransferSec + trainBuf.step,
+                      })
+                    }
+                    minusDisabled={settings.trainMinTransferSec <= trainBuf.min}
+                    plusDisabled={settings.trainMinTransferSec >= trainBuf.max}
+                  />
+                </SettingRow>
+              </>
+            ) : null}
+          </View>
+
+          <Pressable
+            onPress={() => {
+              void Haptics.selectionAsync().catch(() => {});
+              setAdvancedOpen((v) => !v);
+            }}
+            style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.75 }]}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: advancedOpen }}
+            accessibilityLabel={advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
+          >
+            <Text style={styles.advancedToggleText}>
+              {advancedOpen ? s.settings.advancedHide : s.settings.advancedShow}
+            </Text>
+            <Animated.View style={chevronAnimatedStyle}>
+              <ChevronDown size={18} color={scheme.onSurfaceVariant} />
+            </Animated.View>
+          </Pressable>
+
+          {advancedOpen ? (
+            <Animated.View
+              entering={
+                reduceMotion
+                  ? undefined
+                  : FadeInDown.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+              }
+              exiting={
+                reduceMotion
+                  ? undefined
+                  : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
+              }
+              layout={
+                reduceMotion
+                  ? undefined
+                  : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+              }
+              style={styles.card}
+            >
+              <SettingRow
+                title={s.settings.transferTimeTitle}
+                hint={s.settings.transferTimeHintShort}
+              >
+                <Stepper
+                  label={s.settings.transferTimeTitle}
+                  value={formatTransferTime(settings.minTransferSec)}
+                  onMinus={() => update({ minTransferSec: settings.minTransferSec - minT.step })}
+                  onPlus={() => update({ minTransferSec: settings.minTransferSec + minT.step })}
+                  minusDisabled={settings.minTransferSec <= minT.min}
+                  plusDisabled={settings.minTransferSec >= minT.max}
+                />
+              </SettingRow>
+              <View style={styles.divider} />
+              <SettingRow title={s.settings.anchorTitle} hint={s.settings.anchorHintShort}>
+                <Stepper
+                  label={s.settings.anchorTitle}
+                  value={`${settings.anchorRadiusM} m`}
+                  onMinus={() => update({ anchorRadiusM: settings.anchorRadiusM - anchor.step })}
+                  onPlus={() => update({ anchorRadiusM: settings.anchorRadiusM + anchor.step })}
+                  minusDisabled={settings.anchorRadiusM <= anchor.min}
+                  plusDisabled={settings.anchorRadiusM >= anchor.max}
+                />
+              </SettingRow>
+            </Animated.View>
+          ) : null}
+
+          <Text style={styles.foot}>{s.settings.foot}</Text>
+          <Pressable
+            onPress={() =>
+              Alert.alert(s.settings.resetRoutes, s.settings.resetRoutesBody, [
+                { text: s.common.cancel, style: 'cancel' },
+                { text: s.settings.resetA11y, onPress: () => reset() },
+              ])
+            }
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.resetButton, pressed && styles.menuRowPressed]}
+          >
+            <RotateCcw size={18} color={scheme.onSurfaceVariant} />
+            <Text style={styles.resetText}>{s.settings.resetRoutes}</Text>
+          </Pressable>
+        </>
+      )}
+
+      {targetSection === 'notifications' && <NotificationPrefsCard />}
+      {targetSection === 'backup' && <YourDataDashboard />}
+    </>
+  );
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      {webLayout.isDesktop ? (
+        <View style={styles.desktopRoot}>
+          <View style={styles.desktopPageHeader}>
+            <Text style={styles.desktopPageTitle} accessibilityRole="header">
+              {s.settings.title}
+            </Text>
+          </View>
+          <View style={styles.desktopSplit}>
+            <ScrollView
+              style={styles.desktopNavScroll}
+              contentContainerStyle={[
+                styles.desktopNavContent,
+                { paddingBottom: insets.bottom + 32 },
+              ]}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+            >
+              {cityPanelContent}
+              {menuContent}
+            </ScrollView>
+            <ScrollView
+              key={desktopSection}
+              style={styles.desktopDetailScroll}
+              contentContainerStyle={[
+                styles.desktopDetailContent,
+                { paddingBottom: insets.bottom + 32 },
+              ]}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+            >
               <Animated.View
                 entering={
                   reduceMotion
                     ? undefined
-                    : FadeInDown.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
+                    : FadeIn.duration(180).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
                 }
-                exiting={
-                  reduceMotion
-                    ? undefined
-                    : FadeOutUp.duration(150).easing(Easing.bezier(0.3, 0, 0.8, 0.15))
-                }
-                layout={
-                  reduceMotion
-                    ? undefined
-                    : LinearTransition.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-                }
-                style={styles.card}
+                style={styles.sectionAnimatedWrap}
               >
-                <SettingRow
-                  title={s.settings.transferTimeTitle}
-                  hint={s.settings.transferTimeHintShort}
-                >
-                  <Stepper
-                    label={s.settings.transferTimeTitle}
-                    value={formatTransferTime(settings.minTransferSec)}
-                    onMinus={() => update({ minTransferSec: settings.minTransferSec - minT.step })}
-                    onPlus={() => update({ minTransferSec: settings.minTransferSec + minT.step })}
-                    minusDisabled={settings.minTransferSec <= minT.min}
-                    plusDisabled={settings.minTransferSec >= minT.max}
-                  />
-                </SettingRow>
-                <View style={styles.divider} />
-                <SettingRow title={s.settings.anchorTitle} hint={s.settings.anchorHintShort}>
-                  <Stepper
-                    label={s.settings.anchorTitle}
-                    value={`${settings.anchorRadiusM} m`}
-                    onMinus={() => update({ anchorRadiusM: settings.anchorRadiusM - anchor.step })}
-                    onPlus={() => update({ anchorRadiusM: settings.anchorRadiusM + anchor.step })}
-                    minusDisabled={settings.anchorRadiusM <= anchor.min}
-                    plusDisabled={settings.anchorRadiusM >= anchor.max}
-                  />
-                </SettingRow>
+                <Text style={styles.desktopSectionHeading} accessibilityRole="header">
+                  {sectionTitles[desktopSection]}
+                </Text>
+                {renderSectionBody(desktopSection)}
               </Animated.View>
-            ) : null}
-
-            <Text style={styles.foot}>{s.settings.foot}</Text>
+            </ScrollView>
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
             <Pressable
-              onPress={() =>
-                Alert.alert(s.settings.resetRoutes, s.settings.resetRoutesBody, [
-                  { text: s.common.cancel, style: 'cancel' },
-                  { text: s.settings.resetA11y, onPress: () => reset() },
-                ])
-              }
+              onPress={goBack}
+              style={styles.back}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.resetButton, pressed && styles.menuRowPressed]}
+              accessibilityLabel={s.map.backA11y}
             >
-              <RotateCcw size={18} color={scheme.onSurfaceVariant} />
-              <Text style={styles.resetText}>{s.settings.resetRoutes}</Text>
+              <ChevronLeft size={23} color={scheme.onSurface} />
             </Pressable>
-          </>
-        )}
+            <Text style={styles.headerTitle} accessibilityRole="header">
+              {activeSection ? sectionTitles[activeSection] : s.settings.title}
+            </Text>
+          </View>
 
-        {activeSection === 'notifications' && <NotificationPrefsCard />}
-        {activeSection === 'backup' && <BackupCard />}
-        </Animated.View>
-      </ScrollView>
+          <ScrollView
+            key={activeSection ?? 'index'}
+            contentContainerStyle={[
+              styles.body,
+              webLayout.isMedium && styles.mediumConstrained,
+              { paddingBottom: insets.bottom + 32 },
+            ]}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+          >
+            <View style={styles.sectionAnimatedWrap}>
+              {!activeSection ? (
+                <>
+                  {cityPanelContent}
+                  {menuContent}
+                </>
+              ) : (
+                renderSectionBody(activeSection)
+              )}
+            </View>
+          </ScrollView>
+        </>
+      )}
 
       {citySheetOpen && (
         <CitySelectSheet
@@ -947,6 +1042,58 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  mediumConstrained: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+  },
+  desktopRoot: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 1120,
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 24,
+  },
+  desktopPageHeader: {
+    marginBottom: 18,
+  },
+  desktopPageTitle: {
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+    color: scheme.onSurface,
+  },
+  desktopSplit: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 28,
+    minHeight: 0,
+  },
+  desktopNavScroll: {
+    width: 340,
+    flexShrink: 0,
+    flexGrow: 0,
+  },
+  desktopNavContent: {
+    gap: 18,
+  },
+  desktopDetailScroll: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopDetailContent: {
+    width: '100%',
+    maxWidth: 680,
+  },
+  desktopSectionHeading: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    color: scheme.onSurface,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1167,23 +1314,51 @@ const styles = StyleSheet.create({
     minHeight: 84,
     borderRadius: shape.large,
   },
+  menuRowActive: { backgroundColor: scheme.primaryContainer },
   menuRowPressed: { backgroundColor: scheme.surfaceContainerHigh },
   menuIcon: { width: 32, alignItems: 'center', justifyContent: 'center' },
   menuTitle: { ...type.bodyLarge, color: scheme.onSurface, fontWeight: '500' },
+  menuTitleActive: { color: scheme.onPrimaryContainer, fontWeight: '700' },
   menuDetail: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 19 },
+  menuDetailActive: { color: scheme.onPrimaryContainer },
   menuDivider: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 58,
     marginRight: 14,
     backgroundColor: scheme.outlineVariant,
   },
-  supportLink: {
+  supportCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    padding: 16,
-    borderRadius: shape.large,
-    minHeight: 72,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    minHeight: 76,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.tertiaryContainer,
+  },
+  supportCardPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.99 }],
+  },
+  supportIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  supportTitle: {
+    ...type.titleMedium,
+    color: scheme.onTertiaryContainer,
+    fontWeight: '600',
+  },
+  supportHint: {
+    ...type.bodySmall,
+    color: scheme.onTertiaryContainer,
+    opacity: 0.88,
+    lineHeight: 19,
   },
   languageList: { gap: 8 },
   languageOption: {

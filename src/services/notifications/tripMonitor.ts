@@ -3,6 +3,7 @@ import { kvGet, kvRemove, kvSet } from '../storage';
 import { inCityBounds } from '../../cities';
 import { getActiveCitySync } from '../cityStore';
 import { RoutingService, rememberPlannedConnection } from '../api';
+import { recordJourney } from '../userStats';
 import { getSettingsSync, profileWalkSpeedMps } from '../settings';
 import { liveTracker } from '../liveTracker';
 import { acquireCurrentLocation, getCurrentLocationSnapshot } from '../currentLocation';
@@ -554,6 +555,7 @@ async function startTrackingNow(trip: TrackedTrip): Promise<void> {
   notify();
   rescheduleTicker();
   await persist(true);
+  void recordJourney(connection, 'tracked', getActiveCitySync().id);
   // Live Tracker musi odpytywać także w tle, bo powiadomienia o przesunięciach
   // (Live Update) potrzebują świeżych pozycji pojazdów.
   liveTracker.pin(true);

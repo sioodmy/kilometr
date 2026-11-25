@@ -32,6 +32,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronRight, LocateFixed, MapPin, MapPinned, Search, X } from './icons';
 import { motion } from '../theme/motion';
+import { useEscapeKey, useWebLayout } from '../theme/layout';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
@@ -124,6 +125,7 @@ export function SearchSheet({
   const placeholder = placeholderProp ?? s.search.defaultPlaceholder(cityLoc);
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
+  const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
 
   const [overlayHeight, setOverlayHeight] = useState(windowHeight);
@@ -136,10 +138,12 @@ export function SearchSheet({
 
   const baseHeight = Math.max(windowHeight, maxOverlayHeightRef.current);
   const effectiveHeight = Platform.OS === 'web' ? overlayHeight : baseHeight;
-  const targetSheetHeight = Math.max(
-    Platform.OS === 'web' ? 180 : 320,
-    Math.round((effectiveHeight - insets.top) * 0.93),
-  );
+  const targetSheetHeight = webLayout.isMedium
+    ? Math.min(680, Math.max(380, Math.round(effectiveHeight * 0.82)))
+    : Math.max(
+        Platform.OS === 'web' ? 180 : 320,
+        Math.round((effectiveHeight - insets.top) * 0.93),
+      );
   const targetHeightRef = useRef(targetSheetHeight);
   targetHeightRef.current = targetSheetHeight;
 
@@ -167,13 +171,30 @@ export function SearchSheet({
     backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
   }, [backdropProgress, reducedMotion, translateY]);
 
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
     closeRef.current();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
   }, []);
 
   const requestClose = useCallback(
     (immediate = false) => {
-      if (closingRef.current) return;
+      if (closingRef.current) {
+        if (immediate) finishClose();
+        return;
+      }
       closingRef.current = true;
       Keyboard.dismiss();
       if (immediate || reducedMotion) {
@@ -183,8 +204,9 @@ export function SearchSheet({
       cancelAnimation(translateY);
       cancelAnimation(backdropProgress);
       backdropProgress.value = withTiming(0, motion.exit);
-      translateY.value = withTiming(targetHeightRef.current, motion.exit, (finished) => {
-        if (finished) runOnJS(finishClose)();
+      closeTimerRef.current = setTimeout(finishClose, motion.exit.duration + 60);
+      translateY.value = withTiming(targetHeightRef.current, motion.exit, () => {
+        runOnJS(finishClose)();
       });
     },
     [backdropProgress, finishClose, reducedMotion, translateY],
@@ -195,14 +217,15 @@ export function SearchSheet({
     return subscribeDataStatus(setDataStatus);
   }, []);
 
-  // Android back / gest wstecz płynnie zamyka wyszukiwarkę zamiast wyjścia z apki.
+  // Android back / gest wstecz zamyka wyszukiwarkę; drugi gest domyka natychmiast.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      requestClose();
+      requestClose(closingRef.current);
       return true;
     });
     return () => sub.remove();
   }, [requestClose]);
+  useEscapeKey(true, () => requestClose());
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -249,6 +272,7 @@ export function SearchSheet({
   const dismissPanGesture = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(!webLayout.isMedium)
         .activeOffsetY(8)
         .failOffsetX([-20, 20])
         .onUpdate((e) => {
@@ -273,8 +297,8 @@ export function SearchSheet({
             translateY.value = withTiming(
               targetSheetHeight,
               { duration, easing: motion.exit.easing },
-              (finished) => {
-                if (finished) runOnJS(requestClose)(true);
+              () => {
+                runOnJS(requestClose)(true);
               },
             );
           } else {
@@ -284,7 +308,7 @@ export function SearchSheet({
             });
           }
         }),
-    [backdropProgress, reducedMotion, requestClose, targetSheetHeight, translateY],
+    [backdropProgress, reducedMotion, requestClose, targetSheetHeight, translateY, webLayout.isMedium],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -635,16 +659,26 @@ export function SearchSheet({
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.kav}
+        style={[styles.kav, webLayout.isMedium && styles.kavDesktop]}
         pointerEvents="box-none"
       >
-        <Animated.View style={[styles.sheet, { height: targetSheetHeight }, sheetAnimatedStyle]}>
-          <View style={styles.container}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            webLayout.isMedium && styles.sheetDesktop,
+            webLayout.isMedium && elev.level3,
+            { height: targetSheetHeight },
+            sheetAnimatedStyle,
+          ]}
+        >
+          <View style={[styles.container, webLayout.isMedium && styles.containerDesktop]}>
             <GestureDetector gesture={dismissPanGesture}>
               <View collapsable={false}>
-                <View style={styles.handleRow}>
-                  <View style={styles.handle} />
-                </View>
+                {!webLayout.isMedium && (
+                  <View style={styles.handleRow}>
+                    <View style={styles.handle} />
+                  </View>
+                )}
                 {originTitle && onChangeOrigin && (
                   <View style={styles.originWrap}>
                     <SpringPressable
@@ -868,6 +902,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  kavDesktop: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
   sheet: {
     maxHeight: '100%',
     borderTopLeftRadius: shape.extraLarge,
@@ -877,7 +917,17 @@ const styles = StyleSheet.create({
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
+  sheetDesktop: {
+    width: '100%',
+    maxWidth: 600,
+    borderRadius: shape.extraLarge,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+  },
   container: { flex: 1 },
+  containerDesktop: {
+    paddingTop: 18,
+  },
   handleRow: {
     alignItems: 'center',
     paddingTop: 12,
@@ -968,8 +1018,8 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
   },
   trailingBtn: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: shape.full,

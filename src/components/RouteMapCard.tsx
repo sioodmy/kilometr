@@ -1,9 +1,9 @@
 // Karta mapy w szczegółach połączenia: leniwie montowany podgląd MapLibre GL,
 // szybki wybór etapów podróży oraz przejście jednym dotknięciem do pełnego ekranu.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -71,14 +71,18 @@ function stagePillSubtitle(stage: MapStage, boardLabel: string, alightLabel: str
   return stage.toStop || stage.fromStop;
 }
 
-export function RouteMapCard({
+export const RouteMapCard = memo(function RouteMapCard({
   connection,
   vehicle = null,
   onOpenMap,
+  desktopFill = false,
+  deferMapMount = false,
 }: {
   connection: Connection;
   vehicle?: MapVehicle | null;
   onOpenMap: (stageId?: string) => void;
+  desktopFill?: boolean;
+  deferMapMount?: boolean;
 }) {
   const s = useStrings();
   const enriched = useEnrichedConnection(connection) ?? connection;
@@ -101,8 +105,22 @@ export function RouteMapCard({
   const [attempt, setAttempt] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
-  const [readyToMountMap, setReadyToMountMap] = useState(false);
+  const [readyToMountMap, setReadyToMountMap] = useState(desktopFill && !deferMapMount);
   const cardRef = useRef<View>(null);
+  const mountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (desktopFill && !deferMapMount) setReadyToMountMap(true);
+  }, [desktopFill, deferMapMount]);
+
+  useEffect(() => {
+    return () => {
+      if (mountTimerRef.current) {
+        clearTimeout(mountTimerRef.current);
+        mountTimerRef.current = null;
+      }
+    };
+  }, []);
   const measuredRef = useRef(false);
   const { height: windowHeight } = useWindowDimensions();
 
@@ -140,8 +158,11 @@ export function RouteMapCard({
     node.measureInWindow((_x, y, _w, h) => {
       measuredRef.current = true;
       if (y < windowHeight + 180 && y + h > -160) {
-        InteractionManager.runAfterInteractions(mountMap);
-        setTimeout(mountMap, 550);
+        if (mountTimerRef.current) clearTimeout(mountTimerRef.current);
+        mountTimerRef.current = setTimeout(() => {
+          mountTimerRef.current = null;
+          mountMap();
+        }, 60);
       }
     });
   }, [mountMap, windowHeight]);
@@ -236,8 +257,39 @@ export function RouteMapCard({
       : base;
   }, [activeStage, enriched.arriveAt, enriched.departAt, enriched.durationMin, enriched.transfers, s, stages.length]);
 
+  const routeMapElement = (
+    <RouteMap
+      key={attempt}
+      ref={mapRef}
+      route={route}
+      vehicle={vehicle}
+      selectedLegId={activeStage?.legId ?? null}
+      focusCoords={activeStage?.focusCoords ?? null}
+      stopRange={activeStage?.stopRange ?? null}
+      focusMaxZoom={activeStage?.focusMaxZoom ?? null}
+      offlineBase={offlineBase!}
+      paddingTop={32}
+      paddingBottom={32}
+      paddingLeft={28}
+      paddingRight={28}
+      fitOnGeometry
+      maxZoom={16}
+      onReady={() => {
+        geometry.current.forEach((coords, legId) => mapRef.current?.setGeometry(legId, coords));
+        if (!activeStage) mapRef.current?.fit();
+      }}
+      onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
+      onError={() => setStatus('error')}
+    />
+  );
+
   return (
-    <View ref={cardRef} collapsable={false} onLayout={measureCard} style={styles.card}>
+    <View
+      ref={cardRef}
+      collapsable={false}
+      onLayout={measureCard}
+      style={[styles.card, desktopFill && styles.cardDesktopFill]}
+    >
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
           <View style={styles.headerIconBadge}>
@@ -269,8 +321,8 @@ export function RouteMapCard({
         </SpringPressable>
       </View>
 
-      <View style={styles.mapFrame}>
-        <View style={styles.map}>
+      <View style={[styles.mapFrame, desktopFill && styles.mapFrameDesktopFill]}>
+        <View style={[styles.map, desktopFill && styles.mapDesktopFill]}>
           {!readyToMountMap ? (
             <SpringPressable
               onPress={mountMap}
@@ -288,47 +340,26 @@ export function RouteMapCard({
             </SpringPressable>
           ) : (
             <>
-              {offlineBase !== undefined && (
-                <Pressable
-                  onPress={openFullscreen}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.compass.openMap}
-                  style={StyleSheet.absoluteFill}
-                >
-                  <View
+              {offlineBase !== undefined &&
+                (desktopFill ? (
+                  <View style={StyleSheet.absoluteFill}>{routeMapElement}</View>
+                ) : (
+                  <Pressable
+                    onPress={openFullscreen}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.compass.openMap}
                     style={StyleSheet.absoluteFill}
-                    pointerEvents="none"
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
                   >
-                    <RouteMap
-                      key={attempt}
-                      ref={mapRef}
-                      route={route}
-                      vehicle={vehicle}
-                      selectedLegId={activeStage?.legId ?? null}
-                      focusCoords={activeStage?.focusCoords ?? null}
-                      stopRange={activeStage?.stopRange ?? null}
-                      focusMaxZoom={activeStage?.focusMaxZoom ?? null}
-                      offlineBase={offlineBase}
-                      paddingTop={32}
-                      paddingBottom={32}
-                      paddingLeft={28}
-                      paddingRight={28}
-                      fitOnGeometry
-                      maxZoom={16}
-                      onReady={() => {
-                        geometry.current.forEach((coords, legId) =>
-                          mapRef.current?.setGeometry(legId, coords),
-                        );
-                        if (!activeStage) mapRef.current?.fit();
-                      }}
-                      onTilesStatus={(ok) => setStatus(ok ? 'ready' : 'error')}
-                      onError={() => setStatus('error')}
-                    />
-                  </View>
-                </Pressable>
-              )}
+                    <View
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    >
+                      {routeMapElement}
+                    </View>
+                  </Pressable>
+                ))}
 
               {status === 'ready' && (activeStage || vehicle) && (
                 <View style={styles.canvasTopOverlay} pointerEvents="none">
@@ -357,7 +388,11 @@ export function RouteMapCard({
                 >
                   {status === 'loading' && <MorphingLoader variant="contained" size={30} startIndex={3} />}
                   <Text style={styles.statusText}>
-                    {status === 'loading' ? s.compass.mapLoading : s.compass.mapFailed}
+                    {status === 'loading'
+                      ? s.compass.mapLoading
+                      : Platform.OS === 'web'
+                        ? s.compass.mapFailedWeb
+                        : s.compass.mapFailed}
                   </Text>
                   {status === 'error' && (
                     <SpringPressable
@@ -435,6 +470,7 @@ export function RouteMapCard({
           ref={railRef}
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.stageRailScroll}
           contentContainerStyle={styles.stageRail}
           overScrollMode="never"
         >
@@ -540,7 +576,7 @@ export function RouteMapCard({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -551,6 +587,10 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
     ...elev.level1,
+  },
+  cardDesktopFill: {
+    flex: 1,
+    minHeight: 420,
   },
   header: {
     flexDirection: 'row',
@@ -613,9 +653,18 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
+  mapFrameDesktopFill: {
+    flex: 1,
+    minHeight: 420,
+  },
   map: {
     height: 256,
     backgroundColor: scheme.surfaceContainerLowest,
+  },
+  mapDesktopFill: {
+    flex: 1,
+    height: undefined,
+    minHeight: 420,
   },
   canvasTopOverlay: {
     position: 'absolute',
@@ -731,6 +780,10 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
+  },
+  stageRailScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   stageRail: {
     gap: 8,

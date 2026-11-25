@@ -1,11 +1,12 @@
 import { decodeSharedConnection, extractShareTripToken } from './connection';
 
-/** Obsługuje krótkie linki /t#<token>, #t=<token> oraz powrót z powiadomienia. */
+/** Obsługuje krótkie linki /t#<token>, #t=<token>, web.kilometr.app/shared oraz powrót z powiadomienia. */
 export function sharedTripPath(path: string): string | null {
   try {
     const url = new URL(path, 'https://kilometr.app');
     const custom = url.protocol === 'kilometr:';
-    if (!custom && (url.protocol !== 'https:' || url.hostname !== 'kilometr.app')) return null;
+    const validHost = url.hostname === 'kilometr.app' || url.hostname === 'web.kilometr.app';
+    if (!custom && (url.protocol !== 'https:' || !validHost)) return null;
     const route = custom ? `/${url.hostname}${url.pathname}` : url.pathname;
     if (!['/', '/t', '/t/', '/shared'].includes(route)) return null;
     const isShortRoute = route === '/t' || route === '/t/';

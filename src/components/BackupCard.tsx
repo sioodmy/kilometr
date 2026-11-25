@@ -1,15 +1,9 @@
-// Karta „Twoje dane" na ekranie Ustawień: eksport i import kopii zapasowej.
-//
-// Dwie ścieżki z dwoma różnymi charakterystykami ryzyka, stąd dwie różne
-// reakcje na błąd. Eksport tylko zapisuje nowy plik, nic nie psuje, więc przy
-// błędzie nie blokujemy przyciskiem. Import czyje dane, więc najpierw
-// wybieramy plik, pokazujemy co jest w środku i dopiero po potwierdzeniu
-// zapisujemy (Alert, nie własny modal, spójnie z resztą Ustawień).
+// Sekcja kopii zapasowej (eksport i import pliku JSON) w ramach widoku „Twoje dane".
 
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FileDown, FileUp } from './icons';
+import { Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Constants from 'expo-constants';
+import { FileDown, FileUp } from './icons';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, type Strings } from '../i18n';
 import {
@@ -31,15 +25,16 @@ function AppVersion(): string | null {
   }
 }
 
-/** `Miejsca: 4 • Przejazdy: 12`. Bez własnych reguł liczby mnogiej-
- *  formatowanie (wraz z nim ewentualne liczby mnogie) żyje w słowniku. */
 function summarize(counts: BackupCounts, t: Strings['settings']): string {
   return t.backupCurrent(counts.places, counts.savedRoutes, counts.tripHistory);
 }
 
-export function BackupCard() {
+export function BackupCard({ onDataChanged }: { onDataChanged?: () => void }) {
   const s = useStrings();
   const b = s.settings;
+  const y = s.yourData;
+  const { width } = useWindowDimensions();
+  const sideBySide = width >= 460;
   const [counts, setCounts] = useState<BackupCounts | null>(null);
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
   const setIdle = () => setBusy(null);
@@ -73,9 +68,6 @@ export function BackupCard() {
     setBusy('export');
     try {
       const { path, shared } = await exportBackupToFile(AppVersion());
-      // Okno udostępniania samo w sobie jest potwierdzeniem („wysłałeś
-      // plik"). Ścieżkę pokazujemy tylko gdy go nie było: wtedy plik naprawdę
-      // zostaje w pamięci telefonu i warto wiedzieć, gdzie go szukać.
       if (!shared) Alert.alert(b.backupExportDoneTitle, b.backupExportDoneBody(path));
     } catch (err) {
       const reason = err instanceof Error ? err.message : b.backupExportFailFallback;
@@ -92,11 +84,10 @@ export function BackupCard() {
         text: b.backupImportAction,
         onPress: () => {
           setBusy('import');
-          // `applyBackup` zapisuje do KV, więc wyjątek tu znaczy „coś się
-          // nie udało", a nie „użytkownik się rozmyślił", stąd `catch`.
           void applyBackup(data)
             .then((applied) => {
               setCounts(applied);
+              onDataChanged?.();
               onDone(applied);
             })
             .catch((err) => {
@@ -123,9 +114,6 @@ export function BackupCard() {
         Alert.alert(b.backupImportConfirmTitle, b.backupImportNothing);
         return;
       }
-      // Ścieżka importu jest dwuetapowa, więc `busy` zdejmujemy przed
-      // potwierdzeniem: `Alert` nie ma własnego stanu zajętości, a przycisk
-      // musi dać się dostać do reszty ekranu.
       setIdle();
       confirmImport(summarize(picked.counts, b), picked.envelope.data, (applied) => {
         Alert.alert(b.backupImportDoneTitle, b.backupImportDoneBody(summarize(applied, b)));
@@ -135,19 +123,36 @@ export function BackupCard() {
     }
   };
 
-  // Pustą kopię wyeksportujemy tylko wtedy, gdy naprawdę nie ma nic, ale
-  // przycisk zostaje aktywny, bo sama kopia (ustawienia, język) coś wnosi.
   const empty =
     counts !== null && counts.places === 0 && counts.savedRoutes === 0 && counts.tripHistory === 0;
 
   return (
     <View style={styles.card}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {y.backupSectionTitle}
+      </Text>
       <Text style={styles.hint}>{b.backupHint}</Text>
-      <Text style={styles.hintMuted}>{b.backupExcludeHint}</Text>
-      {counts && !empty ? <Text style={styles.summary}>{summarize(counts, b)}</Text> : null}
+
+      {counts && !empty ? (
+        <View style={styles.pillsRow}>
+          <View style={styles.countChip}>
+            <Text style={styles.countValue}>{counts.places}</Text>
+            <Text style={styles.countLabel}>{y.placesShort}</Text>
+          </View>
+          <View style={styles.countChip}>
+            <Text style={styles.countValue}>{counts.savedRoutes}</Text>
+            <Text style={styles.countLabel}>{y.routesShort}</Text>
+          </View>
+          <View style={styles.countChip}>
+            <Text style={styles.countValue}>{counts.tripHistory}</Text>
+            <Text style={styles.countLabel}>{y.historyShort}</Text>
+          </View>
+        </View>
+      ) : null}
+
       {empty ? <Text style={styles.hintMuted}>{b.backupEmpty}</Text> : null}
 
-      <View style={styles.row}>
+      <View style={[styles.row, sideBySide && styles.rowHorizontal]}>
         <Pressable
           onPress={handleExport}
           accessibilityRole="button"
@@ -155,8 +160,9 @@ export function BackupCard() {
           accessibilityLabel={b.backupExportA11y}
           style={({ pressed }) => [
             styles.btn,
+            sideBySide && styles.btnFlex,
             busy !== null && styles.btnDisabled,
-            pressed && busy === null && { opacity: 0.7 },
+            pressed && busy === null && { opacity: 0.72 },
           ]}
         >
           <FileDown size={18} color={scheme.onSecondaryContainer} />
@@ -169,14 +175,18 @@ export function BackupCard() {
           accessibilityLabel={b.backupImportA11y}
           style={({ pressed }) => [
             styles.btn,
+            styles.btnOutlined,
+            sideBySide && styles.btnFlex,
             busy !== null && styles.btnDisabled,
-            pressed && busy === null && { opacity: 0.7 },
+            pressed && busy === null && { opacity: 0.72 },
           ]}
         >
-          <FileUp size={18} color={scheme.onSecondaryContainer} />
-          <Text style={styles.btnText}>{b.backupImport}</Text>
+          <FileUp size={18} color={scheme.onSurface} />
+          <Text style={styles.btnOutlinedText}>{b.backupImport}</Text>
         </Pressable>
       </View>
+
+      <Text style={styles.hintMuted}>{b.backupExcludeHint}</Text>
     </View>
   );
 }
@@ -186,12 +196,54 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.extraLarge,
     padding: 20,
-    gap: 18,
+    gap: 14,
   },
-  hint: { ...type.bodyMedium, color: scheme.onSurfaceVariant, lineHeight: 21 },
-  hintMuted: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 19 },
-  summary: { ...type.labelLarge, color: scheme.primary },
-  row: { gap: 10, marginTop: 2 },
+  sectionTitle: {
+    ...type.titleMedium,
+    fontWeight: '600',
+    color: scheme.onSurface,
+  },
+  hint: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 20,
+  },
+  hintMuted: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 18,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  countChip: {
+    flex: 1,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.large,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 2,
+  },
+  countValue: {
+    ...type.titleMedium,
+    fontWeight: '700',
+    color: scheme.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  countLabel: {
+    ...type.labelSmall,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+  },
+  row: {
+    gap: 10,
+    marginTop: 2,
+  },
+  rowHorizontal: {
+    flexDirection: 'row',
+  },
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -199,14 +251,30 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.medium,
-    minHeight: 52,
+    minHeight: 48,
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
-  btnDisabled: { opacity: 0.55 },
+  btnOutlined: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.outlineVariant,
+  },
+  btnFlex: {
+    flex: 1,
+  },
+  btnDisabled: {
+    opacity: 0.55,
+  },
   btnText: {
     ...type.titleSmall,
     color: scheme.onSecondaryContainer,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  btnOutlinedText: {
+    ...type.titleSmall,
+    color: scheme.onSurface,
     flexShrink: 1,
     textAlign: 'center',
   },

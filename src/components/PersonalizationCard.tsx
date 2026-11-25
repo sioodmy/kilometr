@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as Haptics from 'expo-haptics';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Check, Wallpaper } from './icons';
 import { useStrings } from '../i18n';
 import {
@@ -47,39 +47,41 @@ export function PersonalizationCard() {
         accessibilityLabel={s.personalization.colors}
         style={styles.options}
       >
-        <Pressable
-          onPress={() => void select('system')}
-          onFocus={() => setFocused('system')}
-          onBlur={() => setFocused(null)}
-          disabled={saving}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: selected === 'system', disabled: saving }}
-          accessibilityLabel={s.personalization.system}
-          accessibilityHint={
-            hasWallpaperColors()
-              ? s.personalization.systemDescription
-              : s.personalization.wallpaperUnavailable
-          }
-          style={({ pressed }) => [
-            styles.systemOption,
-            selected === 'system' && styles.selected,
-            focused === 'system' && styles.focused,
-            pressed && styles.pressed,
-          ]}
-        >
-          <View style={[styles.swatch, { backgroundColor: wallpaper.primaryContainer }]}>
-            <Wallpaper size={24} color={wallpaper.onPrimaryContainer} />
-          </View>
-          <View style={styles.systemText}>
-            <Text style={styles.label}>{s.personalization.system}</Text>
-            <Text style={styles.hint}>
-              {hasWallpaperColors()
+        {Platform.OS !== 'web' && (
+          <Pressable
+            onPress={() => void select('system')}
+            onFocus={() => setFocused('system')}
+            onBlur={() => setFocused(null)}
+            disabled={saving}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected === 'system', disabled: saving }}
+            accessibilityLabel={s.personalization.system}
+            accessibilityHint={
+              hasWallpaperColors()
                 ? s.personalization.systemDescription
-                : s.personalization.wallpaperUnavailable}
-            </Text>
-          </View>
-          {selected === 'system' && <Check size={20} color={scheme.primary} />}
-        </Pressable>
+                : s.personalization.wallpaperUnavailable
+            }
+            style={({ pressed }) => [
+              styles.systemOption,
+              selected === 'system' && styles.selected,
+              focused === 'system' && styles.focused,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={[styles.swatch, { backgroundColor: wallpaper.primaryContainer }]}>
+              <Wallpaper size={24} color={wallpaper.onPrimaryContainer} />
+            </View>
+            <View style={styles.systemText}>
+              <Text style={styles.label}>{s.personalization.system}</Text>
+              <Text style={styles.hint}>
+                {hasWallpaperColors()
+                  ? s.personalization.systemDescription
+                  : s.personalization.wallpaperUnavailable}
+              </Text>
+            </View>
+            {selected === 'system' && <Check size={20} color={scheme.primary} />}
+          </Pressable>
+        )}
         <View style={styles.grid}>
           {(Object.keys(THEME_SEEDS) as (keyof typeof THEME_SEEDS)[]).map((key) => {
             const palette = presets[key];
@@ -157,11 +159,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: { flexShrink: 1, ...type.bodyLarge, color: scheme.onSurface },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   colorOption: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     borderWidth: 2,
     borderColor: 'transparent',
     alignItems: 'center',

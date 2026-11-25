@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Dimensions,
   Keyboard,
   Pressable,
@@ -45,6 +44,8 @@ import { SpringPressable } from './SpringPressable';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 import { getSuggestionIconMeta, SuggestionRow } from './SuggestionRow';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
+import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
 import { SearchService, fetchNearestStops, type NearestStop } from '../services';
@@ -100,16 +101,21 @@ export function AddPlaceSheet({
   const sheetRef = useRef<BottomSheet>(null);
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
+  const webLayout = useWebLayout();
   const { width, fontScale } = useWindowDimensions();
-  const compact = width / fontScale < 330;
-
-  // Liczba kolumn w katalogu ikon dostosowana do szerokości i rozmiaru czcionki.
-  const iconColumns = Math.max(3, Math.min(4, Math.floor((width - 40 + 8) / (86 * Math.max(1, fontScale * 0.92)))));
-  const iconGridGap = 8;
-  const iconTileWidth = Math.floor((width - 40 - iconGridGap * (iconColumns - 1)) / iconColumns);
-
   // Stała wysokość zapobiega przesuwaniu arkusza przez klawiaturę Androida.
   const [sheetWindowHeight] = useState(() => Dimensions.get('window').height);
+  const effectiveWindowHeight = webLayout.isWeb ? webLayout.height : sheetWindowHeight;
+  const desktopHeight = Math.min(effectiveWindowHeight - 96, 700);
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 580, desktopHeight);
+  useEscapeKey(true, () => sheetRef.current?.close());
+  const effectiveWidth = webLayout.isMedium ? sheetProps.innerWidth : width;
+  const compact = effectiveWidth / fontScale < 330;
+
+  // Liczba kolumn w katalogu ikon dostosowana do szerokości i rozmiaru czcionki.
+  const iconColumns = Math.max(3, Math.min(4, Math.floor((effectiveWidth - 40 + 8) / (86 * Math.max(1, fontScale * 0.92)))));
+  const iconGridGap = 8;
+  const iconTileWidth = Math.floor((effectiveWidth - 40 - iconGridGap * (iconColumns - 1)) / iconColumns);
   const isEditing = Boolean(initialPlace);
   const s = useStrings();
 
@@ -266,7 +272,10 @@ export function AddPlaceSheet({
     return chips.slice(0, 4);
   }, [name, selectedLoc, s.places.iconName]);
 
-  const snapPoints = useMemo(() => ['84%', '96%'], []);
+  const snapPoints = useMemo(
+    () => (webLayout.isMedium ? [desktopHeight] : ['84%', '96%']),
+    [desktopHeight, webLayout.isMedium],
+  );
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -282,9 +291,9 @@ export function AddPlaceSheet({
     [s.common.close],
   );
 
-  // Android back / gest wstecz.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+  // Android back / gest wstecz: cofa podwidoki, potem zamyka arkusz.
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose, {
+    onBeforeClose: () => {
       if (view === 'icon') {
         Keyboard.dismiss();
         setView('form');
@@ -309,11 +318,9 @@ export function AddPlaceSheet({
         setConfirmDelete(false);
         return true;
       }
-      sheetRef.current?.close();
-      return true;
-    });
-    return () => sub.remove();
-  }, [confirmDelete, selectedLoc, view]);
+      return false;
+    },
+  });
 
   // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki pod kotwicę.
   useEffect(() => {
@@ -484,25 +491,29 @@ export function AddPlaceSheet({
         top: 0,
         left: 0,
         right: 0,
-        height: sheetWindowHeight,
+        height: effectiveWindowHeight,
       }}
     >
       <BottomSheet
         ref={sheetRef}
-        index={1}
+        index={webLayout.isMedium ? 0 : 1}
         snapPoints={snapPoints}
         animationConfigs={animationConfigs}
         topInset={insets.top}
-        bottomInset={insets.bottom}
+        bottomInset={sheetProps.bottomInset}
+        detached={sheetProps.detached}
+        style={sheetProps.sheetStyle}
         enableDynamicSizing={false}
-        enablePanDownToClose
+        enablePanDownToClose={!webLayout.isMedium}
         android_keyboardInputMode="adjustPan"
         keyboardBehavior="extend"
         onChange={(idx) => {
+          onSheetChange(idx);
           if (idx === -1) onClose();
         }}
         backdropComponent={renderBackdrop}
-        backgroundStyle={styles.sheet}
+        backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
+        handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}
         handleIndicatorStyle={styles.handle}
       >
         <View style={styles.container} accessibilityViewIsModal>

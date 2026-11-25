@@ -1,0 +1,28 @@
+# Kilometr
+
+> Open-source public transit and rail trip planner for Poland, supporting offline GTFS schedules, live vehicle positions, and route planning across 132 cities. Free, without ads or accounts (GPL-3.0).
+
+Kilometr combines urban transit (buses, trams, trolleybuses, metro, cable cars) and rail in a single search. Routing and saved places work offline on the device using downloaded GTFS schedules.
+
+## Pages and App
+
+- [Landing Page](https://kilometr.app/): Overview, supported cities map, screenshots, and download links.
+- [Web PWA](https://web.kilometr.app/): Browser version of the Kilometr trip planner.
+- [iOS Installation Guide](https://kilometr.app/#ios): Instructions for sideloading the unsigned IPA via Sideloadly.
+- [Privacy Policy](https://kilometr.app/#polityka): Local data storage, optional location usage, and external service requests.
+
+## Downloads and Source
+
+- [GitHub Repository](https://github.com/sioodmy/kilometr): Source code, issue tracker, and releases (GPL-3.0).
+- [Google Play](https://play.google.com/store/apps/details?id=app.kilometr&hl=pl-PL): Official Android release.
+- [iOS IPA (Latest Release)](https://github.com/sioodmy/kilometr/releases/latest/download/kilometr-unsigned.ipa): Unsigned IPA package for iOS 16.4+.
+- [Obtainium Config](https://kilometr.app/obtainium.json): Direct APK update configuration for Obtainium on Android.
+
+## Coverage
+
+Kilometr covers 132 cities and metropolitan areas in Poland, including Metropolia GZM, Warszawa, Trójmiasto, Kraków, Wrocław, Łódź, Poznań, Szczecin, Lublin, Bydgoszcz, as well as regional and intercity rail connections.
+
+## Optional
+
+- [Sitemap](https://kilometr.app/sitemap.xml): XML sitemap for the landing site.
+- [BuyCoffee](https://buycoffee.to/sioodmy): Voluntary project support.
