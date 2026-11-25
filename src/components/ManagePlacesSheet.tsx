@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 10 },
   cardActions: {
     paddingTop: 12,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   action: {

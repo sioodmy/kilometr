@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
   terminalCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 24,
     paddingVertical: 32,
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   spotlightCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 12,
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
   scheduleCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 12,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   hourRowDivider: {
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   hourCol: {
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   },
   minutePillPlanned: {
     backgroundColor: scheme.tertiaryContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.tertiary,
   },
   minutePillNext: {

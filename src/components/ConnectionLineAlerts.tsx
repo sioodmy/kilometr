@@ -834,7 +834,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 14,
@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 16,
     ...elev.level1,
@@ -906,7 +906,7 @@ const styles = StyleSheet.create({
   },
   counterPill: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     borderRadius: shape.full,
     paddingHorizontal: 10,
@@ -933,12 +933,12 @@ const styles = StyleSheet.create({
   },
   alertCardResolved: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   alertCardNormal: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   alertHeaderRow: {
@@ -1036,7 +1036,7 @@ const styles = StyleSheet.create({
   },
   solutionBox: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     borderRadius: 14,
     padding: 12,
@@ -1062,7 +1062,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingVertical: 8,
     paddingHorizontal: 11,
@@ -1105,7 +1105,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingVertical: 10,
     paddingHorizontal: 16,

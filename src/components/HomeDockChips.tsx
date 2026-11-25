@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     paddingLeft: 14,
     paddingRight: 14,
     borderRadius: shape.full,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   chipFullWidth: {
     width: '100%',

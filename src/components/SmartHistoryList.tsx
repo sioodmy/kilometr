@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 13,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     borderRadius: 8,
     paddingVertical: 14,
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth + 1,
     borderColor: scheme.outlineVariant,
   },
   departPillUrgent: {

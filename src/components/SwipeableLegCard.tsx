@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -14,
     marginBottom: -16,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
     borderBottomLeftRadius: shape.extraLarge,
     borderBottomRightRadius: shape.extraLarge,
