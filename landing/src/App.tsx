@@ -86,6 +86,14 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
+    document.body.classList.toggle('is-shared-view', shared);
+    const themeMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.content = shared ? '#111414' : '#101713';
+    return () => {
+      document.body.classList.remove('is-shared-view');
+    };
+  }, [shared]);
+  useEffect(() => {
     if (shared) return;
     document.title = page ? `${s[page].title} | Kilometr` : s.meta.title;
     document
@@ -191,31 +199,33 @@ export default function App() {
       ) : (
         <Landing />
       )}
-      <footer className="footer section-shell">
-        <div className="footer-main">
-          <a className="brand" href="#top">
-            <img src="./icon.png" alt="" width={26} height={26} loading="lazy" decoding="async" />
-            <span>Kilometr</span>
-          </a>
-          <p>{s.footer.tagline}</p>
-          <nav aria-label={s.nav.label}>
-            <a href="#polityka">{s.footer.privacy}</a>
-            <a href={GITHUB_URL}>
-              {s.footer.github}
-              <ArrowUpRight size={13} aria-hidden="true" />
+      {!shared && (
+        <footer className="footer section-shell">
+          <div className="footer-main">
+            <a className="brand" href="#top">
+              <img src="./icon.png" alt="" width={26} height={26} loading="lazy" decoding="async" />
+              <span>Kilometr</span>
             </a>
-            <a href={OBTAINIUM_URL}>
-              {s.footer.obtainium}
-              <ArrowUpRight size={13} aria-hidden="true" />
-            </a>
-          </nav>
-        </div>
-        <div className="footer-bottom">
-          <span>© {new Date().getFullYear()} Kilometr</span>
-          <DisplaySettings />
-          <a href={`${GITHUB_URL}/blob/main/LICENSE`}>{s.footer.license}</a>
-        </div>
-      </footer>
+            <p>{s.footer.tagline}</p>
+            <nav aria-label={s.nav.label}>
+              <a href="#polityka">{s.footer.privacy}</a>
+              <a href={GITHUB_URL}>
+                {s.footer.github}
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </a>
+              <a href={OBTAINIUM_URL}>
+                {s.footer.obtainium}
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </a>
+            </nav>
+          </div>
+          <div className="footer-bottom">
+            <span>© {new Date().getFullYear()} Kilometr</span>
+            <DisplaySettings />
+            <a href={`${GITHUB_URL}/blob/main/LICENSE`}>{s.footer.license}</a>
+          </div>
+        </footer>
+      )}
     </>
   );
 }

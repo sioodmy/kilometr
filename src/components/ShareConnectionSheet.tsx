@@ -17,16 +17,22 @@ import BottomSheet, {
   useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, Copy, Download, ImageUp, Link, X } from './icons';
+import { Check, Copy, Download, ImageUp, Link, Share2, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
 import { motion } from '../theme/motion';
-import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
+import {
+  DesktopSheetTopSpacer,
+  getDesktopSheetProps,
+  useEscapeKey,
+  useWebLayout,
+} from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, getLocaleSync } from '../i18n';
 import { getActiveCityIdSync } from '../services/cityStore';
 import { buildShareUrl, createSharedConnection, shareMessage } from '../sharing/connection';
 import type { Connection } from '../types/models';
 import { JourneyShareCard } from './JourneyShareCard';
+import { SpringPressable } from './SpringPressable';
 
 export function ShareConnectionSheet({
   connection,
@@ -79,6 +85,7 @@ export function ShareConnectionSheet({
   }
   const message = journey ? `${shareMessage(journey, s)}\n${url}` : '';
   const available = !!journey && !!url;
+  const displayUrl = url.replace(/^https:\/\//, '');
 
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -87,6 +94,12 @@ export function ShareConnectionSheet({
     });
     return () => back.remove();
   }, []);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2400);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   async function run(action: () => Promise<unknown>, saving = false) {
     if (busyRef.current || !available) return;
@@ -112,7 +125,7 @@ export function ShareConnectionSheet({
         if (err instanceof Error && err.name === 'AbortError') return;
       }
     }
-    await Clipboard.setStringAsync(message);
+    await Clipboard.setStringAsync(url);
     setCopied(true);
   }
 
@@ -171,22 +184,26 @@ export function ShareConnectionSheet({
     >
       <View style={styles.container} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">
-            {s.title}
-          </Text>
+          <View style={styles.headerTitleCol}>
+            <Text style={styles.title} accessibilityRole="header">
+              {s.title}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={2}>
+              {s.subtitle}
+            </Text>
+          </View>
           <Pressable
-            style={styles.close}
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
             onPress={() => sheet.current?.close()}
             accessibilityRole="button"
             accessibilityLabel={s.close}
           >
-            <X size={22} color={scheme.onSurface} />
+            <X size={20} color={scheme.onSurface} />
           </Pressable>
         </View>
         <BottomSheetScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         >
-          <Text style={styles.subtitle}>{s.subtitle}</Text>
           {journey && (
             <View
               ref={card}
@@ -198,96 +215,92 @@ export function ShareConnectionSheet({
               <JourneyShareCard journey={journey} />
             </View>
           )}
-          <Text style={styles.note}>{s.snapshot}</Text>
-          <Text style={styles.note}>{s.nativeHint}</Text>
-          {(error || !journey || !url) && (
-            <Text style={styles.error} accessibilityRole="alert">
-              {error || s.error}
-            </Text>
-          )}
-          <Pressable
-            onPress={() =>
-              void run(Platform.OS === 'web' ? shareWebLink : shareCard)
-            }
-            disabled={busy || !available}
-            accessibilityRole="button"
-            accessibilityState={{ busy, disabled: busy || !available }}
-            style={({ pressed }) => [
-              styles.primary,
-              pressed && styles.pressed,
-              (busy || !available) && styles.disabled,
-            ]}
-          >
-            {busy ? (
-              <ActivityIndicator color={scheme.onPrimary} />
-            ) : Platform.OS === 'web' ? (
-              <Link size={22} color={scheme.onPrimary} />
-            ) : (
-              <ImageUp size={22} color={scheme.onPrimary} />
-            )}
-            <Text style={styles.primaryText}>
-              {busy ? s.preparing : Platform.OS === 'web' ? s.linkOnly : s.imageAndLink}
-            </Text>
-          </Pressable>
-          <View style={styles.actions}>
-            {Platform.OS !== 'web' && (
-              <Pressable
-                onPress={() => void run(downloadCard, true)}
-                disabled={busy || !available}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy || !available }}
-                style={({ pressed }) => [
-                  styles.action,
-                  pressed && styles.pressed,
-                  (busy || !available) && styles.disabled,
-                ]}
-              >
-                <Download size={22} color={scheme.onSecondaryContainer} />
-                <Text style={styles.actionText}>{s.download}</Text>
-              </Pressable>
-            )}
-            <Pressable
+
+          {available && (
+            <SpringPressable
               onPress={() =>
                 void run(async () => {
                   await Clipboard.setStringAsync(url);
                   setCopied(true);
                 })
               }
-              disabled={busy || !available}
+              disabled={busy}
+              haptic="selection"
               accessibilityRole="button"
-              accessibilityState={{ disabled: busy || !available }}
-              style={({ pressed }) => [
-                styles.action,
-                pressed && styles.pressed,
-                (busy || !available) && styles.disabled,
-              ]}
+              accessibilityLabel={copied ? s.copied : s.copy}
+              style={styles.urlBar}
             >
-              {copied ? (
-                <Check size={22} color={scheme.onSecondaryContainer} />
-              ) : (
-                <Copy size={22} color={scheme.onSecondaryContainer} />
-              )}
-              <Text style={styles.actionText} accessibilityLiveRegion="polite">
-                {copied ? s.copied : s.copy}
+              <Link size={16} color={scheme.primary} />
+              <Text style={styles.urlText} numberOfLines={1} ellipsizeMode="middle">
+                {displayUrl}
               </Text>
-            </Pressable>
-          </View>
-          {Platform.OS !== 'web' && (
-            <Pressable
-              onPress={() => void run(() => Share.share({ title: s.title, message }))}
-              disabled={busy || !available}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: busy || !available }}
-              style={({ pressed }) => [
-                styles.linkAction,
-                pressed && styles.pressed,
-                (busy || !available) && styles.disabled,
-              ]}
-            >
-              <Link size={20} color={scheme.primary} />
-              <Text style={styles.linkText}>{s.linkOnly}</Text>
-            </Pressable>
+              <View style={[styles.urlCopyChip, copied && styles.urlCopyChipDone]}>
+                {copied ? (
+                  <Check size={14} color={scheme.onPrimaryContainer} />
+                ) : (
+                  <Copy size={14} color={scheme.onSecondaryContainer} />
+                )}
+                <Text style={[styles.urlCopyText, copied && styles.urlCopyTextDone]}>
+                  {copied ? s.copied : s.copy}
+                </Text>
+              </View>
+            </SpringPressable>
           )}
+
+          {(error || !journey || !url) && (
+            <Text style={styles.error} accessibilityRole="alert">
+              {error || s.error}
+            </Text>
+          )}
+
+          <SpringPressable
+            onPress={() => void run(Platform.OS === 'web' ? shareWebLink : shareCard)}
+            disabled={busy || !available}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityState={{ busy, disabled: busy || !available }}
+            style={[styles.primary, (busy || !available) && styles.disabled]}
+          >
+            {busy ? (
+              <ActivityIndicator color={scheme.onPrimary} />
+            ) : Platform.OS === 'web' ? (
+              <Share2 size={20} color={scheme.onPrimary} />
+            ) : (
+              <ImageUp size={20} color={scheme.onPrimary} />
+            )}
+            <Text style={styles.primaryText}>
+              {busy ? s.preparing : Platform.OS === 'web' ? s.linkOnly : s.imageAndLink}
+            </Text>
+          </SpringPressable>
+
+          {Platform.OS !== 'web' && (
+            <View style={styles.actions}>
+              <SpringPressable
+                onPress={() => void run(downloadCard, true)}
+                disabled={busy || !available}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy || !available }}
+                style={[styles.action, (busy || !available) && styles.disabled]}
+              >
+                <Download size={19} color={scheme.onSecondaryContainer} />
+                <Text style={styles.actionText}>{s.download}</Text>
+              </SpringPressable>
+              <SpringPressable
+                onPress={() => void run(() => Share.share({ title: s.title, message }))}
+                disabled={busy || !available}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy || !available }}
+                style={[styles.action, (busy || !available) && styles.disabled]}
+              >
+                <Link size={19} color={scheme.onSecondaryContainer} />
+                <Text style={styles.actionText}>{s.linkOnly}</Text>
+              </SpringPressable>
+            </View>
+          )}
+
+          <Text style={styles.note}>{s.nativeHint}</Text>
           <Text style={styles.note}>{s.privacy}</Text>
         </BottomSheetScrollView>
       </View>
@@ -305,36 +318,101 @@ const styles = StyleSheet.create({
   handle: { backgroundColor: scheme.outline, width: 36 },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
-    paddingLeft: 24,
-    paddingRight: 12,
-    paddingBottom: 8,
+    paddingLeft: 20,
+    paddingRight: 14,
+    paddingBottom: 12,
   },
-  title: { ...type.titleLarge, fontWeight: '600', flex: 1, color: scheme.onSurface },
+  headerTitleCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  title: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: scheme.onSurface,
+  },
+  subtitle: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 18,
+  },
   close: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: shape.medium,
+    borderRadius: 14,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
   },
-  content: { paddingHorizontal: 20, gap: 16, width: '100%', maxWidth: 600, alignSelf: 'center' },
-  subtitle: { ...type.bodyLarge, color: scheme.onSurfaceVariant, lineHeight: 23 },
+  content: {
+    paddingHorizontal: 18,
+    gap: 14,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
+  },
+  urlBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 50,
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  urlText: {
+    flex: 1,
+    minWidth: 0,
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  urlCopyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 11,
+    borderRadius: shape.full,
+    backgroundColor: scheme.secondaryContainer,
+  },
+  urlCopyChipDone: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  urlCopyText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+  },
+  urlCopyTextDone: {
+    color: scheme.onPrimaryContainer,
+  },
   note: { ...type.bodySmall, color: scheme.onSurfaceVariant, lineHeight: 18 },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    minHeight: 60,
-    padding: 16,
-    borderRadius: shape.extraLarge,
+    gap: 10,
+    minHeight: 54,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
   },
   primaryText: {
-    ...type.titleMedium,
-    fontWeight: '700',
+    ...type.labelLarge,
+    fontWeight: '800',
     color: scheme.onPrimary,
     flexShrink: 1,
     textAlign: 'center',
@@ -346,23 +424,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    minHeight: 64,
-    padding: 16,
+    gap: 8,
+    minHeight: 50,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.large,
+    borderRadius: shape.full,
   },
-  actionText: { ...type.labelLarge, color: scheme.onSecondaryContainer, flexShrink: 1 },
-  linkAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    minHeight: 48,
-    padding: 12,
-    borderRadius: shape.medium,
+  actionText: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
+    flexShrink: 1,
   },
-  linkText: { ...type.labelLarge, color: scheme.primary, flexShrink: 1 },
   error: { ...type.bodyMedium, color: scheme.error },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.5 },
