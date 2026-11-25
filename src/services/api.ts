@@ -462,7 +462,9 @@ export const RoutingService: IRoutingService = {
           all.push(entry);
         }
         // Zapis musi się udać, inaczej UI nie może pokazać trasy jako zapisanej.
-        await kvSetStrict(savedRoutesKey(), JSON.stringify(all));
+        const storageKey = savedRoutesKey();
+        await kvSetStrict(storageKey, JSON.stringify(all));
+        savedRoutesCache.set(storageKey, all);
         notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to save route:', err);
@@ -477,7 +479,9 @@ export const RoutingService: IRoutingService = {
         const all = await readSavedRoutes();
         const normId = normalizeConnectionId(id);
         const filtered = all.filter(r => r.id !== id && normalizeConnectionId(r.id) !== normId);
-        await kvSetStrict(savedRoutesKey(), JSON.stringify(filtered));
+        const storageKey = savedRoutesKey();
+        await kvSetStrict(storageKey, JSON.stringify(filtered));
+        savedRoutesCache.set(storageKey, filtered);
         notifySavedRoutesChanged();
       } catch (err) {
         console.warn('[RoutingService] Failed to delete saved route:', err);
@@ -523,6 +527,16 @@ export function savedRoutesKey(cityId?: string): string {
 // Brak klucza (pierwsze uruchomienie) to legalna pusta lista.
 
 const savedRoutesListeners = new Set<() => void>();
+const savedRoutesCache = new Map<string, SavedRoute[]>();
+
+/** Synchroniczny odczyt z pamięci, jeśli lista zapisanych tras dla miasta była już wczytana. */
+export function isRouteSavedSync(id?: string | null): boolean | undefined {
+  if (!id) return false;
+  const cached = savedRoutesCache.get(savedRoutesKey());
+  if (!cached) return undefined;
+  const normId = normalizeConnectionId(id);
+  return cached.some((r) => r.id === id || normalizeConnectionId(r.id) === normId);
+}
 
 export function subscribeSavedRoutes(listener: () => void): () => void {
   savedRoutesListeners.add(listener);
@@ -542,11 +556,15 @@ function notifySavedRoutesChanged(): void {
 }
 
 export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
-  const raw = await kvGetStrict(key ?? savedRoutesKey());
-  if (!raw) return [];
+  const storageKey = key ?? savedRoutesKey();
+  const raw = await kvGetStrict(storageKey);
+  if (!raw) {
+    savedRoutesCache.set(storageKey, []);
+    return [];
+  }
   const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error(`${key ?? SAVED_ROUTES_BASE_KEY} is not an array`);
-  return parsed.filter(
+  if (!Array.isArray(parsed)) throw new Error(`${storageKey} is not an array`);
+  const valid = parsed.filter(
     (r): r is SavedRoute =>
       Boolean(r) &&
       typeof r.id === 'string' &&
@@ -555,6 +573,8 @@ export async function readSavedRoutes(key?: string): Promise<SavedRoute[]> {
       typeof r.connection.id === 'string' &&
       Array.isArray(r.connection.legs),
   );
+  savedRoutesCache.set(storageKey, valid);
+  return valid;
 }
 
 export async function getSavedRoutes(key?: string): Promise<SavedRoute[]> {

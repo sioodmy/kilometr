@@ -221,6 +221,16 @@ class LiveTracker {
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
   private listeners = new Set<() => void>();
+  private snapshotVersion = 0;
+  private routingSnapshotCache: {
+    index: DayIndex | null;
+    cityId: string;
+    feedFresh: boolean;
+    backendIntel: ReturnType<typeof getCachedBackendDelayIntel>;
+    version: number;
+    builtAt: number;
+    snapshot: RoutingSnapshot;
+  } | null = null;
 
   /** Subskrypcja na zdarzenia aktualizacji live (nowe dane po udanym poll/restore). */
   subscribe(listener: () => void): () => void {
@@ -231,6 +241,8 @@ class LiveTracker {
   }
 
   private notify(): void {
+    this.snapshotVersion += 1;
+    this.routingSnapshotCache = null;
     for (const listener of this.listeners) {
       try {
         listener();
@@ -629,15 +641,44 @@ class LiveTracker {
 
   getRoutingSnapshot(index = this.latestDayIndex, offsets?: Map<string, number>): RoutingSnapshot {
     const cityId = safeCityId();
-    return buildRoutingSnapshot(
+    const feedFresh = this.getLiveState() === 'fresh';
+    const backendIntel = getCachedBackendDelayIntel(cityId);
+    const now = Date.now();
+    const hasCustomOffsets = offsets != null && offsets.size > 0;
+    const cached = this.routingSnapshotCache;
+    if (
+      !hasCustomOffsets &&
+      cached &&
+      cached.index === index &&
+      cached.cityId === cityId &&
+      cached.feedFresh === feedFresh &&
+      cached.backendIntel === backendIntel &&
+      cached.version === this.snapshotVersion &&
+      now - cached.builtAt < 15_000
+    ) {
+      return cached.snapshot;
+    }
+    const snapshot = buildRoutingSnapshot(
       index,
       gtfsStore,
       this.snapshot(),
-      this.getLiveState() === 'fresh',
-      Date.now(),
+      feedFresh,
+      now,
       offsets,
-      getCachedBackendDelayIntel(cityId),
+      backendIntel,
     );
+    if (!hasCustomOffsets) {
+      this.routingSnapshotCache = {
+        index,
+        cityId,
+        feedFresh,
+        backendIntel,
+        version: this.snapshotVersion,
+        builtAt: now,
+        snapshot,
+      };
+    }
+    return snapshot;
   }
 
   private previousFor(row: RawVehicleRow): TrackedVehicle | undefined {
@@ -685,6 +726,40 @@ class LiveTracker {
     return vehicle && vehicle.updatedAt <= now && now - vehicle.updatedAt <= MAX_SAMPLE_AGE_MS
       ? vehicle
       : undefined;
+  }
+
+  /** Bezalokacyjne wyszukiwanie świeżego pojazdu przypisanego do danego tripId. */
+  findVehicleByTripId(
+    tripId: string,
+    line?: string,
+    maxAgeMs = MAX_SAMPLE_AGE_MS,
+  ): TrackedVehicle | undefined {
+    const now = Date.now();
+    if (line) {
+      const byLine = this.byLine.get(line.trim().toUpperCase());
+      if (byLine) {
+        for (let i = 0; i < byLine.length; i++) {
+          const candidate = byLine[i];
+          if (
+            candidate.matchedTripId === tripId &&
+            candidate.updatedAt <= now &&
+            now - candidate.updatedAt <= maxAgeMs
+          ) {
+            return candidate;
+          }
+        }
+      }
+    }
+    for (const candidate of this.byId.values()) {
+      if (
+        candidate.matchedTripId === tripId &&
+        candidate.updatedAt <= now &&
+        now - candidate.updatedAt <= maxAgeMs
+      ) {
+        return candidate;
+      }
+    }
+    return undefined;
   }
 
   snapshot(line?: string): TrackedVehicle[] {

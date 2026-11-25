@@ -562,6 +562,22 @@ function MetroEntranceBlock({
   );
 }
 
+function lookupTrackedVehicle(leg: Leg, allowLive: boolean): TrackedVehicle | null {
+  if (
+    !allowLive ||
+    !leg.tripId ||
+    leg.tripId.startsWith('pl:') ||
+    (leg.mode !== 'tram' &&
+      leg.mode !== 'bus' &&
+      leg.mode !== 'subway' &&
+      leg.mode !== 'trolleybus' &&
+      leg.mode !== 'train')
+  ) {
+    return null;
+  }
+  return liveTracker.findVehicleByTripId(leg.tripId, leg.line, 120_000) ?? null;
+}
+
 const TransitLegCard = memo(function TransitLegCard({
   leg,
   expanded,
@@ -572,6 +588,7 @@ const TransitLegCard = memo(function TransitLegCard({
   showStationAmenities,
   showFromEntrance,
   showToEntrance,
+  deferSecondaryWork = false,
   footer,
 }: {
   leg: Leg;
@@ -583,6 +600,7 @@ const TransitLegCard = memo(function TransitLegCard({
   showStationAmenities?: boolean;
   showFromEntrance?: boolean;
   showToEntrance?: boolean;
+  deferSecondaryWork?: boolean;
   footer?: ReactNode;
 }) {
   const t = useStrings();
@@ -635,6 +653,7 @@ const TransitLegCard = memo(function TransitLegCard({
     leg.fromStopId,
     leg.fromStop,
     leg.mode,
+    deferSecondaryWork,
   );
   const stopHint = isTrain || isBoardedLeg ? null : (leg.stopHint?.trim() || resolvedHint);
   const departurePlatform = useMemo(
@@ -652,7 +671,9 @@ const TransitLegCard = memo(function TransitLegCard({
       !!leg.tripId &&
       !(leg.intermediateStops && leg.intermediateStops.length >= 2),
   );
-  const [vehicle, setVehicle] = useState<TrackedVehicle | null>(null);
+  const [vehicle, setVehicle] = useState<TrackedVehicle | null>(() =>
+    lookupTrackedVehicle(leg, allowLive),
+  );
   const [lastOk, setLastOk] = useState(() => liveTracker.getLastOk());
 
   useEffect(() => {
@@ -667,6 +688,9 @@ const TransitLegCard = memo(function TransitLegCard({
     if (!leg.tripId || (!expanded && hasInlineStops)) {
       setStops(buildFallbackStops(leg));
       setLoading(false);
+      return;
+    }
+    if (deferSecondaryWork && !expanded) {
       return;
     }
     setLoading(!hasInlineStops);
@@ -700,7 +724,7 @@ const TransitLegCard = memo(function TransitLegCard({
     return () => {
       mounted = false;
     };
-  }, [cacheKey, expanded, leg]);
+  }, [cacheKey, deferSecondaryWork, expanded, leg]);
 
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
 
@@ -751,7 +775,7 @@ const TransitLegCard = memo(function TransitLegCard({
 
   const [track, setTrack] = useState<TrainTrack | null>(null);
   useEffect(() => {
-    if (!isTrain) return;
+    if (!isTrain || deferSecondaryWork) return;
     let mounted = true;
     void ensureTrainTrack(leg, stops, segment).then(
       (nextTrack) => {
@@ -762,7 +786,7 @@ const TransitLegCard = memo(function TransitLegCard({
     return () => {
       mounted = false;
     };
-  }, [isTrain, leg, stops, segment]);
+  }, [isTrain, deferSecondaryWork, leg, stops, segment]);
 
   const [doorSide, setDoorSide] = useState<DoorSide | null>(null);
   useEffect(() => {
@@ -770,6 +794,7 @@ const TransitLegCard = memo(function TransitLegCard({
       setDoorSide(null);
       return;
     }
+    if (deferSecondaryWork) return;
     let mounted = true;
     const lastStop = stops[segment.end];
     void loadTrainDoorSide({
@@ -787,16 +812,18 @@ const TransitLegCard = memo(function TransitLegCard({
     return () => {
       mounted = false;
     };
-  }, [isTrain, leg.toStopId, leg.toLat, leg.toLon, stops, segment, track]);
+  }, [isTrain, deferSecondaryWork, leg.toStopId, leg.toLat, leg.toLon, stops, segment, track]);
 
   useEffect(() => {
+    if (deferSecondaryWork) return;
     if (leg.tripId?.startsWith('pl:')) {
-      setVehicle(null);
+      setVehicle((prev) => (prev === null ? prev : null));
       return;
     }
     const updateVehicle = () => {
       const nowMs = Date.now();
-      setLastOk(liveTracker.getLastOk());
+      const nextOk = liveTracker.getLastOk();
+      setLastOk((prev) => (prev === nextOk ? prev : nextOk));
       if (
         !allowLive ||
         !leg.tripId ||
@@ -806,33 +833,16 @@ const TransitLegCard = memo(function TransitLegCard({
           leg.mode !== 'trolleybus' &&
           leg.mode !== 'train')
       ) {
-        setVehicle(null);
+        setVehicle((prev) => (prev === null ? prev : null));
         return;
       }
-      let match = liveTracker
-        .snapshot(leg.line)
-        .find(
-          (candidate) =>
-            candidate.matchedTripId === leg.tripId &&
-            nowMs - candidate.updatedAt >= 0 &&
-            nowMs - candidate.updatedAt <= 120_000,
-        );
-      if (!match && leg.tripId) {
-        match = liveTracker
-          .snapshot()
-          .find(
-            (candidate) =>
-              candidate.matchedTripId === leg.tripId &&
-              nowMs - candidate.updatedAt >= 0 &&
-              nowMs - candidate.updatedAt <= 120_000,
-          );
-      }
+      const match = liveTracker.findVehicleByTripId(leg.tripId, leg.line, 120_000);
       setVehicle((prev) => {
-        if (match) return match;
+        if (match) return prev === match ? prev : match;
         if (prev && nowMs - prev.updatedAt >= 0 && nowMs - prev.updatedAt <= 120_000) {
           return prev;
         }
-        return null;
+        return prev === null ? prev : null;
       });
     };
 
@@ -843,16 +853,16 @@ const TransitLegCard = memo(function TransitLegCard({
       unsub();
       clearInterval(timer);
     };
-  }, [allowLive, leg.line, leg.mode, leg.tripId]);
+  }, [allowLive, deferSecondaryWork, leg.line, leg.mode, leg.tripId]);
 
   const liveActive = allowLive && (expanded || leg.live || vehicle != null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!liveActive) return;
+    if (!liveActive || deferSecondaryWork) return;
     setNow((prev) => (Date.now() - prev > 4000 ? Date.now() : prev));
     const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
-  }, [liveActive]);
+  }, [liveActive, deferSecondaryWork]);
 
   const lastLegIdRef = useRef(leg.id);
   const rankRef = useRef<number>(-1);
@@ -930,6 +940,7 @@ const TransitLegCard = memo(function TransitLegCard({
   );
   const railAmenities = useRailAmenities({
     enabled: isTrain,
+    deferLoad: deferSecondaryWork,
     tripId: leg.tripId,
     agency: leg.railAgency,
     trainNumber: leg.trainNumber,
@@ -1012,8 +1023,15 @@ const TransitLegCard = memo(function TransitLegCard({
   const chevron = useSharedValue(expanded ? 1 : 0);
   const measuredHeight = useSharedValue(0);
   const stopsHeightAnim = useSharedValue(expanded ? estimatedInitialHeight : 0);
+  const didMountExpandAnim = useRef(false);
 
   useEffect(() => {
+    // Na pierwszym montowaniu stan początkowy jest już zgodny z `expanded`;
+    // pomijamy uruchamianie sprężyn Reanimated dla zwiniętych kart w klatce otwarcia.
+    if (!didMountExpandAnim.current) {
+      didMountExpandAnim.current = true;
+      return;
+    }
     chevron.value = withSpring(expanded ? 1 : 0, motion.spring.spatialFast);
     const targetHeight = measuredHeight.value > 0 ? measuredHeight.value : estimatedInitialHeight;
     stopsHeightAnim.value = withSpring(
@@ -1256,7 +1274,12 @@ const TransitLegCard = memo(function TransitLegCard({
             <View style={s.liveBanner}>
               <View style={s.liveIconWrap}>
                 {leg.live ? (
-                  <LiveSensors color={liveStatusColor} size={15} pingKey={pingKey} />
+                  <LiveSensors
+                    color={liveStatusColor}
+                    size={15}
+                    pulse={!deferSecondaryWork}
+                    pingKey={pingKey}
+                  />
                 ) : (
                   <TriangleAlert size={15} color={liveStatusColor} />
                 )}
@@ -1321,42 +1344,40 @@ const TransitLegCard = memo(function TransitLegCard({
       </View>
 
       {/* 3. Rozwijana taca stacji / przystanków pośrednich na pełnej szerokości 3 kolumn */}
-      {intermediateStats.hasExpandable ? (
+      {intermediateStats.hasExpandable && (expanded || hasExpanded) ? (
         <Animated.View
           pointerEvents={expanded ? 'auto' : 'none'}
           style={[s.trayAnimClip, stopsAnimStyle]}
           accessibilityElementsHidden={!expanded}
           importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
         >
-          {expanded || hasExpanded ? (
-            <View
-              style={s.trayMeasuredWrap}
-              onLayout={(e) => {
-                const h = Math.round(e.nativeEvent.layout.height);
-                if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
-                  measuredHeight.value = h;
-                  if (expanded) {
-                    stopsHeightAnim.value = withTiming(h, motion.state);
-                  }
+          <View
+            style={s.trayMeasuredWrap}
+            onLayout={(e) => {
+              const h = Math.round(e.nativeEvent.layout.height);
+              if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
+                measuredHeight.value = h;
+                if (expanded) {
+                  stopsHeightAnim.value = withTiming(h, motion.state);
                 }
-              }}
-            >
-              <LegStopsTray
-                leg={leg}
-                stops={stops}
-                segment={segment}
-                isTrain={isTrain}
-                railStroke={railStroke}
-                badgeBg={badgeBg}
-                badgeFg={badgeFg}
-                livePosition={livePosition}
-                loading={loading}
-                delayShiftSec={delayShiftSec}
-                entrySpineColor={trayEntrySpineColor}
-                exitSpineColor={arrivalTopSpineColor}
-              />
-            </View>
-          ) : null}
+              }
+            }}
+          >
+            <LegStopsTray
+              leg={leg}
+              stops={stops}
+              segment={segment}
+              isTrain={isTrain}
+              railStroke={railStroke}
+              badgeBg={badgeBg}
+              badgeFg={badgeFg}
+              livePosition={livePosition}
+              loading={loading}
+              delayShiftSec={delayShiftSec}
+              entrySpineColor={trayEntrySpineColor}
+              exitSpineColor={arrivalTopSpineColor}
+            />
+          </View>
         </Animated.View>
       ) : null}
 
@@ -1418,7 +1439,13 @@ const TransitLegCard = memo(function TransitLegCard({
             <MetroEntranceBlock t={t} kind="exit" entrance={leg.toEntrance} />
           ) : null}
           {showStationAmenities ? (
-            <StationAmenities stopId={leg.toStopId} lat={leg.toLat} lon={leg.toLon} showLabel />
+            <StationAmenities
+              stopId={leg.toStopId}
+              lat={leg.toLat}
+              lon={leg.toLon}
+              showLabel
+              deferLoad={deferSecondaryWork}
+            />
           ) : null}
         </View>
       </View>
@@ -1500,7 +1527,7 @@ function TransferGuardPill({
 }
 
 /** Pionowa oś podróży M3 Expressive z kartami przejazdu i łącznikami pieszymi / przesiadkami. */
-export function LegTimeline({
+export const LegTimeline = memo(function LegTimeline({
   legs,
   observeOnly = false,
   boardedDepartAt,
@@ -1509,6 +1536,7 @@ export function LegTimeline({
   onRetrySwapLeg,
   transferState,
   onOpenTransferProtection,
+  deferSecondaryWork = false,
 }: {
   legs: Leg[];
   observeOnly?: boolean;
@@ -1518,14 +1546,24 @@ export function LegTimeline({
   onRetrySwapLeg?: (legId: string) => void;
   transferState?: TransferProtectionState;
   onOpenTransferProtection?: () => void;
+  deferSecondaryWork?: boolean;
 }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [walking, setWalking] = useState(() => isWalkingNow(legs, nowSecOfDay()));
+  const trackUserLocation = !observeOnly && expandedId !== null;
+  const [walking, setWalking] = useState(() =>
+    trackUserLocation ? isWalkingNow(legs, nowSecOfDay()) : false,
+  );
   const walkMps = useWalkSpeedMps();
-  const { location } = useCurrentLocation(!observeOnly, !observeOnly && walking);
+  // Pozycję GPS wykorzystuje wyłącznie rozwinięta karta odcinka, więc nie uruchamiamy
+  // subskrypcji lokalizacji na etapie otwarcia ekranu ze zwiniętymi odcinkami.
+  const { location } = useCurrentLocation(trackUserLocation, trackUserLocation && walking);
 
   useEffect(() => {
+    if (!trackUserLocation) {
+      setWalking(false);
+      return;
+    }
     const update = () => setWalking(isWalkingNow(legs, nowSecOfDay()));
     update();
     const timer = setInterval(update, 15000);
@@ -1536,7 +1574,7 @@ export function LegTimeline({
       clearInterval(timer);
       sub.remove();
     };
-  }, [legs]);
+  }, [legs, trackUserLocation]);
 
   const toggleLeg = useCallback(
     (id: string) => setExpandedId((prev) => (prev === id ? null : id)),
@@ -1738,6 +1776,7 @@ export function LegTimeline({
                   showStationAmenities={showStationAmenities}
                   showFromEntrance={showFromEntrance}
                   showToEntrance={showToEntrance}
+                  deferSecondaryWork={deferSecondaryWork}
                   onToggle={toggleLeg}
                   footer={footer}
                 />
@@ -1789,7 +1828,7 @@ export function LegTimeline({
       })}
     </View>
   );
-}
+});
 
 const s = StyleSheet.create({
   list: {

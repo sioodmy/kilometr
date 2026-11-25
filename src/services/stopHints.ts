@@ -224,7 +224,7 @@ function refreshRemoteStopHints(normCity: string): void {
   inflightRemote.set(normCity, task);
 }
 
-function useStopHints(cityId: string) {
+function useStopHints(cityId: string, deferLoad = false) {
   const normCity = (cityId || '').trim().toLowerCase();
   const [data, setData] = useState<StopHintsDataset | null>(() =>
     normCity ? cache.get(normCity) ?? null : null,
@@ -242,6 +242,8 @@ function useStopHints(cityId: string) {
     };
 
     syncFromCache();
+    if (deferLoad) return;
+
     const unsub = subscribeCityHints(normCity, syncFromCache);
 
     void ensureStopHintsLoaded(normCity).then(() => {
@@ -250,7 +252,7 @@ function useStopHints(cityId: string) {
     });
 
     return unsub;
-  }, [normCity]);
+  }, [normCity, deferLoad]);
 
   return data;
 }
@@ -362,9 +364,9 @@ export function resolveStopHint(
       // Warianty z sufiksem geohash w kluczu (np. "poznan-glowny73-wqjhw")
       const primaryPrefix = `${baseSlug}${code}-`;
       const padPrefix = `${baseSlug}${pad2}-`;
-      for (const [key, val] of Object.entries(dataset.stops)) {
+      for (const key in dataset.stops) {
         if (key.startsWith(primaryPrefix) || key.startsWith(padPrefix)) {
-          return extractHintText(val);
+          return extractHintText(dataset.stops[key]);
         }
       }
     }
@@ -394,13 +396,14 @@ export function useStopHint(
   stopId?: string | null,
   stopName?: string | null,
   mode?: string | null,
+  deferLoad = false,
 ): string | null {
   const skipHints =
     mode === 'train' ||
     mode === 'subway' ||
     Boolean(stopId && (stopId.startsWith('pl:') || stopId.startsWith('stop-pl:')));
   const normCity = skipHints ? '' : (cityId || '').trim().toLowerCase();
-  const dataset = useStopHints(normCity);
+  const dataset = useStopHints(normCity, deferLoad);
   return useMemo(
     () => (skipHints ? null : resolveStopHint(dataset, stopCode, stopId, stopName, mode)),
     [skipHints, dataset, stopCode, stopId, stopName, mode],
