@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 14,

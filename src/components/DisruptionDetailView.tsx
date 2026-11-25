@@ -1091,7 +1091,7 @@ const styles = StyleSheet.create({
   },
   actionPanelUrgent: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.warning + '55',
   },
   actionPanelHead: {
@@ -1379,7 +1379,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stopRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
   },
   stopTopRow: {

@@ -13,6 +13,7 @@ import {
   parseRadomList,
   parseSzczecinList,
   resolveLlmPlan,
+  warsawAlertsToDisruptions,
 } from './process-news.mjs';
 
 const JUNK_TITLE_RE =
@@ -383,6 +384,88 @@ test('isComplexDisruptionText wykrywa wieloetapowe i wieloliniowe komunikaty', (
   assert.equal(isComplexDisruptionText('Krótka awaria', 'Linia 5 stoi.', 1), false);
   assert.equal(isComplexDisruptionText('Remont węzła', 'Etap I od soboty, Etap II od wtorku.', 2), true);
   assert.equal(isComplexDisruptionText('Wielkie zmiany', 'Dużo linii.', 6), true);
+});
+
+test('warsawAlertsToDisruptions mapuje GTFS-RT na alerty bez LLM', () => {
+  const payload = {
+    time: '2026-11-25T22:49:50+01:00',
+    alerts: [
+      {
+        id: 'A/CHANGE/1',
+        routes: ['7', '9', '9', 'N35'],
+        title: 'Utrudnienia związane ze zgromadzeniem',
+        body: 'W sobotę 28.11.2026 planowane jest zgromadzenie publiczne. Autobusy linii 7 i 9 pojadą objazdami.',
+        link: 'https://www.wtp.waw.pl/zmiany/2026/11/25/test/',
+      },
+      {
+        id: 'A/CHANGE/2',
+        routes: ['713'],
+        title: 'Przywrócenie podstawowej lokalizacji przystanku MORY 01',
+        body: 'Od poniedziałku 23.11.2026 r. przywraca się podstawową lokalizację przystanku.',
+        link: 'https://www.wtp.waw.pl/zmiany/2026/11/23/test/',
+      },
+    ],
+  };
+
+  const alerts = warsawAlertsToDisruptions(payload, '2026-11-25T23:00:00.000Z');
+  assert.equal(alerts.length, 2);
+  assert.equal(alerts[0].id, 'A/CHANGE/1');
+  assert.deepEqual(alerts[0].all_lines, ['7', '9', 'N35']);
+  assert.equal(alerts[0].disruption_type, 'event');
+  assert.equal(alerts[0].is_resolved, false);
+  assert.equal(alerts[0].is_emergency, false);
+  assert.match(alerts[0].glance.problem, /zgromadzenie/);
+  assert.equal(alerts[0].valid_from, payload.time);
+  assert.equal(alerts[0].published_at, payload.time);
+  assert.deepEqual(alerts[0].line_changes, []);
+  assert.equal(alerts[1].is_resolved, true);
+  assert.equal(alerts[1].severity, 'info');
+});
+
+test('warsawAlertsToDisruptions rozpoznaje wypadek i planowany remont', () => {
+  const payload = {
+    time: '2026-11-25T22:49:50+01:00',
+    alerts: [
+      {
+        id: 'A/CHANGE/3',
+        routes: ['9'],
+        title: 'Wypadek tramwaju na Moście Poniatowskiego',
+        body: 'Wstrzymany ruch tramwajów w obu kierunkach.',
+      },
+      {
+        id: 'A/CHANGE/4',
+        routes: ['106', '107'],
+        title: 'Przebudowa ulicy Grenadierów, cztery linie z objazdami',
+        body: 'Od piątku autobusy linii 106 i 107 pojadą objazdami.',
+      },
+    ],
+  };
+
+  const alerts = warsawAlertsToDisruptions(payload);
+  assert.equal(alerts[0].disruption_type, 'accident');
+  assert.equal(alerts[0].is_emergency, true);
+  assert.equal(alerts[0].severity, 'major');
+  assert.equal(alerts[1].disruption_type, 'planned_works');
+  assert.equal(alerts[1].severity, 'major');
+
+  assert.deepEqual(warsawAlertsToDisruptions({ time: payload.time, alerts: [] }), []);
+  assert.deepEqual(warsawAlertsToDisruptions(null), []);
+});
+
+test('nazwa przystanku WIATRACZNA nie udaje alertu pogodowego', () => {
+  const [alert] = warsawAlertsToDisruptions({
+    time: '2026-11-25T22:49:50+01:00',
+    alerts: [
+      {
+        id: 'A/CHANGE/5',
+        routes: ['123'],
+        title: 'Czasowe zawieszenie funkcjonowania przystanku WIATRACZNA 53',
+        body: 'W związku z pracami remontowymi chodnika przystanek zostaje zawieszony.',
+      },
+    ],
+  });
+  assert.equal(alert.disruption_type, 'planned_works');
+  assert.equal(alert.is_emergency, false);
 });
 
 test('sanitizeAnalysisText czyści map_label i skraca do 3 słów', () => {

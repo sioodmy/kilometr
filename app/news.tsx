@@ -62,7 +62,7 @@ function toneColors(tone: Tone) {
     return {
       card: scheme.surfaceContainerLow,
       border: scheme.warning + '55',
-      borderWidth: 1,
+      borderWidth: 2,
       ink: scheme.onSurface,
       muted: scheme.onSurfaceVariant,
       accent: scheme.warning,
@@ -72,7 +72,7 @@ function toneColors(tone: Tone) {
     return {
       card: scheme.surfaceContainerLowest,
       border: scheme.outlineVariant,
-      borderWidth: StyleSheet.hairlineWidth,
+      borderWidth: 2,
       ink: scheme.onSurfaceVariant,
       muted: scheme.outline,
       accent: scheme.onSurfaceVariant,
@@ -81,7 +81,7 @@ function toneColors(tone: Tone) {
   return {
     card: scheme.surfaceContainerLow,
     border: scheme.outlineVariant,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     ink: scheme.onSurface,
     muted: scheme.onSurfaceVariant,
     accent: scheme.onSurfaceVariant,
@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: shape.medium,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.warning + '55',
   },
   errorBannerText: { ...type.bodySmall, color: scheme.onSurface, flex: 1 },
@@ -726,7 +726,7 @@ const styles = StyleSheet.create({
   resolvedText: { ...type.labelMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
   solutionBox: {
     backgroundColor: scheme.surface,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     borderRadius: shape.large,
     padding: 12,
