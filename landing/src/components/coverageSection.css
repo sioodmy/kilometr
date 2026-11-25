@@ -76,16 +76,6 @@
     stroke-linejoin: round;
   }
 
-  .cov-cursor-layer {
-    pointer-events: none;
-  }
-
-  .cov-poland-border-glow {
-    stroke-width: 2.1;
-    stroke-linejoin: round;
-    pointer-events: none;
-  }
-
   .cov-rail-link {
     stroke: rgb(92 219 190 / 10%);
     stroke-width: 1;
@@ -694,8 +684,7 @@
     }
 
     .cov-rail-streak,
-    .cov-hover-arc-pulse,
-    .cov-cursor-layer {
+    .cov-hover-arc-pulse {
       display: none;
     }
 
