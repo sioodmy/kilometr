@@ -5,7 +5,6 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use chrono::Utc;
 use dashmap::DashMap;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -154,7 +153,7 @@ async fn handle_health() -> impl IntoResponse {
 }
 
 async fn handle_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let (hist_lines, hist_hubs) = state.engine.historical_counts();
     let status = SystemStatus {
         service: "kilometr-api".to_string(),
@@ -241,7 +240,7 @@ async fn handle_vehicles(
             .collect()
     });
     let include_rail = q.include_rail.unwrap_or(1) != 0;
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
 
     let payload = state.engine.query_vehicles(
         &city_id,
@@ -299,7 +298,7 @@ async fn handle_heatmap(
         Some(raw) if !raw.trim().is_empty() => Bbox::parse(raw),
         _ => None,
     };
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let res = state.engine.query_heatmap(&city_id, bbox, now_ms);
     (
         StatusCode::OK,
@@ -333,7 +332,7 @@ async fn handle_lines(
             .filter(|s| !s.is_empty())
             .collect()
     });
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let res = state.engine.query_lines(&city_id, filter.as_ref(), now_ms);
     (
         StatusCode::OK,
@@ -362,7 +361,7 @@ async fn handle_hubs(
         )
             .into_response();
     }
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let res = state.engine.query_hubs(
         &city_id,
         q.limit.unwrap_or(20),
@@ -396,7 +395,7 @@ async fn handle_estimate(
         )
             .into_response();
     }
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let res = state.engine.estimate_legs(&req, now_ms);
     (
         StatusCode::OK,
@@ -423,7 +422,7 @@ async fn handle_anomalies(
         )
             .into_response();
     }
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let res = state.engine.query_anomalies(&city_id, now_ms);
     (
         StatusCode::OK,
@@ -452,7 +451,7 @@ async fn handle_route_insights(
         )
             .into_response();
     }
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let res = state.engine.query_route_insights(&req, now_ms);
     (
         StatusCode::OK,
@@ -496,7 +495,7 @@ async fn handle_rail_delays(
 }
 
 async fn handle_metrics(State(state): State<Arc<AppState>>) -> Response {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     let (hist_lines, hist_hubs) = state.engine.historical_counts();
     let body = format!(
         "# TYPE kilometr_uptime_seconds counter\n\
@@ -544,7 +543,7 @@ mod tests {
         cfg.enable_collectors = false;
         let tmp = std::env::temp_dir().join(format!(
             "kilometr-api-test-{}.db",
-            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            jiff::Timestamp::now().as_nanosecond()
         ));
         cfg.db_path = tmp;
         let cities = Arc::new(CityRegistry::load(None).expect("cities"));

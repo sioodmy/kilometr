@@ -37,7 +37,7 @@ async fn main() {
     let loaded_hub_count = loaded_profiles.hubs.len();
     let engine = Arc::new(AnalyticsEngine::new(loaded_profiles));
     if config.seed_demo {
-        engine.seed_demo_data(chrono::Utc::now().timestamp_millis());
+        engine.seed_demo_data(jiff::Timestamp::now().as_millisecond());
         info!("Zasiano lokalne dane demonstracyjne (KILOMETR_SEED_DEMO=true)");
     }
     let health = Arc::new(SourceHealthRegistry::new());

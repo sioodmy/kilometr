@@ -1,5 +1,4 @@
-use chrono::{Datelike, TimeZone, Timelike, Utc, Weekday};
-use chrono_tz::Europe::Warsaw;
+use jiff::civil::Weekday;
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, RwLock};
@@ -994,13 +993,13 @@ impl AnalyticsEngine {
         self.mark_city_demand(&req.city, now_ms);
         let (day_type, hour_bucket) = warsaw_time_bucket(now_ms);
         // Jesli zapytanie dotyczy innej daty niz dzisiaj (Europe/Warsaw), nie przypisujemy dzisiejszego GPS.
-        let today_str = Utc
-            .timestamp_millis_opt(now_ms)
-            .single()
-            .unwrap_or_else(Utc::now)
-            .with_timezone(&Warsaw)
-            .format("%Y-%m-%d")
-            .to_string();
+        let today = warsaw_datetime(now_ms);
+        let today_str = format!(
+            "{:04}-{:02}-{:02}",
+            today.year(),
+            today.month(),
+            today.day()
+        );
         let is_other_day = req
             .date
             .as_deref()
@@ -2094,10 +2093,10 @@ fn empty_route_insights(
 
 fn day_type_for_date_or_now(date_opt: Option<&str>, now_ms: i64) -> String {
     if let Some(raw) = date_opt {
-        if let Ok(nd) = chrono::NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d") {
-            return match nd.weekday() {
-                Weekday::Sat => "saturday",
-                Weekday::Sun => "sunday",
+        if let Ok(date) = raw.trim().parse::<jiff::civil::Date>() {
+            return match date.weekday() {
+                Weekday::Saturday => "saturday",
+                Weekday::Sunday => "sunday",
                 _ => "weekday",
             }
             .to_string();
@@ -2123,17 +2122,19 @@ fn distance_meters_approx(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 pub fn warsaw_time_bucket(now_ms: i64) -> (String, u8) {
-    let dt = Utc
-        .timestamp_millis_opt(now_ms)
-        .single()
-        .unwrap_or_else(Utc::now)
-        .with_timezone(&Warsaw);
+    let dt = warsaw_datetime(now_ms);
     let day_type = match dt.weekday() {
-        Weekday::Sat => "saturday",
-        Weekday::Sun => "sunday",
+        Weekday::Saturday => "saturday",
+        Weekday::Sunday => "sunday",
         _ => "weekday",
     };
     (day_type.to_string(), dt.hour() as u8)
+}
+
+fn warsaw_datetime(now_ms: i64) -> jiff::ZonedDateTime {
+    let ts = jiff::Timestamp::from_millisecond(now_ms).unwrap_or_else(|_| jiff::Timestamp::now());
+    ts.in_tz("Europe/Warsaw")
+        .unwrap_or_else(|_| ts.to_zoned_datetime(jiff::tz::TimeZone::UTC))
 }
 
 pub fn cell_coords(lat: f64, lon: f64) -> (i32, i32) {

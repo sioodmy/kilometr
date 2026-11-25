@@ -1,7 +1,5 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use chrono::{TimeZone, Timelike, Utc};
-use chrono_tz::Europe::Warsaw;
 use dashmap::DashMap;
 use reqwest::Client;
 use serde::Deserialize;
@@ -133,7 +131,7 @@ impl KpCollectorCache {
             .await
             .map_err(|e| format!("kp departures {prefix} JSON: {e}"))?;
 
-        let now_ms = Utc::now().timestamp_millis();
+        let now_ms = jiff::Timestamp::now().as_millisecond();
         let now_sec = epoch_ms_to_warsaw_sec(now_ms);
         let mut seen_exec = HashSet::new();
         let mut candidates: Vec<(String, i32, String, Option<i32>)> = Vec::new();
@@ -288,7 +286,7 @@ impl KpCollectorCache {
     }
 
     async fn load_stops(&self, client: &Client, prefix: &str) -> Result<Vec<KpStop>, String> {
-        let now_ms = Utc::now().timestamp_millis();
+        let now_ms = jiff::Timestamp::now().as_millisecond();
         if let Some(entry) = self.stops.get(prefix) {
             if now_ms - entry.fetched_at_ms < STOPS_CACHE_TTL_MS {
                 return Ok(entry.stops.clone());
@@ -402,10 +400,9 @@ fn parse_hhmm_sec(raw: &str, min_sec: i32) -> Option<i32> {
 }
 
 fn epoch_ms_to_warsaw_sec(ms: i64) -> i32 {
-    let dt = Utc
-        .timestamp_millis_opt(ms)
-        .single()
-        .unwrap_or_else(Utc::now)
-        .with_timezone(&Warsaw);
-    (dt.hour() * 3600 + dt.minute() * 60 + dt.second()) as i32
+    let ts = jiff::Timestamp::from_millisecond(ms).unwrap_or_else(|_| jiff::Timestamp::now());
+    let dt = ts
+        .in_tz("Europe/Warsaw")
+        .unwrap_or_else(|_| ts.to_zoned_datetime(jiff::tz::TimeZone::UTC));
+    i32::from(dt.hour()) * 3600 + i32::from(dt.minute()) * 60 + i32::from(dt.second())
 }

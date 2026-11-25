@@ -409,7 +409,7 @@ fn load_all_profiles(conn: &Connection) -> Result<LoadedProfiles, String> {
 }
 
 fn apply_batch(conn: &mut Connection, batch: &PersistenceBatch) -> Result<(), String> {
-    let now = chrono::Utc::now().timestamp();
+    let now = jiff::Timestamp::now().as_second();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     if !batch.lines.is_empty() {
@@ -582,7 +582,7 @@ fn run_maintenance(
     raw_retention_hours: i64,
     max_db_size_mb: u64,
 ) -> Result<(), String> {
-    let cutoff = chrono::Utc::now().timestamp() - raw_retention_hours.max(1) * 3600;
+    let cutoff = jiff::Timestamp::now().as_second() - raw_retention_hours.max(1) * 3600;
     let deleted = conn
         .execute("DELETE FROM delay_observations WHERE ts_sec < ?1", params![cutoff])
         .map_err(|e| e.to_string())?;
@@ -590,7 +590,7 @@ fn run_maintenance(
     // Twarde zabezpieczenie dysku VPS 40GB: jesli baza przekroczy prog, skracamy surowe obserwacje.
     let size_mb = std::fs::metadata(db_path).map(|m| m.len() / (1024 * 1024)).unwrap_or(0);
     if size_mb > max_db_size_mb {
-        let aggressive_cutoff = chrono::Utc::now().timestamp() - 6 * 3600;
+        let aggressive_cutoff = jiff::Timestamp::now().as_second() - 6 * 3600;
         let extra = conn
             .execute(
                 "DELETE FROM delay_observations WHERE ts_sec < ?1",

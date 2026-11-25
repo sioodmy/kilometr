@@ -1,5 +1,3 @@
-use chrono::{TimeZone, Timelike, Utc};
-use chrono_tz::Europe::Warsaw;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -72,7 +70,7 @@ pub async fn fetch_city_positions(
         .await
         .map_err(|e| format!("zbiorkom {} JSON: {e}", city.id))?;
 
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     Ok(convert_positions(&city.id, parsed.positions, false, "zbiorkom", now_ms))
 }
 
@@ -103,7 +101,7 @@ pub async fn fetch_city_rail_positions(
         .await
         .map_err(|e| format!("zbiorkom_rail {} JSON: {e}", city.id))?;
 
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = jiff::Timestamp::now().as_millisecond();
     Ok(convert_positions(
         &city.id,
         parsed.positions,
@@ -219,10 +217,9 @@ fn convert_positions(
 }
 
 fn epoch_ms_to_warsaw_sec(ms: i64) -> i32 {
-    let dt = Utc
-        .timestamp_millis_opt(ms)
-        .single()
-        .unwrap_or_else(Utc::now)
-        .with_timezone(&Warsaw);
-    (dt.hour() * 3600 + dt.minute() * 60 + dt.second()) as i32
+    let ts = jiff::Timestamp::from_millisecond(ms).unwrap_or_else(|_| jiff::Timestamp::now());
+    let dt = ts
+        .in_tz("Europe/Warsaw")
+        .unwrap_or_else(|_| ts.to_zoned_datetime(jiff::tz::TimeZone::UTC));
+    i32::from(dt.hour()) * 3600 + i32::from(dt.minute()) * 60 + i32::from(dt.second())
 }
