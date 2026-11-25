@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
     borderBottomColor: scheme.outlineVariant,
   },
   iconBtn: {
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   pdfBtnText: {

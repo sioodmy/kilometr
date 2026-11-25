@@ -31,6 +31,7 @@ import {
   RefreshCw,
   TriangleAlert,
 } from '../src/components/icons';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { useStrings } from '../src/i18n';
 import { LineBadge } from '../src/components/LineBadge';
@@ -59,22 +60,31 @@ type Tone = 'urgent' | 'resolved' | 'quiet';
 function toneColors(tone: Tone) {
   if (tone === 'urgent') {
     return {
-      card: scheme.warningContainer,
-      ink: scheme.onWarningContainer,
-      muted: scheme.onWarningContainer,
+      card: scheme.surfaceContainerLow,
+      border: scheme.warning + '55',
+      borderWidth: 2,
+      ink: scheme.onSurface,
+      muted: scheme.onSurfaceVariant,
+      accent: scheme.warning,
     };
   }
   if (tone === 'resolved') {
     return {
       card: scheme.surfaceContainerLowest,
+      border: scheme.outlineVariant,
+      borderWidth: 2,
       ink: scheme.onSurfaceVariant,
       muted: scheme.outline,
+      accent: scheme.onSurfaceVariant,
     };
   }
   return {
     card: scheme.surfaceContainerLow,
+    border: scheme.outlineVariant,
+    borderWidth: 2,
     ink: scheme.onSurface,
     muted: scheme.onSurfaceVariant,
+    accent: scheme.onSurfaceVariant,
   };
 }
 
@@ -97,7 +107,11 @@ const NewsCard = memo(function NewsCard({
   const c = toneColors(tone);
   const solution = item.disruption?.glance?.solution;
   const sourceLabel =
-    item.source === 'mpk' ? s.news.sourceMpk(operator) : s.news.sourceCity(portal);
+    item.source === 'gps'
+      ? s.news.sourceGps
+      : item.source === 'mpk'
+        ? s.news.sourceMpk(operator)
+        : s.news.sourceCity(portal);
   const dateLabel = item.pubDate ? formatNewsDate(item.pubDate) : item.dateLabel;
   const statusLabel = resolved ? s.news.resolved : item.urgent ? s.news.urgentChip : null;
   const a11yLabel = [item.title, sourceLabel, dateLabel, statusLabel].filter(Boolean).join(', ');
@@ -124,7 +138,11 @@ const NewsCard = memo(function NewsCard({
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
       android_ripple={{ color: scheme.outlineVariant }}
-      style={[styles.card, { backgroundColor: c.card }, animated]}
+      style={[
+        styles.card,
+        { backgroundColor: c.card, borderColor: c.border, borderWidth: c.borderWidth },
+        animated,
+      ]}
     >
       <View style={styles.metaRow}>
         <Text style={[styles.sourceTag, { color: c.muted }]}>{sourceLabel}</Text>
@@ -139,8 +157,8 @@ const NewsCard = memo(function NewsCard({
         </View>
       ) : item.urgent ? (
         <View style={styles.urgentLabel}>
-          <TriangleAlert size={16} color={c.ink} />
-          <Text style={[styles.urgentText, { color: c.ink }]}>{s.news.chip}</Text>
+          <TriangleAlert size={15} color={c.accent} />
+          <Text style={[styles.urgentText, { color: c.accent }]}>{s.news.chip}</Text>
         </View>
       ) : null}
       <Text style={[styles.cardTitle, { color: c.ink }]}>{item.title}</Text>
@@ -160,13 +178,10 @@ const NewsCard = memo(function NewsCard({
         <Text style={[styles.cardDesc, { color: c.muted }]}>{item.description}</Text>
       ) : null}
       {solution ? (
-        <View
-          style={[
-            styles.solutionBox,
-            tone === 'urgent' && { backgroundColor: scheme.onWarningContainer + '1F' },
-          ]}
-        >
-          <Text style={[styles.solutionLabel, { color: c.muted }]}>{s.news.solutionLabel}</Text>
+        <View style={styles.solutionBox}>
+          <Text style={[styles.solutionLabel, { color: tone === 'urgent' ? c.accent : c.muted }]}>
+            {s.news.solutionLabel}
+          </Text>
           <Text style={[styles.cardSolution, { color: c.ink }]}>{solution}</Text>
         </View>
       ) : null}
@@ -187,6 +202,7 @@ function SkeletonCard() {
 export default function NewsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const operator = s.city.operator(cityId);
   const portal = s.city.portal(cityId);
@@ -347,9 +363,14 @@ export default function NewsScreen() {
   }, [filter, items, myLineSet]);
 
   const rows = useMemo(() => {
+    const gps = visibleItems.filter((i) => i.source === 'gps');
     const changes = visibleItems.filter((i) => i.source === 'mpk');
-    const city = visibleItems.filter((i) => i.source !== 'mpk');
+    const city = visibleItems.filter((i) => i.source === 'city');
     const out: Row[] = [];
+    if (gps.length) {
+      out.push({ kind: 'head', id: 'h-gps', label: s.news.sectionGps });
+      for (const item of gps) out.push({ kind: 'item', id: item.id, item });
+    }
     if (changes.length) {
       out.push({ kind: 'head', id: 'h-mpk', label: s.news.sectionChanges });
       for (const item of changes) out.push({ kind: 'item', id: item.id, item });
@@ -387,15 +408,17 @@ export default function NewsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel={s.map.backA11y}
-        >
-          <ChevronLeft size={23} color={scheme.onSurface} />
-        </Pressable>
+      <View style={[styles.header, webLayout.isMedium && styles.mediumCentered]}>
+        {!webLayout.isDesktop && (
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel={s.map.backA11y}
+          >
+            <ChevronLeft size={23} color={scheme.onSurface} />
+          </Pressable>
+        )}
         <Text style={styles.headerCity}>{cityName}</Text>
         <Pressable
           onPress={handleManualRefresh}
@@ -417,7 +440,7 @@ export default function NewsScreen() {
           )}
         </Pressable>
       </View>
-      <View style={styles.headerText}>
+      <View style={[styles.headerText, webLayout.isMedium && styles.mediumCentered]}>
         <Text style={styles.headerTitle} accessibilityRole="header">
           {s.news.title}
         </Text>
@@ -431,60 +454,65 @@ export default function NewsScreen() {
       </View>
 
       {error && items.length > 0 ? (
-        <View style={styles.errorBanner} accessibilityRole="alert">
-          <TriangleAlert size={16} color={scheme.onWarningContainer} />
+        <View
+          style={[styles.errorBanner, webLayout.isMedium && styles.errorBannerDesktop]}
+          accessibilityRole="alert"
+        >
+          <TriangleAlert size={16} color={scheme.warning} />
           <Text style={styles.errorBannerText}>{error}</Text>
         </View>
       ) : null}
 
       {items.length > 0 || myLines.length > 0 ? (
-        <View style={styles.segment}>
-          <Pressable
-            onPress={() => {
-              if (filter !== 'all') {
-                void Haptics.selectionAsync().catch(() => {});
-                setFilter('all');
-              }
-            }}
-            style={({ pressed }) => [
-              styles.segmentItem,
-              filter === 'all' && styles.segmentItemOn,
-              pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: filter === 'all' }}
-          >
-            {filter === 'all' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
-            <Text style={[styles.segmentText, filter === 'all' && styles.segmentTextOn]}>
-              {s.news.filterAll}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              if (filter !== 'myLines') {
-                void Haptics.selectionAsync().catch(() => {});
-                setFilter('myLines');
-              }
-            }}
-            style={({ pressed }) => [
-              styles.segmentItem,
-              filter === 'myLines' && styles.segmentItemOn,
-              pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: filter === 'myLines' }}
-            accessibilityLabel={s.news.filterMyLinesA11y}
-          >
-            {filter === 'myLines' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
-            <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
-              {s.news.filterMyLines}
-            </Text>
-          </Pressable>
+        <View style={webLayout.isMedium ? styles.segmentDesktopWrap : undefined}>
+          <View style={[styles.segment, webLayout.isMedium && styles.segmentDesktop]}>
+            <Pressable
+              onPress={() => {
+                if (filter !== 'all') {
+                  void Haptics.selectionAsync().catch(() => {});
+                  setFilter('all');
+                }
+              }}
+              style={({ pressed }) => [
+                styles.segmentItem,
+                filter === 'all' && styles.segmentItemOn,
+                pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filter === 'all' }}
+            >
+              {filter === 'all' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
+              <Text style={[styles.segmentText, filter === 'all' && styles.segmentTextOn]}>
+                {s.news.filterAll}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (filter !== 'myLines') {
+                  void Haptics.selectionAsync().catch(() => {});
+                  setFilter('myLines');
+                }
+              }}
+              style={({ pressed }) => [
+                styles.segmentItem,
+                filter === 'myLines' && styles.segmentItemOn,
+                pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filter === 'myLines' }}
+              accessibilityLabel={s.news.filterMyLinesA11y}
+            >
+              {filter === 'myLines' ? <Check size={16} color={scheme.onSecondaryContainer} /> : null}
+              <Text style={[styles.segmentText, filter === 'myLines' && styles.segmentTextOn]}>
+                {s.news.filterMyLines}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
       {loading && items.length === 0 ? (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView contentContainerStyle={[styles.list, webLayout.isMedium && styles.mediumCentered]}>
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -494,7 +522,7 @@ export default function NewsScreen() {
           </View>
         </ScrollView>
       ) : error && items.length === 0 ? (
-        <ScrollView contentContainerStyle={styles.center}>
+        <ScrollView contentContainerStyle={[styles.center, webLayout.isMedium && styles.mediumCentered]}>
           <View style={styles.stateIcon}>
             <Newspaper size={28} color={scheme.primary} />
           </View>
@@ -515,7 +543,7 @@ export default function NewsScreen() {
         <FlatList
           data={rows}
           keyExtractor={keyExtractor}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, webLayout.isMedium && styles.mediumCentered]}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           removeClippedSubviews={false}
@@ -560,6 +588,29 @@ export default function NewsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  mediumCentered: {
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+  },
+  errorBannerDesktop: {
+    marginHorizontal: 0,
+    width: '100%',
+    maxWidth: 780,
+    alignSelf: 'center',
+  },
+  segmentDesktopWrap: {
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+  },
+  segmentDesktop: {
+    marginHorizontal: 0,
+    width: '100%',
+    maxWidth: 380,
+    alignSelf: 'flex-start',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -604,9 +655,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: shape.medium,
-    backgroundColor: scheme.warningContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 2,
+    borderColor: scheme.warning + '55',
   },
-  errorBannerText: { ...type.bodySmall, color: scheme.onWarningContainer, flex: 1 },
+  errorBannerText: { ...type.bodySmall, color: scheme.onSurface, flex: 1 },
   segment: {
     flexDirection: 'row',
     gap: 4,
@@ -673,6 +726,8 @@ const styles = StyleSheet.create({
   resolvedText: { ...type.labelMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
   solutionBox: {
     backgroundColor: scheme.surface,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
     borderRadius: shape.large,
     padding: 12,
     gap: 4,

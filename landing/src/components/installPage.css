@@ -1,15 +1,7 @@
 @layer base {
-  .platform-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
   .platform-links .button {
     min-width: 130px;
     border-radius: 12px;
-  }
-  .platform-links svg {
-    flex-shrink: 0;
   }
   .button-secondary {
     color: var(--text);

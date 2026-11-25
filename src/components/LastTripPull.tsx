@@ -89,6 +89,7 @@ export function LastTripPull({
   const containerStyle = useAnimatedStyle(() => ({
     height: height.value,
     opacity: interpolate(height.value, [0, 40], [0, 1]),
+    display: height.value <= 0.5 ? ('none' as const) : ('flex' as const),
   }));
 
   const normalTextStyle = useAnimatedStyle(() => ({
@@ -229,7 +230,7 @@ const styles = StyleSheet.create({
     gap: SLOT_GAP,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },

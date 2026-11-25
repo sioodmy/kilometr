@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ExternalLink } from '../src/components/icons';
 import { useStrings } from '../src/i18n';
 import { PRIVACY_CONTACT_URL, PRIVACY_SECTIONS } from '../src/privacy';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 
 export default function PrivacyScreen() {
   const s = useStrings();
   const router = useRouter();
+  const webLayout = useWebLayout();
   const privacy = s.landing.privacy;
 
   const openContact = async () => {
@@ -21,7 +23,7 @@ export default function PrivacyScreen() {
 
   return (
     <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
-      <View style={st.header}>
+      <View style={[st.header, webLayout.isMedium && st.mediumCentered]}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))}
           style={({ pressed }) => [st.back, pressed && st.pressed]}
@@ -32,7 +34,7 @@ export default function PrivacyScreen() {
         </Pressable>
         <Text style={st.headerTitle}>{privacy.linkLabel}</Text>
       </View>
-      <ScrollView contentContainerStyle={st.body}>
+      <ScrollView contentContainerStyle={[st.body, webLayout.isMedium && st.mediumCentered]}>
         <Text style={st.title} accessibilityRole="header">
           {privacy.title}
         </Text>
@@ -62,6 +64,11 @@ export default function PrivacyScreen() {
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  mediumCentered: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -73,9 +73,65 @@
   }
 
   .story-beats {
+    position: relative;
     display: grid;
     gap: clamp(48px, 10vh, 112px);
     padding-block: clamp(16px, 4vh, 48px);
+  }
+
+  /* Krzywa sprężyny (tłumienie 0.5) zapisana jako linear(), bez biblioteki animacji. */
+  .story-beat-indicator {
+    position: absolute;
+    top: 0;
+    left: -1px;
+    z-index: 1;
+    width: 4px;
+    height: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    pointer-events: none;
+    transition:
+      transform 0.75s
+        linear(
+          0,
+          0.035,
+          0.127,
+          0.256,
+          0.403,
+          0.555,
+          0.7,
+          0.83,
+          0.94,
+          1.027,
+          1.091,
+          1.133,
+          1.156,
+          1.163,
+          1.157,
+          1.142,
+          1.121,
+          1.097,
+          1.072,
+          1.049,
+          1.027,
+          1.01,
+          0.995,
+          0.985,
+          0.978,
+          0.975,
+          0.973,
+          0.974,
+          0.977,
+          0.98,
+          0.984,
+          0.988,
+          0.992,
+          0.996,
+          0.998,
+          1.001,
+          1
+        ),
+      height 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .story-beat {
@@ -83,14 +139,65 @@
     padding-left: 26px;
     border-left: 2px solid rgb(255 255 255 / 9%);
     opacity: 0.42;
-    transition:
-      opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    cursor: pointer;
+    transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Cała karta jest klikalna, a treść zostaje czytelna dla czytników ekranu. */
+  .story-beat-hit {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+  }
+
+  .story-beat-hit:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 6px;
   }
 
   .story-beat.is-active {
     opacity: 1;
-    border-left-color: var(--accent);
+  }
+
+  .story-beat:not(.is-active):hover {
+    opacity: 0.7;
+  }
+
+  /* Postęp sekundowego hovera, zanim rozdział się przełączy. */
+  .story-beat.is-pending::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -2px;
+    width: 2px;
+    background: rgb(255 255 255 / 34%);
+    transform-origin: top;
+    animation: story-beat-pending 1s linear both;
+  }
+
+  @keyframes story-beat-pending {
+    from {
+      transform: scaleY(0);
+    }
+
+    to {
+      transform: scaleY(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .story-beat-indicator {
+      transition: none;
+    }
+
+    .story-beat.is-pending::before {
+      animation: none;
+    }
   }
 
   .story-beat-meta {
@@ -274,15 +381,6 @@
     justify-content: center;
   }
 
-  @keyframes story-ig-progress {
-    from {
-      transform: scaleX(0);
-    }
-    to {
-      transform: scaleX(1);
-    }
-  }
-
   @keyframes story-ig-caption-in {
     from {
       opacity: 0;
@@ -364,8 +462,9 @@
 
     .story-ig-bars {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: 3px;
     }
 
     .story-ig-bar-btn {
@@ -405,18 +504,34 @@
 
     .story-ig-bar-fill.is-active {
       background: var(--accent);
-      animation-name: story-ig-progress;
-      animation-timing-function: linear;
-      animation-fill-mode: forwards;
-      animation-play-state: paused;
+      transform: scaleX(1);
     }
 
-    .story-ig.is-in-view .story-ig-bar-fill.is-active {
-      animation-play-state: running;
+    .story-ig.is-immersive .story-ig-bar-fill.is-active {
+      transform: scaleX(0);
+      animation: story-ig-fill 6s linear forwards;
     }
 
-    .story-ig.is-paused .story-ig-bar-fill.is-active {
-      animation-play-state: paused;
+    @keyframes story-ig-fill {
+      to {
+        transform: scaleX(1);
+      }
+    }
+
+    /* Udawany pełny ekran: karta wychodzi poza padding sekcji i traci ramkę. */
+    .story-section {
+      overflow-x: clip;
+    }
+
+    .story-ig.is-immersive {
+      width: 100vw;
+      margin-inline: calc(50% - 50vw);
+      height: 100svh;
+      height: 100dvh;
+      max-height: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
     }
 
     .story-ig-header {
@@ -449,14 +564,6 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .story-ig-step {
-      font-size: 0.76rem;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      color: #8ea395;
-      flex-shrink: 0;
     }
 
     .story-ig-nav {

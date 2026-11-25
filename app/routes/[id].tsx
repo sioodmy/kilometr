@@ -23,14 +23,20 @@ import {
   Share2,
 } from '../../src/components/icons';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
+import { useWebLayout } from '../../src/theme/layout';
 import { MorphingLoader } from '../../src/components/MorphingLoader';
 import { defaultLocationForCity } from '../../src/config';
 import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService, subscribeSavedRoutes } from '../../src/services';
 import * as Haptics from 'expo-haptics';
-import { getPlannedConnection, rememberPlannedConnection } from '../../src/services/api';
+import {
+  getPlannedConnection,
+  isRouteSavedSync,
+  rememberPlannedConnection,
+} from '../../src/services/api';
 import { useLegAlternatives } from '../../src/hooks/useLegAlternatives';
+import { useScreenTransitionSettled } from '../../src/hooks/useScreenTransitionSettled';
 import {
   normalizeConnectionId,
   stableConnectionId,
@@ -44,11 +50,13 @@ import { ConnectionSummary } from '../../src/components/ConnectionSummary';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
+import { RouteReliabilityCard } from '../../src/components/RouteReliabilityCard';
 import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
+import { recordJourney } from '../../src/services/userStats';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -69,6 +77,7 @@ export default function RouteDetailsScreen() {
   // pierwszym renderze natywny padding wpada po kolejnym commicie i nagłówek
   // chwilowo ląduje pod paskiem stanu.
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const openTransferProtection = useTransferProtection();
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
   const { id: routeId, action: routeAction } = useLocalSearchParams<{
@@ -131,12 +140,17 @@ export default function RouteDetailsScreen() {
         : (immediateItem ?? null);
   const effectiveRawItem = swappedBase ?? rawItem;
 
+  const transitionSettled = useScreenTransitionSettled();
+
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
-  const [liveTick, setLiveTick] = useState(0);
-  const lastLiveOk = useRef(0);
+  // Startujemy od bieżącego getLastOk(), żeby uniknąć zbędnego drugiego renderu w klatce otwarcia.
+  const initialLiveOk = liveTracker.getLastOk();
+  const [liveTick, setLiveTick] = useState(initialLiveOk);
+  const lastLiveOk = useRef(initialLiveOk);
   useEffect(() => {
     const check = () => {
-      setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
+      const stale = liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh';
+      setLiveStale((prev) => (prev === stale ? prev : stale));
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
@@ -152,11 +166,11 @@ export default function RouteDetailsScreen() {
     };
   }, []);
 
-  // Po wejściu na ekran lub powrocie z uśpienia wymuszamy świeży poll live.
+  // Poll live utrzymujemy od wejścia, ale wymuszone odświeżenie sieciowe
+  // startuje dopiero po zakończeniu animacji przejścia (jeśli snapshot ma >10 s).
   useFocusEffect(
     useCallback(() => {
       liveTracker.acquire();
-      void liveTracker.refresh();
       const sub = AppState.addEventListener('change', (state) => {
         if (state === 'active') {
           void liveTracker.refresh();
@@ -168,13 +182,29 @@ export default function RouteDetailsScreen() {
       };
     }, []),
   );
+
+  useEffect(() => {
+    if (!transitionSettled) return;
+    const lastOk = liveTracker.getLastOk();
+    if (lastOk === 0 || Date.now() - lastOk > 10_000) {
+      void liveTracker.refresh();
+    }
+  }, [transitionSettled]);
+
   const rawItems = useMemo(() => (effectiveRawItem ? [effectiveRawItem] : []), [effectiveRawItem]);
   const tripDelays = useMemo(
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
-  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline);
+  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline && transitionSettled);
   const item = liveItems[0] ?? null;
+
+  const loggedJourneyIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!item || !item.id || loggedJourneyIdRef.current === item.id) return;
+    loggedJourneyIdRef.current = item.id;
+    void recordJourney(item, 'viewed');
+  }, [item]);
 
   const handleApplyLegSwap = useCallback(
     (nextConnection: Connection) => {
@@ -192,6 +222,7 @@ export default function RouteDetailsScreen() {
     routeKey: id,
     tripDelays,
     onApplySwap: handleApplyLegSwap,
+    ready: transitionSettled,
   });
 
   const activeId = normalizeConnectionId(item?.id ?? id);
@@ -215,25 +246,33 @@ export default function RouteDetailsScreen() {
   }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id, swappedBase]);
 
   const hasTransfers = item != null && hasTransfer(item);
-  const [isSavedRoute, setIsSavedRoute] = useState(false);
+  const [isSavedRoute, setIsSavedRoute] = useState<boolean>(
+    () => isRouteSavedSync(immediateItem?.id ?? id) ?? false,
+  );
 
   useEffect(() => {
     if (!item?.id) return;
+    const syncHit = isRouteSavedSync(item.id);
+    if (syncHit !== undefined) {
+      setIsSavedRoute((prev) => (prev === syncHit ? prev : syncHit));
+    }
     let cancelled = false;
     const checkSaved = () => {
       RoutingService.isRouteSaved(item.id)
         .then((saved) => {
-          if (!cancelled) setIsSavedRoute(saved);
+          if (!cancelled) setIsSavedRoute((prev) => (prev === saved ? prev : saved));
         })
         .catch(() => {});
     };
-    checkSaved();
+    if (transitionSettled && syncHit === undefined) {
+      checkSaved();
+    }
     const unsub = subscribeSavedRoutes(checkSaved);
     return () => {
       cancelled = true;
       unsub();
     };
-  }, [item?.id]);
+  }, [item?.id, transitionSettled]);
 
   const isPinned = isSavedRoute || isTrackedThis;
 
@@ -392,10 +431,33 @@ export default function RouteDetailsScreen() {
     };
   }, [id, immediateItem]);
 
+  const itemId = item?.id;
+  const openRouteMap = useCallback(
+    (stageId?: string) => {
+      if (!itemId) return;
+      router.push({
+        pathname: '/map',
+        params: stageId ? { id: itemId, stageId } : { id: itemId },
+      });
+    },
+    [itemId, router],
+  );
+
+  const toggleTrackingRef = useRef(toggleTracking);
+  toggleTrackingRef.current = toggleTracking;
+  const transferProtectionActive = isTrackedThis && trackedTrip?.protectionEnabled === true;
+  const handleTransferPress = useCallback(() => {
+    if (transferProtectionActive) {
+      openTransferProtection();
+    } else {
+      void toggleTrackingRef.current(true);
+    }
+  }, [openTransferProtection, transferProtectionActive]);
+
   if (loadFailed) {
     return (
       <View style={[styles.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <View style={styles.header}>
+        <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
           <Pressable
             onPress={goBack}
             style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
@@ -408,7 +470,7 @@ export default function RouteDetailsScreen() {
             {s.routeDetails.title}
           </Text>
         </View>
-        <View style={styles.stateWrap}>
+        <View style={[styles.stateWrap, webLayout.isMedium && styles.mediumConstrained]}>
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconCircle}>
               <RouteOff size={24} color={scheme.onSecondaryContainer} />
@@ -430,7 +492,7 @@ export default function RouteDetailsScreen() {
   if (!item) {
     return (
       <View style={[styles.safe, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
+        <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
           <Pressable
             onPress={goBack}
             style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
@@ -443,7 +505,10 @@ export default function RouteDetailsScreen() {
             {s.routeDetails.title}
           </Text>
         </View>
-        <View style={styles.stateWrap} accessibilityLiveRegion="polite">
+        <View
+          style={[styles.stateWrap, webLayout.isMedium && styles.mediumConstrained]}
+          accessibilityLiveRegion="polite"
+        >
           <MorphingLoader variant="contained" size={44} />
           <Text style={styles.emptyText}>{s.routeDetails.loading}</Text>
         </View>
@@ -461,219 +526,280 @@ export default function RouteDetailsScreen() {
       ? s.routeDetails.noLiveNote
       : null;
 
-  return (
-    <View style={[styles.safe, { paddingTop: insets.top }]}>
-      <View
-        style={styles.screen}
-        importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
-        accessibilityElementsHidden={sharing || alarmOpen}
+  const desktopSplit = webLayout.isDesktop && !noLegs;
+  const leftColWidth = webLayout.isWide ? 520 : 440;
+  const summaryAvailableWidth = desktopSplit
+    ? leftColWidth
+    : webLayout.isMedium
+      ? Math.min(740, webLayout.contentWidth) - 28
+      : undefined;
+
+  const headerContent = (
+    <>
+      <SpringPressable
+        onPress={goBack}
+        scaleDelta={0.06}
+        style={styles.backBtn}
+        accessibilityRole="button"
+        accessibilityLabel={s.map.backA11y}
       >
-        <View style={styles.header}>
-          <SpringPressable
-            onPress={goBack}
-            scaleDelta={0.06}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel={s.map.backA11y}
-          >
-            <ChevronLeft size={22} color={scheme.onSurface} />
-          </SpringPressable>
+        <ChevronLeft size={22} color={scheme.onSurface} />
+      </SpringPressable>
 
-          <Text
-            style={styles.headerTitle}
-            accessibilityRole="header"
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
-          >
-            {s.routeDetails.title}
-          </Text>
+      <Text
+        style={styles.headerTitle}
+        accessibilityRole="header"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
+        {s.routeDetails.title}
+      </Text>
 
-          {hasHeaderActions && (
-            <View style={styles.actionCluster}>
-              {!noLegs && (
-                <SpringPressable
-                  onPress={() => setSharing(true)}
-                  scaleDelta={0.06}
-                  haptic="selection"
-                  accessibilityRole="button"
-                  accessibilityLabel={s.share.title}
-                  style={styles.clusterBtn}
-                  hitSlop={4}
-                >
-                  <Share2 size={19} color={scheme.onSurface} />
-                </SpringPressable>
-              )}
-
-              {hasTransitLeg && (
-                <SpringPressable
-                  onPress={() => {
-                    if (Platform.OS === 'web') {
-                      showFullAppOnlyAlert();
-                      return;
-                    }
-                    setAlarmOpen(true);
-                  }}
-                  scaleDelta={0.06}
-                  haptic="selection"
-                  accessibilityRole="button"
-                  onFocus={() => setAlarmFocused(true)}
-                  onBlur={() => setAlarmFocused(false)}
-                  accessibilityState={{
-                    selected: currentAlarm != null,
-                    disabled: Platform.OS === 'web',
-                  }}
-                  accessibilityLabel={
-                    currentAlarm
-                      ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
-                      : s.alarm.set
-                  }
-                  style={[
-                    styles.clusterBtn,
-                    Platform.OS === 'web' && styles.clusterBtnLocked,
-                    currentAlarm && styles.clusterBtnActive,
-                    alarmFocused && styles.alarmFocused,
-                  ]}
-                  hitSlop={4}
-                >
-                  <AlarmClock
-                    size={19}
-                    color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurface}
-                  />
-                </SpringPressable>
-              )}
-
-              {!noLegs && (
-                <SpringPressable
-                  onPress={() => void togglePin()}
-                  disabled={trackingBusy}
-                  scaleDelta={0.06}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected: isPinned,
-                    disabled: Platform.OS === 'web' || trackingBusy,
-                  }}
-                  accessibilityLabel={
-                    isPinned
-                      ? s.home.unpinRouteA11y(item.toTitle)
-                      : s.home.pinRouteA11y(item.toTitle)
-                  }
-                  style={[
-                    styles.clusterBtn,
-                    Platform.OS === 'web' && styles.clusterBtnLocked,
-                    isPinned && styles.clusterBtnActive,
-                  ]}
-                  hitSlop={4}
-                >
-                  <Pin
-                    size={19}
-                    color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
-                  />
-                </SpringPressable>
-              )}
-            </View>
-          )}
-        </View>
-
-        <ScrollView
-          contentContainerStyle={styles.body}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-        >
-          <ConnectionSummary item={item} offline={offline} showLegStrip />
-
-          {currentAlarm && (
+      {hasHeaderActions && (
+        <View style={styles.actionCluster}>
+          {!noLegs && (
             <SpringPressable
-              onPress={() => setAlarmOpen(true)}
-              scaleDelta={0.02}
+              onPress={() => setSharing(true)}
+              scaleDelta={0.06}
               haptic="selection"
               accessibilityRole="button"
-              accessibilityLabel={`${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`}
-              style={styles.alarmBanner}
+              accessibilityLabel={s.share.title}
+              style={styles.clusterBtn}
+              hitSlop={4}
             >
-              <View style={styles.alarmIconWrap}>
-                <AlarmClock size={18} color={scheme.onPrimaryContainer} />
-              </View>
-              <View style={styles.alarmTextCol}>
-                <Text style={styles.alarmEyebrow} numberOfLines={1}>
-                  {s.alarm.title}
-                </Text>
-                <Text style={styles.alarmTimeText} numberOfLines={1}>
-                  {s.alarm.ringsAt(currentAlarm.time)}
-                </Text>
-              </View>
-              <ChevronRight size={17} color={scheme.onPrimaryContainer} />
+              <Share2 size={19} color={scheme.onSurface} />
             </SpringPressable>
           )}
 
-          {dataNote && (
-            <View style={styles.offlineBanner}>
-              <View style={styles.offlineIconWrap}>
-                <CloudOff size={16} color={scheme.onSecondaryContainer} />
-              </View>
-              <Text style={styles.offlineBannerText}>{dataNote}</Text>
-            </View>
+          {hasTransitLeg && (
+            <SpringPressable
+              onPress={() => {
+                if (Platform.OS === 'web') {
+                  showFullAppOnlyAlert();
+                  return;
+                }
+                setAlarmOpen(true);
+              }}
+              scaleDelta={0.06}
+              haptic="selection"
+              accessibilityRole="button"
+              onFocus={() => setAlarmFocused(true)}
+              onBlur={() => setAlarmFocused(false)}
+              accessibilityState={{
+                selected: currentAlarm != null,
+                disabled: Platform.OS === 'web',
+              }}
+              accessibilityLabel={
+                currentAlarm
+                  ? `${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`
+                  : s.alarm.set
+              }
+              style={[
+                styles.clusterBtn,
+                Platform.OS === 'web' && styles.clusterBtnLocked,
+                currentAlarm && styles.clusterBtnActive,
+                alarmFocused && styles.alarmFocused,
+              ]}
+              hitSlop={4}
+            >
+              <AlarmClock
+                size={19}
+                color={currentAlarm ? scheme.onPrimaryContainer : scheme.onSurface}
+              />
+            </SpringPressable>
           )}
 
-          {noLegs ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIconCircle}>
-                <RouteOff size={24} color={scheme.onSecondaryContainer} />
-              </View>
-              <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
-              <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
-              <Pressable
-                onPress={goBack}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+          {!noLegs && (
+            <SpringPressable
+              onPress={() => void togglePin()}
+              disabled={trackingBusy}
+              scaleDelta={0.06}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityState={{
+                selected: isPinned,
+                disabled: Platform.OS === 'web' || trackingBusy,
+              }}
+              accessibilityLabel={
+                isPinned
+                  ? s.home.unpinRouteA11y(item.toTitle)
+                  : s.home.pinRouteA11y(item.toTitle)
+              }
+              style={[
+                styles.clusterBtn,
+                Platform.OS === 'web' && styles.clusterBtnLocked,
+                isPinned && styles.clusterBtnActive,
+              ]}
+              hitSlop={4}
+            >
+              <Pin
+                size={19}
+                color={isPinned ? scheme.onPrimaryContainer : scheme.onSurface}
+              />
+            </SpringPressable>
+          )}
+        </View>
+      )}
+    </>
+  );
+
+  const summaryAndMeta = (
+    <>
+      <ConnectionSummary
+        item={item}
+        offline={offline}
+        availableWidth={summaryAvailableWidth}
+        showLegStrip
+      />
+
+      {currentAlarm && (
+        <SpringPressable
+          onPress={() => setAlarmOpen(true)}
+          scaleDelta={0.02}
+          haptic="selection"
+          accessibilityRole="button"
+          accessibilityLabel={`${s.alarm.edit}. ${s.alarm.ringsAt(currentAlarm.time)}`}
+          style={styles.alarmBanner}
+        >
+          <View style={styles.alarmIconWrap}>
+            <AlarmClock size={18} color={scheme.onPrimaryContainer} />
+          </View>
+          <View style={styles.alarmTextCol}>
+            <Text style={styles.alarmEyebrow} numberOfLines={1}>
+              {s.alarm.title}
+            </Text>
+            <Text style={styles.alarmTimeText} numberOfLines={1}>
+              {s.alarm.ringsAt(currentAlarm.time)}
+            </Text>
+          </View>
+          <ChevronRight size={17} color={scheme.onPrimaryContainer} />
+        </SpringPressable>
+      )}
+
+      {dataNote && (
+        <View style={styles.offlineBanner}>
+          <View style={styles.offlineIconWrap}>
+            <CloudOff size={16} color={scheme.onSecondaryContainer} />
+          </View>
+          <Text style={styles.offlineBannerText}>{dataNote}</Text>
+        </View>
+      )}
+    </>
+  );
+
+  const legSections = (
+    <>
+      <RouteTravelDeck
+        connection={item}
+        hasTransfers={hasTransfers}
+        transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
+        transferActive={transferProtectionActive}
+        trackingBusy={trackingBusy}
+        autoInspectTicket={openTicket}
+        deferLoad={!transitionSettled}
+        onTransferPress={handleTransferPress}
+      />
+      <LegTimeline
+        legs={item.legs}
+        boardedDepartAt={item.boarded ? item.departAt : undefined}
+        legSwapStates={swapStates}
+        onSwapLeg={swapLeg}
+        onRetrySwapLeg={retryLeg}
+        transferState={transferProtectionActive ? trackedTrip?.transfer : undefined}
+        onOpenTransferProtection={openTransferProtection}
+        deferSecondaryWork={!transitionSettled}
+      />
+    </>
+  );
+
+  return (
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
+      <View
+        style={[styles.screen, desktopSplit && styles.desktopContainer]}
+        importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
+        accessibilityElementsHidden={sharing || alarmOpen}
+      >
+        {desktopSplit ? (
+          <>
+            <View style={styles.desktopHeader}>{headerContent}</View>
+            <View style={styles.desktopSplit}>
+              <ScrollView
+                style={{ width: leftColWidth, flexGrow: 0, flexShrink: 0 }}
+                contentContainerStyle={styles.desktopLeftBody}
+                showsVerticalScrollIndicator={false}
+                overScrollMode="never"
               >
-                <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
-              </Pressable>
+                {summaryAndMeta}
+                <View style={styles.detailsContent}>
+                  {legSections}
+                  {transitionSettled && (
+                    <>
+                      <RouteReliabilityCard connection={item} />
+                      <ConnectionLineAlerts connection={item} />
+                    </>
+                  )}
+                </View>
+                <View style={{ height: 24 }} />
+              </ScrollView>
+              <View style={styles.desktopMapCol}>
+                <RouteMapCard
+                  desktopFill
+                  deferMapMount={!transitionSettled}
+                  connection={item}
+                  onOpenMap={openRouteMap}
+                />
+              </View>
             </View>
-          ) : (
-            <View style={styles.detailsContent}>
-              <RouteTravelDeck
-                connection={item}
-                hasTransfers={hasTransfers}
-                transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
-                transferActive={isTrackedThis && trackedTrip?.protectionEnabled === true}
-                trackingBusy={trackingBusy}
-                autoInspectTicket={openTicket}
-                onTransferPress={() => {
-                  if (isTrackedThis && trackedTrip?.protectionEnabled) {
-                    openTransferProtection();
-                  } else {
-                    void toggleTracking(true);
-                  }
-                }}
-              />
-              <LegTimeline
-                legs={item.legs}
-                boardedDepartAt={item.boarded ? item.departAt : undefined}
-                legSwapStates={swapStates}
-                onSwapLeg={swapLeg}
-                onRetrySwapLeg={retryLeg}
-                transferState={
-                  isTrackedThis && trackedTrip?.protectionEnabled ? trackedTrip.transfer : undefined
-                }
-                onOpenTransferProtection={openTransferProtection}
-              />
-              <RouteMapCard
-                connection={item}
-                onOpenMap={(stageId) =>
-                  router.push({
-                    pathname: '/map',
-                    params: stageId ? { id: item.id, stageId } : { id: item.id },
-                  })
-                }
-              />
-              <ConnectionLineAlerts connection={item} />
+          </>
+        ) : (
+          <>
+            <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
+              {headerContent}
             </View>
-          )}
 
-          <View style={{ height: 24 }} />
-        </ScrollView>
+            <ScrollView
+              contentContainerStyle={[
+                styles.body,
+                webLayout.isMedium && styles.mediumConstrained,
+              ]}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+            >
+              {summaryAndMeta}
+
+              {noLegs ? (
+                <View style={styles.emptyCard}>
+                  <View style={styles.emptyIconCircle}>
+                    <RouteOff size={24} color={scheme.onSecondaryContainer} />
+                  </View>
+                  <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
+                  <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
+                  <Pressable
+                    onPress={goBack}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.detailsContent}>
+                  {legSections}
+                  {transitionSettled && (
+                    <>
+                      <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                      <RouteReliabilityCard connection={item} />
+                      <ConnectionLineAlerts connection={item} />
+                    </>
+                  )}
+                </View>
+              )}
+
+              <View style={{ height: 24 }} />
+            </ScrollView>
+          </>
+        )}
       </View>
       {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
       {alarmOpen && (
@@ -690,6 +816,40 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
+  },
+  mediumConstrained: {
+    width: '100%',
+    maxWidth: 740,
+    alignSelf: 'center',
+  },
+  desktopContainer: {
+    width: '100%',
+    maxWidth: 1320,
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 16,
+    paddingBottom: 20,
+    gap: 14,
+  },
+  desktopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  desktopSplit: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 24,
+    minHeight: 0,
+  },
+  desktopLeftBody: {
+    gap: 14,
+    paddingBottom: 24,
+  },
+  desktopMapCol: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
   },
   stateWrap: {
     flex: 1,
@@ -709,7 +869,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -729,12 +889,12 @@ const styles = StyleSheet.create({
     padding: 3,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   clusterBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -804,7 +964,7 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 14,
     paddingVertical: 11,
@@ -829,7 +989,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 24,
     ...elev.level1,

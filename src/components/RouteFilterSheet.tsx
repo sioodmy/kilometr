@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -32,6 +32,14 @@ import {
 } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
+import {
+  DESKTOP_SHEET_TOP_SPACER_HEIGHT,
+  DesktopSheetTopSpacer,
+  getDesktopSheetProps,
+  useEscapeKey,
+  useWebLayout,
+} from '../theme/layout';
 import { scheme, shape, spacing, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { LegMode } from '../types/models';
@@ -78,26 +86,25 @@ export function RouteFilterSheet({
   const s = useStrings();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
+  const webLayout = useWebLayout();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
 
-  const maxAvailable = windowHeight - insets.top - insets.bottom - 16;
+  const maxAvailable = webLayout.isMedium
+    ? windowHeight - 96
+    : windowHeight - insets.top - insets.bottom - 16;
   const baseContentHeight = 520 + Math.max(0, fontScale - 1) * 220;
   const sheetHeight = Math.min(maxAvailable, Math.max(400, baseContentHeight));
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 540, sheetHeight);
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
 
   const requestClose = useCallback(() => {
     sheetRef.current?.close();
   }, []);
+  useEscapeKey(true, requestClose);
 
-  useEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      requestClose();
-      return true;
-    });
-    return () => back.remove();
-  }, [requestClose]);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -198,17 +205,23 @@ export function RouteFilterSheet({
       index={0}
       snapPoints={snapPoints}
       animationConfigs={animationConfigs}
-      handleComponent={SheetHandle}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : SheetHandle}
       topInset={insets.top}
-      bottomInset={insets.bottom}
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
-      enablePanDownToClose
+      enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onClose}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
       backdropComponent={renderBackdrop}
     >
       <View
-        style={[styles.sheetContainer, { height: sheetHeight - HANDLE_HEIGHT }]}
+        style={[
+          styles.sheetContainer,
+          { height: sheetHeight - (webLayout.isMedium ? DESKTOP_SHEET_TOP_SPACER_HEIGHT : HANDLE_HEIGHT) },
+        ]}
         accessibilityViewIsModal
       >
         <View style={styles.header}>
@@ -525,7 +538,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   sheetContainer: {
@@ -611,7 +624,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -628,7 +641,7 @@ const styles = StyleSheet.create({
   sectionCard: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 14,
     gap: 12,
@@ -666,13 +679,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     minHeight: 44,
   },
   chipActive: {
     backgroundColor: scheme.primaryContainer,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.primary,
   },
   chipText: {
@@ -689,7 +702,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.full,
     padding: 4,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
@@ -730,7 +743,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: 22,
-    borderWidth: 1,
+    borderWidth: 2,
     minHeight: 74,
   },
   liveCardLeft: {
@@ -781,7 +794,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
   },
   doneBtn: {

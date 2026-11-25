@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import {
   Pressable,
   type GestureResponderEvent,
@@ -6,8 +6,8 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { hapticSelection, hapticTap } from '../services/haptics';
 import { motion } from '../theme/motion';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -61,9 +61,9 @@ export function SpringPressable({
     (e: GestureResponderEvent) => {
       if (!disabled && haptic) {
         if (haptic === 'selection') {
-          void Haptics.selectionAsync().catch(() => {});
+          hapticSelection();
         } else {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          hapticTap();
         }
       }
       onPress?.(e);

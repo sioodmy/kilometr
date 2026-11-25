@@ -154,7 +154,7 @@ export const de: Strings = {
     forever: 'Für immer.',
   },
   closing: {
-    title: 'Du verdienst mehr als jakdojade',
+    title: 'Bis unterwegs',
     body: 'Plane Fahrten und prüfe Abfahrten, auch offline. Lade Kilometr herunter und unterstütze die Entwicklung, wenn dir die App hilft.',
     support: 'Entwicklung fördern',
   },

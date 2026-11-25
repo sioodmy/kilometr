@@ -1,142 +1,67 @@
-Te reguły są domyślne (good defaults), nie święte prawo. User może je nadpisać w wątku.
+# Zasady pracy agenta (Kilometr)
 
-## User
+Reguły są domyślne. Polecenie usera w wątku ma zawsze pierwszeństwo.
 
-- Rozmowy po polsku, krótko i wprost; tak samo zwracaj się do niego.
-- Autystyczny, ADHD, krótki zakres uwagi: odpowiedzi maksymalnie krótkie, listy zamiast akapitów, najpierw wynik, potem szczegóły. Zero ozdobników, zero "great question".
-- Nie jest native speakerem angielskiego: po angielsku krótkie zdania, bez idiomów.
-- Nie traktuj jak nowicjusza, nie tłumacz podstaw, chyba że o to poprosi.
-- Nie ma Claude Pro ani Codex, nie sugeruj ich narzędzi. Harness: OpenCode.
-- Chce setup w duchu Theo (t3.gg / T3 Code): małe zmiany, krótkie reguły, dobre praktyki, shipowanie działającego kodu. Trzymaj się tego.
+## 1. Komunikacja i styl odpowiedzi
 
-## Ten plik
+- **Język**: rozmawiaj wyłącznie po polsku (także komunikaty pośrednie w trakcie pracy). Krótko, wprost, bez korpo-waty, bez pochwał ("świetne pytanie") i bez tłumaczenia podstaw.
+- **Koniec pracy (OBOWIĄZKOWE)**: zawsze podaj konkretne podsumowanie co się zmieniło:
+  1. **Wynik** w 1-2 zdaniach (co zrobiono / co naprawiono, hash commita lub link do PR).
+  2. **Zmienione pliki** jako klikalne linki (`[Plik.tsx](file:///ścieżka/Plik.tsx#L10-L20)`) z 1 zdaniem co dokładnie w nich zmieniono.
+  3. **Weryfikacja**: jedno zdanie co uruchomiono (`typecheck`, `eslint`, `knip`, testy).
+- **ZAKAZ raportów Anti-Slop**: NIGDY nie wypisuj w odpowiedzi `antislop active`, `Design Read`, `Hard Gate: PASS`, `Purpose-Gate`, `Quality Locks` ani tabel kontrolnych. Reguły jakości stosuj po cichu, a userowi pokaż wyłącznie realne zmiany w kodzie.
+- **Błędy i blokery**: pokaż w pierwszej linii odpowiedzi, jednym zdaniem czego brakuje.
 
-- To plik dla Ciebie (agenta), nie README. README opisuje projekt ludziom; tu są zasady zmieniania kodu.
-- "user" = sioodmy (człowiek za ekranem), "Ty" = agent czytający ten plik, "my" = user + Ty.
-- kilometr = aplikacja Expo/React Native: rozkłady jazdy, mapa offline, powiadomienia o odjazdach. GTFS i baza na urządzeniu, offline-first, Android.
-- Czego nie łamiesz: nie zmyślasz danych, offline działa, wydajność i bateria, mały rozmiar, czytelne UI. Zmiana, która to psuje, nie wychodzi z wątku.
+## 2. Projekt i architektura
 
-## Praca w wątku
+- **Kilometr**: planer podróży komunikacją miejską (132 miasta) i koleją w Polsce.
+- **Stack**: Expo / React Native (Android, iOS, Web PWA na `web.kilometr.app`), lokalny SQLite z GTFS, silnik routingu Range RAPTOR w Rust (`modules/kilometr-raptor`), MapLibre, Cloudflare Workers + R2 (`cloudflare/`), strona w `landing/` (budowana do `docs/`).
+- **Środowisko shell**: `node`, `npm`, `tsc` nie są w globalnym `PATH`. Każdą komendę uruchamiaj przez `nix develop .#ci -c '<cmd>'`.
+- **Nienaruszalne filary**: działanie offline, niski pobór baterii, szybkość na słabszych telefonach, zero zmyślonych danych.
+- **Prywatność**: nigdy nie umieszczaj w kodzie, testach ani zrzutach ekranu prywatnej lokalizacji usera. Na zrzutach ekranu z telefonu zawsze zamaskuj górny pasek statusu (powiadomienia, ikony systemowe) i ustaw godzinę `13:31`.
+- **Zrzuty ekranu UI na żywo**: aplikacja działa jako Web PWA (`npm run web` / `web.kilometr.app`). Gdy user prosi o pokazanie wyglądu ekranu lub elementu UI, użyj skilla `.agents/skills/pwa-screenshot/SKILL.md` i osadź zrzut w czacie.
 
-- Nie rozpisuj się: krótkie komunikaty, po prostu rób. Nie wypisuj planów ani opisów działań. Jeśli user o plan poprosi, max 10 linii.
-- Pytanie od usera = read-only. Nie edytuj, dopóki tak napisał.
-- Jak robota może pójść dalej bez usera, jedź do końca. Zatrzymuj się tylko gdy: (a) user poprosił "stop przed X", (b) przed akcją destrukcyjną, (c) druga próba naprawy też pada.
-- Błąd pokaż od razu, w jednej linii, nie ukrywaj go w opisie. Blocker: jedno zdanie, czego dokładnie potrzebujesz.
-- Podsumowanie: co zrobione / co nie / co dalej. Maksymalnie kilka linii.
+## 3. Jak pracować (Oszczędność tokenów i czasu)
 
-## Budżet kontekstu (OBOWIĄZKOWE)
+- **Bez zbędnych pytań i planów**: jeśli zadanie jest jasne, od razu koduj. Pytaj tylko gdy brak decyzji zmienia architekturę. Pytanie od usera = tryb read-only (nie edytuj plików, dopóki nie poprosi).
+- **Czytanie kodu**: najpierw `rg -n`, potem `read_file` z `StartLine`/`EndLine`. Nie czytaj całych plików >300 linii ani dwa razy tego samego zakresu.
+- **Cięcie outputu**: duże wyjścia w terminalu ograniczaj (`| head -50`, `| tail -30`, `git diff --stat`). Zakaz `git log -p` i `cat` dużych plików.
+- **Root cause**: przy bugach najpierw znajdź wszystkich callerów (`rg`), napraw źródło problemu raz we wspólnym kodzie. Nie dokładaj obejść na wierzchu.
+- **Weryfikacja jednym passem**: zbierz edycje i uruchom na końcu `nix develop .#ci -c 'npm run typecheck && npx eslint <zmienione_pliki>'`. Jeśli usuwasz eksporty lub komponenty, sprawdź `npm run check:dead-code` (Knip w CI odrzuca martwy kod). Jeśli ten sam błąd kompilacji wraca 2 razy, zatrzymaj się i pokaż go userowi.
+- **Czekanie na CI**: zakaz `sleep` w pętli i `gh run watch`. Używaj `watch_pull_request` i kończ turę.
 
-- Jeden wątek = jedno zadanie. Nowe zadanie = nowy wątek, nie "kontynuuj" w starym.
-- Kontekst > 150k tokenów albo 2 przerwania usera: napisz HANDOFF i poproś o nowy wątek.
-  HANDOFF max 10 linii: co zrobione / co zostało / pliki / decyzje / ryzyka.
-- Po przerwaniu nie wznawiaj z pełnym kontekstem. Najpierw HANDOFF, potem nowy wątek.
-- Jeśli user zmieni model w trakcie wątku, zaproponuj HANDOFF i nowy wątek (cache przepada).
+## 4. UI, Design i Teksty (Zero Slopu)
 
-## Codowanie
+- **Design system aplikacji**: Material 3 Expressive (`src/theme/`). Używaj tokenów kolorów z `scheme` (`primary`, `surfaceContainer`, `onSurfaceVariant`, `outlineVariant`). Tap targety minimum `44x44px`.
+- **Konteks domenowy**: każda ikona, animacja czy ilustracja w aplikacji musi wiązać się z transportem publicznym (tramwaj, autobus, pociąg, torowisko, przystanek, trasa), nigdy z abstrakcyjnymi gwiazdkami, koniczynkami czy ciastkami.
+- **Czysty interfejs (bez AI-slopu)**:
+  - Nie dodawaj nad nagłówkami sztucznych nadtytułów (`eyebrow` / `kicker` typu `NOWOŚĆ`, `FUNKCJA`, `01 // ROZKŁAD`), zbędnych pigułek (`Live GPS`), dekoracyjnych tagów ani opisów powtarzających to, co widać obok.
+  - Na kartach i ekranach wyróżniaj tylko pierwszoplanową informację (np. godziny odjazdu/przyjazdu, numer linii). Akcje pomocnicze (np. `Wcześniejszy` / `Późniejszy`) muszą być wyraźnie podporządkowane wizualnie.
+  - Kontrast tekstu: minimum WCAG AA (4.5:1 dla zwykłego tekstu, 3:1 dla dużego tekstu i obrysów kontrolek).
+  - Na Web/PWA i mobile pilnuj `visualViewport` przy otwartej klawiaturze, bezpiecznych stref (`safe-area-inset`) i braku poziomego scrolla. Na mobile wyłączaj ciężkie maski CSS (`mask-image`) na animowanych elementach (np. marquee), bo zrzucają animację z GPU.
+- **Zakaz myślników zdaniowych (Em Dash Ban)**:
+  - NIGDY nie używaj znaku em dash (`U+2014`), spacjonowanej półpauzy (`U+2013`) ani łącznika ` - ` lub `--` do łączenia części zdania. Dotyczy to UI, i18n, landingu, README, opisów PR, commitów, komentarzy w kodzie i Twoich odpowiedzi na czacie.
+  - Zamiast myślnika w zdaniu użyj kropki, przecinka, dwukropka albo nawiasu. Przed commitem sprawdź zmienione pliki pod kątem `U+2014`.
+- **Styl tekstów**: zero marketingowych wydmuszek ("rewolucyjny", "nowa era", "bezproblemowy", "odkryj potencjał"), zero zmyślonych statystyk. Pisz konkretnie co funkcja robi dla pasażera.
 
-- Minimalizm: measure twice, cut once, YAGNI. Nie zachowuj złożoności dlatego, że już istnieje. Nie dodawaj machinerii, bo wygląda imponująco.
-- Zanim zaczniesz, sprawdź, czy istnieje "stupid simple solution" i rób tak, jeśli działa.
-- Bug fix: najpierw `rg` po wszystkich callerach funkcji, potem napraw root cause raz we wspólnym kodzie.
-- `shortcut: <limit>, <kiedy upgradować>` w komentarzu, gdy świadomie zostawiasz ograniczenie.
-- Nie rozszerzaj zakresu. Pre-existing bugi: nie naprawiaj w tej samej robocie, wpisz follow-up w podsumowaniu.
-- Działania destrukcyjne (usuwanie danych, force push, kill procesów, migracje) tylko na wyraźną prośbę. Killuj tylko procesy, które sam uruchomiłeś.
+## 5. Tłumaczenia (i18n) i Komentarze
 
-## Czytanie i komendy
+- **Wszystkie teksty widoczne dla usera** (UI, alerty, powiadomienia, `accessibilityLabel`) muszą iść ze słownika `src/i18n` (`pl.ts`, `en.ts`, `de.ts`, `uk.ts`). Zero zahardkodowanych napisów w komponentach i serwisach.
+- `pl.ts` definiuje typ `Strings`. Po dodaniu klucza uzupełnij wszystkie 4 języki. Liczby mnogie i interpolacje pisz jako funkcje w słowniku.
+- Komponenty React używają `useStrings()`, serwisy synchroniczne `tr()` lub `getLocaleSync()`.
+- **Komentarze w kodzie**: krótkie (1-2 linie), po polsku, tylko gdy wyjaśniają "dlaczego" (obejście buga platformy, nietypowy kontrakt API, regułę domenową). Zero komentarzy powtarzających kod, zero banerów `// === SECTION ===` i zero emoji w komentarzach. Świadome uproszczenie oznaczaj `// shortcut: <limit>, <kiedy rozbudować>`.
 
-- Najpierw `rg -n`, potem `read` z offset/limit. Nigdy cały plik > 300 linii.
-- Nie czytaj drugi raz tego samego pliku. Jeśli musisz, tylko zmieniony zakres.
-- Duże wyjście zawsze tnij: `| head -50`, `| tail -20`, `--stat`, `-l`.
-- Zakaz: `git log -p`, `cat` wielkich plików, `git diff` bez `--stat` na dużych zmianach.
-- Shell nie ma node/npm/tsc w PATH. Zawsze `nix develop .#ci -c '<cmd>'`.
+## 6. Git, Branche, PR i Buildy
 
-## Weryfikacja
-
-- Celowana najpierw: `nix develop .#ci -c 'npm run typecheck'`, lint na zmienionych plikach, skupione testy. Full build tylko na pozwolenie (patrz Build).
-- Typecheck raz na logiczny kawałek, nie po każdej edycji. Zbierz wszystkie błędy, napraw jednym passem.
-- Ten sam błąd typecheck 2x: stop, pokaż błąd, nie zmieniaj kodu losowo.
-- Testy celowane, nie slop i nie pełny `npm test` przy zmianie jednego pliku. Regression test na małą poprawkę to overkill.
-- Duży diff: najpierw przeczytaj własne podsumowanie i sprawdź, czy nic nie uciekło.
-
-## Czekanie
-
-- Zakaz `gh pr checks --watch`, `gh run watch`, `sleep` w pętli.
-- Status CI: jedno sprawdzenie na turę albo `watch_pull_request` i koniec tury.
-- Buildy i testy na telefonie: tylko Azure, nigdy lokalnie.
-
-## TypeScript i komentarze
-
-- `any` to wróg; casting one-linery to zły TS.
-- Komentarze: krótkie, po polsku; opisują "jak tego się używa" nad funkcją/klasą; aktualizuj przy zmianie. Zero komentarzy wiersz po wierszu.
-- Wszystko user-facing przez `src/i18n` (patrz Tłumaczenia).
-
-## Pull requesty
-
-- Przed zrobieniem PR: sprawdź, czy PR z tego brancha już istnieje; diff sprawdź lokalnie przeciw origin.
-- Tytuł: krótki, po polsku, wyjaśnia DLACZEGO (bad: `fix: refactor map`, good: `fix(mapy): mapa nie znika przy powrocie`).
-- Opis: pierwsze zdanie = problem, dopiero potem rozwiązanie. Żadnego leadu w stylu "usunięto plik X, dodano plik Y".
-- Jedna linia na dole opisu: model + "wykonane przez agenta OpenCode".
-
-## Em dash ban (OBOWIĄZKOWE)
-
-- NIGDY PRZENIGDY nie używaj em dash (U+2014) w czegokolwiek, co zobaczy człowiek: UI, landing, docs, README, PR, commit message, komentarze w kodzie, odpowiedzi do usera. Zamiast tego: kropka, przecinek, dwukropek, nawias, pełne zdania.
-- Spacjonowany myślnik ("x - y") i podwójny łącznik ("x -- y") jako łącznik zdania też pomijaj; pisz pełne zdania.
-- Przed oddaniem: sprawdź swój tekst pod kątem `—`. Zero trafień albo wróć i napraw.
-
-## Tłumaczenia (i18n) - OBOWIĄZKOWE
-
-- Każdy tekst usera (UI, alerty, powiadomienia, a11y labels) MUSI pochodzić ze słownika `src/i18n`. Zero hardcode PL/EN w komponentach/ekranach/serwisach.
-- Języki: pl / en / de / uk. `pl.ts` jest wzorcem typów (`Strings = typeof pl`); brak klucza w en/de/uk = błąd kompilacji.
-- Komponenty: `useStrings()` z `src/i18n`. Serwisy synchroniczne: `tr()` albo `getLocaleSync()` + statyczne importy słowników. Bez `require()`, bez cache słownika na module.
-- Interpolacje i liczby mnogie to FUNKCJE w słowniku (pl/uk: 1 / 2-4 / 5+; en/de: 1 / reszta). Nie pisz własnych reguł mnożenia w komponentach.
-- Dodanie stringa: klucz do `pl.ts` → tłumaczenia w `en/de/uk.ts` → użycie w UI. `npx tsc --noEmit` wyłapie braki.
-
-## Anti-Slop (UI / teksty / docs) - OBOWIĄZKOWE
-
-- Zanim edytujesz cokolwiek widocznego dla ludzi: przeczytaj core `.agents/skills/antislop/SKILL.md` + jeden pasujący skill z mapy poniżej. Stosuj zasady W TRAKCIE pisania, na koniec raport PASS/FAIL z Delivery Gate w 4 blokach.
-- Zmiana < 50 linii w jednym komponencie: checklista z tego pliku, bez ładowania skilli.
-- Mapowanie:
-  - UI / visual (kolor, layout, komponenty, motion): `antislop-ui`
-  - copy / tekst (nagłówki, CTA, landing, PR, docs, i18n): `antislop-copywriting`
-  - dostępność (kontrast, klawiatura, focus): `antislop-human`
-  - mobile / responsive (breakpointy, grid, tap targety): `antislop-layoutmobile`
-  - komentarze w kodzie: `antislop-code`
-- Anti-slop to filtr, nie style guide. Kierunek wizualny podaje brief usera; bez kierunku oznacz jako "draft". Nie wymyślaj faktów, liczb ani testimoniali.
-- Live badges (migająca kropka, pill) tylko na wyraźną prośbę.
-
-## Skille: zasady (metoda Theo)
-
-- Description w SKILL.md = trigger ("Use when user asks X, Y, Z"), nie opis zawartości. Description jest zawsze w kontekście; treść ładuje się dopiero przy użyciu.
-- Powtarzalny błąd agenta dwa razy → najpierw napraw architekturą/linterem/CI, potem jedna linia w tym pliku, dopiero potem skill.
-- Skille `.agents/skills/*` są werbowane 1:1 z upstream Anti-Slop (core v3.2.20, MIT: https://github.com/miqdadbadjuber/Anti-Slop); lokalnie wycięte em dashes, description działa jak trigger. Update = przekopiuj `skills/*` z release, podbij wersję.
-- Inne skille: `react-modernization`, `react-native-architecture`, `transit-benchmark`, `typescript-pro`, `ui-ux-designer`, `ui-visual-validator`.
-
-## Branchy (OBOWIĄZKOWE)
-
-- Flow: `feature/*` lub `fix/*` -> `dev` -> `main` -> `nightly` -> `prod`. Każdy krok PR-em, nigdy direct push. Branch `t3/*` z T3 Code też działa jako feature branch.
-- Feature branch bazuje na `dev`; PR do `dev` otwierasz od razu.
-- Wszystkie cztery (dev, main, nightly, prod) chronione: push tylko przez PR.
-- Buildy GitHub startują WYŁĄCZNIE na push do `nightly` i `prod` (`.github/workflows/build-apk.yml`). Push do dev/main ich nie uruchamia; dev testuje się przez APK z Azure Pipelines.
-- `nightly`: tag `nightly-YYYYMMDD-HHMM-<sha>`, prerelease, APK `kilometr-nightly.apk`.
-- `prod`: tag `vX.Y.Z` (auto-semver z commitów), normalny release: APK `kilometr-prod.apk`, AAB na Google Play, niepodpisane IPA do sideloadu. Release notes z conventional commitów.
-- iOS build wyłącznie z `prod` (`.github/workflows/build-ipa.yml`).
-- Landing: GitHub Pages z `main` (`.github/workflows/deploy-pages.yml`), celuje w `releases/latest`.
-- Trzymaj otwarty PR `dev` -> `main` z todo listą (`- [ ]`) feature'ów: jeden element = jedna testowalna rzecz, tylko co wymaga manualnych testów, link do feature PR w elemencie. Nie zamykaj go i nie merguj automatycznie.
-- NIGDY nie merguj automatycznie do `nightly`/`prod`; merge robi człowiek ręcznie.
-
-## Buildy
-
-- Nie buduj APK lokalnie bez pozwolenia usera.
-- Zakaz lokalnie: `gradle`, `expo run`, `adb install`, `assembleDebug`, `npm run start` w pętli. Test na telefonie = build z Azure + instalacja z linku.
-- Wszystkie AAB korzystają ze wspólnego licznika workflow Play; nie twórz osobnych pasm versionCode dla testów i produkcji.
-
-## Commity
-
-- Commituj na bieżąco, małymi logicznymi kawałkami, conventional commits po polsku.
-- Przed commitem: `git status --short`, `git diff`, `git log --oneline -10`; stage'uj tylko zamierzone pliki; nigdy sekrety.
-- NIGDY nie commituj wprost na dev/main/nightly/prod. Nie amenduj po nieudanych hookach: napraw i zrób nowy commit.
-- Nie pushuj, nie twórz PR i nie zmieniaj remote bez wyraźnej prośby usera.
-
-## Utrzymywanie tego pliku
-
-- Ten plik żyje: nadpisuj regułę, gdy nie działa albo świat się zmienił.
-- Twój powtarzalny błąd: po drugim razie dopisz jedną linię do właściwej sekcji, zamiast tłumaczyć się na nowo w każdym wątku.
+- **Praca lokalna**: commituj logicznymi kawałkami (`fix(zakres): opis po polsku`, `feat(zakres): opis po polsku`). Przed commitem sprawdź `git status --short` i `git diff --stat`. Nie commituj sekretów ani lokalnych baz GTFS.
+- **Kiedy push i PR**: nie pushuj i nie otwieraj PR z własnej inicjatywy, chyba że user wyraźnie o to poprosi w prompcie (np. "zrób PR", "merguj do dev").
+- **Przepływ gałęzi**: `feature/*` (lub `t3/*`, `fix/*`) -> `dev` -> `main` -> `nightly` -> `prod`. Wszystkie 4 główne gałęzie są chronione (zmiany wchodzą wyłącznie przez PR).
+  - `dev`: gałąź integracyjna. Testowe APK buduje Azure Pipelines (wyzwalane komentarzem `build machen !!!` pod otwartym PR `dev -> main`).
+  - `main`: trzyma otwarty PR `dev -> main` z listą kontrolną (`- [ ]`) zmian do przetestowania. Push na `main` publikuje landing na GitHub Pages (`docs/`).
+  - `nightly` i `prod`: uruchamiają buildy release APK/AAB/IPA na GitHub Actions oraz deploy Web PWA (`deploy-web.yml` idzie z `prod`). Nigdy nie merguj do `nightly` ani `prod` bez wyraźnego polecenia usera w bieżącym wątku.
+- **Format PR**:
+  - Tytuł krótki, po polsku, mówi DLACZEGO (np. `fix(mapy): mapa nie znika po powrocie ze szczegółów`).
+  - Opis: pierwsze zdanie opisuje problem, kolejne rozwiązanie. Na dole dopisz jedną linię z nazwą swojego modelu.
+- **Buildy i telefon**:
+  - NIGDY nie uruchamiaj lokalnie `gradle`, `assembleDebug`, `expo run:android` ani `npm run start` w pętli.
+  - Gdy user pisze, że podłączył telefon przez `adb`, możesz używać `adb logcat`, `adb shell uiautomator dump` i instalować gotowe APK pobrane z Azure, ale nie kompiluj APK na maszynie lokalnej.

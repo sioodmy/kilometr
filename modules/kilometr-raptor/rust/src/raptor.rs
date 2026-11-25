@@ -3,7 +3,56 @@
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
+use std::ops::BitXor;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
+
+#[derive(Default)]
+struct FxHasher(u64);
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = self.0.rotate_left(5).bitxor(b as u64).wrapping_mul(0x517c_c1b7_2722_0a95);
+        }
+    }
+
+    #[inline]
+    fn write_u8(&mut self, i: u8) {
+        self.0 = self.0.rotate_left(5).bitxor(i as u64).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    #[inline]
+    fn write_u16(&mut self, i: u16) {
+        self.0 = self.0.rotate_left(5).bitxor(i as u64).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    #[inline]
+    fn write_u32(&mut self, i: u32) {
+        self.0 = self.0.rotate_left(5).bitxor(i as u64).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = self.0.rotate_left(5).bitxor(i).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.0 = self.0.rotate_left(5).bitxor(i as u64).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+type FxBuildHasher = BuildHasherDefault<FxHasher>;
+
+const MAX_LEGS: usize = 4;
+const MAX_RS: usize = MAX_LEGS + 1;
 
 pub const NET_MAGIC: i32 = 0x5241_5031; // "RAP1"
 pub const QUERY_MAGIC: i32 = 0x5251_5231; // "RQR1"
@@ -72,11 +121,12 @@ fn predict_delay_for_kind(measured: i32, ahead: i32, board: bool, kind: u8) -> i
 
 #[derive(Clone, Copy)]
 pub struct PatternMeta {
+    pub stops_off: u32,
+    pub times_off: u32,
+    pub trip_off: u32,
+    pub n: u32,
+    pub n_trips: u32,
     pub kind: u8,
-    pub n: usize,
-    pub n_trips: usize,
-    pub stops_off: usize,
-    pub times_off: usize,
 }
 
 pub struct CompiledNet {
@@ -86,16 +136,50 @@ pub struct CompiledNet {
     pub fp_to: Vec<i32>,
     pub fp_dist_m: Vec<i32>,
     pub fp_fixed_sec: Vec<i32>,
+    // Odwrotny indeks footpathów (to -> krawędź w fp_*) do target pruningu ostatniej rundy.
+    pub rev_fp_start: Vec<i32>,
+    pub rev_fp_from: Vec<i32>,
+    pub rev_fp_edge: Vec<i32>,
     pub sp_count: usize,
     pub sp_start: Vec<i32>,
     pub sp_pat: Vec<i32>,
     pub sp_pos: Vec<i32>,
     pub patterns: Vec<PatternMeta>,
+    pub total_trips: usize,
     pub all_stops: Vec<i32>,
     pub all_dep: Vec<i32>,
     pub all_arr: Vec<i32>,
     fp_dur_cache: Mutex<Vec<(u64, i32, Arc<Vec<i32>>)>>,
     reversed: OnceLock<Box<CompiledNet>>,
+}
+
+fn build_reverse_footpaths(
+    n_stops: usize,
+    fp_count: usize,
+    fp_start: &[i32],
+    fp_to: &[i32],
+) -> (Vec<i32>, Vec<i32>, Vec<i32>) {
+    let mut rev_start = vec![0_i32; n_stops + 1];
+    for &to in fp_to {
+        rev_start[to as usize + 1] += 1;
+    }
+    for s in 0..n_stops {
+        rev_start[s + 1] += rev_start[s];
+    }
+    let mut cursor = rev_start.clone();
+    let total = fp_to.len();
+    let mut rev_from = vec![0_i32; total];
+    let mut rev_edge = vec![0_i32; total];
+    for from in 0..fp_count {
+        for e in fp_start[from] as usize..fp_start[from + 1] as usize {
+            let to = fp_to[e] as usize;
+            let out = cursor[to] as usize;
+            cursor[to] += 1;
+            rev_from[out] = from as i32;
+            rev_edge[out] = e as i32;
+        }
+    }
+    (rev_start, rev_from, rev_edge)
 }
 
 impl CompiledNet {
@@ -123,15 +207,20 @@ impl CompiledNet {
                     fp_fixed_sec[out] = self.fp_fixed_sec[e];
                 }
             }
+            let (rev_fp_start, rev_fp_from, rev_fp_edge) =
+                build_reverse_footpaths(self.n_stops, self.n_stops, &fp_start, &fp_to);
             let mut all_stops = self.all_stops.clone();
-            let mut all_dep = self.all_dep.clone();
-            let mut all_arr = self.all_arr.clone();
+            let mut all_dep = vec![0_i32; self.all_dep.len()];
+            let mut all_arr = vec![0_i32; self.all_arr.len()];
             for pat in &self.patterns {
-                all_stops[pat.stops_off..pat.stops_off + pat.n].reverse();
-                let len = pat.n * pat.n_trips;
+                let stops_off = pat.stops_off as usize;
+                let times_off = pat.times_off as usize;
+                let n = pat.n as usize;
+                let len = n * pat.n_trips as usize;
+                all_stops[stops_off..stops_off + n].reverse();
                 for i in 0..len {
-                    all_dep[pat.times_off + i] = -self.all_arr[pat.times_off + len - 1 - i];
-                    all_arr[pat.times_off + i] = -self.all_dep[pat.times_off + len - 1 - i];
+                    all_dep[times_off + i] = -self.all_arr[times_off + len - 1 - i];
+                    all_arr[times_off + i] = -self.all_dep[times_off + len - 1 - i];
                 }
             }
             Box::new(Self {
@@ -141,6 +230,9 @@ impl CompiledNet {
                 fp_to,
                 fp_dist_m,
                 fp_fixed_sec,
+                rev_fp_start,
+                rev_fp_from,
+                rev_fp_edge,
                 sp_count: self.sp_count,
                 sp_start: self.sp_start.clone(),
                 sp_pat: self.sp_pat.clone(),
@@ -148,6 +240,7 @@ impl CompiledNet {
                     .map(|(&pos, &p)| self.patterns[p as usize].n as i32 - 1 - pos)
                     .collect(),
                 patterns: self.patterns.clone(),
+                total_trips: self.total_trips,
                 all_stops,
                 all_dep,
                 all_arr,
@@ -160,21 +253,24 @@ impl CompiledNet {
     #[inline]
     pub fn pat_stops(&self, p: usize) -> &[i32] {
         let meta = &self.patterns[p];
-        &self.all_stops[meta.stops_off..meta.stops_off + meta.n]
+        let off = meta.stops_off as usize;
+        &self.all_stops[off..off + meta.n as usize]
     }
 
     #[inline]
     pub fn pat_dep(&self, p: usize) -> &[i32] {
         let meta = &self.patterns[p];
-        let len = meta.n_trips * meta.n;
-        &self.all_dep[meta.times_off..meta.times_off + len]
+        let off = meta.times_off as usize;
+        let len = meta.n_trips as usize * meta.n as usize;
+        &self.all_dep[off..off + len]
     }
 
     #[inline]
     pub fn pat_arr(&self, p: usize) -> &[i32] {
         let meta = &self.patterns[p];
-        let len = meta.n_trips * meta.n;
-        &self.all_arr[meta.times_off..meta.times_off + len]
+        let off = meta.times_off as usize;
+        let len = meta.n_trips as usize * meta.n as usize;
+        &self.all_arr[off..off + len]
     }
 
     pub fn foot_durations(&self, speed_mps: f64, max_m: i32) -> Arc<Vec<i32>> {
@@ -187,6 +283,7 @@ impl CompiledNet {
             }
         }
         let total = self.fp_to.len();
+        let inv_speed = WALK_DETOUR_FACTOR / speed_mps;
         let mut out = vec![0_i32; total];
         for e in 0..total {
             let fixed = self.fp_fixed_sec[e];
@@ -195,8 +292,7 @@ impl CompiledNet {
             } else if self.fp_dist_m[e] > max_m {
                 out[e] = -1;
             } else {
-                let d = ((self.fp_dist_m[e] as f64) * WALK_DETOUR_FACTOR) / speed_mps;
-                out[e] = MIN_FOOTPATH_SEC.max(js_round(d));
+                out[e] = MIN_FOOTPATH_SEC.max(js_round((self.fp_dist_m[e] as f64) * inv_speed));
             }
         }
         let arc = Arc::new(out);
@@ -255,10 +351,13 @@ impl CompiledNet {
             }
         }
 
+        let rem_words = bytes.len().saturating_sub(r.pos) / 4;
+        let est_times = rem_words.saturating_sub(sp_total + n_pat * 3) / 2;
         let mut patterns = Vec::with_capacity(n_pat);
-        let mut all_stops = Vec::new();
-        let mut all_dep = Vec::new();
-        let mut all_arr = Vec::new();
+        let mut all_stops = Vec::with_capacity(sp_total);
+        let mut all_dep = Vec::with_capacity(est_times);
+        let mut all_arr = Vec::with_capacity(est_times);
+        let mut total_trips: usize = 0;
 
         for _ in 0..n_pat {
             let kind_raw = r.next()?;
@@ -278,6 +377,8 @@ impl CompiledNet {
             let times_len = n.checked_mul(n_trips)?;
             let stops_off = all_stops.len();
             let times_off = all_dep.len();
+            let trip_off = total_trips;
+            total_trips = total_trips.checked_add(n_trips)?;
 
             r.read_into(&mut all_stops, n)?;
             for &s in &all_stops[stops_off..stops_off + n] {
@@ -289,11 +390,12 @@ impl CompiledNet {
             r.read_into(&mut all_arr, times_len)?;
 
             patterns.push(PatternMeta {
+                stops_off: u32::try_from(stops_off).ok()?,
+                times_off: u32::try_from(times_off).ok()?,
+                trip_off: u32::try_from(trip_off).ok()?,
+                n: u32::try_from(n).ok()?,
+                n_trips: u32::try_from(n_trips).ok()?,
                 kind,
-                n,
-                n_trips,
-                stops_off,
-                times_off,
             });
         }
 
@@ -303,10 +405,13 @@ impl CompiledNet {
             if p < 0 || (p as usize) >= n_pat {
                 return None;
             }
-            if pos < 0 || (pos as usize) >= patterns[p as usize].n {
+            if pos < 0 || (pos as usize) >= patterns[p as usize].n as usize {
                 return None;
             }
         }
+
+        let (rev_fp_start, rev_fp_from, rev_fp_edge) =
+            build_reverse_footpaths(n_stops, fp_count, &fp_start, &fp_to);
 
         Some(Self {
             n_stops,
@@ -315,11 +420,15 @@ impl CompiledNet {
             fp_to,
             fp_dist_m,
             fp_fixed_sec,
+            rev_fp_start,
+            rev_fp_from,
+            rev_fp_edge,
             sp_count,
             sp_start,
             sp_pat,
             sp_pos,
             patterns,
+            total_trips,
             all_stops,
             all_dep,
             all_arr,
@@ -446,15 +555,18 @@ impl<'a> WordReader<'a> {
 
     fn read_into(&mut self, out: &mut Vec<i32>, count: usize) -> Option<()> {
         let byte_len = count.checked_mul(4)?;
-        if self.pos.checked_add(byte_len)? > self.bytes.len() {
+        let end = self.pos.checked_add(byte_len)?;
+        if end > self.bytes.len() {
             return None;
         }
+        let slice = &self.bytes[self.pos..end];
+        self.pos = end;
         out.reserve(count);
-        for _ in 0..count {
-            let b = &self.bytes[self.pos..self.pos + 4];
-            self.pos += 4;
-            out.push(i32::from_le_bytes([b[0], b[1], b[2], b[3]]));
-        }
+        out.extend(
+            slice
+                .chunks_exact(4)
+                .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+        );
         Some(())
     }
 }
@@ -578,7 +690,7 @@ impl QueryInput {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct ILeg {
     p: usize,
     j: usize,
@@ -587,16 +699,73 @@ struct ILeg {
     walk_in: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+struct SmallLegs {
+    len: u8,
+    data: [ILeg; MAX_LEGS],
+}
+
+impl SmallLegs {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            len: 0,
+            data: [ILeg::default(); MAX_LEGS],
+        }
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    #[inline]
+    fn as_slice(&self) -> &[ILeg] {
+        &self.data[..self.len as usize]
+    }
+
+    #[inline]
+    fn as_mut_slice(&mut self) -> &mut [ILeg] {
+        &mut self.data[..self.len as usize]
+    }
+
+    #[inline]
+    fn push(&mut self, leg: ILeg) -> bool {
+        let idx = self.len as usize;
+        if idx >= MAX_LEGS {
+            return false;
+        }
+        self.data[idx] = leg;
+        self.len += 1;
+        true
+    }
+
+    #[inline]
+    fn last_mut(&mut self) -> Option<&mut ILeg> {
+        let l = self.len as usize;
+        if l == 0 {
+            None
+        } else {
+            Some(&mut self.data[l - 1])
+        }
+    }
+
+    #[inline]
+    fn reverse(&mut self) {
+        self.as_mut_slice().reverse();
+    }
+}
+
+#[derive(Clone, Copy)]
 struct ICand {
-    legs: Vec<ILeg>,
+    legs: SmallLegs,
     dest: usize,
     /// Opcjonalne końcowe dojście pieszo: (skąd, sek, metry). Pozwala kończyć
     /// podróż spacerem zamiast wymuszonej przesiadki na ostatni krótki kurs.
     walk_out: Option<(usize, i32, i32)>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct CandInfo {
     c: ICand,
     arr: i32,
@@ -635,8 +804,9 @@ impl FullKey {
     #[inline]
     fn from_cand(c: &ICand) -> Self {
         let mut legs = [(0_u32, 0_u32, 0_u16, 0_u16); 4];
-        let len = c.legs.len().min(4);
-        for (i, l) in c.legs.iter().take(len).enumerate() {
+        let slice = c.legs.as_slice();
+        let len = slice.len().min(4);
+        for (i, l) in slice.iter().take(len).enumerate() {
             legs[i] = (l.p as u32, l.j as u32, l.b as u16, l.a as u16);
         }
         Self {
@@ -648,6 +818,7 @@ impl FullKey {
 }
 
 struct DelayOverlay {
+    any_delay: bool,
     pat_offset: Vec<u32>,
     late_max: Vec<i32>,
     early_max: Vec<i32>,
@@ -658,6 +829,7 @@ struct DelayOverlay {
 impl DelayOverlay {
     fn new() -> Self {
         Self {
+            any_delay: false,
             pat_offset: Vec::new(),
             late_max: Vec::new(),
             early_max: Vec::new(),
@@ -668,21 +840,29 @@ impl DelayOverlay {
 
     fn build(&mut self, net: &CompiledNet, delays: &[(usize, usize, i32)], now_sec: Option<i32>, reverse: bool) {
         let n_pat = net.patterns.len();
-        self.pat_offset.clear();
-        self.pat_offset.resize(n_pat, u32::MAX);
-        self.late_max.clear();
-        self.late_max.resize(n_pat, 0);
-        self.early_max.clear();
-        self.early_max.resize(n_pat, 0);
-        self.dep_arena.clear();
-        self.arr_arena.clear();
+        if self.any_delay {
+            self.pat_offset.fill(u32::MAX);
+            self.late_max.fill(0);
+            self.early_max.fill(0);
+            self.dep_arena.clear();
+            self.arr_arena.clear();
+            self.any_delay = false;
+        }
+        if self.pat_offset.len() < n_pat {
+            self.pat_offset.resize(n_pat, u32::MAX);
+            self.late_max.resize(n_pat, 0);
+            self.early_max.resize(n_pat, 0);
+        }
+        if delays.is_empty() {
+            return;
+        }
 
         for &(p, j, d0) in delays {
             if d0 == 0 || p >= n_pat {
                 continue;
             }
             let pat = &net.patterns[p];
-            if j >= pat.n_trips {
+            if j >= pat.n_trips as usize {
                 continue;
             }
             let base_off = if self.pat_offset[p] == u32::MAX {
@@ -690,12 +870,13 @@ impl DelayOverlay {
                 self.dep_arena.extend_from_slice(net.pat_dep(p));
                 self.arr_arena.extend_from_slice(net.pat_arr(p));
                 self.pat_offset[p] = off as u32;
+                self.any_delay = true;
                 off
             } else {
                 self.pat_offset[p] as usize
             };
 
-            let n = pat.n;
+            let n = pat.n as usize;
             let sched_dep = net.pat_dep(p);
             let sched_arr = net.pat_arr(p);
             let vehicle_at = now_sec.map(|now| now - d0);
@@ -728,30 +909,36 @@ impl DelayOverlay {
 
     #[inline]
     fn has_delay(&self, p: usize) -> bool {
-        self.pat_offset[p] != u32::MAX
+        self.any_delay && self.pat_offset[p] != u32::MAX
     }
 
     #[inline]
     fn dep<'a>(&'a self, net: &'a CompiledNet, p: usize) -> &'a [i32] {
+        if !self.any_delay {
+            return net.pat_dep(p);
+        }
         let off = self.pat_offset[p];
         if off == u32::MAX {
             net.pat_dep(p)
         } else {
             let meta = &net.patterns[p];
             let start = off as usize;
-            &self.dep_arena[start..start + meta.n_trips * meta.n]
+            &self.dep_arena[start..start + meta.n_trips as usize * meta.n as usize]
         }
     }
 
     #[inline]
     fn arr<'a>(&'a self, net: &'a CompiledNet, p: usize) -> &'a [i32] {
+        if !self.any_delay {
+            return net.pat_arr(p);
+        }
         let off = self.pat_offset[p];
         if off == u32::MAX {
             net.pat_arr(p)
         } else {
             let meta = &net.patterns[p];
             let start = off as usize;
-            &self.arr_arena[start..start + meta.n_trips * meta.n]
+            &self.arr_arena[start..start + meta.n_trips as usize * meta.n as usize]
         }
     }
 }
@@ -771,6 +958,15 @@ fn lower_bound_trips(dep: &[i32], n: usize, n_trips: usize, pos: usize, target: 
     lo
 }
 
+#[derive(Clone, Copy, Default)]
+struct LabelMeta {
+    arr_at: i32,
+    p_a: i32,
+    p_b: i32,
+    p_c: i32,
+    p_d: i32,
+}
+
 struct RaptorScratch {
     reverse: bool,
     enabled: Vec<u8>,
@@ -779,15 +975,16 @@ struct RaptorScratch {
     egress_sec: Vec<i32>,
     egress_m: Vec<i32>,
     origin_list: Vec<usize>,
-    tau: Vec<i32>,
-    arr_at: Vec<i32>,
+    dest_list: Vec<usize>,
+    can_walk_to_dest: Vec<u8>,
+    walk_to_dest_list: Vec<usize>,
+    last_dest_pos: Vec<i32>,
+    // Wszystkie rundy przystanku leżą w jednej linii cache (stały krok MAX_RS = 5).
+    tau: Vec<[i32; MAX_RS]>,
     p_type: Vec<u8>,
-    p_a: Vec<i32>,
-    p_b: Vec<i32>,
-    p_c: Vec<i32>,
-    p_d: Vec<i32>,
-    best_arr: Vec<i32>,
-    best_val: Vec<i32>,
+    labels: Vec<LabelMeta>,
+    best_arr: [i32; MAX_RS],
+    best_val: [i32; MAX_RS],
     marked: Vec<u8>,
     mark_list: Vec<usize>,
     mark_count: usize,
@@ -798,8 +995,16 @@ struct RaptorScratch {
     queued: Vec<usize>,
     pos_head: Vec<i32>,
     pos_next: Vec<i32>,
+    ref_b: Vec<f64>,
+    ref_bf: Vec<i32>,
+    ref_bw: Vec<i32>,
+    ref_c: Vec<f64>,
+    ref_cf: Vec<i32>,
     delays: DelayOverlay,
-    transfer_buffers: HashMap<(usize, usize), i32>,
+    has_transfer_buffers: bool,
+    tb_epoch: u32,
+    tb_stamp: Vec<u32>,
+    tb_val: Vec<i32>,
 }
 
 impl RaptorScratch {
@@ -812,15 +1017,15 @@ impl RaptorScratch {
             egress_sec: Vec::new(),
             egress_m: Vec::new(),
             origin_list: Vec::new(),
+            dest_list: Vec::new(),
+            can_walk_to_dest: Vec::new(),
+            walk_to_dest_list: Vec::new(),
+            last_dest_pos: Vec::new(),
             tau: Vec::new(),
-            arr_at: Vec::new(),
             p_type: Vec::new(),
-            p_a: Vec::new(),
-            p_b: Vec::new(),
-            p_c: Vec::new(),
-            p_d: Vec::new(),
-            best_arr: Vec::new(),
-            best_val: Vec::new(),
+            labels: Vec::new(),
+            best_arr: [INF; MAX_RS],
+            best_val: [INF; MAX_RS],
             marked: Vec::new(),
             mark_list: Vec::new(),
             mark_count: 0,
@@ -831,67 +1036,103 @@ impl RaptorScratch {
             queued: Vec::new(),
             pos_head: Vec::new(),
             pos_next: Vec::new(),
+            ref_b: Vec::new(),
+            ref_bf: Vec::new(),
+            ref_bw: Vec::new(),
+            ref_c: Vec::new(),
+            ref_cf: Vec::new(),
             delays: DelayOverlay::new(),
-            transfer_buffers: HashMap::new(),
+            has_transfer_buffers: false,
+            tb_epoch: 0,
+            tb_stamp: Vec::new(),
+            tb_val: Vec::new(),
         }
     }
 
     fn prepare(&mut self, n_stops: usize, n_pat: usize, rs: usize) {
-        self.enabled.clear();
-        self.enabled.resize(n_pat, 0);
+        if self.enabled.len() < n_pat {
+            self.enabled.resize(n_pat, 0);
+        }
 
-        self.access_sec.clear();
-        self.access_sec.resize(n_stops, -1);
-        self.access_m.clear();
-        self.access_m.resize(n_stops, 0);
-
-        self.egress_sec.clear();
-        self.egress_sec.resize(n_stops, -1);
-        self.egress_m.clear();
-        self.egress_m.resize(n_stops, 0);
-
+        if self.access_sec.len() < n_stops {
+            self.access_sec.resize(n_stops, -1);
+            self.access_m.resize(n_stops, 0);
+            self.egress_sec.resize(n_stops, -1);
+            self.egress_m.resize(n_stops, 0);
+        }
+        self.access_sec[..n_stops].fill(-1);
+        self.egress_sec[..n_stops].fill(-1);
         self.origin_list.clear();
+        self.dest_list.clear();
+        self.walk_to_dest_list.clear();
+
+        if self.can_walk_to_dest.len() < n_stops {
+            self.can_walk_to_dest.resize(n_stops, 0);
+        }
+        self.can_walk_to_dest[..n_stops].fill(0);
+
+        if self.last_dest_pos.len() < n_pat {
+            self.last_dest_pos.resize(n_pat, -1);
+        }
+        self.last_dest_pos[..n_pat].fill(-1);
+
+        if self.tau.len() < n_stops {
+            self.tau.resize(n_stops, [INF; MAX_RS]);
+        }
+        self.tau[..n_stops].fill([INF; MAX_RS]);
 
         let total = rs * n_stops;
-        self.tau.clear();
-        self.tau.resize(total, INF);
-        self.arr_at.clear();
-        self.arr_at.resize(total, INF);
-        self.p_type.clear();
-        self.p_type.resize(total, 0);
-        self.p_a.clear();
-        self.p_a.resize(total, 0);
-        self.p_b.clear();
-        self.p_b.resize(total, 0);
-        self.p_c.clear();
-        self.p_c.resize(total, 0);
-        self.p_d.clear();
-        self.p_d.resize(total, 0);
+        if self.p_type.len() < total {
+            self.p_type.resize(total, 0);
+            self.labels.resize(total, LabelMeta::default());
+        }
+        self.p_type[..total].fill(0);
 
-        self.best_arr.clear();
-        self.best_arr.resize(rs, INF);
-        self.best_val.clear();
-        self.best_val.resize(rs, INF);
+        self.best_arr = [INF; MAX_RS];
+        self.best_val = [INF; MAX_RS];
 
-        self.marked.clear();
-        self.marked.resize(n_stops, 0);
-        self.mark_list.clear();
-        self.mark_list.resize(n_stops, 0);
+        if self.marked.len() < n_stops {
+            self.marked.resize(n_stops, 0);
+            self.mark_list.resize(n_stops, 0);
+            self.improved_flag.resize(n_stops, 0);
+            self.improved_list.resize(n_stops, 0);
+        }
+        self.marked[..n_stops].fill(0);
         self.mark_count = 0;
-
-        self.improved_flag.clear();
-        self.improved_flag.resize(n_stops, 0);
-        self.improved_list.clear();
-        self.improved_list.resize(n_stops, 0);
+        self.improved_flag[..n_stops].fill(0);
         self.improved_count = 0;
 
-        self.queue.clear();
-        self.queue.resize(n_pat, -1);
-        self.queued.clear();
-        self.queued.resize(n_pat, 0);
+        if self.queue.len() < n_pat {
+            self.queue.resize(n_pat, -1);
+            self.queued.resize(n_pat, 0);
+        }
+        self.queue[..n_pat].fill(-1);
 
-        self.pos_head.clear();
-        self.pos_head.resize(n_stops, -1);
+        if self.pos_head.len() < n_stops {
+            self.pos_head.resize(n_stops, -1);
+        }
+    }
+
+    #[inline]
+    fn has_tb(&self, net: &CompiledNet, p: usize, j: usize) -> bool {
+        if !self.has_transfer_buffers {
+            return false;
+        }
+        let idx = net.patterns[p].trip_off as usize + j;
+        self.tb_stamp[idx] == self.tb_epoch
+    }
+
+    #[inline]
+    fn get_tb(&self, net: &CompiledNet, p: usize, j: usize) -> i32 {
+        if !self.has_transfer_buffers {
+            return 0;
+        }
+        let idx = net.patterns[p].trip_off as usize + j;
+        if self.tb_stamp[idx] == self.tb_epoch {
+            self.tb_val[idx]
+        } else {
+            0
+        }
     }
 
     #[inline]
@@ -903,9 +1144,9 @@ impl RaptorScratch {
         }
     }
 
-    fn backtrack(&self, net: &CompiledNet, round: usize, stop: usize) -> Option<Vec<ILeg>> {
+    fn backtrack(&self, net: &CompiledNet, round: usize, stop: usize) -> Option<SmallLegs> {
         let n_stops = net.n_stops;
-        let mut legs: Vec<ILeg> = Vec::with_capacity(round);
+        let mut legs = SmallLegs::new();
         let mut k = round;
         let mut s = stop;
         let mut walk_in = 0;
@@ -913,35 +1154,37 @@ impl RaptorScratch {
             let id = k * n_stops + s;
             let t = self.p_type[id];
             if t == 1 {
-                if let Some(first) = legs.first_mut() {
+                if let Some(first) = legs.last_mut() {
                     first.walk_in = 0;
                 }
+                legs.reverse();
                 return Some(legs);
             }
             if t == 3 {
-                walk_in = self.p_b[id];
-                s = self.p_a[id] as usize;
+                let lbl = self.labels[id];
+                walk_in = lbl.p_b;
+                s = lbl.p_a as usize;
                 continue;
             }
             if t != 2 || k == 0 {
                 return None;
             }
-            let p = self.p_a[id] as usize;
-            if let Some(first) = legs.first_mut() {
-                first.walk_in = walk_in;
+            let lbl = self.labels[id];
+            let p = lbl.p_a as usize;
+            if let Some(next_leg) = legs.last_mut() {
+                next_leg.walk_in = walk_in;
             }
             walk_in = 0;
-            let b_pos = self.p_c[id] as usize;
-            legs.insert(
-                0,
-                ILeg {
-                    p,
-                    j: self.p_b[id] as usize,
-                    b: b_pos,
-                    a: self.p_d[id] as usize,
-                    walk_in: 0,
-                },
-            );
+            let b_pos = lbl.p_c as usize;
+            if !legs.push(ILeg {
+                p,
+                j: lbl.p_b as usize,
+                b: b_pos,
+                a: lbl.p_d as usize,
+                walk_in: 0,
+            }) {
+                return None;
+            }
             s = net.pat_stops(p)[b_pos] as usize;
             k -= 1;
         }
@@ -968,33 +1211,41 @@ impl RaptorScratch {
     }
 
     #[inline]
-    fn arrival_buffer(&self, n_stops: usize, k: usize, stop: usize) -> i32 {
-        if self.reverse || k == 0 { return 0; }
-        let mut id = k * n_stops + stop;
-        if self.p_type[id] == 3 { id = k * n_stops + self.p_a[id] as usize; }
-        if self.p_type[id] != 2 { return 0; }
-        self.transfer_buffers.get(&(self.p_a[id] as usize, self.p_b[id] as usize)).copied().unwrap_or(0)
+    fn arrival_buffer(&self, net: &CompiledNet, k: usize, stop: usize) -> i32 {
+        if self.reverse || k == 0 || !self.has_transfer_buffers {
+            return 0;
+        }
+        let mut id = k * net.n_stops + stop;
+        if self.p_type[id] == 3 {
+            id = k * net.n_stops + self.labels[id].p_a as usize;
+        }
+        if self.p_type[id] != 2 {
+            return 0;
+        }
+        let lbl = self.labels[id];
+        self.get_tb(net, lbl.p_a as usize, lbl.p_b as usize)
     }
 
     #[inline]
     fn board_ready(
         &self,
-        n_stops: usize,
+        net: &CompiledNet,
         km1: usize,
         s: usize,
         is_train: bool,
         min_t: i32,
         train_need: i32,
     ) -> i32 {
-        let id = km1 * n_stops + s;
-        let r = self.tau[id];
+        let r = self.tau[s][km1];
         if self.reverse || km1 == 0 || !is_train || train_need <= min_t {
             return r;
         }
+        let id = km1 * net.n_stops + s;
+        let lbl = self.labels[id];
         if self.p_type[id] == 3 {
-            return r.max(self.p_c[id] + train_need.max(self.p_b[id] + TRANSFER_WALK_SLACK_SEC) + self.arrival_buffer(n_stops, km1, s));
+            return r.max(lbl.p_c + train_need.max(lbl.p_b + TRANSFER_WALK_SLACK_SEC) + self.arrival_buffer(net, km1, s));
         }
-        r.max(self.arr_at[id] + train_need + self.arrival_buffer(n_stops, km1, s))
+        r.max(lbl.arr_at + train_need + self.arrival_buffer(net, km1, s))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1018,9 +1269,9 @@ impl RaptorScratch {
         if arr_t > latest_arr {
             return;
         }
-        let mut ba = INF;
-        let mut bv = INF;
-        for r in 1..=k {
+        let mut ba = self.best_arr[1];
+        let mut bv = self.best_val[1];
+        for r in 2..=k {
             if self.best_arr[r] < ba {
                 ba = self.best_arr[r];
             }
@@ -1028,30 +1279,50 @@ impl RaptorScratch {
                 bv = self.best_val[r];
             }
         }
+        // Dolne ograniczenie wartości: uncertainty >= 0, więc zdominowany
+        // kandydat odpada przed kosztem backtrackingu.
+        let base_val = a + js_round(wr * (e as f64));
+        if arr_t >= ba && base_val >= bv {
+            return;
+        }
         let b_stop = net.pat_stops(p)[b_pos] as usize;
         let Some(mut legs) = self.backtrack(net, k - 1, b_stop) else {
             return;
         };
-        legs.push(ILeg {
+        if !legs.push(ILeg {
             p,
             j,
             b: b_pos,
             a: a_pos,
             walk_in: 0,
-        });
+        }) {
+            return;
+        }
         if legs.len() > 1 {
             let id = (k - 1) * net.n_stops + b_stop;
-            let walk_in = if self.p_type[id] == 3 { self.p_b[id] } else { 0 };
+            let walk_in = if self.p_type[id] == 3 { self.labels[id].p_b } else { 0 };
             if let Some(last) = legs.last_mut() {
                 last.walk_in = walk_in;
             }
         }
-        if self.pointless(net, &legs, s) {
+        if self.pointless(net, legs.as_slice(), s) {
             return;
         }
-        let uncertainty: i32 = legs.iter().map(|l| if self.transfer_buffers.contains_key(&(l.p, l.j)) { 120 } else { 0 }).sum();
-        let val_t = a + js_round(wr * (e as f64)) + uncertainty;
-        if arr_t >= ba && val_t >= bv { return; }
+        let val_t = if self.has_transfer_buffers {
+            let mut uncertainty = 0_i32;
+            for l in legs.as_slice() {
+                if self.has_tb(net, l.p, l.j) {
+                    uncertainty += 120;
+                }
+            }
+            let v = base_val + uncertainty;
+            if arr_t >= ba && v >= bv {
+                return;
+            }
+            v
+        } else {
+            base_val
+        };
         cands.push(ICand { legs, dest: s, walk_out: None });
         if arr_t < self.best_arr[k] {
             self.best_arr[k] = arr_t;
@@ -1067,17 +1338,18 @@ impl RaptorScratch {
     #[inline]
     fn earliest_trip(&self, net: &CompiledNet, p: usize, pos: usize, r: i32, transferring: bool) -> i32 {
         let pat = &net.patterns[p];
-        let n = pat.n;
-        let n_trips = pat.n_trips;
-        if !self.delays.has_delay(p) && !(self.reverse && transferring && !self.transfer_buffers.is_empty()) {
+        let n = pat.n as usize;
+        let n_trips = pat.n_trips as usize;
+        let rev_tb = self.reverse && transferring && self.has_transfer_buffers;
+        if !self.delays.has_delay(p) && !rev_tb {
             let dep = net.pat_dep(p);
             let j = lower_bound_trips(dep, n, n_trips, pos, r);
             return if j < n_trips { j as i32 } else { -1 };
         }
         let sched = net.pat_dep(p);
         let dep = self.delays.dep(net, p);
-        let early = self.delays.early_max[p];
-        let late = self.delays.late_max[p];
+        let early = if self.delays.any_delay { self.delays.early_max[p] } else { 0 };
+        let late = if self.delays.any_delay { self.delays.late_max[p] } else { 0 };
         let mut best: i32 = -1;
         let mut best_t: i32 = INF;
         let start = lower_bound_trips(sched, n, n_trips, pos, r - late);
@@ -1086,7 +1358,7 @@ impl RaptorScratch {
                 break;
             }
             let t = dep[j * n + pos];
-            let extra = if self.reverse && transferring { self.transfer_buffers.get(&(p, j)).copied().unwrap_or(0) } else { 0 };
+            let extra = if rev_tb { self.get_tb(net, p, j) } else { 0 };
             if t >= r + extra && t < best_t {
                 best_t = t;
                 best = j as i32;
@@ -1100,6 +1372,7 @@ impl RaptorScratch {
         &mut self,
         net: &CompiledNet,
         k: usize,
+        is_last_round: bool,
         p: usize,
         start: usize,
         min_t: i32,
@@ -1110,81 +1383,152 @@ impl RaptorScratch {
         cands: &mut Vec<ICand>,
     ) {
         let pat = net.patterns[p];
-        let n = pat.n;
+        let n = pat.n as usize;
+        let end_pos = if is_last_round {
+            (self.last_dest_pos[p] as usize + 1).min(n)
+        } else {
+            n
+        };
+        let n_trips = pat.n_trips as usize;
         let stops = net.pat_stops(p);
         let is_train = pat.kind == KIND_TRAIN;
         let n_stops = net.n_stops;
         let kk = k * n_stops;
         let km1 = k - 1;
-        let km1_base = km1 * n_stops;
+        let delay_off = if self.delays.any_delay {
+            self.delays.pat_offset[p]
+        } else {
+            u32::MAX
+        };
+        let pat_has_delay = delay_off != u32::MAX;
+        let times_base = if pat_has_delay {
+            delay_off as usize
+        } else {
+            pat.times_off as usize
+        };
+        let fast_fifo = !pat_has_delay && !(self.reverse && km1 > 0 && self.has_transfer_buffers);
+        let base_ready_add = if self.reverse && is_train { train_need } else { min_t };
+
         let mut cur: i32 = -1;
         let mut row: usize = 0;
         let mut board_pos: usize = 0;
+        let mut cur_extra: i32 = 0;
 
-        for i in start..n {
+        for i in start..end_pos {
             let s = stops[i] as usize;
             if cur >= 0 {
-                let a = self.delays.arr(net, p)[row + i];
-                if self.egress_sec[s] >= 0 {
-                    self.check_target(
-                        net,
-                        k,
-                        p,
-                        cur as usize,
-                        board_pos,
-                        i,
-                        s,
-                        a,
-                        latest_arr,
-                        wr,
-                        bound_val,
-                        cands,
-                    );
-                }
+                let a = if pat_has_delay {
+                    self.delays.arr_arena[times_base + row + i]
+                } else {
+                    net.all_arr[times_base + row + i]
+                };
+                // Dla a >= *bound_val zachodzi arr_t >= ba oraz base_val >= bv,
+                // więc zarówno check_target, jak i poprawa etykiety zawsze odpadają.
                 if a < *bound_val {
-                    let extra = if self.reverse { 0 } else { self.transfer_buffers.get(&(p, cur as usize)).copied().unwrap_or(0) };
-                    let ready = a + if self.reverse && is_train { train_need } else { min_t } + extra;
-                    let mut best_s = INF;
-                    for r in 0..=k {
-                        let v = self.tau[r * n_stops + s];
-                        if v < best_s {
-                            best_s = v;
-                        }
+                    if self.egress_sec[s] >= 0 {
+                        self.check_target(
+                            net,
+                            k,
+                            p,
+                            cur as usize,
+                            board_pos,
+                            i,
+                            s,
+                            a,
+                            latest_arr,
+                            wr,
+                            bound_val,
+                            cands,
+                        );
                     }
-                    if ready < best_s {
-                        let id = kk + s;
-                        self.tau[id] = ready;
-                        self.arr_at[id] = a;
-                        self.p_type[id] = 2;
-                        self.p_a[id] = p as i32;
-                        self.p_b[id] = cur;
-                        self.p_c[id] = board_pos as i32;
-                        self.p_d[id] = i as i32;
-                        if self.improved_flag[s] == 0 {
-                            self.improved_flag[s] = 1;
-                            self.improved_list[self.improved_count] = s;
-                            self.improved_count += 1;
+                    if (!is_last_round || self.can_walk_to_dest[s] != 0) && a < *bound_val {
+                        let ready = a + base_ready_add + cur_extra;
+                        let row_tau = &self.tau[s];
+                        let mut best_s = row_tau[0];
+                        for r in 1..=k {
+                            if row_tau[r] < best_s {
+                                best_s = row_tau[r];
+                            }
                         }
-                        self.mark(s);
+                        if ready < best_s {
+                            self.tau[s][k] = ready;
+                            let id = kk + s;
+                            self.p_type[id] = 2;
+                            self.labels[id] = LabelMeta {
+                                arr_at: a,
+                                p_a: p as i32,
+                                p_b: cur,
+                                p_c: board_pos as i32,
+                                p_d: i as i32,
+                            };
+                            if self.improved_flag[s] == 0 {
+                                self.improved_flag[s] = 1;
+                                self.improved_list[self.improved_count] = s;
+                                self.improved_count += 1;
+                            }
+                            if !is_last_round {
+                                self.mark(s);
+                            }
+                        }
                     }
                 }
             }
-            if i < n - 1 && self.tau[km1_base + s] < INF {
-                let r = self.board_ready(n_stops, km1, s, is_train, min_t, train_need);
-                let cur_dep = if cur >= 0 {
-                    self.delays.dep(net, p)[row + i]
+            if i < end_pos - 1 && self.tau[s][km1] < INF {
+                if fast_fifo {
+                    if cur != 0 {
+                        let r = self.board_ready(net, km1, s, is_train, min_t, train_need);
+                        let dep = &net.all_dep[times_base..times_base + n_trips * n];
+                        if cur < 0 {
+                            if dep[(n_trips - 1) * n + i] >= r {
+                                let j = lower_bound_trips(dep, n, n_trips, i, r);
+                                if j < n_trips {
+                                    cur = j as i32;
+                                    row = j * n;
+                                    board_pos = i;
+                                    cur_extra = if self.reverse { 0 } else { self.get_tb(net, p, j) };
+                                }
+                            }
+                        } else {
+                            let cur_u = cur as usize;
+                            let cur_dep = dep[row + i];
+                            // Szybki test FIFO: bez binary searcha, gdy poprzedni kurs już odjechał.
+                            if r <= cur_dep && dep[(cur_u - 1) * n + i] >= r {
+                                let j = lower_bound_trips(dep, n, cur_u, i, r);
+                                if j < cur_u && dep[j * n + i] < cur_dep {
+                                    cur = j as i32;
+                                    row = j * n;
+                                    board_pos = i;
+                                    cur_extra = if self.reverse { 0 } else { self.get_tb(net, p, j) };
+                                }
+                            }
+                        }
+                    }
                 } else {
-                    INF
-                };
-                if cur < 0 || r <= cur_dep {
-                    let j = self.earliest_trip(net, p, i, r, km1 > 0);
-                    if j >= 0 {
-                        let j_usize = j as usize;
-                        let new_dep = self.delays.dep(net, p)[j_usize * n + i];
-                        if cur < 0 || new_dep < cur_dep {
-                            cur = j;
-                            row = j_usize * n;
-                            board_pos = i;
+                    let r = self.board_ready(net, km1, s, is_train, min_t, train_need);
+                    let cur_dep = if cur >= 0 {
+                        if pat_has_delay {
+                            self.delays.dep_arena[times_base + row + i]
+                        } else {
+                            net.all_dep[times_base + row + i]
+                        }
+                    } else {
+                        INF
+                    };
+                    if cur < 0 || r <= cur_dep {
+                        let j = self.earliest_trip(net, p, i, r, km1 > 0);
+                        if j >= 0 {
+                            let j_usize = j as usize;
+                            let new_dep = if pat_has_delay {
+                                self.delays.dep_arena[times_base + j_usize * n + i]
+                            } else {
+                                net.all_dep[times_base + j_usize * n + i]
+                            };
+                            if cur < 0 || new_dep < cur_dep {
+                                cur = j;
+                                row = j_usize * n;
+                                board_pos = i;
+                                cur_extra = if self.reverse { 0 } else { self.get_tb(net, p, j_usize) };
+                            }
                         }
                     }
                 }
@@ -1192,20 +1536,25 @@ impl RaptorScratch {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn relax_footpaths(
         &mut self,
         net: &CompiledNet,
         fp_dur: &[i32],
         k: usize,
+        is_last_round: bool,
         min_t: i32,
         train_need: i32,
         latest_arr: i32,
         bound_val: i32,
         cands: &mut Vec<ICand>,
     ) {
+        let count = self.improved_count;
+        if count == 0 {
+            return;
+        }
         let n_stops = net.n_stops;
         let kk = k * n_stops;
-        let count = self.improved_count;
         self.improved_count = 0;
 
         for x in 0..count {
@@ -1214,12 +1563,15 @@ impl RaptorScratch {
             if s >= net.fp_count || self.p_type[kk + s] != 2 {
                 continue;
             }
-            let src = self.arr_at[kk + s];
-            let p = self.p_a[kk + s] as usize;
-            let need = if self.reverse && net.patterns[p].kind == KIND_TRAIN { train_need } else { min_t };
+            let lbl = self.labels[kk + s];
+            let src = lbl.arr_at;
             if src >= bound_val {
                 continue;
             }
+            let p = lbl.p_a as usize;
+            let need = if self.reverse && net.patterns[p].kind == KIND_TRAIN { train_need } else { min_t };
+            let src_buf = if self.reverse { 0 } else { self.get_tb(net, p, lbl.p_b as usize) };
+            let src_egress = self.egress_sec[s];
             let start = net.fp_start[s] as usize;
             let end = net.fp_start[s + 1] as usize;
             for e in start..end {
@@ -1227,29 +1579,39 @@ impl RaptorScratch {
                 if w < 0 {
                     continue;
                 }
-                let to = net.fp_to[e] as usize;
-                if src + w >= bound_val {
+                let arr_to = src + w;
+                if arr_to >= bound_val {
                     continue;
                 }
-                let ready = src + need.max(w + TRANSFER_WALK_SLACK_SEC) + self.arrival_buffer(n_stops, k, s);
-                let mut best_s = INF;
-                for r in 0..=k {
-                    let v = self.tau[r * n_stops + to];
-                    if v < best_s {
-                        best_s = v;
+                let to = net.fp_to[e] as usize;
+                let dest_egress = self.egress_sec[to];
+                if is_last_round && dest_egress < 0 {
+                    continue;
+                }
+                let ready = src + need.max(w + TRANSFER_WALK_SLACK_SEC) + src_buf;
+                let row_tau = &self.tau[to];
+                let mut best_s = row_tau[0];
+                for r in 1..=k {
+                    if row_tau[r] < best_s {
+                        best_s = row_tau[r];
                     }
                 }
                 if ready >= best_s {
                     continue;
                 }
+                self.tau[to][k] = ready;
                 let id = kk + to;
-                self.tau[id] = ready;
-                self.arr_at[id] = src + w;
                 self.p_type[id] = 3;
-                self.p_a[id] = s as i32;
-                self.p_b[id] = w;
-                self.p_c[id] = src;
-                self.mark(to);
+                self.labels[id] = LabelMeta {
+                    arr_at: arr_to,
+                    p_a: s as i32,
+                    p_b: w,
+                    p_c: src,
+                    p_d: 0,
+                };
+                if !is_last_round {
+                    self.mark(to);
+                }
 
                 // Spacer zamiast wymuszonej przesiadki: cel sprawdzany jest
                 // tylko przy wysiadaniu z kursu, więc bez tego każda podróż
@@ -1257,17 +1619,16 @@ impl RaptorScratch {
                 // wygrywała z dojściem z buta. Gdy dojście pieszo z końca
                 // kursu trafia na przystanek pod celem, dołóż wariant
                 // „koniec pieszo”.
-                let dest_egress = self.egress_sec[to];
                 if dest_egress >= 0
-                    && (self.egress_sec[s] < 0 || w + dest_egress < self.egress_sec[s])
-                    && src + w + dest_egress <= latest_arr
+                    && (src_egress < 0 || w + dest_egress < src_egress)
+                    && arr_to + dest_egress <= latest_arr
                 {
                     if let Some(legs) = self.backtrack(net, k, s) {
-                        if !self.pointless(net, &legs, to) {
+                        if !self.pointless(net, legs.as_slice(), to) {
                             cands.push(ICand {
                                 legs,
                                 dest: to,
-                                walk_out: Some((s, w, foot_distance_m(net, s, to, w))),
+                                walk_out: Some((s, w, 20.max(net.fp_dist_m[e]))),
                             });
                         }
                     }
@@ -1293,10 +1654,10 @@ impl RaptorScratch {
         for i in 0..self.origin_list.len() {
             let o = self.origin_list[i];
             let v = tau0 + self.access_sec[o];
-            if v < self.tau[o] {
-                self.tau[o] = v;
-                self.arr_at[o] = v;
+            if v < self.tau[o][0] {
+                self.tau[o][0] = v;
                 self.p_type[o] = 1;
+                self.labels[o].arr_at = v;
             }
         }
         self.mark_count = 0;
@@ -1312,6 +1673,7 @@ impl RaptorScratch {
         }
 
         for k in 1..=r_max {
+            let is_last_round = k == r_max;
             let mut q_count = 0;
             let m_count = self.mark_count;
             self.mark_count = 0;
@@ -1329,14 +1691,19 @@ impl RaptorScratch {
                         continue;
                     }
                     let pos = net.sp_pos[e];
-                    if (pos as usize) >= net.patterns[p].n - 1 {
+                    if is_last_round {
+                        if pos >= self.last_dest_pos[p] {
+                            continue;
+                        }
+                    } else if (pos as usize) >= net.patterns[p].n as usize - 1 {
                         continue;
                     }
-                    if self.queue[p] < 0 {
+                    let qp = self.queue[p];
+                    if qp < 0 {
                         self.queue[p] = pos;
                         self.queued[q_count] = p;
                         q_count += 1;
-                    } else if pos < self.queue[p] {
+                    } else if pos < qp {
                         self.queue[p] = pos;
                     }
                 }
@@ -1344,8 +1711,8 @@ impl RaptorScratch {
             if q_count == 0 {
                 break;
             }
-            let mut bound_val = INF;
-            for r in 1..=k {
+            let mut bound_val = self.best_val[1];
+            for r in 2..=k {
                 if self.best_val[r] < bound_val {
                     bound_val = self.best_val[r];
                 }
@@ -1357,6 +1724,7 @@ impl RaptorScratch {
                 self.scan_pattern(
                     net,
                     k,
+                    is_last_round,
                     p,
                     start,
                     min_t,
@@ -1367,7 +1735,17 @@ impl RaptorScratch {
                     cands,
                 );
             }
-            self.relax_footpaths(net, fp_dur, k, min_t, train_need, latest_arr, bound_val, cands);
+            self.relax_footpaths(
+                net,
+                fp_dur,
+                k,
+                is_last_round,
+                min_t,
+                train_need,
+                latest_arr,
+                bound_val,
+                cands,
+            );
             if self.mark_count == 0 {
                 break;
             }
@@ -1392,23 +1770,35 @@ impl RaptorScratch {
         t0: i32,
         latest_arr: i32,
     ) -> Option<ICand> {
-        let m = c.legs.len();
-        let mut b_mat: Vec<Vec<f64>> = Vec::with_capacity(m);
-        let mut b_from: Vec<Vec<i32>> = Vec::with_capacity(m);
-        let mut b_walk: Vec<Vec<i32>> = Vec::with_capacity(m);
-        let mut c_mat: Vec<Vec<f64>> = Vec::with_capacity(m);
-        let mut c_from: Vec<Vec<i32>> = Vec::with_capacity(m);
+        let c_legs = c.legs.as_slice();
+        let m = c_legs.len();
+        let mut offs = [0_usize; MAX_LEGS];
+        let mut total_n = 0_usize;
+        for li in 0..m {
+            offs[li] = total_n;
+            total_n += net.patterns[c_legs[li].p].n as usize;
+        }
+        if self.ref_b.len() < total_n {
+            self.ref_b.resize(total_n, f64::INFINITY);
+            self.ref_bf.resize(total_n, -1);
+            self.ref_bw.resize(total_n, 0);
+            self.ref_c.resize(total_n, f64::INFINITY);
+            self.ref_cf.resize(total_n, -1);
+        }
+        self.ref_b[..total_n].fill(f64::INFINITY);
+        self.ref_bf[..total_n].fill(-1);
+        self.ref_bw[..total_n].fill(0);
+        self.ref_c[..total_n].fill(f64::INFINITY);
+        self.ref_cf[..total_n].fill(-1);
 
         for li in 0..m {
-            let l = &c.legs[li];
+            let l = &c_legs[li];
             let pat = net.patterns[l.p];
-            let n = pat.n;
+            let n = pat.n as usize;
             let row = l.j * n;
             let pat_stops = net.pat_stops(l.p);
             let dep = self.delays.dep(net, l.p);
-            let mut b = vec![f64::INFINITY; n];
-            let mut bf = vec![-1_i32; n];
-            let mut bw = vec![0_i32; n];
+            let off = offs[li];
 
             if li == 0 {
                 for pos in 0..(n - 1) {
@@ -1420,12 +1810,13 @@ impl RaptorScratch {
                     if d - acc < t0 {
                         continue;
                     }
-                    b[pos] = wr * (acc as f64) - (d as f64);
+                    self.ref_b[off + pos] = wr * (acc as f64) - (d as f64);
                 }
             } else {
-                let prev = &c.legs[li - 1];
+                let prev = &c_legs[li - 1];
                 let pp = net.patterns[prev.p];
-                let prow = prev.j * pp.n;
+                let pp_n = pp.n as usize;
+                let prow = prev.j * pp_n;
                 let pp_stops = net.pat_stops(prev.p);
                 let parr = self.delays.arr(net, prev.p);
                 let transfer_kind = if self.reverse { pp.kind } else { pat.kind };
@@ -1435,9 +1826,9 @@ impl RaptorScratch {
                     min_t
                 };
                 let extra = if self.reverse {
-                    self.transfer_buffers.get(&(l.p, l.j)).copied().unwrap_or(0)
+                    self.get_tb(net, l.p, l.j)
                 } else {
-                    self.transfer_buffers.get(&(prev.p, prev.j)).copied().unwrap_or(0)
+                    self.get_tb(net, prev.p, prev.j)
                 };
 
                 if self.pos_next.len() < n {
@@ -1449,9 +1840,9 @@ impl RaptorScratch {
                     self.pos_head[s] = pos as i32;
                 }
 
-                let cp = &c_mat[li - 1];
-                for a in 1..pp.n {
-                    let cv = cp[a];
+                let prev_off = offs[li - 1];
+                for a in 1..pp_n {
+                    let cv = self.ref_c[prev_off + a];
                     if cv == f64::INFINITY {
                         continue;
                     }
@@ -1463,10 +1854,10 @@ impl RaptorScratch {
                     let ready_direct = t + need + extra;
                     while p_idx >= 0 {
                         let pos = p_idx as usize;
-                        if dep[row + pos] >= ready_direct && cv < b[pos] {
-                            b[pos] = cv;
-                            bf[pos] = a as i32;
-                            bw[pos] = 0;
+                        if dep[row + pos] >= ready_direct && cv < self.ref_b[off + pos] {
+                            self.ref_b[off + pos] = cv;
+                            self.ref_bf[off + pos] = a as i32;
+                            self.ref_bw[off + pos] = 0;
                         }
                         p_idx = self.pos_next[pos];
                     }
@@ -1481,15 +1872,18 @@ impl RaptorScratch {
                                 continue;
                             }
                             let to = net.fp_to[e] as usize;
+                            let mut fp_pos = self.pos_head[to];
+                            if fp_pos < 0 {
+                                continue;
+                            }
                             let ready_fp = t + need.max(w + TRANSFER_WALK_SLACK_SEC) + extra;
                             let val_fp = cv + (wr - 1.0) * (w as f64);
-                            let mut fp_pos = self.pos_head[to];
                             while fp_pos >= 0 {
                                 let pos = fp_pos as usize;
-                                if dep[row + pos] >= ready_fp && val_fp < b[pos] {
-                                    b[pos] = val_fp;
-                                    bf[pos] = a as i32;
-                                    bw[pos] = w;
+                                if dep[row + pos] >= ready_fp && val_fp < self.ref_b[off + pos] {
+                                    self.ref_b[off + pos] = val_fp;
+                                    self.ref_bf[off + pos] = a as i32;
+                                    self.ref_bw[off + pos] = w;
                                 }
                                 fp_pos = self.pos_next[pos];
                             }
@@ -1502,38 +1896,34 @@ impl RaptorScratch {
                 }
             }
 
-            let mut c_arr = vec![f64::INFINITY; n];
-            let mut cf = vec![-1_i32; n];
             let mut run = f64::INFINITY;
             let mut run_pos: i32 = -1;
             for pos in 0..n {
                 if pos > 0 && run < f64::INFINITY {
-                    c_arr[pos] = run;
-                    cf[pos] = run_pos;
+                    self.ref_c[off + pos] = run;
+                    self.ref_cf[off + pos] = run_pos;
                 }
-                if b[pos] < run {
-                    run = b[pos];
+                let bv = self.ref_b[off + pos];
+                if bv < run {
+                    run = bv;
                     run_pos = pos as i32;
                 }
             }
-            b_mat.push(b);
-            b_from.push(bf);
-            b_walk.push(bw);
-            c_mat.push(c_arr);
-            c_from.push(cf);
         }
 
-        let last = &c.legs[m - 1];
+        let last = &c_legs[m - 1];
         let lp = net.patterns[last.p];
-        let lrow = last.j * lp.n;
+        let lp_n = lp.n as usize;
+        let lrow = last.j * lp_n;
         let lp_stops = net.pat_stops(last.p);
         let larr = self.delays.arr(net, last.p);
         let arr_cap = latest_arr.min(orig_arr + MAX_REFINE_LATER_SEC);
+        let last_off = offs[m - 1];
         let mut best_total = f64::INFINITY;
         let mut best_a: i32 = -1;
 
-        for a in 1..lp.n {
-            let cv = c_mat[m - 1][a];
+        for a in 1..lp_n {
+            let cv = self.ref_c[last_off + a];
             if cv == f64::INFINITY {
                 continue;
             }
@@ -1556,33 +1946,26 @@ impl RaptorScratch {
             return None;
         }
 
-        let mut legs = vec![
-            ILeg {
-                p: 0,
-                j: 0,
-                b: 0,
-                a: 0,
-                walk_in: 0,
-            };
-            m
-        ];
+        let mut legs = SmallLegs::new();
+        legs.len = m as u8;
         let mut a = best_a as usize;
         for li in (0..m).rev() {
-            let l = &c.legs[li];
-            let b_idx = c_from[li][a];
+            let l = &c_legs[li];
+            let off = offs[li];
+            let b_idx = self.ref_cf[off + a];
             if b_idx < 0 {
                 return None;
             }
             let b_usize = b_idx as usize;
-            legs[li] = ILeg {
+            legs.data[li] = ILeg {
                 p: l.p,
                 j: l.j,
                 b: b_usize,
                 a,
-                walk_in: if li > 0 { b_walk[li][b_usize] } else { 0 },
+                walk_in: if li > 0 { self.ref_bw[off + b_usize] } else { 0 },
             };
             if li > 0 {
-                let prev_a = b_from[li][b_usize];
+                let prev_a = self.ref_bf[off + b_usize];
                 if prev_a < 0 {
                     return None;
                 }
@@ -1648,11 +2031,13 @@ pub fn run_on_net(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
         destinations: q.origins.clone(),
         delays: q.delays.iter().filter_map(|&(p, j, d)| {
             let pat = net.patterns.get(p)?;
-            (j < pat.n_trips).then(|| (p, pat.n_trips - 1 - j, d))
+            let nt = pat.n_trips as usize;
+            (j < nt).then(|| (p, nt - 1 - j, d))
         }).collect(),
         transfer_buffers: q.transfer_buffers.iter().filter_map(|&(p, j, d)| {
             let pat = net.patterns.get(p)?;
-            (j < pat.n_trips).then(|| (p, pat.n_trips - 1 - j, d))
+            let nt = pat.n_trips as usize;
+            (j < nt).then(|| (p, nt - 1 - j, d))
         }).collect(),
         ..q.clone()
     };
@@ -1735,9 +2120,26 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
         }
 
         s.delays.build(net, &q.delays, q.now_sec, q.arrive_by);
-        s.transfer_buffers.clear();
-        for &(p, j, extra) in &q.transfer_buffers {
-            s.transfer_buffers.insert((p, j), extra);
+        s.has_transfer_buffers = false;
+        if !q.transfer_buffers.is_empty() {
+            s.tb_epoch = s.tb_epoch.wrapping_add(1);
+            if s.tb_epoch == 0 {
+                s.tb_stamp.fill(0);
+                s.tb_epoch = 1;
+            }
+            if s.tb_stamp.len() < net.total_trips {
+                s.tb_stamp.resize(net.total_trips, 0);
+                s.tb_val.resize(net.total_trips, 0);
+            }
+            let epoch = s.tb_epoch;
+            for &(p, j, extra) in &q.transfer_buffers {
+                if p < n_pat && j < net.patterns[p].n_trips as usize {
+                    let idx = net.patterns[p].trip_off as usize + j;
+                    s.tb_stamp[idx] = epoch;
+                    s.tb_val[idx] = extra;
+                    s.has_transfer_buffers = true;
+                }
+            }
         }
 
         for &(stop, walk_sec, walk_m) in &q.origins {
@@ -1745,7 +2147,11 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
                 continue;
             }
             let w = walk_sec.max(0);
-            if s.access_sec[stop] < 0 || w < s.access_sec[stop] {
+            if s.access_sec[stop] < 0 {
+                s.origin_list.push(stop);
+                s.access_sec[stop] = w;
+                s.access_m[stop] = walk_m;
+            } else if w < s.access_sec[stop] {
                 s.access_sec[stop] = w;
                 s.access_m[stop] = walk_m;
             }
@@ -1755,61 +2161,110 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
                 continue;
             }
             let w = walk_sec.max(0);
-            if s.egress_sec[stop] < 0 || w < s.egress_sec[stop] {
+            if s.egress_sec[stop] < 0 {
+                s.dest_list.push(stop);
+                s.egress_sec[stop] = w;
+                s.egress_m[stop] = walk_m;
+            } else if w < s.egress_sec[stop] {
                 s.egress_sec[stop] = w;
                 s.egress_m[stop] = walk_m;
             }
         }
+        if s.origin_list.is_empty() || s.dest_list.is_empty() {
+            return vec![0];
+        }
+        // Zachowaj deterministyczną kolejność przystanków startowych jak skan 0..n_stops.
+        s.origin_list.sort_unstable();
 
-        for stop in 0..n_stops {
-            if s.access_sec[stop] >= 0 {
-                s.origin_list.push(stop);
+        // Target pruning ostatniej rundy: wyznaczamy przystanki z dojściem pieszym do celu
+        // oraz najdalszą pozycję docelową (lub sąsiadującą z celem) na każdym wzorcu.
+        for i in 0..s.dest_list.len() {
+            let d = s.dest_list[i];
+            let r_start = net.rev_fp_start[d] as usize;
+            let r_end = net.rev_fp_start[d + 1] as usize;
+            for re in r_start..r_end {
+                let edge = net.rev_fp_edge[re] as usize;
+                if fp_dur[edge] < 0 {
+                    continue;
+                }
+                let from = net.rev_fp_from[re] as usize;
+                if s.can_walk_to_dest[from] == 0 {
+                    s.can_walk_to_dest[from] = 1;
+                    s.walk_to_dest_list.push(from);
+                }
+            }
+            if d < net.sp_count {
+                let sp_s = net.sp_start[d] as usize;
+                let sp_e = net.sp_start[d + 1] as usize;
+                for e in sp_s..sp_e {
+                    let p = net.sp_pat[e] as usize;
+                    let pos = net.sp_pos[e];
+                    if pos > s.last_dest_pos[p] {
+                        s.last_dest_pos[p] = pos;
+                    }
+                }
             }
         }
-        if s.origin_list.is_empty() {
-            return vec![0];
+        for i in 0..s.walk_to_dest_list.len() {
+            let ws = s.walk_to_dest_list[i];
+            if ws < net.sp_count {
+                let sp_s = net.sp_start[ws] as usize;
+                let sp_e = net.sp_start[ws + 1] as usize;
+                for e in sp_s..sp_e {
+                    let p = net.sp_pat[e] as usize;
+                    let pos = net.sp_pos[e];
+                    if pos > s.last_dest_pos[p] {
+                        s.last_dest_pos[p] = pos;
+                    }
+                }
+            }
         }
 
         let lo = q.t0;
         let hi = q.t0 + q.window_sec;
         let mut triggers: Vec<(i32, usize)> = Vec::new();
 
-        for i in 0..s.origin_list.len() {
-            let o = s.origin_list[i];
-            if o >= net.sp_count {
-                continue;
-            }
-            let acc = s.access_sec[o];
-            let start = net.sp_start[o] as usize;
-            let end = net.sp_start[o + 1] as usize;
-            for e in start..end {
-                let p = net.sp_pat[e] as usize;
-                if s.enabled[p] == 0 {
+        if q.window_sec > 0 {
+            for i in 0..s.origin_list.len() {
+                let o = s.origin_list[i];
+                if o >= net.sp_count {
                     continue;
                 }
-                let pos = net.sp_pos[e] as usize;
-                let pat = &net.patterns[p];
-                if pos >= pat.n - 1 {
-                    continue;
-                }
-                let sched_dep = net.pat_dep(p);
-                let eff_dep = s.delays.dep(net, p);
-                let late = s.delays.late_max[p];
-                let early = s.delays.early_max[p];
-                let from = lower_bound_trips(sched_dep, pat.n, pat.n_trips, pos, lo + acc - late);
-                for j in from..pat.n_trips {
-                    if sched_dep[j * pat.n + pos] - early - acc >= hi {
-                        break;
+                let acc = s.access_sec[o];
+                let start = net.sp_start[o] as usize;
+                let end = net.sp_start[o + 1] as usize;
+                for e in start..end {
+                    let p = net.sp_pat[e] as usize;
+                    if s.enabled[p] == 0 {
+                        continue;
                     }
-                    let tau0 = eff_dep[j * pat.n + pos] - acc;
-                    if tau0 >= lo && tau0 < hi {
-                        triggers.push((tau0, o));
+                    let pos = net.sp_pos[e] as usize;
+                    let pat = &net.patterns[p];
+                    let pat_n = pat.n as usize;
+                    let pat_trips = pat.n_trips as usize;
+                    if pos >= pat_n - 1 {
+                        continue;
+                    }
+                    let sched_dep = net.pat_dep(p);
+                    let eff_dep = s.delays.dep(net, p);
+                    let late = if s.delays.any_delay { s.delays.late_max[p] } else { 0 };
+                    let early = if s.delays.any_delay { s.delays.early_max[p] } else { 0 };
+                    let from = lower_bound_trips(sched_dep, pat_n, pat_trips, pos, lo + acc - late);
+                    for j in from..pat_trips {
+                        if sched_dep[j * pat_n + pos] - early - acc >= hi {
+                            break;
+                        }
+                        let tau0 = eff_dep[j * pat_n + pos] - acc;
+                        if tau0 >= lo && tau0 < hi {
+                            triggers.push((tau0, o));
+                        }
                     }
                 }
             }
-        }
 
-        triggers.sort_by(|a, b| b.0.cmp(&a.0));
+            triggers.sort_unstable_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+            triggers.dedup();
+        }
 
         let mut cands: Vec<ICand> = Vec::new();
         s.run_iteration(
@@ -1852,25 +2307,31 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             return vec![0];
         }
 
-        let mut by_chain_idx: HashMap<ChainKey, usize> = HashMap::with_capacity(cands.len());
+        let mut by_chain_idx: HashMap<ChainKey, usize, FxBuildHasher> =
+            HashMap::with_capacity_and_hasher(cands.len(), FxBuildHasher::default());
         let mut unique_cands: Vec<CandInfo> = Vec::with_capacity(cands.len());
 
         for c in cands {
-            let first = &c.legs[0];
-            let last = &c.legs[c.legs.len() - 1];
+            let legs = c.legs.as_slice();
+            let first = &legs[0];
+            let last = &legs[legs.len() - 1];
             let first_stop = net.pat_stops(first.p)[first.b] as usize;
             let access = s.access_sec[first_stop];
             let egress = s.egress_sec[c.dest];
-            let walk_out_sec = c.walk_out.as_ref().map(|(_, wsec, _)| *wsec).unwrap_or(0);
-            let first_dep = s.delays.dep(net, first.p)[first.j * net.patterns[first.p].n + first.b];
-            let last_arr = s.delays.arr(net, last.p)[last.j * net.patterns[last.p].n + last.a];
+            let walk_out_sec = c.walk_out.map(|(_, wsec, _)| wsec).unwrap_or(0);
+            let first_dep = s.delays.dep(net, first.p)[first.j * net.patterns[first.p].n as usize + first.b];
+            let last_arr = s.delays.arr(net, last.p)[last.j * net.patterns[last.p].n as usize + last.a];
             let dep = q.t0.max(first_dep - access);
             let arr = last_arr + walk_out_sec + egress;
             let mut walk_sec = access + egress + walk_out_sec;
-            for l in &c.legs {
+            let mut uncertainty = 0.0_f64;
+            for l in legs {
                 walk_sec += l.walk_in;
+                if s.has_tb(net, l.p, l.j) {
+                    uncertainty += 120.0;
+                }
             }
-            let transfers = (c.legs.len() - 1) as i32;
+            let transfers = (legs.len() - 1) as i32;
             let time = if q.latest_arr < INF {
                 q.latest_arr - dep
             } else {
@@ -1879,13 +2340,13 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             let cost_v = (time as f64)
                 + (q.wr - 1.0) * (walk_sec as f64)
                 + (transfers as f64) * (q.transfer_penalty_sec as f64)
-                + c.legs.iter().map(|l| if s.transfer_buffers.contains_key(&(l.p, l.j)) { 120.0 } else { 0.0 }).sum::<f64>();
+                + uncertainty;
             let ci = CandInfo {
                 c,
                 arr,
                 cost: cost_v,
             };
-            let key = ChainKey::from_legs(&ci.c.legs);
+            let key = ChainKey::from_legs(legs);
             if let Some(&idx) = by_chain_idx.get(&key) {
                 if ci.cost < unique_cands[idx].cost {
                     unique_cands[idx] = ci;
@@ -1901,16 +2362,17 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             unique_cands.truncate(REFINE_LIMIT);
         }
 
-        let mut seen: HashSet<FullKey> = HashSet::with_capacity(unique_cands.len());
+        let mut seen: HashSet<FullKey, FxBuildHasher> =
+            HashSet::with_capacity_and_hasher(unique_cands.len(), FxBuildHasher::default());
         let mut out_words: Vec<i32> = Vec::with_capacity(1 + unique_cands.len() * 24);
         out_words.push(0); // placeholder for candidate count
         let mut count = 0_i32;
 
         for ci in unique_cands {
             // Dojście końcowe nie pasuje do refina (ten optymalizuje tylko
-            // wysiadanie z kursu), więc varianty „koniec pieszo” idą jak są.
+            // wysiadanie z kursu), więc warianty „koniec pieszo” idą jak są.
             let refined = if ci.c.walk_out.is_some() {
-                ci.c.clone()
+                ci.c
             } else {
                 s.refine(
                     net,
@@ -1930,11 +2392,12 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             if !seen.insert(key) {
                 continue;
             }
-            if refined.legs.is_empty() {
+            let refined_legs = refined.legs.as_slice();
+            if refined_legs.is_empty() {
                 continue;
             }
 
-            let first = &refined.legs[0];
+            let first = &refined_legs[0];
             let first_stop = net.pat_stops(first.p)[first.b] as usize;
             let access_sec = s.access_sec[first_stop];
             let access_m = s.access_m[first_stop];
@@ -1947,12 +2410,12 @@ fn run_forward(net: &CompiledNet, q: &QueryInput) -> Vec<i32> {
             out_words.push(access_m);
             out_words.push(egress_sec);
             out_words.push(egress_m);
-            out_words.push(refined.legs.len() as i32);
+            out_words.push(refined_legs.len() as i32);
 
             let mut prev_stop: Option<usize> = None;
-            for l in &refined.legs {
+            for l in refined_legs {
                 let pat = &net.patterns[l.p];
-                let row = l.j * pat.n;
+                let row = l.j * pat.n as usize;
                 let pat_stops = net.pat_stops(l.p);
                 let from = pat_stops[l.b] as usize;
                 let to = pat_stops[l.a] as usize;
@@ -2344,5 +2807,83 @@ mod tests {
             let res = execute_query_words(&bytes);
             assert_eq!(res[0], 0, "metro nie może wejść w filtr tram/bus");
         }
+    }
+
+    #[test]
+    fn transfer_buffer_delays_next_boarding_forward_and_arrive_by() {
+        // S0 -> S1 (wzorzec 0, 1 kurs: 8:00..8:05), S1 -> S2 (wzorzec 1, 2 kursy: 8:07..8:12 i 8:10..8:15).
+        // Przy min_t = 120s kurs 8:07 jest łapany normalnie (8:05 + 120s = 8:07),
+        // ale z transfer_buffer = 180s na (0, 0) gotowość to 8:10, więc musi złapać kurs 8:10.
+        let start = 8 * 3600;
+        let words = vec![
+            NET_MAGIC, 3, 0, 0, 2, 3, 4,
+            0, // fp_start
+            0, 1, 3, 4, // sp_start: S0:[0], S1:[0,1], S2:[1]
+            0, 0, 1, 1, // sp_pat
+            0, 1, 0, 1, // sp_pos
+            // pattern 0: bus, 2 stops, 1 trip
+            KIND_BUS as i32, 2, 1, 0, 1,
+            start, start + 300,
+            start, start + 300,
+            // pattern 1: bus, 2 stops, 2 trips
+            KIND_BUS as i32, 2, 2, 1, 2,
+            start + 420, start + 720, start + 600, start + 900,
+            start + 420, start + 720, start + 600, start + 900,
+        ];
+        let mut bytes = Vec::with_capacity(words.len() * 4);
+        for w in words {
+            bytes.extend_from_slice(&w.to_le_bytes());
+        }
+        assert!(load_network(905, &bytes));
+        let net = registry().read().unwrap().get(905).unwrap();
+
+        let base_q = QueryInput {
+            arrive_by: false,
+            net_id: 905,
+            t0: start - 60,
+            window_sec: 1800,
+            max_transfers: 2,
+            min_t: 120,
+            train_need: 300,
+            trains_enabled: true,
+            cable_enabled: true,
+            allowed_mode: ALLOWED_ALL,
+            speed_mps: DEFAULT_WALK_SPEED_MPS,
+            max_transfer_walk_m: 800,
+            wr: 1.8,
+            transfer_penalty_sec: 300,
+            latest_arr: INF,
+            now_sec: None,
+            origins: vec![(0, 0, 0)],
+            destinations: vec![(2, 0, 0)],
+            delays: Vec::new(),
+            transfer_buffers: Vec::new(),
+        };
+
+        let no_buf = run_on_net(&net, &base_q);
+        assert_eq!(no_buf[0], 1);
+        // Leg 1 to kurs 0 (8:07..8:12)
+        assert_eq!(no_buf[1 + 7 + 8 + 1], 0);
+        assert_eq!(no_buf[1 + 7 + 8 + 6], start + 420);
+
+        let mut with_buf = base_q.clone();
+        with_buf.transfer_buffers = vec![(0, 0, 180)];
+        let res_buf = run_on_net(&net, &with_buf);
+        assert_eq!(res_buf[0], 1);
+        // Leg 1 musi przeskoczyć na kurs 1 (8:10..8:15)
+        assert_eq!(res_buf[1 + 7 + 8 + 1], 1);
+        assert_eq!(res_buf[1 + 7 + 8 + 6], start + 600);
+
+        // Ten sam przypadek w trybie arrive_by z terminem 8:12 (powinien nie zdążyć przez bufor) vs 8:15
+        let mut arr_tight = with_buf.clone();
+        arr_tight.arrive_by = true;
+        arr_tight.t0 = start + 720;
+        assert_eq!(run_on_net(&net, &arr_tight)[0], 0);
+
+        let mut arr_ok = arr_tight;
+        arr_ok.t0 = start + 900;
+        let res_arr = run_on_net(&net, &arr_ok);
+        assert_eq!(res_arr[0], 1);
+        assert_eq!(res_arr[1 + 7 + 8 + 1], 1);
     }
 }

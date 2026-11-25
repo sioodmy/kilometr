@@ -1030,6 +1030,8 @@ export const de: Strings = {
     outsideAreaShort: 'Du bist außerhalb des unterstützten Gebiets',
     downloadCityTimetableA11y: (gen: string) => `Fahrplan für ${gen} herunterladen`,
     liveMapA11y: 'Live-Fahrzeugkarte',
+    navPlanner: 'Planer',
+    navMenuA11y: 'Hauptnavigation',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Linie ${line} (${direction})` : `Linie ${line}`,
     boardedChipTitle: (line: string) => `Im Fahrzeug ${line}`,
@@ -1127,7 +1129,7 @@ export const de: Strings = {
     planningTitle: 'Reiseplanung',
     offlineTitle: 'Fahrplan und Karten',
     notificationsSummary: 'Reiseverfolgung und Meldungen',
-    backupSummary: 'Gespeicherte Orte, Verlauf und Einstellungen',
+    backupSummary: 'Statistiken, Rückblick und Sicherung',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Routeneinstellungen zurücksetzen',
@@ -1363,11 +1365,11 @@ export const de: Strings = {
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
     intro:
-      'Wähle deine Stadt und lade den Fahrplan herunter. Verbindungen findest du auch offline.',
+      'Wähle deine Stadt, der Fahrplan lädt im Hintergrund. Verbindungen findest du auch offline.',
     openSettings: 'Einstellungen öffnen',
     permissionDenied:
       'Du kannst ohne diese Berechtigung fortfahren und sie später in den Telefoneinstellungen ändern.',
-    steps: ['Willkommen', 'Berechtigungen', 'Stadt', 'Fahrplan', 'Orte'],
+    steps: ['Willkommen', 'Stadt', 'Zugriff', 'Orte'],
     granted: 'An',
     denied: 'Aus',
     slotHome: 'Zuhause',
@@ -1464,6 +1466,20 @@ export const de: Strings = {
     fast: 'Verbindungen offline planen',
     noAds: 'Keine Werbung',
     noPay: 'Keine Mikrozahlungen',
+    detectGpsAction: 'Meine Stadt per GPS erkennen',
+    detectGpsHint: 'Wählt automatisch den passenden Fahrplan',
+    citySearchPlaceholder: 'Stadt oder Region suchen…',
+    cityNoSearchMatch: (q: string) => `Keine Stadt für „${q}“ gefunden.`,
+    cityClearSearchA11y: 'Suche leeren',
+    citySubtitleAuto: 'Der Fahrplan wird automatisch im Hintergrund geladen.',
+    bgDlDownloading: (gen: string, pct: number) => `Fahrplan für ${gen} lädt… ${pct} %`,
+    bgDlImporting: (gen: string, pct: number) => `Fahrplan für ${gen} wird vorbereitet… ${pct} %`,
+    bgDlReady: (gen: string) => `Fahrplan für ${gen} offline bereit`,
+    bgDlError: 'Fahrplan konnte nicht geladen werden',
+    bgDlPending: (gen: string) => `Fahrplan für ${gen} lädt im Hintergrund`,
+    bgDlRetry: 'Erneut',
+    bgDlStart: 'Laden',
+    startUsing: 'Loslegen',
     permTitle: 'App-Zugriff',
     permSub: 'Standort und Mitteilungen. Beides optional.',
     permSubWeb: 'Füge die App zum Startbildschirm hinzu und erlaube den Standort.',
@@ -1495,12 +1511,10 @@ export const de: Strings = {
     cityTitle: 'In welcher Stadt bist du unterwegs?',
     cityBody:
       'Fahrplan, Karte und Meldungen folgen deiner Wahl. Die Stadt lässt sich später in den Einstellungen ändern.',
-    citySuggested: (name: string) => `Laut GPS bist du in: ${name}.`,
     cityNoGps: 'Ohne GPS-Zugriff wähle die Stadt aus der Liste.',
     cityLocating: 'GPS-Position wird ermittelt…',
     cityNoMatch: 'GPS ist in keiner unterstützten Stadt. Wähle eine aus der Liste.',
     cityPickA11y: (name: string) => `Stadt wählen: ${name}`,
-    citySuggestedA11y: (name: string) => `Vorgeschlagene Stadt laut GPS: ${name}`,
     dlTitle: (gen: string) => `Fahrplan für ${gen} laden`,
     dlBody: (feeds: string) =>
       `Fertige Datenbank: ${feeds} vom Kilometr-Server. Einmal laden, dann offline.`,
@@ -1551,10 +1565,22 @@ export const de: Strings = {
     emptyTitle: 'Keine Meldungen',
     emptyBody: (name: string) =>
       `${name} hat gerade keine Störungen veröffentlicht. Zum Aktualisieren nach unten ziehen.`,
+    sectionGps: 'Live per GPS erkannt',
     sectionChanges: 'Linienänderungen',
     sectionCity: 'Nachrichten',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'GPS-Analyse',
+    gpsJamTitleTram: (place: string) => `Tram-Stau: ${place}`,
+    gpsJamTitleBus: (place: string) => `Bus-Stau: ${place}`,
+    gpsJamTitleHub: (place: string) => `Starke Verspätungen: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} Fahrzeuge stehen seit ${durMin} Min. in der Nähe. Schnitt +${avgMin} Min. Verspätung.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} verspätete Fahrzeuge in diesem Bereich. Schnitt +${avgMin} Min.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} Min. über dem Normalwert dieser Stunde.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Seit ca. ${durMin} Min. (GPS-Analyse)` : 'Gerade erkannt (GPS-Analyse)',
     openBrowser: 'Im Browser öffnen',
     articleFail: 'Dieser Beitrag konnte nicht geladen werden.',
     articleEmpty: 'Auf dieser Seite steht kein Text, den die App anzeigen kann.',
@@ -1729,6 +1755,8 @@ export const de: Strings = {
     downloadingPlain: 'Wird geladen…',
     downloadAction: 'Fahrplan laden',
     earlierAction: 'Frühere Verbindungen',
+    earlierPullHint: 'Ziehen für frühere',
+    earlierReleaseHint: 'Loslassen für frühere',
     earlierLoading: 'Frühere Verbindungen werden geladen…',
     earlierEmpty: 'Keine früheren Verbindungen an diesem Tag',
     earlierRetry: 'Verbindungen konnten nicht geladen werden. Erneut versuchen',
@@ -2127,6 +2155,7 @@ export const de: Strings = {
     mapTapToLoad: 'Tippen, um die Karte zu laden',
     mapFailed:
       'Karte konnte nicht geladen werden. Versuche es erneut oder lade in den Einstellungen eine Offline-Karte herunter.',
+    mapFailedWeb: 'Karte konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.',
     mapRetry: 'Karte erneut laden',
     openMap: 'Vollständige Routenkarte öffnen',
     ahead: 'Geradeaus',
@@ -2539,6 +2568,43 @@ export const de: Strings = {
     zoomForLinesHint: 'Hineinzoomen für Liniennummern',
     openTimetableCta: 'Linienfahrplan',
     toggleSheetA11y: 'Details erweitern oder einklappen',
+    filterDelays: 'Verspätungen',
+    delayZoneSheetTitle: 'Verspätungsknoten',
+    delayAvgNow: (min: number) => `Schnitt +${min} Min.`,
+    delayP90: (min: number) => `Spitze (p90): +${min} Min.`,
+    delayVsTypicalHigher: (min: number) => `+${min} Min. über Normal`,
+    delayVsTypicalLower: (min: number) => `${min} Min. unter Normal`,
+    delayVehiclesAffected: (delayed: number, total: number) =>
+      `${delayed} von ${total} Fahrzeugen verspätet`,
+    delayAffectedLines: 'Betroffene Linien',
+    delaySeveritySevere: 'Starker Stau',
+    delaySeverityHeavy: 'Hohe Verspätung',
+    delaySeverityModerate: 'Verlangsamung',
+    delayTapLineHint: 'Linie antippen, um sie auf der Karte zu filtern',
+  },
+  routeInsights: {
+    verdictLow: 'Meist pünktlich',
+    verdictModerate: 'Leichte Verspätung möglich',
+    verdictHigh: 'Häufige Verspätungen um diese Zeit',
+    dayWeekday: 'werktags',
+    daySaturday: 'samstags',
+    daySunday: 'sonntags',
+    basisLine: (line: string, day: string, n: number) =>
+      `Linie ${line} · ${day} (${n} Messungen)`,
+    basisGeneric: (day: string, n: number) => `Basierend auf ${n} Messungen (${day})`,
+    upToMin: (min: number) => `p90 +${min}m`,
+    chartCaption: 'Ø Verspätung nach Uhrzeit',
+    yourDeparture: 'Deine Abfahrt',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Verspätungsprofil für Linie ${line}. Um ${hour} im Schnitt plus ${min} Minuten.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Aktiver Stau bei ${place}: derzeit im Schnitt +${min} Min. Verspätung.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: aktuell +${min} Min. (+${delta} Min. über Normal).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: Verlangsamung auf der Strecke, derzeit +${min} Min.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Knapper Umstieg (${stop}): ${marginMin} Min. Puffer, Linie ${fromLine} erreicht bis +${p90Min} Min.`,
   },
   widgets: {
     journeyTitle: 'Deine Ziele',
@@ -2581,5 +2647,80 @@ export const de: Strings = {
     tripEmptyBody: 'Wähle eine Verbindung und schalte die Verfolgung ein.',
     placesEmpty: 'Füge deinen ersten Ort hinzu',
     search: 'Wohin?',
+  },
+  yourData: {
+    distanceLabel: 'Zurückgelegte Strecke',
+    tripsLabel: 'Fahrten',
+    timeLabel: 'Unterwegs',
+    citiesLabel: 'Städte',
+    stopsLabel: 'Haltestellen',
+    walkLabel: 'Zu Fuß',
+    co2Label: 'CO₂ gespart',
+    co2Hint: 'gegenüber Auto',
+    railSectionTitle: 'Bahn und Verkehrsmittel',
+    railTitle: 'Bahn',
+    railTrips: (n: number) => (n === 1 ? '1 Bahnfahrt' : `${n} Bahnfahrten`),
+    railTickets: (n: number) => (n === 1 ? '1 Ticket' : `${n} Tickets`),
+    railEmpty: 'Noch keine gespeicherten Bahnfahrten',
+    topLinesTitle: 'Häufigste Linien',
+    topLinesSubtitle: 'Tippe auf ein Segment oder eine Linie für Details',
+    topLinesEmpty: 'Öffne oder speichere Routen, um deine häufigsten Linien zu sehen.',
+    topLinesTotal: 'Abschnitte',
+    topLinesOther: 'Weitere',
+    lineTrips: (n: number) => (n === 1 ? '1 Fahrt' : `${n} Fahrten`),
+    topDestinationsTitle: 'Häufigste Ziele',
+    topDestinationLead: 'Top-Ziel',
+    topDestinationsEmpty: 'Suche Verbindungen, um deine häufigsten Ziele zu sehen.',
+    avgTime: (min: number) => `Ø ${min} Min.`,
+    backupSectionTitle: 'Sicherung und Übertragung',
+    placesShort: 'Orte',
+    routesShort: 'Routen',
+    historyShort: 'Verlauf',
+    emptyTitle: 'Deine Fahrstatistiken entstehen gerade',
+    emptyBody:
+      'Suche und verfolge Verbindungen, um Kilometer, Lieblingslinien und eine teilbare Rückblick-Grafik zu sehen. Alle Daten bleiben lokal auf diesem Gerät.',
+    localOnlyNote: 'Alle Statistiken werden lokal auf deinem Gerät berechnet.',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Teile deine Fahrten-Zusammenfassung',
+    shareSheetTitle: 'Fahrten-Rückblick',
+    shareSheetSubtitle: 'Fertige Grafik zum Teilen auf Instagram, X oder mit Freunden.',
+    shareAction: 'Grafik teilen',
+    shareDownload: 'PNG speichern',
+    sharePreparing: 'Erstelle Grafik…',
+    shareError: 'Grafik konnte nicht erstellt werden. Bitte erneut versuchen.',
+    shareSaved: 'Grafik gespeichert.',
+    wrappedFooter: 'Fahrten-Rückblick',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('de-DE')} km`
+        : `${km.toLocaleString('de-DE', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} kg`
+        : `~${kg.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kg`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} Min.`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} Std. ${m} Min.` : `${h} Std.`;
+    },
+    modes: {
+      tram: 'Tram',
+      bus: 'Bus',
+      train: 'Bahn',
+      subway: 'Metro',
+      trolleybus: 'O-Bus',
+      cable: 'Seilbahn',
+      walk: 'Zu Fuß',
+    },
+    archetypes: {
+      rail_express: 'Bahn-Express',
+      tram_regular: 'Tram-Stammgast',
+      bus_rider: 'Bus-Profi',
+      metro_commuter: 'U-Bahn-Pendler',
+      city_walker: 'Stadtläufer',
+      multi_city: 'Städtereisender',
+      explorer: 'Streckenentdecker',
+    },
   },
 };

@@ -10,46 +10,63 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Footprints,
   LocateFixed,
+  MapPinned,
   Maximize2,
+  Minus,
+  Plus,
   RefreshCw,
   ShieldCheck,
   X,
 } from './icons';
 import { LineBadge } from './LineBadge';
+import { LiveSensors } from './LiveDot';
 import { MorphingLoader } from './MorphingLoader';
 import { RouteMap, type RouteMapHandle } from './RouteMap';
+import { SpringPressable } from './SpringPressable';
 import { useStrings } from '../i18n';
 import { buildMapStages, resolveStageSelection, type MapStage } from '../map/stages';
 import type { MapRoute, MapVehicle } from '../map/types';
 import { acquireMapServerForRoute } from '../services/mapServerLease';
 import { resolveGeometry, type Coord } from '../services/routeGeometry';
 import { formatWalkDistance } from '../services/settings';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
+import type { Connection } from '../types/models';
 
 function stageLabel(stage: MapStage, boardLabel: string, alightLabel: string): string {
   if (stage.endpointRole === 'start') return `${boardLabel}: ${stage.fromStop}`;
   if (stage.endpointRole === 'end') return `${alightLabel}: ${stage.toStop}`;
+  if (stage.segmentIndex && stage.segmentCount) {
+    return `${stage.segmentIndex}/${stage.segmentCount} ${stage.toStop}`;
+  }
   return stage.toStop || stage.fromStop;
 }
 
 export function SharedJourneyMapCard({
+  connection,
   mapRoute,
   vehicle,
   ended,
   loading,
   onRetryData,
+  desktopFill = false,
 }: {
+  connection: Connection;
   mapRoute: MapRoute | null;
   vehicle: MapVehicle | null;
   ended: boolean;
   loading: boolean;
   onRetryData: () => void;
+  desktopFill?: boolean;
 }) {
   const s = useStrings();
   const mapRef = useRef<RouteMapHandle>(null);
+  const railRef = useRef<ScrollView>(null);
+  const pillOffsets = useRef<Record<string, number>>({});
   const geometryRef = useRef(new Map<string, Coord[]>());
   const [geometryVersion, setGeometryVersion] = useState(0);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>();
@@ -113,17 +130,42 @@ export function SharedJourneyMapCard({
     if (selectedStageId && !activeStage) setSelectedStageId(null);
   }, [selectedStageId, activeStage]);
 
+  useEffect(() => {
+    const key = activeStage?.id ?? 'all';
+    const x = pillOffsets.current[key];
+    if (typeof x === 'number') {
+      railRef.current?.scrollTo({ x: Math.max(0, x - 20), animated: true });
+    }
+  }, [activeStage]);
+
   const handleReady = useCallback(() => {
     setMapFailed(false);
     for (const [legId, coords] of geometryRef.current.entries()) {
       mapRef.current?.setGeometry(legId, coords);
     }
-    mapRef.current?.fit();
-  }, []);
+    if (!activeStage) mapRef.current?.fit();
+  }, [activeStage]);
 
   const handleSelectStage = useCallback((stageId: string | null) => {
     setSelectedStageId((curr) => (curr === stageId ? null : stageId));
   }, []);
+
+  const handleStepStage = useCallback(
+    (delta: -1 | 1) => {
+      if (stages.length === 0) return;
+      if (!activeStage) {
+        setSelectedStageId(delta > 0 ? stages[0].id : stages[stages.length - 1].id);
+        return;
+      }
+      const nextIdx = activeStage.stageNumber - 1 + delta;
+      if (nextIdx < 0 || nextIdx >= stages.length) {
+        setSelectedStageId(null);
+      } else {
+        setSelectedStageId(stages[nextIdx].id);
+      }
+    },
+    [activeStage, stages],
+  );
 
   const handleLegTap = useCallback(
     (legId: string) => {
@@ -136,37 +178,99 @@ export function SharedJourneyMapCard({
   const hasApprox = !!mapRoute?.legs.some((leg) => leg.approx);
   const footerNote = !vehicle && !ended ? s.share.noVehicle : s.share.vehicleOnly;
 
+  const summarySub = useMemo(() => {
+    if (activeStage) return s.share.stageCounter(activeStage.stageNumber, stages.length);
+    const base = `${connection.departAt} \u2192 ${connection.arriveAt} \u2022 ${s.share.duration(connection.durationMin)}`;
+    return connection.transfers > 0
+      ? `${base} \u2022 ${s.share.transfers(connection.transfers)}`
+      : base;
+  }, [activeStage, connection.arriveAt, connection.departAt, connection.durationMin, connection.transfers, s, stages.length]);
+
+  const renderStageFooter = () => {
+    if (!activeStage) return null;
+    return (
+      <View style={styles.stageFooter}>
+        <SpringPressable
+          onPress={() => handleStepStage(-1)}
+          haptic="selection"
+          accessibilityRole="button"
+          accessibilityLabel={s.share.previousStage}
+          onFocus={() => setFocused('prev-stage')}
+          onBlur={() => setFocused(null)}
+          style={[styles.stepBtn, focused === 'prev-stage' && styles.focused]}
+        >
+          <ChevronLeft size={20} color={scheme.onSurface} />
+        </SpringPressable>
+
+        <View style={styles.stageFooterBody}>
+          <Text style={styles.stageFooterStops} numberOfLines={1}>
+            {activeStage.endpointRole === 'start'
+              ? `${s.map.board}: ${activeStage.fromStop}`
+              : activeStage.endpointRole === 'end'
+                ? `${s.map.alight}: ${activeStage.toStop}`
+                : `${activeStage.fromStop} \u2192 ${activeStage.toStop}`}
+          </Text>
+          <Text style={styles.stageFooterMeta} numberOfLines={1}>
+            {activeStage.endpointRole
+              ? activeStage.departAt
+              : `${activeStage.departAt} \u2192 ${activeStage.arriveAt}`}
+            {activeStage.stopsCount > 0 ? ` \u2022 ${s.map.legStops(activeStage.stopsCount)}` : ''}
+          </Text>
+        </View>
+
+        <SpringPressable
+          onPress={() => handleStepStage(1)}
+          haptic="selection"
+          accessibilityRole="button"
+          accessibilityLabel={s.share.nextStage}
+          onFocus={() => setFocused('next-stage')}
+          onBlur={() => setFocused(null)}
+          style={[styles.stepBtn, focused === 'next-stage' && styles.focused]}
+        >
+          <ChevronRight size={20} color={scheme.onSurface} />
+        </SpringPressable>
+      </View>
+    );
+  };
+
   const renderStageRail = () => {
     if (stages.length <= 1) return null;
     return (
       <ScrollView
+        ref={railRef}
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.stageRailScroll}
         contentContainerStyle={styles.stageRail}
         overScrollMode="never"
       >
-        <Pressable
-          onPress={() => handleSelectStage(null)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: activeStage === null }}
-          accessibilityLabel={s.map.showWholeRoute}
-          hitSlop={4}
-          onFocus={() => setFocused('stage-all')}
-          onBlur={() => setFocused(null)}
-          style={({ pressed }) => [
-            styles.stagePill,
-            activeStage === null && styles.stagePillActive,
-            pressed && styles.pressed,
-            focused === 'stage-all' && styles.focused,
-          ]}
+        <View
+          onLayout={(e) => {
+            pillOffsets.current.all = e.nativeEvent.layout.x;
+          }}
         >
-          <Text
-            style={[styles.stagePillLabel, activeStage === null && styles.stagePillLabelActive]}
-            numberOfLines={1}
+          <SpringPressable
+            onPress={() => handleSelectStage(null)}
+            haptic="selection"
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeStage === null }}
+            accessibilityLabel={s.map.showWholeRoute}
+            onFocus={() => setFocused('stage-all')}
+            onBlur={() => setFocused(null)}
+            style={[
+              styles.stagePill,
+              activeStage === null && styles.stagePillActive,
+              focused === 'stage-all' && styles.focused,
+            ]}
           >
-            {s.map.showWholeRoute}
-          </Text>
-        </Pressable>
+            <Text
+              style={[styles.stagePillLabel, activeStage === null && styles.stagePillLabelActive]}
+              numberOfLines={1}
+            >
+              {s.map.showWholeRoute}
+            </Text>
+          </SpringPressable>
+        </View>
 
         {stages.map((st) => {
           const isSelected = activeStage?.id === st.id;
@@ -175,54 +279,59 @@ export function SharedJourneyMapCard({
           const sub = stageLabel(st, s.map.board, s.map.alight);
           const focusKey = `stage-${st.id}`;
           return (
-            <Pressable
+            <View
               key={st.id}
-              onPress={() => handleSelectStage(st.id)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
-              accessibilityLabel={
-                isWalk
-                  ? s.map.walkStageA11y(walkLabel)
-                  : s.map.lineStageA11y(st.leg.line ?? '', sub)
-              }
-              hitSlop={4}
-              onFocus={() => setFocused(focusKey)}
-              onBlur={() => setFocused(null)}
-              style={({ pressed }) => [
-                styles.stagePill,
-                isSelected && [styles.stagePillActive, { borderColor: st.leg.color }],
-                pressed && styles.pressed,
-                focused === focusKey && styles.focused,
-              ]}
+              onLayout={(e) => {
+                pillOffsets.current[st.id] = e.nativeEvent.layout.x;
+              }}
             >
-              <Text style={[styles.stageIndex, isSelected && styles.stageIndexActive]}>
-                {st.stageNumber}.
-              </Text>
-              {isWalk ? (
-                <>
-                  <Footprints
-                    size={13}
-                    color={isSelected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                  />
-                  <Text
-                    style={[styles.stagePillLabel, isSelected && styles.stagePillLabelActive]}
-                    numberOfLines={1}
-                  >
-                    {walkLabel}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <LineBadge leg={st.leg} compact active={isSelected} />
-                  <Text
-                    style={[styles.stagePillLabel, isSelected && styles.stagePillLabelActive]}
-                    numberOfLines={1}
-                  >
-                    {sub}
-                  </Text>
-                </>
-              )}
-            </Pressable>
+              <SpringPressable
+                onPress={() => handleSelectStage(st.id)}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={
+                  isWalk
+                    ? s.map.walkStageA11y(walkLabel)
+                    : s.map.lineStageA11y(st.leg.line ?? '', sub)
+                }
+                onFocus={() => setFocused(focusKey)}
+                onBlur={() => setFocused(null)}
+                style={[
+                  styles.stagePill,
+                  isSelected && styles.stagePillActive,
+                  focused === focusKey && styles.focused,
+                ]}
+              >
+                <Text style={[styles.stageIndex, isSelected && styles.stageIndexActive]}>
+                  {st.stageNumber}.
+                </Text>
+                {isWalk ? (
+                  <>
+                    <Footprints
+                      size={14}
+                      color={isSelected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                    />
+                    <Text
+                      style={[styles.stagePillLabel, isSelected && styles.stagePillLabelActive]}
+                      numberOfLines={1}
+                    >
+                      {walkLabel}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <LineBadge mode={st.leg.mode} line={st.leg.line} compact active={isSelected} />
+                    <Text
+                      style={[styles.stagePillLabel, isSelected && styles.stagePillLabelActive]}
+                      numberOfLines={1}
+                    >
+                      {sub}
+                    </Text>
+                  </>
+                )}
+              </SpringPressable>
+            </View>
           );
         })}
       </ScrollView>
@@ -232,33 +341,36 @@ export function SharedJourneyMapCard({
   const renderMapContent = (isModal: boolean) => {
     if (!mapRoute) {
       return (
-        <View style={styles.mapEmpty}>
-          {loading && <MorphingLoader variant="contained" size={30} startIndex={3} />}
+        <View style={[styles.mapEmpty, desktopFill && !isModal && styles.mapEmptyFill]}>
+          {loading && <MorphingLoader variant="contained" size={32} startIndex={3} />}
           <Text style={styles.emptyText}>
             {loading ? s.share.geometryLoading : s.share.mapUnavailable}
           </Text>
           {!loading && (
-            <Pressable
+            <SpringPressable
               onPress={onRetryData}
+              haptic="selection"
               accessibilityRole="button"
               onFocus={() => setFocused('retry-data')}
               onBlur={() => setFocused(null)}
-              style={({ pressed }) => [
-                styles.inlineBtn,
-                pressed && styles.pressed,
-                focused === 'retry-data' && styles.focused,
-              ]}
+              style={[styles.inlineBtn, focused === 'retry-data' && styles.focused]}
             >
               <RefreshCw size={16} color={scheme.onSecondaryContainer} />
               <Text style={styles.inlineBtnText}>{s.share.retryMap}</Text>
-            </Pressable>
+            </SpringPressable>
           )}
         </View>
       );
     }
 
     return (
-      <View style={isModal ? styles.modalMapWrap : styles.mapWrap}>
+      <View
+        style={
+          isModal
+            ? styles.modalMapWrap
+            : [styles.mapWrap, desktopFill && styles.mapWrapDesktopFill]
+        }
+      >
         {offlineBase !== undefined && (
           <RouteMap
             ref={mapRef}
@@ -269,8 +381,12 @@ export function SharedJourneyMapCard({
             stopRange={activeStage?.stopRange ?? null}
             focusMaxZoom={activeStage?.focusMaxZoom ?? null}
             offlineBase={offlineBase}
-            paddingTop={isModal ? 24 : 28}
-            paddingBottom={isModal ? 32 : 28}
+            paddingTop={isModal ? 32 : 36}
+            paddingBottom={isModal ? 36 : 36}
+            paddingLeft={28}
+            paddingRight={28}
+            fitOnGeometry
+            maxZoom={isModal ? 17 : 16}
             showPoi={isModal}
             onReady={handleReady}
             onLegTap={handleLegTap}
@@ -279,43 +395,91 @@ export function SharedJourneyMapCard({
           />
         )}
 
-        <Pressable
-          onPress={() => mapRef.current?.fit()}
-          accessibilityRole="button"
-          accessibilityLabel={s.share.fitMap}
-          onFocus={() => setFocused('fit')}
-          onBlur={() => setFocused(null)}
-          style={({ pressed }) => [
-            styles.fitFab,
-            pressed && styles.pressed,
-            focused === 'fit' && styles.focused,
-          ]}
-        >
-          <LocateFixed size={20} color={scheme.onSurface} />
-        </Pressable>
+        {(activeStage || vehicle) && !mapFailed && (
+          <View style={styles.canvasTopOverlay} pointerEvents="none">
+            {activeStage ? (
+              <View style={styles.canvasBadge}>
+                <Text style={styles.canvasBadgeText}>
+                  {s.share.stageCounter(activeStage.stageNumber, stages.length)}
+                </Text>
+              </View>
+            ) : (
+              <View />
+            )}
+            {vehicle && (
+              <View style={[styles.canvasBadge, styles.canvasBadgeLive]}>
+                <LiveSensors color={scheme.onPrimaryContainer} size={12} />
+                <Text style={styles.canvasBadgeLiveText} numberOfLines={1}>
+                  {s.share.vehicleLineLive(vehicle.line)}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {isModal ? (
+          <View style={styles.modalControlRail}>
+            <SpringPressable
+              onPress={() => mapRef.current?.zoomBy(1)}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={s.share.zoomIn}
+              style={styles.mapFab}
+            >
+              <Plus size={20} color={scheme.onSurface} />
+            </SpringPressable>
+            <SpringPressable
+              onPress={() => mapRef.current?.zoomBy(-1)}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={s.share.zoomOut}
+              style={styles.mapFab}
+            >
+              <Minus size={20} color={scheme.onSurface} />
+            </SpringPressable>
+            <SpringPressable
+              onPress={() => mapRef.current?.fit()}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={s.share.fitMap}
+              style={styles.mapFab}
+            >
+              <LocateFixed size={20} color={scheme.onSurface} />
+            </SpringPressable>
+          </View>
+        ) : (
+          <SpringPressable
+            onPress={() => mapRef.current?.fit()}
+            haptic="selection"
+            accessibilityRole="button"
+            accessibilityLabel={s.share.fitMap}
+            onFocus={() => setFocused('fit')}
+            onBlur={() => setFocused(null)}
+            style={[styles.fitFab, focused === 'fit' && styles.focused]}
+          >
+            <LocateFixed size={19} color={scheme.onSurface} />
+          </SpringPressable>
+        )}
 
         {mapFailed && (
           <View style={styles.errorOverlay}>
             <Text style={styles.errorOverlayText} accessibilityRole="alert">
               {s.share.mapError}
             </Text>
-            <Pressable
+            <SpringPressable
               onPress={() => {
                 setMapFailed(false);
                 mapRef.current?.reload();
               }}
+              haptic="selection"
               accessibilityRole="button"
               onFocus={() => setFocused('retry-map')}
               onBlur={() => setFocused(null)}
-              style={({ pressed }) => [
-                styles.inlineBtn,
-                pressed && styles.pressed,
-                focused === 'retry-map' && styles.focused,
-              ]}
+              style={[styles.inlineBtn, focused === 'retry-map' && styles.focused]}
             >
               <RefreshCw size={16} color={scheme.onSecondaryContainer} />
               <Text style={styles.inlineBtnText}>{s.share.retryMap}</Text>
-            </Pressable>
+            </SpringPressable>
           </View>
         )}
       </View>
@@ -323,52 +487,60 @@ export function SharedJourneyMapCard({
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, desktopFill && styles.cardDesktopFill]}>
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.title} accessibilityRole="header">
-            {s.share.map}
-          </Text>
-          {activeStage && (
-            <View style={styles.stageBadge}>
-              <Text style={styles.stageBadgeText}>
-                {activeStage.stageNumber}/{stages.length}
-              </Text>
-            </View>
-          )}
+          <View style={styles.headerIconBadge}>
+            <MapPinned size={19} color={scheme.onPrimaryContainer} />
+          </View>
+          <View style={styles.headerTextCol}>
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+              {s.share.map}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {summarySub}
+            </Text>
+          </View>
         </View>
+
         {mapRoute && (
-          <Pressable
+          <SpringPressable
             onPress={() => setExpanded(true)}
+            haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={s.share.expandMap}
-            hitSlop={4}
             onFocus={() => setFocused('expand')}
             onBlur={() => setFocused(null)}
-            style={({ pressed }) => [
-              styles.iconBtn,
-              pressed && styles.pressed,
-              focused === 'expand' && styles.focused,
-            ]}
+            style={[styles.expandPill, focused === 'expand' && styles.focused]}
           >
-            <Maximize2 size={20} color={scheme.onSurface} />
-          </Pressable>
+            <Maximize2 size={15} color={scheme.onSecondaryContainer} />
+            <Text style={styles.expandPillText} numberOfLines={1}>
+              {s.share.fullscreenMap}
+            </Text>
+          </SpringPressable>
         )}
+      </View>
+
+      <View style={[styles.mapFrame, desktopFill && styles.mapFrameDesktopFill]}>
+        {!expanded ? (
+          renderMapContent(false)
+        ) : (
+          <View style={[styles.mapWrap, desktopFill && styles.mapWrapDesktopFill]} />
+        )}
+        {renderStageFooter()}
       </View>
 
       {renderStageRail()}
 
-      {!expanded ? renderMapContent(false) : <View style={styles.mapWrap} />}
-
       <View style={styles.footer}>
         {!vehicle && !ended ? (
-          <Clock3 size={15} color={scheme.onSurfaceVariant} />
+          <Clock3 size={14} color={scheme.onSurfaceVariant} style={styles.footerIcon} />
         ) : (
-          <ShieldCheck size={15} color={scheme.onSurfaceVariant} />
+          <ShieldCheck size={14} color={scheme.primary} style={styles.footerIcon} />
         )}
         <Text style={styles.footerText}>
           {footerNote}
-          {hasApprox && (vehicle || ended) ? ` · ${s.share.approximateGeometry}` : ''}
+          {hasApprox && (vehicle || ended) ? ` \u00b7 ${s.share.approximateGeometry}` : ''}
         </Text>
       </View>
 
@@ -381,14 +553,17 @@ export function SharedJourneyMapCard({
         <SafeAreaView style={styles.modalSafe} edges={['top', 'bottom']}>
           <View style={styles.modalHeader}>
             <View style={styles.headerTitleWrap}>
-              <Text style={styles.title}>{s.share.map}</Text>
-              {activeStage && (
-                <View style={styles.stageBadge}>
-                  <Text style={styles.stageBadgeText}>
-                    {activeStage.stageNumber}/{stages.length}
-                  </Text>
-                </View>
-              )}
+              <View style={styles.headerIconBadge}>
+                <MapPinned size={19} color={scheme.onPrimaryContainer} />
+              </View>
+              <View style={styles.headerTextCol}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {s.share.map}
+                </Text>
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {summarySub}
+                </Text>
+              </View>
             </View>
             <Pressable
               onPress={() => setExpanded(false)}
@@ -397,16 +572,19 @@ export function SharedJourneyMapCard({
               onFocus={() => setFocused('close-map')}
               onBlur={() => setFocused(null)}
               style={({ pressed }) => [
-                styles.iconBtn,
+                styles.closeBtn,
                 pressed && styles.pressed,
                 focused === 'close-map' && styles.focused,
               ]}
             >
-              <X size={22} color={scheme.onSurface} />
+              <X size={21} color={scheme.onSurface} />
             </Pressable>
           </View>
           {expanded && renderMapContent(true)}
-          <View style={styles.modalRailWrap}>{renderStageRail()}</View>
+          <View style={styles.modalBottomSheet}>
+            {renderStageFooter()}
+            {stages.length > 1 && <View style={styles.modalRailInner}>{renderStageRail()}</View>}
+          </View>
         </SafeAreaView>
       </Modal>
     </View>
@@ -415,122 +593,177 @@ export function SharedJourneyMapCard({
 
 const styles = StyleSheet.create({
   card: {
+    backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainerLow,
-    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+    padding: 14,
+    gap: 12,
+    ...elev.level1,
+  },
+  cardDesktopFill: {
+    flex: 1,
+    minHeight: 420,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    paddingLeft: 20,
-    paddingRight: 10,
-    paddingTop: 14,
-    paddingBottom: 10,
+    gap: 10,
   },
   headerTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flex: 1,
     minWidth: 0,
   },
-  title: {
-    ...type.titleMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    flexShrink: 1,
-  },
-  stageBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: shape.full,
+  headerIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     backgroundColor: scheme.primaryContainer,
-  },
-  stageBadgeText: {
-    ...type.labelSmall,
-    fontWeight: '700',
-    color: scheme.onPrimaryContainer,
-  },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    flexShrink: 0,
   },
-  stageRail: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
+  headerTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
   },
-  stagePill: {
-    minHeight: 38,
+  title: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    color: scheme.onSurface,
+  },
+  subtitle: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  expandPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    minHeight: 44,
+    paddingHorizontal: 14,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    backgroundColor: scheme.secondaryContainer,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
   },
-  stagePillActive: {
-    backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
-  },
-  stageIndex: {
-    ...type.labelSmall,
-    fontWeight: '700',
-    color: scheme.onSurfaceVariant,
-  },
-  stageIndexActive: {
-    color: scheme.onPrimaryContainer,
-  },
-  stagePillLabel: {
+  expandPillText: {
     ...type.labelMedium,
-    fontWeight: '600',
-    color: scheme.onSurfaceVariant,
-    maxWidth: 150,
+    fontWeight: '700',
+    color: scheme.onSecondaryContainer,
   },
-  stagePillLabelActive: {
-    color: scheme.onPrimaryContainer,
+  mapFrame: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+  },
+  mapFrameDesktopFill: {
+    flex: 1,
+    minHeight: 380,
   },
   mapWrap: {
-    height: 288,
-    marginHorizontal: 12,
-    borderRadius: shape.large,
-    overflow: 'hidden',
-    backgroundColor: scheme.surfaceContainerHighest,
+    height: 276,
+    backgroundColor: scheme.surfaceContainerLowest,
+  },
+  mapWrapDesktopFill: {
+    flex: 1,
+    height: undefined,
+    minHeight: 380,
   },
   modalMapWrap: {
     flex: 1,
-    backgroundColor: scheme.surfaceContainerHighest,
+    backgroundColor: scheme.surfaceContainerLowest,
+  },
+  canvasTopOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  canvasBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: shape.full,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    ...elev.level2,
+  },
+  canvasBadgeText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
+  },
+  canvasBadgeLive: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
+  canvasBadgeLiveText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
   },
   fitFab: {
     position: 'absolute',
-    right: 12,
-    bottom: 12,
-    width: 48,
-    height: 48,
-    borderRadius: shape.large,
+    right: 10,
+    bottom: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
+    ...elev.level2,
+  },
+  modalControlRail: {
+    position: 'absolute',
+    right: 14,
+    bottom: 18,
+    gap: 8,
+  },
+  mapFab: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...elev.level2,
   },
   mapEmpty: {
-    marginHorizontal: 12,
+    height: 220,
     padding: 24,
     gap: 12,
     alignItems: 'center',
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
+    justifyContent: 'center',
+    backgroundColor: scheme.surfaceContainerLow,
+  },
+  mapEmptyFill: {
+    flex: 1,
+    height: undefined,
+    minHeight: 360,
   },
   emptyText: {
     ...type.bodyMedium,
@@ -561,7 +794,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
@@ -573,17 +806,105 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: scheme.onSecondaryContainer,
   },
+  stageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: 2,
+    borderTopColor: scheme.outlineVariant,
+  },
+  stepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+  },
+  stageFooterBody: {
+    flex: 1,
+    paddingHorizontal: 4,
+    gap: 2,
+    minWidth: 0,
+  },
+  stageFooterStops: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  stageFooterMeta: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  stageRailScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  stageRail: {
+    gap: 8,
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  stagePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+    maxWidth: 236,
+  },
+  stagePillActive: {
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    borderWidth: 1.5,
+    borderColor: scheme.primary,
+  },
+  stageIndex: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+  },
+  stageIndexActive: {
+    color: scheme.onPrimaryContainer,
+  },
+  stagePillLabel: {
+    ...type.labelMedium,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+    flexShrink: 1,
+  },
+  stagePillLabelActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '700',
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  footerIcon: {
+    marginTop: 2,
+    flexShrink: 0,
   },
   footerText: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-    lineHeight: 18,
+    lineHeight: 17,
     flex: 1,
     minWidth: 0,
   },
@@ -595,18 +916,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    paddingLeft: 20,
-    paddingRight: 10,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 2,
     borderBottomColor: scheme.outlineVariant,
   },
-  modalRailWrap: {
-    paddingTop: 12,
+  closeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBottomSheet: {
     backgroundColor: scheme.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
+  },
+  modalRailInner: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   focused: {
     borderColor: scheme.onSurface,

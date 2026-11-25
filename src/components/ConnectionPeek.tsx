@@ -14,7 +14,6 @@ import {
   type PressableProps,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -22,10 +21,12 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowUp, Check, Footprints, X } from './icons';
 import { useStrings } from '../i18n';
+import { hapticGestureArm, hapticGestureDisarm, hapticLongPress } from '../services/haptics';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -34,22 +35,14 @@ import { ConnectionSummary } from './ConnectionSummary';
 import { LineBadge } from './LineBadge';
 
 const POP_DISTANCE = 72;
+const POP_DISARM_DISTANCE = 58;
 const peekSpring = { damping: 26, stiffness: 420, mass: 0.8, reduceMotion: ReduceMotion.System };
-
-function subtleHaptic() {
-  if (Platform.OS === 'android') {
-    void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Segment_Frequent_Tick).catch(
-      () => {},
-    );
-  } else if (Platform.OS === 'ios') {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {});
-  }
-}
 
 export interface ConnectionPeekHandlers {
   show: (item: Connection, sticky?: boolean) => void;
   ready: (ready: boolean) => void;
   release: (item: Connection, open: boolean) => void;
+  dragY?: SharedValue<number>;
 }
 
 export function ConnectionPeekTarget({
@@ -64,12 +57,17 @@ export function ConnectionPeekTarget({
   const active = useRef(false);
   const ready = useRef(false);
   const peeked = useRef(false);
-  const popHapticSent = useRef(false);
+  const itemRef = useRef(item);
+  itemRef.current = item;
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+  const enabled = Platform.OS !== 'web' && !!handlers;
+  // Stabilny gest niezależny od podmiany referencji `item` przy odświeżaniu live.
   const gesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(Platform.OS !== 'web' && !!handlers)
-        .activateAfterLongPress(350)
+        .enabled(enabled)
+        .activateAfterLongPress(400)
         .maxPointers(1)
         .shouldCancelWhenOutside(false)
         .runOnJS(true)
@@ -77,30 +75,43 @@ export function ConnectionPeekTarget({
           active.current = true;
           peeked.current = true;
           ready.current = false;
-          popHapticSent.current = false;
-          handlers?.show(item);
-          subtleHaptic();
+          const h = handlersRef.current;
+          if (h?.dragY) h.dragY.value = 0;
+          h?.show(itemRef.current);
+          hapticLongPress();
         })
         .onUpdate(({ translationY }) => {
-          const next = translationY <= -POP_DISTANCE;
+          const h = handlersRef.current;
+          if (h?.dragY) {
+            const clamped = Math.min(18, Math.max(-120, translationY));
+            h.dragY.value = clamped;
+          }
+          const next = ready.current
+            ? translationY <= -POP_DISARM_DISTANCE
+            : translationY <= -POP_DISTANCE;
           if (ready.current !== next) {
             ready.current = next;
-            handlers?.ready(next);
-            if (next && !popHapticSent.current) {
-              popHapticSent.current = true;
-              subtleHaptic();
-            }
+            h?.ready(next);
+            if (next) hapticGestureArm();
+            else hapticGestureDisarm();
           }
         })
-        .onEnd(({ translationY }) => {
+        .onEnd(() => {
           active.current = false;
-          handlers?.release(item, translationY <= -POP_DISTANCE);
+          const h = handlersRef.current;
+          const shouldOpen = ready.current;
+          ready.current = false;
+          if (h?.dragY) h.dragY.value = withSpring(0, peekSpring);
+          h?.release(itemRef.current, shouldOpen);
         })
         .onFinalize(() => {
-          if (active.current) handlers?.release(item, false);
+          const h = handlersRef.current;
+          if (h?.dragY) h.dragY.value = withSpring(0, peekSpring);
+          if (active.current) h?.release(itemRef.current, false);
           active.current = false;
+          ready.current = false;
         }),
-    [handlers, item],
+    [enabled],
   );
 
   return Platform.OS !== 'web' && handlers ? (
@@ -125,6 +136,7 @@ export function ConnectionPeek({
   ready,
   sticky,
   offline,
+  dragY,
   onClose,
   onOpen,
 }: {
@@ -132,6 +144,7 @@ export function ConnectionPeek({
   ready: boolean;
   sticky: boolean;
   offline: boolean;
+  dragY?: SharedValue<number>;
   onClose: () => void;
   onOpen: () => void;
 }) {
@@ -158,16 +171,16 @@ export function ConnectionPeek({
     return () => sub.remove();
   }, [onClose]);
 
-  const animatedStyle = useAnimatedStyle(
-    () => ({
+  const animatedStyle = useAnimatedStyle(() => {
+    const followY = dragY ? Math.max(-28, Math.min(6, dragY.value * 0.24)) : 0;
+    return {
       opacity: entrance.value,
       transform: [
-        { scale: 0.94 + entrance.value * 0.06 },
-        { translateY: (1 - entrance.value) * 16 - lift.value * 12 },
+        { scale: 0.94 + entrance.value * 0.06 + lift.value * 0.015 },
+        { translateY: (1 - entrance.value) * 16 + followY - lift.value * 8 },
       ],
-    }),
-    [entrance, lift],
-  );
+    };
+  }, [dragY, entrance, lift]);
 
   const content = (
     <Animated.View
@@ -337,7 +350,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 32,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 10,
     ...elev.level3,
@@ -365,7 +378,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -375,13 +388,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   leg: {
     paddingVertical: 13,
     gap: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 2,
     borderBottomColor: scheme.outlineVariant,
   },
   legHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },

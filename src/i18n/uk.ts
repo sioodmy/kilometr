@@ -1451,6 +1451,8 @@ export const uk: Strings = {
     outsideAreaShort: 'Ти поза підтримуваною територією',
     downloadCityTimetableA11y: (gen: string) => `Завантажити розклад ${gen}`,
     liveMapA11y: 'Мапа транспорту наживо',
+    navPlanner: 'Планувальник',
+    navMenuA11y: 'Головна навігація',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Лінія ${line} (${direction})` : `Лінія ${line}`,
     boardedChipTitle: (line: string) => `У транспорті ${line}`,
@@ -1547,7 +1549,7 @@ export const uk: Strings = {
     planningTitle: 'Планування подорожі',
     offlineTitle: 'Розклад і карти',
     notificationsSummary: 'Відстеження подорожі та сповіщення',
-    backupSummary: 'Збережені місця, історія та налаштування',
+    backupSummary: 'Статистика, підсумок і резервна копія',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Відновити налаштування маршрутів',
@@ -1793,11 +1795,11 @@ export const uk: Strings = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Обери місто й завантаж розклад. Планувати поїздки можна й без інтернету.',
+    intro: 'Обери місто, і розклад завантажиться у фоні. Планувати поїздки можна й без інтернету.',
     openSettings: 'Відкрити налаштування',
     permissionDenied:
       'Можна продовжити без цього дозволу та змінити його пізніше в налаштуваннях телефона.',
-    steps: ['Вітаємо', 'Доступи', 'Місто', 'Розклад', 'Місця'],
+    steps: ['Вітаємо', 'Місто', 'Доступи', 'Місця'],
     granted: 'Увімкнено',
     denied: 'Вимкнено',
     slotHome: 'Дім',
@@ -1894,6 +1896,20 @@ export const uk: Strings = {
     fast: 'Планування офлайн',
     noAds: 'Без реклами',
     noPay: 'Без мікроплатежів',
+    detectGpsAction: 'Визначити моє місто за GPS',
+    detectGpsHint: 'Автоматично підбере розклад для твоєї околиці',
+    citySearchPlaceholder: 'Шукай місто або агломерацію…',
+    cityNoSearchMatch: (q: string) => `Місто „${q}“ не знайдено.`,
+    cityClearSearchA11y: 'Очистити пошук',
+    citySubtitleAuto: 'Розклад завантажиться автоматично у фоні.',
+    bgDlDownloading: (gen: string, pct: number) => `Завантажую розклад ${gen}… ${pct}%`,
+    bgDlImporting: (gen: string, pct: number) => `Готую розклад ${gen}… ${pct}%`,
+    bgDlReady: (gen: string) => `Розклад ${gen} готовий офлайн`,
+    bgDlError: 'Не вдалося завантажити розклад',
+    bgDlPending: (gen: string) => `Розклад ${gen} завантажиться у фоні`,
+    bgDlRetry: 'Повторити',
+    bgDlStart: 'Завантажити',
+    startUsing: 'Почати користуватися',
     permTitle: 'Доступи',
     permSub: 'Локація та сповіщення. Обидва необов’язкові.',
     permSubWeb: 'Додай застосунок на головний екран і дозволь локацію.',
@@ -1923,12 +1939,10 @@ export const uk: Strings = {
     cityTitle: 'У якому місті їздиш?',
     cityBody:
       'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
-    citySuggested: (name: string) => `За GPS ти ${prepInCity(name)}.`,
     cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
     cityLocating: 'Шукаю твою позицію GPS…',
     cityNoMatch: 'GPS не вказує на підтримуване місто. Вибери зі списку.',
     cityPickA11y: (name: string) => `Вибрати місто: ${name}`,
-    citySuggestedA11y: (name: string) => `Запропоноване місто за GPS: ${name}`,
     dlTitle: (gen: string) => `Завантажити розклад ${gen}`,
     dlBody: (feeds: string) =>
       `Готова база: ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,
@@ -2027,10 +2041,22 @@ export const uk: Strings = {
             : 'опублікував';
       return `${name} зараз не ${verb} жодних ускладнень. Потягни вниз, щоб перевірити знову.`;
     },
+    sectionGps: 'Виявлено наживо за GPS',
     sectionChanges: 'Зміни на лініях',
     sectionCity: 'Новини',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'Аналіз GPS',
+    gpsJamTitleTram: (place: string) => `Затор трамваїв: ${place}`,
+    gpsJamTitleBus: (place: string) => `Затор автобусів: ${place}`,
+    gpsJamTitleHub: (place: string) => `Великі затримки: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} одиниці стоять поруч уже ${durMin} хв. Середня затримка +${avgMin} хв.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} рейсів із затримкою в цьому районі. У середньому +${avgMin} хв.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} хв вище норми для цієї години.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Триває близько ${durMin} хв (аналіз GPS)` : 'Виявлено щойно (аналіз GPS)',
     openBrowser: 'Відкрити в браузері',
     articleFail: 'Не вдалося завантажити цю сторінку.',
     articleEmpty: 'На цій сторінці немає тексту, який застосунок може показати.',
@@ -2204,6 +2230,8 @@ export const uk: Strings = {
     downloadingPlain: 'Завантаження…',
     downloadAction: 'Завантажити розклад',
     earlierAction: 'Раніші сполучення',
+    earlierPullHint: 'Потягни для раніших',
+    earlierReleaseHint: 'Відпусти для раніших',
     earlierLoading: 'Завантажую раніші сполучення…',
     earlierEmpty: 'Немає раніших сполучень цього дня',
     earlierRetry: 'Не вдалося завантажити. Спробуй ще раз',
@@ -2615,6 +2643,7 @@ export const uk: Strings = {
     mapTapToLoad: 'Торкніться, щоб завантажити мапу',
     mapFailed:
       'Не вдалося завантажити мапу. Спробуйте ще раз або завантажте офлайн-мапу в налаштуваннях.',
+    mapFailedWeb: 'Не вдалося завантажити мапу. Перевірте з’єднання та спробуйте ще раз.',
     mapRetry: 'Завантажити мапу знову',
     openMap: 'Відкрити повну мапу маршруту',
     ahead: 'Просто перед тобою',
@@ -3036,6 +3065,43 @@ export const uk: Strings = {
     zoomForLinesHint: 'Наблизьте, щоб бачити номери ліній',
     openTimetableCta: 'Розклад лінії',
     toggleSheetA11y: 'Розгорнути або згорнути деталі',
+    filterDelays: 'Затримки',
+    delayZoneSheetTitle: 'Вузол затримок',
+    delayAvgNow: (min: number) => `Середньо +${min} хв`,
+    delayP90: (min: number) => `Пік (p90): +${min} хв`,
+    delayVsTypicalHigher: (min: number) => `+${min} хв вище норми`,
+    delayVsTypicalLower: (min: number) => `На ${min} хв менше, ніж зазвичай`,
+    delayVehiclesAffected: (delayed: number, total: number) =>
+      `${delayed} з ${total} одиниць із затримкою`,
+    delayAffectedLines: 'Лінії із затримкою',
+    delaySeveritySevere: 'Сильний затор',
+    delaySeverityHeavy: 'Помітні затримки',
+    delaySeverityModerate: 'Уповільнення',
+    delayTapLineHint: 'Натисни на лінію, щоб відфільтрувати її на мапі',
+  },
+  routeInsights: {
+    verdictLow: 'Зазвичай вчасно',
+    verdictModerate: 'Можлива невелика затримка',
+    verdictHigh: 'Часті затримки у цю годину',
+    dayWeekday: 'будні',
+    daySaturday: 'суботи',
+    daySunday: 'неділі',
+    basisLine: (line: string, day: string, n: number) =>
+      `Лінія ${line} · ${day} (${n} вимірів)`,
+    basisGeneric: (day: string, n: number) => `На основі ${n} вимірів (${day})`,
+    upToMin: (min: number) => `p90 +${min}хв`,
+    chartCaption: 'Середня затримка за годиною',
+    yourDeparture: 'Твій виїзд',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Профіль затримок лінії ${line}. О ${hour} в середньому плюс ${min} хвилин.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Активний затор біля ${place}: зараз у середньому +${min} хв затримки.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: зараз +${min} хв (+${delta} хв вище норми).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: уповільнення на маршруті, зараз +${min} хв.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Тісна пересадка (${stop}): запас ${marginMin} хв, а лінія ${fromLine} має до +${p90Min} хв.`,
   },
   widgets: {
     journeyTitle: 'Твої напрямки',
@@ -3072,5 +3138,83 @@ export const uk: Strings = {
     tripEmptyBody: 'Виберіть сполучення й увімкніть відстеження.',
     placesEmpty: 'Додайте своє перше місце',
     search: 'Куди їдемо?',
+  },
+  yourData: {
+    distanceLabel: 'Пройдена відстань',
+    tripsLabel: 'Поїздки',
+    timeLabel: 'Час у дорозі',
+    citiesLabel: 'Міста',
+    stopsLabel: 'Зупинки',
+    walkLabel: 'Пішки',
+    co2Label: 'Менше CO₂',
+    co2Hint: 'проти авто',
+    railSectionTitle: 'Залізниця та транспорт',
+    railTitle: 'Залізниця',
+    railTrips: (n: number) =>
+      isOne(n) ? '1 поїздка поїздом' : isFew(n) ? `${n} поїздки поїздом` : `${n} поїздок поїздом`,
+    railTickets: (n: number) =>
+      isOne(n) ? '1 квиток' : isFew(n) ? `${n} квитки` : `${n} квитків`,
+    railEmpty: 'Поки що немає збережених поїздок залізницею',
+    topLinesTitle: 'Найчастіші лінії',
+    topLinesSubtitle: 'Торкніться сектора або лінії, щоб побачити частку',
+    topLinesEmpty: 'Відкривайте або зберігайте маршрути, щоб побачити діаграму своїх ліній.',
+    topLinesTotal: 'Відрізки',
+    topLinesOther: 'Інші',
+    lineTrips: (n: number) =>
+      isOne(n) ? '1 рейс' : isFew(n) ? `${n} рейси` : `${n} рейсів`,
+    topDestinationsTitle: 'Найчастіші напрямки',
+    topDestinationLead: 'Головний напрямок',
+    topDestinationsEmpty: 'Шукайте сполучення, щоб побачити найчастіші місця.',
+    avgTime: (min: number) => `сер. ${min} хв`,
+    backupSectionTitle: 'Резервна копія та перенесення',
+    placesShort: 'Місця',
+    routesShort: 'Збережені маршрути',
+    historyShort: 'Історія',
+    emptyTitle: 'Ваша статистика ще формується',
+    emptyBody:
+      'Шукайте й відстежуйте маршрути, щоб побачити кілометри, діаграму улюблених ліній і картку підсумку для соцмереж. Усі дані зберігаються лише на цьому пристрої.',
+    localOnlyNote: 'Уся статистика рахується локально на вашому пристрої.',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Поділися підсумком своїх поїздок',
+    shareSheetTitle: 'Підсумок поїздок',
+    shareSheetSubtitle: 'Готова графіка для Instagram, X або друзів.',
+    shareAction: 'Поділитися графікою',
+    shareDownload: 'Зберегти PNG',
+    sharePreparing: 'Створюю графіку…',
+    shareError: 'Не вдалося створити графіку. Спробуйте ще раз.',
+    shareSaved: 'Графіку збережено.',
+    wrappedFooter: 'Підсумок поїздок',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('uk-UA')} км`
+        : `${km.toLocaleString('uk-UA', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} км`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} кг`
+        : `~${kg.toLocaleString('uk-UA', { maximumFractionDigits: 1 })} кг`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} хв`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} год ${m} хв` : `${h} год`;
+    },
+    modes: {
+      tram: 'Трамвай',
+      bus: 'Автобус',
+      train: 'Залізниця',
+      subway: 'Метро',
+      trolleybus: 'Тролейбус',
+      cable: 'Канатна дорога',
+      walk: 'Пішки',
+    },
+    archetypes: {
+      rail_express: 'Залізничний експрес',
+      tram_regular: 'Постійний пасажир трамваїв',
+      bus_rider: 'Майстер автобусних ліній',
+      metro_commuter: 'Підземний експрес',
+      city_walker: 'Міський пішохід',
+      multi_city: 'Міжміський мандрівник',
+      explorer: 'Дослідник маршрутів',
+    },
   },
 };

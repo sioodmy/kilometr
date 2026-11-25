@@ -1,5 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
-import * as Haptics from 'expo-haptics';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -8,6 +7,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
+import { hapticTap } from '../services/haptics';
 import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
@@ -80,6 +80,15 @@ export function JourneyStrip({
   const s = useStrings();
   const { width } = useWindowDimensions();
   const cityId = getActiveCityIdSync();
+  const boxWRef = useRef(0);
+  const contentWRef = useRef(0);
+  const [stripOverflows, setStripOverflows] = useState(false);
+
+  const syncStripOverflow = useCallback((boxW: number, contentW: number) => {
+    const next = boxW > 0 && contentW > boxW + 2;
+    setStripOverflows((prev) => (prev === next ? prev : next));
+  }, []);
+
   if (insights.transitLegs.length === 0) return null;
 
   const steps: StripStep[] = [];
@@ -158,7 +167,17 @@ export function JourneyStrip({
           style={styles.stripScroll}
           contentContainerStyle={styles.stripContent}
           showsHorizontalScrollIndicator={false}
-          nestedScrollEnabled
+          scrollEnabled={stripOverflows}
+          nestedScrollEnabled={stripOverflows}
+          onLayout={(event) => {
+            const w = event.nativeEvent.layout.width;
+            boxWRef.current = w;
+            syncStripOverflow(w, contentWRef.current);
+          }}
+          onContentSizeChange={(w) => {
+            contentWRef.current = w;
+            syncStripOverflow(boxWRef.current, w);
+          }}
         >
           {steps.map((step) => {
             if (step.kind === 'leg') {
@@ -167,7 +186,7 @@ export function JourneyStrip({
                   key={step.key}
                   leg={step.leg}
                   compact
-                  maxWidth={width - 128}
+                  maxWidth={Math.min(width, 640) - 128}
                 />
               );
             }
@@ -387,8 +406,8 @@ export const ConnectionCard = memo(function ConnectionCard({
   const animatedCardStyle = useAnimatedStyle(() => {
     if (reduceMotion) return {};
     return {
-      borderRadius: shape.extraLarge - press.value * 8,
-      transform: [{ scale: 1 - press.value * 0.015 }],
+      opacity: 1 - press.value * 0.05,
+      transform: [{ scale: 1 - press.value * 0.016 }],
     };
   });
 
@@ -401,7 +420,7 @@ export const ConnectionCard = memo(function ConnectionCard({
   );
 
   const handlePress = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    hapticTap();
     onPress(item);
   }, [item, onPress]);
 
@@ -411,6 +430,7 @@ export const ConnectionCard = memo(function ConnectionCard({
     <ConnectionPeekTarget item={item} handlers={peek}>
         <AnimatedPressable
           collapsable={false}
+          unstable_pressDelay={55}
           onPress={handlePress}
           onPressIn={() => setPress(1)}
           onPressOut={() => setPress(0)}
@@ -562,7 +582,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -727,7 +747,7 @@ const styles = StyleSheet.create({
   stripSurface: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -837,7 +857,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 10,

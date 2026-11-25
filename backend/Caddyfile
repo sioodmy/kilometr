@@ -1,0 +1,20 @@
+{$API_DOMAIN:api.kilometr.app} {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+
+    reverse_proxy api:8080 {
+        health_uri /health
+        health_interval 15s
+        health_timeout 4s
+        transport http {
+            read_timeout 15s
+            write_timeout 15s
+        }
+    }
+}

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   Platform,
   Pressable,
   StyleSheet,
@@ -19,6 +18,8 @@ import BottomSheet, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlarmClock, Minus, Plus, Volume2, X } from './icons';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
+import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { Connection } from '../types/models';
@@ -73,8 +74,15 @@ export function DepartureAlarmSheet({
   const s = useStrings();
   const a = s.alarm;
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
+  const { height: windowHeight } = useWindowDimensions();
+  const desktopHeight = Math.min(windowHeight - 96, 680);
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 560, desktopHeight);
   const sheet = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['90%'], []);
+  const snapPoints = useMemo(
+    () => (webLayout.isMedium ? [desktopHeight] : ['90%']),
+    [desktopHeight, webLayout.isMedium],
+  );
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -88,6 +96,9 @@ export function DepartureAlarmSheet({
     [s.common.close],
   );
   const busyRef = useRef(false);
+  useEscapeKey(true, () => {
+    if (!busyRef.current) sheet.current?.close();
+  });
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const { width, fontScale } = useWindowDimensions();
@@ -157,13 +168,7 @@ export function DepartureAlarmSheet({
     };
   }, []);
 
-  useEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!busyRef.current) sheet.current?.close();
-      return true;
-    });
-    return () => back.remove();
-  }, []);
+  const { onSheetChange } = useSheetBackHandler(sheet, () => onCloseRef.current());
 
   const changeMinutes = (value: number) => {
     setMinutes(Math.max(1, Math.min(60, value)));
@@ -216,9 +221,14 @@ export function DepartureAlarmSheet({
       animationConfigs={animationConfigs}
       enableDynamicSizing={false}
       topInset={insets.top}
-      enablePanDownToClose
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
+      enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onCloseRef.current}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}
       handleIndicatorStyle={styles.handle}
       backdropComponent={renderBackdrop}
     >

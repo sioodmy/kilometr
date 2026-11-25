@@ -49,21 +49,14 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
   const urgent = departInMin !== undefined && departInMin >= 0 && departInMin <= 5;
   const Icon = meta?.Icon ?? History;
 
-  return (
-    <SpringPressable
-      onPress={() => onSelect(item)}
-      accessibilityRole="button"
-      accessibilityLabel={s.home.searchToA11y(item.title)}
-      scaleDelta={0.016}
-      opacityDelta={0.05}
-      haptic="selection"
-      style={[
-        styles.card,
-        (segment === 'first' || segment === 'single') && styles.cardTop,
-        (segment === 'last' || segment === 'single') && styles.cardBottom,
-        compact && styles.cardCompact,
-      ]}
-    >
+  const cardRadii = [
+    (segment === 'first' || segment === 'single') && styles.cardTop,
+    (segment === 'last' || segment === 'single') && styles.cardBottom,
+    compact && styles.cardCompact,
+  ];
+
+  const mainContent = (
+    <>
       <View style={styles.iconSlide}>
         <View style={[styles.icon, { backgroundColor: meta?.bg ?? scheme.secondaryContainer }]}>
           <Icon size={20} color={meta?.fg ?? scheme.onSecondaryContainer} />
@@ -78,24 +71,34 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
           {item.address}
         </Text>
       </View>
+    </>
+  );
 
-      <View
-        style={[
-          styles.rightSlide,
-          compact && styles.rightSlideCompact,
-          compact && !departLabel && styles.hidden,
-        ]}
-      >
-        {departLabel ? (
+  // Dwa sąsiednie przyciski w jednym kontenerze zamiast zagnieżdżonego <button> w <button> na Web.
+  if (departLabel) {
+    return (
+      <View style={[styles.card, styles.cardSplit, ...cardRadii]}>
+        <SpringPressable
+          onPress={() => onSelect(item)}
+          accessibilityRole="button"
+          accessibilityLabel={s.home.searchToA11y(item.title)}
+          scaleDelta={0.016}
+          opacityDelta={0.05}
+          haptic="selection"
+          style={styles.cardMainAction}
+        >
+          {mainContent}
+        </SpringPressable>
+
+        <View style={[styles.rightSlide, compact && styles.rightSlideCompact]}>
           <SpringPressable
-            onPress={(e) => {
-              e.stopPropagation();
+            onPress={() => {
               if (onOpenConnection) onOpenConnection(item);
               else onSelect(item);
             }}
             accessibilityRole="button"
             accessibilityLabel={s.home.openConnA11y(item.title, departLabel)}
-            hitSlop={6}
+            hitSlop={4}
             scaleDelta={0.04}
             haptic="light"
             style={[
@@ -105,10 +108,7 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
             ]}
           >
             {badge?.line ? <LineBadge mode={badge.mode} line={badge.line} compact /> : null}
-            <Text
-              style={[styles.depart, urgent && styles.departUrgent]}
-              numberOfLines={1}
-            >
+            <Text style={[styles.depart, urgent && styles.departUrgent]} numberOfLines={1}>
               {departLabel}
             </Text>
             <ChevronRight
@@ -116,12 +116,29 @@ const SmartHistoryRow = memo(function SmartHistoryRow({
               color={urgent ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
             />
           </SpringPressable>
-        ) : (
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <SpringPressable
+      onPress={() => onSelect(item)}
+      accessibilityRole="button"
+      accessibilityLabel={s.home.searchToA11y(item.title)}
+      scaleDelta={0.016}
+      opacityDelta={0.05}
+      haptic="selection"
+      style={[styles.card, ...cardRadii]}
+    >
+      {mainContent}
+      {!compact && (
+        <View style={styles.rightSlide}>
           <View style={styles.rightPlaceholder}>
             <ChevronRight size={17} color={scheme.onSurfaceVariant} />
           </View>
-        )}
-      </View>
+        </View>
+      )}
     </SpringPressable>
   );
 });
@@ -224,13 +241,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 13,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     borderRadius: 8,
     paddingVertical: 14,
     paddingHorizontal: 14,
     minHeight: 76,
     ...elev.level1,
+  },
+  cardSplit: {
+    paddingVertical: 0,
+    paddingLeft: 0,
+    paddingRight: 14,
+    gap: 8,
+  },
+  cardMainAction: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    paddingVertical: 14,
+    paddingLeft: 14,
+    paddingRight: 4,
+    minHeight: 76,
   },
   cardTop: {
     borderTopLeftRadius: shape.extraLarge,
@@ -257,17 +291,17 @@ const styles = StyleSheet.create({
   },
   sub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   departPill: {
-    minHeight: 40,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingLeft: 10,
     paddingRight: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   departPillUrgent: {
