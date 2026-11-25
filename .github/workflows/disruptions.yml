@@ -26,10 +26,11 @@ on:
         options: ['', wroclaw, gzm, warszawa, poznan, trojmiasto, krakow, lodz, olsztyn, opole, rzeszow, szczecin, kielce, bialystok, lublin, radom]
 
 env:
-  # Miasta analizowane DeepSeekiem przy harmonogramie. Przełączasz tylko tutaj.
+  # Miasta aktualizowane przy harmonogramie. Warszawa idzie z gotowego
+  # GTFS-RT (bez LLM), reszta wymaga analizy DeepSeekiem.
   # Pełna lista: wroclaw,gzm,warszawa,poznan,trojmiasto,krakow,lodz,olsztyn,opole,rzeszow,szczecin,kielce,bialystok,lublin,radom
   # Nadpisanie bez edycji pliku: Settings > Secrets and variables > Actions > Variables > DISRUPTION_CITIES.
-  DISRUPTION_DEFAULT_CITIES: wroclaw,gzm,krakow
+  DISRUPTION_DEFAULT_CITIES: wroclaw,gzm,krakow,warszawa
 
 permissions:
   contents: read
