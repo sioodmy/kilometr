@@ -1746,6 +1746,8 @@ export const en: Strings = {
     downloadingPlain: 'Downloading…',
     downloadAction: 'Download timetable',
     earlierAction: 'Earlier connections',
+    earlierPullHint: 'Pull for earlier',
+    earlierReleaseHint: 'Release for earlier',
     earlierLoading: 'Loading earlier connections…',
     earlierEmpty: 'No earlier connections for this day',
     earlierRetry: 'Could not load connections. Try again',

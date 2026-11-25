@@ -2223,6 +2223,8 @@ export const pl = {
     downloadingPlain: 'Pobieranie…',
     downloadAction: 'Pobierz rozkład',
     earlierAction: 'Wcześniejsze połączenia',
+    earlierPullHint: 'Pociągnij po wcześniejsze',
+    earlierReleaseHint: 'Puść po wcześniejsze',
     earlierLoading: 'Wczytuję wcześniejsze połączenia…',
     earlierEmpty: 'Brak wcześniejszych połączeń tego dnia',
     earlierRetry: 'Nie udało się wczytać. Spróbuj ponownie',
