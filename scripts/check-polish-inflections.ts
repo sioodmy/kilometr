@@ -450,16 +450,6 @@ describe('Miejscownik, dopełniacz i biernik 15 miast (język polski)');
 describe('Przyimki w/we w języku polskim (w Krakowie vs we Wrocławiu)');
 {
   expect(
-    'onboarding: we Wrocławiu',
-    pl.onboarding.citySuggested(pl.city.loc('wroclaw')),
-    'Według GPS jesteś we Wrocławiu.',
-  );
-  expect(
-    'onboarding: w Krakowie',
-    pl.onboarding.citySuggested(pl.city.loc('krakow')),
-    'Według GPS jesteś w Krakowie.',
-  );
-  expect(
     'search placeholder: we Wrocławiu',
     pl.search.defaultPlaceholder(pl.city.loc('wroclaw')),
     'Szukaj we Wrocławiu…',
@@ -572,16 +562,6 @@ describe('Zgodność rodzaju gramatycznego w aktualnościach (emptyBody)');
 
 describe('Przyimki у/в w języku ukraińskim');
 {
-  expect(
-    'onboarding: у Вроцлаві',
-    uk.onboarding.citySuggested(uk.city.loc('wroclaw')),
-    'За GPS ти у Вроцлаві.',
-  );
-  expect(
-    'onboarding: в Кракові',
-    uk.onboarding.citySuggested(uk.city.loc('krakow')),
-    'За GPS ти в Кракові.',
-  );
   expect(
     'search placeholder: у Вроцлаві',
     uk.search.defaultPlaceholder(uk.city.loc('wroclaw')),

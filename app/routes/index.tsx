@@ -9,6 +9,7 @@ import {
   Text,
   View,
   InteractionManager,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -395,6 +396,7 @@ export default function RoutesScreen() {
   // re-renderu całej listy w klatce startu animacji przejścia na szczegóły.
   const isFocusedRef = useRef(true);
   const syncLiveOnFocusRef = useRef<(() => void) | null>(null);
+  const restoreListScrollRef = useRef<(() => void) | null>(null);
   // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna.
   useFocusEffect(
     useCallback(() => {
@@ -404,6 +406,9 @@ export default function RoutesScreen() {
       if (wasBlurred) {
         syncLiveOnFocusRef.current?.();
         setNowTick(Date.now());
+        // Po powrocie ze szczegółów (zwłaszcza po systemowym udostępnianiu)
+        // natywny ScrollView potrafi zostać z offsetem poza zakresem treści.
+        restoreListScrollRef.current?.();
       }
       return () => {
         isFocusedRef.current = false;
@@ -567,6 +572,8 @@ export default function RoutesScreen() {
   }, [liveItems, transfersFilter, liveOnly, modeFilter]);
 
   const listRef = useRef<FlatList<Connection>>(null);
+  const listContentHeightRef = useRef(0);
+  const listViewportHeightRef = useRef(0);
 
   const queryAt = (depSec: number | undefined) => {
     const cfg = getSettingsSync();
@@ -1287,6 +1294,48 @@ export default function RoutesScreen() {
     },
   });
 
+  // Powrót z innego ekranu lub odtworzenie aktywności (np. po systemowym
+  // udostępnianiu) może zostawić natywny offset poza zakresem treści. Wtedy
+  // lista wygląda na pustą, dopóki użytkownik sam nie przewinie. Przywracamy
+  // ostatnią znaną pozycję, a natywny ScrollView sam ją przytnie do zakresu.
+  const scrollListToValidOffset = useCallback(
+    (force: boolean) => {
+      const current = listScrollY.value;
+      if (force) {
+        // Przy powrocie nie znamy jeszcze nowej wysokości treści, ale natywny
+        // ScrollView sam przytnie podany offset do aktualnego zakresu.
+        listRef.current?.scrollToOffset({ offset: Math.max(0, current), animated: false });
+        return;
+      }
+      const contentHeight = listContentHeightRef.current;
+      const viewportHeight = listViewportHeightRef.current;
+      if (contentHeight <= 0 || viewportHeight <= 0) return;
+      const maxOffset = Math.max(0, contentHeight - viewportHeight);
+      const target = Math.min(Math.max(current, 0), maxOffset);
+      if (Math.abs(target - current) < 1) return;
+      listRef.current?.scrollToOffset({ offset: target, animated: false });
+      listScrollY.value = target;
+    },
+    [listScrollY],
+  );
+  restoreListScrollRef.current = () => scrollListToValidOffset(true);
+
+  const handleListContentSize = useCallback(
+    (_width: number, height: number) => {
+      listContentHeightRef.current = height;
+      scrollListToValidOffset(false);
+    },
+    [scrollListToValidOffset],
+  );
+
+  const handleListLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      listViewportHeightRef.current = event.nativeEvent.layout.height;
+      scrollListToValidOffset(false);
+    },
+    [scrollListToValidOffset],
+  );
+
   const firePullArmHaptic = useCallback(() => hapticGestureArm(), []);
   const firePullDisarmHaptic = useCallback(() => hapticGestureDisarm(), []);
   const firePullEdgeHaptic = useCallback(() => hapticEdge(), []);
@@ -1834,15 +1883,14 @@ export default function RoutesScreen() {
         <Animated.FlatList
           ref={listRef}
           onScroll={handleListScroll}
+          onLayout={handleListLayout}
+          onContentSizeChange={handleListContentSize}
           scrollEventThrottle={16}
           accessibilityState={{ busy: loading }}
           pointerEvents={loading && items.length === 0 ? 'none' : 'auto'}
           data={displayed}
-          maintainVisibleContentPosition={
-            Platform.OS === 'web'
-              ? undefined
-              : { minIndexForVisible: 0, autoscrollToTopThreshold: 80 }
-          }
+          // Bez maintainVisibleContentPosition: natywna korekta offsetu po
+          // powrocie z odpiętego ekranu zostawiała pustą listę.
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           windowSize={9}
@@ -2322,7 +2370,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2340,7 +2388,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   resultBadgeText: {
@@ -2375,7 +2423,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2386,12 +2434,12 @@ const styles = StyleSheet.create({
   },
   actionCardTimeActive: {
     backgroundColor: scheme.primaryContainer,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.primary,
   },
   actionCardFilterActive: {
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.secondary,
   },
   actionCardText: {
@@ -2460,7 +2508,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     flexShrink: 1,
   },
@@ -2480,7 +2528,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   earlierButtonDone: {
@@ -2514,7 +2562,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   footerText: {
@@ -2528,7 +2576,7 @@ const styles = StyleSheet.create({
     paddingVertical: 30,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     gap: 10,

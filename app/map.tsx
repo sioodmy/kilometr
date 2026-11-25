@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -130,6 +131,18 @@ export default function RouteMapScreen() {
       liveTracker.acquire();
       return () => liveTracker.release();
     }, []),
+  );
+
+  // Gest wstecz zamyka kartę klikniętego przystanku przed wyjściem z mapy.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!inspectedStop) return false;
+        setInspectedStop(null);
+        return true;
+      });
+      return () => sub.remove();
+    }, [inspectedStop]),
   );
   const shownVehicleRef = useRef<string | null>(null);
 
@@ -1110,7 +1123,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1126,7 +1139,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -1158,7 +1171,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -1205,7 +1218,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -1264,7 +1277,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -1274,7 +1287,7 @@ const styles = StyleSheet.create({
     bottom: 16,
     maxWidth: 820,
     borderRadius: shape.extraLarge,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingTop: 12,
     paddingBottom: 14,
@@ -1343,7 +1356,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1353,7 +1366,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1373,7 +1386,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minHeight: 64,
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerHigh,
   },

@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level1,
   },
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
   },
   bridgePill: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 9,
     paddingVertical: 3,

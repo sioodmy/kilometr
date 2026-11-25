@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   tile: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 15,
     justifyContent: 'space-between',
@@ -525,7 +525,7 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 16,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainer,
     ...elev.level1,

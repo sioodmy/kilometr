@@ -955,16 +955,6 @@ export default function LiveVehiclesMapScreen() {
 
   const searchOpenRef = useRef(searchOpen);
   searchOpenRef.current = searchOpen;
-  useFocusEffect(
-    useCallback(() => {
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (!searchOpenRef.current) return false;
-        closeSearch();
-        return true;
-      });
-      return () => sub.remove();
-    }, [closeSearch]),
-  );
 
   const handleOpenSearch = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
@@ -1217,6 +1207,25 @@ export default function LiveVehiclesMapScreen() {
     (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelayHub,
   );
   useEscapeKey(hasSheet && !searchOpen, handleClearSelection);
+  const hasSheetRef = useRef(hasSheet);
+  hasSheetRef.current = hasSheet;
+  // Wstecz zamyka najpierw wyszukiwarkę, potem panel pojazdu, przystanku lub alertu.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (searchOpenRef.current) {
+          closeSearch();
+          return true;
+        }
+        if (hasSheetRef.current) {
+          handleClearSelection();
+          return true;
+        }
+        return false;
+      });
+      return () => sub.remove();
+    }, [closeSearch, handleClearSelection]),
+  );
   const hasActiveFilter = filter !== 'all' || lineFilter !== null;
   const expandedBoardMaxHeight = Math.round(Math.min(windowHeight * 0.44, 380));
 
@@ -2362,7 +2371,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2373,7 +2382,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingLeft: 16,
     paddingRight: 8,
@@ -2436,7 +2445,7 @@ const styles = StyleSheet.create({
   searchDropdown: {
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -2479,7 +2488,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   searchLineCount: {
@@ -2519,7 +2528,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     borderRadius: 16,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2634,7 +2643,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -2652,7 +2661,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -2684,7 +2693,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -2699,7 +2708,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     gap: 14,
     ...elev.level3,
@@ -2742,7 +2751,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     gap: 6,
     ...elev.level3,
@@ -2779,7 +2788,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
     paddingHorizontal: 18,
     paddingTop: 4,
@@ -2791,7 +2800,7 @@ const styles = StyleSheet.create({
     right: undefined,
     bottom: 16,
     borderRadius: shape.extraLarge,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingTop: 14,
   },
@@ -2936,7 +2945,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   depRowBorder: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
   },
   depInfo: {
@@ -3058,7 +3067,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 16,
     flexDirection: 'row',

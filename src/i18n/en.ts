@@ -1459,7 +1459,6 @@ export const en: Strings = {
     noPay: 'No micropayments',
     detectGpsAction: 'Detect my city via GPS',
     detectGpsHint: 'Automatically picks the timetable for your area',
-    detectGpsBadge: 'GPS',
     citySearchPlaceholder: 'Search city or metro area…',
     cityNoSearchMatch: (q: string) => `No city found for “${q}”.`,
     cityClearSearchA11y: 'Clear search',
@@ -1467,7 +1466,6 @@ export const en: Strings = {
     bgDlDownloading: (gen: string, pct: number) => `Downloading ${gen} timetable… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Preparing ${gen} timetable… ${pct}%`,
     bgDlReady: (gen: string) => `${gen} timetable ready offline`,
-    bgDlReadyDetail: (stops: number) => `${stops} stops`,
     bgDlError: 'Could not download the timetable',
     bgDlPending: (gen: string) => `${gen} timetable will download in the background`,
     bgDlRetry: 'Retry',
@@ -1503,12 +1501,10 @@ export const en: Strings = {
     cityTitle: 'Which city do you ride in?',
     cityBody:
       'Timetable, map and news follow your choice. You can change the city later in settings.',
-    citySuggested: (name: string) => `Your GPS says: ${name}.`,
     cityNoGps: 'Without GPS access, pick a city from the list.',
     cityLocating: 'Finding your GPS position…',
     cityNoMatch: 'GPS did not land in a supported city. Pick one from the list.',
     cityPickA11y: (name: string) => `Choose city: ${name}`,
-    citySuggestedA11y: (name: string) => `Suggested city from GPS: ${name}`,
     dlTitle: (gen: string) => `Download the ${gen} timetable`,
     dlBody: (feeds: string) =>
       `Ready database: ${feeds} from the Kilometr server. Download once, then offline.`,

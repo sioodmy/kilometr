@@ -582,7 +582,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 14,
     gap: 12,
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   expandPillText: {
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   mapFrameDesktopFill: {
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
   canvasBadge: {
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 11,
     paddingVertical: 5,
@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
   },
   stepBtn: {
@@ -762,7 +762,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   stageFooterBody: {
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     maxWidth: 236,
   },
