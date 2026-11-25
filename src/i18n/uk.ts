@@ -1898,7 +1898,6 @@ export const uk: Strings = {
     noPay: 'Без мікроплатежів',
     detectGpsAction: 'Визначити моє місто за GPS',
     detectGpsHint: 'Автоматично підбере розклад для твоєї околиці',
-    detectGpsBadge: 'GPS',
     citySearchPlaceholder: 'Шукай місто або агломерацію…',
     cityNoSearchMatch: (q: string) => `Місто „${q}“ не знайдено.`,
     cityClearSearchA11y: 'Очистити пошук',
@@ -1940,12 +1939,10 @@ export const uk: Strings = {
     cityTitle: 'У якому місті їздиш?',
     cityBody:
       'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
-    citySuggested: (name: string) => `За GPS ти ${prepInCity(name)}.`,
     cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
     cityLocating: 'Шукаю твою позицію GPS…',
     cityNoMatch: 'GPS не вказує на підтримуване місто. Вибери зі списку.',
     cityPickA11y: (name: string) => `Вибрати місто: ${name}`,
-    citySuggestedA11y: (name: string) => `Запропоноване місто за GPS: ${name}`,
     dlTitle: (gen: string) => `Завантажити розклад ${gen}`,
     dlBody: (feeds: string) =>
       `Готова база: ${feeds} із сервера Kilometr. Одне завантаження, далі офлайн.`,

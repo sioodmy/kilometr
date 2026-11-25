@@ -598,20 +598,14 @@ function useOnboardingPlaces(onSaved: () => void) {
 const CityRowItem = memo(function CityRowItem({
   entry,
   active,
-  isSuggested,
   disabled,
-  gpsBadgeLabel,
   pickA11y,
-  suggestedA11y,
   onSelect,
 }: {
   entry: CityEntry;
   active: boolean;
-  isSuggested: boolean;
   disabled: boolean;
-  gpsBadgeLabel: string;
   pickA11y: string;
-  suggestedA11y?: string;
   onSelect: (id: CityId) => void;
 }) {
   const handlePress = useCallback(() => onSelect(entry.city.id), [entry.city.id, onSelect]);
@@ -626,22 +620,12 @@ const CityRowItem = memo(function CityRowItem({
       accessibilityRole="radio"
       accessibilityState={{ checked: active, disabled }}
       accessibilityLabel={pickA11y}
-      accessibilityHint={suggestedA11y}
     >
       <View style={st.cityRowBody}>
         <View style={st.cityNameLine}>
           <Text style={[st.cityName, active && st.cityNameActive]} numberOfLines={1}>
             {entry.name}
           </Text>
-          {isSuggested && (
-            <View style={[st.gpsTag, active && st.gpsTagActive]}>
-              <LocateFixed
-                size={11}
-                color={active ? scheme.onPrimary : scheme.onPrimaryContainer}
-              />
-              <Text style={[st.gpsTagText, active && st.gpsTagTextActive]}>{gpsBadgeLabel}</Text>
-            </View>
-          )}
         </View>
         <Text style={[st.citySub, active && st.citySubActive]} numberOfLines={1}>
           {entry.feeds}
@@ -825,28 +809,24 @@ export default function OnboardingScreen() {
 
   const cityEntries = useMemo(() => getCityEntries(s), [s]);
   const filteredCities = useMemo(
-    () => filterCityEntries(cityEntries, cityQuery, [suggested, cityId]),
-    [cityEntries, cityId, cityQuery, suggested],
+    () => filterCityEntries(cityEntries, cityQuery, [cityId]),
+    [cityEntries, cityId, cityQuery],
   );
 
   const renderCityItem = useCallback<ListRenderItem<CityEntry>>(
     ({ item }) => {
       const active = cityId === item.city.id;
-      const isSuggested = suggested === item.city.id;
       return (
         <CityRowItem
           entry={item}
           active={active}
-          isSuggested={isSuggested}
           disabled={switchingCity}
-          gpsBadgeLabel={s.onboarding.detectGpsBadge}
           pickA11y={s.onboarding.cityPickA11y(item.name)}
-          suggestedA11y={isSuggested ? s.onboarding.citySuggestedA11y(item.name) : undefined}
           onSelect={(id) => void selectCity(id, 'manual')}
         />
       );
     },
-    [cityId, s, selectCity, suggested, switchingCity],
+    [cityId, s, selectCity, switchingCity],
   );
 
   const placeSlots = useMemo(
@@ -1022,19 +1002,6 @@ export default function OnboardingScreen() {
                       <MorphingLoader size={16} color={scheme.primary} />
                       <Text style={st.gpsStatusText}>{s.onboarding.cityLocating}</Text>
                     </View>
-                  ) : suggested ? (
-                    <SpringPressable
-                      onPress={() => void selectCity(suggested, 'manual')}
-                      haptic="selection"
-                      style={[st.gpsStatusRow, st.gpsStatusMatched]}
-                      accessibilityRole="button"
-                    >
-                      <LocateFixed size={15} color={scheme.primary} />
-                      <Text style={st.gpsStatusText} numberOfLines={1}>
-                        {s.onboarding.citySuggested(s.city.loc(suggested))}
-                      </Text>
-                      {suggested === cityId && <Check size={15} color={scheme.primary} />}
-                    </SpringPressable>
                   ) : citySuggestionStatus === 'nomatch' ? (
                     <View style={st.gpsStatusRow}>
                       <MapPinOff size={15} color={scheme.onSurfaceVariant} />
@@ -1659,10 +1626,6 @@ const st = StyleSheet.create({
     paddingVertical: 10,
     minHeight: 44,
   },
-  gpsStatusMatched: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${scheme.primary}55`,
-  },
   gpsStatusText: {
     ...type.labelLarge,
     color: scheme.primary,
@@ -1776,26 +1739,6 @@ const st = StyleSheet.create({
   citySubActive: {
     color: scheme.onPrimaryContainer,
     opacity: 0.88,
-  },
-  gpsTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
-  },
-  gpsTagActive: {
-    backgroundColor: scheme.primary,
-  },
-  gpsTagText: {
-    ...type.labelSmall,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
-  gpsTagTextActive: {
-    color: scheme.onPrimary,
   },
   radio: {
     width: 24,

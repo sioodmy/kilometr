@@ -1886,7 +1886,6 @@ export const pl = {
     noPay: 'Bez mikropłatności',
     detectGpsAction: 'Wykryj moje miasto przez GPS',
     detectGpsHint: 'Automatycznie dobierze rozkład dla Twojej okolicy',
-    detectGpsBadge: 'Z GPS',
     citySearchPlaceholder: 'Szukaj miasta lub aglomeracji…',
     cityNoSearchMatch: (q: string) => `Nie znaleziono miasta „${q}”.`,
     cityClearSearchA11y: 'Wyczyść wyszukiwanie',
@@ -1929,12 +1928,10 @@ export const pl = {
     cityTitle: 'W którym mieście jeździsz?',
     cityBody:
       'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
-    citySuggested: (name: string) => `Według GPS jesteś ${prepInCity(name)}.`,
     cityNoGps: 'Bez dostępu do GPS wybierz miasto z listy.',
     cityLocating: 'Szukam pozycji GPS…',
     cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
     cityPickA11y: (name: string) => `Wybierz miasto: ${name}`,
-    citySuggestedA11y: (name: string) => `Proponowane miasto według GPS: ${name}`,
     dlTitle: (gen: string) => `Pobierz rozkład ${gen}`,
     dlBody: (feeds: string) =>
       `Gotowa baza: ${feeds} z serwera Kilometr. Jedno pobranie, potem offline.`,

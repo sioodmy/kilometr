@@ -1468,7 +1468,6 @@ export const de: Strings = {
     noPay: 'Keine Mikrozahlungen',
     detectGpsAction: 'Meine Stadt per GPS erkennen',
     detectGpsHint: 'Wählt automatisch den passenden Fahrplan',
-    detectGpsBadge: 'GPS',
     citySearchPlaceholder: 'Stadt oder Region suchen…',
     cityNoSearchMatch: (q: string) => `Keine Stadt für „${q}“ gefunden.`,
     cityClearSearchA11y: 'Suche leeren',
@@ -1512,12 +1511,10 @@ export const de: Strings = {
     cityTitle: 'In welcher Stadt bist du unterwegs?',
     cityBody:
       'Fahrplan, Karte und Meldungen folgen deiner Wahl. Die Stadt lässt sich später in den Einstellungen ändern.',
-    citySuggested: (name: string) => `Laut GPS bist du in: ${name}.`,
     cityNoGps: 'Ohne GPS-Zugriff wähle die Stadt aus der Liste.',
     cityLocating: 'GPS-Position wird ermittelt…',
     cityNoMatch: 'GPS ist in keiner unterstützten Stadt. Wähle eine aus der Liste.',
     cityPickA11y: (name: string) => `Stadt wählen: ${name}`,
-    citySuggestedA11y: (name: string) => `Vorgeschlagene Stadt laut GPS: ${name}`,
     dlTitle: (gen: string) => `Fahrplan für ${gen} laden`,
     dlBody: (feeds: string) =>
       `Fertige Datenbank: ${feeds} vom Kilometr-Server. Einmal laden, dann offline.`,
