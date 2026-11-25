@@ -30,8 +30,13 @@ import { getActiveCityIdSync } from '../../src/services/cityStore';
 import { useStrings } from '../../src/i18n';
 import { RoutingService, subscribeSavedRoutes } from '../../src/services';
 import * as Haptics from 'expo-haptics';
-import { getPlannedConnection, rememberPlannedConnection } from '../../src/services/api';
+import {
+  getPlannedConnection,
+  isRouteSavedSync,
+  rememberPlannedConnection,
+} from '../../src/services/api';
 import { useLegAlternatives } from '../../src/hooks/useLegAlternatives';
+import { useScreenTransitionSettled } from '../../src/hooks/useScreenTransitionSettled';
 import {
   normalizeConnectionId,
   stableConnectionId,
@@ -134,12 +139,17 @@ export default function RouteDetailsScreen() {
         : (immediateItem ?? null);
   const effectiveRawItem = swappedBase ?? rawItem;
 
+  const transitionSettled = useScreenTransitionSettled();
+
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
-  const [liveTick, setLiveTick] = useState(0);
-  const lastLiveOk = useRef(0);
+  // Startujemy od bieżącego getLastOk(), żeby uniknąć zbędnego drugiego renderu w klatce otwarcia.
+  const initialLiveOk = liveTracker.getLastOk();
+  const [liveTick, setLiveTick] = useState(initialLiveOk);
+  const lastLiveOk = useRef(initialLiveOk);
   useEffect(() => {
     const check = () => {
-      setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
+      const stale = liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh';
+      setLiveStale((prev) => (prev === stale ? prev : stale));
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
@@ -155,11 +165,11 @@ export default function RouteDetailsScreen() {
     };
   }, []);
 
-  // Po wejściu na ekran lub powrocie z uśpienia wymuszamy świeży poll live.
+  // Poll live utrzymujemy od wejścia, ale wymuszone odświeżenie sieciowe
+  // startuje dopiero po zakończeniu animacji przejścia (jeśli snapshot ma >10 s).
   useFocusEffect(
     useCallback(() => {
       liveTracker.acquire();
-      void liveTracker.refresh();
       const sub = AppState.addEventListener('change', (state) => {
         if (state === 'active') {
           void liveTracker.refresh();
@@ -171,12 +181,21 @@ export default function RouteDetailsScreen() {
       };
     }, []),
   );
+
+  useEffect(() => {
+    if (!transitionSettled) return;
+    const lastOk = liveTracker.getLastOk();
+    if (lastOk === 0 || Date.now() - lastOk > 10_000) {
+      void liveTracker.refresh();
+    }
+  }, [transitionSettled]);
+
   const rawItems = useMemo(() => (effectiveRawItem ? [effectiveRawItem] : []), [effectiveRawItem]);
   const tripDelays = useMemo(
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
-  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline);
+  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline && transitionSettled);
   const item = liveItems[0] ?? null;
 
   const handleApplyLegSwap = useCallback(
@@ -195,6 +214,7 @@ export default function RouteDetailsScreen() {
     routeKey: id,
     tripDelays,
     onApplySwap: handleApplyLegSwap,
+    ready: transitionSettled,
   });
 
   const activeId = normalizeConnectionId(item?.id ?? id);
@@ -218,25 +238,33 @@ export default function RouteDetailsScreen() {
   }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id, swappedBase]);
 
   const hasTransfers = item != null && hasTransfer(item);
-  const [isSavedRoute, setIsSavedRoute] = useState(false);
+  const [isSavedRoute, setIsSavedRoute] = useState<boolean>(
+    () => isRouteSavedSync(immediateItem?.id ?? id) ?? false,
+  );
 
   useEffect(() => {
     if (!item?.id) return;
+    const syncHit = isRouteSavedSync(item.id);
+    if (syncHit !== undefined) {
+      setIsSavedRoute((prev) => (prev === syncHit ? prev : syncHit));
+    }
     let cancelled = false;
     const checkSaved = () => {
       RoutingService.isRouteSaved(item.id)
         .then((saved) => {
-          if (!cancelled) setIsSavedRoute(saved);
+          if (!cancelled) setIsSavedRoute((prev) => (prev === saved ? prev : saved));
         })
         .catch(() => {});
     };
-    checkSaved();
+    if (transitionSettled && syncHit === undefined) {
+      checkSaved();
+    }
     const unsub = subscribeSavedRoutes(checkSaved);
     return () => {
       cancelled = true;
       unsub();
     };
-  }, [item?.id]);
+  }, [item?.id, transitionSettled]);
 
   const isPinned = isSavedRoute || isTrackedThis;
 
@@ -394,6 +422,29 @@ export default function RouteDetailsScreen() {
       cancelled = true;
     };
   }, [id, immediateItem]);
+
+  const itemId = item?.id;
+  const openRouteMap = useCallback(
+    (stageId?: string) => {
+      if (!itemId) return;
+      router.push({
+        pathname: '/map',
+        params: stageId ? { id: itemId, stageId } : { id: itemId },
+      });
+    },
+    [itemId, router],
+  );
+
+  const toggleTrackingRef = useRef(toggleTracking);
+  toggleTrackingRef.current = toggleTracking;
+  const transferProtectionActive = isTrackedThis && trackedTrip?.protectionEnabled === true;
+  const handleTransferPress = useCallback(() => {
+    if (transferProtectionActive) {
+      openTransferProtection();
+    } else {
+      void toggleTrackingRef.current(true);
+    }
+  }, [openTransferProtection, transferProtectionActive]);
 
   if (loadFailed) {
     return (
@@ -585,12 +636,6 @@ export default function RouteDetailsScreen() {
     </>
   );
 
-  const openRouteMap = (stageId?: string) =>
-    router.push({
-      pathname: '/map',
-      params: stageId ? { id: item.id, stageId } : { id: item.id },
-    });
-
   const summaryAndMeta = (
     <>
       <ConnectionSummary
@@ -641,16 +686,11 @@ export default function RouteDetailsScreen() {
         connection={item}
         hasTransfers={hasTransfers}
         transferState={isTrackedThis && trackedTrip ? trackedTrip.transfer : undefined}
-        transferActive={isTrackedThis && trackedTrip?.protectionEnabled === true}
+        transferActive={transferProtectionActive}
         trackingBusy={trackingBusy}
         autoInspectTicket={openTicket}
-        onTransferPress={() => {
-          if (isTrackedThis && trackedTrip?.protectionEnabled) {
-            openTransferProtection();
-          } else {
-            void toggleTracking(true);
-          }
-        }}
+        deferLoad={!transitionSettled}
+        onTransferPress={handleTransferPress}
       />
       <LegTimeline
         legs={item.legs}
@@ -658,10 +698,9 @@ export default function RouteDetailsScreen() {
         legSwapStates={swapStates}
         onSwapLeg={swapLeg}
         onRetrySwapLeg={retryLeg}
-        transferState={
-          isTrackedThis && trackedTrip?.protectionEnabled ? trackedTrip.transfer : undefined
-        }
+        transferState={transferProtectionActive ? trackedTrip?.transfer : undefined}
         onOpenTransferProtection={openTransferProtection}
+        deferSecondaryWork={!transitionSettled}
       />
     </>
   );
@@ -686,13 +725,22 @@ export default function RouteDetailsScreen() {
                 {summaryAndMeta}
                 <View style={styles.detailsContent}>
                   {legSections}
-                  <RouteReliabilityCard connection={item} />
-                  <ConnectionLineAlerts connection={item} />
+                  {transitionSettled && (
+                    <>
+                      <RouteReliabilityCard connection={item} />
+                      <ConnectionLineAlerts connection={item} />
+                    </>
+                  )}
                 </View>
                 <View style={{ height: 24 }} />
               </ScrollView>
               <View style={styles.desktopMapCol}>
-                <RouteMapCard desktopFill connection={item} onOpenMap={openRouteMap} />
+                <RouteMapCard
+                  desktopFill
+                  deferMapMount={!transitionSettled}
+                  connection={item}
+                  onOpenMap={openRouteMap}
+                />
               </View>
             </View>
           </>
@@ -730,9 +778,13 @@ export default function RouteDetailsScreen() {
               ) : (
                 <View style={styles.detailsContent}>
                   {legSections}
-                  <RouteMapCard connection={item} onOpenMap={openRouteMap} />
-                  <RouteReliabilityCard connection={item} />
-                  <ConnectionLineAlerts connection={item} />
+                  {transitionSettled && (
+                    <>
+                      <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                      <RouteReliabilityCard connection={item} />
+                      <ConnectionLineAlerts connection={item} />
+                    </>
+                  )}
                 </View>
               )}
 

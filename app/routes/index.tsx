@@ -99,6 +99,7 @@ import {
 } from '../../src/services/routing/connectionTimes';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
+import { ensureStopHintsLoaded } from '../../src/services/stopHints';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
 import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
@@ -362,16 +363,30 @@ export default function RoutesScreen() {
   const [previewReady, setPreviewReady] = useState(false);
   const previewId = useRef<string | null>(null);
   const closePreview = useCallback(() => {
+    if (previewId.current === null) return;
     previewId.current = null;
-    setPreview(null);
-    setPreviewReady(false);
+    setPreview((prev) => (prev === null ? prev : null));
+    setPreviewReady((prev) => (prev ? false : prev));
   }, []);
   useFocusEffect(useCallback(() => closePreview, [closePreview]));
+  // Śledzimy fokus refem zamiast useIsFocused(), żeby kliknięcie karty nie wywoływało
+  // re-renderu całej listy w klatce startu animacji przejścia na szczegóły.
+  const isFocusedRef = useRef(true);
+  const syncLiveOnFocusRef = useRef<(() => void) | null>(null);
   // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna.
   useFocusEffect(
     useCallback(() => {
+      const wasBlurred = !isFocusedRef.current;
+      isFocusedRef.current = true;
       liveTracker.acquire();
-      return () => liveTracker.release();
+      if (wasBlurred) {
+        syncLiveOnFocusRef.current?.();
+        setNowTick(Date.now());
+      }
+      return () => {
+        isFocusedRef.current = false;
+        liveTracker.release();
+      };
     }, []),
   );
   // Rozkład trzymany na telefonie: bez niego RAPTOR nie ma czym liczyć, więc
@@ -384,26 +399,33 @@ export default function RoutesScreen() {
   // że planer po prostu nie umie opóźnień.
   // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
   // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
-  const [liveStale, setLiveStale] = useState(false);
+  const [liveStale, setLiveStale] = useState(
+    () => liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh',
+  );
   // Tick przerysowujący opóźnienia: wyplanowane połączenia mają flagi live
   // z chwili wyszukiwania, bez tickera byłyby zamrożone od wyszukania.
-  const [liveTick, setLiveTick] = useState(0);
-  const lastLiveOk = useRef(0);
+  const initialLiveOk = liveTracker.getLastOk();
+  const [liveTick, setLiveTick] = useState(initialLiveOk);
+  const lastLiveOk = useRef(initialLiveOk);
   useEffect(() => {
     const check = () => {
+      if (!isFocusedRef.current) return;
       // Miasto bez feedu live nie może pokazywać chipa „brak danych”:
       // to nie awaria, tylko nieistniejące źródło (features.live).
-      setLiveStale(liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh');
+      const stale = liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh';
+      setLiveStale((prev) => (prev === stale ? prev : stale));
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
         setLiveTick(ok);
       }
     };
+    syncLiveOnFocusRef.current = check;
     check();
     const unsub = liveTracker.subscribe(check);
     const t = setInterval(check, 30000);
     return () => {
+      syncLiveOnFocusRef.current = null;
       unsub();
       clearInterval(t);
     };
@@ -412,9 +434,22 @@ export default function RoutesScreen() {
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
   const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setNowTick(Date.now()), 30000);
+    const t = setInterval(() => {
+      if (isFocusedRef.current) setNowTick(Date.now());
+    }, 30000);
     return () => clearInterval(t);
   }, []);
+
+  // Rozgrzewamy lokalny słownik podpowiedzi przystanków w tle po pokazaniu wyników,
+  // żeby wejście w szczegóły połączenia miało wskazówki od razu w pamięci bez parsowania bundla.
+  const hasResults = items.length > 0;
+  useEffect(() => {
+    if (!hasResults) return;
+    const timer = setTimeout(() => {
+      if (isFocusedRef.current) void ensureStopHintsLoaded(cityId);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [cityId, hasResults]);
 
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -465,7 +500,7 @@ export default function RoutesScreen() {
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
-  const liveItems = useRailLiveConnections(items, tripDelays, !offline);
+  const liveItems = useRailLiveConnections(items, tripDelays, !offline, isFocusedRef);
 
   const displayed = useMemo(() => {
     let list = liveItems;

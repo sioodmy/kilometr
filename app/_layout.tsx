@@ -1,7 +1,15 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { LogBox, Platform } from 'react-native';
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   DarkTheme,
   ThemeProvider,
@@ -114,12 +122,45 @@ function navigateFromNotification(res: TripResponse) {
   else router.push(target);
 }
 
+/** Izoluje subskrypcję ścieżki wyłącznie na czas onboardingu, żeby RootLayout nie przerysowywał się przy każdej nawigacji. */
+function OnboardingGuard({ onCompleted }: { onCompleted: () => void }) {
+  const pathname = usePathname();
+  const params = useGlobalSearchParams<{ trip?: string }>();
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    router.replace({
+      pathname: '/onboarding',
+      params: pathname === '/shared' && params.trip ? { sharedTrip: params.trip } : {},
+    });
+  }, [pathname, params.trip]);
+
+  useEffect(() => {
+    if (pathname === '/onboarding') return;
+    void hasSeenOnboarding()
+      .then((seen) => {
+        if (seen) onCompleted();
+      })
+      .catch(() => {});
+  }, [pathname, onCompleted]);
+
+  useEffect(() => {
+    if (pathname !== '/onboarding') return;
+    const frame = requestAnimationFrame(() => {
+      void BootSplash.hide({ fade: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
+
+  return null;
+}
+
 /** Główny układ nawigacji aplikacji z jednolitymi, płynnymi przejściami ekranów. */
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const pathname = usePathname();
-  const params = useGlobalSearchParams<{ trip?: string }>();
   const reduceMotion = useReducedMotion();
   const themeSetting = useThemeSetting();
   const webLayout = useWebLayout();
@@ -255,30 +296,17 @@ export default function RootLayout() {
     };
   }, [ready, needsOnboarding]);
 
-  useEffect(() => {
-    if (ready && needsOnboarding)
-      router.replace({
-        pathname: '/onboarding',
-        params: pathname === '/shared' && params.trip ? { sharedTrip: params.trip } : {},
-      });
-  }, [ready, needsOnboarding]);
+  const handleOnboardingCompleted = useCallback(() => {
+    setNeedsOnboarding(false);
+  }, []);
 
   useEffect(() => {
-    if (!ready || !needsOnboarding || pathname === '/onboarding') return;
-    void hasSeenOnboarding()
-      .then((seen) => {
-        if (seen) setNeedsOnboarding(false);
-      })
-      .catch(() => {});
-  }, [ready, needsOnboarding, pathname]);
-
-  useEffect(() => {
-    if (!ready || (needsOnboarding && pathname !== '/onboarding')) return;
+    if (!ready || needsOnboarding) return;
     const frame = requestAnimationFrame(() => {
       void BootSplash.hide({ fade: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, needsOnboarding, pathname]);
+  }, [ready, needsOnboarding]);
 
   useEffect(() => {
     if (!ready || needsOnboarding) return;
@@ -301,6 +329,7 @@ export default function RootLayout() {
         <ThemeProvider value={navigationTheme}>
           <TransferProtectionProvider key={themeSetting}>
             <DesktopShell>
+              {needsOnboarding && <OnboardingGuard onCompleted={handleOnboardingCompleted} />}
               <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { InteractionManager } from 'react-native';
 import { warsawNow } from '../gtfs/geo';
 import type { Connection } from '../types/models';
 import {
@@ -47,8 +46,8 @@ interface CacheEntry {
 }
 
 const MAX_CACHE_ENTRIES = 40;
-/** Krótki odstęp po animacji wejścia ekranu, żeby leniwe wczytywanie nie gubiło klatek. */
-const INITIAL_PREFETCH_DELAY_MS = 120;
+/** Krótki odstęp po zakończeniu animacji wejścia, żeby skanowanie nie blokowało pierwszej interakcji. */
+const INITIAL_PREFETCH_DELAY_MS = 40;
 
 function buildNeighborKey(
   connection: Connection,
@@ -130,6 +129,7 @@ export interface UseLegAlternativesParams {
   routeKey: string;
   tripDelays: ReadonlyMap<string, number>;
   onApplySwap: (nextConnection: Connection) => void;
+  ready?: boolean;
 }
 
 export interface UseLegAlternativesReturn {
@@ -147,6 +147,7 @@ export function useLegAlternatives({
   routeKey,
   tripDelays,
   onApplySwap,
+  ready = true,
 }: UseLegAlternativesParams): UseLegAlternativesReturn {
   const [slots, setSlots] = useState<Map<string, InternalSlot>>(() => new Map());
 
@@ -257,7 +258,9 @@ export function useLegAlternatives({
       inFlightRef.current.add(flightKey);
       const gen = generationRef.current;
 
-      if (mountedRef.current) {
+      // Cichy prefetch w tle nie wymaga pośredniego re-renderu ze stanem loading;
+      // stan ładowania pokazujemy tylko przy jawnej akcji użytkownika (przycisk / retry).
+      if (mountedRef.current && (opts?.loadingDirection != null || opts?.forceRefresh)) {
         setSlots((prev) => {
           const next = new Map(prev);
           const cur = prev.get(legId);
@@ -380,7 +383,7 @@ export function useLegAlternatives({
   // Leniwie przeskanuj wymienialne nogi miejskie po zakończeniu animacji ekranu
   // oraz po każdej podmianie nogi (tylko te nogi, którym zmieniły się ograniczenia sąsiadów).
   useEffect(() => {
-    if (!connection) return;
+    if (!connection || !ready) return;
 
     const swappableLegs: Array<{ legId: string; legIndex: number; neighborKey: string }> = [];
     for (let i = 0; i < connection.legs.length; i++) {
@@ -435,28 +438,24 @@ export function useLegAlternatives({
     if (toLoad.length === 0) return;
 
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      timer = setTimeout(() => {
-        void (async () => {
-          for (const item of toLoad) {
-            if (cancelled || !mountedRef.current) return;
-            await loadSlot(item.legId, {
-              lookbackSec: INITIAL_LOOKBACK_SEC,
-              lookaheadSec: INITIAL_LOOKAHEAD_SEC,
-            });
-            if (toLoad.length > 1) await yieldFrame();
-          }
-        })();
-      }, INITIAL_PREFETCH_DELAY_MS);
-    });
+    const timer = setTimeout(() => {
+      void (async () => {
+        for (const item of toLoad) {
+          if (cancelled || !mountedRef.current) return;
+          await loadSlot(item.legId, {
+            lookbackSec: INITIAL_LOOKBACK_SEC,
+            lookaheadSec: INITIAL_LOOKAHEAD_SEC,
+          });
+          if (toLoad.length > 1) await yieldFrame();
+        }
+      })();
+    }, INITIAL_PREFETCH_DELAY_MS);
 
     return () => {
       cancelled = true;
-      interaction.cancel();
-      if (timer) clearTimeout(timer);
+      clearTimeout(timer);
     };
-  }, [connection, getAnchor, loadSlot]);
+  }, [connection, getAnchor, loadSlot, ready]);
 
   const swapLeg = useCallback(
     (legId: string, direction: SwapDirection) => {

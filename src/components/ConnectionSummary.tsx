@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Clock3, M3SolidArrowDown, M3SolidArrowRight } from './icons';
 import { useStrings } from '../i18n';
@@ -13,7 +13,7 @@ import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { nowSecOfDay } from '../services/vehiclePosition';
 import { useTransferThresholds, useWalkSpeedMps } from '../services/settings';
 
-export function ConnectionSummary({
+export const ConnectionSummary = memo(function ConnectionSummary({
   item,
   offline = false,
   availableWidth,
@@ -324,7 +324,7 @@ export function ConnectionSummary({
       <View style={styles.content}>{innerContent}</View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   summary: {

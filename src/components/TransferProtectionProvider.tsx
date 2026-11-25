@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -135,8 +135,10 @@ export function TransferProtectionProvider({ children }: { children: ReactNode }
       ? s.transferGuard.alternativesCount(altCount)
       : formatSlackLabel(state, s) ?? s.transferGuard.showOptions;
 
+  const openTransfer = useCallback(() => setOpen(true), []);
+
   return (
-    <OpenTransfer.Provider value={() => setOpen(true)}>
+    <OpenTransfer.Provider value={openTransfer}>
       {active && !usesNativeTransferProtection() && <ForegroundLocation />}
       <View
         style={styles.content}

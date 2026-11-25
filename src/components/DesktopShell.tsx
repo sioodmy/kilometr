@@ -16,7 +16,7 @@ import {
   shouldShowNewsAlert,
   subscribeNewsCache,
 } from '../services/mpkNews';
-import { useWebLayout } from '../theme/layout';
+import { useWebLayout, type WebLayoutInfo } from '../theme/layout';
 import { elev, scheme, shape, type } from '../theme/tokens';
 
 type NavKey = 'planner' | 'live-map' | 'news' | 'settings';
@@ -60,6 +60,15 @@ function KilometrMark({ size = 34 }: { size?: number }) {
 /** Stały panel nawigacji bocznej (rail lub sidebar) dla widoków tabletowych i desktopowych Web PWA. */
 export function DesktopShell({ children }: { children: ReactNode }) {
   const layout = useWebLayout();
+  // Na telefonach i wąskim oknie pomijamy subskrypcję usePathname(), żeby
+  // zwykłe przejścia ekranów nie przerysowywały całego drzewa nad Stack.
+  if (!layout.isMedium) {
+    return <>{children}</>;
+  }
+  return <DesktopShellActive layout={layout}>{children}</DesktopShellActive>;
+}
+
+function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; children: ReactNode }) {
   const pathname = usePathname();
   const s = useStrings();
   const { cityId, setCity } = useActiveCity();
@@ -138,7 +147,7 @@ export function DesktopShell({ children }: { children: ReactNode }) {
     [cityId, setCity],
   );
 
-  const hiddenShell = !layout.isMedium || pathname === '/onboarding' || pathname.startsWith('/dev');
+  const hiddenShell = pathname === '/onboarding' || pathname.startsWith('/dev');
   if (hiddenShell) {
     return <>{children}</>;
   }

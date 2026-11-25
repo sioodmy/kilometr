@@ -2,7 +2,7 @@
 // Renderuje się wyłącznie wtedy, gdy backend odpowiada i posiada wystarczającą
 // próbę danych historycznych lub live; w trybie offline zwraca null.
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
 import { Clock3, TriangleAlert } from './icons';
@@ -49,7 +49,9 @@ function riskTone(level: RouteInsightsData['riskLevel']) {
   };
 }
 
-export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) {
+export const RouteReliabilityCard = memo(function RouteReliabilityCard({
+  connection,
+}: RouteReliabilityCardProps) {
   const s = useStrings();
   const { cityId } = useActiveCity();
   const [insights, setInsights] = useState<RouteInsightsData | null>(null);
@@ -306,7 +308,7 @@ export function RouteReliabilityCard({ connection }: RouteReliabilityCardProps) 
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

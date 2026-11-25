@@ -1,9 +1,8 @@
 // Karta mapy w szczegółach połączenia: leniwie montowany podgląd MapLibre GL,
 // szybki wybór etapów podróży oraz przejście jednym dotknięciem do pełnego ekranu.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
   Platform,
   Pressable,
   ScrollView,
@@ -72,16 +71,18 @@ function stagePillSubtitle(stage: MapStage, boardLabel: string, alightLabel: str
   return stage.toStop || stage.fromStop;
 }
 
-export function RouteMapCard({
+export const RouteMapCard = memo(function RouteMapCard({
   connection,
   vehicle = null,
   onOpenMap,
   desktopFill = false,
+  deferMapMount = false,
 }: {
   connection: Connection;
   vehicle?: MapVehicle | null;
   onOpenMap: (stageId?: string) => void;
   desktopFill?: boolean;
+  deferMapMount?: boolean;
 }) {
   const s = useStrings();
   const enriched = useEnrichedConnection(connection) ?? connection;
@@ -104,12 +105,22 @@ export function RouteMapCard({
   const [attempt, setAttempt] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
-  const [readyToMountMap, setReadyToMountMap] = useState(desktopFill);
+  const [readyToMountMap, setReadyToMountMap] = useState(desktopFill && !deferMapMount);
   const cardRef = useRef<View>(null);
+  const mountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (desktopFill) setReadyToMountMap(true);
-  }, [desktopFill]);
+    if (desktopFill && !deferMapMount) setReadyToMountMap(true);
+  }, [desktopFill, deferMapMount]);
+
+  useEffect(() => {
+    return () => {
+      if (mountTimerRef.current) {
+        clearTimeout(mountTimerRef.current);
+        mountTimerRef.current = null;
+      }
+    };
+  }, []);
   const measuredRef = useRef(false);
   const { height: windowHeight } = useWindowDimensions();
 
@@ -147,8 +158,11 @@ export function RouteMapCard({
     node.measureInWindow((_x, y, _w, h) => {
       measuredRef.current = true;
       if (y < windowHeight + 180 && y + h > -160) {
-        InteractionManager.runAfterInteractions(mountMap);
-        setTimeout(mountMap, 550);
+        if (mountTimerRef.current) clearTimeout(mountTimerRef.current);
+        mountTimerRef.current = setTimeout(() => {
+          mountTimerRef.current = null;
+          mountMap();
+        }, 60);
       }
     });
   }, [mountMap, windowHeight]);
@@ -562,7 +576,7 @@ export function RouteMapCard({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
