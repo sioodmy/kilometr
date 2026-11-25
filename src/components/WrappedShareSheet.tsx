@@ -16,17 +16,13 @@ import { useStrings } from '../i18n';
 import type { WrappedSafeSummary } from '../services/userStatsModel';
 import {
   shareWrappedGraphic,
-  WRAPPED_THEMES,
   type WrappedExportStrings,
-  type WrappedThemeId,
 } from '../services/wrappedExport';
 import { useEscapeKey, useWebLayout } from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
-import { Check, Download, ImageUp, ShieldCheck, X } from './icons';
+import { Check, Download, ImageUp, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { WrappedShareCard } from './WrappedShareCard';
-
-const THEME_ORDER: WrappedThemeId[] = ['emerald', 'night', 'rail'];
 
 export function WrappedShareSheet({
   visible,
@@ -42,7 +38,6 @@ export function WrappedShareSheet({
   const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
   const cardRef = useRef<View>(null);
-  const [themeId, setThemeId] = useState<WrappedThemeId>('emerald');
   const [busy, setBusy] = useState<'share' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
@@ -54,12 +49,6 @@ export function WrappedShareSheet({
     const t = setTimeout(() => setSavedNotice(false), 2600);
     return () => clearTimeout(t);
   }, [savedNotice]);
-
-  const themeLabels: Record<WrappedThemeId, string> = {
-    emerald: y.themeEmerald,
-    night: y.themeNight,
-    rail: y.themeRail,
-  };
 
   const exportLabels: WrappedExportStrings = {
     title: y.shareSheetTitle,
@@ -90,7 +79,6 @@ export function WrappedShareSheet({
       await shareWrappedGraphic({
         cardRef,
         summary,
-        themeId,
         labels: exportLabels,
         saveOnly,
       });
@@ -149,46 +137,9 @@ export function WrappedShareSheet({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* Wybor motywu kolorystycznego karty */}
-            <View style={styles.themeRow} accessibilityRole="radiogroup">
-              {THEME_ORDER.map((id) => {
-                const active = themeId === id;
-                const p = WRAPPED_THEMES[id];
-                return (
-                  <Pressable
-                    key={id}
-                    onPress={() => setThemeId(id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: active }}
-                    style={({ pressed }) => [
-                      styles.themeChip,
-                      active && styles.themeChipActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.themeSwatch,
-                        { backgroundColor: p.accent, borderColor: p.bgTop },
-                      ]}
-                    />
-                    <Text style={[styles.themeChipText, active && styles.themeChipTextActive]}>
-                      {themeLabels[id]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
             {/* Karta przechwytywana do PNG */}
             <View ref={cardRef} collapsable={false} style={styles.cardWrap}>
-              <WrappedShareCard summary={summary} themeId={themeId} />
-            </View>
-
-            {/* Nota o ochronie prywatnosci */}
-            <View style={styles.privacyBanner}>
-              <ShieldCheck size={18} color={scheme.primary} />
-              <Text style={styles.privacyText}>{y.sharePrivacyNote}</Text>
+              <WrappedShareCard summary={summary} />
             </View>
 
             {error ? (
@@ -314,58 +265,8 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 14,
   },
-  themeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  themeChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    minHeight: 44,
-    paddingHorizontal: 10,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainer,
-    borderWidth: 1,
-    borderColor: scheme.outlineVariant,
-  },
-  themeChipActive: {
-    backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
-  },
-  themeSwatch: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 1.5,
-  },
-  themeChipText: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-  },
-  themeChipTextActive: {
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
   cardWrap: {
     alignItems: 'center',
-  },
-  privacyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: shape.large,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  privacyText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
-    lineHeight: 18,
   },
   errorText: {
     ...type.bodySmall,
