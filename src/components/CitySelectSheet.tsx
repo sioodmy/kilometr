@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     borderRadius: shape.extraLarge,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   container: {

@@ -5,7 +5,6 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { ChevronLeft } from './icons';
@@ -21,22 +20,17 @@ const StepPill = memo(function StepPill({
   state: 0 | 1 | 2;
 }) {
   const reduceMotion = useReducedMotion();
-  const active = useSharedValue(state === 2 ? 1 : 0);
   const tone = useSharedValue(state);
 
   useEffect(() => {
     if (reduceMotion) {
-      active.value = state === 2 ? 1 : 0;
       tone.value = state;
       return;
     }
-    active.value = withSpring(state === 2 ? 1 : 0, motion.spring.spatialFast);
     tone.value = withTiming(state, motion.state);
-  }, [active, reduceMotion, state, tone]);
+  }, [reduceMotion, state, tone]);
 
   const animStyle = useAnimatedStyle(() => ({
-    flex: 1 + active.value * 1.6,
-    height: 6 + active.value * 2,
     backgroundColor: interpolateColor(
       tone.value,
       [0, 1, 2],
@@ -44,7 +38,9 @@ const StepPill = memo(function StepPill({
     ),
   }));
 
-  return <Animated.View style={[styles.pill, animStyle]} />;
+  // Grubość zależy wprost od propsa, nie od animacji: dzięki temu nigdy nie ma
+  // dwóch pogrubionych segmentów, nawet przy szybkim przechodzeniu krokami.
+  return <Animated.View style={[styles.pill, state === 2 && styles.pillActive, animStyle]} />;
 });
 
 interface OnboardingProgressBarProps {
@@ -150,7 +146,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pill: {
+    flex: 1,
+    height: 6,
     borderRadius: shape.full,
+  },
+  pillActive: {
+    flex: 2.6,
+    height: 8,
   },
   counter: {
     ...type.labelMedium,

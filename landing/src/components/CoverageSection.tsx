@@ -176,9 +176,6 @@ export function CoverageSection() {
   const inputId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const mapCanvasRef = useRef<HTMLDivElement>(null);
-  const cursorLayerRef = useRef<SVGGElement>(null);
-  const cursorGlowRef = useRef<SVGRadialGradientElement>(null);
-  const borderGlowRef = useRef<SVGRadialGradientElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -277,7 +274,7 @@ export function CoverageSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Płynny spotlight na mapie Polski i delikatny przechył 3D bez re-renderów Reacta.
+  // Delikatny przechył 3D mapy bez re-renderów Reacta.
   useEffect(() => {
     const canvas = mapCanvasRef.current;
     if (!canvas) return;
@@ -294,22 +291,6 @@ export function CoverageSection() {
     let tiltY = 0;
 
     const applyVisuals = () => {
-      const layer = cursorLayerRef.current;
-      const fillGrad = cursorGlowRef.current;
-      const borderGrad = borderGlowRef.current;
-      const cx = smoothX.toFixed(1);
-      const cy = smoothY.toFixed(1);
-      if (fillGrad) {
-        fillGrad.setAttribute('cx', cx);
-        fillGrad.setAttribute('cy', cy);
-      }
-      if (borderGrad) {
-        borderGrad.setAttribute('cx', cx);
-        borderGrad.setAttribute('cy', cy);
-      }
-      if (layer) {
-        layer.setAttribute('opacity', alpha.toFixed(3));
-      }
       canvas.style.setProperty('--map-rx', `${tiltX.toFixed(2)}deg`);
       canvas.style.setProperty('--map-ry', `${tiltY.toFixed(2)}deg`);
     };
@@ -553,33 +534,6 @@ export function CoverageSection() {
                     <stop offset="68%" stopColor="#5cdbbe" stopOpacity="0.03" />
                     <stop offset="100%" stopColor="#5cdbbe" stopOpacity="0" />
                   </radialGradient>
-                  <clipPath id="covPolandClip">
-                    <path d={POLAND_OUTLINE} />
-                  </clipPath>
-                  <radialGradient
-                    id="covCursorGlow"
-                    ref={cursorGlowRef}
-                    gradientUnits="userSpaceOnUse"
-                    cx={MAP_VIEWBOX_SIZE / 2}
-                    cy={MAP_VIEWBOX_SIZE / 2}
-                    r={175}
-                  >
-                    <stop offset="0%" stopColor="#7fdbb1" stopOpacity="0.2" />
-                    <stop offset="46%" stopColor="#5cdbbe" stopOpacity="0.075" />
-                    <stop offset="100%" stopColor="#5cdbbe" stopOpacity="0" />
-                  </radialGradient>
-                  <radialGradient
-                    id="covBorderGlow"
-                    ref={borderGlowRef}
-                    gradientUnits="userSpaceOnUse"
-                    cx={MAP_VIEWBOX_SIZE / 2}
-                    cy={MAP_VIEWBOX_SIZE / 2}
-                    r={160}
-                  >
-                    <stop offset="0%" stopColor="#b0f8e2" stopOpacity="0.88" />
-                    <stop offset="45%" stopColor="#5cdbbe" stopOpacity="0.34" />
-                    <stop offset="100%" stopColor="#5cdbbe" stopOpacity="0" />
-                  </radialGradient>
                   <filter id="covLandShadow" x="-12%" y="-12%" width="124%" height="124%">
                     <feDropShadow
                       dx="0"
@@ -611,23 +565,6 @@ export function CoverageSection() {
                   fill="url(#covPolandFill)"
                   filter="url(#covLandShadow)"
                 />
-
-                <g ref={cursorLayerRef} className="cov-cursor-layer" opacity="0" aria-hidden="true">
-                  <rect
-                    x={0}
-                    y={0}
-                    width={MAP_VIEWBOX_SIZE}
-                    height={MAP_VIEWBOX_SIZE}
-                    fill="url(#covCursorGlow)"
-                    clipPath="url(#covPolandClip)"
-                  />
-                  <path
-                    className="cov-poland-border-glow"
-                    d={POLAND_OUTLINE}
-                    fill="none"
-                    stroke="url(#covBorderGlow)"
-                  />
-                </g>
 
                 {/* Subtle Intercity rail corridors + quiet gliding light streaks between major cities */}
                 <g className="cov-rail-links" aria-hidden="true">

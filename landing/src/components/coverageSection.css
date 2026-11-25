@@ -76,16 +76,6 @@
     stroke-linejoin: round;
   }
 
-  .cov-cursor-layer {
-    pointer-events: none;
-  }
-
-  .cov-poland-border-glow {
-    stroke-width: 2.1;
-    stroke-linejoin: round;
-    pointer-events: none;
-  }
-
   .cov-rail-link {
     stroke: rgb(92 219 190 / 10%);
     stroke-width: 1;
@@ -517,11 +507,12 @@
     gap: 6px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #86998c;
+    color: #edf3ee;
     letter-spacing: 0.01em;
   }
 
   .cov-metric-v {
+    padding-left: 21px;
     font-size: 0.9rem;
     font-weight: 600;
     line-height: 1.3;
@@ -537,6 +528,7 @@
   }
 
   .cov-metric-sub {
+    padding-left: 21px;
     font-size: 0.78rem;
     line-height: 1.3;
     color: #8fa295;
@@ -694,8 +686,7 @@
     }
 
     .cov-rail-streak,
-    .cov-hover-arc-pulse,
-    .cov-cursor-layer {
+    .cov-hover-arc-pulse {
       display: none;
     }
 
@@ -755,6 +746,7 @@
     .cov-metric-v,
     .cov-metric-sub {
       grid-column: 2;
+      padding-left: 0;
       text-align: right;
     }
 

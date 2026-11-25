@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   anchorPill: {

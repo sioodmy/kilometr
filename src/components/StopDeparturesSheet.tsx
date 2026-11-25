@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   stepBtn: {
