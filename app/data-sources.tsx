@@ -6,6 +6,7 @@ import { ChevronDown, ChevronLeft, ExternalLink } from '../src/components/icons'
 import { useStrings } from '../src/i18n';
 import { CITIES, getCity, type CityId } from '../src/cities';
 import { useActiveCity } from '../src/services/cityStore';
+import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 
 /** Portale bez poprawnego HTTPS: otwieramy po HTTP, inaczej link nie działa. */
@@ -86,6 +87,7 @@ export default function DataSourcesScreen() {
   const s = useStrings();
   const d = s.dataSources;
   const router = useRouter();
+  const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const activeCity = getCity(cityId);
   const directLiveFeed = activeCity.features.directBusPosition;
@@ -97,7 +99,7 @@ export default function DataSourcesScreen() {
 
   return (
     <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
-      <View style={st.header}>
+      <View style={[st.header, webLayout.isMedium && st.mediumCentered]}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))}
           style={({ pressed }) => [st.back, pressed && st.pressed]}
@@ -108,7 +110,7 @@ export default function DataSourcesScreen() {
         </Pressable>
         <Text style={st.headerTitle}>{d.title}</Text>
       </View>
-      <ScrollView contentContainerStyle={st.body}>
+      <ScrollView contentContainerStyle={[st.body, webLayout.isMedium && st.mediumCentered]}>
         <Text style={st.intro}>{d.intro}</Text>
 
         <SectionLabel>{d.citySection}</SectionLabel>
@@ -215,6 +217,11 @@ export default function DataSourcesScreen() {
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: scheme.surface },
+  mediumCentered: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -7,6 +7,7 @@ import {
 
 interface RailAmenitiesQuery {
   enabled?: boolean;
+  deferLoad?: boolean;
   tripId?: string;
   agency?: string;
   trainNumber?: string;
@@ -20,6 +21,7 @@ interface RailAmenitiesQuery {
  */
 export function useRailAmenities({
   enabled = true,
+  deferLoad = false,
   tripId,
   agency,
   trainNumber,
@@ -55,6 +57,7 @@ export function useRailAmenities({
       setData(cached);
       return;
     }
+    if (deferLoad) return;
     setData(null);
     void loadRailAmenities({
       id: '',
@@ -76,7 +79,7 @@ export function useRailAmenities({
     return () => {
       alive = false;
     };
-  }, [enabled, tripId, agency, trainNumber, line, trainName]);
+  }, [enabled, deferLoad, tripId, agency, trainNumber, line, trainName]);
 
   return data;
 }

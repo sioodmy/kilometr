@@ -1,18 +1,28 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { ArrowUpRight, ChevronDown, Coffee } from 'lucide-react';
-import { setWebLocale, useStrings, useShareStrings, useWebLocale, type Locale } from './i18n';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { setWebLocale, useStrings, useWebLocale, type Locale } from './i18n';
 import { Hero } from './components/Hero';
 import { ReleaseShowcase } from './components/ReleaseShowcase';
-import { CoverageSection } from './components/CoverageSection';
 import { DonateSection } from './components/DonateSection';
 import { PromiseSection } from './components/Promise';
-import { InformationPage } from './components/InformationPage';
-import { InstallPage } from './components/InstallPage';
-import { ThemeStudioPage } from './components/ThemeStudioPage';
-import { PlatformLinks } from './components/PlatformLinks';
-import { GITHUB_URL, COFFEE_URL, OBTAINIUM_URL } from './data';
+import { ClosingSection } from './components/ClosingSection';
+import { GITHUB_URL, OBTAINIUM_URL } from './data';
 
+const loadCoverageSection = () => import('./components/CoverageSection');
+
+const CoverageSection = lazy(() =>
+  loadCoverageSection().then((m) => ({ default: m.CoverageSection })),
+);
 const SharedJourney = lazy(() => import('./components/SharedJourney'));
+const InformationPage = lazy(() =>
+  import('./components/InformationPage').then((m) => ({ default: m.InformationPage })),
+);
+const InstallPage = lazy(() =>
+  import('./components/InstallPage').then((m) => ({ default: m.InstallPage })),
+);
+const ThemeStudioPage = lazy(() =>
+  import('./components/ThemeStudioPage').then((m) => ({ default: m.ThemeStudioPage })),
+);
 
 function DisplaySettings() {
   const s = useStrings();
@@ -35,42 +45,31 @@ function DisplaySettings() {
 }
 
 function Landing() {
-  const s = useStrings();
   return (
     <main id="main" tabIndex={-1}>
       <Hero />
       <ReleaseShowcase />
-      <CoverageSection />
+      <Suspense
+        fallback={
+          <section
+            id="zasieg"
+            className="release-section coverage-release"
+            style={{ minHeight: '720px' }}
+            aria-hidden="true"
+          />
+        }
+      >
+        <CoverageSection />
+      </Suspense>
       <DonateSection />
       <PromiseSection />
-      <section id="pobierz" className="closing-section" aria-labelledby="closing-title">
-        <div className="closing section-shell reveal">
-          <div className="closing-mark" aria-hidden="true">
-            <img src="./icon.png" alt="" width={64} height={64} />
-          </div>
-          <h2 id="closing-title">{s.closing.title}</h2>
-          <p className="section-body">{s.closing.body}</p>
-          <div className="closing-actions">
-            <PlatformLinks />
-            <a
-              className="closing-support"
-              href={COFFEE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Coffee size={16} aria-hidden="true" />
-              <span>{s.closing.support}</span>
-            </a>
-          </div>
-        </div>
-      </section>
+      <ClosingSection />
     </main>
   );
 }
 
 export default function App() {
   const s = useStrings();
-  const shareStrings = useShareStrings();
   const [hash, setHash] = useState(window.location.hash);
   const shared = hash.startsWith('#t=') || hash.startsWith('#trip');
   const page =
@@ -87,15 +86,34 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
-    document.title = shared
-      ? `${shareStrings.pageTitle} | ${shareStrings.brand}`
-      : page
-        ? `${s[page].title} | Kilometr`
-        : s.meta.title;
+    document.body.classList.toggle('is-shared-view', shared);
+    const themeMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.content = shared ? '#111414' : '#101713';
+    return () => {
+      document.body.classList.remove('is-shared-view');
+    };
+  }, [shared]);
+  useEffect(() => {
+    if (shared) return;
+    document.title = page ? `${s[page].title} | Kilometr` : s.meta.title;
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute('content', page ? s[page].intro : s.meta.description);
-  }, [page, s, shared, shareStrings]);
+  }, [page, s, shared]);
+  // Prefetch sekcji zasięgu w bezczynności po pierwszym malowaniu Hero, bez blokowania LCP.
+  useEffect(() => {
+    if (page || shared) return;
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (win.requestIdleCallback) {
+      const id = win.requestIdleCallback(() => void loadCoverageSection(), { timeout: 1500 });
+      return () => win.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(() => void loadCoverageSection(), 900);
+    return () => window.clearTimeout(timer);
+  }, [page, shared]);
   useEffect(() => {
     const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
     if (page === 'themeStudio') {
@@ -156,48 +174,58 @@ export default function App() {
       <div id="top" />
       {shared ? (
         <Suspense
-          fallback={
-            <main id="main" className="section-shell" role="status">
-              {shareStrings.loading}
-            </main>
-          }
+          fallback={<main id="main" className="section-shell" role="status" aria-busy="true" />}
         >
           <SharedJourney hash={hash} />
         </Suspense>
       ) : page === 'privacy' ? (
-        <InformationPage />
+        <Suspense
+          fallback={<main id="main" className="section-shell" role="status" aria-busy="true" />}
+        >
+          <InformationPage />
+        </Suspense>
       ) : page === 'themeStudio' ? (
-        <ThemeStudioPage />
+        <Suspense
+          fallback={<main id="main" className="section-shell" role="status" aria-busy="true" />}
+        >
+          <ThemeStudioPage />
+        </Suspense>
       ) : page ? (
-        <InstallPage />
+        <Suspense
+          fallback={<main id="main" className="section-shell" role="status" aria-busy="true" />}
+        >
+          <InstallPage />
+        </Suspense>
       ) : (
         <Landing />
       )}
-      <footer className="footer section-shell">
-        <div className="footer-main">
-          <a className="brand" href="#top">
-            <img src="./icon.png" alt="" width={26} height={26} />
-            <span>Kilometr</span>
-          </a>
-          <p>{s.footer.tagline}</p>
-          <nav aria-label={s.nav.label}>
-            <a href="#polityka">{s.footer.privacy}</a>
-            <a href={GITHUB_URL}>
-              {s.footer.github}
-              <ArrowUpRight size={13} aria-hidden="true" />
+      {!shared && (
+        <footer className="footer section-shell">
+          <div className="footer-main">
+            <a className="brand" href="#top">
+              <img src="./icon.png" alt="" width={26} height={26} loading="lazy" decoding="async" />
+              <span>Kilometr</span>
             </a>
-            <a href={OBTAINIUM_URL}>
-              {s.footer.obtainium}
-              <ArrowUpRight size={13} aria-hidden="true" />
-            </a>
-          </nav>
-        </div>
-        <div className="footer-bottom">
-          <span>© {new Date().getFullYear()} Kilometr</span>
-          <DisplaySettings />
-          <a href={`${GITHUB_URL}/blob/main/LICENSE`}>{s.footer.license}</a>
-        </div>
-      </footer>
+            <p>{s.footer.tagline}</p>
+            <nav aria-label={s.nav.label}>
+              <a href="#polityka">{s.footer.privacy}</a>
+              <a href={GITHUB_URL}>
+                {s.footer.github}
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </a>
+              <a href={OBTAINIUM_URL}>
+                {s.footer.obtainium}
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </a>
+            </nav>
+          </div>
+          <div className="footer-bottom">
+            <span>© {new Date().getFullYear()} Kilometr</span>
+            <DisplaySettings />
+            <a href={`${GITHUB_URL}/blob/main/LICENSE`}>{s.footer.license}</a>
+          </div>
+        </footer>
+      )}
     </>
   );
 }

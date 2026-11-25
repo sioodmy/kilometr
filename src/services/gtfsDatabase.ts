@@ -261,9 +261,12 @@ function liveHandle(): Promise<GtfsDbHandle> {
 
 async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(name);
-      const journalPragma = Platform.OS === 'web' ? '' : 'PRAGMA journal_mode = WAL;';
+      const nativePragmas =
+        Platform.OS === 'web' ? '' : 'PRAGMA journal_mode = WAL; PRAGMA mmap_size = 67108864;';
       await db.execAsync(`
-        ${journalPragma}
+        ${nativePragmas}
+        PRAGMA cache_size = -16000;
+        PRAGMA temp_store = MEMORY;
         PRAGMA busy_timeout = 15000;
         CREATE TABLE IF NOT EXISTS stops (
           stop_id TEXT PRIMARY KEY NOT NULL,

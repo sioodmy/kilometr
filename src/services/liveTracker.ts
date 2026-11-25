@@ -63,6 +63,13 @@ import {
   fusedDelay,
 } from './liveQuality';
 import { buildRoutingSnapshot, type RoutingSnapshot } from './routing/reliability';
+import {
+  fetchBackendLineDelays,
+  fetchBackendVehicles,
+  getCachedBackendDelayIntel,
+  isKilometrApiAvailable,
+  type ViewportBbox,
+} from './kilometrApi';
 import { mergeDayIndexes } from './routing/raptor';
 import { normalizeName } from './vehiclePosition';
 
@@ -77,6 +84,10 @@ const POLL_MS = 5000;
  * prosimy o pozycje tak szybko, jak pozwala na to feed i inFlight.
  */
 const MAP_POLL_MS = 2000;
+/** Szybszy poll widocznego wycinka mapy (bbox), gdy dostępny jest backend Kilometr. */
+const MAP_BACKEND_POLL_MS = 1500;
+/** Co ile ms pełne miasto ma zostać odświeżone mimo aktywnego filtrowania bbox na mapie. */
+const FULL_CITY_SYNC_MS = 30000;
 /** Tempo polla w tle: apka nieaktywna, ale śledzenie podróży potrzebuje danych. */
 const BACKGROUND_POLL_MS = 20000;
 /**
@@ -202,10 +213,24 @@ class LiveTracker {
   private consumers = 0;
   /** Podzbiór konsumentów to mapa live: dla niej poll idzie w tempie MAP_POLL_MS. */
   private mapConsumers = 0;
+  /** Aktualny kadr mapy live [minLon, minLat, maxLon, maxLat] dla szybkiego viewport pollingu. */
+  private mapViewport: ViewportBbox | null = null;
+  /** Kiedy ostatni raz pobrano pełny snapshot całego miasta (bez filtra bbox). */
+  private lastFullCitySyncAt = 0;
   /** Kto sam tego wymaga, bo działa w tle (śledzenie podróży). Pin > 0 = poll i na tle. */
   private pinned = 0;
   private appStateSub: { remove(): void } | null = null;
   private listeners = new Set<() => void>();
+  private snapshotVersion = 0;
+  private routingSnapshotCache: {
+    index: DayIndex | null;
+    cityId: string;
+    feedFresh: boolean;
+    backendIntel: ReturnType<typeof getCachedBackendDelayIntel>;
+    version: number;
+    builtAt: number;
+    snapshot: RoutingSnapshot;
+  } | null = null;
 
   /** Subskrypcja na zdarzenia aktualizacji live (nowe dane po udanym poll/restore). */
   subscribe(listener: () => void): () => void {
@@ -216,6 +241,8 @@ class LiveTracker {
   }
 
   private notify(): void {
+    this.snapshotVersion += 1;
+    this.routingSnapshotCache = null;
     for (const listener of this.listeners) {
       try {
         listener();
@@ -270,9 +297,27 @@ class LiveTracker {
     this.sampleHistory.clear();
     this.lastOk = 0;
     this.restored = false;
+    this.mapViewport = null;
+    this.lastFullCitySyncAt = 0;
     // Nowe miasto: pierwszy udany poll ma od razu pójść na dysk pod nowy klucz.
     this.lastPersistAt = 0;
     this.notify();
+  }
+
+  /** Ustawia aktualny kadr mapy live (tylko widoczne pojazdy z backendu + szybsze odświeżanie). */
+  setMapViewport(bbox: ViewportBbox | null): void {
+    const prev = this.mapViewport;
+    this.mapViewport = bbox;
+    if (!bbox || this.mapConsumers <= 0 || !isKilometrApiAvailable()) return;
+    const moved =
+      !prev ||
+      Math.abs(prev[0] - bbox[0]) > 0.0025 ||
+      Math.abs(prev[1] - bbox[1]) > 0.0025 ||
+      Math.abs(prev[2] - bbox[2]) > 0.0025 ||
+      Math.abs(prev[3] - bbox[3]) > 0.0025;
+    if (moved && !this.inFlight && AppState.currentState === 'active') {
+      void this.poll();
+    }
   }
 
   /** Idempotentny start tickera; ekrany wołają acquire(), nie start(). */
@@ -479,7 +524,9 @@ class LiveTracker {
     const ms =
       AppState.currentState === 'active'
         ? this.mapConsumers > 0
-          ? MAP_POLL_MS
+          ? isKilometrApiAvailable()
+            ? MAP_BACKEND_POLL_MS
+            : MAP_POLL_MS
           : POLL_MS
         : BACKGROUND_POLL_MS;
     if (this.timer && this.timerMs === ms && !forceImmediate) return;
@@ -593,14 +640,45 @@ class LiveTracker {
   }
 
   getRoutingSnapshot(index = this.latestDayIndex, offsets?: Map<string, number>): RoutingSnapshot {
-    return buildRoutingSnapshot(
+    const cityId = safeCityId();
+    const feedFresh = this.getLiveState() === 'fresh';
+    const backendIntel = getCachedBackendDelayIntel(cityId);
+    const now = Date.now();
+    const hasCustomOffsets = offsets != null && offsets.size > 0;
+    const cached = this.routingSnapshotCache;
+    if (
+      !hasCustomOffsets &&
+      cached &&
+      cached.index === index &&
+      cached.cityId === cityId &&
+      cached.feedFresh === feedFresh &&
+      cached.backendIntel === backendIntel &&
+      cached.version === this.snapshotVersion &&
+      now - cached.builtAt < 15_000
+    ) {
+      return cached.snapshot;
+    }
+    const snapshot = buildRoutingSnapshot(
       index,
       gtfsStore,
       this.snapshot(),
-      this.getLiveState() === 'fresh',
-      Date.now(),
+      feedFresh,
+      now,
       offsets,
+      backendIntel,
     );
+    if (!hasCustomOffsets) {
+      this.routingSnapshotCache = {
+        index,
+        cityId,
+        feedFresh,
+        backendIntel,
+        version: this.snapshotVersion,
+        builtAt: now,
+        snapshot,
+      };
+    }
+    return snapshot;
   }
 
   private previousFor(row: RawVehicleRow): TrackedVehicle | undefined {
@@ -650,6 +728,40 @@ class LiveTracker {
       : undefined;
   }
 
+  /** Bezalokacyjne wyszukiwanie świeżego pojazdu przypisanego do danego tripId. */
+  findVehicleByTripId(
+    tripId: string,
+    line?: string,
+    maxAgeMs = MAX_SAMPLE_AGE_MS,
+  ): TrackedVehicle | undefined {
+    const now = Date.now();
+    if (line) {
+      const byLine = this.byLine.get(line.trim().toUpperCase());
+      if (byLine) {
+        for (let i = 0; i < byLine.length; i++) {
+          const candidate = byLine[i];
+          if (
+            candidate.matchedTripId === tripId &&
+            candidate.updatedAt <= now &&
+            now - candidate.updatedAt <= maxAgeMs
+          ) {
+            return candidate;
+          }
+        }
+      }
+    }
+    for (const candidate of this.byId.values()) {
+      if (
+        candidate.matchedTripId === tripId &&
+        candidate.updatedAt <= now &&
+        now - candidate.updatedAt <= maxAgeMs
+      ) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
   snapshot(line?: string): TrackedVehicle[] {
     const vehicles = line
       ? (this.byLine.get(line.trim().toUpperCase()) ?? [])
@@ -685,7 +797,46 @@ class LiveTracker {
         await this.pollNational();
         return;
       }
-      const [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
+
+      // Ścieżka główna: backend Kilometr (api.kilometr.app) z viewport bbox na mapie live.
+      // Przy braku odpowiedzi lub pustym stanie backendu natychmiastowy fallback na bezpośrednie źródła.
+      const cityFeatures = getCity(cityAtStart).features;
+      const shouldUseViewport =
+        this.mapConsumers > 0 &&
+        this.mapViewport != null &&
+        this.lastOk > 0 &&
+        now - this.lastFullCitySyncAt < FULL_CITY_SYNC_MS;
+
+      let rows: RawVehicleRow[] | null = null;
+      let rail: RailFeed[] | null = null;
+      let usedViewportBbox: ViewportBbox | null = null;
+
+      if (isKilometrApiAvailable()) {
+        const backendBatch = await fetchBackendVehicles(cityAtStart, {
+          bbox: shouldUseViewport ? this.mapViewport : null,
+          includeRail: cityFeatures.regionalRail,
+        });
+        if (backendBatch) {
+          this.recordSource('kilometr_api', true);
+          rows = backendBatch.urban;
+          rail = backendBatch.rails;
+          if (shouldUseViewport && this.mapViewport) {
+            usedViewportBbox = this.mapViewport;
+          } else {
+            this.lastFullCitySyncAt = Date.now();
+          }
+          // Asynchronicznie odświeżamy profile opóźnień linii (własny TTL 45 s, best-effort).
+          void fetchBackendLineDelays(cityAtStart).catch(() => {});
+        } else {
+          this.recordSource('kilometr_api', false, 'fallback');
+        }
+      }
+
+      if (rows === null && rail === null) {
+        [rows, rail] = await Promise.all([this.fetchAll(), this.fetchRailSafe()]);
+        this.lastFullCitySyncAt = Date.now();
+      }
+
       // Użytkownik zmienił miasto w trakcie pobierania (do 10 s na zapytanie).
       // Odpowiedź dotyczy poprzedniego miasta: nie wolno jej dopasowywać do
       // nowego rozkładu ani zapisywać pod kluczem nowego miasta.
@@ -696,9 +847,14 @@ class LiveTracker {
       let ok = false;
       const rails = rail ?? [];
       if (rows && rows.length > 0) {
-        await this.matchAll(rows);
+        await this.matchAll(rows, usedViewportBbox);
         ok = true;
-        void this.persistSnapshot(rows, rails, cityAtStart);
+        if (!usedViewportBbox) {
+          void this.persistSnapshot(rows, rails, cityAtStart);
+        }
+      } else if (usedViewportBbox) {
+        // Pusty viewport nie znaczy, że miasto zniknęło: zachowujemy stan spoza kadru.
+        ok = true;
       } else {
         // Pusta odpowiedź to nie awaria: po północy miasto milknie. Ostatni
         // dobry snapshot zostaje w pamięci, a stan przejdzie na „stale” dopiero
@@ -1507,7 +1663,10 @@ class LiveTracker {
     return matched;
   }
 
-  private async matchAll(rows: RawVehicleRow[]): Promise<void> {
+  private async matchAll(
+    rows: RawVehicleRow[],
+    mergeOutsideBbox: ViewportBbox | null = null,
+  ): Promise<void> {
     try {
       if (!gtfsStore.isLoaded) await gtfsStore.load();
     } catch (err) {
@@ -1566,12 +1725,27 @@ class LiveTracker {
     // listy agencji per-miasto.
     const nowMs = Date.now();
     for (const [id, kept] of this.byId) {
-      if (!id.includes(':')) continue;
-      // Przeterminowane pociągi (> 5 min) usuwamy, żeby nie wisiały w nieskończoność
-      if (nowMs - kept.updatedAt > 300000) continue;
-      byId.set(id, kept);
-      if (kept.matchedTripId && kept.delaySec !== null)
-        delays.set(kept.matchedTripId, kept.delaySec);
+      if (id.includes(':')) {
+        // Przeterminowane pociągi (> 5 min) usuwamy, żeby nie wisiały w nieskończoność
+        if (nowMs - kept.updatedAt > 300000) continue;
+        byId.set(id, kept);
+        if (kept.matchedTripId && kept.delaySec !== null)
+          delays.set(kept.matchedTripId, kept.delaySec);
+        continue;
+      }
+      // W trybie viewport bbox zachowujemy świeże pojazdy spoza kadru, aby wyszukiwarka
+      // i powrót z oddalenia nie traciły reszty miasta.
+      if (mergeOutsideBbox && !byId.has(id) && nowMs - kept.updatedAt <= MAX_SAMPLE_AGE_MS) {
+        const [minLon, minLat, maxLon, maxLat] = mergeOutsideBbox;
+        const inViewport =
+          kept.lat >= minLat && kept.lat <= maxLat && kept.lon >= minLon && kept.lon <= maxLon;
+        if (!inViewport) {
+          byId.set(id, kept);
+          if (kept.matchedTripId && kept.delaySec !== null && !delays.has(kept.matchedTripId)) {
+            delays.set(kept.matchedTripId, kept.delaySec);
+          }
+        }
+      }
     }
     for (const [tripId, entry] of this.nationalTripDelays) {
       if (nowMs - entry.updatedAt > 300000) {

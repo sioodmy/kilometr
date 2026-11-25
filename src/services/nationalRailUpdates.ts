@@ -6,8 +6,9 @@
  */
 
 import type { LegStop } from '../types/models';
-import { TIMETABLE } from './gtfsConfig';
+import { KILOMETR_API, TIMETABLE } from './gtfsConfig';
 import { getNationalDb } from './gtfsDatabase';
+import { isKilometrApiAvailable } from './kilometrApi';
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
 
@@ -456,6 +457,34 @@ export async function fetchNationalRailUpdates(
       // Błąd sieci (np. brak zasięgu w pociągu)
     } finally {
       timeout.dispose();
+    }
+
+    // Bezpieczny fallback na VPS backend (/v1/rail/delays), gdy Worker jest niedostępny.
+    if (!data && baseUrl === TIMETABLE.baseUrl && isKilometrApiAvailable()) {
+      const backupUrl = `${KILOMETR_API.baseUrl}/v1/rail/delays?${params.toString()}`;
+      const backupTimeout = withTimeout(3500);
+      try {
+        const res = await fetch(backupUrl, {
+          signal: backupTimeout.signal,
+          headers: { Accept: 'application/json' },
+        });
+        if (res.ok) {
+          const candidate = (await res.json()) as ApiResponse;
+          if (candidate.trips && Object.keys(candidate.trips).length > 0) {
+            data = candidate;
+            cachedApi = {
+              at: Date.now(),
+              url: requestUrl,
+              fetchRef: globalThis.fetch,
+              data,
+            };
+          }
+        }
+      } catch {
+        // Cichy fallback do lokalnego cache
+      } finally {
+        backupTimeout.dispose();
+      }
     }
   }
 

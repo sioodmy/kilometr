@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const appJson = require('./app.json');
+const withM3Transitions = require('./plugins/with-m3-transitions');
 const {
   withAppBuildGradle,
   withDangerousMod,
@@ -246,22 +247,24 @@ module.exports = ({ config }) => {
   const expo = staticExpo(config);
   const version = process.env.APP_VERSION || expo.version || '1.0.0';
 
-  return withReleaseMinify(
-    withOptimizePreset(
-      withProguardRules(
-        withAndroidSigning(
-          withDevDebuggable({
-            ...expo,
-            version,
-            ios: {
-              ...(expo.ios || {}),
-              buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
-            },
-            android: {
-              ...(expo.android || {}),
-              versionCode: versionCodeFromVersion(version),
-            },
-          }),
+  return withM3Transitions(
+    withReleaseMinify(
+      withOptimizePreset(
+        withProguardRules(
+          withAndroidSigning(
+            withDevDebuggable({
+              ...expo,
+              version,
+              ios: {
+                ...(expo.ios || {}),
+                buildNumber: process.env.IOS_BUILD_NUMBER || expo.ios?.buildNumber || '1',
+              },
+              android: {
+                ...(expo.android || {}),
+                versionCode: versionCodeFromVersion(version),
+              },
+            }),
+          ),
         ),
       ),
     ),

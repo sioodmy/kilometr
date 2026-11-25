@@ -1448,6 +1448,8 @@ export const pl = {
     outsideAreaShort: 'Jesteś poza obsługiwanym obszarem',
     downloadCityTimetableA11y: (gen: string) => `Pobierz rozkład ${gen}`,
     liveMapA11y: 'Mapa pojazdów na żywo',
+    navPlanner: 'Planer',
+    navMenuA11y: 'Nawigacja główna',
     boardedOriginTitle: (line: string, direction: string) =>
       direction ? `Linia ${line} (${direction})` : `Linia ${line}`,
     boardedChipTitle: (line: string) => `W pojeździe ${line}`,
@@ -1544,7 +1546,7 @@ export const pl = {
     planningTitle: 'Planowanie podróży',
     offlineTitle: 'Rozkład i mapy',
     notificationsSummary: 'Śledzenie podróży i alerty',
-    backupSummary: 'Zapisane miejsca, historia i ustawienia',
+    backupSummary: 'Statystyki, podsumowanie i kopia zapasowa',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Przywróć ustawienia tras',
@@ -1781,11 +1783,11 @@ export const pl = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Wybierz miasto i pobierz rozkład. Połączenia wyszukasz też bez internetu.',
+    intro: 'Wybierz miasto, a rozkład pobierze się w tle. Połączenia wyszukasz także bez internetu.',
     openSettings: 'Otwórz ustawienia',
     permissionDenied:
       'Możesz kontynuować bez tej zgody i zmienić ją później w ustawieniach telefonu.',
-    steps: ['Witaj', 'Uprawnienia', 'Miasto', 'Rozkład', 'Miejsca'] as string[],
+    steps: ['Witaj', 'Miasto', 'Dostęp', 'Miejsca'] as string[],
     granted: 'Włączone',
     denied: 'Wyłączone',
     slotHome: 'Dom',
@@ -1882,6 +1884,22 @@ export const pl = {
     fast: 'Planowanie offline',
     noAds: 'Bez reklam',
     noPay: 'Bez mikropłatności',
+    detectGpsAction: 'Wykryj moje miasto przez GPS',
+    detectGpsHint: 'Automatycznie dobierze rozkład dla Twojej okolicy',
+    detectGpsBadge: 'Z GPS',
+    citySearchPlaceholder: 'Szukaj miasta lub aglomeracji…',
+    cityNoSearchMatch: (q: string) => `Nie znaleziono miasta „${q}”.`,
+    cityClearSearchA11y: 'Wyczyść wyszukiwanie',
+    citySubtitleAuto: 'Rozkład pobierze się automatycznie w tle.',
+    bgDlDownloading: (gen: string, pct: number) => `Pobieram rozkład ${gen}… ${pct}%`,
+    bgDlImporting: (gen: string, pct: number) => `Przygotowuję rozkład ${gen}… ${pct}%`,
+    bgDlReady: (gen: string) => `Rozkład ${gen} gotowy offline`,
+    bgDlReadyDetail: (stops: number) => `${stops} przystanków`,
+    bgDlError: 'Nie udało się pobrać rozkładu',
+    bgDlPending: (gen: string) => `Rozkład ${gen} pobierze się w tle`,
+    bgDlRetry: 'Ponów',
+    bgDlStart: 'Pobierz',
+    startUsing: 'Zacznij korzystać',
     permTitle: 'Dostęp aplikacji',
     permSub: 'Lokalizacja i powiadomienia. Oba opcjonalne.',
     permSubWeb: 'Dodaj aplikację do ekranu głównego i włącz lokalizację.',
@@ -2016,10 +2034,22 @@ export const pl = {
             : 'opublikował';
       return `${name} nie ${verb} teraz żadnego utrudnienia. Przeciągnij w dół, żeby sprawdzić ponownie.`;
     },
+    sectionGps: 'Wykryto z GPS na żywo',
     sectionChanges: 'Zmiany na liniach',
     sectionCity: 'Wiadomości',
     sourceMpk: (operator: string) => operator,
     sourceCity: (portal: string) => portal,
+    sourceGps: 'Wykryto z GPS',
+    gpsJamTitleTram: (place: string) => `Zator tramwajowy: ${place}`,
+    gpsJamTitleBus: (place: string) => `Zator autobusowy: ${place}`,
+    gpsJamTitleHub: (place: string) => `Duże opóźnienia: ${place}`,
+    gpsJamProblemStalled: (stalled: number, avgMin: number, durMin: number) =>
+      `${stalled} pojazdy stoją w pobliżu od ${durMin} min. Średnie opóźnienie +${avgMin} min.`,
+    gpsJamProblemAnomaly: (count: number, avgMin: number) =>
+      `${count} opóźnione pojazdy w tym rejonie. Średnio +${avgMin} min opóźnienia.`,
+    gpsJamDelta: (deltaMin: number) => `+${deltaMin} min powyżej normy dla tej godziny.`,
+    gpsJamTimeframe: (durMin: number) =>
+      durMin >= 2 ? `Trwa od ok. ${durMin} min (analiza GPS)` : 'Wykryto przed chwilą (analiza GPS)',
     openBrowser: 'Otwórz w przeglądarce',
     articleFail: 'Nie udało się wczytać treści tej strony.',
     articleEmpty: 'Na tej stronie nie ma treści, którą da się pokazać w aplikacji.',
@@ -2193,6 +2223,8 @@ export const pl = {
     downloadingPlain: 'Pobieranie…',
     downloadAction: 'Pobierz rozkład',
     earlierAction: 'Wcześniejsze połączenia',
+    earlierPullHint: 'Pociągnij po wcześniejsze',
+    earlierReleaseHint: 'Puść po wcześniejsze',
     earlierLoading: 'Wczytuję wcześniejsze połączenia…',
     earlierEmpty: 'Brak wcześniejszych połączeń tego dnia',
     earlierRetry: 'Nie udało się wczytać. Spróbuj ponownie',
@@ -2598,6 +2630,7 @@ export const pl = {
     mapTapToLoad: 'Dotknij, aby wczytać mapę',
     mapFailed:
       'Nie udało się wczytać mapy. Spróbuj ponownie lub pobierz mapę offline w ustawieniach.',
+    mapFailedWeb: 'Nie udało się wczytać mapy. Sprawdź połączenie i spróbuj ponownie.',
     mapRetry: 'Wczytaj mapę ponownie',
     openMap: 'Otwórz pełną mapę trasy',
     ahead: 'Prosto przed Tobą',
@@ -3029,6 +3062,43 @@ export const pl = {
     zoomForLinesHint: 'Przybliż, aby zobaczyć numery linii',
     openTimetableCta: 'Rozkład linii',
     toggleSheetA11y: 'Rozwiń lub zwiń szczegóły',
+    filterDelays: 'Opóźnienia',
+    delayZoneSheetTitle: 'Węzeł opóźnień',
+    delayAvgNow: (min: number) => `Średnio +${min} min`,
+    delayP90: (min: number) => `Szczyt (p90): +${min} min`,
+    delayVsTypicalHigher: (min: number) => `+${min} min powyżej normy`,
+    delayVsTypicalLower: (min: number) => `${min} min mniej niż zwykle`,
+    delayVehiclesAffected: (delayed: number, total: number) =>
+      `${delayed} z ${total} pojazdów ma opóźnienie`,
+    delayAffectedLines: 'Opóźnione linie',
+    delaySeveritySevere: 'Duży zator',
+    delaySeverityHeavy: 'Spore opóźnienia',
+    delaySeverityModerate: 'Spowolnienie',
+    delayTapLineHint: 'Dotknij linii, aby zobaczyć ją na mapie',
+  },
+  routeInsights: {
+    verdictLow: 'Zwykle punktualnie',
+    verdictModerate: 'Możliwe niewielkie opóźnienie',
+    verdictHigh: 'Częste opóźnienia o tej porze',
+    dayWeekday: 'dni robocze',
+    daySaturday: 'soboty',
+    daySunday: 'niedziele',
+    basisLine: (line: string, day: string, n: number) =>
+      `Linia ${line} · ${day} (${n} pomiarów)`,
+    basisGeneric: (day: string, n: number) => `Na podstawie ${n} pomiarów (${day})`,
+    upToMin: (min: number) => `p90 +${min}m`,
+    chartCaption: 'Średnie opóźnienie wg godziny',
+    yourDeparture: 'Twój wyjazd',
+    chartA11y: (line: string, hour: string, min: number) =>
+      `Profil opóźnień linii ${line}. O godzinie ${hour} średnio plus ${min} minut.`,
+    activeJamFactor: (place: string, min: number) =>
+      `Aktywny zator przy ${place}: obecnie średnio +${min} min opóźnienia.`,
+    hotspotWithDelta: (place: string, min: number, delta: number) =>
+      `${place}: teraz +${min} min (+${delta} min powyżej normy).`,
+    hotspotNow: (place: string, min: number) =>
+      `${place}: spowolnienie na trasie, obecnie +${min} min.`,
+    transferRisk: (stop: string, marginMin: number, fromLine: string, p90Min: number) =>
+      `Ciasna przesiadka (${stop}): ${marginMin} min zapasu, a linia ${fromLine} miewa do +${p90Min} min.`,
   },
   widgets: {
     journeyTitle: 'Twoje kierunki',
@@ -3065,6 +3135,84 @@ export const pl = {
     tripEmptyBody: 'Wybierz połączenie i włącz śledzenie.',
     placesEmpty: 'Dodaj swoje pierwsze miejsce',
     search: 'Dokąd jedziesz?',
+  },
+  yourData: {
+    distanceLabel: 'Przejechany dystans',
+    tripsLabel: 'Kursy',
+    timeLabel: 'Czas w trasie',
+    citiesLabel: 'Miasta',
+    stopsLabel: 'Przystanki',
+    walkLabel: 'Pieszo',
+    co2Label: 'Mniej CO₂',
+    co2Hint: 'względem auta',
+    railSectionTitle: 'Kolej i środki transportu',
+    railTitle: 'Kolej',
+    railTrips: (n: number) =>
+      n === 1 ? '1 przejazd koleją' : isFew(n) ? `${n} przejazdy koleją` : `${n} przejazdów koleją`,
+    railTickets: (n: number) =>
+      n === 1 ? '1 bilet' : isFew(n) ? `${n} bilety` : `${n} biletów`,
+    railEmpty: 'Brak zapisanych przejazdów kolejowych',
+    topLinesTitle: 'Najczęstsze linie',
+    topLinesSubtitle: 'Dotknij segmentu lub linii, żeby sprawdzić udział',
+    topLinesEmpty: 'Po wybraniu lub zapisaniu tras pojawi się wykres Twoich najczęstszych linii.',
+    topLinesTotal: 'Odcinki',
+    topLinesOther: 'Pozostałe',
+    lineTrips: (n: number) =>
+      n === 1 ? '1 kurs' : isFew(n) ? `${n} kursy` : `${n} kursów`,
+    topDestinationsTitle: 'Najczęstsze cele podróży',
+    topDestinationLead: 'Najczęstszy cel',
+    topDestinationsEmpty: 'Wyszukaj połączenia, żeby zobaczyć swoje główne kierunki.',
+    avgTime: (min: number) => `śr. ${min} min`,
+    backupSectionTitle: 'Kopia zapasowa i przenoszenie',
+    placesShort: 'Miejsca',
+    routesShort: 'Zapisane trasy',
+    historyShort: 'Historia',
+    emptyTitle: 'Twoje statystyki dopiero się zbierają',
+    emptyBody:
+      'Wyszukuj i śledź połączenia, a zobaczysz tu przejechane kilometry, wykres ulubionych linii i podsumowanie gotowe do udostępnienia. Wszystkie dane zostają wyłącznie na tym urządzeniu.',
+    localOnlyNote: 'Wszystkie statystyki liczone są lokalnie na Twoim urządzeniu.',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Udostępnij podsumowanie twoich tras',
+    shareSheetTitle: 'Podsumowanie podróży',
+    shareSheetSubtitle: 'Gotowa grafika do udostępnienia na Instagramie, X lub znajomym.',
+    shareAction: 'Udostępnij grafikę',
+    shareDownload: 'Zapisz PNG',
+    sharePreparing: 'Generuję grafikę…',
+    shareError: 'Nie udało się wygenerować grafiki. Spróbuj ponownie.',
+    shareSaved: 'Grafika została zapisana.',
+    wrappedFooter: 'Podsumowanie podróży',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('pl-PL')} km`
+        : `${km.toLocaleString('pl-PL', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} kg`
+        : `~${kg.toLocaleString('pl-PL', { maximumFractionDigits: 1 })} kg`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} min`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} h ${m} min` : `${h} h`;
+    },
+    modes: {
+      tram: 'Tramwaj',
+      bus: 'Autobus',
+      train: 'Kolej',
+      subway: 'Metro',
+      trolleybus: 'Trolejbus',
+      cable: 'Kolej linowa',
+      walk: 'Pieszo',
+    },
+    archetypes: {
+      rail_express: 'Kolejowy ekspres',
+      tram_regular: 'Stały pasażer tramwajów',
+      bus_rider: 'Mistrz linii autobusowych',
+      metro_commuter: 'Podziemny ekspres',
+      city_walker: 'Miejski piechur',
+      multi_city: 'Podróżnik międzymiastowy',
+      explorer: 'Odkrywca tras',
+    },
   },
 };
 

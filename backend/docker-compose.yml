@@ -1,0 +1,74 @@
+# Konfiguracja Docker Compose dla VPS Mikrus 3.5 (4 GB RAM, 40 GB dysku).
+# Podstawowe uruchomienie (za proxy Mikrusa / Cloudflare Tunnel):
+#   docker compose up -d --build
+# Uruchomienie z wlasnym Caddy (auto-HTTPS dla api.kilometr.app):
+#   docker compose --profile caddy up -d --build
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kilometr-api
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      KILOMETR_HOST: "0.0.0.0"
+      KILOMETR_PORT: "8080"
+      KILOMETR_DB_PATH: "/data/kilometr-delays.db"
+      KILOMETR_MAX_DB_SIZE_MB: "${KILOMETR_MAX_DB_SIZE_MB:-4096}"
+      KILOMETR_RAW_RETENTION_HOURS: "${KILOMETR_RAW_RETENTION_HOURS:-48}"
+    ports:
+      - "${KILOMETR_PUBLISH_ADDR:-127.0.0.1:8080}:8080"
+    volumes:
+      - kilometr_data:/data
+    mem_limit: 1536m
+    memswap_limit: 2048m
+    cpus: "2.0"
+    init: true
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 20s
+      timeout: 4s
+      retries: 3
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: kilometr-caddy
+    profiles: ["caddy"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_DOMAIN: "${API_DOMAIN:-api.kilometr.app}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 192m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  kilometr_data:
+  caddy_data:
+  caddy_config:

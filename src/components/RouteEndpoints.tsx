@@ -19,8 +19,9 @@ import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { BoardedTripOrigin } from '../types/models';
 
-const SWAP_IN = FadeIn.duration(140).easing(Easing.out(Easing.quad));
-const SWAP_OUT = FadeOut.duration(90).easing(Easing.in(Easing.quad));
+// Krzywe bezier działają natywnie także w Reanimated na Web (bez fallbacku do linear).
+const SWAP_IN = FadeIn.duration(140).easing(motion.enter.easing);
+const SWAP_OUT = FadeOut.duration(90).easing(motion.exit.easing);
 
 /** Karta początku i celu trasy z szyną relacji i obrotowym przyciskiem zamiany kierunków. */
 export function RouteEndpoints({
@@ -92,70 +93,107 @@ export function RouteEndpoints({
       </View>
 
       <View style={styles.fields}>
-        <SpringPressable
-          onPress={onFrom}
-          scaleDelta={0.014}
-          opacityDelta={0.07}
-          haptic="selection"
-          accessibilityRole="button"
-          accessibilityLabel={fromLabel}
-          style={styles.field}
-        >
-          <Text style={styles.label} numberOfLines={1}>
-            {s.routeDetails.origin}
-          </Text>
-          {boarded ? (
-            <Animated.View
-              key="boarded"
-              style={[styles.anchorPill, fromShiftStyle]}
-              entering={SWAP_IN}
-              exiting={SWAP_OUT}
+        {boarded || anchor ? (
+          // Dwa sąsiednie przyciski zamiast zagnieżdżonego <button> w <button> na Web.
+          <View style={styles.field}>
+            <SpringPressable
+              onPress={onFrom}
+              scaleDelta={0.014}
+              opacityDelta={0.07}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={fromLabel}
             >
-              <LineBadge mode={boarded.mode} line={boarded.line} compact />
-              <View style={styles.anchorSpacer} />
-              <SpringPressable
-                onPress={boarded.onDismiss}
-                accessibilityRole="button"
-                accessibilityLabel={boarded.dismissA11y}
-                style={styles.anchorX}
-                hitSlop={10}
-                scaleDelta={0.06}
-                haptic="selection"
-              >
-                <X size={14} color={scheme.onSurface} />
-              </SpringPressable>
-            </Animated.View>
-          ) : anchor ? (
-            <Animated.View
-              key="anchor"
-              style={[styles.anchorPill, fromShiftStyle]}
-              entering={SWAP_IN}
-              exiting={SWAP_OUT}
-            >
-              <Anchor size={13} color={scheme.onPrimaryContainer} />
-              <Text style={styles.originAnchor} numberOfLines={1}>
-                {anchor.stopName}
+              <Text style={styles.label} numberOfLines={1}>
+                {s.routeDetails.origin}
               </Text>
-              <SpringPressable
-                onPress={anchor.onDismiss}
-                accessibilityRole="button"
-                accessibilityLabel={anchor.dismissA11y}
-                style={styles.anchorX}
-                hitSlop={10}
-                scaleDelta={0.06}
-                haptic="selection"
+            </SpringPressable>
+            {boarded ? (
+              <Animated.View
+                key="boarded"
+                style={[styles.anchorPill, fromShiftStyle]}
+                entering={SWAP_IN}
+                exiting={SWAP_OUT}
               >
-                <X size={14} color={scheme.onSurface} />
-              </SpringPressable>
-            </Animated.View>
-          ) : (
+                <SpringPressable
+                  onPress={onFrom}
+                  accessibilityRole="button"
+                  accessibilityLabel={fromLabel}
+                  style={styles.anchorMainTap}
+                  scaleDelta={0.014}
+                  opacityDelta={0.07}
+                  haptic="selection"
+                >
+                  <LineBadge mode={boarded.mode} line={boarded.line} compact />
+                  <View style={styles.anchorSpacer} />
+                </SpringPressable>
+                <SpringPressable
+                  onPress={boarded.onDismiss}
+                  accessibilityRole="button"
+                  accessibilityLabel={boarded.dismissA11y}
+                  style={styles.anchorX}
+                  hitSlop={10}
+                  scaleDelta={0.06}
+                  haptic="selection"
+                >
+                  <X size={14} color={scheme.onSurface} />
+                </SpringPressable>
+              </Animated.View>
+            ) : anchor ? (
+              <Animated.View
+                key="anchor"
+                style={[styles.anchorPill, fromShiftStyle]}
+                entering={SWAP_IN}
+                exiting={SWAP_OUT}
+              >
+                <SpringPressable
+                  onPress={onFrom}
+                  accessibilityRole="button"
+                  accessibilityLabel={fromLabel}
+                  style={styles.anchorMainTap}
+                  scaleDelta={0.014}
+                  opacityDelta={0.07}
+                  haptic="selection"
+                >
+                  <Anchor size={13} color={scheme.onPrimaryContainer} />
+                  <Text style={styles.originAnchor} numberOfLines={1}>
+                    {anchor.stopName}
+                  </Text>
+                </SpringPressable>
+                <SpringPressable
+                  onPress={anchor.onDismiss}
+                  accessibilityRole="button"
+                  accessibilityLabel={anchor.dismissA11y}
+                  style={styles.anchorX}
+                  hitSlop={10}
+                  scaleDelta={0.06}
+                  haptic="selection"
+                >
+                  <X size={14} color={scheme.onSurface} />
+                </SpringPressable>
+              </Animated.View>
+            ) : null}
+          </View>
+        ) : (
+          <SpringPressable
+            onPress={onFrom}
+            scaleDelta={0.014}
+            opacityDelta={0.07}
+            haptic="selection"
+            accessibilityRole="button"
+            accessibilityLabel={fromLabel}
+            style={styles.field}
+          >
+            <Text style={styles.label} numberOfLines={1}>
+              {s.routeDetails.origin}
+            </Text>
             <Animated.View key="gps" style={fromShiftStyle} entering={SWAP_IN} exiting={SWAP_OUT}>
               <Text style={styles.origin} numberOfLines={1}>
                 {from}
               </Text>
             </Animated.View>
-          )}
-        </SpringPressable>
+          </SpringPressable>
+        )}
 
         <View style={styles.divider} />
 
@@ -299,6 +337,13 @@ const styles = StyleSheet.create({
     paddingRight: 4,
     paddingVertical: 3,
     minHeight: 30,
+  },
+  anchorMainTap: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   originAnchor: {
     ...type.labelMedium,

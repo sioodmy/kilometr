@@ -796,15 +796,13 @@ export const DisruptionDetailView = memo(function DisruptionDetailView({
             <View style={styles.actionPanelHead}>
               <BusFront
                 size={16}
-                color={isUrgent ? scheme.onWarningContainer : scheme.onPrimaryContainer}
+                color={isUrgent ? scheme.warning : scheme.onPrimaryContainer}
               />
               <Text
                 style={[
                   styles.actionPanelLabel,
                   {
-                    color: isUrgent
-                      ? scheme.onWarningContainer
-                      : scheme.onPrimaryContainer,
+                    color: isUrgent ? scheme.warning : scheme.onPrimaryContainer,
                   },
                 ]}
               >
@@ -815,7 +813,7 @@ export const DisruptionDetailView = memo(function DisruptionDetailView({
               style={[
                 styles.actionPanelText,
                 {
-                  color: isUrgent ? scheme.onWarningContainer : scheme.onPrimaryContainer,
+                  color: isUrgent ? scheme.onSurface : scheme.onPrimaryContainer,
                 },
               ]}
             >
@@ -1092,7 +1090,9 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.primaryContainer,
   },
   actionPanelUrgent: {
-    backgroundColor: scheme.warningContainer,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: scheme.warning + '55',
   },
   actionPanelHead: {
     flexDirection: 'row',
@@ -1138,18 +1138,23 @@ const styles = StyleSheet.create({
   },
   lineCardHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 10,
   },
   lineIdentity: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
     flex: 1,
+    minWidth: 0,
   },
   lineIdentityMeta: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 120,
     gap: 3,
   },
   lineDirection: {

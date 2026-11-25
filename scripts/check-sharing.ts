@@ -69,6 +69,39 @@ assert.deepEqual(
   JSON.parse(JSON.stringify(journey)),
 );
 assert.equal(transferCount(journey), 0);
+// Dojście lub korekta RT zaczynająca się 1 min przed departAt nie może dodać +1440 min.
+const walkBeforeDepart = createSharedConnection(
+  {
+    ...connection,
+    departAt: '16:22',
+    arriveAt: '16:35',
+    departureSec: 16 * 3600 + 22 * 60,
+    arrivalSec: 16 * 3600 + 35 * 60,
+    legs: [
+      {
+        id: 'walk-0',
+        mode: 'walk',
+        fromStop: 'Twoja lokalizacja',
+        toStop: 'Galeria Dominikańska',
+        departAt: '16:21',
+        arriveAt: '16:22',
+        stopsCount: 0,
+        walkM: 86,
+        live: false,
+      },
+      {
+        ...connection.legs[0],
+        departAt: '16:23',
+        arriveAt: '16:33',
+      },
+    ],
+  },
+  'wroclaw',
+  new Date('2026-10-19T14:00:00Z'),
+);
+assert.equal(formatShareTime(walkBeforeDepart.departure), '16:21');
+assert.equal(formatShareTime(walkBeforeDepart.arrival), '16:35');
+assert.equal(walkBeforeDepart.arrival - walkBeforeDepart.departure, 14);
 assert.equal(
   createSharedConnection(
     { ...connection, departureSec: 86400 + 86100 },
@@ -202,6 +235,7 @@ assert.equal(sharedTripPath(url.href), `/shared?trip=${urlToken}`);
 for (const link of [
   `https://kilometr.app/t#${encoded}`,
   `https://kilometr.app/#t=${encoded}`,
+  `https://web.kilometr.app/shared?trip=${encoded}`,
   `kilometr://shared?trip=${encoded}`,
   `kilometr://t#${encoded}`,
   `/shared?trip=${encoded}`,
@@ -330,3 +364,88 @@ assert.equal(
 console.log(
   'Geometria: kodowanie, wycinanie kierunkowe, walidacja i odtworzenie z linku offline OK.',
 );
+
+// Realistyczna trasa z 7-cyfrowymi współrzędnymi GTFS, numerycznymi ID i przesiadką:
+// sprawdzamy kompaktowość v2 oraz wierność dekodowania.
+const multiLegConn: Connection = {
+  id: 'multi',
+  fromTitle: 'Pl. Grunwaldzki',
+  toTitle: 'Dworzec Główny',
+  departureSec: 14 * 3600 + 12 * 60,
+  arrivalSec: 14 * 3600 + 38 * 60,
+  departInMin: 0,
+  departAt: '14:12',
+  arriveAt: '14:38',
+  durationMin: 26,
+  transfers: 1,
+  delayMin: 0,
+  live: false,
+  legs: [
+    {
+      id: 'leg-0',
+      mode: 'tram',
+      line: '4',
+      direction: 'Oporów',
+      fromStop: 'Pl. Grunwaldzki',
+      toStop: 'Galeria Dominikańska',
+      fromStopId: '10542',
+      toStopId: '10588',
+      tripId: '3_17843922',
+      departAt: '14:12',
+      arriveAt: '14:21',
+      scheduledDepartureSec: 14 * 3600 + 12 * 60,
+      scheduledArrivalSec: 14 * 3600 + 21 * 60,
+      stopsCount: 4,
+      fromLat: 51.1112345,
+      fromLon: 17.0604567,
+      toLat: 51.1084321,
+      toLon: 17.0397654,
+      live: false,
+    },
+    {
+      id: 'leg-1',
+      mode: 'train',
+      line: 'KD D4',
+      direction: 'Dworzec Główny',
+      fromStop: 'Galeria Dominikańska',
+      toStop: 'Dworzec Główny',
+      fromStopId: 'pl:5100069',
+      toStopId: 'pl:5100028',
+      tripId: 'pl:69214',
+      platformCode: '3',
+      trackCode: '2',
+      departAt: '14:26',
+      arriveAt: '14:38',
+      scheduledDepartureSec: 14 * 3600 + 24 * 60,
+      scheduledArrivalSec: 14 * 3600 + 36 * 60,
+      stopsCount: 2,
+      fromLat: 51.1084321,
+      fromLon: 17.0397654,
+      toLat: 51.0987654,
+      toLon: 17.0365432,
+      live: true,
+    },
+  ],
+};
+const multiJourney = createSharedConnection(
+  multiLegConn,
+  'wroclaw',
+  new Date('2026-10-19T10:00:00Z'),
+);
+assert.equal(multiJourney.legs[0].scheduledDeparture, undefined);
+assert.equal(multiJourney.legs[1].scheduledDeparture, 14 * 60 + 24);
+const shortUrl = buildShareUrl(multiJourney, 'pl');
+const decodedMulti = decodeSharedConnection(new URL(shortUrl).hash.slice(1));
+assert.ok(decodedMulti);
+assert.equal(decodedMulti.legs[0].board, '10542');
+assert.equal(decodedMulti.legs[0].trip, '3_17843922');
+assert.equal(decodedMulti.legs[1].board, 'pl:5100069');
+assert.equal(decodedMulti.legs[1].trip, 'pl:69214');
+assert.equal(decodedMulti.legs[1].direction, 'Dworzec Główny');
+assert.equal(decodedMulti.legs[1].platform, '3');
+assert.equal(decodedMulti.legs[1].track, '2');
+assert.equal(decodedMulti.legs[1].scheduledDeparture, 14 * 60 + 24);
+assert.ok(Math.abs((decodedMulti.legs[0].fromLat ?? 0) - 51.1112345) < 0.00002);
+assert.ok(Math.abs((decodedMulti.legs[1].fromLat ?? 0) - 51.1084321) < 0.00002);
+assert.ok(shortUrl.length < 240, `URL v2 za długi: ${shortUrl.length} znaków (${shortUrl})`);
+console.log(`Format v2: długość linku 2-odcinkowego = ${shortUrl.length} znaków OK.`);

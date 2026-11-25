@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -18,7 +18,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { GripVertical, MapPin, Pencil, Plus, Trash2, X } from './icons';
 import { elev, scheme, shape, type } from '../theme/tokens';
+import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import { useStrings } from '../i18n';
 import type { SavedPlace } from '../types/models';
 import { placeIconTone } from '../services/placeIcons';
@@ -271,7 +273,11 @@ export function ManagePlacesSheet({
   const [dragId, setDragId] = useState<string | null>(null);
   const s = useStrings();
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
+  const webLayout = useWebLayout();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const desktopHeight = Math.min(windowHeight - 96, 680);
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 560, desktopHeight);
+  useEscapeKey(true, () => sheetRef.current?.close());
 
   const orderRef = useRef(order);
   orderRef.current = order;
@@ -285,7 +291,15 @@ export function ManagePlacesSheet({
   const listWrapRef = useRef<View>(null);
   const reorderRef = useRef(onReorderPlaces);
   reorderRef.current = onReorderPlaces;
-  const snapPoints = useMemo(() => (fontScale > 1.3 ? ['96%'] : ['78%', '94%']), [fontScale]);
+  const snapPoints = useMemo(
+    () =>
+      webLayout.isMedium
+        ? [desktopHeight]
+        : fontScale > 1.3
+          ? ['96%']
+          : ['78%', '94%'],
+    [desktopHeight, fontScale, webLayout.isMedium],
+  );
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -299,13 +313,7 @@ export function ManagePlacesSheet({
     [s.common.close],
   );
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      sheetRef.current?.close();
-      return true;
-    });
-    return () => sub.remove();
-  }, []);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose);
 
   // Sprzątanie po karcie: sesja przeciągania nie może zostawić intervalu.
   useEffect(() => {
@@ -496,12 +504,16 @@ export function ManagePlacesSheet({
       snapPoints={snapPoints}
       animationConfigs={animationConfigs}
       topInset={insets.top}
-      bottomInset={insets.bottom}
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
-      enablePanDownToClose
+      enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onClose}
       backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}
       handleIndicatorStyle={styles.handle}
     >
       <View style={styles.container} accessibilityViewIsModal>

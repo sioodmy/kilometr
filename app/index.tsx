@@ -48,6 +48,7 @@ import {
   findNearbyLiveVehicles,
 } from '../src/services/onboardDetector';
 import { gtfsStore } from '../src/services/routing/store';
+import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
 import { isIntercityRouteQuery } from '../src/services/api';
@@ -172,6 +173,7 @@ type RouteOrigin = { id?: string; title: string; lat: number; lon: number; custo
 export default function HomeScreen() {
   const s = useStrings();
   const router = useRouter();
+  const webLayout = useWebLayout();
   const { cityId, setCity } = useActiveCity();
   const cityGen = s.city.gen(cityId);
   const GPS_ITEM: Suggestion = useMemo(
@@ -1769,12 +1771,108 @@ export default function HomeScreen() {
     [currentCoords, locTitle, applySmart, refreshPlaces, refreshSavedRoutes, requestSmart],
   );
 
+  const gpsBadges =
+    (gpsDownloadCityId && !isManualCitySelectedInSession()) || gpsOutsideAll ? (
+      <>
+        {gpsDownloadCityId && !isManualCitySelectedInSession() && (
+          <SpringPressable
+            style={styles.gpsDownloadPill}
+            onPress={() => void handleGpsCityDownload(gpsDownloadCityId)}
+            disabled={switchingCityId === gpsDownloadCityId}
+            accessibilityRole="button"
+            accessibilityLabel={s.home.downloadCityTimetableA11y(s.city.gen(gpsDownloadCityId))}
+            accessibilityState={{ busy: switchingCityId === gpsDownloadCityId }}
+            hitSlop={6}
+            scaleDelta={0.03}
+          >
+            <Download size={13} color={scheme.onSecondaryContainer} />
+            <Text style={styles.gpsDownloadText} numberOfLines={1}>
+              {s.city.name(gpsDownloadCityId)}
+            </Text>
+          </SpringPressable>
+        )}
+        {gpsOutsideAll && (
+          <View style={styles.outsideAreaPill}>
+            <Text style={styles.outsideArea} numberOfLines={1}>
+              {s.home.outsideAreaShort}
+            </Text>
+          </View>
+        )}
+      </>
+    ) : null;
+
+  const thumbBarProps = {
+    onOpenSearch: () => {
+      pendingDestinationRef.current = null;
+      setReturnToDestinationAfterStart(false);
+      setQuery('');
+      setSheetMode('destination');
+    },
+    startTitle: locTitle,
+    isCustomStart,
+    onOpenStart: () => {
+      pendingDestinationRef.current = null;
+      setReturnToDestinationAfterStart(false);
+      setQuery('');
+      setSheetMode('start');
+    },
+    onResetStart: resetToGps,
+    gpsUnsupported,
+    chips: dockChips,
+    downloadProgress:
+      dataStatus.state === 'downloading' || dataStatus.state === 'importing'
+        ? dataStatus.progress
+        : null,
+    downloadStep: dataStatus.state === 'importing' ? dataStatus.step : null,
+  };
+
+  const recentContent =
+    smartOrdered.length === 0 && smartReady ? (
+      <View style={styles.emptyCard}>
+        <View style={styles.emptyIcon}>
+          <History size={22} color={scheme.onSecondaryContainer} />
+        </View>
+        <View style={styles.emptyText}>
+          <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
+          <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
+        </View>
+      </View>
+    ) : (
+      <SmartHistoryList
+        items={smartOrdered}
+        departures={liveDepartures}
+        lineBadges={firstLegs}
+        onSelect={goToRoutes}
+        onOpenConnection={goToConnection}
+        icons={smartIcons}
+        hideHeader={true}
+      />
+    );
+
+  const savedRoutesContent = (
+    <SavedRoutesList
+      routes={orderedSavedRoutes}
+      activeId={trackedConnId}
+      ticketIds={ticketIds}
+      onSelect={handleSelectSavedRoute}
+      onRemove={handleRemoveSavedRoute}
+      onOpenTicket={handleOpenSavedTicket}
+      onUnpin={handleUnpinSavedRoute}
+    />
+  );
+
   return (
     <GestureDetector gesture={pullGesture}>
       <View style={styles.root}>
         <SafeAreaView style={styles.safe} edges={['top']}>
           <ScrollView
-            contentContainerStyle={styles.body}
+            contentContainerStyle={[
+              styles.body,
+              webLayout.isMedium && [
+                styles.bodyDesktop,
+                { paddingHorizontal: webLayout.isDesktop ? 32 : 24 },
+              ],
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
@@ -1798,115 +1896,100 @@ export default function HomeScreen() {
                 onActivate={() => openLastTrip(false)}
               />
             )}
-            <View style={styles.topBar}>
-              <View style={styles.cityContextWrap}>
-                <SpringPressable
-                  style={styles.cityPill}
-                  onPress={() => setCitySheetOpen(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
-                  accessibilityHint={s.city.settingsHint}
-                  accessibilityState={{ busy: switchingCity }}
-                  hitSlop={8}
-                  scaleDelta={0.03}
-                >
-                  <View style={styles.cityPinIcon}>
-                    {switchingCity ? (
-                      <ActivityIndicator size="small" color={scheme.onPrimaryContainer} />
-                    ) : (
-                      <MapPin size={15} color={scheme.onPrimaryContainer} />
-                    )}
-                  </View>
-                  <Text style={styles.cityName} numberOfLines={1}>
-                    {s.city.name(cityId)}
-                  </Text>
-                  <ChevronDown size={16} color={scheme.onSurfaceVariant} />
-                </SpringPressable>
-                {gpsDownloadCityId && !isManualCitySelectedInSession() && (
+            {!webLayout.isMedium && (
+              <View style={styles.topBar}>
+                <View style={styles.cityContextWrap}>
                   <SpringPressable
-                    style={styles.gpsDownloadPill}
-                    onPress={() => void handleGpsCityDownload(gpsDownloadCityId)}
-                    disabled={switchingCityId === gpsDownloadCityId}
+                    style={styles.cityPill}
+                    onPress={() => setCitySheetOpen(true)}
                     accessibilityRole="button"
-                    accessibilityLabel={s.home.downloadCityTimetableA11y(
-                      s.city.gen(gpsDownloadCityId),
-                    )}
-                    accessibilityState={{ busy: switchingCityId === gpsDownloadCityId }}
-                    hitSlop={6}
+                    accessibilityLabel={`${s.city.name(cityId)}, ${s.city.changeAction}`}
+                    accessibilityHint={s.city.settingsHint}
+                    accessibilityState={{ busy: switchingCity }}
+                    hitSlop={8}
                     scaleDelta={0.03}
                   >
-                    <Download size={13} color={scheme.onSecondaryContainer} />
-                    <Text style={styles.gpsDownloadText} numberOfLines={1}>
-                      {s.city.name(gpsDownloadCityId)}
+                    <View style={styles.cityPinIcon}>
+                      {switchingCity ? (
+                        <ActivityIndicator size="small" color={scheme.onPrimaryContainer} />
+                      ) : (
+                        <MapPin size={15} color={scheme.onPrimaryContainer} />
+                      )}
+                    </View>
+                    <Text style={styles.cityName} numberOfLines={1}>
+                      {s.city.name(cityId)}
                     </Text>
+                    <ChevronDown size={16} color={scheme.onSurfaceVariant} />
                   </SpringPressable>
-                )}
-                {gpsOutsideAll && (
-                  <View style={styles.outsideAreaPill}>
-                    <Text style={styles.outsideArea} numberOfLines={1}>
-                      {s.home.outsideAreaShort}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.topActions}>
-                {getCity(cityId).features.news && (
+                  {gpsBadges}
+                </View>
+                <View style={styles.topActions}>
+                  {getCity(cityId).features.news && (
+                    <SpringPressable
+                      style={[styles.iconBtn, styles.iconBtnStart, newsAlert && styles.iconBtnAlert]}
+                      hitSlop={8}
+                      onPress={() => {
+                        setNewsAlert(false);
+                        void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
+                          markNewsSeen(),
+                        );
+                        router.push('/news');
+                      }}
+                      accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                      accessibilityRole="button"
+                      scaleDelta={0.05}
+                    >
+                      <Bell
+                        size={20}
+                        color={newsAlert ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
+                      />
+                      {newsAlert && (
+                        <View style={styles.alertBadge}>
+                          <Text style={styles.alertMark}>!</Text>
+                        </View>
+                      )}
+                    </SpringPressable>
+                  )}
                   <SpringPressable
-                    style={[styles.iconBtn, styles.iconBtnStart, newsAlert && styles.iconBtnAlert]}
-                    hitSlop={8}
-                    onPress={() => {
-                      setNewsAlert(false);
-                      void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
-                        markNewsSeen(),
-                      );
-                      router.push('/news');
-                    }}
-                    accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
+                    style={[
+                      styles.iconBtn,
+                      !getCity(cityId).features.news ? styles.iconBtnStart : styles.iconBtnMid,
+                    ]}
+                    onPress={() =>
+                      router.push({ pathname: '/live-map', params: { returnTo: 'home' } })
+                    }
                     accessibilityRole="button"
+                    accessibilityLabel={s.home.liveMapA11y}
                     scaleDelta={0.05}
                   >
-                    <Bell
-                      size={20}
-                      color={newsAlert ? scheme.onPrimaryContainer : scheme.onSurfaceVariant}
-                    />
-                    {newsAlert && (
-                      <View style={styles.alertBadge}>
-                        <Text style={styles.alertMark}>!</Text>
-                      </View>
-                    )}
+                    <MapPinned size={20} color={scheme.onSurfaceVariant} />
                   </SpringPressable>
-                )}
-                <SpringPressable
-                  style={[
-                    styles.iconBtn,
-                    !getCity(cityId).features.news ? styles.iconBtnStart : styles.iconBtnMid,
-                  ]}
-                  onPress={() =>
-                    router.push({ pathname: '/live-map', params: { returnTo: 'home' } })
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={s.home.liveMapA11y}
-                  scaleDelta={0.05}
-                >
-                  <MapPinned size={20} color={scheme.onSurfaceVariant} />
-                </SpringPressable>
-                <SpringPressable
-                  style={[styles.iconBtn, styles.iconBtnEnd]}
-                  onPress={() => router.push('/settings')}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.settings.title}
-                  scaleDelta={0.05}
-                >
-                  <Settings2 size={20} color={scheme.onSurfaceVariant} />
-                </SpringPressable>
+                  <SpringPressable
+                    style={[styles.iconBtn, styles.iconBtnEnd]}
+                    onPress={() => router.push('/settings')}
+                    accessibilityRole="button"
+                    accessibilityLabel={s.settings.title}
+                    scaleDelta={0.05}
+                  >
+                    <Settings2 size={20} color={scheme.onSurfaceVariant} />
+                  </SpringPressable>
+                </View>
               </View>
-            </View>
+            )}
 
-            <View style={styles.heroBlock}>
-              <Text style={styles.headerTitle} accessibilityRole="header">
+            <View style={[styles.heroBlock, webLayout.isMedium && styles.heroBlockDesktop]}>
+              <Text
+                style={[styles.headerTitle, webLayout.isDesktop && styles.headerTitleDesktop]}
+                accessibilityRole="header"
+              >
                 {s.home.title}
               </Text>
+              {webLayout.isMedium && gpsBadges && (
+                <View style={styles.desktopGpsBadges}>{gpsBadges}</View>
+              )}
             </View>
+
+            {webLayout.isMedium && <HomeThumbBar {...thumbBarProps} variant="planner" />}
 
             {onboardCandidates.length > 0 && !boardedOrigin && (
               <Animated.View
@@ -2027,163 +2110,141 @@ export default function HomeScreen() {
                 onSelect={handleSelectSavedPlace}
                 onAdd={handleAddSavedPlace}
                 onEdit={handleEditSavedPlace}
+                desktopGrid={webLayout.isMedium}
               />
             </View>
 
             <View style={styles.sectionSpacer} />
 
-            {/* M3 Expressive Segmented Switcher: Ostatnie połączenia / Twoje trasy */}
-            <View
-              style={styles.tabContainer}
-              accessibilityRole="tablist"
-              onLayout={(e) => setTabBarWidth(e.nativeEvent.layout.width)}
-            >
-              <Animated.View style={[styles.tabPill, tabPillStyle]} pointerEvents="none" />
-              <SpringPressable
-                onPress={() => handleTabSwitch('recent')}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: homeTab === 'recent' }}
-                accessibilityLabel={s.home.tabRecent}
-                scaleDelta={0.02}
-                style={styles.tabBtn}
-              >
-                <History
-                  size={17}
-                  color={
-                    homeTab === 'recent' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
-                  }
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    homeTab === 'recent' ? styles.tabLabelActive : styles.tabLabelInactive,
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                >
-                  {s.home.tabRecent}
-                </Text>
-              </SpringPressable>
-
-              <SpringPressable
-                onPress={() => handleTabSwitch('saved')}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: homeTab === 'saved' }}
-                accessibilityLabel={s.home.tabSaved}
-                scaleDelta={0.02}
-                style={styles.tabBtn}
-              >
-                <MapPinned
-                  size={17}
-                  color={
-                    homeTab === 'saved' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
-                  }
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                >
-                  {s.home.tabSaved}
-                </Text>
-                {orderedSavedRoutes.length > 0 && (
-                  <View
-                    style={[
-                      styles.tabCountBadge,
-                      homeTab === 'saved' && styles.tabCountBadgeActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tabCountText,
-                        homeTab === 'saved' && styles.tabCountTextActive,
-                      ]}
-                    >
-                      {orderedSavedRoutes.length}
+            {webLayout.isWide ? (
+              <View style={styles.wideColumns}>
+                <View style={styles.wideColLeft}>
+                  <View style={styles.wideColHeader}>
+                    <History size={18} color={scheme.primary} />
+                    <Text style={styles.wideColTitle} accessibilityRole="header">
+                      {s.home.tabRecent}
                     </Text>
                   </View>
-                )}
-              </SpringPressable>
-            </View>
+                  {recentContent}
+                </View>
 
-            <Animated.View
-              key={homeTab}
-              entering={reduceMotion ? undefined : FadeIn.duration(160)}
-              exiting={reduceMotion ? undefined : FadeOut.duration(90)}
-            >
-              {homeTab === 'recent' ? (
-                smartOrdered.length === 0 && smartReady ? (
-                  <View style={styles.emptyCard}>
-                    <View style={styles.emptyIcon}>
-                      <History size={22} color={scheme.onSecondaryContainer} />
-                    </View>
-                    <View style={styles.emptyText}>
-                      <Text style={styles.emptyTitle}>{s.home.historyEmptyTitle}</Text>
-                      <Text style={styles.emptyBody}>{s.home.historyEmptyBody}</Text>
-                    </View>
+                <View style={styles.wideColRight}>
+                  <View style={styles.wideColHeader}>
+                    <MapPinned size={18} color={scheme.primary} />
+                    <Text style={styles.wideColTitle} accessibilityRole="header">
+                      {s.home.tabSaved}
+                    </Text>
+                    {orderedSavedRoutes.length > 0 && (
+                      <View style={styles.tabCountBadge}>
+                        <Text style={styles.tabCountText}>{orderedSavedRoutes.length}</Text>
+                      </View>
+                    )}
                   </View>
-                ) : (
-                  <SmartHistoryList
-                    items={smartOrdered}
-                    departures={liveDepartures}
-                    lineBadges={firstLegs}
-                    onSelect={goToRoutes}
-                    onOpenConnection={goToConnection}
-                    icons={smartIcons}
-                    hideHeader={true}
-                  />
-                )
-              ) : (
-                <SavedRoutesList
-                  routes={orderedSavedRoutes}
-                  activeId={trackedConnId}
-                  ticketIds={ticketIds}
-                  onSelect={handleSelectSavedRoute}
-                  onRemove={handleRemoveSavedRoute}
-                  onOpenTicket={handleOpenSavedTicket}
-                  onUnpin={handleUnpinSavedRoute}
-                />
-              )}
-            </Animated.View>
+                  {savedRoutesContent}
+                </View>
+              </View>
+            ) : (
+              <>
+                {/* M3 Expressive Segmented Switcher: Ostatnie połączenia / Twoje trasy */}
+                <View
+                  style={styles.tabContainer}
+                  accessibilityRole="tablist"
+                  onLayout={(e) => setTabBarWidth(e.nativeEvent.layout.width)}
+                >
+                  <Animated.View style={[styles.tabPill, tabPillStyle]} pointerEvents="none" />
+                  <SpringPressable
+                    onPress={() => handleTabSwitch('recent')}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: homeTab === 'recent' }}
+                    accessibilityLabel={s.home.tabRecent}
+                    scaleDelta={0.02}
+                    style={styles.tabBtn}
+                  >
+                    <History
+                      size={17}
+                      color={
+                        homeTab === 'recent' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.tabLabel,
+                        homeTab === 'recent' ? styles.tabLabelActive : styles.tabLabelInactive,
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
+                    >
+                      {s.home.tabRecent}
+                    </Text>
+                  </SpringPressable>
+
+                  <SpringPressable
+                    onPress={() => handleTabSwitch('saved')}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: homeTab === 'saved' }}
+                    accessibilityLabel={s.home.tabSaved}
+                    scaleDelta={0.02}
+                    style={styles.tabBtn}
+                  >
+                    <MapPinned
+                      size={17}
+                      color={
+                        homeTab === 'saved' ? scheme.onPrimaryContainer : scheme.onSurfaceVariant
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.tabLabel,
+                        homeTab === 'saved' ? styles.tabLabelActive : styles.tabLabelInactive,
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
+                    >
+                      {s.home.tabSaved}
+                    </Text>
+                    {orderedSavedRoutes.length > 0 && (
+                      <View
+                        style={[
+                          styles.tabCountBadge,
+                          homeTab === 'saved' && styles.tabCountBadgeActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.tabCountText,
+                            homeTab === 'saved' && styles.tabCountTextActive,
+                          ]}
+                        >
+                          {orderedSavedRoutes.length}
+                        </Text>
+                      </View>
+                    )}
+                  </SpringPressable>
+                </View>
+
+                <Animated.View
+                  key={homeTab}
+                  entering={reduceMotion ? undefined : FadeIn.duration(160)}
+                  exiting={reduceMotion ? undefined : FadeOut.duration(90)}
+                >
+                  {homeTab === 'recent' ? recentContent : savedRoutesContent}
+                </Animated.View>
+              </>
+            )}
           </ScrollView>
         </SafeAreaView>
 
-        <View
-          pointerEvents={sheetsOpen ? 'none' : 'auto'}
-          accessibilityElementsHidden={sheetsOpen}
-          importantForAccessibility={sheetsOpen ? 'no-hide-descendants' : 'auto'}
-        >
-          <HomeThumbBar
-            onOpenSearch={() => {
-              pendingDestinationRef.current = null;
-              setReturnToDestinationAfterStart(false);
-              setQuery('');
-              setSheetMode('destination');
-            }}
-            startTitle={locTitle}
-            isCustomStart={isCustomStart}
-            onOpenStart={() => {
-              pendingDestinationRef.current = null;
-              setReturnToDestinationAfterStart(false);
-              setQuery('');
-              setSheetMode('start');
-            }}
-            onResetStart={resetToGps}
-            gpsUnsupported={gpsUnsupported}
-            chips={dockChips}
-            downloadProgress={
-              dataStatus.state === 'downloading' || dataStatus.state === 'importing'
-                ? dataStatus.progress
-                : null
-            }
-            downloadStep={dataStatus.state === 'importing' ? dataStatus.step : null}
-          />
-        </View>
+        {!webLayout.isMedium && (
+          <View
+            pointerEvents={sheetsOpen ? 'none' : 'auto'}
+            accessibilityElementsHidden={sheetsOpen}
+            importantForAccessibility={sheetsOpen ? 'no-hide-descendants' : 'auto'}
+          >
+            <HomeThumbBar {...thumbBarProps} />
+          </View>
+        )}
 
         {sheetMode && (
           <SearchSheet
@@ -2333,6 +2394,13 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: scheme.surface },
   safe: { flex: 1 },
   body: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 28, flexGrow: 1 },
+  bodyDesktop: {
+    width: '100%',
+    maxWidth: 1120,
+    alignSelf: 'center',
+    paddingTop: 28,
+    paddingBottom: 40,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2438,12 +2506,30 @@ const styles = StyleSheet.create({
   heroBlock: {
     marginBottom: 4,
   },
+  heroBlockDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 4,
+  },
+  desktopGpsBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 36,
     lineHeight: 42,
     fontWeight: '800',
     color: scheme.onSurface,
     letterSpacing: -1.2,
+  },
+  headerTitleDesktop: {
+    fontSize: 40,
+    lineHeight: 46,
   },
   onboardCard: {
     backgroundColor: scheme.surfaceContainer,
@@ -2603,6 +2689,34 @@ const styles = StyleSheet.create({
   },
   savedSection: { marginTop: 18 },
   sectionSpacer: { height: 22 },
+  wideColumns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 24,
+  },
+  wideColLeft: {
+    flex: 1.15,
+    minWidth: 0,
+    gap: 12,
+  },
+  wideColRight: {
+    flex: 0.85,
+    minWidth: 0,
+    gap: 12,
+  },
+  wideColHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 32,
+  },
+  wideColTitle: {
+    ...type.titleMedium,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: scheme.onSurface,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -17,17 +17,21 @@ const spring = {
 };
 
 const RollingDigit = memo(function RollingDigit({
+  initialFrom,
   value,
   direction,
   style,
 }: {
+  initialFrom: string;
   value: string;
   direction: number;
   style: StyleProp<TextStyle>;
 }) {
-  const [pair, setPair] = useState({ from: value, to: value, direction });
-  const digitHeight = useSharedValue(0);
-  const progress = useSharedValue(1);
+  const [pair, setPair] = useState(() => ({ from: initialFrom, to: value, direction }));
+  const flatStyle = StyleSheet.flatten(style);
+  const initialHeight = flatStyle?.lineHeight ?? flatStyle?.fontSize ?? 0;
+  const digitHeight = useSharedValue(initialHeight);
+  const progress = useSharedValue(initialFrom === value ? 1 : 0);
 
   useLayoutEffect(() => {
     setPair((prev) => {
@@ -62,38 +66,72 @@ const RollingDigit = memo(function RollingDigit({
     <View style={styles.digit}>
       <Text
         style={[style, styles.measure]}
+        selectable={false}
         onLayout={(event) => {
           digitHeight.value = event.nativeEvent.layout.height;
         }}
       >
         0
       </Text>
-      <Animated.Text style={[style, styles.layer, outgoing]}>{pair.from}</Animated.Text>
-      <Animated.Text style={[style, styles.layer, incoming]}>{pair.to}</Animated.Text>
+      <Animated.Text style={[style, styles.layer, outgoing]} selectable={false}>
+        {pair.from}
+      </Animated.Text>
+      <Animated.Text style={[style, styles.layer, incoming]} selectable={false}>
+        {pair.to}
+      </Animated.Text>
     </View>
   );
 });
 
 export function RollingTime({ value, style }: { value: string; style: StyleProp<TextStyle> }) {
   const [previous, setPrevious] = useState(value);
+  const [animated, setAnimated] = useState(false);
+
+  if (value !== previous && !animated) {
+    setAnimated(true);
+  }
+
+  useLayoutEffect(() => {
+    if (previous !== value) setPrevious(value);
+  }, [previous, value]);
+
+  // Na pierwszym renderze unikamy tworzenia kilkunastu workletów i warstw Animated.Text
+  // dla niezmienionej godziny; animacja włącza się dopiero przy faktycznej zmianie wartości.
+  if (!animated && value === previous) {
+    return (
+      <View accessible accessibilityLabel={value} style={styles.time}>
+        <Text style={style} selectable={false}>
+          {value}
+        </Text>
+      </View>
+    );
+  }
+
   const delta = timeStringToSeconds(value) - timeStringToSeconds(previous);
   const direction =
     (delta > 43200 ? delta - 86400 : delta < -43200 ? delta + 86400 : delta) < 0 ? -1 : 1;
-  useLayoutEffect(() => setPrevious(value), [value]);
 
   return (
     <View accessible accessibilityLabel={value} style={styles.time}>
       <View
+        aria-hidden
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
         style={styles.time}
       >
         {Array.from(value, (character, index) =>
-          character === ':' ? (            <Text key={index} style={style}>
+          character === ':' ? (
+            <Text key={index} style={style}>
               {character}
             </Text>
           ) : (
-            <RollingDigit key={index} value={character} direction={direction} style={style} />
+            <RollingDigit
+              key={index}
+              initialFrom={previous[index] ?? character}
+              value={character}
+              direction={direction}
+              style={style}
+            />
           ),
         )}
       </View>

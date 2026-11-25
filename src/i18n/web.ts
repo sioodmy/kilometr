@@ -1,32 +1,77 @@
 import { pl } from './landing/pl';
-import { en } from './landing/en';
-import { de } from './landing/de';
-import { uk } from './landing/uk';
-import { pl as sharePl } from './share/pl';
-import { en as shareEn } from './share/en';
-import { de as shareDe } from './share/de';
-import { uk as shareUk } from './share/uk';
-import { decodeSharedPayload, extractShareTripToken } from '../sharing/connection';
 
 export type Locale = 'pl' | 'en' | 'de' | 'uk';
-const dictionaries = { pl, en, de, uk };
-const shareDictionaries = { pl: sharePl, en: shareEn, de: shareDe, uk: shareUk };
+type LandingStrings = typeof pl;
+
+const cache: Partial<Record<Locale, LandingStrings>> = { pl };
+const pending = new Map<Locale, Promise<void>>();
+function loadLocale(target: Exclude<Locale, 'pl'>): Promise<LandingStrings> {
+  switch (target) {
+    case 'en':
+      return import('./landing/en').then((m) => m.en);
+    case 'de':
+      return import('./landing/de').then((m) => m.de);
+    case 'uk':
+      return import('./landing/uk').then((m) => m.uk);
+  }
+}
+
 const key = 'kilometr.website.language';
 const listeners = new Set<() => void>();
 let locale: Locale = 'pl';
+
+function isLocale(value: string | null | undefined): value is Locale {
+  return value === 'pl' || value === 'en' || value === 'de' || value === 'uk';
+}
+
+function notify() {
+  listeners.forEach((listener) => listener());
+}
+
+function ensureLocaleLoaded(target: Locale) {
+  if (target === 'pl' || cache[target] || pending.has(target)) return;
+  const task = loadLocale(target)
+    .then((dict) => {
+      cache[target] = dict;
+      if (locale === target) notify();
+    })
+    .catch(() => {})
+    .finally(() => {
+      pending.delete(target);
+    });
+  pending.set(target, task);
+}
 
 export function initWebLocale() {
   let stored: string | null = null;
   try {
     stored = localStorage.getItem(key);
   } catch {}
-  const parsed = extractShareTripToken(window.location.hash);
-  const payloadLocale = parsed.trip ? decodeSharedPayload(parsed.trip)?.locale : undefined;
-  const sharedLocale = parsed.lang ?? payloadLocale ?? null;
-  const preferred = sharedLocale ?? stored ?? navigator.language.split('-')[0];
-  if (preferred === 'pl' || preferred === 'en' || preferred === 'de' || preferred === 'uk')
-    locale = preferred;
+
+  const hash = window.location.hash;
+  const hashLangMatch = hash.match(/(?:^|[#&?])lang=(pl|en|de|uk)(?:&|$)/);
+  const hashLang = hashLangMatch?.[1] ?? null;
+  const preferred = hashLang ?? stored ?? navigator.language.split('-')[0];
+  if (isLocale(preferred)) locale = preferred;
   document.documentElement.lang = locale;
+  ensureLocaleLoaded(locale);
+
+  // Dekoder linków udostępniania ładujemy tylko dla URL-i #t= / #trip, bez ciągnięcia fflate na stronę główną.
+  if (!hashLang && (hash.startsWith('#t=') || hash.startsWith('#trip'))) {
+    void import('../sharing/connection')
+      .then(({ extractShareTripToken, decodeSharedPayload }) => {
+        const parsed = extractShareTripToken(hash);
+        const payloadLocale = parsed.trip ? decodeSharedPayload(parsed.trip)?.locale : undefined;
+        const sharedLocale = parsed.lang ?? payloadLocale;
+        if (isLocale(sharedLocale) && sharedLocale !== locale) {
+          locale = sharedLocale;
+          document.documentElement.lang = locale;
+          ensureLocaleLoaded(locale);
+          notify();
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 export function setWebLocale(next: Locale) {
@@ -35,7 +80,8 @@ export function setWebLocale(next: Locale) {
   try {
     localStorage.setItem(key, next);
   } catch {}
-  listeners.forEach((listener) => listener());
+  ensureLocaleLoaded(next);
+  notify();
 }
 
 export function subscribeWebLocale(listener: () => void) {
@@ -49,10 +95,10 @@ export function getWebLocale(): Locale {
   return locale;
 }
 
-export function getWebStrings() {
-  return dictionaries[locale];
+export function getWebStrings(): LandingStrings {
+  return cache[locale] ?? pl;
 }
 
-export function getWebShareStrings() {
-  return shareDictionaries[locale];
+export function getDefaultWebStrings(): LandingStrings {
+  return pl;
 }

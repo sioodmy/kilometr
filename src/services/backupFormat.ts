@@ -16,6 +16,7 @@ import type { RoutingSettings } from './settings';
 import type { NotificationPreferences } from './notifications/types';
 import type { LocaleSetting } from '../i18n';
 import { isCityId, type CityId } from '../cities';
+import type { JourneyLogEntry, JourneyLogLeg, JourneyLogSource } from './userStatsModel';
 
 /** Wersja schematu. Bump przy zmianie kształtu `BackupData`. */
 export const BACKUP_SCHEMA = 2;
@@ -34,6 +35,7 @@ export interface BackupData {
   places: BackupCitySection<SavedPlace>[];
   savedRoutes: BackupCitySection<SavedRoute>[];
   tripHistory: BackupCitySection<TripHistoryItem>[];
+  journeyLog?: JourneyLogEntry[];
   routingSettings: RoutingSettings | null;
   notificationPrefs: NotificationPreferences | null;
   locale: LocaleSetting | null;
@@ -260,6 +262,52 @@ function readTrip(v: unknown): TripHistoryItem | null {
   };
 }
 
+const JOURNEY_SOURCES: readonly string[] = ['tracked', 'saved', 'viewed'];
+
+function readJourneyLogLeg(v: unknown): JourneyLogLeg | null {
+  if (!isRecord(v)) return null;
+  const mode = str(v.mode);
+  if (!mode || !LEG_MODES.includes(mode)) return null;
+  const distanceM = num(v.distanceM);
+  const durationMin = num(v.durationMin);
+  const stopsCount = num(v.stopsCount);
+  return {
+    mode: mode as Leg['mode'],
+    ...(text(v.line, 24) ? { line: text(v.line, 24)! } : {}),
+    ...(text(v.railAgency, 24) ? { railAgency: text(v.railAgency, 24)! } : {}),
+    distanceM: distanceM !== null && distanceM >= 0 ? Math.round(distanceM) : 0,
+    durationMin: durationMin !== null && durationMin > 0 ? Math.round(durationMin) : 1,
+    stopsCount: stopsCount !== null && stopsCount >= 0 ? Math.round(stopsCount) : 0,
+  };
+}
+
+function readJourneyLogEntry(v: unknown): JourneyLogEntry | null {
+  if (!isRecord(v)) return null;
+  const id = text(v.id, 96);
+  const ts = num(v.ts);
+  const cityId = str(v.cityId);
+  const source = str(v.source);
+  if (!id || ts === null || !cityId || !isCityId(cityId) || !Array.isArray(v.legs)) return null;
+  const legs = v.legs.map(readJourneyLogLeg).filter((l): l is JourneyLogLeg => l !== null);
+  if (legs.length === 0) return null;
+  const durationMin = num(v.durationMin);
+  const distanceM = num(v.distanceM);
+  const walkM = num(v.walkM);
+  const stopsCount = num(v.stopsCount);
+  return {
+    id,
+    ts,
+    cityId,
+    durationMin: durationMin !== null && durationMin > 0 ? Math.round(durationMin) : 1,
+    distanceM: distanceM !== null && distanceM >= 0 ? Math.round(distanceM) : 0,
+    walkM: walkM !== null && walkM >= 0 ? Math.round(walkM) : 0,
+    stopsCount: stopsCount !== null && stopsCount >= 0 ? Math.round(stopsCount) : 0,
+    ...(text(v.destTitle) ? { destTitle: text(v.destTitle)! } : {}),
+    legs,
+    source: (source && JOURNEY_SOURCES.includes(source) ? source : 'viewed') as JourneyLogSource,
+  };
+}
+
 function readRoutingSettings(v: unknown): RoutingSettings | null {
   if (!isRecord(v)) return null;
   return v as unknown as RoutingSettings;
@@ -365,6 +413,12 @@ export function parseBackupFile(raw: string): BackupParseResult {
       data.tripHistory = d.tripHistory
         .map((s) => readCitySection(s, readTrip))
         .filter((s): s is BackupCitySection<TripHistoryItem> => s !== null);
+    }
+    if (Array.isArray(d.journeyLog)) {
+      const log = d.journeyLog
+        .map(readJourneyLogEntry)
+        .filter((e): e is JourneyLogEntry => e !== null);
+      if (log.length > 0) data.journeyLog = log;
     }
   }
   data.routingSettings = readRoutingSettings(d.routingSettings);

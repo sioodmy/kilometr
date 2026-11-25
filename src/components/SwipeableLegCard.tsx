@@ -57,29 +57,52 @@ interface SwipeableLegCardProps {
 /**
  * Opakowuje kartę miejskiej nogi w gest przesunięcia w lewo/prawo (wcześniejszy/późniejszy
  * pasujący kurs) oraz dostępny pasek sterujący z podglądem najbliższych alternatyw.
- * Dla nóg niewymienialnych (np. pociągów) renderuje kartę bez żadnego narzutu.
+ * Dopóki slot nie ma gotowych alternatyw, błędu lub jawnego ładowania, renderuje kartę
+ * bez tworzenia hooków Reanimated ani GestureDetector.
  */
-export const SwipeableLegCard = React.memo(function SwipeableLegCard({
+export const SwipeableLegCard = React.memo(function SwipeableLegCard(
+  props: SwipeableLegCardProps,
+) {
+  const { slot, renderCard } = props;
+  const hasInteractiveSlot = Boolean(
+    slot?.swappable &&
+      (slot.status === 'error' ||
+        slot.loadingDirection !== null ||
+        (slot.status === 'ready' &&
+          (slot.hasEarlier ||
+            slot.hasLater ||
+            slot.canLoadMoreEarlier ||
+            slot.canLoadMoreLater))),
+  );
+  if (!hasInteractiveSlot || !slot) {
+    return <>{renderCard(null)}</>;
+  }
+  return <SwipeableLegCardActive {...props} slot={slot} />;
+});
+
+interface ActiveSwipeableLegCardProps extends Omit<SwipeableLegCardProps, 'slot'> {
+  slot: LegSwapSlotState;
+}
+
+const SwipeableLegCardActive = React.memo(function SwipeableLegCardActive({
   legId,
   slot,
   currentLine,
   onSwap,
   onRetry,
   renderCard,
-}: SwipeableLegCardProps) {
+}: ActiveSwipeableLegCardProps) {
   const t = useStrings();
   const reducedMotion = useReducedMotion();
   const translateX = useSharedValue(0);
   const crossedThreshold = useSharedValue(false);
 
-  const swappable = Boolean(slot?.swappable);
-  const isBusy = slot?.loadingDirection != null;
-  const canGoEarlier = Boolean(slot && (slot.hasEarlier || slot.canLoadMoreEarlier));
-  const canGoLater = Boolean(slot && (slot.hasLater || slot.canLoadMoreLater));
+  const isBusy = slot.loadingDirection != null;
+  const canGoEarlier = Boolean(slot.hasEarlier || slot.canLoadMoreEarlier);
+  const canGoLater = Boolean(slot.hasLater || slot.canLoadMoreLater);
   const gestureEnabled =
     Platform.OS !== 'web' &&
-    swappable &&
-    slot?.status === 'ready' &&
+    slot.status === 'ready' &&
     !isBusy &&
     (canGoEarlier || canGoLater) &&
     onSwap != null;
@@ -120,6 +143,14 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
         .enabled(gestureEnabled)
         .activeOffsetX([-18, 18])
         .failOffsetY([-12, 12])
+        .onTouchesDown((e, stateManager) => {
+          'worklet';
+          const touch = e.allTouches[0];
+          // Lewa krawędź zostaje dla systemowego lub nawigacyjnego gestu wstecz.
+          if (touch && touch.absoluteX < 32) {
+            stateManager.fail();
+          }
+        })
         .onBegin(() => {
           crossedThreshold.value = false;
         })
@@ -226,10 +257,6 @@ export const SwipeableLegCard = React.memo(function SwipeableLegCard({
       },
     ],
   }));
-
-  if (!swappable || !slot) {
-    return <>{renderCard(null)}</>;
-  }
 
   const showError = slot.status === 'error';
   const showBar =

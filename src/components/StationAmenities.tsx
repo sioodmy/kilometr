@@ -39,11 +39,13 @@ export function StationAmenities({
   lat,
   lon,
   showLabel = false,
+  deferLoad = false,
 }: {
   stopId?: string;
   lat?: number;
   lon?: number;
   showLabel?: boolean;
+  deferLoad?: boolean;
 }) {
   const t = useStrings();
   const [keys, setKeys] = useState<StationAmenity[] | null>(
@@ -57,6 +59,7 @@ export function StationAmenities({
       setKeys(cached);
       return;
     }
+    if (deferLoad) return;
     setKeys(null);
     void loadStationAmenities(stopId, lat, lon).then((next) => {
       if (alive) setKeys(next);
@@ -64,7 +67,7 @@ export function StationAmenities({
     return () => {
       alive = false;
     };
-  }, [stopId, lat, lon]);
+  }, [stopId, lat, lon, deferLoad]);
 
   if (!keys || keys.length === 0) return null;
 

@@ -154,7 +154,7 @@ export const en: Strings = {
     forever: 'Forever.',
   },
   closing: {
-    title: 'You deserve more than jakdojade',
+    title: 'See you on the way',
     body: 'Plan journeys and check departures, even offline. Download Kilometr and, if it helps you, support its development.',
     support: 'Support development',
   },
