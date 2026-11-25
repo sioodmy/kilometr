@@ -5,6 +5,7 @@ import {
   AppState,
   BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -673,6 +674,33 @@ export default function OnboardingScreen() {
   const [welcomeGroupHeight, setWelcomeGroupHeight] = useState(276);
   const [compactHeaderHeight, setCompactHeaderHeight] = useState(86);
   const [leaving, setLeaving] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const maxWorkspaceHeightRef = useRef(0);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Edge-to-edge na Androidzie nie zawsze kurczy okna pod klawiaturę, więc
+  // doliczamy jej wysokość do przewijanej treści tylko, gdy layout faktycznie się nie skurczył.
+  const windowShrankByKeyboard =
+    Platform.OS === 'android' &&
+    keyboardHeight > 0 &&
+    maxWorkspaceHeightRef.current - workspaceHeight > keyboardHeight * 0.5;
+  const androidKeyboardInset =
+    Platform.OS === 'android' && keyboardHeight > 0 && !windowShrankByKeyboard
+      ? keyboardHeight
+      : 0;
 
   const bumpPulse = useCallback(() => setPulseKey((k) => k + 1), []);
 
@@ -854,6 +882,17 @@ export default function OnboardingScreen() {
     }, 150);
   }, []);
 
+  // Po wysunięciu klawiatury treść dostaje dolny zapas, więc ponawiamy przewinięcie
+  // aktywnego miejsca, żeby pole i podpowiedzi zostały nad klawiaturą.
+  useEffect(() => {
+    const activeSlot = slots.activeSlot;
+    if (Platform.OS === 'web' || step !== 3 || !activeSlot || keyboardHeight === 0) {
+      return;
+    }
+    const timer = setTimeout(() => scrollSlotIntoView(activeSlot), 60);
+    return () => clearTimeout(timer);
+  }, [keyboardHeight, scrollSlotIntoView, slots.activeSlot, step, workspaceHeight]);
+
   const compactHeaderMeta = useMemo(() => {
     if (step === 1) {
       return { title: s.onboarding.cityTitle, subtitle: s.onboarding.citySubtitleAuto };
@@ -888,7 +927,10 @@ export default function OnboardingScreen() {
           onLayout={(e) => {
             const { width: w, height: h } = e.nativeEvent.layout;
             if (w > 0 && Math.abs(w - workspaceWidth) > 1) setWorkspaceWidth(Math.round(w));
-            if (h > 0 && Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
+            if (h > 0) {
+              if (h > maxWorkspaceHeightRef.current) maxWorkspaceHeightRef.current = h;
+              if (Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
+            }
           }}
         >
           {step === 0 && (
@@ -1220,7 +1262,7 @@ export default function OnboardingScreen() {
                   ref={placesScroll}
                   contentContainerStyle={[
                     st.stepScroll,
-                    { paddingBottom: 180 + webKeyboardInset },
+                    { paddingBottom: 180 + webKeyboardInset + androidKeyboardInset },
                   ]}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
@@ -1237,7 +1279,9 @@ export default function OnboardingScreen() {
                         layout={
                           reduceMotion
                             ? undefined
-                            : LinearTransition.springify().damping(24).stiffness(300)
+                            : LinearTransition.duration(motion.state.duration).easing(
+                                motion.state.easing,
+                              )
                         }
                         style={[st.card, saved && st.cardGranted, open && st.cardFocused]}
                         onLayout={(e) => {
