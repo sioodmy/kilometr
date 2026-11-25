@@ -1,22 +1,36 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Platform,
-  Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Compass, MapPin, RefreshCw } from '../src/components/icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  Bell,
+  BellOff,
+  BellRing,
+  Check,
+  ChevronLeft,
+  Compass,
+  RefreshCw,
+  RouteOff,
+  Share2,
+} from '../src/components/icons';
 import { LegTimeline } from '../src/components/LegTimeline';
 import { MorphingLoader } from '../src/components/MorphingLoader';
 import { getLineColors, mapLineColor } from '../src/components/LineBadge';
 import { SharedJourneyHero } from '../src/components/SharedJourneyHero';
 import { SharedJourneyMapCard } from '../src/components/SharedJourneyMapCard';
+import { SpringPressable } from '../src/components/SpringPressable';
 import { getCity } from '../src/cities';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import type { MapVehicle } from '../src/map/types';
@@ -33,45 +47,10 @@ import {
 import { getNotificationPreferencesSync } from '../src/services/notifications/preferences';
 import { computeTripProgress } from '../src/services/notifications/tripProgress';
 import { buildMapRoute } from '../src/services/routeGeometry';
+import { buildShareUrl, shareMessage } from '../src/sharing/connection';
 import { useSharedJourney } from '../src/sharing/useSharedJourney';
 import { useWebLayout } from '../src/theme/layout';
-import { scheme, shape, type } from '../src/theme/tokens';
-
-function ActionButton({
-  title,
-  onPress,
-  disabled,
-  tonal,
-  icon,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-  tonal?: boolean;
-  icon?: ReactNode;
-}) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: !!disabled }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      style={({ pressed }) => [
-        styles.action,
-        tonal && styles.tonal,
-        focused && styles.focused,
-        pressed && styles.pressed,
-        disabled && styles.disabled,
-      ]}
-    >
-      {icon}
-      <Text style={[styles.actionText, tonal && styles.tonalText]}>{title}</Text>
-    </Pressable>
-  );
-}
+import { elev, scheme, shape, type } from '../src/theme/tokens';
 
 const sharedDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -115,7 +94,13 @@ export default function SharedJourneyScreen() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState(false);
-  const [backFocused, setBackFocused] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2400);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const mapRoute = useMemo(() => {
     if (!base || !sameCity) return null;
@@ -163,7 +148,41 @@ export default function SharedJourneyScreen() {
     return 0;
   }, [match?.vehicle.updatedAt, connection?.live, delayFingerprint]);
 
+  const shareUrl = useMemo(() => {
+    if (!journey) return '';
+    try {
+      return buildShareUrl(journey, getLocaleSync());
+    } catch {
+      return '';
+    }
+  }, [journey]);
+
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
+
+  async function shareForward() {
+    if (!journey || !shareUrl) return;
+    void Haptics.selectionAsync().catch(() => {});
+    const message = `${shareMessage(journey, s.share)}\n${shareUrl}`;
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: s.share.pageTitle, text: message, url: shareUrl });
+          return;
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') return;
+        }
+      }
+      await Clipboard.setStringAsync(shareUrl).catch(() => {});
+      setCopied(true);
+      return;
+    }
+    try {
+      await Share.share({ title: s.share.pageTitle, message });
+    } catch {
+      await Clipboard.setStringAsync(shareUrl).catch(() => {});
+      setCopied(true);
+    }
+  }
 
   async function follow() {
     if (!connection || !journey || busyRef.current) return;
@@ -226,6 +245,7 @@ export default function SharedJourneyScreen() {
       ]);
       return;
     }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (tracked && !following) {
       Alert.alert(s.share.replaceTitle, s.share.replaceBody, [
         { text: s.common.cancel, style: 'cancel' },
@@ -236,221 +256,343 @@ export default function SharedJourneyScreen() {
     }
   }
 
-  const desktopTwoCol = webLayout.isDesktop && Boolean(journey && connection && sameCity);
+  function switchCity() {
+    if (!journey || busyRef.current) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    busyRef.current = true;
+    setBusy(true);
+    setError(false);
+    void setCity(journey.city)
+      .then(() => {
+        void ensureActiveCityTimetable();
+      })
+      .catch(() => setError(true))
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(false);
+      });
+  }
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View
-        style={[
-          styles.header,
-          desktopTwoCol ? styles.headerDesktop : webLayout.isMedium && styles.headerMedium,
-        ]}
+  const desktopTwoCol = webLayout.isDesktop && Boolean(journey && connection && sameCity);
+  const leftColWidth = webLayout.isWide ? 520 : 440;
+  const heroAvailableWidth = desktopTwoCol
+    ? leftColWidth
+    : webLayout.isMedium
+      ? Math.min(740, webLayout.contentWidth) - 28
+      : undefined;
+
+  const showFollowCard =
+    Boolean(journey && connection && sameCity) && (!ended || following) && Platform.OS !== 'web';
+  const showFollowAction = Boolean(journey && connection && sameCity) && (!ended || following);
+
+  const headerContent = (
+    <>
+      <SpringPressable
+        onPress={goBack}
+        scaleDelta={0.06}
+        style={styles.backBtn}
+        accessibilityRole="button"
+        accessibilityLabel={s.map.backA11y}
       >
-        <Pressable
-          onPress={goBack}
-          onFocus={() => setBackFocused(true)}
-          onBlur={() => setBackFocused(false)}
-          style={({ pressed }) => [
-            styles.back,
-            backFocused && styles.focused,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={s.map.backA11y}
+        <ChevronLeft size={22} color={scheme.onSurface} />
+      </SpringPressable>
+
+      <View style={styles.headerText}>
+        <Text
+          style={styles.headerTitle}
+          accessibilityRole="header"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
         >
-          <ChevronLeft size={24} color={scheme.onSurface} />
-        </Pressable>
-        <View style={styles.headerText}>
-          <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
-            {s.share.pageTitle}
+          {s.share.pageTitle}
+        </Text>
+        {journey && (
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {s.city.name(journey.city)} {'\u00b7'} {formattedDate}
           </Text>
-          {journey && (
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {s.city.name(journey.city)} · {formattedDate}
-            </Text>
-          )}
-        </View>
+        )}
       </View>
 
-      {!journey || !connection ? (
-        <View style={styles.emptyWrap}>
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIconBadge}>
-              <MapPin size={28} color={scheme.onPrimaryContainer} />
-            </View>
-            <Text style={styles.emptyTitle} accessibilityRole="header">
-              {s.share.invalidTitle}
-            </Text>
-            <Text style={styles.emptyBody}>{s.share.invalidBody}</Text>
-            <ActionButton title={s.map.backA11y} onPress={goBack} />
-          </View>
-        </View>
-      ) : desktopTwoCol ? (
-        <View style={styles.desktopSplit}>
-          <ScrollView
-            style={styles.desktopLeftScroll}
-            contentContainerStyle={[
-              styles.desktopLeftContent,
-              { paddingBottom: insets.bottom + 28 },
-            ]}
-            showsVerticalScrollIndicator={false}
-          >
-            <SharedJourneyHero
-              journey={journey}
-              connection={connection}
-              progress={progress}
-              hasVehicle={!!vehicle}
-              pingKey={pingKey}
-              sameCity={sameCity}
-              following={following}
-              followBusy={busy}
-              onFollowPress={requestFollow}
-            />
-
-            <View style={styles.itinerarySection}>
-              <View style={styles.itineraryHeader}>
-                <Text style={styles.itineraryTitle} accessibilityRole="header">
-                  {s.share.itinerary}
-                </Text>
-                {loading && (
-                  <View style={styles.loadingChip} accessibilityLiveRegion="polite">
-                    <MorphingLoader size={16} color={scheme.primary} />
-                    <Text style={styles.loadingText} numberOfLines={1}>
-                      {s.share.loading}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              <LegTimeline legs={connection.legs} observeOnly />
-
-              {failed && (
-                <View style={styles.retryCard}>
-                  <Text style={styles.retryText}>{s.share.stopsUnavailable}</Text>
-                  <ActionButton
-                    title={s.share.retry}
-                    tonal
-                    onPress={retry}
-                    disabled={loading}
-                    icon={<RefreshCw size={18} color={scheme.onSecondaryContainer} />}
-                  />
-                </View>
+      {journey && connection && (
+        <View style={styles.actionCluster}>
+          {shareUrl ? (
+            <SpringPressable
+              onPress={() => void shareForward()}
+              scaleDelta={0.06}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityLabel={copied ? s.share.copied : s.share.share}
+              style={[styles.clusterBtn, copied && styles.clusterBtnActive]}
+              hitSlop={4}
+            >
+              {copied ? (
+                <Check size={19} color={scheme.onPrimaryContainer} />
+              ) : (
+                <Share2 size={19} color={scheme.onSurface} />
               )}
-            </View>
+            </SpringPressable>
+          ) : null}
 
-            {error && (
-              <View style={styles.errorBanner} accessibilityRole="alert">
-                <Text style={styles.errorText}>{s.share.trackError}</Text>
-              </View>
-            )}
-          </ScrollView>
-
-          <View style={styles.desktopRightCol}>
-            <SharedJourneyMapCard
-              mapRoute={mapRoute}
-              vehicle={vehicle}
-              ended={ended}
-              loading={loading}
-              onRetryData={retry}
-            />
-          </View>
+          {showFollowAction && (
+            <SpringPressable
+              onPress={requestFollow}
+              disabled={busy}
+              scaleDelta={0.06}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityState={{
+                selected: following,
+                disabled: Platform.OS === 'web' || busy,
+              }}
+              accessibilityLabel={following ? s.share.following : s.share.follow}
+              style={[
+                styles.clusterBtn,
+                Platform.OS === 'web' && styles.clusterBtnLocked,
+                following && styles.clusterBtnActive,
+              ]}
+              hitSlop={4}
+            >
+              {following ? (
+                <BellRing size={19} color={scheme.onPrimaryContainer} />
+              ) : (
+                <Bell size={19} color={scheme.onSurface} />
+              )}
+            </SpringPressable>
+          )}
         </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <SharedJourneyHero
-            journey={journey}
-            connection={connection}
-            progress={progress}
-            hasVehicle={!!vehicle}
-            pingKey={pingKey}
-            sameCity={sameCity}
-            following={following}
-            followBusy={busy}
-            onFollowPress={requestFollow}
-          />
-
-          {!sameCity ? (
-            <View style={styles.cityCard}>
-              <View style={styles.cityCardHeader}>
-                <View style={styles.cityIconWrap}>
-                  <Compass size={20} color={scheme.onSecondaryContainer} />
-                </View>
-                <Text style={styles.cityCardText}>{s.share.switchCityHint}</Text>
-              </View>
-              <ActionButton
-                title={s.share.switchCity(s.city.name(journey.city))}
-                disabled={busy}
-                onPress={() => {
-                  if (busyRef.current) return;
-                  busyRef.current = true;
-                  setBusy(true);
-                  setError(false);
-                  void setCity(journey.city)
-                    .then(() => {
-                      void ensureActiveCityTimetable();
-                    })
-                    .catch(() => setError(true))
-                    .finally(() => {
-                      busyRef.current = false;
-                      setBusy(false);
-                    });
-                }}
-              />
-            </View>
-          ) : (
-            <>
-              <SharedJourneyMapCard
-                mapRoute={mapRoute}
-                vehicle={vehicle}
-                ended={ended}
-                loading={loading}
-                onRetryData={retry}
-              />
-
-              <View style={styles.itinerarySection}>
-                <View style={styles.itineraryHeader}>
-                  <Text style={styles.itineraryTitle} accessibilityRole="header">
-                    {s.share.itinerary}
-                  </Text>
-                  {loading && (
-                    <View style={styles.loadingChip} accessibilityLiveRegion="polite">
-                      <MorphingLoader size={16} color={scheme.primary} />
-                      <Text style={styles.loadingText} numberOfLines={1}>
-                        {s.share.loading}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                <LegTimeline legs={connection.legs} observeOnly />
-
-                {failed && (
-                  <View style={styles.retryCard}>
-                    <Text style={styles.retryText}>{s.share.stopsUnavailable}</Text>
-                    <ActionButton
-                      title={s.share.retry}
-                      tonal
-                      onPress={retry}
-                      disabled={loading}
-                      icon={<RefreshCw size={18} color={scheme.onSecondaryContainer} />}
-                    />
-                  </View>
-                )}
-              </View>
-            </>
-          )}
-
-          {error && (
-            <View style={styles.errorBanner} accessibilityRole="alert">
-              <Text style={styles.errorText}>{s.share.trackError}</Text>
-            </View>
-          )}
-        </ScrollView>
       )}
-    </SafeAreaView>
+    </>
+  );
+
+  const followCard = showFollowCard ? (
+    <SpringPressable
+      onPress={requestFollow}
+      disabled={busy}
+      scaleDelta={0.015}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: busy, selected: following }}
+      accessibilityLabel={following ? s.share.following : s.share.follow}
+      style={[styles.followCard, following && styles.followCardActive, busy && styles.disabled]}
+    >
+      <View style={[styles.followIconWrap, following && styles.followIconWrapActive]}>
+        {busy ? (
+          <ActivityIndicator
+            size="small"
+            color={following ? scheme.onPrimaryContainer : scheme.onSecondaryContainer}
+          />
+        ) : following ? (
+          <BellRing size={19} color={scheme.onPrimaryContainer} />
+        ) : (
+          <Bell size={19} color={scheme.onSecondaryContainer} />
+        )}
+      </View>
+
+      <View style={styles.followCopy}>
+        <Text style={styles.followTitle} numberOfLines={1}>
+          {following ? s.share.followActiveTitle : s.share.follow}
+        </Text>
+        <Text style={styles.followBody} numberOfLines={2}>
+          {following ? s.share.followActiveHint : s.share.followHint}
+        </Text>
+      </View>
+
+      <View style={[styles.followChip, following && styles.followChipActive]}>
+        {following ? (
+          <BellOff size={15} color={scheme.onSecondaryContainer} />
+        ) : (
+          <Bell size={15} color={scheme.onPrimary} />
+        )}
+        <Text style={[styles.followChipText, following && styles.followChipTextActive]}>
+          {following ? s.share.stopFollowShort : s.share.followShort}
+        </Text>
+      </View>
+    </SpringPressable>
+  ) : null;
+
+  const itineraryBlock = connection ? (
+    <View style={styles.itinerarySection}>
+      <View style={styles.itineraryHeader}>
+        <Text style={styles.itineraryTitle} accessibilityRole="header">
+          {s.share.itinerary}
+        </Text>
+        {loading && (
+          <View style={styles.loadingChip} accessibilityLiveRegion="polite">
+            <MorphingLoader size={15} color={scheme.primary} />
+            <Text style={styles.loadingText} numberOfLines={1}>
+              {s.share.loading}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <LegTimeline legs={connection.legs} observeOnly />
+
+      {failed && (
+        <View style={styles.retryCard}>
+          <Text style={styles.retryText}>{s.share.stopsUnavailable}</Text>
+          <SpringPressable
+            onPress={retry}
+            disabled={loading}
+            haptic="selection"
+            accessibilityRole="button"
+            style={[styles.tonalBtn, loading && styles.disabled]}
+          >
+            <RefreshCw size={17} color={scheme.onSecondaryContainer} />
+            <Text style={styles.tonalBtnText}>{s.share.retry}</Text>
+          </SpringPressable>
+        </View>
+      )}
+    </View>
+  ) : null;
+
+  const errorBanner = error ? (
+    <View style={styles.errorBanner} accessibilityRole="alert">
+      <Text style={styles.errorText}>{s.share.trackError}</Text>
+    </View>
+  ) : null;
+
+  return (
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
+      <View style={[styles.screen, desktopTwoCol && styles.desktopContainer]}>
+        {!journey || !connection ? (
+          <>
+            <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
+              {headerContent}
+            </View>
+            <View style={[styles.emptyWrap, webLayout.isMedium && styles.mediumConstrained]}>
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIconBadge}>
+                  <RouteOff size={26} color={scheme.onSecondaryContainer} />
+                </View>
+                <Text style={styles.emptyTitle} accessibilityRole="header">
+                  {s.share.invalidTitle}
+                </Text>
+                <Text style={styles.emptyBody}>{s.share.invalidBody}</Text>
+                <SpringPressable
+                  onPress={goBack}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  style={styles.primaryBtn}
+                >
+                  <Text style={styles.primaryBtnText}>{s.map.backA11y}</Text>
+                </SpringPressable>
+              </View>
+            </View>
+          </>
+        ) : desktopTwoCol ? (
+          <>
+            <View style={styles.desktopHeader}>{headerContent}</View>
+            <View style={styles.desktopSplit}>
+              <ScrollView
+                style={{ width: leftColWidth, flexGrow: 0, flexShrink: 0 }}
+                contentContainerStyle={[
+                  styles.desktopLeftContent,
+                  { paddingBottom: insets.bottom + 24 },
+                ]}
+                showsVerticalScrollIndicator={false}
+                overScrollMode="never"
+              >
+                <SharedJourneyHero
+                  journey={journey}
+                  connection={connection}
+                  progress={progress}
+                  hasVehicle={!!vehicle}
+                  pingKey={pingKey}
+                  availableWidth={heroAvailableWidth}
+                />
+                {followCard}
+                {itineraryBlock}
+                {errorBanner}
+              </ScrollView>
+
+              <View style={styles.desktopRightCol}>
+                <SharedJourneyMapCard
+                  desktopFill
+                  connection={connection}
+                  mapRoute={mapRoute}
+                  vehicle={vehicle}
+                  ended={ended}
+                  loading={loading}
+                  onRetryData={retry}
+                />
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
+              {headerContent}
+            </View>
+
+            <ScrollView
+              contentContainerStyle={[
+                styles.content,
+                webLayout.isMedium && styles.mediumConstrained,
+                { paddingBottom: insets.bottom + 28 },
+              ]}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+            >
+              <SharedJourneyHero
+                journey={journey}
+                connection={connection}
+                progress={progress}
+                hasVehicle={!!vehicle}
+                pingKey={pingKey}
+                availableWidth={heroAvailableWidth}
+              />
+
+              {!sameCity ? (
+                <View style={styles.cityCard}>
+                  <View style={styles.cityCardHeader}>
+                    <View style={styles.cityIconWrap}>
+                      <Compass size={20} color={scheme.onPrimaryContainer} />
+                    </View>
+                    <View style={styles.cityTextCol}>
+                      <Text style={styles.cityCardTitle}>
+                        {s.city.name(journey.city)}
+                      </Text>
+                      <Text style={styles.cityCardText}>{s.share.switchCityHint}</Text>
+                    </View>
+                  </View>
+                  <SpringPressable
+                    onPress={switchCity}
+                    disabled={busy}
+                    haptic="light"
+                    accessibilityRole="button"
+                    style={[styles.primaryBtn, busy && styles.disabled]}
+                  >
+                    {busy ? (
+                      <ActivityIndicator size="small" color={scheme.onPrimary} />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>
+                        {s.share.switchCity(s.city.name(journey.city))}
+                      </Text>
+                    )}
+                  </SpringPressable>
+                </View>
+              ) : (
+                <>
+                  {followCard}
+                  <SharedJourneyMapCard
+                    connection={connection}
+                    mapRoute={mapRoute}
+                    vehicle={vehicle}
+                    ended={ended}
+                    loading={loading}
+                    onRetryData={retry}
+                  />
+                  {itineraryBlock}
+                </>
+              )}
+
+              {errorBanner}
+            </ScrollView>
+          </>
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -459,56 +601,58 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: scheme.surface,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  screen: {
+    flex: 1,
   },
-  headerMedium: {
+  mediumConstrained: {
     width: '100%',
-    maxWidth: 680,
+    maxWidth: 740,
     alignSelf: 'center',
   },
-  headerDesktop: {
+  desktopContainer: {
     width: '100%',
-    maxWidth: 1200,
+    maxWidth: 1320,
     alignSelf: 'center',
     paddingHorizontal: 28,
-    paddingTop: 14,
+    paddingTop: 16,
+    paddingBottom: 20,
+    gap: 14,
+  },
+  desktopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   desktopSplit: {
     flex: 1,
     flexDirection: 'row',
-    width: '100%',
-    maxWidth: 1200,
-    alignSelf: 'center',
-    paddingHorizontal: 28,
-    paddingTop: 8,
     gap: 24,
     minHeight: 0,
   },
-  desktopLeftScroll: {
-    width: 480,
-    flexShrink: 0,
-    flexGrow: 0,
-  },
   desktopLeftContent: {
-    gap: 18,
+    gap: 14,
   },
   desktopRightCol: {
     flex: 1,
     minWidth: 0,
+    minHeight: 0,
   },
-  back: {
-    width: 48,
-    height: 48,
-    borderRadius: shape.medium,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
   },
   headerText: {
     flex: 1,
@@ -516,21 +660,106 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   headerTitle: {
-    ...type.titleMedium,
-    fontWeight: '700',
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
     color: scheme.onSurface,
   },
   headerSubtitle: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
+  actionCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 4,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+  },
+  clusterBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clusterBtnActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  clusterBtnLocked: {
+    opacity: 0.48,
+  },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    gap: 18,
-    width: '100%',
-    maxWidth: 640,
-    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    gap: 14,
+  },
+  followCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
+  },
+  followCardActive: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderColor: scheme.primary,
+  },
+  followIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  followIconWrapActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  followCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  followTitle: {
+    ...type.titleSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  followBody: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 17,
+  },
+  followChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 38,
+    paddingHorizontal: 13,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    flexShrink: 0,
+  },
+  followChipActive: {
+    backgroundColor: scheme.secondaryContainer,
+  },
+  followChipText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    color: scheme.onPrimary,
+  },
+  followChipTextActive: {
+    color: scheme.onSecondaryContainer,
   },
   emptyWrap: {
     flex: 1,
@@ -539,22 +768,24 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     borderRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainerLow,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     padding: 24,
-    gap: 14,
-    alignItems: 'stretch',
-    maxWidth: 440,
+    gap: 12,
+    alignItems: 'center',
+    maxWidth: 420,
     width: '100%',
     alignSelf: 'center',
+    ...elev.level1,
   },
   emptyIconBadge: {
     width: 56,
     height: 56,
-    borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
+    borderRadius: 18,
+    backgroundColor: scheme.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
     marginBottom: 4,
   },
   emptyTitle: {
@@ -571,9 +802,12 @@ const styles = StyleSheet.create({
   },
   cityCard: {
     borderRadius: shape.extraLarge,
-    backgroundColor: scheme.surfaceContainerHigh,
-    padding: 20,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 18,
     gap: 14,
+    ...elev.level1,
   },
   cityCardHeader: {
     flexDirection: 'row',
@@ -581,22 +815,31 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cityIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: shape.full,
-    backgroundColor: scheme.secondaryContainer,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+  },
+  cityTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  cityCardTitle: {
+    ...type.titleMedium,
+    fontWeight: '700',
+    color: scheme.onSurface,
   },
   cityCardText: {
     ...type.bodyMedium,
-    color: scheme.onSurface,
-    lineHeight: 21,
-    flex: 1,
-    minWidth: 0,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 20,
   },
   itinerarySection: {
-    gap: 12,
+    gap: 10,
   },
   itineraryHeader: {
     flexDirection: 'row',
@@ -607,24 +850,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   itineraryTitle: {
-    ...type.titleMedium,
-    fontWeight: '700',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: -0.2,
     color: scheme.onSurface,
   },
   loadingChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     maxWidth: '100%',
   },
   loadingText: {
-    ...type.bodySmall,
+    ...type.labelSmall,
     color: scheme.onSurfaceVariant,
+    fontWeight: '600',
     flexShrink: 1,
   },
   retryCard: {
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.surfaceContainer,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 12,
   },
@@ -633,30 +887,38 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     lineHeight: 20,
   },
-  action: {
-    minHeight: 50,
+  primaryBtn: {
+    minHeight: 48,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 18,
-    backgroundColor: scheme.primary,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    gap: 8,
+    alignSelf: 'stretch',
   },
-  actionText: {
+  primaryBtnText: {
     ...type.labelLarge,
     fontWeight: '700',
     color: scheme.onPrimary,
-    flexShrink: 1,
     textAlign: 'center',
   },
-  tonal: {
+  tonalBtn: {
+    minHeight: 46,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  tonalText: {
+  tonalBtnText: {
+    ...type.labelLarge,
+    fontWeight: '700',
     color: scheme.onSecondaryContainer,
   },
   errorBanner: {
@@ -669,13 +931,7 @@ const styles = StyleSheet.create({
     ...type.bodyMedium,
     color: scheme.onErrorContainer,
   },
-  focused: {
-    borderColor: scheme.onSurface,
-  },
-  pressed: {
-    opacity: 0.78,
-  },
   disabled: {
-    opacity: 0.5,
+    opacity: 0.55,
   },
 });

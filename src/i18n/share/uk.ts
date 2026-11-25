@@ -137,4 +137,30 @@ export const uk: ShareStrings = {
   cancelledService: 'Рейс скасовано',
   scheduledTime: (time) => `за планом ${time}`,
   typicalDelayNote: (min) => `Зазвичай близько +${min} хв у цю годину`,
+  share: 'Поділитися',
+  openInPwa: 'Відкрити у вебверсії',
+  fullscreenMap: 'На весь екран',
+  showWholeRoute: 'Весь маршрут',
+  stageCounter: (current, total) => `Етап ${current}/${total}`,
+  boardLabel: 'Посадка',
+  alightLabel: 'Висадка',
+  previousStage: 'Попередній етап',
+  nextStage: 'Наступний етап',
+  zoomIn: 'Наблизити карту',
+  zoomOut: 'Віддалити карту',
+  vehicleLineLive: (line) => `Транспорт ${line} наживо`,
+  followActiveTitle: 'Ви стежите за поїздкою',
+  followShort: 'Закріпити',
+  stopFollowShort: 'Зупинити',
+  transferLabel: 'Пересадка',
+  directRide: 'Прямий проїзд (1 зупинка)',
+  intermediateStops: (n) => {
+    const last = n % 10;
+    const teen = n % 100;
+    return last === 1 && teen !== 11
+      ? `${n} проміжна зупинка`
+      : last >= 2 && last <= 4 && (teen < 12 || teen > 14)
+        ? `${n} проміжні зупинки`
+        : `${n} проміжних зупинок`;
+  },
 };

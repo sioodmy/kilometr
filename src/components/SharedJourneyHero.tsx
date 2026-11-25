@@ -1,20 +1,14 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
-import {
-  ArrowRight,
-  Bell,
-  BellOff,
   CircleCheck,
   Clock3,
   Footprints,
+  M3SolidArrowDown,
+  M3SolidArrowRight,
 } from './icons';
+import { analyzeConnection } from './connectionInsights';
+import { JourneyStrip } from './ConnectionCard';
 import { LineBadge } from './LineBadge';
 import { LiveSensors } from './LiveDot';
 import { RollingTime } from './RollingTime';
@@ -22,8 +16,12 @@ import { secondsToTimeString } from '../gtfs/geo';
 import { useStrings } from '../i18n';
 import { boardingDepartureSec, scheduledLegTimes } from '../services/routing/connectionTimes';
 import type { TripProgress } from '../services/notifications/types';
+import {
+  useTransferThresholds,
+  useWalkSpeedMps,
+} from '../services/settings';
 import type { SharedConnection } from '../sharing/connection';
-import { scheme, shape, type } from '../theme/tokens';
+import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 
 export function SharedJourneyHero({
@@ -32,27 +30,30 @@ export function SharedJourneyHero({
   progress,
   hasVehicle,
   pingKey,
-  sameCity,
-  following,
-  followBusy,
-  onFollowPress,
+  availableWidth,
 }: {
   journey: SharedConnection;
   connection: Connection;
   progress: TripProgress | null;
   hasVehicle: boolean;
   pingKey: number | string;
-  sameCity: boolean;
-  following: boolean;
-  followBusy: boolean;
-  onFollowPress: () => void;
+  availableWidth?: number;
 }) {
   const s = useStrings();
+  const walkMps = useWalkSpeedMps();
+  const thresholds = useTransferThresholds();
   const { width, fontScale } = useWindowDimensions();
-  const compact = width / fontScale < 340;
-  const [followFocused, setFollowFocused] = useState(false);
+  const stacked = ((availableWidth ?? width - 28) - 40) / fontScale < 280;
 
-  const boarding = connection.legs.filter((leg) => leg.mode !== 'walk');
+  const boarding = useMemo(
+    () => connection.legs.filter((leg) => leg.mode !== 'walk'),
+    [connection.legs],
+  );
+  const insights = useMemo(
+    () => analyzeConnection(connection, walkMps, thresholds),
+    [connection, walkMps, thresholds],
+  );
+
   const firstVehicle = boarding[0];
   const lastVehicle = boarding[boarding.length - 1];
   const departureSec = boardingDepartureSec(connection);
@@ -60,10 +61,10 @@ export function SharedJourneyHero({
   const scheduledDeparture = firstVehicle
     ? scheduledLegTimes(firstVehicle, departureSec).departure
     : undefined;
-  const departureDelay =
-    firstVehicle?.live ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
-  const arrivalDelaySec =
-    lastVehicle?.live ? (lastVehicle.arrivalDelaySec ?? lastVehicle.delaySec ?? 0) : 0;
+  const departureDelay = firstVehicle?.live ? Math.round((firstVehicle.delaySec ?? 0) / 60) : 0;
+  const arrivalDelaySec = lastVehicle?.live
+    ? (lastVehicle.arrivalDelaySec ?? lastVehicle.delaySec ?? 0)
+    : 0;
   const arrivalDelay = Math.round(arrivalDelaySec / 60);
   const scheduledArrival =
     connection.arrivalSec != null ? connection.arrivalSec - arrivalDelaySec : undefined;
@@ -74,23 +75,29 @@ export function SharedJourneyHero({
   const arrivalDay = Math.floor(journey.arrival / 1440);
   const displayDelay = arrivalDelay !== 0 ? arrivalDelay : connection.delayMin;
 
-  const etaMin = progress ? Math.round(progress.etaMin) : 0;
+  const etaMin = progress ? Math.max(1, Math.round(progress.etaMin)) : 0;
   const departInMin = progress ? Math.round(progress.departInSec / 60) : 0;
-  const showEtaPill = started && !ended && etaMin >= 1;
-  const showDepartPill = !started && !ended && departInMin >= 1 && departInMin <= 180;
+  const showEta = started && !ended && etaMin >= 1;
+  const showDepart = !started && !ended && departInMin >= 1 && departInMin <= 180;
 
-  const heroFg = ended ? scheme.onSurface : scheme.onPrimaryContainer;
-  const heroSub = ended ? scheme.onSurfaceVariant : scheme.onPrimaryContainer;
+  const transfersLabel =
+    boarding.length === 0 ? s.connection.walkAll : s.share.transfers(connection.transfers);
+  const totalWalkM = useMemo(
+    () => connection.legs.reduce((sum, leg) => sum + (leg.mode === 'walk' ? (leg.walkM ?? 0) : 0), 0),
+    [connection.legs],
+  );
 
   const statusText = ended
     ? s.share.finished
-    : hasVehicle
-      ? s.share.vehicleLive
-      : started
-        ? s.share.inProgress
-        : connection.live
-          ? s.share.vehicleLive
-          : s.share.upcoming;
+    : showDepart
+      ? s.share.departsInMin(departInMin)
+      : hasVehicle
+        ? s.share.vehicleLive
+        : started
+          ? s.share.inProgress
+          : connection.live
+            ? s.share.vehicleLive
+            : s.share.planned;
 
   let stepText = '';
   if (started && !ended && progress) {
@@ -102,7 +109,7 @@ export function SharedJourneyHero({
           : s.share.inProgress;
       const leftPart =
         progress.stopsLeft != null && progress.stopsLeft > 0
-          ? ` · ${s.share.stopsToGo(progress.stopsLeft)}`
+          ? ` \u00b7 ${s.share.stopsToGo(progress.stopsLeft)}`
           : '';
       stepText = `${stopPart}${leftPart}`;
     } else if (progress.phase === 'transfer') {
@@ -122,34 +129,62 @@ export function SharedJourneyHero({
     progress.leg &&
     progress.leg.mode !== 'walk';
 
+  const statusPillVariant = ended
+    ? 'ended'
+    : started
+      ? 'active'
+      : showDepart || hasLive
+        ? 'upcoming'
+        : 'planned';
+
+  const statusTextColor =
+    statusPillVariant === 'active'
+      ? scheme.onTertiaryContainer
+      : statusPillVariant === 'upcoming'
+        ? scheme.onPrimaryContainer
+        : scheme.onSurfaceVariant;
+
+  const progressPct = progress ? Math.max(4, Math.min(100, Math.round(progress.progress * 100))) : 0;
+
   return (
     <View style={styles.card}>
-      <View style={[styles.hero, ended && styles.heroEnded]}>
-        <View style={styles.statusRow}>
-          <View style={styles.statusLeft}>
+      {/* Górny pasek statusu podróży, opóźnienia i całkowitego czasu */}
+      <View style={styles.topBar}>
+        <View style={styles.topLeft}>
+          <View
+            style={[
+              styles.statusPill,
+              statusPillVariant === 'active' && styles.statusPillActive,
+              statusPillVariant === 'upcoming' && styles.statusPillUpcoming,
+              statusPillVariant === 'ended' && styles.statusPillEnded,
+            ]}
+          >
             {hasLive && !ended ? (
-              <LiveSensors color={heroFg} size={15} pingKey={pingKey} />
+              <LiveSensors color={statusTextColor} size={13} pingKey={pingKey} />
             ) : ended ? (
-              <CircleCheck size={16} color={scheme.onSurfaceVariant} />
+              <CircleCheck size={14} color={statusTextColor} />
             ) : (
-              <Clock3 size={15} color={heroFg} />
+              <Clock3 size={13} color={statusTextColor} />
             )}
-            <Text style={[styles.statusLabel, { color: heroSub }]} numberOfLines={2}>
+            <Text style={[styles.statusText, { color: statusTextColor }]} numberOfLines={1}>
               {statusText}
             </Text>
           </View>
+
           {displayDelay !== 0 && !ended && (
             <View
               style={[
                 styles.delayPill,
                 displayDelay > 0 ? styles.delayLate : styles.delayEarly,
               ]}
+              accessibilityLiveRegion="polite"
             >
               <Text
                 style={[
                   styles.delayPillText,
                   displayDelay > 0 ? styles.delayLateText : styles.delayEarlyText,
                 ]}
+                numberOfLines={1}
               >
                 {s.share.liveDelay(displayDelay)}
               </Text>
@@ -157,180 +192,243 @@ export function SharedJourneyHero({
           )}
         </View>
 
-        <View style={styles.arrivalBlock}>
-          <Text style={[styles.arrivalLabel, { color: heroSub }]}>{s.share.arrival}</Text>
-          <View style={styles.arrivalRow}>
-            <RollingTime
-              value={connection.arriveAt}
-              style={[styles.arrivalTime, compact && styles.arrivalTimeCompact, { color: heroFg }]}
-            />
-            {arrivalDay > 0 && (
-              <Text style={[styles.dayBadge, { color: heroSub }]}>
-                {s.share.dayLater(arrivalDay)}
+        <View style={styles.durationPill}>
+          <Clock3 size={14} color={scheme.onSecondaryContainer} />
+          <Text style={styles.durationText}>{s.share.duration(connection.durationMin)}</Text>
+        </View>
+      </View>
+
+      {/* Główna oś podróży: odjazd -> przyjazd */}
+      {stacked ? (
+        <View style={styles.stackedWrap}>
+          <View style={styles.stackedEndpoint}>
+            <View style={styles.stackedTagRow}>
+              <View style={styles.startDot} />
+              <Text style={styles.endpointTag} numberOfLines={1}>
+                {s.share.departure}
               </Text>
-            )}
-            {showEtaPill && (
+            </View>
+            <View style={styles.stackedTimeRow}>
+              <RollingTime value={departureDisplay} style={styles.time} />
+              {departureDelay !== 0 && scheduledDeparture != null && (
+                <Text style={styles.scheduledStrike}>
+                  {secondsToTimeString(scheduledDeparture)}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.place} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+              {connection.fromTitle}
+            </Text>
+          </View>
+
+          <View style={styles.stackedBridge}>
+            <M3SolidArrowDown size={20} color={ended ? scheme.outline : scheme.primary} />
+            <View style={styles.bridgePill}>
+              <Text style={styles.bridgePillText} numberOfLines={1}>
+                {transfersLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.stackedEndpoint}>
+            <View style={styles.stackedTagRow}>
+              <View style={[styles.endDot, ended && styles.endDotEnded]} />
+              <Text style={[styles.endpointTag, !ended && styles.endpointTagPrimary]} numberOfLines={1}>
+                {s.share.arrival}
+              </Text>
+            </View>
+            <View style={styles.stackedTimeRow}>
+              <RollingTime
+                value={connection.arriveAt}
+                style={[styles.time, !ended && styles.arrivalTimeAccent]}
+              />
+              {arrivalDay > 0 && (
+                <Text style={styles.dayBadge}>{s.share.dayLater(arrivalDay)}</Text>
+              )}
+              {arrivalDelay !== 0 && scheduledArrival != null && (
+                <Text style={styles.scheduledStrike}>
+                  {secondsToTimeString(scheduledArrival)}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.place} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+              {connection.toTitle}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.heroBlock}>
+          <View style={styles.timesRow}>
+            <View style={styles.timeColLeft}>
+              <Text style={styles.endpointTag} numberOfLines={1}>
+                {s.share.departure}
+              </Text>
+              <View style={styles.timeInline}>
+                <RollingTime value={departureDisplay} style={styles.time} />
+              </View>
+              {departureDelay !== 0 && scheduledDeparture != null && (
+                <Text style={styles.scheduledStrike}>
+                  {s.share.scheduledTime(secondsToTimeString(scheduledDeparture))}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.bridgeCol}>
+              <M3SolidArrowRight
+                size={24}
+                width={38}
+                color={ended ? scheme.outline : scheme.primary}
+              />
+              <View style={styles.bridgePill}>
+                <Text style={styles.bridgePillText} numberOfLines={1}>
+                  {transfersLabel}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.timeColRight}>
+              <Text
+                style={[styles.endpointTag, styles.textRight, !ended && styles.endpointTagPrimary]}
+                numberOfLines={1}
+              >
+                {s.share.arrival}
+              </Text>
+              <View style={[styles.timeInline, styles.timeInlineRight]}>
+                {arrivalDay > 0 && (
+                  <Text style={styles.dayBadge}>{s.share.dayLater(arrivalDay)}</Text>
+                )}
+                <RollingTime
+                  value={connection.arriveAt}
+                  style={[styles.time, styles.textRight, !ended && styles.arrivalTimeAccent]}
+                />
+              </View>
+              {arrivalDelay !== 0 && scheduledArrival != null && (
+                <Text style={[styles.scheduledStrike, styles.textRight]}>
+                  {s.share.scheduledTime(secondsToTimeString(scheduledArrival))}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.placesRow}>
+            <Text style={styles.placeLeft} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+              {connection.fromTitle}
+            </Text>
+            <Text style={styles.placeRight} numberOfLines={fontScale > 1.3 ? undefined : 2}>
+              {connection.toTitle}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Bieżący postęp w trakcie podróży */}
+      {started && !ended && progress && (
+        <View style={styles.progressBox} accessibilityLiveRegion="polite">
+          <View style={styles.progressTop}>
+            <View style={styles.stepLeft}>
+              {showStepBadge && progress.leg ? (
+                <LineBadge leg={progress.leg} compact />
+              ) : (
+                <View style={styles.stepWalkBadge}>
+                  <Footprints size={13} color={scheme.onSecondaryContainer} />
+                </View>
+              )}
+              <Text
+                style={styles.stepText}
+                numberOfLines={fontScale > 1.3 ? undefined : 2}
+              >
+                {stepText || s.share.inProgress}
+              </Text>
+            </View>
+
+            {showEta && (
               <View style={styles.etaPill}>
                 <Text style={styles.etaPillText}>{s.share.etaInMin(etaMin)}</Text>
               </View>
             )}
-            {showDepartPill && (
-              <View style={styles.departPill}>
-                <Text style={styles.departPillText}>{s.share.departsInMin(departInMin)}</Text>
-              </View>
-            )}
           </View>
-          {arrivalDelay !== 0 && scheduledArrival != null && (
-            <Text style={[styles.scheduledDelta, { color: heroSub }]}>
-              {s.routeDetails.scheduledTime(secondsToTimeString(scheduledArrival))}
-            </Text>
-          )}
-          <Text
-            style={[styles.destination, { color: heroFg }]}
-            numberOfLines={fontScale > 1.3 ? undefined : 2}
-          >
-            {connection.toTitle}
+
+          <View style={styles.progressTrackWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Proporcjonalny pasek składu podróży (jak w ConnectionSummary / kartach wyników) */}
+      {boarding.length > 0 ? (
+        <JourneyStrip insights={insights} dimmed={ended} />
+      ) : (
+        <View style={styles.walkOnlyStrip}>
+          <Footprints size={15} color={scheme.onSurfaceVariant} />
+          <Text style={styles.walkOnlyText}>
+            {totalWalkM > 0 ? s.share.walkDistance(totalWalkM) : s.share.walk}
           </Text>
         </View>
-
-        {started && !ended && progress && (
-          <View style={styles.progressSection} accessibilityLiveRegion="polite">
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.max(4, Math.round(progress.progress * 100))}%` },
-                ]}
-              />
-            </View>
-            {stepText ? (
-              <View style={styles.stepRow}>
-                {showStepBadge && progress.leg ? (
-                  <LineBadge leg={progress.leg} compact />
-                ) : (
-                  <Footprints size={15} color={heroFg} />
-                )}
-                <Text
-                  style={[styles.stepText, { color: heroFg }]}
-                  numberOfLines={fontScale > 1.3 ? undefined : 2}
-                >
-                  {stepText}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        )}
-      </View>
-
-      <View style={styles.body}>
-        <View style={[styles.metaRow, compact && styles.metaRowStacked]}>
-          <View style={styles.originCol}>
-            <Text style={styles.metaLabel}>
-              {s.share.departure} · {departureDisplay}
-              {departureDelay !== 0 && departureDelay !== arrivalDelay && scheduledDeparture != null
-                ? ` (${s.routeDetails.scheduledTime(secondsToTimeString(scheduledDeparture))})`
-                : ''}
-            </Text>
-            <Text style={styles.originName}>{connection.fromTitle}</Text>
-          </View>
-          <View style={[styles.factsCol, compact && styles.factsColStacked]}>
-            <Text style={styles.durationText}>{s.share.duration(connection.durationMin)}</Text>
-            <Text style={styles.metaLabel}>
-              {boarding.length === 0
-                ? s.connection.walkAll
-                : s.share.transfers(connection.transfers)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.lines}>
-          {connection.legs.map((leg, index) => (
-            <View key={leg.id} style={styles.lineStep}>
-              {index > 0 && <ArrowRight size={13} color={scheme.onSurfaceVariant} />}
-              <LineBadge leg={leg} compact />
-            </View>
-          ))}
-        </View>
-
-        {sameCity && (!ended || following) && (
-          <View style={styles.followFooter}>
-            <Pressable
-              onPress={onFollowPress}
-              disabled={followBusy}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: followBusy, selected: following }}
-              accessibilityLabel={following ? s.share.following : s.share.follow}
-              onFocus={() => setFollowFocused(true)}
-              onBlur={() => setFollowFocused(false)}
-              style={({ pressed }) => [
-                styles.followBtn,
-                following && styles.followBtnActive,
-                followFocused && styles.followBtnFocused,
-                pressed && styles.pressed,
-                followBusy && styles.disabled,
-              ]}
-            >
-              {followBusy ? (
-                <ActivityIndicator
-                  color={following ? scheme.onSecondaryContainer : scheme.onPrimary}
-                />
-              ) : following ? (
-                <BellOff size={20} color={scheme.onSecondaryContainer} />
-              ) : (
-                <Bell size={20} color={scheme.onPrimary} />
-              )}
-              <Text style={[styles.followBtnText, following && styles.followBtnTextActive]}>
-                {following ? s.share.following : s.share.follow}
-              </Text>
-            </Pressable>
-            <Text style={styles.followHint}>
-              {following ? s.share.followActiveHint : s.share.followHint}
-            </Text>
-          </View>
-        )}
-      </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: shape.extraLarge,
-    overflow: 'hidden',
-    backgroundColor: scheme.surfaceContainerLow,
-  },
-  hero: {
-    backgroundColor: scheme.primaryContainer,
-    paddingHorizontal: 22,
-    paddingTop: 18,
-    paddingBottom: 20,
+    padding: 16,
     gap: 14,
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    ...elev.level1,
   },
-  heroEnded: {
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  statusRow: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
     gap: 8,
+    flexWrap: 'wrap',
   },
-  statusLeft: {
+  topLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    flexShrink: 1,
+    flexWrap: 'wrap',
+    gap: 6,
+    flex: 1,
     minWidth: 0,
   },
-  statusLabel: {
-    ...type.labelLarge,
-    fontWeight: '600',
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+    maxWidth: '100%',
+  },
+  statusPillActive: {
+    backgroundColor: scheme.tertiaryContainer,
+    borderColor: 'transparent',
+  },
+  statusPillUpcoming: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: 'transparent',
+  },
+  statusPillEnded: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderColor: 'transparent',
+  },
+  statusText: {
+    ...type.labelMedium,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
     flexShrink: 1,
   },
   delayPill: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderRadius: shape.full,
   },
   delayLate: {
@@ -342,6 +440,7 @@ const styles = StyleSheet.create({
   delayPillText: {
     ...type.labelMedium,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   delayLateText: {
     color: scheme.onErrorContainer,
@@ -349,71 +448,231 @@ const styles = StyleSheet.create({
   delayEarlyText: {
     color: scheme.onWarningContainer,
   },
-  arrivalBlock: {
-    gap: 4,
-  },
-  arrivalLabel: {
-    ...type.bodyMedium,
-    fontWeight: '500',
-  },
-  arrivalRow: {
+  durationPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
+    gap: 5,
+    backgroundColor: scheme.secondaryContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: shape.full,
+  },
+  durationText: {
+    ...type.labelLarge,
+    fontWeight: '800',
+    color: scheme.onSecondaryContainer,
+    fontVariant: ['tabular-nums'],
+  },
+  heroBlock: {
     gap: 10,
   },
-  arrivalTime: {
-    fontSize: 48,
+  timesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  timeColLeft: {
+    alignItems: 'flex-start',
+    gap: 2,
+    flexShrink: 0,
+  },
+  timeColRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+    flexShrink: 0,
+  },
+  timeInline: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+  },
+  timeInlineRight: {
+    justifyContent: 'flex-end',
+  },
+  bridgeCol: {
+    flex: 1,
+    minWidth: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 14,
+    gap: 5,
+  },
+  bridgePill: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: shape.full,
+    maxWidth: '100%',
+  },
+  bridgePillText: {
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: '700',
-    letterSpacing: -1.5,
+    color: scheme.onSurfaceVariant,
+  },
+  endpointTag: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: scheme.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  endpointTagPrimary: {
+    color: scheme.primary,
+  },
+  textRight: {
+    textAlign: 'right',
+  },
+  time: {
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '800',
+    letterSpacing: -1.1,
+    color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
   },
-  arrivalTimeCompact: {
-    fontSize: 40,
+  arrivalTimeAccent: {
+    color: scheme.primary,
   },
   dayBadge: {
-    ...type.titleMedium,
-    fontWeight: '700',
+    ...type.labelMedium,
+    fontWeight: '800',
+    color: scheme.primary,
   },
-  etaPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  scheduledStrike: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    textDecorationLine: 'line-through',
+    fontVariant: ['tabular-nums'],
+  },
+  placesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  placeLeft: {
+    flex: 1,
+    ...type.bodyMedium,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    lineHeight: 19,
+  },
+  placeRight: {
+    flex: 1,
+    ...type.bodyMedium,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  stackedWrap: {
+    gap: 10,
+  },
+  stackedEndpoint: {
+    gap: 3,
+  },
+  stackedTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  startDot: {
+    width: 9,
+    height: 9,
+    borderRadius: shape.full,
+    borderWidth: 2,
+    borderColor: scheme.primary,
+    backgroundColor: scheme.surfaceContainer,
+  },
+  endDot: {
+    width: 9,
+    height: 9,
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
   },
-  etaPillText: {
-    ...type.labelLarge,
+  endDotEnded: {
+    backgroundColor: scheme.outline,
+  },
+  stackedTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  stackedBridge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  place: {
+    ...type.bodyMedium,
     fontWeight: '700',
-    color: scheme.onPrimary,
+    color: scheme.onSurface,
+    lineHeight: 19,
   },
-  departPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: shape.full,
+  progressBox: {
     backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 12,
+    gap: 10,
   },
-  departPillText: {
-    ...type.labelLarge,
+  progressTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  stepLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stepWalkBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: shape.small,
+    backgroundColor: scheme.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepText: {
+    ...type.bodySmall,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '600',
     color: scheme.onSurface,
+    flex: 1,
+    minWidth: 0,
   },
-  scheduledDelta: {
-    ...type.bodySmall,
+  etaPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primary,
+    flexShrink: 0,
   },
-  destination: {
-    ...type.titleLarge,
-    fontWeight: '700',
-    marginTop: 2,
+  etaPillText: {
+    ...type.labelMedium,
+    fontWeight: '800',
+    color: scheme.onPrimary,
+    fontVariant: ['tabular-nums'],
   },
-  progressSection: {
-    gap: 10,
-    marginTop: 2,
+  progressTrackWrap: {
+    paddingVertical: 2,
   },
   progressTrack: {
-    height: 4,
+    height: 6,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerLowest,
+    backgroundColor: scheme.surfaceContainerHighest,
     overflow: 'hidden',
   },
   progressFill: {
@@ -421,112 +680,18 @@ const styles = StyleSheet.create({
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
   },
-  stepRow: {
+  walkOnlyStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: shape.large,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  stepText: {
-    ...type.bodyMedium,
-    fontWeight: '600',
-    flex: 1,
-    minWidth: 0,
-  },
-  body: {
-    padding: 20,
-    gap: 16,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  metaRowStacked: {
-    flexDirection: 'column',
-  },
-  originCol: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  factsCol: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  factsColStacked: {
-    alignItems: 'flex-start',
-  },
-  metaLabel: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-  },
-  originName: {
-    ...type.titleMedium,
-    fontWeight: '600',
-    color: scheme.onSurface,
-  },
-  durationText: {
-    ...type.titleMedium,
-    fontWeight: '700',
-    color: scheme.onSurface,
-  },
-  lines: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-  },
-  lineStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  followFooter: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant,
-    paddingTop: 16,
-    gap: 10,
-  },
-  followBtn: {
-    minHeight: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 18,
-    backgroundColor: scheme.primary,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  followBtnActive: {
-    backgroundColor: scheme.secondaryContainer,
-  },
-  followBtnFocused: {
-    borderColor: scheme.onSurface,
-  },
-  followBtnText: {
-    ...type.labelLarge,
-    fontWeight: '700',
-    color: scheme.onPrimary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  followBtnTextActive: {
-    color: scheme.onSecondaryContainer,
-  },
-  followHint: {
+  walkOnlyText: {
     ...type.bodySmall,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.78,
-  },
-  disabled: {
-    opacity: 0.5,
   },
 });
