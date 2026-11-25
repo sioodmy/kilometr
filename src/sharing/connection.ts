@@ -144,8 +144,12 @@ export function createSharedConnection(
       leg.scheduledArrivalSec ??
         leg.intermediateStops?.find((stop) => stop.stopId === leg.toStopId)?.arriveSec,
     );
-    if (schedDep !== undefined) out.scheduledDeparture = schedDep;
-    if (schedArr !== undefined) out.scheduledArrival = schedArr;
+    if (schedDep !== undefined && schedDep !== out.departure % 1440) {
+      out.scheduledDeparture = schedDep;
+    }
+    if (schedArr !== undefined && schedArr !== out.arrival % 1440) {
+      out.scheduledArrival = schedArr;
+    }
     if (leg.tripId !== undefined) out.trip = leg.tripId;
     if (leg.fromStopId !== undefined) out.board = leg.fromStopId;
     if (leg.toStopId !== undefined) out.alight = leg.toStopId;
@@ -369,121 +373,6 @@ const LEG_EXACT_COORDS = 8;
 const LEG_HAS_PLATFORM = 16;
 const LEG_HAS_TRACK = 32;
 
-function encodeBinary(
-  journey: SharedConnection,
-  options?: { locale?: string; includePath?: boolean },
-): Uint8Array {
-  const cityIdx = shareCities.indexOf(journey.city);
-  if (cityIdx < 0) throw new Error('Invalid city');
-  const dateDays = Math.round((Date.parse(journey.date) - EPOCH_2026_MS) / DAY_MS);
-  const w = new ShareWriter();
-  w.u8(1);
-  w.varuint(cityIdx);
-  w.varsint(dateDays);
-  const rawLocale = options?.locale?.toLowerCase();
-  const localeIdx = rawLocale
-    ? shareLocales.indexOf(rawLocale as (typeof shareLocales)[number])
-    : -1;
-  w.u8(localeIdx >= 0 ? localeIdx + 1 : 0);
-  w.varuint(journey.departure);
-  w.varuint(journey.arrival - journey.departure);
-  const firstFrom = journey.legs[0]?.from;
-  const lastTo = journey.legs.at(-1)?.to;
-  w.str(journey.from === firstFrom ? '' : journey.from);
-  w.str(journey.to === lastTo ? '' : journey.to);
-  w.varuint(journey.legs.length);
-
-  let prevArrival = journey.departure;
-  let prevTo = '';
-  let prevLat = 0;
-  let prevLon = 0;
-  const includePath = options?.includePath ?? true;
-
-  for (const leg of journey.legs) {
-    const modeIdx = modes.indexOf(leg.mode);
-    if (modeIdx < 0) throw new Error('Invalid leg mode');
-    const reuseFrom = prevTo.length > 0 && leg.from === prevTo;
-    const hasSched = leg.scheduledDeparture !== undefined || leg.scheduledArrival !== undefined;
-    const hasFromCoords = leg.fromLat !== undefined && leg.fromLon !== undefined;
-    const hasToCoords = leg.toLat !== undefined && leg.toLon !== undefined;
-    const path = includePath ? leg.path : undefined;
-    const exactFrom =
-      hasFromCoords &&
-      (Math.round(leg.fromLat! * 1e5) / 1e5 !== leg.fromLat ||
-        Math.round(leg.fromLon! * 1e5) / 1e5 !== leg.fromLon);
-    const exactTo =
-      hasToCoords &&
-      (Math.round(leg.toLat! * 1e5) / 1e5 !== leg.toLat ||
-        Math.round(leg.toLon! * 1e5) / 1e5 !== leg.toLon);
-    const exactCoords = exactFrom || exactTo;
-
-    let flags1 = 0;
-    if (reuseFrom) flags1 |= LEG_REUSE_FROM;
-    if (leg.line !== undefined) flags1 |= LEG_HAS_LINE;
-    if (leg.direction !== undefined) flags1 |= LEG_HAS_DIR;
-    if (leg.trip !== undefined) flags1 |= LEG_HAS_TRIP;
-    if (leg.board !== undefined) flags1 |= LEG_HAS_BOARD;
-    if (leg.alight !== undefined) flags1 |= LEG_HAS_ALIGHT;
-    if (hasSched) flags1 |= LEG_HAS_SCHED;
-    if (leg.walk !== undefined) flags1 |= LEG_HAS_WALK;
-
-    let flags2 = 0;
-    if (hasFromCoords) flags2 |= LEG_HAS_FROM_COORDS;
-    if (hasToCoords) flags2 |= LEG_HAS_TO_COORDS;
-    if (path !== undefined) flags2 |= LEG_HAS_PATH;
-    if (exactCoords) flags2 |= LEG_EXACT_COORDS;
-    if (leg.platform !== undefined) flags2 |= LEG_HAS_PLATFORM;
-    if (leg.track !== undefined) flags2 |= LEG_HAS_TRACK;
-
-    w.u8(modeIdx);
-    w.u8(flags1);
-    w.u8(flags2);
-    w.varuint(leg.departure - prevArrival);
-    w.varuint(leg.arrival - leg.departure);
-    w.varuint(leg.stops);
-    if (!reuseFrom) w.str(leg.from);
-    w.str(leg.to);
-    if (flags1 & LEG_HAS_LINE) w.str(leg.line!);
-    if (flags1 & LEG_HAS_DIR) w.str(leg.direction!);
-    if (flags1 & LEG_HAS_TRIP) w.str(leg.trip!);
-    if (flags1 & LEG_HAS_BOARD) w.str(leg.board!);
-    if (flags1 & LEG_HAS_ALIGHT) w.str(leg.alight!);
-    if (flags2 & LEG_HAS_PLATFORM) w.str(leg.platform!);
-    if (flags2 & LEG_HAS_TRACK) w.str(leg.track!);
-    if (flags1 & LEG_HAS_SCHED) {
-      w.varuint(leg.scheduledDeparture === undefined ? 1440 : leg.scheduledDeparture);
-      w.varuint(leg.scheduledArrival === undefined ? 1440 : leg.scheduledArrival);
-    }
-    if (flags1 & LEG_HAS_WALK) w.varuint(leg.walk!);
-    if (exactCoords) {
-      if (hasFromCoords) w.str(`${leg.fromLat},${leg.fromLon}`);
-      if (hasToCoords) w.str(`${leg.toLat},${leg.toLon}`);
-    } else {
-      if (hasFromCoords) {
-        const y = Math.round(leg.fromLat! * 1e5);
-        const x = Math.round(leg.fromLon! * 1e5);
-        w.varsint(y - prevLat);
-        w.varsint(x - prevLon);
-        prevLat = y;
-        prevLon = x;
-      }
-      if (hasToCoords) {
-        const y = Math.round(leg.toLat! * 1e5);
-        const x = Math.round(leg.toLon! * 1e5);
-        w.varsint(y - prevLat);
-        w.varsint(x - prevLon);
-        prevLat = y;
-        prevLon = x;
-      }
-    }
-    if (flags2 & LEG_HAS_PATH) w.str(path!);
-
-    prevArrival = leg.arrival;
-    prevTo = leg.to;
-  }
-  return w.bytes();
-}
-
 function decodeBinary(
   bytes: Uint8Array,
 ): { journey: SharedConnection; locale?: (typeof shareLocales)[number] } | null {
@@ -593,12 +482,388 @@ function decodeBinary(
   }
 }
 
+const V2_REUSE_FROM = 8;
+const V2_HAS_LINE = 16;
+const V2_HAS_DIR = 32;
+const V2_DIR_EQ_TO = 64;
+const V2_HAS_TRIP = 128;
+
+const V2_HAS_BOARD = 1;
+const V2_HAS_ALIGHT = 2;
+const V2_HAS_SCHED = 4;
+const V2_HAS_WALK = 8;
+const V2_HAS_FROM_COORDS = 16;
+const V2_HAS_TO_COORDS = 32;
+const V2_REUSE_FROM_COORDS = 64;
+const V2_HAS_EXTRA = 128;
+
+const V2X_HAS_PLATFORM = 1;
+const V2X_HAS_TRACK = 2;
+const V2X_HAS_PATH = 4;
+const V2X_EXACT_COORDS = 8;
+const V2X_WALK_STOPS = 16;
+
+const MAX_COMPACT_NUM = 0x1fff_ffff;
+
+function writeCompactId(w: ShareWriter, value: string): void {
+  if (/^(?:0|[1-9]\d{0,8})$/.test(value)) {
+    const n = Number(value);
+    if (n <= MAX_COMPACT_NUM) {
+      w.varuint(n * 4);
+      return;
+    }
+  }
+  if (/^pl:(?:0|[1-9]\d{0,8})$/.test(value)) {
+    const n = Number(value.slice(3));
+    if (n <= MAX_COMPACT_NUM) {
+      w.varuint(n * 4 + 1);
+      return;
+    }
+  }
+  const under = /^(0|[1-9]\d{0,3})_(0|[1-9]\d{0,8})$/.exec(value);
+  if (under) {
+    const a = Number(under[1]);
+    const b = Number(under[2]);
+    if (a <= 9999 && b <= MAX_COMPACT_NUM) {
+      w.varuint(a * 4 + 2);
+      w.varuint(b);
+      return;
+    }
+  }
+  const bytes = strToU8(value);
+  w.varuint(bytes.length * 4 + 3);
+  for (let i = 0; i < bytes.length; i++) w.u8(bytes[i]);
+}
+
+function readCompactId(r: ShareReader): string {
+  const head = r.varuint();
+  const tag = head & 3;
+  const val = head >>> 2;
+  if (tag === 0) return String(val);
+  if (tag === 1) return `pl:${val}`;
+  if (tag === 2) return `${val}_${r.varuint()}`;
+  if (val > 24000) throw new Error('Invalid id');
+  const bytes = new Uint8Array(val);
+  for (let i = 0; i < val; i++) bytes[i] = r.u8();
+  return strFromU8(bytes);
+}
+
+function wrapMinuteDelta(scheduled: number, actualMod: number): number {
+  let delta = scheduled - actualMod;
+  if (delta > 719) delta -= 1440;
+  if (delta < -720) delta += 1440;
+  return delta;
+}
+
+function encodeBinaryV2(
+  journey: SharedConnection,
+  options?: { locale?: string; includePath?: boolean; compactCoords?: boolean },
+): Uint8Array {
+  const cityIdx = shareCities.indexOf(journey.city);
+  if (cityIdx < 0) throw new Error('Invalid city');
+  const cityMeta = CITIES[cityIdx];
+  const dateDays = Math.round((Date.parse(journey.date) - EPOCH_2026_MS) / DAY_MS);
+  const w = new ShareWriter();
+
+  const rawLocale = options?.locale?.toLowerCase();
+  const localeIdx = rawLocale
+    ? shareLocales.indexOf(rawLocale as (typeof shareLocales)[number])
+    : -1;
+  const localeCode = localeIdx >= 0 ? localeIdx + 1 : 0;
+  const hasCustomFrom = journey.from !== journey.legs[0]?.from;
+  const hasCustomTo = journey.to !== journey.legs.at(-1)?.to;
+  const inlineLegs = journey.legs.length <= 7 ? journey.legs.length : 0;
+
+  w.u8(2);
+  w.u8(
+    (localeCode & 7) |
+      (hasCustomFrom ? 8 : 0) |
+      (hasCustomTo ? 16 : 0) |
+      ((inlineLegs & 7) << 5),
+  );
+  w.varuint(cityIdx);
+  w.varsint(dateDays);
+  w.varuint(journey.departure);
+  w.varuint(journey.arrival - journey.departure);
+  if (hasCustomFrom) w.str(journey.from);
+  if (hasCustomTo) w.str(journey.to);
+  if (inlineLegs === 0) w.varuint(journey.legs.length);
+
+  let prevArrival = journey.departure;
+  let prevTo = '';
+  let prevLat = Math.round(cityMeta.center.lat * 1e5);
+  let prevLon = Math.round(cityMeta.center.lon * 1e5);
+  let hasPrevCoord = false;
+  const includePath = options?.includePath ?? true;
+  const compactCoords = options?.compactCoords ?? false;
+
+  for (const leg of journey.legs) {
+    const modeIdx = modes.indexOf(leg.mode);
+    if (modeIdx < 0) throw new Error('Invalid leg mode');
+
+    const reuseFrom = prevTo.length > 0 && leg.from === prevTo;
+    const dirEqTo = leg.direction !== undefined && leg.direction === leg.to;
+    const hasDir = leg.direction !== undefined && !dirEqTo;
+    const hasSched =
+      (leg.scheduledDeparture !== undefined && leg.scheduledDeparture !== leg.departure % 1440) ||
+      (leg.scheduledArrival !== undefined && leg.scheduledArrival !== leg.arrival % 1440);
+    const hasFromCoords = leg.fromLat !== undefined && leg.fromLon !== undefined;
+    const hasToCoords = leg.toLat !== undefined && leg.toLon !== undefined;
+    const path = includePath ? leg.path : undefined;
+
+    const fromY = hasFromCoords ? Math.round(leg.fromLat! * 1e5) : 0;
+    const fromX = hasFromCoords ? Math.round(leg.fromLon! * 1e5) : 0;
+    const toY = hasToCoords ? Math.round(leg.toLat! * 1e5) : 0;
+    const toX = hasToCoords ? Math.round(leg.toLon! * 1e5) : 0;
+
+    const exactFrom =
+      !compactCoords &&
+      hasFromCoords &&
+      (fromY / 1e5 !== leg.fromLat || fromX / 1e5 !== leg.fromLon);
+    const exactTo =
+      !compactCoords && hasToCoords && (toY / 1e5 !== leg.toLat || toX / 1e5 !== leg.toLon);
+    const exactCoords = exactFrom || exactTo;
+
+    const reuseFromCoords =
+      hasFromCoords &&
+      hasPrevCoord &&
+      !exactCoords &&
+      (compactCoords
+        ? Math.abs(fromY - prevLat) <= 2 && Math.abs(fromX - prevLon) <= 2
+        : fromY === prevLat && fromX === prevLon);
+
+    const writeWalkStops = leg.mode === 'walk' && leg.stops > 0;
+    let extraFlags = 0;
+    if (leg.platform !== undefined) extraFlags |= V2X_HAS_PLATFORM;
+    if (leg.track !== undefined) extraFlags |= V2X_HAS_TRACK;
+    if (path !== undefined) extraFlags |= V2X_HAS_PATH;
+    if (exactCoords) extraFlags |= V2X_EXACT_COORDS;
+    if (writeWalkStops) extraFlags |= V2X_WALK_STOPS;
+
+    let h1 = modeIdx & 7;
+    if (reuseFrom) h1 |= V2_REUSE_FROM;
+    if (leg.line !== undefined) h1 |= V2_HAS_LINE;
+    if (hasDir) h1 |= V2_HAS_DIR;
+    if (dirEqTo) h1 |= V2_DIR_EQ_TO;
+    if (leg.trip !== undefined) h1 |= V2_HAS_TRIP;
+
+    let h2 = 0;
+    if (leg.board !== undefined) h2 |= V2_HAS_BOARD;
+    if (leg.alight !== undefined) h2 |= V2_HAS_ALIGHT;
+    if (hasSched) h2 |= V2_HAS_SCHED;
+    if (leg.walk !== undefined) h2 |= V2_HAS_WALK;
+    if (hasFromCoords && !reuseFromCoords) h2 |= V2_HAS_FROM_COORDS;
+    if (hasToCoords) h2 |= V2_HAS_TO_COORDS;
+    if (reuseFromCoords) h2 |= V2_REUSE_FROM_COORDS;
+    if (extraFlags !== 0) h2 |= V2_HAS_EXTRA;
+
+    w.u8(h1);
+    w.u8(h2);
+    if (extraFlags !== 0) w.u8(extraFlags);
+
+    w.varuint(leg.departure - prevArrival);
+    w.varuint(leg.arrival - leg.departure);
+    if (leg.mode !== 'walk' || writeWalkStops) w.varuint(leg.stops);
+    if (!reuseFrom) w.str(leg.from);
+    w.str(leg.to);
+    if (h1 & V2_HAS_LINE) w.str(leg.line!);
+    if (h1 & V2_HAS_DIR) w.str(leg.direction!);
+    if (h1 & V2_HAS_TRIP) writeCompactId(w, leg.trip!);
+    if (h2 & V2_HAS_BOARD) writeCompactId(w, leg.board!);
+    if (h2 & V2_HAS_ALIGHT) writeCompactId(w, leg.alight!);
+    if (extraFlags & V2X_HAS_PLATFORM) w.str(leg.platform!);
+    if (extraFlags & V2X_HAS_TRACK) w.str(leg.track!);
+    if (h2 & V2_HAS_SCHED) {
+      const depDelta =
+        leg.scheduledDeparture === undefined
+          ? 720
+          : wrapMinuteDelta(leg.scheduledDeparture, leg.departure % 1440);
+      const arrDelta =
+        leg.scheduledArrival === undefined
+          ? 720
+          : wrapMinuteDelta(leg.scheduledArrival, leg.arrival % 1440);
+      w.varsint(depDelta);
+      w.varsint(arrDelta);
+    }
+    if (h2 & V2_HAS_WALK) w.varuint(leg.walk!);
+
+    if (exactCoords) {
+      if (hasFromCoords) w.str(`${leg.fromLat},${leg.fromLon}`);
+      if (hasToCoords) w.str(`${leg.toLat},${leg.toLon}`);
+      if (hasToCoords) {
+        prevLat = toY;
+        prevLon = toX;
+        hasPrevCoord = true;
+      } else if (hasFromCoords) {
+        prevLat = fromY;
+        prevLon = fromX;
+        hasPrevCoord = true;
+      }
+    } else {
+      if (h2 & V2_HAS_FROM_COORDS) {
+        w.varsint(fromY - prevLat);
+        w.varsint(fromX - prevLon);
+        prevLat = fromY;
+        prevLon = fromX;
+        hasPrevCoord = true;
+      }
+      if (h2 & V2_HAS_TO_COORDS) {
+        w.varsint(toY - prevLat);
+        w.varsint(toX - prevLon);
+        prevLat = toY;
+        prevLon = toX;
+        hasPrevCoord = true;
+      }
+    }
+    if (extraFlags & V2X_HAS_PATH) w.str(path!);
+
+    prevArrival = leg.arrival;
+    prevTo = leg.to;
+  }
+
+  return w.bytes();
+}
+
+function decodeBinaryV2(
+  bytes: Uint8Array,
+): { journey: SharedConnection; locale?: (typeof shareLocales)[number] } | null {
+  try {
+    const r = new ShareReader(bytes);
+    if (r.u8() !== 2) return null;
+    const meta = r.u8();
+    const localeCode = meta & 7;
+    const locale =
+      localeCode >= 1 && localeCode <= shareLocales.length
+        ? shareLocales[localeCode - 1]
+        : undefined;
+    const hasCustomFrom = (meta & 8) !== 0;
+    const hasCustomTo = (meta & 16) !== 0;
+    const inlineLegs = (meta >>> 5) & 7;
+
+    const cityIdx = r.varuint();
+    const city = shareCities[cityIdx];
+    if (!city) return null;
+    const cityMeta = CITIES[cityIdx];
+    const dateMs = EPOCH_2026_MS + r.varsint() * DAY_MS;
+    if (!Number.isFinite(dateMs)) return null;
+    const date = new Date(dateMs).toISOString().slice(0, 10);
+    const departure = r.varuint();
+    const arrival = departure + r.varuint();
+    const rawFrom = hasCustomFrom ? r.str() : '';
+    const rawTo = hasCustomTo ? r.str() : '';
+    const legsCount = inlineLegs > 0 ? inlineLegs : r.varuint();
+    if (legsCount < 1 || legsCount > 24) return null;
+
+    const legs: SharedLeg[] = [];
+    let prevArrival = departure;
+    let prevTo = '';
+    let prevLat = Math.round(cityMeta.center.lat * 1e5);
+    let prevLon = Math.round(cityMeta.center.lon * 1e5);
+
+    for (let i = 0; i < legsCount; i++) {
+      const h1 = r.u8();
+      const h2 = r.u8();
+      const extra = h2 & V2_HAS_EXTRA ? r.u8() : 0;
+      const mode = modes[h1 & 7];
+      if (!mode) return null;
+
+      const legDep = prevArrival + r.varuint();
+      const legArr = legDep + r.varuint();
+      const stops = mode !== 'walk' || extra & V2X_WALK_STOPS ? r.varuint() : 0;
+      const from = h1 & V2_REUSE_FROM ? prevTo : r.str();
+      const to = r.str();
+      const leg: SharedLeg = {
+        mode,
+        from,
+        to,
+        departure: legDep,
+        arrival: legArr,
+        stops,
+      };
+      if (h1 & V2_HAS_LINE) leg.line = r.str();
+      if (h1 & V2_HAS_DIR) leg.direction = r.str();
+      else if (h1 & V2_DIR_EQ_TO) leg.direction = to;
+      if (h1 & V2_HAS_TRIP) leg.trip = readCompactId(r);
+      if (h2 & V2_HAS_BOARD) leg.board = readCompactId(r);
+      if (h2 & V2_HAS_ALIGHT) leg.alight = readCompactId(r);
+      if (extra & V2X_HAS_PLATFORM) leg.platform = r.str();
+      if (extra & V2X_HAS_TRACK) leg.track = r.str();
+      if (h2 & V2_HAS_SCHED) {
+        const depDelta = r.varsint();
+        const arrDelta = r.varsint();
+        if (depDelta !== 720) {
+          leg.scheduledDeparture = (((legDep % 1440) + depDelta) % 1440 + 1440) % 1440;
+        }
+        if (arrDelta !== 720) {
+          leg.scheduledArrival = (((legArr % 1440) + arrDelta) % 1440 + 1440) % 1440;
+        }
+      }
+      if (h2 & V2_HAS_WALK) leg.walk = r.varuint();
+
+      if (extra & V2X_EXACT_COORDS) {
+        if (h2 & V2_HAS_FROM_COORDS) {
+          const [lat, lon] = r.str().split(',').map(Number);
+          leg.fromLat = lat;
+          leg.fromLon = lon;
+          prevLat = Math.round(lat * 1e5);
+          prevLon = Math.round(lon * 1e5);
+        }
+        if (h2 & V2_HAS_TO_COORDS) {
+          const [lat, lon] = r.str().split(',').map(Number);
+          leg.toLat = lat;
+          leg.toLon = lon;
+          prevLat = Math.round(lat * 1e5);
+          prevLon = Math.round(lon * 1e5);
+        }
+      } else {
+        if (h2 & V2_REUSE_FROM_COORDS) {
+          leg.fromLat = prevLat / 1e5;
+          leg.fromLon = prevLon / 1e5;
+        } else if (h2 & V2_HAS_FROM_COORDS) {
+          prevLat += r.varsint();
+          prevLon += r.varsint();
+          leg.fromLat = prevLat / 1e5;
+          leg.fromLon = prevLon / 1e5;
+        }
+        if (h2 & V2_HAS_TO_COORDS) {
+          prevLat += r.varsint();
+          prevLon += r.varsint();
+          leg.toLat = prevLat / 1e5;
+          leg.toLon = prevLon / 1e5;
+        }
+      }
+      if (extra & V2X_HAS_PATH) leg.path = r.str();
+
+      legs.push(leg);
+      prevArrival = legArr;
+      prevTo = to;
+    }
+
+    if (!r.done()) return null;
+    const journey: SharedConnection = {
+      v: 1,
+      city,
+      date,
+      from: rawFrom || legs[0].from,
+      to: rawTo || legs[legs.length - 1].to,
+      departure,
+      arrival,
+      legs,
+    };
+    return isSharedConnection(journey) ? { journey, locale } : null;
+  } catch {
+    return null;
+  }
+}
+
 export function encodeSharedConnection(
   journey: SharedConnection,
-  options?: { locale?: string; includePath?: boolean },
+  options?: { locale?: string; includePath?: boolean; compactCoords?: boolean },
 ): string {
   if (!isSharedConnection(journey)) throw new Error('Invalid journey');
-  const encoded = encodeBase64Url(deflateSync(encodeBinary(journey, options), { level: 9 }));
+  const raw = encodeBinaryV2(journey, options);
+  const deflated = deflateSync(raw, { level: 9 });
+  const encoded = encodeBase64Url(deflated.length < raw.length ? deflated : raw);
   if (encoded.length > maxEncodedLength) throw new Error('Journey link too long');
   return encoded;
 }
@@ -608,14 +873,18 @@ export function decodeSharedPayload(
 ): { journey: SharedConnection; locale?: 'pl' | 'en' | 'de' | 'uk' } | null {
   if (!encoded || encoded.length > maxEncodedLength || !/^[A-Za-z0-9_-]+$/.test(encoded))
     return null;
+  const bytes = decodeBase64Url(encoded);
   try {
-    const bytes = decodeBase64Url(encoded);
     // Stały bufor ogranicza rozpakowywanie danych pochodzących z URL-a.
     const decoded = inflateSync(bytes, { out: new Uint8Array(maxDecodedLength) });
-    return decodeBinary(decoded);
+    const parsed =
+      decoded[0] === 2 ? decodeBinaryV2(decoded) : decodeBinary(decoded);
+    if (parsed) return parsed;
   } catch {
-    return null;
+    /* Krótszy token v2 może być zapisany bez deflate. */
   }
+  if (bytes[0] === 2) return decodeBinaryV2(bytes);
+  return null;
 }
 
 export function decodeSharedConnection(encoded: string): SharedConnection | null {
@@ -639,9 +908,13 @@ export function extractShareTripToken(rawHashOrQuery: string): {
 }
 
 export function buildShareUrl(journey: SharedConnection, locale: string): string {
-  // Pomijamy osadzoną geometrię kształtu: aplikacja i strona dociągają ją
-  // ze statycznych shardów GTFS albo lokalnego routera, więc link jest ponad 2x krótszy.
-  const encoded = encodeSharedConnection(journey, { locale, includePath: false });
+  // Pomijamy geometrię kształtu (dociąganą ze statycznych shardów GTFS) oraz
+  // zaokrąglamy współrzędne przystanków do ~1 m, dzięki czemu link jest możliwie krótki.
+  const encoded = encodeSharedConnection(journey, {
+    locale,
+    includePath: false,
+    compactCoords: true,
+  });
   return `${SHARE_BASE_URL}#${encoded}`;
 }
 
