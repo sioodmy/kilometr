@@ -955,16 +955,6 @@ export default function LiveVehiclesMapScreen() {
 
   const searchOpenRef = useRef(searchOpen);
   searchOpenRef.current = searchOpen;
-  useFocusEffect(
-    useCallback(() => {
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (!searchOpenRef.current) return false;
-        closeSearch();
-        return true;
-      });
-      return () => sub.remove();
-    }, [closeSearch]),
-  );
 
   const handleOpenSearch = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
@@ -1217,6 +1207,25 @@ export default function LiveVehiclesMapScreen() {
     (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelayHub,
   );
   useEscapeKey(hasSheet && !searchOpen, handleClearSelection);
+  const hasSheetRef = useRef(hasSheet);
+  hasSheetRef.current = hasSheet;
+  // Wstecz zamyka najpierw wyszukiwarkę, potem panel pojazdu, przystanku lub alertu.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (searchOpenRef.current) {
+          closeSearch();
+          return true;
+        }
+        if (hasSheetRef.current) {
+          handleClearSelection();
+          return true;
+        }
+        return false;
+      });
+      return () => sub.remove();
+    }, [closeSearch, handleClearSelection]),
+  );
   const hasActiveFilter = filter !== 'all' || lineFilter !== null;
   const expandedBoardMaxHeight = Math.round(Math.min(windowHeight * 0.44, 380));
 

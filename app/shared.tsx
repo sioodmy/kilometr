@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Linking,
   Platform,
   ScrollView,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell,
@@ -83,6 +84,18 @@ export default function SharedJourneyScreen() {
   const encoded = typeof param === 'string' ? param : '';
   const { base, journey, connection, match, sameCity, now, loading, failed, retry } =
     useSharedJourney(encoded);
+
+  // Wejście z linku /t zostawia ten ekran jako korzeń stosu: wstecz wraca do domu, nie zamyka aplikacji.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (router.canGoBack()) return false;
+        router.replace('/');
+        return true;
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
 
   const formattedDate = useMemo(() => {
     if (!journey?.date) return '';
