@@ -29,7 +29,6 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import {
   Bell,
@@ -140,27 +139,24 @@ function StepStage({
   children: React.ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
+  // Bez animacji opacity: po powrocie z tła Fabric potrafi scalić startowe propsy
+  // animacji (bug Reanimated), a treść kroku nie może zależeć od animacji, by być widoczna.
   const translateX = useSharedValue(reduceMotion ? 0 : direction * 28);
-  const opacity = useSharedValue(reduceMotion ? 1 : 0);
   const scale = useSharedValue(reduceMotion ? 1 : 0.985);
 
   useEffect(() => {
     if (reduceMotion) {
       translateX.value = 0;
-      opacity.value = 1;
       scale.value = 1;
       return;
     }
     translateX.value = direction * 28;
-    opacity.value = 0;
     scale.value = 0.985;
     translateX.value = withSpring(0, motion.spring.spatialDefault);
     scale.value = withSpring(1, motion.spring.spatialDefault);
-    opacity.value = withTiming(1, { duration: 220, easing: motion.enter.easing });
-  }, [direction, opacity, reduceMotion, scale, step, translateX]);
+  }, [direction, reduceMotion, scale, step, translateX]);
 
   const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
     transform: [{ translateX: translateX.value }, { scale: scale.value }],
   }));
 
@@ -183,22 +179,17 @@ function AnimatedStepHeader({
 }) {
   const reduceMotion = useReducedMotion();
   const tx = useSharedValue(reduceMotion ? 0 : direction * 18);
-  const op = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
     if (reduceMotion) {
       tx.value = 0;
-      op.value = 1;
       return;
     }
     tx.value = direction * 18;
-    op.value = 0;
     tx.value = withSpring(0, motion.spring.spatialDefault);
-    op.value = withTiming(1, { duration: 200, easing: motion.enter.easing });
-  }, [direction, op, reduceMotion, step, tx]);
+  }, [direction, reduceMotion, step, tx]);
 
   const animStyle = useAnimatedStyle(() => ({
-    opacity: op.value,
     transform: [{ translateX: tx.value }],
   }));
 
