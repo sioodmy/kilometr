@@ -1125,7 +1125,7 @@ export const en: Strings = {
     planningTitle: 'Journey planning',
     offlineTitle: 'Timetable and maps',
     notificationsSummary: 'Journey tracking and alerts',
-    backupSummary: 'Saved places, history and settings',
+    backupSummary: 'Stats, recap and backup',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Reset journey preferences',
@@ -2620,5 +2620,85 @@ export const en: Strings = {
     tripEmptyBody: 'Choose a connection and turn on tracking.',
     placesEmpty: 'Add your first place',
     search: 'Where to?',
+  },
+  yourData: {
+    distanceLabel: 'Distance travelled',
+    tripsLabel: 'Trips',
+    timeLabel: 'Time in transit',
+    citiesLabel: 'Cities',
+    stopsLabel: 'Stops',
+    walkLabel: 'On foot',
+    co2Label: 'CO₂ saved',
+    co2Hint: 'vs driving',
+    railSectionTitle: 'Rail and transit modes',
+    railTitle: 'Rail',
+    railTrips: (n: number) => (n === 1 ? '1 rail trip' : `${n} rail trips`),
+    railTickets: (n: number) => (n === 1 ? '1 ticket' : `${n} tickets`),
+    railEmpty: 'No recorded rail journeys yet',
+    topLinesTitle: 'Most frequent lines',
+    topLinesSubtitle: 'Tap a slice or line to inspect its share',
+    topLinesEmpty: 'Open or save routes to see a breakdown of your top lines.',
+    topLinesTotal: 'Legs',
+    topLinesOther: 'Other',
+    lineTrips: (n: number) => (n === 1 ? '1 ride' : `${n} rides`),
+    topDestinationsTitle: 'Top destinations',
+    topDestinationLead: 'Top destination',
+    topDestinationsEmpty: 'Look up connections to see your most visited places.',
+    avgTime: (min: number) => `avg ${min} min`,
+    backupSectionTitle: 'Backup and transfer',
+    placesShort: 'Places',
+    routesShort: 'Saved routes',
+    historyShort: 'History',
+    emptyTitle: 'Your travel stats are just getting started',
+    emptyBody:
+      'Search and track routes to see your kilometres, favourite lines chart and a shareable recap card. Everything stays locally on this device.',
+    localOnlyNote: 'All statistics are computed locally on your device.',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Share a recap of your journeys',
+    shareSheetTitle: 'Travel recap',
+    shareSheetSubtitle: 'Ready to share on Instagram, X or with friends.',
+    sharePrivacyNote:
+      'For your privacy, this card hides destinations, stops, city names and line numbers.',
+    shareAction: 'Share image',
+    shareDownload: 'Save PNG',
+    sharePreparing: 'Generating image…',
+    shareError: 'Could not generate the image. Please try again.',
+    shareSaved: 'Image saved.',
+    themeEmerald: 'Emerald',
+    themeNight: 'Night ride',
+    themeRail: 'Rail',
+    wrappedFooter: 'Travel recap',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('en-US')} km`
+        : `${km.toLocaleString('en-US', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} kg`
+        : `~${kg.toLocaleString('en-US', { maximumFractionDigits: 1 })} kg`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} min`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} h ${m} min` : `${h} h`;
+    },
+    modes: {
+      tram: 'Tram',
+      bus: 'Bus',
+      train: 'Rail',
+      subway: 'Metro',
+      trolleybus: 'Trolleybus',
+      cable: 'Cable car',
+      walk: 'Walk',
+    },
+    archetypes: {
+      rail_express: 'Rail express',
+      tram_regular: 'Tram regular',
+      bus_rider: 'Bus network pro',
+      metro_commuter: 'Underground express',
+      city_walker: 'City walker',
+      multi_city: 'Intercity traveller',
+      explorer: 'Route explorer',
+    },
   },
 };

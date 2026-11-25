@@ -130,6 +130,7 @@ export const CreditCard = icon('credit-card');
 export const DatabaseBackup = icon('backup');
 export const DirectionsBike = icon('directions-bike');
 export const Download = icon('download');
+export const Eco = icon('eco');
 export const Dumbbell = icon('fitness-center');
 export const ExternalLink = icon('open-in-new');
 export const FileDown = icon('file-download');

@@ -1549,7 +1549,7 @@ export const uk: Strings = {
     planningTitle: 'Планування подорожі',
     offlineTitle: 'Розклад і карти',
     notificationsSummary: 'Відстеження подорожі та сповіщення',
-    backupSummary: 'Збережені місця, історія та налаштування',
+    backupSummary: 'Статистика, підсумок і резервна копія',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Відновити налаштування маршрутів',
@@ -3142,5 +3142,88 @@ export const uk: Strings = {
     tripEmptyBody: 'Виберіть сполучення й увімкніть відстеження.',
     placesEmpty: 'Додайте своє перше місце',
     search: 'Куди їдемо?',
+  },
+  yourData: {
+    distanceLabel: 'Пройдена відстань',
+    tripsLabel: 'Поїздки',
+    timeLabel: 'Час у дорозі',
+    citiesLabel: 'Міста',
+    stopsLabel: 'Зупинки',
+    walkLabel: 'Пішки',
+    co2Label: 'Менше CO₂',
+    co2Hint: 'проти авто',
+    railSectionTitle: 'Залізниця та транспорт',
+    railTitle: 'Залізниця',
+    railTrips: (n: number) =>
+      isOne(n) ? '1 поїздка поїздом' : isFew(n) ? `${n} поїздки поїздом` : `${n} поїздок поїздом`,
+    railTickets: (n: number) =>
+      isOne(n) ? '1 квиток' : isFew(n) ? `${n} квитки` : `${n} квитків`,
+    railEmpty: 'Поки що немає збережених поїздок залізницею',
+    topLinesTitle: 'Найчастіші лінії',
+    topLinesSubtitle: 'Торкніться сектора або лінії, щоб побачити частку',
+    topLinesEmpty: 'Відкривайте або зберігайте маршрути, щоб побачити діаграму своїх ліній.',
+    topLinesTotal: 'Відрізки',
+    topLinesOther: 'Інші',
+    lineTrips: (n: number) =>
+      isOne(n) ? '1 рейс' : isFew(n) ? `${n} рейси` : `${n} рейсів`,
+    topDestinationsTitle: 'Найчастіші напрямки',
+    topDestinationLead: 'Головний напрямок',
+    topDestinationsEmpty: 'Шукайте сполучення, щоб побачити найчастіші місця.',
+    avgTime: (min: number) => `сер. ${min} хв`,
+    backupSectionTitle: 'Резервна копія та перенесення',
+    placesShort: 'Місця',
+    routesShort: 'Збережені маршрути',
+    historyShort: 'Історія',
+    emptyTitle: 'Ваша статистика ще формується',
+    emptyBody:
+      'Шукайте й відстежуйте маршрути, щоб побачити кілометри, діаграму улюблених ліній і картку підсумку для соцмереж. Усі дані зберігаються лише на цьому пристрої.',
+    localOnlyNote: 'Уся статистика рахується локально на вашому пристрої.',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Поділися підсумком своїх поїздок',
+    shareSheetTitle: 'Підсумок поїздок',
+    shareSheetSubtitle: 'Готова графіка для Instagram, X або друзів.',
+    sharePrivacyNote:
+      'Для вашої приватності картка приховує цілі, зупинки, назви міст і номери ліній.',
+    shareAction: 'Поділитися графікою',
+    shareDownload: 'Зберегти PNG',
+    sharePreparing: 'Створюю графіку…',
+    shareError: 'Не вдалося створити графіку. Спробуйте ще раз.',
+    shareSaved: 'Графіку збережено.',
+    themeEmerald: 'Смарагд',
+    themeNight: 'Нічний рейс',
+    themeRail: 'Колія',
+    wrappedFooter: 'Підсумок поїздок',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('uk-UA')} км`
+        : `${km.toLocaleString('uk-UA', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} км`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} кг`
+        : `~${kg.toLocaleString('uk-UA', { maximumFractionDigits: 1 })} кг`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} хв`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} год ${m} хв` : `${h} год`;
+    },
+    modes: {
+      tram: 'Трамвай',
+      bus: 'Автобус',
+      train: 'Залізниця',
+      subway: 'Метро',
+      trolleybus: 'Тролейбус',
+      cable: 'Канатна дорога',
+      walk: 'Пішки',
+    },
+    archetypes: {
+      rail_express: 'Залізничний експрес',
+      tram_regular: 'Постійний пасажир трамваїв',
+      bus_rider: 'Майстер автобусних ліній',
+      metro_commuter: 'Підземний експрес',
+      city_walker: 'Міський пішохід',
+      multi_city: 'Міжміський мандрівник',
+      explorer: 'Дослідник маршрутів',
+    },
   },
 };

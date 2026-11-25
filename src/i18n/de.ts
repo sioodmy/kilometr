@@ -1129,7 +1129,7 @@ export const de: Strings = {
     planningTitle: 'Reiseplanung',
     offlineTitle: 'Fahrplan und Karten',
     notificationsSummary: 'Reiseverfolgung und Meldungen',
-    backupSummary: 'Gespeicherte Orte, Verlauf und Einstellungen',
+    backupSummary: 'Statistiken, Rückblick und Sicherung',
     planningSummary: (pace: string) => pace,
     appSummary: (language: string, color: string) => `${language} · ${color}`,
     resetRoutes: 'Routeneinstellungen zurücksetzen',
@@ -2651,5 +2651,85 @@ export const de: Strings = {
     tripEmptyBody: 'Wähle eine Verbindung und schalte die Verfolgung ein.',
     placesEmpty: 'Füge deinen ersten Ort hinzu',
     search: 'Wohin?',
+  },
+  yourData: {
+    distanceLabel: 'Zurückgelegte Strecke',
+    tripsLabel: 'Fahrten',
+    timeLabel: 'Unterwegs',
+    citiesLabel: 'Städte',
+    stopsLabel: 'Haltestellen',
+    walkLabel: 'Zu Fuß',
+    co2Label: 'CO₂ gespart',
+    co2Hint: 'gegenüber Auto',
+    railSectionTitle: 'Bahn und Verkehrsmittel',
+    railTitle: 'Bahn',
+    railTrips: (n: number) => (n === 1 ? '1 Bahnfahrt' : `${n} Bahnfahrten`),
+    railTickets: (n: number) => (n === 1 ? '1 Ticket' : `${n} Tickets`),
+    railEmpty: 'Noch keine gespeicherten Bahnfahrten',
+    topLinesTitle: 'Häufigste Linien',
+    topLinesSubtitle: 'Tippe auf ein Segment oder eine Linie für Details',
+    topLinesEmpty: 'Öffne oder speichere Routen, um deine häufigsten Linien zu sehen.',
+    topLinesTotal: 'Abschnitte',
+    topLinesOther: 'Weitere',
+    lineTrips: (n: number) => (n === 1 ? '1 Fahrt' : `${n} Fahrten`),
+    topDestinationsTitle: 'Häufigste Ziele',
+    topDestinationLead: 'Top-Ziel',
+    topDestinationsEmpty: 'Suche Verbindungen, um deine häufigsten Ziele zu sehen.',
+    avgTime: (min: number) => `Ø ${min} Min.`,
+    backupSectionTitle: 'Sicherung und Übertragung',
+    placesShort: 'Orte',
+    routesShort: 'Routen',
+    historyShort: 'Verlauf',
+    emptyTitle: 'Deine Fahrstatistiken entstehen gerade',
+    emptyBody:
+      'Suche und verfolge Verbindungen, um Kilometer, Lieblingslinien und eine teilbare Rückblick-Grafik zu sehen. Alle Daten bleiben lokal auf diesem Gerät.',
+    localOnlyNote: 'Alle Statistiken werden lokal auf deinem Gerät berechnet.',
+    shareCardCta: 'Kilometr Wrapped',
+    shareCardSub: 'Teile deine Fahrten-Zusammenfassung',
+    shareSheetTitle: 'Fahrten-Rückblick',
+    shareSheetSubtitle: 'Fertige Grafik zum Teilen auf Instagram, X oder mit Freunden.',
+    sharePrivacyNote:
+      'Zu deinem Schutz blendet die Grafik Ziele, Haltestellen, Städtenamen und Liniennummern aus.',
+    shareAction: 'Grafik teilen',
+    shareDownload: 'PNG speichern',
+    sharePreparing: 'Erstelle Grafik…',
+    shareError: 'Grafik konnte nicht erstellt werden. Bitte erneut versuchen.',
+    shareSaved: 'Grafik gespeichert.',
+    themeEmerald: 'Smaragd',
+    themeNight: 'Nachtlinie',
+    themeRail: 'Schiene',
+    wrappedFooter: 'Fahrten-Rückblick',
+    formatKm: (km: number) =>
+      km >= 100
+        ? `${Math.round(km).toLocaleString('de-DE')} km`
+        : `${km.toLocaleString('de-DE', { minimumFractionDigits: km % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km`,
+    formatCo2: (kg: number) =>
+      kg >= 10
+        ? `~${Math.round(kg)} kg`
+        : `~${kg.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kg`,
+    formatDuration: (min: number) => {
+      if (min < 60) return `${Math.max(0, Math.round(min))} Min.`;
+      const h = Math.floor(min / 60);
+      const m = Math.round(min % 60);
+      return m > 0 ? `${h} Std. ${m} Min.` : `${h} Std.`;
+    },
+    modes: {
+      tram: 'Tram',
+      bus: 'Bus',
+      train: 'Bahn',
+      subway: 'Metro',
+      trolleybus: 'O-Bus',
+      cable: 'Seilbahn',
+      walk: 'Zu Fuß',
+    },
+    archetypes: {
+      rail_express: 'Bahn-Express',
+      tram_regular: 'Tram-Stammgast',
+      bus_rider: 'Bus-Profi',
+      metro_commuter: 'U-Bahn-Pendler',
+      city_walker: 'Stadtläufer',
+      multi_city: 'Städtereisender',
+      explorer: 'Streckenentdecker',
+    },
   },
 };

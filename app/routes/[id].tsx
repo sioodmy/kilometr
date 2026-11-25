@@ -56,6 +56,7 @@ import { useTransferProtection } from '../../src/components/TransferProtectionPr
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
+import { recordJourney } from '../../src/services/userStats';
 import {
   areNotificationsSupported,
   ensureNotificationPermission,
@@ -197,6 +198,13 @@ export default function RouteDetailsScreen() {
   );
   const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline && transitionSettled);
   const item = liveItems[0] ?? null;
+
+  const loggedJourneyIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!item || !item.id || loggedJourneyIdRef.current === item.id) return;
+    loggedJourneyIdRef.current = item.id;
+    void recordJourney(item, 'viewed');
+  }, [item]);
 
   const handleApplyLegSwap = useCallback(
     (nextConnection: Connection) => {
