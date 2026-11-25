@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { BackHandler, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useMemo, useRef } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -22,6 +22,7 @@ import {
 } from '../services/lineTimetable';
 import { motion } from '../theme/motion';
 import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import { scheme, shape, type } from '../theme/tokens';
 
 export interface StopDeparturesSheetProps {
@@ -85,14 +86,7 @@ export function StopDeparturesSheet({
     [s.common.close],
   );
 
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      sheetRef.current?.close();
-      return true;
-    });
-    return () => sub.remove();
-  }, []);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, () => onCloseRef.current());
 
   const stop = pattern.stops[stopIndex];
   if (!stop) return null;
@@ -119,6 +113,7 @@ export function StopDeparturesSheet({
       detached={sheetProps.detached}
       style={sheetProps.sheetStyle}
       enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={() => onCloseRef.current()}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
       handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}

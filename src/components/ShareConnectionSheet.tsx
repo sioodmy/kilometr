@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Platform,
   Pressable,
   Share,
@@ -20,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, Copy, Download, ImageUp, Link, Share2, X } from './icons';
 import * as Clipboard from 'expo-clipboard';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import {
   DesktopSheetTopSpacer,
   getDesktopSheetProps,
@@ -87,13 +87,7 @@ export function ShareConnectionSheet({
   const available = !!journey && !!url;
   const displayUrl = url.replace(/^https:\/\//, '');
 
-  useEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      sheet.current?.close();
-      return true;
-    });
-    return () => back.remove();
-  }, []);
+  const { onSheetChange } = useSheetBackHandler(sheet, onClose);
 
   useEffect(() => {
     if (!copied) return;
@@ -176,6 +170,7 @@ export function ShareConnectionSheet({
       detached={sheetProps.detached}
       style={sheetProps.sheetStyle}
       enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onClose}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
       handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}

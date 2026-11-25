@@ -147,13 +147,30 @@ export function CitySelectSheet({
     backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
   }, [backdropProgress, reduceMotion, translateY]);
 
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
     closeRef.current();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
   }, []);
 
   const requestClose = useCallback(
     (immediate = false) => {
-      if (closingRef.current) return;
+      if (closingRef.current) {
+        if (immediate) finishClose();
+        return;
+      }
       closingRef.current = true;
       Keyboard.dismiss();
       if (immediate || reduceMotion) {
@@ -163,6 +180,7 @@ export function CitySelectSheet({
       cancelAnimation(translateY);
       cancelAnimation(backdropProgress);
       backdropProgress.value = withTiming(0, motion.exit);
+      closeTimerRef.current = setTimeout(finishClose, motion.exit.duration + 60);
       translateY.value = withTiming(targetHeightRef.current, motion.exit, () => {
         runOnJS(finishClose)();
       });
@@ -172,7 +190,7 @@ export function CitySelectSheet({
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      requestClose();
+      requestClose(closingRef.current);
       return true;
     });
     return () => sub.remove();
@@ -235,8 +253,8 @@ export function CitySelectSheet({
             translateY.value = withTiming(
               targetSheetHeight,
               { duration, easing: motion.exit.easing },
-              (finished) => {
-                if (finished) runOnJS(requestClose)(true);
+              () => {
+                runOnJS(requestClose)(true);
               },
             );
           } else {

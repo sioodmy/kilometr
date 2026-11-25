@@ -191,9 +191,9 @@ export default function RootLayout() {
     () => ({
       headerShown: false,
       contentStyle: { backgroundColor: scheme.surface },
-      animation: (disableScreenAnim ? 'none' : 'slide_from_right') as 'none' | 'slide_from_right',
-      animationDuration: 220,
-      animationMatchesGesture: true,
+      animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
+      animationDuration: 200,
+      animationMatchesGesture: false,
       gestureEnabled: !webLayout.isMedium,
       gestureDirection: 'horizontal' as const,
       fullScreenGestureEnabled: true,
@@ -201,27 +201,18 @@ export default function RootLayout() {
     [disableScreenAnim, themeSetting, webLayout.isMedium],
   );
 
-  const verticalScreenOptions = useMemo(
-    () => ({
-      headerShown: false,
-      animation: (disableScreenAnim
-        ? 'none'
-        : Platform.OS === 'android'
-          ? 'fade_from_bottom'
-          : 'slide_from_right') as 'none' | 'fade_from_bottom' | 'slide_from_right',
-      animationDuration: 210,
-      animationMatchesGesture: true,
-    }),
-    [disableScreenAnim],
-  );
-
   const mapScreenOptions = useMemo(
     () => ({
-      gestureEnabled: false,
+      gestureEnabled: !webLayout.isMedium,
+      gestureDirection: 'horizontal' as const,
+      // Na mapie gest z lewej krawędzi wraca wstecz bez przejmowania przesuwania mapy.
+      fullScreenGestureEnabled: false,
+      gestureResponseDistance: { start: 32 },
       animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
-      animationDuration: 210,
+      animationDuration: 200,
+      animationMatchesGesture: false,
     }),
-    [disableScreenAnim],
+    [disableScreenAnim, webLayout.isMedium],
   );
 
   // Ustawienia trasy i język z kv-store dostępne globalnie od startu.
@@ -333,10 +324,10 @@ export default function RootLayout() {
               <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-                <Stack.Screen name="routes" options={verticalScreenOptions} />
-                <Stack.Screen name="line" options={verticalScreenOptions} />
+                <Stack.Screen name="routes" />
+                <Stack.Screen name="line" />
                 <Stack.Screen name="line-departures" />
-                {/* Mapa ma własny gest przesuwania: natywny swipe-back zjadałby przeciąganie widoku. */}
+                {/* Mapa ma własny gest przesuwania: cofanie działa z lewej krawędzi bez zjadania mapy. */}
                 <Stack.Screen name="map" options={mapScreenOptions} />
                 <Stack.Screen name="live-map" options={mapScreenOptions} />
                 <Stack.Screen name="news" />

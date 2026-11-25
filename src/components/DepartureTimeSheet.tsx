@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BackHandler,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -30,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCircle, Clock3, Flag, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import {
   DESKTOP_SHEET_TOP_SPACER_HEIGHT,
   DesktopSheetTopSpacer,
@@ -373,13 +373,7 @@ export function DepartureTimeSheet({
     sheetRef.current?.close();
   }, []);
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      requestClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [requestClose]);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose);
 
   const [openedAt] = useState(() => new Date());
   const [mode, setMode] = useState(initialMode);
@@ -565,6 +559,7 @@ export function DepartureTimeSheet({
       enableDynamicSizing={false}
       enablePanDownToClose={!webLayout.isMedium}
       enableContentPanningGesture={false}
+      onChange={onSheetChange}
       onClose={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}

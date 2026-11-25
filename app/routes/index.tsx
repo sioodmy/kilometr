@@ -1312,6 +1312,13 @@ export default function RoutesScreen() {
             return;
           }
           const touch = e.allTouches[0];
+          // Lewa krawędź zostaje dla gestu wstecz nawigacji.
+          if (touch.absoluteX < 32) {
+            pullEligible.value = false;
+            pullActive.value = false;
+            stateManager.fail();
+            return;
+          }
           touchStartX.value = touch.absoluteX;
           touchStartY.value = touch.absoluteY;
           pullEligible.value = true;
@@ -1451,7 +1458,11 @@ export default function RoutesScreen() {
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         if (!isCustomTimeRef.current) return false;
-        router.dismissTo('/');
+        if (router.canGoBack()) {
+          router.dismissTo('/');
+        } else {
+          router.replace('/');
+        }
         return true;
       });
       return () => sub.remove();

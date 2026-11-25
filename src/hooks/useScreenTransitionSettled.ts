@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { useNavigation } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
 
-const DEFAULT_FALLBACK_MS = 280;
+const DEFAULT_FALLBACK_MS = 240;
 
 type TransitionEndEvent = {
   data?: {

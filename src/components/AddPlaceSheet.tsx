@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Dimensions,
   Keyboard,
   Pressable,
@@ -45,6 +44,7 @@ import { SpringPressable } from './SpringPressable';
 import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 import { getSuggestionIconMeta, SuggestionRow } from './SuggestionRow';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon, Suggestion } from '../types/models';
@@ -291,9 +291,9 @@ export function AddPlaceSheet({
     [s.common.close],
   );
 
-  // Android back / gest wstecz.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+  // Android back / gest wstecz: cofa podwidoki, potem zamyka arkusz.
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose, {
+    onBeforeClose: () => {
       if (view === 'icon') {
         Keyboard.dismiss();
         setView('form');
@@ -318,11 +318,9 @@ export function AddPlaceSheet({
         setConfirmDelete(false);
         return true;
       }
-      sheetRef.current?.close();
-      return true;
-    });
-    return () => sub.remove();
-  }, [confirmDelete, selectedLoc, view]);
+      return false;
+    },
+  });
 
   // Gdy zmienia się lokalizacja miejsca, pobierz najbliższe przystanki pod kotwicę.
   useEffect(() => {
@@ -510,6 +508,7 @@ export function AddPlaceSheet({
         android_keyboardInputMode="adjustPan"
         keyboardBehavior="extend"
         onChange={(idx) => {
+          onSheetChange(idx);
           if (idx === -1) onClose();
         }}
         backdropComponent={renderBackdrop}

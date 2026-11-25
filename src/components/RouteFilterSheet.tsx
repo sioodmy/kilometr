@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -32,6 +32,7 @@ import {
 } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import {
   DESKTOP_SHEET_TOP_SPACER_HEIGHT,
   DesktopSheetTopSpacer,
@@ -103,13 +104,7 @@ export function RouteFilterSheet({
   }, []);
   useEscapeKey(true, requestClose);
 
-  useEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      requestClose();
-      return true;
-    });
-    return () => back.remove();
-  }, [requestClose]);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -217,6 +212,7 @@ export function RouteFilterSheet({
       style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
       enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onClose}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
       backdropComponent={renderBackdrop}

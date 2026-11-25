@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -20,6 +20,7 @@ import { GripVertical, MapPin, Pencil, Plus, Trash2, X } from './icons';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import { useStrings } from '../i18n';
 import type { SavedPlace } from '../types/models';
 import { placeIconTone } from '../services/placeIcons';
@@ -312,13 +313,7 @@ export function ManagePlacesSheet({
     [s.common.close],
   );
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      sheetRef.current?.close();
-      return true;
-    });
-    return () => sub.remove();
-  }, []);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose);
 
   // Sprzątanie po karcie: sesja przeciągania nie może zostawić intervalu.
   useEffect(() => {
@@ -514,6 +509,7 @@ export function ManagePlacesSheet({
       style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
       enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
