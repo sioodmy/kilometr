@@ -1759,6 +1759,8 @@ export const de: Strings = {
     downloadingPlain: 'Wird geladen…',
     downloadAction: 'Fahrplan laden',
     earlierAction: 'Frühere Verbindungen',
+    earlierPullHint: 'Ziehen für frühere',
+    earlierReleaseHint: 'Loslassen für frühere',
     earlierLoading: 'Frühere Verbindungen werden geladen…',
     earlierEmpty: 'Keine früheren Verbindungen an diesem Tag',
     earlierRetry: 'Verbindungen konnten nicht geladen werden. Erneut versuchen',

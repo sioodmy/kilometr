@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   BackHandler,
   FlatList,
-  RefreshControl,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +11,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AlertCircle,
@@ -26,21 +26,44 @@ import {
   SlidersHorizontal,
 } from '../../src/components/icons';
 import Animated, {
-  Easing,
+  Extrapolation,
   FadeIn,
-  FadeInDown,
   FadeOut,
-  LinearTransition,
   ReduceMotion,
   interpolate,
+  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 import { MorphingLoader } from '../../src/components/MorphingLoader';
 import { RouteLoadingView } from '../../src/components/RouteLoadingView';
 import { SpringPressable } from '../../src/components/SpringPressable';
+import { EarlierConnectionsPull } from '../../src/components/EarlierConnectionsPull';
+import {
+  ConnectionListItem,
+  type CardEnterMode,
+  type ReorderAnimationToken,
+} from '../../src/components/ConnectionListItem';
+import {
+  EARLIER_PULL_EDGE_MAX,
+  EARLIER_PULL_LOADING,
+  EARLIER_PULL_MAX,
+  earlierRubberBand,
+  nextEarlierPullArmed,
+} from '../../src/services/earlierPull';
+import {
+  hapticEdge,
+  hapticError,
+  hapticGestureArm,
+  hapticGestureDisarm,
+  hapticSuccess,
+  hapticTap,
+} from '../../src/services/haptics';
+import { computeReorderShifts } from '../../src/services/routing/listReorder';
+import { motion } from '../../src/theme/motion';
 import { useWebLayout } from '../../src/theme/layout';
 import { elev, scheme, shape, type } from '../../src/theme/tokens';
 import { defaultLocationForCity } from '../../src/config';
@@ -101,7 +124,6 @@ import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import { ensureStopHintsLoaded } from '../../src/services/stopHints';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionCard } from '../../src/components/ConnectionCard';
 import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
 import {
@@ -755,7 +777,7 @@ export default function RoutesScreen() {
   );
 
   const handleSuggestionSelect = async (sug: Suggestion) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    hapticTap();
     // Wybór startu unieważnia GPS w locie: spóźniony fix nie nadpisze
     // startu wybranego później.
     const forStart = sheetFor === 'from';
@@ -1048,7 +1070,11 @@ export default function RoutesScreen() {
   };
 
   // Starsze (historyczne, już odjechane), dokładane Z GÓRY
-  const handleLoadEarlier = async () => {
+  const pullTriggeredRef = useRef(false);
+  const recentEarlierIdsRef = useRef<Set<string>>(new Set());
+  const earlierClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLoadEarlier = async (fromPull = false) => {
     if (arrivalMode) return;
     if (
       loading ||
@@ -1057,14 +1083,28 @@ export default function RoutesScreen() {
       items.length === 0 ||
       noMoreEarlier ||
       offline
-    )
+    ) {
+      if (fromPull) {
+        pullBusy.value = false;
+        pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+      }
       return;
+    }
     const firstDeparture = items[0].departureSec;
-    if (!firstDeparture || firstDeparture <= 0) return;
+    if (!firstDeparture || firstDeparture <= 0) {
+      if (fromPull) {
+        pullBusy.value = false;
+        pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+      }
+      return;
+    }
 
     earlierRequest.current = true;
+    pullTriggeredRef.current = fromPull;
     setLoadingEarlier(true);
     setEarlierFailed(false);
+    const startedAt = Date.now();
+    const prevIds = new Set(items.map((c) => c.id));
     const seq = ++fetchSeq.current;
 
     try {
@@ -1074,20 +1114,54 @@ export default function RoutesScreen() {
         () => seq !== fetchSeq.current,
       );
       if (!result) return;
+      if (fromPull) {
+        // Przy błyskawicznym SQLite krótkie podtrzymanie zapobiega 1-klatkowemu mignięciu panelu.
+        const remaining = 180 - (Date.now() - startedAt);
+        if (remaining > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+          if (seq !== fetchSeq.current) return;
+        }
+      }
+      if (result.added > 0) {
+        const addedIds = new Set<string>();
+        for (const conn of result.list) {
+          if (!prevIds.has(conn.id)) addedIds.add(conn.id);
+        }
+        recentEarlierIdsRef.current = addedIds;
+        if (earlierClearTimerRef.current) clearTimeout(earlierClearTimerRef.current);
+        earlierClearTimerRef.current = setTimeout(() => {
+          recentEarlierIdsRef.current.clear();
+        }, 550);
+        if (isFocusedRef.current) hapticSuccess();
+      } else if (isFocusedRef.current) {
+        hapticEdge();
+      }
       setNoMoreEarlier(result.added === 0);
       setItems(result.list);
     } catch {
-      if (seq === fetchSeq.current) setEarlierFailed(true);
+      if (seq === fetchSeq.current) {
+        setEarlierFailed(true);
+        if (isFocusedRef.current) hapticError();
+      }
     } finally {
       // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
       // unieważnione przez nowszy fetchSeq.
       earlierRequest.current = false;
+      pullTriggeredRef.current = false;
       setLoadingEarlier(false);
+      pullBusy.value = false;
+      pullHeight.value = withSpring(0, motion.spring.spatialDefault);
     }
   };
 
-  // Ref na aktualną funkcję: handler scrolla ma być stabilny (patrz useCallback
-  // niżej), a nie przeżywać przez ref każdego renderu.
+  useEffect(
+    () => () => {
+      if (earlierClearTimerRef.current) clearTimeout(earlierClearTimerRef.current);
+    },
+    [],
+  );
+
+  // Ref na aktualną funkcję: handler gestu i przycisku pozostają stabilne.
   const loadEarlierRef = useRef(handleLoadEarlier);
   loadEarlierRef.current = handleLoadEarlier;
 
@@ -1129,14 +1203,18 @@ export default function RoutesScreen() {
     railDbReady,
   ]);
 
-  // Gest i przycisk dokładają wcześniejsze odjazdy do tej samej listy.
-  const handlePullEarlier = () => {
-    void loadEarlierRef.current();
-  };
+  // Przycisk i gest dokładają wcześniejsze odjazdy do tej samej listy.
+  const handleButtonEarlier = useCallback(() => {
+    void loadEarlierRef.current(false);
+  }, []);
+
+  const triggerPullEarlier = useCallback(() => {
+    void loadEarlierRef.current(true);
+  }, []);
 
   const handleReverse = useCallback(() => {
     if (samePlace || (fromLat === toLat && fromLon === toLon && fromTitle === toTitle)) return;
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // Haptykę nacisku daje już przycisk zamiany w RouteEndpoints.
     // Swap ustawia ręczny start: unieważnia GPS wybrany wcześniej w arkuszu.
     startSelGen.current++;
     setItems([]);
@@ -1181,11 +1259,184 @@ export default function RoutesScreen() {
   const isCustomTime = targetTimeSec !== undefined || arrivalMode;
 
   const listScrollY = useSharedValue(0);
+  const pullHeight = useSharedValue(0);
+  const pullArmed = useSharedValue(false);
+  const pullArmPulse = useSharedValue(0);
+  const pullBusy = useSharedValue(false);
+  const pullNoMore = useSharedValue(false);
+  const pullDisabled = useSharedValue(false);
+  const pullEligible = useSharedValue(false);
+  const pullActive = useSharedValue(false);
+  const pullEdgeHapticSent = useSharedValue(false);
+  const touchStartX = useSharedValue(0);
+  const touchStartY = useSharedValue(0);
+  const pullOriginY = useSharedValue(0);
+  const peekDragY = useSharedValue(0);
+
+  useEffect(() => {
+    pullNoMore.value = noMoreEarlier;
+  }, [noMoreEarlier, pullNoMore]);
+
+  useEffect(() => {
+    pullDisabled.value = loading || loadingMore || offline || arrivalMode || items.length === 0;
+  }, [arrivalMode, items.length, loading, loadingMore, offline, pullDisabled]);
+
   const handleListScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       listScrollY.value = event.contentOffset.y;
     },
   });
+
+  const firePullArmHaptic = useCallback(() => hapticGestureArm(), []);
+  const firePullDisarmHaptic = useCallback(() => hapticGestureDisarm(), []);
+  const firePullEdgeHaptic = useCallback(() => hapticEdge(), []);
+
+  // Ręczna aktywacja na wątku UI gwarantuje, że zwykłe scrollowanie i gesty
+  // boczne nigdy nie są blokowane, a przy y=0 lista płynnie jedzie za palcem.
+  const pullPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(Platform.OS !== 'web' && !arrivalMode && !offline)
+        .manualActivation(true)
+        .onTouchesDown((e, stateManager) => {
+          'worklet';
+          if (
+            e.numberOfTouches !== 1 ||
+            listScrollY.value > 2 ||
+            pullBusy.value ||
+            pullDisabled.value
+          ) {
+            pullEligible.value = false;
+            pullActive.value = false;
+            stateManager.fail();
+            return;
+          }
+          const touch = e.allTouches[0];
+          touchStartX.value = touch.absoluteX;
+          touchStartY.value = touch.absoluteY;
+          pullEligible.value = true;
+          pullActive.value = false;
+          pullEdgeHapticSent.value = false;
+        })
+        .onTouchesMove((e, stateManager) => {
+          'worklet';
+          if (!pullEligible.value || pullActive.value) return;
+          if (e.numberOfTouches !== 1 || listScrollY.value > 2) {
+            pullEligible.value = false;
+            stateManager.fail();
+            return;
+          }
+          const touch = e.allTouches[0];
+          const dx = touch.absoluteX - touchStartX.value;
+          const dy = touch.absoluteY - touchStartY.value;
+          if (dy < -5 || Math.abs(dx) > 12) {
+            pullEligible.value = false;
+            stateManager.fail();
+            return;
+          }
+          if (dy > 10 && Math.abs(dy) > Math.abs(dx) * 1.4) {
+            pullActive.value = true;
+            pullOriginY.value = touch.absoluteY;
+            stateManager.activate();
+          }
+        })
+        .onTouchesUp((_e, stateManager) => {
+          'worklet';
+          if (!pullActive.value) {
+            pullEligible.value = false;
+            stateManager.fail();
+          }
+        })
+        .onTouchesCancelled((_e, stateManager) => {
+          'worklet';
+          if (!pullActive.value) {
+            pullEligible.value = false;
+            stateManager.fail();
+          }
+        })
+        .onUpdate((e) => {
+          'worklet';
+          if (!pullActive.value) return;
+          const rawDy = Math.max(0, e.absoluteY - pullOriginY.value);
+          if (pullNoMore.value) {
+            const h = earlierRubberBand(rawDy, EARLIER_PULL_EDGE_MAX);
+            pullHeight.value = h;
+            if (h >= 24 && !pullEdgeHapticSent.value) {
+              pullEdgeHapticSent.value = true;
+              runOnJS(firePullEdgeHaptic)();
+            }
+            return;
+          }
+          const h = earlierRubberBand(rawDy, EARLIER_PULL_MAX);
+          pullHeight.value = h;
+          const nextArmed = nextEarlierPullArmed(pullArmed.value, h);
+          if (nextArmed !== pullArmed.value) {
+            pullArmed.value = nextArmed;
+            if (nextArmed) {
+              pullArmPulse.value = 1;
+              pullArmPulse.value = withSpring(0, motion.spring.spatialFast);
+              runOnJS(firePullArmHaptic)();
+            } else {
+              runOnJS(firePullDisarmHaptic)();
+            }
+          }
+        })
+        .onEnd(() => {
+          'worklet';
+          const shouldLoad =
+            pullActive.value && pullArmed.value && !pullBusy.value && !pullNoMore.value;
+          pullArmed.value = false;
+          pullActive.value = false;
+          pullEligible.value = false;
+          pullEdgeHapticSent.value = false;
+          if (shouldLoad) {
+            pullBusy.value = true;
+            pullHeight.value = withSpring(EARLIER_PULL_LOADING, motion.spring.spatialDefault);
+            runOnJS(triggerPullEarlier)();
+          } else if (!pullBusy.value) {
+            pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+          }
+        })
+        .onFinalize(() => {
+          'worklet';
+          pullArmed.value = false;
+          pullActive.value = false;
+          pullEligible.value = false;
+          pullEdgeHapticSent.value = false;
+          if (!pullBusy.value) {
+            pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+          }
+        }),
+    [
+      arrivalMode,
+      offline,
+      listScrollY,
+      pullActive,
+      pullArmPulse,
+      pullArmed,
+      pullBusy,
+      pullDisabled,
+      pullEdgeHapticSent,
+      pullEligible,
+      pullHeight,
+      pullNoMore,
+      pullOriginY,
+      touchStartX,
+      touchStartY,
+      firePullArmHaptic,
+      firePullDisarmHaptic,
+      firePullEdgeHaptic,
+      triggerPullEarlier,
+    ],
+  );
+
+  const listTranslateStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: pullHeight.value }],
+  }));
+
+  const earlierButtonFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pullHeight.value, [0, 22], [1, 0], Extrapolation.CLAMP),
+  }));
 
   const stickyDividerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(listScrollY.value, [4, 22], [0, 1], 'clamp'),
@@ -1277,8 +1528,73 @@ export default function RoutesScreen() {
         if (open) openConnection(item);
         else closePreview();
       },
+      dragY: peekDragY,
     }),
-    [closePreview, openConnection],
+    [closePreview, openConnection, peekDragY],
+  );
+
+  const routeQueryKey = `${fromLat.toFixed(5)}:${fromLon.toFixed(5)}:${toLat.toFixed(5)}:${toLon.toFixed(5)}:${targetTimeSec ?? 'now'}:${timeMode}:${boardedTrip?.tripId ?? ''}:${activeAnchor?.placeId ?? ''}`;
+  const cardHeightsRef = useRef<Map<string, number>>(new Map());
+  const seenCardIdsRef = useRef<Set<string>>(new Set());
+  const initialEnterDoneRef = useRef(false);
+  const lastQueryKeyRef = useRef(routeQueryKey);
+  if (lastQueryKeyRef.current !== routeQueryKey) {
+    lastQueryKeyRef.current = routeQueryKey;
+    cardHeightsRef.current.clear();
+    seenCardIdsRef.current.clear();
+    recentEarlierIdsRef.current.clear();
+    initialEnterDoneRef.current = false;
+  }
+
+  const prevDisplayRef = useRef<{ queryKey: string; ids: string[] }>({
+    queryKey: routeQueryKey,
+    ids: [],
+  });
+  const reorderSeqRef = useRef(0);
+  const reorderTokens = useMemo(() => {
+    const ids = displayed.map((c) => c.id);
+    const prev = prevDisplayRef.current;
+    if (prev.queryKey !== routeQueryKey || prev.ids.length < 2 || ids.length < 2) {
+      return null;
+    }
+    const shifts = computeReorderShifts(prev.ids, ids, cardHeightsRef.current, 168, 12);
+    if (shifts.size === 0) return null;
+    const seq = ++reorderSeqRef.current;
+    const map = new Map<string, ReorderAnimationToken>();
+    for (const [id, shift] of shifts) {
+      map.set(id, { ...shift, seq });
+    }
+    return map;
+  }, [displayed, routeQueryKey]);
+
+  useLayoutEffect(() => {
+    prevDisplayRef.current = {
+      queryKey: routeQueryKey,
+      ids: displayed.map((c) => c.id),
+    };
+  }, [displayed, routeQueryKey]);
+
+  useEffect(() => {
+    if (displayed.length === 0) return;
+    for (const conn of displayed) seenCardIdsRef.current.add(conn.id);
+    initialEnterDoneRef.current = true;
+  }, [displayed]);
+
+  const handleMeasureCardHeight = useCallback((id: string, height: number) => {
+    cardHeightsRef.current.set(id, height);
+  }, []);
+
+  const nowTickRef = useRef(nowTick);
+  nowTickRef.current = nowTick;
+
+  const getCellStyle = useCallback(
+    ({ item }: { item: Connection }) => {
+      const token = reorderTokens?.get(item.id);
+      if (token?.direction === 'up') return styles.reorderedUpCell;
+      if (token?.direction === 'down') return styles.reorderedDownCell;
+      return undefined;
+    },
+    [reorderTokens],
   );
 
   const renderConnection = useCallback(
@@ -1288,28 +1604,27 @@ export default function RoutesScreen() {
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
       const past =
         !item.boarded && item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
+      const enterMode: CardEnterMode = recentEarlierIdsRef.current.has(item.id)
+        ? 'earlier'
+        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(item.id) && index < 6
+          ? 'initial'
+          : 'none';
       return (
-        <Animated.View
-          entering={
-            reduceMotion || index >= 6
-              ? undefined
-              : FadeInDown.delay(index * 28)
-                  .duration(230)
-                  .easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-                  .reduceMotion(ReduceMotion.System)
-          }
-        >
-          <ConnectionCard
-            item={item}
-            dimmed={past}
-            onPress={openConnection}
-            peek={peek}
-            tick={nowTick}
-          />
-        </Animated.View>
+        <ConnectionListItem
+          item={item}
+          index={index}
+          dimmed={past}
+          tick={nowTickRef.current}
+          onPress={openConnection}
+          peek={peek}
+          reduceMotion={reduceMotion}
+          enterMode={enterMode}
+          reorder={reorderTokens?.get(item.id)}
+          onMeasureHeight={handleMeasureCardHeight}
+        />
       );
     },
-    [openConnection, nowTick, peek, reduceMotion],
+    [handleMeasureCardHeight, openConnection, peek, reduceMotion, reorderTokens],
   );
 
   const headerStyle = styles.routeHeader;
@@ -1492,6 +1807,241 @@ export default function RoutesScreen() {
 
   const listPaddingHorizontal = webLayout.isDesktop ? 0 : 16;
 
+  const flatListStage = (
+    <View style={styles.listStage}>
+      {Platform.OS !== 'web' && !arrivalMode && !offline && (
+        <EarlierConnectionsPull
+          pullHeight={pullHeight}
+          armed={pullArmed}
+          armPulse={pullArmPulse}
+          loading={loadingEarlier}
+          noMore={noMoreEarlier}
+          reduceMotion={reduceMotion}
+        />
+      )}
+      <Animated.View style={[styles.listStage, Platform.OS !== 'web' && listTranslateStyle]}>
+        <Animated.FlatList
+          ref={listRef}
+          onScroll={handleListScroll}
+          scrollEventThrottle={16}
+          accessibilityState={{ busy: loading }}
+          pointerEvents={loading && items.length === 0 ? 'none' : 'auto'}
+          data={displayed}
+          maintainVisibleContentPosition={
+            Platform.OS === 'web'
+              ? undefined
+              : { minIndexForVisible: 0, autoscrollToTopThreshold: 80 }
+          }
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={9}
+          // wymusza przeliczenie etykiet "za X min" bez refetchu
+          extraData={nowTick}
+          keyExtractor={connectionKey}
+          CellRendererComponentStyle={getCellStyle}
+          contentContainerStyle={[
+            styles.list,
+            webLayout.isDesktop && styles.listDesktop,
+            mediumConstrained && styles.mediumCentered,
+            { paddingBottom: insets.bottom + 28 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="auto"
+          // Na Androidzie RN domyślnie odpina widoki spoza kadru
+          // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
+          // nagłówkiem powoduje to miganie pustych miejsc w trakcie
+          // przeciągania palcem, więc trzymamy komórki podpięte.
+          removeClippedSubviews={false}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          renderItem={renderConnection}
+          ListHeaderComponent={
+            <View style={styles.listHeader}>
+              {loading && displayed.length > 0 && (
+                <Animated.View
+                  entering={
+                    reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
+                  }
+                  exiting={
+                    reduceMotion ? undefined : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
+                  }
+                  style={styles.countRow}
+                  accessibilityLiveRegion="polite"
+                >
+                  <View style={styles.statusChip}>
+                    <MorphingLoader size={17} color={scheme.primary} />
+                    <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
+                  </View>
+                </Animated.View>
+              )}
+              {(offline || liveStale) && (
+                <View style={styles.countRow}>
+                  {offline && (
+                    <SpringPressable
+                      onPress={() => quietRefresh()}
+                      scaleDelta={0.03}
+                      haptic="selection"
+                      style={styles.statusChip}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.offlineTapA11y}
+                    >
+                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
+                    </SpringPressable>
+                  )}
+                  {liveStale && !offline && (
+                    <View style={styles.statusChip}>
+                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                      <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+              {!arrivalMode && !offline && (
+                <Animated.View style={Platform.OS !== 'web' ? earlierButtonFadeStyle : undefined}>
+                  <SpringPressable
+                    onPress={handleButtonEarlier}
+                    onFocus={() => setEarlierFocused(true)}
+                    onBlur={() => setEarlierFocused(false)}
+                    disabled={earlierDisabled}
+                    scaleDelta={0.02}
+                    haptic="selection"
+                    accessibilityRole="button"
+                    accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+                    style={[
+                      styles.earlierButton,
+                      earlierFocused && styles.earlierFocused,
+                      noMoreEarlier && styles.earlierButtonDone,
+                    ]}
+                  >
+                    {loadingEarlier && !pullTriggeredRef.current ? (
+                      <MorphingLoader size={16} color={scheme.primary} />
+                    ) : !noMoreEarlier ? (
+                      <ChevronUp size={17} color={scheme.onSurfaceVariant} />
+                    ) : null}
+                    <Text style={styles.earlierText} accessibilityLiveRegion="polite">
+                      {loadingEarlier && !pullTriggeredRef.current
+                        ? s.routes.earlierLoading
+                        : noMoreEarlier
+                          ? s.routes.earlierEmpty
+                          : earlierFailed
+                            ? s.routes.earlierRetry
+                            : s.routes.earlierAction}
+                    </Text>
+                  </SpringPressable>
+                </Animated.View>
+              )}
+            </View>
+          }
+          ListFooterComponent={
+            loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
+              <View style={styles.footer}>
+                {loadingMore ? (
+                  <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
+                    <MorphingLoader size={20} color={scheme.primary} />
+                    <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
+                  </View>
+                ) : loadMoreFailed ? (
+                  <>
+                    <Text style={styles.footerText}>{s.routes.moreFail}</Text>
+                    <SpringPressable
+                      onPress={() => void handleLoadMore()}
+                      scaleDelta={0.025}
+                      haptic="light"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.moreRetryA11y}
+                    >
+                      <Text style={styles.retryText}>{s.common.retry}</Text>
+                    </SpringPressable>
+                  </>
+                ) : (
+                  <View style={styles.endCapPill}>
+                    <Text style={styles.footerText}>
+                      {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            intercityQuery && railDbReady === false ? (
+              <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
+            ) : (
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIconBadge}>
+                  <RouteOff size={24} color={scheme.onPrimaryContainer} />
+                </View>
+                <Text style={styles.emptyTitle}>
+                  {liveOnly
+                    ? s.routes.emptyLive
+                    : hasActiveFilters
+                      ? s.routes.emptyFiltered
+                      : intercityQuery
+                        ? s.intercity.noTrainsTitle
+                        : s.routes.emptyNone}
+                </Text>
+                <Text style={styles.emptySub}>
+                  {intercityQuery && !hasActiveFilters
+                    ? s.intercity.noTrainsHint
+                    : transfersFilter !== 'all' && modeFilter !== 'all'
+                      ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
+                      : transfersFilter !== 'all'
+                        ? s.routes.emptyDirect
+                        : modeFilter !== 'all'
+                          ? s.routes.emptyMode(modeGenitive(modeFilter))
+                          : arrivalMode
+                            ? s.routes.emptyArrival
+                            : s.routes.emptyPlain}
+                </Text>
+                <View style={styles.emptyActions}>
+                  {transfersFilter !== 'all' && (
+                    <SpringPressable
+                      onPress={() => setTransfersFilter('all')}
+                      scaleDelta={0.025}
+                      haptic="selection"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.showWithChangesA11y}
+                    >
+                      <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
+                    </SpringPressable>
+                  )}
+                  {modeFilter !== 'all' && (
+                    <SpringPressable
+                      onPress={() => setModeFilter('all')}
+                      scaleDelta={0.025}
+                      haptic="selection"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.showAllVehiclesA11y}
+                    >
+                      <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
+                    </SpringPressable>
+                  )}
+                  {liveOnly && (
+                    <SpringPressable
+                      onPress={() => setLiveOnly(false)}
+                      scaleDelta={0.025}
+                      haptic="selection"
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={s.routes.showWithoutLive}
+                    >
+                      <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
+                    </SpringPressable>
+                  )}
+                </View>
+              </View>
+            )
+          }
+        />
+      </Animated.View>
+    </View>
+  );
+
   const resultsBodyContent = samePlace ? (
     <ScrollView
       contentContainerStyle={[
@@ -1588,235 +2138,10 @@ export default function RoutesScreen() {
         )}
       </View>
     </ScrollView>
+  ) : Platform.OS === 'web' ? (
+    flatListStage
   ) : (
-    <Animated.FlatList
-      ref={listRef}
-      onScroll={handleListScroll}
-      scrollEventThrottle={16}
-      itemLayoutAnimation={
-        reduceMotion ? undefined : LinearTransition.springify().damping(26).stiffness(320)
-      }
-      accessibilityState={{ busy: loading }}
-      pointerEvents={loading && items.length === 0 ? 'none' : 'auto'}
-      refreshControl={
-        arrivalMode || noMoreEarlier || offline ? undefined : (
-          <RefreshControl
-            refreshing={loadingEarlier}
-            onRefresh={handlePullEarlier}
-            enabled={!loading && !loadingMore && !noMoreEarlier && !offline}
-            title={s.routes.earlierAction}
-            titleColor={scheme.onSurfaceVariant}
-            tintColor={scheme.primary}
-            colors={[scheme.primary]}
-            progressBackgroundColor={scheme.surfaceContainerHigh}
-          />
-        )
-      }
-      data={displayed}
-      maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
-      alwaysBounceVertical={!arrivalMode}
-      initialNumToRender={8}
-      maxToRenderPerBatch={8}
-      // wymusza przeliczenie etykiet "za X min" bez refetchu
-      extraData={nowTick}
-      keyExtractor={connectionKey}
-      contentContainerStyle={[
-        styles.list,
-        webLayout.isDesktop && styles.listDesktop,
-        mediumConstrained && styles.mediumCentered,
-        { paddingBottom: insets.bottom + 28 },
-      ]}
-      showsVerticalScrollIndicator={false}
-      overScrollMode="never"
-      // Na Androidzie RN domyślnie odpina widoki spoza kadru
-      // (removeClippedSubviews). Przy kartach z cieniem i zwijanym
-      // nagłówkiem powoduje to miganie pustych miejsc w trakcie
-      // przeciągania palcem, więc trzymamy komórki podpięte.
-      removeClippedSubviews={false}
-      onEndReached={handleLoadMore}
-      onEndReachedThreshold={0.5}
-      renderItem={renderConnection}
-      ListHeaderComponent={
-        <View style={styles.listHeader}>
-          {loading && displayed.length > 0 && (
-            <Animated.View
-              entering={
-                reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
-              }
-              exiting={
-                reduceMotion ? undefined : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
-              }
-              style={styles.countRow}
-              accessibilityLiveRegion="polite"
-            >
-              <View style={styles.statusChip}>
-                <MorphingLoader size={17} color={scheme.primary} />
-                <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
-              </View>
-            </Animated.View>
-          )}
-          {(offline || liveStale) && (
-            <View style={styles.countRow}>
-              {offline && (
-                <SpringPressable
-                  onPress={() => quietRefresh()}
-                  scaleDelta={0.03}
-                  haptic="selection"
-                  style={styles.statusChip}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.offlineTapA11y}
-                >
-                  <CloudOff size={15} color={scheme.onSurfaceVariant} />
-                  <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
-                </SpringPressable>
-              )}
-              {liveStale && !offline && (
-                <View style={styles.statusChip}>
-                  <CloudOff size={15} color={scheme.onSurfaceVariant} />
-                  <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
-                </View>
-              )}
-            </View>
-          )}
-          {!arrivalMode && !offline && (
-            <SpringPressable
-              onPress={handlePullEarlier}
-              onFocus={() => setEarlierFocused(true)}
-              onBlur={() => setEarlierFocused(false)}
-              disabled={earlierDisabled}
-              scaleDelta={0.02}
-              haptic="selection"
-              accessibilityRole="button"
-              accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
-              style={[
-                styles.earlierButton,
-                earlierFocused && styles.earlierFocused,
-                noMoreEarlier && styles.earlierButtonDone,
-              ]}
-            >
-              {loadingEarlier ? (
-                <MorphingLoader size={16} color={scheme.primary} />
-              ) : !noMoreEarlier ? (
-                <ChevronUp size={17} color={scheme.onSurfaceVariant} />
-              ) : null}
-              <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                {loadingEarlier
-                  ? s.routes.earlierLoading
-                  : noMoreEarlier
-                    ? s.routes.earlierEmpty
-                    : earlierFailed
-                      ? s.routes.earlierRetry
-                      : s.routes.earlierAction}
-              </Text>
-            </SpringPressable>
-          )}
-        </View>
-      }
-      ListFooterComponent={
-        loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
-          <View style={styles.footer}>
-            {loadingMore ? (
-              <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
-                <MorphingLoader size={20} color={scheme.primary} />
-                <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
-              </View>
-            ) : loadMoreFailed ? (
-              <>
-                <Text style={styles.footerText}>{s.routes.moreFail}</Text>
-                <SpringPressable
-                  onPress={() => void handleLoadMore()}
-                  scaleDelta={0.025}
-                  haptic="light"
-                  style={styles.retryBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.moreRetryA11y}
-                >
-                  <Text style={styles.retryText}>{s.common.retry}</Text>
-                </SpringPressable>
-              </>
-            ) : (
-              <View style={styles.endCapPill}>
-                <Text style={styles.footerText}>
-                  {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : null
-      }
-      ListEmptyComponent={
-        intercityQuery && railDbReady === false ? (
-          <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
-        ) : (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIconBadge}>
-              <RouteOff size={24} color={scheme.onPrimaryContainer} />
-            </View>
-            <Text style={styles.emptyTitle}>
-              {liveOnly
-                ? s.routes.emptyLive
-                : hasActiveFilters
-                  ? s.routes.emptyFiltered
-                  : intercityQuery
-                    ? s.intercity.noTrainsTitle
-                    : s.routes.emptyNone}
-            </Text>
-            <Text style={styles.emptySub}>
-              {intercityQuery && !hasActiveFilters
-                ? s.intercity.noTrainsHint
-                : transfersFilter !== 'all' && modeFilter !== 'all'
-                  ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
-                  : transfersFilter !== 'all'
-                    ? s.routes.emptyDirect
-                    : modeFilter !== 'all'
-                      ? s.routes.emptyMode(modeGenitive(modeFilter))
-                      : arrivalMode
-                        ? s.routes.emptyArrival
-                        : s.routes.emptyPlain}
-            </Text>
-            <View style={styles.emptyActions}>
-              {transfersFilter !== 'all' && (
-                <SpringPressable
-                  onPress={() => setTransfersFilter('all')}
-                  scaleDelta={0.025}
-                  haptic="selection"
-                  style={styles.retryBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.showWithChangesA11y}
-                >
-                  <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
-                </SpringPressable>
-              )}
-              {modeFilter !== 'all' && (
-                <SpringPressable
-                  onPress={() => setModeFilter('all')}
-                  scaleDelta={0.025}
-                  haptic="selection"
-                  style={styles.retryBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.showAllVehiclesA11y}
-                >
-                  <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
-                </SpringPressable>
-              )}
-              {liveOnly && (
-                <SpringPressable
-                  onPress={() => setLiveOnly(false)}
-                  scaleDelta={0.025}
-                  haptic="selection"
-                  style={styles.retryBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={s.routes.showWithoutLive}
-                >
-                  <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
-                </SpringPressable>
-              )}
-            </View>
-          </View>
-        )
-      }
-    />
+    <GestureDetector gesture={pullPanGesture}>{flatListStage}</GestureDetector>
   );
 
   return (
@@ -1930,6 +2255,7 @@ export default function RoutesScreen() {
           sticky={preview.sticky}
           ready={previewReady}
           offline={offline || liveStale}
+          dragY={peekDragY}
           onClose={closePreview}
           onOpen={() => openConnection(preview.item)}
         />
@@ -2086,6 +2412,18 @@ const styles = StyleSheet.create({
     color: scheme.onPrimary,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
+  },
+  listStage: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  reorderedUpCell: {
+    zIndex: 2,
+    elevation: 4,
+  },
+  reorderedDownCell: {
+    zIndex: 1,
   },
   list: {
     paddingHorizontal: 16,

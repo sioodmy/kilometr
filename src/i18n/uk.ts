@@ -2234,6 +2234,8 @@ export const uk: Strings = {
     downloadingPlain: 'Завантаження…',
     downloadAction: 'Завантажити розклад',
     earlierAction: 'Раніші сполучення',
+    earlierPullHint: 'Потягни для раніших',
+    earlierReleaseHint: 'Відпусти для раніших',
     earlierLoading: 'Завантажую раніші сполучення…',
     earlierEmpty: 'Немає раніших сполучень цього дня',
     earlierRetry: 'Не вдалося завантажити. Спробуй ще раз',
