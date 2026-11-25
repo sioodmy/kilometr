@@ -3175,16 +3175,11 @@ export const pl = {
     shareCardSub: 'Udostępnij podsumowanie twoich tras',
     shareSheetTitle: 'Podsumowanie podróży',
     shareSheetSubtitle: 'Gotowa grafika do udostępnienia na Instagramie, X lub znajomym.',
-    sharePrivacyNote:
-      'Dla Twojej prywatności grafika ukrywa cele podróży, przystanki, nazwy miast i numery linii.',
     shareAction: 'Udostępnij grafikę',
     shareDownload: 'Zapisz PNG',
     sharePreparing: 'Generuję grafikę…',
     shareError: 'Nie udało się wygenerować grafiki. Spróbuj ponownie.',
     shareSaved: 'Grafika została zapisana.',
-    themeEmerald: 'Szmaragd',
-    themeNight: 'Nocny kurs',
-    themeRail: 'Szyna',
     wrappedFooter: 'Podsumowanie podróży',
     formatKm: (km: number) =>
       km >= 100

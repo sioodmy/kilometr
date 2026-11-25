@@ -6,7 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { useStrings } from '../i18n';
 import type { WrappedSafeSummary } from '../services/userStatsModel';
-import { WRAPPED_THEMES, type WrappedThemeId } from '../services/wrappedExport';
+import { WRAPPED_PALETTE } from '../services/wrappedExport';
 import { shape, type } from '../theme/tokens';
 import { BusFront, CableCar, Clock3, Eco, Footprints, Layers, TrainFront, TramFront } from './icons';
 import type { LegMode } from '../types/models';
@@ -53,16 +53,10 @@ function ModeIcon({ mode, color, size = 14 }: { mode: LegMode; color: string; si
   return <BusFront size={size} color={color} />;
 }
 
-export function WrappedShareCard({
-  summary,
-  themeId,
-}: {
-  summary: WrappedSafeSummary;
-  themeId: WrappedThemeId;
-}) {
+export function WrappedShareCard({ summary }: { summary: WrappedSafeSummary }) {
   const s = useStrings();
   const y = s.yourData;
-  const palette = WRAPPED_THEMES[themeId];
+  const palette = WRAPPED_PALETTE;
   const activeModes = summary.modes.filter((m) => m.share > 0);
 
   const thirdTile =

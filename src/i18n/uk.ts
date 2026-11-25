@@ -3182,16 +3182,11 @@ export const uk: Strings = {
     shareCardSub: 'Поділися підсумком своїх поїздок',
     shareSheetTitle: 'Підсумок поїздок',
     shareSheetSubtitle: 'Готова графіка для Instagram, X або друзів.',
-    sharePrivacyNote:
-      'Для вашої приватності картка приховує цілі, зупинки, назви міст і номери ліній.',
     shareAction: 'Поділитися графікою',
     shareDownload: 'Зберегти PNG',
     sharePreparing: 'Створюю графіку…',
     shareError: 'Не вдалося створити графіку. Спробуйте ще раз.',
     shareSaved: 'Графіку збережено.',
-    themeEmerald: 'Смарагд',
-    themeNight: 'Нічний рейс',
-    themeRail: 'Колія',
     wrappedFooter: 'Підсумок поїздок',
     formatKm: (km: number) =>
       km >= 100

@@ -2657,16 +2657,11 @@ export const en: Strings = {
     shareCardSub: 'Share a recap of your journeys',
     shareSheetTitle: 'Travel recap',
     shareSheetSubtitle: 'Ready to share on Instagram, X or with friends.',
-    sharePrivacyNote:
-      'For your privacy, this card hides destinations, stops, city names and line numbers.',
     shareAction: 'Share image',
     shareDownload: 'Save PNG',
     sharePreparing: 'Generating image…',
     shareError: 'Could not generate the image. Please try again.',
     shareSaved: 'Image saved.',
-    themeEmerald: 'Emerald',
-    themeNight: 'Night ride',
-    themeRail: 'Rail',
     wrappedFooter: 'Travel recap',
     formatKm: (km: number) =>
       km >= 100

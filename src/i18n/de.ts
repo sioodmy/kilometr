@@ -2688,16 +2688,11 @@ export const de: Strings = {
     shareCardSub: 'Teile deine Fahrten-Zusammenfassung',
     shareSheetTitle: 'Fahrten-Rückblick',
     shareSheetSubtitle: 'Fertige Grafik zum Teilen auf Instagram, X oder mit Freunden.',
-    sharePrivacyNote:
-      'Zu deinem Schutz blendet die Grafik Ziele, Haltestellen, Städtenamen und Liniennummern aus.',
     shareAction: 'Grafik teilen',
     shareDownload: 'PNG speichern',
     sharePreparing: 'Erstelle Grafik…',
     shareError: 'Grafik konnte nicht erstellt werden. Bitte erneut versuchen.',
     shareSaved: 'Grafik gespeichert.',
-    themeEmerald: 'Smaragd',
-    themeNight: 'Nachtlinie',
-    themeRail: 'Schiene',
     wrappedFooter: 'Fahrten-Rückblick',
     formatKm: (km: number) =>
       km >= 100

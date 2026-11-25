@@ -7,10 +7,7 @@ import { Platform, type View } from 'react-native';
 import type { LegMode } from '../types/models';
 import type { WrappedSafeSummary } from './userStatsModel';
 
-export type WrappedThemeId = 'emerald' | 'night' | 'rail';
-
 export interface WrappedThemePalette {
-  id: WrappedThemeId;
   bgTop: string;
   bgBottom: string;
   surface: string;
@@ -24,72 +21,25 @@ export interface WrappedThemePalette {
   modeColors: Record<LegMode, string>;
 }
 
-export const WRAPPED_THEMES: Record<WrappedThemeId, WrappedThemePalette> = {
-  emerald: {
-    id: 'emerald',
-    bgTop: '#07221E',
-    bgBottom: '#0D1716',
-    surface: '#112E29',
-    surfaceBorder: '#234F47',
-    accent: '#5CDBBE',
-    accentSoft: '#16463D',
-    accentText: '#003831',
-    ink: '#ECFAF6',
-    muted: '#9EC2B9',
-    trackStroke: '#1D5248',
-    modeColors: {
-      tram: '#5CDBBE',
-      bus: '#88C8FF',
-      train: '#FFB957',
-      subway: '#B7B8FF',
-      trolleybus: '#8EE09C',
-      cable: '#FF9EB8',
-      walk: '#9EC2B9',
-    },
-  },
-  night: {
-    id: 'night',
-    bgTop: '#0C1429',
-    bgBottom: '#111322',
-    surface: '#17203B',
-    surfaceBorder: '#2A3963',
-    accent: '#96CCFF',
-    accentSoft: '#223663',
-    accentText: '#062642',
-    ink: '#EEF4FF',
-    muted: '#A3B4D6',
-    trackStroke: '#253762',
-    modeColors: {
-      tram: '#71D8C2',
-      bus: '#96CCFF',
-      train: '#DAB9FF',
-      subway: '#FFBE78',
-      trolleybus: '#86DFB2',
-      cable: '#FFAEDE',
-      walk: '#A3B4D6',
-    },
-  },
-  rail: {
-    id: 'rail',
-    bgTop: '#211912',
-    bgBottom: '#131210',
-    surface: '#2C2219',
-    surfaceBorder: '#4A3A2B',
-    accent: '#FFB957',
-    accentSoft: '#4A3519',
-    accentText: '#3A2300',
-    ink: '#FBF5EC',
-    muted: '#C8B8A4',
-    trackStroke: '#4A3826',
-    modeColors: {
-      tram: '#71D8C2',
-      bus: '#96CCFF',
-      train: '#FFB957',
-      subway: '#CBBEFF',
-      trolleybus: '#97D77D',
-      cable: '#FFB1C5',
-      walk: '#C8B8A4',
-    },
+export const WRAPPED_PALETTE: WrappedThemePalette = {
+  bgTop: '#07221E',
+  bgBottom: '#0D1716',
+  surface: '#112E29',
+  surfaceBorder: '#234F47',
+  accent: '#5CDBBE',
+  accentSoft: '#16463D',
+  accentText: '#003831',
+  ink: '#ECFAF6',
+  muted: '#9EC2B9',
+  trackStroke: '#1D5248',
+  modeColors: {
+    tram: '#5CDBBE',
+    bus: '#88C8FF',
+    train: '#FFB957',
+    subway: '#B7B8FF',
+    trolleybus: '#8EE09C',
+    cable: '#FF9EB8',
+    walk: '#9EC2B9',
   },
 };
 
@@ -181,13 +131,12 @@ function drawBrandMark(ctx: CanvasRenderingContext2D, x: number, y: number, size
 
 async function renderWrappedCanvasBlob(
   summary: WrappedSafeSummary,
-  themeId: WrappedThemeId,
   labels: WrappedExportStrings,
 ): Promise<Blob> {
   if (typeof document === 'undefined') {
     throw new Error('Canvas unavailable');
   }
-  const palette = WRAPPED_THEMES[themeId];
+  const palette = WRAPPED_PALETTE;
   const width = 1080;
   const height = 1350;
   const canvas = document.createElement('canvas');
@@ -398,15 +347,14 @@ function triggerWebDownload(blob: Blob, filename: string): void {
 export async function shareWrappedGraphic(params: {
   cardRef: RefObject<View | null>;
   summary: WrappedSafeSummary;
-  themeId: WrappedThemeId;
   labels: WrappedExportStrings;
   saveOnly?: boolean;
 }): Promise<void> {
-  const { cardRef, summary, themeId, labels, saveOnly = false } = params;
+  const { cardRef, summary, labels, saveOnly = false } = params;
   const filename = `kilometr-podsumowanie-${summary.year}.png`;
 
   if (Platform.OS === 'web') {
-    const blob = await renderWrappedCanvasBlob(summary, themeId, labels);
+    const blob = await renderWrappedCanvasBlob(summary, labels);
     if (!saveOnly && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       const file = new File([blob], filename, { type: 'image/png' });
       const canShareFiles =
