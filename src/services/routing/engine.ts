@@ -1,5 +1,5 @@
 import { DayIndex, gtfsStore, polskaStore, LocalGtfsStore } from './store';
-import { classifyTransitMode, DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
+import { classifyTransitMode, DEFAULT_COST, isPointlessShortRide, journeyCost, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
 import { AllowedTransferModes, Connection, JourneySegment, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
 import type { BoardedTripOrigin, DelayConfidence } from '../../types/models';
 import { distanceMeters, secondsToTimeString, shiftWarsawDate, warsawNow } from '../../gtfs/geo';
@@ -214,9 +214,73 @@ export function buildLegStops(
   // Legi pochodzą z aktywnego wycinka, więc kurs jest w pamięci (sync, bez IO).
   const times = store.stopTimes.get(tripId);
   if (!times || times.length === 0) return [];
-  const allStops: LegStop[] = times.map((t) => {
+
+  const hasDelay = delaySec !== undefined && nowSec !== undefined;
+  const vehicleClock = hasDelay ? nowSec - delaySec : 0;
+  const expectedTimeSec = (t: { arrival_sec: number; departure_sec: number }, use: 'board' | 'arrive'): number | undefined => {
+    const scheduled = use === 'board' ? t.departure_sec : t.arrival_sec;
+    if (scheduled === undefined) return undefined;
+    if (!hasDelay) return scheduled;
+    return scheduled + predictDelaySec(delaySec, scheduled - vehicleClock, use, mode);
+  };
+
+  let boardIdx = -1;
+  if (departSec !== undefined) {
+    for (let i = 0; i < times.length; i++) {
+      const t = times[i];
+      if (t.stop_id !== boardStopId) continue;
+      const expected = expectedTimeSec(t, 'board');
+      if (expected !== undefined && Math.abs(expected - departSec) <= 120) {
+        boardIdx = i;
+        break;
+      }
+    }
+  }
+  if (boardIdx < 0) {
+    for (let i = 0; i < times.length; i++) {
+      if (times[i].stop_id === boardStopId) {
+        boardIdx = i;
+        break;
+      }
+    }
+  }
+
+  let alightIdx = -1;
+  if (arriveSec !== undefined && boardIdx >= 0) {
+    for (let i = boardIdx + 1; i < times.length; i++) {
+      const t = times[i];
+      if (t.stop_id !== alightStopId) continue;
+      const expected = expectedTimeSec(t, 'arrive');
+      if (expected !== undefined && Math.abs(expected - arriveSec) <= 120) {
+        alightIdx = i;
+        break;
+      }
+    }
+  }
+  if (alightIdx < 0 && boardIdx >= 0) {
+    for (let i = boardIdx + 1; i < times.length; i++) {
+      if (times[i].stop_id === alightStopId) {
+        alightIdx = i;
+        break;
+      }
+    }
+  }
+  if (alightIdx < 0) {
+    for (let i = 0; i < times.length; i++) {
+      if (times[i].stop_id === alightStopId) {
+        alightIdx = i;
+        break;
+      }
+    }
+  }
+
+  const startIdx = boardIdx >= 0 && alightIdx > boardIdx ? boardIdx : 0;
+  const endIdx = boardIdx >= 0 && alightIdx > boardIdx ? alightIdx : times.length - 1;
+  const out = new Array<LegStop>(endIdx - startIdx + 1);
+  for (let i = startIdx; i <= endIdx; i++) {
+    const t = times[i];
     const s = store.stops.get(t.stop_id);
-    return {
+    out[i - startIdx] = {
       stopId: t.stop_id,
       name: s?.stop_name || t.stop_id,
       lat: s?.stop_lat,
@@ -225,49 +289,8 @@ export function buildLegStops(
       arriveSec: t.arrival_sec,
       departSec: t.departure_sec,
     };
-  });
-
-  const expectedSec = (stop: LegStop, use: 'board' | 'arrive'): number | undefined => {
-    const scheduled = use === 'board' ? stop.departSec : stop.arriveSec;
-    if (scheduled === undefined) return undefined;
-    if (delaySec === undefined || nowSec === undefined) return scheduled;
-    return scheduled + predictDelaySec(delaySec, scheduled - (nowSec - delaySec), use, mode);
-  };
-
-  let boardIdx = -1;
-  if (departSec !== undefined) {
-    boardIdx = allStops.findIndex((s) => {
-      const expected = expectedSec(s, 'board');
-      return s.stopId === boardStopId && expected !== undefined && Math.abs(expected - departSec) <= 120;
-    });
   }
-  if (boardIdx < 0) {
-    boardIdx = allStops.findIndex((s) => s.stopId === boardStopId);
-  }
-
-  let alightIdx = -1;
-  if (arriveSec !== undefined && boardIdx >= 0) {
-    alightIdx = allStops.findIndex((s, idx) => {
-      const expected = expectedSec(s, 'arrive');
-      return (
-        idx > boardIdx &&
-        s.stopId === alightStopId &&
-        expected !== undefined &&
-        Math.abs(expected - arriveSec) <= 120
-      );
-    });
-  }
-  if (alightIdx < 0 && boardIdx >= 0) {
-    alightIdx = allStops.findIndex((s, idx) => idx > boardIdx && s.stopId === alightStopId);
-  }
-  if (alightIdx < 0) {
-    alightIdx = allStops.findIndex((s) => s.stopId === alightStopId);
-  }
-
-  if (boardIdx < 0 || alightIdx < 0 || boardIdx >= alightIdx) return allStops;
-
-  // Zwracamy przystanki od wsiadania do wysiadania (włącznie z obu)
-  return allStops.slice(boardIdx, alightIdx + 1);
+  return out;
 }
 
 export interface PlanOptions {
@@ -1480,29 +1503,26 @@ export async function planConnections(
   const tripDelays = snapshot.delays;
   const uncertaintyPenalty = new Map([...snapshot.transferBuffers.keys()].map(id => [id, 120]));
   const rawJourneys: RawJourney[] = [];
-  // Przyjazdy: ostatnia godzina przed celem. Odjazdy: dwa okna do przodu
-  // (a przy szerszym horyzoncie kolejowym dokładamy kolejne, żeby pociągi
-  // rzadkie jak IC nie zniknęły poza pierwszymi 45 minutami).
+  // Przyjazdy: ostatnia godzina przed celem. Odjazdy: nienakładające się okna
+  // [offsetSec, windowSec] pokrywające dokładnie [0, horizonSec] (0..15 min,
+  // 15..60 min, potem kroki po 60 min dla szerszych horyzontów kolejowych).
   const timeWindows: [number, number][] = arrivalMode
     ? [[0, 3600]]
-    : horizonSec <= 2700
-      ? [
-          [0, 900],
-          [900, 2700],
-        ]
-      : (() => {
-          const windows: [number, number][] = [
-            [0, 900],
-            [900, 2700],
-            [2700, 7200],
-          ];
-          let from = 7200;
-          while (from < horizonSec) {
-            windows.push([from, Math.min(from + 7200, horizonSec)]);
-            from += 7200;
-          }
-          return windows;
-        })();
+    : (() => {
+        const windows: [number, number][] = [];
+        const first = Math.min(900, Math.max(0, horizonSec));
+        windows.push([0, first]);
+        if (horizonSec > 900) {
+          windows.push([900, Math.min(2700, horizonSec - 900)]);
+        }
+        let from = 3600;
+        while (from < horizonSec) {
+          const width = Math.min(3600, horizonSec - from);
+          windows.push([from, width]);
+          from += width;
+        }
+        return windows;
+      })();
 
   // Siatka bezpieczeństwa: gdyby klasyfikacja na poziomie segmentu rozjechała
   // się z klasyfikacją wzorca, odrzuć podróże z niedozwolonym pojazdem.
@@ -1518,13 +1538,27 @@ export async function planConnections(
     const v = (allow as Record<string, boolean | undefined> | undefined)?.[mode];
     return v === false;
   };
-  const applyModeFilter = (list: RawJourney[]) =>
-    list.filter((j) => {
-      const transit = j.segments.filter((s) => s.type === 'transit');
-      if (transit.some((s) => isBanned(s.mode))) return false;
-      if (modes === 'all') return true;
-      return transit.every((s) => s.mode === modes || (modes === 'bus' && s.mode === 'trolleybus'));
-    });
+  const applyModeFilter = (list: RawJourney[]) => {
+    const out: RawJourney[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const j = list[i];
+      let ok = true;
+      for (let si = 0; si < j.segments.length; si++) {
+        const s = j.segments[si];
+        if (s.type !== 'transit') continue;
+        if (isBanned(s.mode)) {
+          ok = false;
+          break;
+        }
+        if (modes !== 'all' && s.mode !== modes && !(modes === 'bus' && s.mode === 'trolleybus')) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) out.push(j);
+    }
+    return out;
+  };
   const mapCtx: MapCtx = { currentSec, dayOffsetSec, tripDelays, confidence: snapshot.confidence, serviceDate: targetWarsaw.isoDate };
   const sortPartial = (list: Connection[]) =>
     sortConnectionsByCost(list, userWalkSpeed, arrivalMode ? rawTarget : undefined, cost);
@@ -1538,12 +1572,15 @@ export async function planConnections(
   // Brak górnego limitu wsiadania w RAPTOR-ze: „pierwszy kurs po przybyciu"
   // bywa wiele godzin później (np. zapytanie 07:20 → wsiadanie 23:29, bo to
   // pierwszy kurs danego wzorca na tym przystanku). Wszystko ponad +2 h od
-  // startu wyszukiwania to nie propozycja dla użytkownika - odrzucamy od razu,
+  // startu wyszukiwania to nie propozycja dla użytkownika: odrzucamy od razu,
   // żeby takie kursy nie psuły listy wariantów (też częściowej w onProgress).
   // Kolej (searchAheadSec) sięga dalej: pociągi dalekobieżne jeżdżą rzadko.
   const MAX_BOARD_AHEAD_SEC = Math.max(7200, horizonSec);
+  const costOpts = { cost, uncertaintyPenalty };
+  let finalSelected: RawJourney[] | null = null;
 
-  for (const [offsetSec, windowSec] of timeWindows) {
+  for (let wi = 0; wi < timeWindows.length; wi++) {
+    const [offsetSec, windowSec] = timeWindows[wi];
     const batch = await runRaptorAsync(store, origins, destinations, (arrivalMode ? departureSec : searchStartSec) + offsetSec, {
       maxTransfers,
       minTransferSec,
@@ -1563,7 +1600,8 @@ export async function planConnections(
       latestArrivalSec: arrivalMode ? departureSec : undefined,
       arriveBy: arrivalMode,
     });
-    for (const j of batch) {
+    for (let i = 0; i < batch.length; i++) {
+      const j = batch[i];
       const inWindow = arrivalMode
         ? j.arrivalSec <= departureSec && j.departureSec >= earliestDepartureSec
         : j.departureSec <= searchStartSec + MAX_BOARD_AHEAD_SEC;
@@ -1571,23 +1609,49 @@ export async function planConnections(
         rawJourneys.push(j);
       }
     }
-    // Progres: po każdym oknie wydaj to, co mamy - UI dokłada wiersze
-    // "po kolei" zamiast czekać na całość. await ustępuje wątek JS,
-    // żeby FlatList zdążyła się przemalować między oknami.
-    if (options.onProgress && rawJourneys.length > 0) {
+
+    const hasNextWindow = wi + 1 < timeWindows.length;
+    let stopEarly = false;
+    let selectedNow: RawJourney[] | null = null;
+
+    // Bezstratny early-exit: jeśli bieżąca dziesiątka ma 10 wariantów i koszt
+    // każdego z nich mieści się w nextOffsetSec, późniejszy odjazd nie poprawi top-10.
+    if (!arrivalMode && hasNextWindow && rawJourneys.length >= 10) {
+      selectedNow = select(rawJourneys);
+      if (selectedNow.length >= 10) {
+        const nextOffsetSec = timeWindows[wi + 1][0];
+        let allWithinNext = true;
+        for (let i = 0; i < selectedNow.length; i++) {
+          if (journeyCost(selectedNow[i], searchStartSec, costOpts) > nextOffsetSec) {
+            allWithinNext = false;
+            break;
+          }
+        }
+        if (allWithinNext) {
+          stopEarly = true;
+          finalSelected = selectedNow;
+        }
+      }
+    }
+
+    // Progres emitujemy tylko przed kolejnym oknem: na ostatnim oknie od razu
+    // zwracamy wynik finalny, bez powtarzania selekcji, mapowania i setTimeout(0).
+    if (options.onProgress && rawJourneys.length > 0 && hasNextWindow && !stopEarly) {
       const partial = sortPartial(
-        mapJourneysToConnections(select(rawJourneys), options, mapCtx, store),
+        mapJourneysToConnections(selectedNow ?? select(rawJourneys), options, mapCtx, store),
       );
       if (partial.length > 0) {
         options.onProgress(partial);
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
     }
+
+    if (stopEarly) break;
   }
 
   // Jedna wspólna selekcja (dominacja + różnorodność) na CAŁYM zbiorze
   // (osobno na okno dublowałyby się te same kursy).
-  const filtered = select(rawJourneys);
+  const filtered = finalSelected ?? select(rawJourneys);
 
   // 4. Map into Connection model
   const connections = mapJourneysToConnections(filtered, options, mapCtx, store);

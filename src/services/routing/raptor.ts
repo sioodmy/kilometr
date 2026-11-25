@@ -176,21 +176,21 @@ function packRaptorQuery(
 ): Uint8Array | null {
   const stopIdx = net.base.stopIndex;
 
-  const validOrigins: Array<[number, number, number]> = [];
+  const validOrigins: number[] = [];
   for (let i = 0; i < origins.length; i++) {
     const o = origins[i];
     const s = stopIdx.get(o.stopId);
     if (s !== undefined) {
-      validOrigins.push([s, Math.max(0, Math.round(o.walkSec)), Math.max(0, Math.round(o.walkM))]);
+      validOrigins.push(s, Math.max(0, Math.round(o.walkSec)), Math.max(0, Math.round(o.walkM)));
     }
   }
 
-  const validDests: Array<[number, number, number]> = [];
+  const validDests: number[] = [];
   for (let i = 0; i < destinations.length; i++) {
     const d = destinations[i];
     const s = stopIdx.get(d.stopId);
     if (s !== undefined) {
-      validDests.push([s, Math.max(0, Math.round(d.walkSec)), Math.max(0, Math.round(d.walkM))]);
+      validDests.push(s, Math.max(0, Math.round(d.walkSec)), Math.max(0, Math.round(d.walkM)));
     }
   }
 
@@ -198,21 +198,24 @@ function packRaptorQuery(
     return null;
   }
 
-  const delayEntries: Array<[number, number, number]> = [];
+  const delayEntries: number[] = [];
   if (options.tripDelays && options.tripDelays.size > 0) {
     for (const [tripId, raw] of options.tripDelays) {
       const d0 = Math.round(raw);
       if (!d0) continue;
       const loc = net.tripLoc.get(tripId);
       if (loc) {
-        delayEntries.push([loc[0], loc[1], d0]);
+        delayEntries.push(loc[0], loc[1], d0);
       }
     }
   }
-  const bufferEntries: Array<[number, number, number]> = [];
-  for (const [id, extra] of options.transferBuffers ?? []) {
-    const loc = net.tripLoc.get(id);
-    if (loc && extra > 0) bufferEntries.push([loc[0], loc[1], Math.round(extra)]);
+  const bufferEntries: number[] = [];
+  if (options.transferBuffers && options.transferBuffers.size > 0) {
+    for (const [id, extra] of options.transferBuffers) {
+      if (extra <= 0) continue;
+      const loc = net.tripLoc.get(id);
+      if (loc) bufferEntries.push(loc[0], loc[1], Math.round(extra));
+    }
   }
 
   const maxTransfers = Math.max(0, Math.min(3, options.maxTransfers ?? 2));
@@ -236,65 +239,47 @@ function packRaptorQuery(
   const nowVal = options.nowSec !== undefined ? Math.round(options.nowSec) : 0;
   const t0 = Math.round(departureTimeSec);
 
+  const nOrigins = validOrigins.length / 3;
+  const nDests = validDests.length / 3;
+  const nDelays = delayEntries.length / 3;
+  const nBuffers = bufferEntries.length / 3;
+
   const headerWords = 22;
   const totalWords =
-    headerWords + validOrigins.length * 3 + validDests.length * 3 + delayEntries.length * 3 + 1 + bufferEntries.length * 3;
+    headerWords + validOrigins.length + validDests.length + delayEntries.length + 1 + bufferEntries.length;
   const buf = new ArrayBuffer(totalWords * 4);
+  const i32 = new Int32Array(buf);
   const view = new DataView(buf);
-  let pos = 0;
+  let w = 0;
 
-  const writeI32 = (v: number) => {
-    view.setInt32(pos, v | 0, true);
-    pos += 4;
-  };
-  const writeF64 = (v: number) => {
-    view.setFloat64(pos, v, true);
-    pos += 8;
-  };
+  i32[w++] = options.arriveBy ? ARRIVE_BY_QUERY_MAGIC : QUERY_MAGIC;
+  i32[w++] = net.id;
+  i32[w++] = t0;
+  i32[w++] = windowSec;
+  i32[w++] = maxTransfers;
+  i32[w++] = minT;
+  i32[w++] = trainNeed;
+  i32[w++] = trainsEnabled;
+  i32[w++] = cableEnabled;
+  i32[w++] = allowedMode;
+  view.setFloat64(w * 4, speedMps, true);
+  w += 2;
+  i32[w++] = maxTransferWalkM;
+  view.setFloat64(w * 4, wr, true);
+  w += 2;
+  i32[w++] = transferPenaltySec;
+  i32[w++] = latestArr;
+  i32[w++] = hasNow;
+  i32[w++] = nowVal;
+  i32[w++] = nOrigins;
+  i32[w++] = nDests;
+  i32[w++] = nDelays;
 
-  writeI32(options.arriveBy ? ARRIVE_BY_QUERY_MAGIC : QUERY_MAGIC);
-  writeI32(net.id);
-  writeI32(t0);
-  writeI32(windowSec);
-  writeI32(maxTransfers);
-  writeI32(minT);
-  writeI32(trainNeed);
-  writeI32(trainsEnabled);
-  writeI32(cableEnabled);
-  writeI32(allowedMode);
-  writeF64(speedMps);
-  writeI32(maxTransferWalkM);
-  writeF64(wr);
-  writeI32(transferPenaltySec);
-  writeI32(latestArr);
-  writeI32(hasNow);
-  writeI32(nowVal);
-  writeI32(validOrigins.length);
-  writeI32(validDests.length);
-  writeI32(delayEntries.length);
-
-  for (let i = 0; i < validOrigins.length; i++) {
-    const [s, ws, wm] = validOrigins[i];
-    writeI32(s);
-    writeI32(ws);
-    writeI32(wm);
-  }
-  for (let i = 0; i < validDests.length; i++) {
-    const [s, ws, wm] = validDests[i];
-    writeI32(s);
-    writeI32(ws);
-    writeI32(wm);
-  }
-  for (let i = 0; i < delayEntries.length; i++) {
-    const [p, j, d0] = delayEntries[i];
-    writeI32(p);
-    writeI32(j);
-    writeI32(d0);
-  }
-  writeI32(bufferEntries.length);
-  for (const [p, j, extra] of bufferEntries) {
-    writeI32(p); writeI32(j); writeI32(extra);
-  }
+  for (let i = 0; i < validOrigins.length; i++) i32[w++] = validOrigins[i];
+  for (let i = 0; i < validDests.length; i++) i32[w++] = validDests[i];
+  for (let i = 0; i < delayEntries.length; i++) i32[w++] = delayEntries[i];
+  i32[w++] = nBuffers;
+  for (let i = 0; i < bufferEntries.length; i++) i32[w++] = bufferEntries[i];
 
   return new Uint8Array(buf);
 }
@@ -324,15 +309,14 @@ function unpackJourneys(
   arriveBy = false,
 ): RawJourney[] {
   if (!bytes || bytes.byteLength < 4) return [];
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let pos = 0;
-  const readI32 = (): number => {
-    const v = view.getInt32(pos, true);
-    pos += 4;
-    return v;
-  };
+  const words =
+    (bytes.byteOffset & 3) === 0
+      ? new Int32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 2)
+      : new Int32Array(bytes.slice().buffer);
+  const wordLen = words.length;
+  let w = 0;
 
-  const count = readI32();
+  const count = words[w++];
   if (count <= 0) return [];
 
   const P = net.patterns;
@@ -341,30 +325,30 @@ function unpackJourneys(
   const out: RawJourney[] = [];
 
   for (let c = 0; c < count; c++) {
-    if (pos + 40 > bytes.byteLength) break;
-    const dest = readI32();
-    const firstStop = readI32();
-    const accessSec = readI32();
-    const accessM = readI32();
-    const egressSec = readI32();
-    const egressM = readI32();
-    const nLegs = readI32();
+    if (w + 10 > wordLen) break;
+    const dest = words[w++];
+    const firstStop = words[w++];
+    const accessSec = words[w++];
+    const accessM = words[w++];
+    const egressSec = words[w++];
+    const egressM = words[w++];
+    const nLegs = words[w++];
 
-    if (nLegs <= 0 || pos + nLegs * 32 > bytes.byteLength) break;
+    if (nLegs <= 0 || w + nLegs * 8 + 3 > wordLen) break;
 
     const segments: JourneySegment[] = [];
     let prevStop = -1;
     let prevArr = 0;
 
     for (let li = 0; li < nLegs; li++) {
-      const pIdx = readI32();
-      const jIdx = readI32();
-      const bPos = readI32();
-      const aPos = readI32();
-      const walkIn = readI32();
-      const walkInM = readI32();
-      const depSec = readI32();
-      const arrSec = readI32();
+      const pIdx = words[w++];
+      const jIdx = words[w++];
+      const bPos = words[w++];
+      const aPos = words[w++];
+      const walkIn = words[w++];
+      const walkInM = words[w++];
+      const depSec = words[w++];
+      const arrSec = words[w++];
 
       const pat = P[pIdx];
       if (!pat) continue;
@@ -426,9 +410,9 @@ function unpackJourneys(
     // Opcjonalne dojście pieszo po ostatnim kursie (koniec podróży na spacerze
     // zamiast przymusowej przesiadki na 1 przystanek). Kolejność słów z Rust:
     // stopFrom, sekundy, metry.
-    const walkFromStop = readI32();
-    const walkOutSec = readI32();
-    const walkOutM = readI32();
+    const walkFromStop = words[w++];
+    const walkOutSec = words[w++];
+    const walkOutM = words[w++];
     if (walkFromStop >= 0 && walkOutSec > 0 && prevStop >= 0 && walkFromStop !== dest) {
       segments.push({
         type: 'walk',
@@ -536,13 +520,6 @@ export function runRaptor(
   return unpackJourneys(store, net, Math.round(departureTimeSec), res, options.arriveBy);
 }
 
-/** Sekundy marszu w podróży (dojście, przesiadki, odejście). */
-function journeyWalkSec(j: RawJourney): number {
-  let w = 0;
-  for (const s of j.segments) if (s.type === 'walk') w += Math.max(0, s.arriveSec - s.departSec);
-  return w;
-}
-
 export interface SelectOptions {
   cost?: CostParams;
   /** Tryb „bądź na”: koszt liczony od wyjścia do celu, nie od teraz. */
@@ -556,15 +533,27 @@ export interface SelectOptions {
  * od wyjścia do celu w trybie „bądź na”) + dodatkowa waga marszu + kara
  * za przesiadki.
  */
-function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
+export function journeyCost(j: RawJourney, refSec: number, opts: SelectOptions = {}): number {
   const cost = opts.cost ?? DEFAULT_COST;
   const base =
     opts.arriveBySec !== undefined ? opts.arriveBySec - j.departureSec : j.arrivalSec - refSec;
+  let walk = 0;
+  let uncertainty = 0;
+  const penalty = opts.uncertaintyPenalty;
+  for (let i = 0; i < j.segments.length; i++) {
+    const s = j.segments[i];
+    if (s.type === 'walk') {
+      const d = s.arriveSec - s.departSec;
+      if (d > 0) walk += d;
+    } else if (penalty && s.tripId) {
+      uncertainty += penalty.get(s.tripId) ?? 0;
+    }
+  }
   return (
     base +
-    (Math.max(1, cost.walkReluctance) - 1) * journeyWalkSec(j) +
+    (Math.max(1, cost.walkReluctance) - 1) * walk +
     j.transfers * cost.transferPenaltySec +
-    j.segments.reduce((sum, s) => sum + (opts.uncertaintyPenalty?.get(s.tripId ?? '') ?? 0), 0)
+    uncertainty
   );
 }
 
@@ -576,72 +565,132 @@ export function selectJourneys(
   opts: SelectOptions = {},
 ): RawJourney[] {
   const limit = opts.limit ?? 10;
-  const scored = journeys
-    .filter((j) => opts.arriveBySec === undefined || j.arrivalSec <= opts.arriveBySec)
-    .map((j) => ({
+  const cost = opts.cost ?? DEFAULT_COST;
+  const extraWalk = Math.max(1, cost.walkReluctance) - 1;
+  const transferPenalty = cost.transferPenaltySec;
+  const arriveBySec = opts.arriveBySec;
+  const penalty = opts.uncertaintyPenalty;
+
+  const scored: Array<{
+    j: RawJourney;
+    cost: number;
+    walk: number;
+    chain: string;
+    combo: string;
+  }> = [];
+
+  for (let idx = 0; idx < journeys.length; idx++) {
+    const j = journeys[idx];
+    if (arriveBySec !== undefined && j.arrivalSec > arriveBySec) continue;
+    let walk = 0;
+    let uncertainty = 0;
+    let chain = '';
+    let combo = '';
+    let hasTransit = false;
+    const segs = j.segments;
+    for (let si = 0; si < segs.length; si++) {
+      const s = segs[si];
+      if (s.type === 'walk') {
+        const d = s.arriveSec - s.departSec;
+        if (d > 0) walk += d;
+      } else {
+        if (hasTransit) {
+          chain += '|';
+          combo += '+';
+        }
+        chain += s.tripId ?? '';
+        combo += s.line ?? '';
+        hasTransit = true;
+        if (penalty && s.tripId) {
+          uncertainty += penalty.get(s.tripId) ?? 0;
+        }
+      }
+    }
+    const base = arriveBySec !== undefined ? arriveBySec - j.departureSec : j.arrivalSec - refSec;
+    scored.push({
       j,
-      cost: journeyCost(j, refSec, opts),
-      walk: journeyWalkSec(j),
-      chain: j.segments
-        .filter((s) => s.type === 'transit')
-        .map((s) => s.tripId)
-        .join('|'),
-      combo: j.segments
-        .filter((s) => s.type === 'transit')
-        .map((s) => s.line)
-        .join('+'),
-    }));
+      cost: base + extraWalk * walk + j.transfers * transferPenalty + uncertainty,
+      walk,
+      chain,
+      combo,
+    });
+  }
+
   scored.sort(
     (a, b) => a.cost - b.cost || a.j.transfers - b.j.transfers || a.j.arrivalSec - b.j.arrivalSec,
   );
 
   const byChain = new Set<string>();
-  const unique = scored.filter((x) => {
-    if (byChain.has(x.chain)) return false;
+  const unique: typeof scored = [];
+  for (let i = 0; i < scored.length; i++) {
+    const x = scored[i];
+    if (byChain.has(x.chain)) continue;
     byChain.add(x.chain);
-    return true;
-  });
+    unique.push(x);
+  }
 
-  const front = unique.filter(
-    (x) =>
-      !unique.some(
-        (y) =>
-          y !== x &&
-          y.j.departureSec >= x.j.departureSec &&
-          y.j.arrivalSec <= x.j.arrivalSec &&
-          y.j.transfers <= x.j.transfers &&
-          y.walk <= x.walk + 30 &&
-          y.cost <= x.cost &&
-          (y.j.departureSec > x.j.departureSec ||
-            y.j.arrivalSec < x.j.arrivalSec ||
-            y.j.transfers < x.j.transfers ||
-            y.walk < x.walk - 30 ||
-            y.cost < x.cost),
-      ),
-  );
+  // `unique` jest posortowane rosnąco po `cost`: kandydat z `y.cost > x.cost` nie może zdominować `x`.
+  const front: typeof unique = [];
+  for (let i = 0; i < unique.length; i++) {
+    const x = unique[i];
+    let dominated = false;
+    for (let k = 0; k < unique.length; k++) {
+      if (k === i) continue;
+      const y = unique[k];
+      if (y.cost > x.cost) break;
+      if (
+        y.j.departureSec >= x.j.departureSec &&
+        y.j.arrivalSec <= x.j.arrivalSec &&
+        y.j.transfers <= x.j.transfers &&
+        y.walk <= x.walk + 30 &&
+        (y.j.departureSec > x.j.departureSec ||
+          y.j.arrivalSec < x.j.arrivalSec ||
+          y.j.transfers < x.j.transfers ||
+          y.walk < x.walk - 30 ||
+          y.cost < x.cost)
+      ) {
+        dominated = true;
+        break;
+      }
+    }
+    if (!dominated) front.push(x);
+  }
 
   const perCombo = new Map<string, number[]>();
   const result: RawJourney[] = [];
-  for (const x of front) {
-    const kept = perCombo.get(x.combo) ?? [];
-    if (kept.length >= 4) continue;
-    if (kept.some((d) => Math.abs(d - x.j.departureSec) < 180)) continue;
-    kept.push(x.j.departureSec);
-    perCombo.set(x.combo, kept);
+  for (let i = 0; i < front.length; i++) {
+    const x = front[i];
+    const kept = perCombo.get(x.combo);
+    if (kept) {
+      if (kept.length >= 4) continue;
+      let tooClose = false;
+      for (let k = 0; k < kept.length; k++) {
+        if (Math.abs(kept[k] - x.j.departureSec) < 180) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+      kept.push(x.j.departureSec);
+    } else {
+      perCombo.set(x.combo, [x.j.departureSec]);
+    }
     result.push(x.j);
     if (result.length >= limit) break;
   }
 
   if (result.length > 0) {
     let fastest = front[0]?.j;
-    for (const x of front) {
+    for (let i = 0; i < front.length; i++) {
+      const x = front[i];
       if (
         fastest &&
-        (opts.arriveBySec !== undefined
+        (arriveBySec !== undefined
           ? x.j.departureSec > fastest.departureSec
           : x.j.arrivalSec < fastest.arrivalSec)
-      )
+      ) {
         fastest = x.j;
+      }
     }
     if (fastest && !result.includes(fastest)) {
       if (result.length >= limit) result.pop();
