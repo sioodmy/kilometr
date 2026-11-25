@@ -58,6 +58,7 @@ export function useRailLiveConnections(
   connections: Connection[],
   tripDelays: Map<string, number>,
   enabled = true,
+  activeRef?: { current: boolean },
 ): Connection[] {
   const [railData, setRailData] = useState<Map<string, ZbRailDeparture>>(() => sharedRailData);
   const [national, setNational] = useState<NationalRailLive | null>(() => sharedNational);
@@ -115,12 +116,13 @@ export function useRailLiveConnections(
       liveTracker.setNationalWatch(watchLegs);
     }
     const load = () => {
+      if (activeRef && !activeRef.current) return;
       void Promise.all([
         fetchZbRailDepartures(trainLegs).catch(() => null),
         fetchNationalRailUpdates(watchLegs).catch(() => null),
         fetchNationalRailLive(watchLegs).catch(() => null),
       ]).then(([zbData, updData, liveData]) => {
-        if (!active) return;
+        if (!active || (activeRef && !activeRef.current)) return;
         if (zbData && zbData.size > 0) {
           sharedRailData = mergeMap(sharedRailData, zbData);
           setRailData(sharedRailData);
@@ -200,7 +202,11 @@ export function useRailLiveConnections(
   return useMemo(() => {
     if (railData.size === 0 && !national && nationalUpdates.size === 0)
       return applyLiveDelays(enriched, tripDelays);
-    const delays = new Map(tripDelays);
+    let delays: Map<string, number> | null = null;
+    const ensureDelays = () => {
+      if (!delays) delays = new Map(tripDelays);
+      return delays;
+    };
     const arrivalDelays = new Map<string, number>();
     const now = Date.now();
     for (const connection of enriched) {
@@ -209,23 +215,23 @@ export function useRailLiveConnections(
         // Fallback 1: tablica odjazdów zbiorkomu
         const rail = railData.get(railLegKey(leg));
         if (rail?.live && now - rail.fetchedAt <= RAIL_LIVE_MAX_AGE_MS) {
-          delays.set(leg.tripId, rail.delaySec);
+          ensureDelays().set(leg.tripId, rail.delaySec);
         }
         // Fallback 2: estymacja z pozycji pojazdu na mapie
         const posDelay = national?.delays.get(leg.tripId);
         if (posDelay != null && now - (national?.fetchedAt ?? 0) <= RAIL_LIVE_MAX_AGE_MS) {
-          delays.set(leg.tripId, posDelay);
+          ensureDelays().set(leg.tripId, posDelay);
         }
         // Główne źródło: oficjalny feed PKP PLK (nadpisuje wartości heurystyczne)
         const update = nationalUpdates.get(leg.tripId);
         if (update && update.hasRealtimeDelay !== false && isRailUpdateFresh(update, now)) {
-          delays.set(leg.tripId, update.delaySec);
+          ensureDelays().set(leg.tripId, update.delaySec);
           if (update.arrivalDelaySec != null) {
             arrivalDelays.set(leg.tripId, update.arrivalDelaySec);
           }
         }
       }
     }
-    return applyLiveDelays(enriched, delays, arrivalDelays);
+    return applyLiveDelays(enriched, delays ?? tripDelays, arrivalDelays);
   }, [enriched, railData, national, nationalUpdates, tripDelays]);
 }

@@ -1,7 +1,7 @@
 import { DayIndex, gtfsStore, polskaStore, LocalGtfsStore } from './store';
 import { classifyTransitMode, DEFAULT_COST, isPointlessShortRide, mergeDayIndexes, runRaptorAsync, selectJourneys, warmupRaptorNet, type CostParams } from './raptor';
 import { AllowedTransferModes, Connection, JourneySegment, Leg, LegMode, LegStop, RawJourney, TransitModePreference } from './types';
-import type { BoardedTripOrigin } from '../../types/models';
+import type { BoardedTripOrigin, DelayConfidence } from '../../types/models';
 import { distanceMeters, secondsToTimeString, shiftWarsawDate, warsawNow } from '../../gtfs/geo';
 import { liveTracker } from '../liveTracker';
 import { MAX_DELAY_SEC } from '../liveQuality';
@@ -691,13 +691,37 @@ export function applyLiveDelays(
   tripDelays: Map<string, number>,
   arrivalDelays: ReadonlyMap<string, number> = new Map(),
 ): Connection[] {
-  const snapshot = tripDelays.size > 0 ? liveTracker.getRoutingSnapshot() : emptyRoutingSnapshot();
-  const delays = new Map([...snapshot.delays, ...tripDelays]);
-  const confidence = new Map(snapshot.confidence);
-  for (const tripId of tripDelays.keys()) {
-    confidence.set(tripId, 'live');
+  if (connections.length === 0) return connections;
+  const neededTripIds = new Set<string>();
+  for (const connection of connections) {
+    for (const leg of connection.legs) {
+      if (leg.mode !== 'walk' && leg.tripId) neededTripIds.add(leg.tripId);
+    }
   }
-  const updated = connections.map((connection) => refreshConnectionTimes(connection, delays, new Date(), confidence, arrivalDelays));
+  const snapshot =
+    neededTripIds.size > 0 && tripDelays.size > 0
+      ? liveTracker.getRoutingSnapshot()
+      : emptyRoutingSnapshot();
+  // Kopiujemy wyłącznie wpisy dla kursów z przekazanej listy połączeń,
+  // bez klonowania tysięcy wpisów całego miasta przy wejściu w szczegóły.
+  const delays = new Map<string, number>();
+  const confidence = new Map<string, DelayConfidence>();
+  for (const tripId of neededTripIds) {
+    const direct = tripDelays.get(tripId);
+    if (direct !== undefined) {
+      delays.set(tripId, direct);
+      confidence.set(tripId, 'live');
+    } else {
+      const snapDelay = snapshot.delays.get(tripId);
+      if (snapDelay !== undefined) delays.set(tripId, snapDelay);
+      const snapConfidence = snapshot.confidence.get(tripId);
+      if (snapConfidence !== undefined) confidence.set(tripId, snapConfidence);
+    }
+  }
+  const now = new Date();
+  const updated = connections.map((connection) =>
+    refreshConnectionTimes(connection, delays, now, confidence, arrivalDelays),
+  );
   return updated.every((connection, index) => connection === connections[index]) ? connections : updated;
 }
 
