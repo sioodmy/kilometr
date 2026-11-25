@@ -1894,7 +1894,6 @@ export const pl = {
     bgDlDownloading: (gen: string, pct: number) => `Pobieram rozkład ${gen}… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Przygotowuję rozkład ${gen}… ${pct}%`,
     bgDlReady: (gen: string) => `Rozkład ${gen} gotowy offline`,
-    bgDlReadyDetail: (stops: number) => `${stops} przystanków`,
     bgDlError: 'Nie udało się pobrać rozkładu',
     bgDlPending: (gen: string) => `Rozkład ${gen} pobierze się w tle`,
     bgDlRetry: 'Ponów',

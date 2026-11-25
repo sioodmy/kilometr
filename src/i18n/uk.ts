@@ -1906,7 +1906,6 @@ export const uk: Strings = {
     bgDlDownloading: (gen: string, pct: number) => `Завантажую розклад ${gen}… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Готую розклад ${gen}… ${pct}%`,
     bgDlReady: (gen: string) => `Розклад ${gen} готовий офлайн`,
-    bgDlReadyDetail: (stops: number) => `${stops} зупинок`,
     bgDlError: 'Не вдалося завантажити розклад',
     bgDlPending: (gen: string) => `Розклад ${gen} завантажиться у фоні`,
     bgDlRetry: 'Повторити',

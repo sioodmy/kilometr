@@ -1467,7 +1467,6 @@ export const en: Strings = {
     bgDlDownloading: (gen: string, pct: number) => `Downloading ${gen} timetable… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Preparing ${gen} timetable… ${pct}%`,
     bgDlReady: (gen: string) => `${gen} timetable ready offline`,
-    bgDlReadyDetail: (stops: number) => `${stops} stops`,
     bgDlError: 'Could not download the timetable',
     bgDlPending: (gen: string) => `${gen} timetable will download in the background`,
     bgDlRetry: 'Retry',

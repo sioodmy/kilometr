@@ -108,12 +108,6 @@ export const TimetableBackgroundPill = memo(function TimetableBackgroundPill({
           {label}
         </Text>
 
-        {status.state === 'ready' && status.stops > 0 ? (
-          <Text style={styles.meta} numberOfLines={1}>
-            {s.onboarding.bgDlReadyDetail(status.stops)}
-          </Text>
-        ) : null}
-
         {(status.state === 'error' || (status.state === 'empty' && !isCheckingEmpty)) && (
           <SpringPressable
             onPress={onRetry}
@@ -194,11 +188,6 @@ const styles = StyleSheet.create({
   },
   textError: {
     color: scheme.onErrorContainer,
-  },
-  meta: {
-    ...type.labelSmall,
-    color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
   },
   actionBtn: {
     flexDirection: 'row',

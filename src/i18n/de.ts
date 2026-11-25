@@ -1476,7 +1476,6 @@ export const de: Strings = {
     bgDlDownloading: (gen: string, pct: number) => `Fahrplan für ${gen} lädt… ${pct} %`,
     bgDlImporting: (gen: string, pct: number) => `Fahrplan für ${gen} wird vorbereitet… ${pct} %`,
     bgDlReady: (gen: string) => `Fahrplan für ${gen} offline bereit`,
-    bgDlReadyDetail: (stops: number) => `${stops} Haltestellen`,
     bgDlError: 'Fahrplan konnte nicht geladen werden',
     bgDlPending: (gen: string) => `Fahrplan für ${gen} lädt im Hintergrund`,
     bgDlRetry: 'Erneut',
