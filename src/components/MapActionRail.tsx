@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   zoomGroup: {
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
     ...elev.level2,

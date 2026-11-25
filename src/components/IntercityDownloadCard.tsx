@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     gap: 14,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level1,
   },
