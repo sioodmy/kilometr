@@ -101,12 +101,12 @@ export function WrappedShareCard({ summary }: { summary: WrappedSafeSummary }) {
         preserveAspectRatio="xMidYMid slice"
       >
         <Defs>
-          <LinearGradient id={`wrapBg_${themeId}`} x1="0" y1="0" x2="0" y2="1">
+          <LinearGradient id="wrapBg" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={palette.bgTop} />
             <Stop offset="1" stopColor={palette.bgBottom} />
           </LinearGradient>
         </Defs>
-        <Rect width="360" height="450" fill={`url(#wrapBg_${themeId})`} />
+        <Rect width="360" height="450" fill="url(#wrapBg)" />
         <Path
           d="M 215 -10 C 232 74, 286 96, 372 108"
           stroke={palette.trackStroke}
