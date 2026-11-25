@@ -5,6 +5,7 @@ import {
   AppState,
   BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -29,7 +30,6 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import {
   Bell,
@@ -140,27 +140,24 @@ function StepStage({
   children: React.ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
+  // Bez animacji opacity: po powrocie z tła Fabric potrafi scalić startowe propsy
+  // animacji (bug Reanimated), a treść kroku nie może zależeć od animacji, by być widoczna.
   const translateX = useSharedValue(reduceMotion ? 0 : direction * 28);
-  const opacity = useSharedValue(reduceMotion ? 1 : 0);
   const scale = useSharedValue(reduceMotion ? 1 : 0.985);
 
   useEffect(() => {
     if (reduceMotion) {
       translateX.value = 0;
-      opacity.value = 1;
       scale.value = 1;
       return;
     }
     translateX.value = direction * 28;
-    opacity.value = 0;
     scale.value = 0.985;
     translateX.value = withSpring(0, motion.spring.spatialDefault);
     scale.value = withSpring(1, motion.spring.spatialDefault);
-    opacity.value = withTiming(1, { duration: 220, easing: motion.enter.easing });
-  }, [direction, opacity, reduceMotion, scale, step, translateX]);
+  }, [direction, reduceMotion, scale, step, translateX]);
 
   const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
     transform: [{ translateX: translateX.value }, { scale: scale.value }],
   }));
 
@@ -183,22 +180,17 @@ function AnimatedStepHeader({
 }) {
   const reduceMotion = useReducedMotion();
   const tx = useSharedValue(reduceMotion ? 0 : direction * 18);
-  const op = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
     if (reduceMotion) {
       tx.value = 0;
-      op.value = 1;
       return;
     }
     tx.value = direction * 18;
-    op.value = 0;
     tx.value = withSpring(0, motion.spring.spatialDefault);
-    op.value = withTiming(1, { duration: 200, easing: motion.enter.easing });
-  }, [direction, op, reduceMotion, step, tx]);
+  }, [direction, reduceMotion, step, tx]);
 
   const animStyle = useAnimatedStyle(() => ({
-    opacity: op.value,
     transform: [{ translateX: tx.value }],
   }));
 
@@ -606,20 +598,14 @@ function useOnboardingPlaces(onSaved: () => void) {
 const CityRowItem = memo(function CityRowItem({
   entry,
   active,
-  isSuggested,
   disabled,
-  gpsBadgeLabel,
   pickA11y,
-  suggestedA11y,
   onSelect,
 }: {
   entry: CityEntry;
   active: boolean;
-  isSuggested: boolean;
   disabled: boolean;
-  gpsBadgeLabel: string;
   pickA11y: string;
-  suggestedA11y?: string;
   onSelect: (id: CityId) => void;
 }) {
   const handlePress = useCallback(() => onSelect(entry.city.id), [entry.city.id, onSelect]);
@@ -634,22 +620,12 @@ const CityRowItem = memo(function CityRowItem({
       accessibilityRole="radio"
       accessibilityState={{ checked: active, disabled }}
       accessibilityLabel={pickA11y}
-      accessibilityHint={suggestedA11y}
     >
       <View style={st.cityRowBody}>
         <View style={st.cityNameLine}>
           <Text style={[st.cityName, active && st.cityNameActive]} numberOfLines={1}>
             {entry.name}
           </Text>
-          {isSuggested && (
-            <View style={[st.gpsTag, active && st.gpsTagActive]}>
-              <LocateFixed
-                size={11}
-                color={active ? scheme.onPrimary : scheme.onPrimaryContainer}
-              />
-              <Text style={[st.gpsTagText, active && st.gpsTagTextActive]}>{gpsBadgeLabel}</Text>
-            </View>
-          )}
         </View>
         <Text style={[st.citySub, active && st.citySubActive]} numberOfLines={1}>
           {entry.feeds}
@@ -682,6 +658,33 @@ export default function OnboardingScreen() {
   const [welcomeGroupHeight, setWelcomeGroupHeight] = useState(276);
   const [compactHeaderHeight, setCompactHeaderHeight] = useState(86);
   const [leaving, setLeaving] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const maxWorkspaceHeightRef = useRef(0);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Edge-to-edge na Androidzie nie zawsze kurczy okna pod klawiaturę, więc
+  // doliczamy jej wysokość do przewijanej treści tylko, gdy layout faktycznie się nie skurczył.
+  const windowShrankByKeyboard =
+    Platform.OS === 'android' &&
+    keyboardHeight > 0 &&
+    maxWorkspaceHeightRef.current - workspaceHeight > keyboardHeight * 0.5;
+  const androidKeyboardInset =
+    Platform.OS === 'android' && keyboardHeight > 0 && !windowShrankByKeyboard
+      ? keyboardHeight
+      : 0;
 
   const bumpPulse = useCallback(() => setPulseKey((k) => k + 1), []);
 
@@ -806,28 +809,24 @@ export default function OnboardingScreen() {
 
   const cityEntries = useMemo(() => getCityEntries(s), [s]);
   const filteredCities = useMemo(
-    () => filterCityEntries(cityEntries, cityQuery, [suggested, cityId]),
-    [cityEntries, cityId, cityQuery, suggested],
+    () => filterCityEntries(cityEntries, cityQuery, [cityId]),
+    [cityEntries, cityId, cityQuery],
   );
 
   const renderCityItem = useCallback<ListRenderItem<CityEntry>>(
     ({ item }) => {
       const active = cityId === item.city.id;
-      const isSuggested = suggested === item.city.id;
       return (
         <CityRowItem
           entry={item}
           active={active}
-          isSuggested={isSuggested}
           disabled={switchingCity}
-          gpsBadgeLabel={s.onboarding.detectGpsBadge}
           pickA11y={s.onboarding.cityPickA11y(item.name)}
-          suggestedA11y={isSuggested ? s.onboarding.citySuggestedA11y(item.name) : undefined}
           onSelect={(id) => void selectCity(id, 'manual')}
         />
       );
     },
-    [cityId, s, selectCity, suggested, switchingCity],
+    [cityId, s, selectCity, switchingCity],
   );
 
   const placeSlots = useMemo(
@@ -863,6 +862,17 @@ export default function OnboardingScreen() {
     }, 150);
   }, []);
 
+  // Po wysunięciu klawiatury treść dostaje dolny zapas, więc ponawiamy przewinięcie
+  // aktywnego miejsca, żeby pole i podpowiedzi zostały nad klawiaturą.
+  useEffect(() => {
+    const activeSlot = slots.activeSlot;
+    if (Platform.OS === 'web' || step !== 3 || !activeSlot || keyboardHeight === 0) {
+      return;
+    }
+    const timer = setTimeout(() => scrollSlotIntoView(activeSlot), 60);
+    return () => clearTimeout(timer);
+  }, [keyboardHeight, scrollSlotIntoView, slots.activeSlot, step, workspaceHeight]);
+
   const compactHeaderMeta = useMemo(() => {
     if (step === 1) {
       return { title: s.onboarding.cityTitle, subtitle: s.onboarding.citySubtitleAuto };
@@ -897,7 +907,10 @@ export default function OnboardingScreen() {
           onLayout={(e) => {
             const { width: w, height: h } = e.nativeEvent.layout;
             if (w > 0 && Math.abs(w - workspaceWidth) > 1) setWorkspaceWidth(Math.round(w));
-            if (h > 0 && Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
+            if (h > 0) {
+              if (h > maxWorkspaceHeightRef.current) maxWorkspaceHeightRef.current = h;
+              if (Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
+            }
           }}
         >
           {step === 0 && (
@@ -989,19 +1002,6 @@ export default function OnboardingScreen() {
                       <MorphingLoader size={16} color={scheme.primary} />
                       <Text style={st.gpsStatusText}>{s.onboarding.cityLocating}</Text>
                     </View>
-                  ) : suggested ? (
-                    <SpringPressable
-                      onPress={() => void selectCity(suggested, 'manual')}
-                      haptic="selection"
-                      style={[st.gpsStatusRow, st.gpsStatusMatched]}
-                      accessibilityRole="button"
-                    >
-                      <LocateFixed size={15} color={scheme.primary} />
-                      <Text style={st.gpsStatusText} numberOfLines={1}>
-                        {s.onboarding.citySuggested(s.city.loc(suggested))}
-                      </Text>
-                      {suggested === cityId && <Check size={15} color={scheme.primary} />}
-                    </SpringPressable>
                   ) : citySuggestionStatus === 'nomatch' ? (
                     <View style={st.gpsStatusRow}>
                       <MapPinOff size={15} color={scheme.onSurfaceVariant} />
@@ -1229,7 +1229,7 @@ export default function OnboardingScreen() {
                   ref={placesScroll}
                   contentContainerStyle={[
                     st.stepScroll,
-                    { paddingBottom: 180 + webKeyboardInset },
+                    { paddingBottom: 180 + webKeyboardInset + androidKeyboardInset },
                   ]}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
@@ -1246,7 +1246,9 @@ export default function OnboardingScreen() {
                         layout={
                           reduceMotion
                             ? undefined
-                            : LinearTransition.springify().damping(24).stiffness(300)
+                            : LinearTransition.duration(motion.state.duration).easing(
+                                motion.state.easing,
+                              )
                         }
                         style={[st.card, saved && st.cardGranted, open && st.cardFocused]}
                         onLayout={(e) => {
@@ -1491,7 +1493,7 @@ const st = StyleSheet.create({
     maxHeight: 780,
     borderRadius: 32,
     backgroundColor: scheme.surface,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -1590,7 +1592,7 @@ const st = StyleSheet.create({
     gap: 12,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.large,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: `${scheme.primary}44`,
     paddingHorizontal: 14,
     paddingVertical: 11,
@@ -1623,10 +1625,6 @@ const st = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 44,
-  },
-  gpsStatusMatched: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${scheme.primary}55`,
   },
   gpsStatusText: {
     ...type.labelLarge,
@@ -1671,7 +1669,7 @@ const st = StyleSheet.create({
     minHeight: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1704,7 +1702,7 @@ const st = StyleSheet.create({
     gap: 12,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: 'transparent',
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -1742,26 +1740,6 @@ const st = StyleSheet.create({
     color: scheme.onPrimaryContainer,
     opacity: 0.88,
   },
-  gpsTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
-  },
-  gpsTagActive: {
-    backgroundColor: scheme.primary,
-  },
-  gpsTagText: {
-    ...type.labelSmall,
-    color: scheme.onPrimaryContainer,
-    fontWeight: '700',
-  },
-  gpsTagTextActive: {
-    color: scheme.onPrimary,
-  },
   radio: {
     width: 24,
     height: 24,
@@ -1795,7 +1773,7 @@ const st = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 18,
     gap: 14,

@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   },
   btnOutlined: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   btnFlex: {

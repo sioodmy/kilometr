@@ -83,7 +83,7 @@ export function getDesktopSheetProps(
     sheetStyle: { marginHorizontal: sideMargin },
     backgroundExtraStyle: {
       borderRadius: shape.extraLarge,
-      borderWidth: 1,
+      borderWidth: 2,
       borderColor: scheme.outlineVariant,
     },
     innerWidth,

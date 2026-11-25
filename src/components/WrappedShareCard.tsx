@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: shape.extraLarge,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 2,
     width: '100%',
     maxWidth: 380,
     alignSelf: 'center',
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   tile: {
     flex: 1,
     borderRadius: shape.large,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 13,
     gap: 6,
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
   },
   modesBox: {
     borderRadius: shape.large,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 13,
     gap: 10,
   },

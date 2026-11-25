@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     gap: SLOT_GAP,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },

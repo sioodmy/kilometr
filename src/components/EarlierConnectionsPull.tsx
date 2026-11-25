@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: shape.full,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   iconBox: {
     width: 18,

@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   corridorText: { fontSize: 11, fontWeight: '700' },
   title: { fontSize: 18, lineHeight: 23, fontWeight: '700', letterSpacing: -0.25 },
