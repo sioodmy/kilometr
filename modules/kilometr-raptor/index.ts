@@ -258,17 +258,24 @@ function runWasmQuerySync(
   }
 
   const execOnce = (): Uint8Array | null => {
-    const qPtr = wasm.raptor_alloc(packedQuery.byteLength);
+    const len = packedQuery.byteLength;
+    if (typeof wasm.raptor_scratch_ptr === "function") {
+      const qPtr = wasm.raptor_scratch_ptr(len);
+      new Uint8Array(wasm.memory.buffer, qPtr, len).set(packedQuery);
+      const outLen = wasm.raptor_run_query(qPtr, len);
+      if (outLen === 0) return null;
+      const outPtr = wasm.raptor_result_ptr();
+      return new Uint8Array(wasm.memory.buffer, outPtr, outLen).slice();
+    }
+    const qPtr = wasm.raptor_alloc(len);
     try {
-      new Uint8Array(wasm.memory.buffer, qPtr, packedQuery.byteLength).set(
-        packedQuery
-      );
-      const outLen = wasm.raptor_run_query(qPtr, packedQuery.byteLength);
+      new Uint8Array(wasm.memory.buffer, qPtr, len).set(packedQuery);
+      const outLen = wasm.raptor_run_query(qPtr, len);
       if (outLen === 0) return null;
       const outPtr = wasm.raptor_result_ptr();
       return new Uint8Array(wasm.memory.buffer, outPtr, outLen).slice();
     } finally {
-      wasm.raptor_dealloc(qPtr, packedQuery.byteLength);
+      wasm.raptor_dealloc(qPtr, len);
     }
   };
 
