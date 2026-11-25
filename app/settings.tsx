@@ -1011,14 +1011,7 @@ export default function SettingsScreen() {
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <Animated.View
-              entering={
-                reduceMotion
-                  ? undefined
-                  : FadeIn.duration(200).easing(Easing.bezier(0.05, 0.7, 0.1, 1))
-              }
-              style={styles.sectionAnimatedWrap}
-            >
+            <View style={styles.sectionAnimatedWrap}>
               {!activeSection ? (
                 <>
                   {cityPanelContent}
@@ -1027,7 +1020,7 @@ export default function SettingsScreen() {
               ) : (
                 renderSectionBody(activeSection)
               )}
-            </Animated.View>
+            </View>
           </ScrollView>
         </>
       )}

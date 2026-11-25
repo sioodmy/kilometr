@@ -17,7 +17,7 @@ import {
   useWindowDimensions,
   type ListRenderItem,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
@@ -793,14 +793,16 @@ export default function OnboardingScreen() {
     void prefetchTimetable(cityId, true);
   }, [cityId, prefetchTimetable]);
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (step === 0) return false;
-      back();
-      return true;
-    });
-    return () => sub.remove();
-  }, [back, step]);
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (step === 0) return false;
+        back();
+        return true;
+      });
+      return () => sub.remove();
+    }, [back, step]),
+  );
 
   const cityEntries = useMemo(() => getCityEntries(s), [s]);
   const filteredCities = useMemo(

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   Platform,
   Pressable,
   StyleSheet,
@@ -19,6 +18,7 @@ import BottomSheet, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlarmClock, Minus, Plus, Volume2, X } from './icons';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import { DesktopSheetTopSpacer, getDesktopSheetProps, useEscapeKey, useWebLayout } from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
@@ -168,13 +168,7 @@ export function DepartureAlarmSheet({
     };
   }, []);
 
-  useEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!busyRef.current) sheet.current?.close();
-      return true;
-    });
-    return () => back.remove();
-  }, []);
+  const { onSheetChange } = useSheetBackHandler(sheet, () => onCloseRef.current());
 
   const changeMinutes = (value: number) => {
     setMinutes(Math.max(1, Math.min(60, value)));
@@ -231,6 +225,7 @@ export function DepartureAlarmSheet({
       detached={sheetProps.detached}
       style={sheetProps.sheetStyle}
       enablePanDownToClose={!webLayout.isMedium}
+      onChange={onSheetChange}
       onClose={onCloseRef.current}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
       handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}

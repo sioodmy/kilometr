@@ -143,6 +143,14 @@ const SwipeableLegCardActive = React.memo(function SwipeableLegCardActive({
         .enabled(gestureEnabled)
         .activeOffsetX([-18, 18])
         .failOffsetY([-12, 12])
+        .onTouchesDown((e, stateManager) => {
+          'worklet';
+          const touch = e.allTouches[0];
+          // Lewa krawędź zostaje dla systemowego lub nawigacyjnego gestu wstecz.
+          if (touch && touch.absoluteX < 32) {
+            stateManager.fail();
+          }
+        })
         .onBegin(() => {
           crossedThreshold.value = false;
         })

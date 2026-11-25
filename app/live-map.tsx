@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   Keyboard,
   type LayoutChangeEvent,
   ScrollView,
@@ -951,6 +952,19 @@ export default function LiveVehiclesMapScreen() {
     setSearchQuery('');
     Keyboard.dismiss();
   }, []);
+
+  const searchOpenRef = useRef(searchOpen);
+  searchOpenRef.current = searchOpen;
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!searchOpenRef.current) return false;
+        closeSearch();
+        return true;
+      });
+      return () => sub.remove();
+    }, [closeSearch]),
+  );
 
   const handleOpenSearch = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
