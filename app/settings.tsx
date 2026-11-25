@@ -34,11 +34,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Coffee,
   Download,
   DatabaseBackup,
   ExternalLink,
   Footprints,
+  Heart,
   Landmark,
   MapPin,
   SlidersHorizontal,
@@ -522,6 +522,24 @@ export default function SettingsScreen() {
 
   const menuContent = (
     <>
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync().catch(() => {});
+          void Linking.openURL('https://buycoffee.to/sioodmy').catch(() => {});
+        }}
+        accessibilityRole="link"
+        accessibilityLabel={s.settings.supportA11y}
+        style={({ pressed }) => [styles.supportCard, pressed && styles.supportCardPressed]}
+      >
+        <View style={styles.supportIconWrap}>
+          <Heart size={20} color={scheme.onTertiary} />
+        </View>
+        <View style={styles.settingText}>
+          <Text style={styles.supportTitle}>{s.settings.supportTitle}</Text>
+          <Text style={styles.supportHint}>{s.settings.supportHint}</Text>
+        </View>
+        <ExternalLink size={18} color={scheme.onTertiaryContainer} />
+      </Pressable>
       <View style={styles.menuGroup}>
         <SettingsLink
           icon={Navigation}
@@ -589,19 +607,6 @@ export default function SettingsScreen() {
           onPress={() => router.push('/privacy')}
         />
       </View>
-      <Pressable
-        onPress={() => void Linking.openURL('https://buycoffee.to/sioodmy').catch(() => {})}
-        accessibilityRole="link"
-        accessibilityLabel={s.settings.supportA11y}
-        style={({ pressed }) => [styles.supportLink, pressed && styles.menuRowPressed]}
-      >
-        <Coffee size={20} color={scheme.onSurfaceVariant} />
-        <View style={styles.settingText}>
-          <Text style={styles.settingTitle}>{s.settings.supportTitle}</Text>
-          <Text style={styles.settingHint}>{s.settings.supportHint}</Text>
-        </View>
-        <ExternalLink size={18} color={scheme.onSurfaceVariant} />
-      </Pressable>
     </>
   );
 
@@ -1329,13 +1334,38 @@ const styles = StyleSheet.create({
     marginRight: 14,
     backgroundColor: scheme.outlineVariant,
   },
-  supportLink: {
+  supportCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    padding: 16,
-    borderRadius: shape.large,
-    minHeight: 72,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    minHeight: 76,
+    borderRadius: shape.extraLarge,
+    backgroundColor: scheme.tertiaryContainer,
+  },
+  supportCardPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.99 }],
+  },
+  supportIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: shape.full,
+    backgroundColor: scheme.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  supportTitle: {
+    ...type.titleMedium,
+    color: scheme.onTertiaryContainer,
+    fontWeight: '600',
+  },
+  supportHint: {
+    ...type.bodySmall,
+    color: scheme.onTertiaryContainer,
+    opacity: 0.88,
+    lineHeight: 19,
   },
   languageList: { gap: 8 },
   languageOption: {
