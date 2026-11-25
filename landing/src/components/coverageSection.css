@@ -57,6 +57,7 @@
     aspect-ratio: 520 / 500;
     display: grid;
     place-items: center;
+    perspective: 900px;
   }
 
   .cov-map-svg {
@@ -64,6 +65,9 @@
     width: 100%;
     height: 100%;
     overflow: visible;
+    transform: rotateX(var(--map-rx, 0deg)) rotateY(var(--map-ry, 0deg));
+    transform-style: preserve-3d;
+    will-change: transform;
   }
 
   .cov-poland-land {
@@ -81,6 +85,12 @@
       stroke-width 0.25s ease;
   }
 
+  .cov-rail-link.is-hovered {
+    stroke: rgb(127 219 177 / 44%);
+    stroke-width: 1.35;
+    stroke-dasharray: none;
+  }
+
   .cov-rail-link.is-active {
     stroke: rgb(255 184 58 / 38%);
     stroke-width: 1.45;
@@ -89,8 +99,8 @@
 
   /* Ultra-subtle gliding light streaks symbolizing rail flows between major cities. */
   .cov-rail-streak {
-    stroke: rgb(127 219 177 / 30%);
-    stroke-width: 1.45;
+    stroke: rgb(127 219 177 / 28%);
+    stroke-width: 1.4;
     stroke-linecap: round;
     stroke-dasharray: 16 240;
     stroke-dashoffset: 16;
@@ -98,14 +108,55 @@
     animation-name: cov-rail-streak-flow;
     animation-timing-function: linear;
     animation-iteration-count: infinite;
+    animation-play-state: paused;
     transition:
       stroke 0.3s ease,
       stroke-width 0.3s ease;
   }
 
+  .coverage-release.is-in-view .cov-rail-streak,
+  .coverage-release.is-in-view .cov-pin-pulse {
+    animation-play-state: running;
+  }
+
+  .cov-rail-streak.is-hovered {
+    stroke: rgb(156 246 220 / 64%);
+    stroke-width: 1.85;
+  }
+
   .cov-rail-streak.is-active {
     stroke: rgb(255 204 102 / 58%);
     stroke-width: 1.9;
+  }
+
+  /* Dynamiczny łuk relacji łączący wybrane miasto z miastem pod kursorem. */
+  .cov-hover-route {
+    pointer-events: none;
+  }
+
+  .cov-hover-arc-glow {
+    stroke: rgb(127 219 177 / 18%);
+    stroke-width: 5.5;
+    stroke-linecap: round;
+    animation: cov-fade-in 0.22s ease-out both;
+  }
+
+  .cov-hover-arc {
+    stroke: rgb(152 244 218 / 68%);
+    stroke-width: 1.55;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: cov-arc-draw 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .cov-hover-arc-pulse {
+    stroke: #e9fff8;
+    stroke-width: 2.1;
+    stroke-linecap: round;
+    stroke-dasharray: 14 100;
+    stroke-dashoffset: 14;
+    animation: cov-hover-arc-flow 1.8s linear 0.16s infinite;
   }
 
   .cov-pin {
@@ -123,6 +174,7 @@
     stroke-width: 1.25;
     pointer-events: none;
     animation: cov-pin-ripple 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    animation-play-state: paused;
   }
 
   .cov-pin-halo {
@@ -135,6 +187,20 @@
     stroke: rgb(92 219 190 / 55%);
     stroke-width: 1.3;
     pointer-events: none;
+  }
+
+  .cov-pin-hover-halo {
+    fill: rgb(127 219 177 / 16%);
+    pointer-events: none;
+    animation: cov-pin-hover-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .cov-pin-hover-ring {
+    fill: none;
+    stroke: rgb(156 246 220 / 74%);
+    stroke-width: 1.35;
+    pointer-events: none;
+    animation: cov-pin-hover-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .cov-pin-dot {
@@ -154,7 +220,7 @@
 
   .cov-pin:hover .cov-pin-dot,
   .cov-pin.is-hovered .cov-pin-dot {
-    fill: #9bf3d8;
+    fill: #a8fae0;
   }
 
   .cov-pin:focus-visible .cov-pin-dot {
@@ -176,6 +242,11 @@
 
   .cov-pin.is-dimmed .cov-pin-dot {
     opacity: 0.2;
+  }
+
+  .cov-callout {
+    animation: cov-fade-in 0.16s ease-out both;
+    filter: drop-shadow(0 8px 18px rgb(0 0 0 / 52%));
   }
 
   .cov-callout rect {
@@ -436,11 +507,12 @@
     gap: 6px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #86998c;
+    color: #edf3ee;
     letter-spacing: 0.01em;
   }
 
   .cov-metric-v {
+    padding-left: 21px;
     font-size: 0.9rem;
     font-weight: 600;
     line-height: 1.3;
@@ -456,6 +528,7 @@
   }
 
   .cov-metric-sub {
+    padding-left: 21px;
     font-size: 0.78rem;
     line-height: 1.3;
     color: #8fa295;
@@ -561,14 +634,64 @@
     }
   }
 
+  @keyframes cov-pin-hover-in {
+    from {
+      opacity: 0;
+      transform: scale(0.55);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes cov-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes cov-arc-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes cov-hover-arc-flow {
+    from {
+      stroke-dashoffset: 14;
+    }
+    to {
+      stroke-dashoffset: -100;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .cov-rail-streak,
-    .cov-pin-pulse {
+    .cov-pin-pulse,
+    .cov-hover-arc,
+    .cov-hover-arc-glow,
+    .cov-hover-arc-pulse,
+    .cov-pin-hover-halo,
+    .cov-pin-hover-ring,
+    .cov-callout {
       animation: none;
     }
 
-    .cov-rail-streak {
+    .cov-hover-arc {
+      stroke-dashoffset: 0;
+    }
+
+    .cov-rail-streak,
+    .cov-hover-arc-pulse {
       display: none;
+    }
+
+    .cov-map-svg {
+      transform: none;
     }
   }
 }
@@ -623,6 +746,7 @@
     .cov-metric-v,
     .cov-metric-sub {
       grid-column: 2;
+      padding-left: 0;
       text-align: right;
     }
 

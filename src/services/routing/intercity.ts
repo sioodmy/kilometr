@@ -125,95 +125,177 @@ interface RailStopLocation {
 
 const railPlatformCache = new Map<string, RailStopLocation>();
 
-async function railTripMeta(tripId: string): Promise<RailTripMeta> {
-  const hit = railTripMetaCache.get(tripId);
-  if (hit) return hit;
-  const meta: RailTripMeta = { trainNumber: '', trainName: '', category: '', agency: '' };
-  try {
-    const db = await getNationalDb();
-    const row = await db.getFirstAsync<{
-      train_number: string;
-      train_name: string;
-      category: string;
-      agency: string;
-    }>('SELECT train_number, train_name, category, agency FROM trips WHERE trip_id = ?', tripId);
-    if (row) {
-      meta.trainNumber = row.train_number ?? '';
-      meta.trainName = row.train_name ?? '';
-      meta.category = row.category ?? '';
-      meta.agency = row.agency ?? '';
-    }
-  } catch {
-    // baza niedostępna - noga zostaje z linią z routes
-  }
+function rememberRailMeta(tripId: string, meta: RailTripMeta): void {
   railTripMetaCache.set(tripId, meta);
   if (railTripMetaCache.size > 2000) {
     const oldest = railTripMetaCache.keys().next().value;
     if (oldest !== undefined) railTripMetaCache.delete(oldest);
   }
-  return meta;
 }
 
-async function railPlatform(tripId: string, stopId: string): Promise<RailStopLocation> {
-  const key = `${tripId}:${stopId}`;
-  const hit = railPlatformCache.get(key);
-  if (hit !== undefined) return hit;
-  let loc: RailStopLocation = { platform: '', track: '' };
-  try {
-    const db = await getNationalDb();
-    try {
-      const row = await db.getFirstAsync<{ platform: string; track?: string }>(
-        'SELECT platform, track FROM stop_times WHERE trip_id = ? AND stop_id = ?',
-        tripId,
-        stopId,
-      );
-      loc = { platform: row?.platform ?? '', track: row?.track ?? '' };
-    } catch {
-      const row = await db.getFirstAsync<{ platform: string }>(
-        'SELECT platform FROM stop_times WHERE trip_id = ? AND stop_id = ?',
-        tripId,
-        stopId,
-      );
-      loc = { platform: row?.platform ?? '', track: '' };
-    }
-  } catch {
-    // best-effort: peron i tor nie sa krytyczne dla routingu
-  }
+function rememberRailPlatform(key: string, loc: RailStopLocation): void {
   railPlatformCache.set(key, loc);
   if (railPlatformCache.size > 4000) {
     const oldest = railPlatformCache.keys().next().value;
     if (oldest !== undefined) railPlatformCache.delete(oldest);
   }
-  return loc;
 }
 
-/** Wzbogaca nogi kolejowe o numer/nazwę pociągu, przewoźnika i peron. */
-async function enrichRailLegs(legs: Leg[]): Promise<void> {
-  const jobs: Array<Promise<void>> = [];
-  for (const leg of legs) {
+/** Wzbogaca nogi kolejowe wielu połączeń w 1-2 zapytaniach batchowych SQLite zamiast N+1. */
+async function enrichRailLegsBatch(allLegs: Leg[]): Promise<void> {
+  const railLegs: Leg[] = [];
+  const missingMetaIds = new Set<string>();
+  const missingPlatTrips = new Set<string>();
+  const missingPlatStops = new Set<string>();
+  const missingPlatKeys = new Set<string>();
+
+  for (let i = 0; i < allLegs.length; i++) {
+    const leg = allLegs[i];
     if (leg.mode !== 'train' || !leg.tripId?.startsWith('pl:')) continue;
-    jobs.push(
-      (async () => {
-        const meta = await railTripMeta(leg.tripId!);
-        leg.trainNumber = meta.trainNumber || undefined;
-        leg.trainName = meta.trainName || undefined;
-        leg.railAgency = meta.agency || undefined;
-        // Kategoria z feedu bywa złożona („EC/EIC”, „K22/K22 BUS”): do
-        // badge'a bierzemy pierwszy człon, który nie jest autobusem zastępczym.
-        const category = (meta.category || '')
-          .split('/')
-          .map((part) => part.trim())
-          .find((part) => part && !/BUS/i.test(part));
-        if (category) {
-          leg.line = meta.trainNumber ? `${category} ${meta.trainNumber}` : category;
-        }
-        const { platform, track } = await railPlatform(leg.tripId!, leg.fromStopId ?? '');
-        if (platform) leg.platformCode = platform;
-        if (track) leg.trackCode = track;
-      })(),
-    );
+    railLegs.push(leg);
+    if (!railTripMetaCache.has(leg.tripId)) {
+      missingMetaIds.add(leg.tripId);
+    }
+    const stopId = leg.fromStopId ?? '';
+    const pKey = `${leg.tripId}:${stopId}`;
+    if (!railPlatformCache.has(pKey)) {
+      missingPlatKeys.add(pKey);
+      missingPlatTrips.add(leg.tripId);
+      if (stopId) missingPlatStops.add(stopId);
+    }
   }
-  await Promise.all(jobs);
+  if (railLegs.length === 0) return;
+
+  if (missingMetaIds.size > 0 || missingPlatKeys.size > 0) {
+    try {
+      const db = await getNationalDb();
+      if (missingMetaIds.size > 0) {
+        const ids = Array.from(missingMetaIds);
+        const placeholders = ids.map(() => '?').join(',');
+        const found = new Set<string>();
+        try {
+          const rows = await db.getAllAsync<{
+            trip_id: string;
+            train_number: string;
+            train_name: string;
+            category: string;
+            agency: string;
+          }>(
+            `SELECT trip_id, train_number, train_name, category, agency FROM trips WHERE trip_id IN (${placeholders})`,
+            ...ids,
+          );
+          for (const row of rows) {
+            found.add(row.trip_id);
+            rememberRailMeta(row.trip_id, {
+              trainNumber: row.train_number ?? '',
+              trainName: row.train_name ?? '',
+              category: row.category ?? '',
+              agency: row.agency ?? '',
+            });
+          }
+        } catch {
+          // baza niedostępna: nogi zostają z linią z routes
+        }
+        for (const id of ids) {
+          if (!found.has(id)) {
+            rememberRailMeta(id, { trainNumber: '', trainName: '', category: '', agency: '' });
+          }
+        }
+      }
+
+      if (missingPlatKeys.size > 0 && missingPlatStops.size > 0) {
+        const tripIds = Array.from(missingPlatTrips);
+        const stopIds = Array.from(missingPlatStops);
+        const tPlace = tripIds.map(() => '?').join(',');
+        const sPlace = stopIds.map(() => '?').join(',');
+        const foundKeys = new Set<string>();
+        try {
+          let rows: Array<{ trip_id: string; stop_id: string; platform: string; track?: string }> = [];
+          try {
+            rows = await db.getAllAsync<{
+              trip_id: string;
+              stop_id: string;
+              platform: string;
+              track?: string;
+            }>(
+              `SELECT trip_id, stop_id, platform, track FROM stop_times WHERE trip_id IN (${tPlace}) AND stop_id IN (${sPlace})`,
+              ...tripIds,
+              ...stopIds,
+            );
+          } catch {
+            rows = await db.getAllAsync<{
+              trip_id: string;
+              stop_id: string;
+              platform: string;
+            }>(
+              `SELECT trip_id, stop_id, platform FROM stop_times WHERE trip_id IN (${tPlace}) AND stop_id IN (${sPlace})`,
+              ...tripIds,
+              ...stopIds,
+            );
+          }
+          for (const row of rows) {
+            const key = `${row.trip_id}:${row.stop_id}`;
+            if (!missingPlatKeys.has(key)) continue;
+            foundKeys.add(key);
+            rememberRailPlatform(key, {
+              platform: row.platform ?? '',
+              track: row.track ?? '',
+            });
+          }
+        } catch {
+          // best-effort: peron i tor nie są krytyczne dla routingu
+        }
+        for (const key of missingPlatKeys) {
+          if (!foundKeys.has(key)) {
+            rememberRailPlatform(key, { platform: '', track: '' });
+          }
+        }
+      }
+    } catch {
+      // baza niedostępna
+    }
+  }
+
+  for (let i = 0; i < railLegs.length; i++) {
+    const leg = railLegs[i];
+    const tripId = leg.tripId!;
+    const meta = railTripMetaCache.get(tripId);
+    if (meta) {
+      leg.trainNumber = meta.trainNumber || undefined;
+      leg.trainName = meta.trainName || undefined;
+      leg.railAgency = meta.agency || undefined;
+      // Kategoria z feedu bywa złożona („EC/EIC”, „K22/K22 BUS”): do
+      // badge'a bierzemy pierwszy człon, który nie jest autobusem zastępczym.
+      const category = (meta.category || '')
+        .split('/')
+        .map((part) => part.trim())
+        .find((part) => part && !/BUS/i.test(part));
+      if (category) {
+        leg.line = meta.trainNumber ? `${category} ${meta.trainNumber}` : category;
+      }
+    }
+    const loc = railPlatformCache.get(`${tripId}:${leg.fromStopId ?? ''}`);
+    if (loc) {
+      if (loc.platform) leg.platformCode = loc.platform;
+      if (loc.track) leg.trackCode = loc.track;
+    }
+  }
+}
+
+async function finalizeIntercityConnections(raw: Connection[]): Promise<Connection[]> {
+  if (raw.length === 0) return [];
+  const allLegs: Leg[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    allLegs.push(...raw[i].legs);
+  }
+  await enrichRailLegsBatch(allLegs);
+  const out = new Array<Connection>(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    const conn = raw[i];
+    conn.id = stableConnectionId(conn);
+    out[i] = cleanIntercityConnection(conn);
+  }
+  return out;
 }
 
 /* ─── Pomocnicze ───────────────────────────────────────────────────────────── */
@@ -576,60 +658,75 @@ async function planForward(
     destination,
   );
   const railPromise = planConnections(railOptions, polskaStore);
-
-  const combined: Connection[] = [];
-  const finalizeConn = async (city: Connection, rail: Connection, gateway?: RailStation) => {
-    const conn = combineForward(city, rail, options, gateway);
-    await enrichRailLegs(conn.legs);
-    conn.id = stableConnectionId(conn);
-    combined.push(cleanIntercityConnection(conn));
-  };
+  const rawCombined: Connection[] = [];
 
   if (arrivalMode) {
     // "Bądź na": pociągi przyjeżdżające przed terminem, do każdego dolicz
     // nogę miejską "bądź na stacji o odjazd - bufor" (jak najpóźniej z domu).
-    const rail = await railPromise;
+    const [rail] = await Promise.all([railPromise, gtfsStore.load()]);
+    const targets: Array<{ railConn: Connection; gateway: RailStation }> = [];
     for (const railConn of rail.slice(0, MAX_REVERSE_CITY_LEGS + 2)) {
       const firstTrain = firstTransitLeg(railConn);
       const gateway = gateways.find((g) => g.stopId === firstTrain?.fromStopId);
-      if (!firstTrain || !gateway) continue;
-      const cityOptions: PlanOptions = {
-        ...options,
-        toTitle: gateway.name,
-        toLat: gateway.lat,
-        toLon: gateway.lon,
-        toId: undefined,
-        departureTimeSec: undefined,
-        arriveBySec: railConn.departureSec - bufferSec,
-        searchAheadSec: undefined,
-        onProgress: undefined,
-      };
-      const city = await planConnections(cityOptions, gtfsStore);
-      const best = city
+      if (firstTrain && gateway) targets.push({ railConn, gateway });
+    }
+    const cityLists = await Promise.all(
+      targets.map(({ railConn, gateway }) =>
+        planConnections(
+          {
+            ...options,
+            toTitle: gateway.name,
+            toLat: gateway.lat,
+            toLon: gateway.lon,
+            toId: undefined,
+            departureTimeSec: undefined,
+            arriveBySec: railConn.departureSec - bufferSec,
+            searchAheadSec: undefined,
+            onProgress: undefined,
+          },
+          gtfsStore,
+        ),
+      ),
+    );
+    for (let i = 0; i < targets.length; i++) {
+      const { railConn, gateway } = targets[i];
+      const best = cityLists[i]
         .filter((c) => (c.arrivalSec ?? Infinity) <= railConn.departureSec - bufferSec)
         .sort((a, b) => b.departureSec - a.departureSec)[0];
       if (best) {
-        await finalizeConn(best, railConn, gateway);
+        rawCombined.push(combineForward(best, railConn, options, gateway));
       }
     }
   } else {
-    // Odjazd: noga miejska na bramę (cel = punkt stacji, arrivalSec zawiera
-    // dojście piesze), potem join z pociągami po czasie + bufor na peron.
+    // Odjazd: noga miejska na bramy równolegle z koleją, potem join po czasie + bufor.
     const cityByGateway = new Map<string, Connection[]>();
     const cityMinArrival = new Map<string, number>();
     const cityMaxArrival = new Map<string, number>();
 
-    for (const gateway of gateways) {
-      const cityOptions: PlanOptions = {
-        ...options,
-        toTitle: gateway.name,
-        toLat: gateway.lat,
-        toLon: gateway.lon,
-        toId: undefined,
-        searchAheadSec: undefined,
-        onProgress: undefined,
-      };
-      const conns = await planConnections(cityOptions, gtfsStore);
+    await gtfsStore.load();
+    const [rail, gatewayResults] = await Promise.all([
+      railPromise,
+      Promise.all(
+        gateways.map((gateway) =>
+          planConnections(
+            {
+              ...options,
+              toTitle: gateway.name,
+              toLat: gateway.lat,
+              toLon: gateway.lon,
+              toId: undefined,
+              searchAheadSec: undefined,
+              onProgress: undefined,
+            },
+            gtfsStore,
+          ),
+        ),
+      ),
+    ]);
+
+    for (let gi = 0; gi < gateways.length; gi++) {
+      const gateway = gateways[gi];
+      const conns = gatewayResults[gi];
       if (conns.length > 0) {
         cityByGateway.set(gateway.stopId, conns);
         let minArr = Infinity;
@@ -644,8 +741,11 @@ async function planForward(
       }
     }
 
-    const rail = await railPromise;
-    let followUps = 0;
+    const followUpJobs: Array<{
+      railConn: Connection;
+      gateway: RailStation;
+      latestFeasibleArrival: number;
+    }> = [];
     const now = new Date();
     const currentSec = warsawNow(now).sec;
     const minDep = options.departureTimeSec ?? currentSec;
@@ -663,7 +763,7 @@ async function planForward(
       const minArr = cityMinArrival.get(gatewayId);
 
       // Pociąg odjeżdża zanim najszybszy dojazd miejski w ogóle dotrze
-      // na stację - nieosiągalny, pomijamy bez zbędnego zapytania.
+      // na stację: nieosiągalny, pomijamy bez zbędnego zapytania.
       if (minArr !== undefined && latestFeasibleArrival < minArr) {
         continue;
       }
@@ -677,7 +777,7 @@ async function planForward(
         }
       }
       if (best) {
-        await finalizeConn(best, railConn, gateway);
+        rawCombined.push(combineForward(best, railConn, options, gateway));
         continue;
       }
 
@@ -687,29 +787,42 @@ async function planForward(
       const isAheadOfHorizon = maxArr === undefined || latestFeasibleArrival > maxArr;
       if (!isAheadOfHorizon) continue;
 
-      if (followUps >= MAX_FOLLOW_UPS) continue;
-      followUps++;
-      const followOptions: PlanOptions = {
-        ...options,
-        toTitle: gateway.name,
-        toLat: gateway.lat,
-        toLon: gateway.lon,
-        toId: undefined,
-        departureTimeSec: undefined,
-        arriveBySec: latestFeasibleArrival,
-        searchAheadSec: undefined,
-        onProgress: undefined,
-      };
-      const follow = await planConnections(followOptions, gtfsStore);
-      const late = follow
-        .filter((c) => (c.arrivalSec ?? Infinity) <= latestFeasibleArrival && c.departureSec >= minDep)
-        .sort((a, b) => b.departureSec - a.departureSec)[0];
-      if (late) {
-        await finalizeConn(late, railConn, gateway);
+      if (followUpJobs.length >= MAX_FOLLOW_UPS) continue;
+      followUpJobs.push({ railConn, gateway, latestFeasibleArrival });
+    }
+
+    if (followUpJobs.length > 0) {
+      const followLists = await Promise.all(
+        followUpJobs.map(({ gateway, latestFeasibleArrival }) =>
+          planConnections(
+            {
+              ...options,
+              toTitle: gateway.name,
+              toLat: gateway.lat,
+              toLon: gateway.lon,
+              toId: undefined,
+              departureTimeSec: undefined,
+              arriveBySec: latestFeasibleArrival,
+              searchAheadSec: undefined,
+              onProgress: undefined,
+            },
+            gtfsStore,
+          ),
+        ),
+      );
+      for (let i = 0; i < followUpJobs.length; i++) {
+        const { railConn, gateway, latestFeasibleArrival } = followUpJobs[i];
+        const late = followLists[i]
+          .filter((c) => (c.arrivalSec ?? Infinity) <= latestFeasibleArrival && c.departureSec >= minDep)
+          .sort((a, b) => b.departureSec - a.departureSec)[0];
+        if (late) {
+          rawCombined.push(combineForward(late, railConn, options, gateway));
+        }
       }
     }
   }
 
+  const combined = await finalizeIntercityConnections(rawCombined);
   return { connections: pickBest(combined), destinationStation: destination };
 }
 
@@ -732,34 +845,44 @@ async function planReverse(
     originStation,
     gateways[0],
   );
-  const rail = await planConnections(railOptions, polskaStore);
+  const [rail] = await Promise.all([planConnections(railOptions, polskaStore), gtfsStore.load()]);
 
-  const combined: Connection[] = [];
-  let cityLegs = 0;
+  const candidates: Array<{ railConn: Connection; gateway: RailStation; cityDepart: number }> = [];
   for (const railConn of rail) {
-    if (cityLegs >= MAX_REVERSE_CITY_LEGS) break;
     const arriveStationId = lastTransitLeg(railConn)?.toStopId;
     const gateway = gateways.find((g) => g.stopId === arriveStationId);
     if (!gateway) continue;
     const railArrive = railConn.arrivalSec ?? 0;
-    const cityDepart = railArrive + bufferSec;
+    candidates.push({ railConn, gateway, cityDepart: railArrive + bufferSec });
+    if (candidates.length >= MAX_REVERSE_CITY_LEGS + 2) break;
+  }
 
-    const cityOptions: PlanOptions = {
-      ...options,
-      fromTitle: gateway.name,
-      fromLat: gateway.lat,
-      fromLon: gateway.lon,
-      departureTimeSec: arrivalMode ? undefined : cityDepart,
-      arriveBySec: arrivalMode ? deadline : undefined,
-      anchorStopId: undefined,
-      anchorStopLat: undefined,
-      anchorStopLon: undefined,
-      searchAheadSec: undefined,
-      onProgress: undefined,
-    };
-    const city = await planConnections(cityOptions, gtfsStore);
+  const cityLists = await Promise.all(
+    candidates.map(({ gateway, cityDepart }) =>
+      planConnections(
+        {
+          ...options,
+          fromTitle: gateway.name,
+          fromLat: gateway.lat,
+          fromLon: gateway.lon,
+          departureTimeSec: arrivalMode ? undefined : cityDepart,
+          arriveBySec: arrivalMode ? deadline : undefined,
+          anchorStopId: undefined,
+          anchorStopLat: undefined,
+          anchorStopLon: undefined,
+          searchAheadSec: undefined,
+          onProgress: undefined,
+        },
+        gtfsStore,
+      ),
+    ),
+  );
+
+  const rawCombined: Connection[] = [];
+  for (let i = 0; i < candidates.length && rawCombined.length < MAX_REVERSE_CITY_LEGS; i++) {
+    const { railConn, cityDepart } = candidates[i];
     // Noga miejska musi zaczynać się po przyjeździe pociągu (+ bufor).
-    const best = city
+    const best = cityLists[i]
       .filter(
         (c) =>
           c.departureSec >= cityDepart &&
@@ -769,14 +892,10 @@ async function planReverse(
         arrivalMode ? b.departureSec - a.departureSec : (a.arrivalSec ?? 0) - (b.arrivalSec ?? 0),
       )[0];
     if (!best) continue;
-    cityLegs++;
-
-    const conn = combineReverse(railConn, best, options);
-    await enrichRailLegs(conn.legs);
-    conn.id = stableConnectionId(conn);
-    combined.push(cleanIntercityConnection(conn));
+    rawCombined.push(combineReverse(railConn, best, options));
   }
 
+  const combined = await finalizeIntercityConnections(rawCombined);
   return { connections: pickBest(combined), originStation };
 }
 
@@ -797,7 +916,7 @@ async function planRailOnly(
   );
   const rail = await railConnections(railOptions);
 
-  const combined: Connection[] = [];
+  const rawCombined: Connection[] = [];
   const walkDistM = Math.round(
     distanceMeters(options.fromLat, options.fromLon, originStation.lat, originStation.lon),
   );
@@ -823,11 +942,10 @@ async function planRailOnly(
       conn.durationMin = Math.max(1, Math.round(((conn.arrivalSec ?? 0) - conn.departureSec) / 60));
       conn.interchange = interchangeLabel(conn.legs, conn.transfers);
     }
-    await enrichRailLegs(conn.legs);
-    conn.id = stableConnectionId(conn);
-    combined.push(cleanIntercityConnection(conn));
+    rawCombined.push(conn);
   }
 
+  const combined = await finalizeIntercityConnections(rawCombined);
   return { connections: pickBest(combined), destinationStation: destination, originStation };
 }
 

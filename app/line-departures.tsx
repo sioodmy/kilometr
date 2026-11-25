@@ -30,6 +30,7 @@ import {
 } from '../src/services/lineTimetable';
 import { useLineTimetable } from '../src/services/useLineTimetable';
 import { resolveRailStrokeColor } from '../src/theme/colorContrast';
+import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 
 /** Zwraca aktualny czas dnia w sekundach w strefie Europe/Warsaw. */
@@ -84,6 +85,7 @@ export default function LineDeparturesScreen() {
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const s = useStrings();
   const t = s.lineTimetable;
   const { data, loading, error, retry } = useLineTimetable(routeId, date, { dbTarget });
@@ -123,7 +125,7 @@ export default function LineDeparturesScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, webLayout.isMedium && styles.topBarDesktop]}>
         <SpringPressable
           onPress={goBack}
           haptic="selection"
@@ -281,12 +283,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
+  topBarDesktop: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+  },
   backBtn: {
     width: 44,
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -310,7 +317,7 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 14,
@@ -385,7 +392,7 @@ const styles = StyleSheet.create({
     padding: 5,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level1,
   },
@@ -428,7 +435,7 @@ const styles = StyleSheet.create({
   stateCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 24,
     paddingVertical: 32,

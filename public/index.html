@@ -74,18 +74,20 @@
         position: relative;
         overflow: hidden;
       }
-      @media (min-width: 560px) {
-        body {
-          background-color: #0C0F0E;
-          display: flex;
-          justify-content: center;
-          align-items: stretch;
+      @media (hover: hover) and (pointer: fine) {
+        button,
+        [role='button'],
+        [role='tab'],
+        [role='radio'],
+        [role='checkbox'],
+        [role='switch'],
+        [role='link'],
+        [role='menuitem'],
+        a {
+          cursor: pointer;
         }
-        #root {
-          max-width: 460px;
-          border-left: 1px solid #252B2A;
-          border-right: 1px solid #252B2A;
-          box-shadow: 0 0 48px rgba(0, 0, 0, 0.55);
+        [aria-disabled='true'] {
+          cursor: default;
         }
       }
       * {

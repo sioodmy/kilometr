@@ -23,6 +23,7 @@ import {
 import type { SavedPlace, SavedRoute } from '../types/models';
 import type { TripHistoryItem } from './smartRanking';
 import { CITIES, cityKey, type CityId } from '../cities';
+import { mergeJourneyLogs, readJourneyLog, saveJourneyLog } from './userStats';
 import {
   BACKUP_EXTENSION,
   BACKUP_MIME,
@@ -80,12 +81,13 @@ async function readCityBucket<T>(base: string, cityId: CityId): Promise<T[]> {
 
 async function collectBackupData(): Promise<BackupData> {
   const perCity = CITIES.map((c) => c.id);
-  const [placesByCity, routesByCity, historyByCity, routing, prefs] = await Promise.all([
+  const [placesByCity, routesByCity, historyByCity, routing, prefs, journeyLog] = await Promise.all([
     Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<SavedPlace>(KEYS.places, city) }))),
     Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<SavedRoute>(KEYS.savedRoutes, city) }))),
     Promise.all(perCity.map(async (city) => ({ city, items: await readCityBucket<TripHistoryItem>(KEYS.tripHistory, city) }))),
     loadSettings(),
     loadNotificationPreferences(),
+    readJourneyLog(),
   ]);
   // Puste kubełki pomijamy: kopia z samego Wrocławia nie musi wozić
   // pustych sekcji Krakowa (import pustej sekcji i tak jest no-opem).
@@ -97,6 +99,7 @@ async function collectBackupData(): Promise<BackupData> {
     places: nonEmpty(placesByCity),
     savedRoutes: nonEmpty(routesByCity),
     tripHistory: nonEmpty(historyByCity),
+    ...(journeyLog.length > 0 ? { journeyLog } : {}),
     routingSettings: routing,
     notificationPrefs: prefs,
     locale,
@@ -356,6 +359,11 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
     mergeSection(KEYS.savedRoutes, data.savedRoutes),
     mergeSection<TripHistoryItem>(KEYS.tripHistory, data.tripHistory, byNewest, MAX_TRIP_HISTORY),
   ]);
+
+  if (data.journeyLog && data.journeyLog.length > 0) {
+    const currentLog = await readJourneyLog();
+    await saveJourneyLog(mergeJourneyLogs(currentLog, data.journeyLog));
+  }
 
   // Ustawienia idą przez `save*`, nie przez kvSet: moduły trzymają cache w
   // pamięci, więc zapis bezpośredni zostawiłby UI na starych wartościach do

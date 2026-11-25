@@ -1,3 +1,4 @@
+import type { GtfsStopTime } from '../../gtfs/types';
 import { clearRaptorNetworks } from '../../../modules/kilometr-raptor';
 import type { DayIndex, LocalGtfsStore } from './store';
 import { getActiveCityIdSync } from '../cityStore';
@@ -75,6 +76,8 @@ function kindToCode(kind: TransitKind): number {
 interface RaptorBase {
   stopIds: string[];
   stopIndex: Map<string, number>;
+  /** 1 = wirtualny punkt taryfowy (strefa), pomijany w kompilacji wzorców. */
+  fareBoundary: Uint8Array;
   /** Przystanki objęte tablicami przejść (dopisane później ich nie mają). */
   fpCount: number;
   fpStart: Int32Array;
@@ -119,8 +122,15 @@ let baseCache = new WeakMap<LocalGtfsStore, RaptorBase>();
 function buildBase(store: LocalGtfsStore): RaptorBase {
   const stopIds = Array.from(store.stops.keys());
   const stopIndex = new Map<string, number>();
-  stopIds.forEach((id, i) => stopIndex.set(id, i));
   const n = stopIds.length;
+  const fareBoundary = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const id = stopIds[i];
+    stopIndex.set(id, i);
+    if (isFareBoundary(store.stops.get(id)?.stop_name ?? '')) {
+      fareBoundary[i] = 1;
+    }
+  }
   const fpStart = new Int32Array(n + 1);
   let total = 0;
   for (let i = 0; i < n; i++) {
@@ -150,6 +160,7 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
   return {
     stopIds,
     stopIndex,
+    fareBoundary,
     fpCount: n,
     fpStart,
     fpTo,
@@ -178,18 +189,44 @@ function stopIdx(base: RaptorBase, id: string): number {
   return i;
 }
 
-interface TripRow {
+interface TripRef {
   id: string;
-  dep: number[];
-  arr: number[];
+  times: GtfsStopTime[];
+  firstDep: number;
 }
 
-function isFifo(a: TripRow, b: TripRow): boolean {
-  for (let i = 0; i < a.dep.length; i++) {
-    if (b.dep[i] < a.dep[i] || b.arr[i] < a.arr[i]) return false;
+function isFifoRef(
+  a: GtfsStopTime[],
+  b: GtfsStopTime[],
+  positions: number[] | null,
+  n: number,
+): boolean {
+  if (positions === null) {
+    for (let i = 0; i < n; i++) {
+      const ta = a[i];
+      const tb = b[i];
+      const aA = ta.arrival_sec ?? ta.departure_sec;
+      const dA = ta.departure_sec ?? ta.arrival_sec;
+      const aB = tb.arrival_sec ?? tb.departure_sec;
+      const dB = tb.departure_sec ?? tb.arrival_sec;
+      if (aB < aA || (dB > aB ? dB : aB) < (dA > aA ? dA : aA)) return false;
+    }
+    return true;
+  }
+  for (let i = 0; i < n; i++) {
+    const pos = positions[i];
+    const ta = a[pos];
+    const tb = b[pos];
+    const aA = ta.arrival_sec ?? ta.departure_sec;
+    const dA = ta.departure_sec ?? ta.arrival_sec;
+    const aB = tb.arrival_sec ?? tb.departure_sec;
+    const dB = tb.departure_sec ?? tb.arrival_sec;
+    if (aB < aA || (dB > aB ? dB : aB) < (dA > aA ? dA : aA)) return false;
   }
   return true;
 }
+
+const YIELD_BUDGET_MS = 12;
 
 /** Oddaje kolejkę JS między porcjami kompilacji sieci. */
 function yieldToEventLoop(): Promise<void> {
@@ -208,47 +245,71 @@ function* compileSteps(
   defaultOffset: number,
 ): Generator<void, RaptorNet, void> {
   const base = getRaptorBase(store);
+  const fareBoundary = base.fareBoundary;
+  const fbLen = fareBoundary.length;
   const patterns: CompiledPattern[] = [];
   let patternIdx = 0;
   for (const [pid, pat] of idx.patterns) {
     const seq: string[] = pat.stopSequence;
-    const positions = seq.flatMap((id, i) => isFareBoundary(store.stops.get(id)?.stop_name ?? '') ? [] : [i]);
-    const n = positions.length;
-    if (n < 2 || !pat.trips?.length) continue;
+    const seqLen = seq.length;
+    if (seqLen < 2 || !pat.trips?.length) continue;
+
+    // Większość wzorców nie ma punktów taryfowych: unikamy wtedy alokacji tablicy positions.
+    let positions: number[] | null = null;
+    const stopIndices = new Int32Array(seqLen);
+    let n = 0;
+    for (let i = 0; i < seqLen; i++) {
+      const id = seq[i];
+      const sIdx = stopIdx(base, id);
+      const isBoundary =
+        sIdx < fbLen
+          ? fareBoundary[sIdx] === 1
+          : isFareBoundary(store.stops.get(id)?.stop_name ?? '');
+      if (isBoundary) {
+        if (positions === null) {
+          positions = new Array<number>(n);
+          for (let k = 0; k < n; k++) positions[k] = k;
+        }
+        continue;
+      }
+      if (positions !== null) positions.push(i);
+      stopIndices[n++] = sIdx;
+    }
+    if (n < 2) continue;
+    const stops = n === seqLen ? stopIndices : stopIndices.subarray(0, n);
     const offset = offsets?.get(pid) ?? defaultOffset;
     const route = store.routes.get(pat.routeId);
     const kind = classifyTransitMode(route?.route_type, route?.route_short_name);
-    const stops = new Int32Array(n);
-    for (let i = 0; i < n; i++) stops[i] = stopIdx(base, seq[positions[i]]);
 
-    const rows: TripRow[] = [];
+    const firstPos = positions === null ? 0 : positions[0];
+    const rows: TripRef[] = [];
+    let prevFirstDep = -Infinity;
+    let alreadySorted = true;
     for (let tripIdx = 0; tripIdx < pat.trips.length; tripIdx++) {
       const trip = pat.trips[tripIdx];
       const times = store.stopTimes.get(trip.trip_id);
-      if (!times || times.length < seq.length) continue;
-      const dep: number[] = new Array(n);
-      const arr: number[] = new Array(n);
-      for (let i = 0; i < n; i++) {
-        const t = times[positions[i]];
-        const a = (t.arrival_sec ?? t.departure_sec) + offset;
-        const d = (t.departure_sec ?? t.arrival_sec) + offset;
-        arr[i] = a;
-        dep[i] = Math.max(a, d);
-      }
-      rows.push({ id: trip.trip_id, dep, arr });
+      if (!times || times.length < seqLen) continue;
+      const t0 = times[firstPos];
+      const a0 = t0.arrival_sec ?? t0.departure_sec;
+      const d0 = t0.departure_sec ?? t0.arrival_sec;
+      const firstDep = d0 > a0 ? d0 : a0;
+      if (firstDep < prevFirstDep) alreadySorted = false;
+      prevFirstDep = firstDep;
+      rows.push({ id: trip.trip_id, times, firstDep });
       if ((tripIdx & 255) === 255) yield;
     }
-    if (!rows.length) continue;
-    rows.sort((a, b) => a.dep[0] - b.dep[0]);
+    if (rows.length === 0) continue;
+    if (!alreadySorted) rows.sort((a, b) => a.firstDep - b.firstDep);
 
     // Wyprzedzanie w obrębie wzorca (szybszy kurs w innej porze dnia) psuje
     // wyszukiwanie binarne po kursach, więc takie kursy idą do osobnej grupy.
-    const groups: TripRow[][] = [];
+    const groups: TripRef[][] = [];
     for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
       const row = rows[rowIdx];
       let placed = false;
-      for (const g of groups) {
-        if (isFifo(g[g.length - 1], row)) {
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        if (isFifoRef(g[g.length - 1].times, row.times, positions, n)) {
           g.push(row);
           placed = true;
           break;
@@ -260,13 +321,31 @@ function* compileSteps(
 
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi];
-      const dep = new Int32Array(g.length * n);
-      const arr = new Int32Array(g.length * n);
-      for (let j = 0; j < g.length; j++) {
+      const gLen = g.length;
+      const dep = new Int32Array(gLen * n);
+      const arr = new Int32Array(gLen * n);
+      const tripIds = new Array<string>(gLen);
+      for (let j = 0; j < gLen; j++) {
         const row = g[j];
-        for (let i = 0; i < n; i++) {
-          dep[j * n + i] = row.dep[i];
-          arr[j * n + i] = row.arr[i];
+        tripIds[j] = row.id;
+        const times = row.times;
+        const baseOff = j * n;
+        if (positions === null) {
+          for (let i = 0; i < n; i++) {
+            const t = times[i];
+            const a = (t.arrival_sec ?? t.departure_sec) + offset;
+            const d = (t.departure_sec ?? t.arrival_sec) + offset;
+            arr[baseOff + i] = a;
+            dep[baseOff + i] = d > a ? d : a;
+          }
+        } else {
+          for (let i = 0; i < n; i++) {
+            const t = times[positions[i]];
+            const a = (t.arrival_sec ?? t.departure_sec) + offset;
+            const d = (t.departure_sec ?? t.arrival_sec) + offset;
+            arr[baseOff + i] = a;
+            dep[baseOff + i] = d > a ? d : a;
+          }
         }
       }
       patterns.push({
@@ -275,8 +354,8 @@ function* compileSteps(
         kind,
         n,
         stops,
-        nTrips: g.length,
-        tripIds: g.map((r) => r.id),
+        nTrips: gLen,
+        tripIds,
         dep,
         arr,
         offset,
@@ -303,7 +382,10 @@ function* compileSteps(
       spPat[w] = pi;
       spPos[w] = i;
     }
-    if (p.offset === 0) p.tripIds.forEach((id, j) => tripLoc.set(id, [pi, j]));
+    if (p.offset === 0) {
+      const tids = p.tripIds;
+      for (let j = 0; j < tids.length; j++) tripLoc.set(tids[j], [pi, j]);
+    }
     if ((pi & 63) === 63) yield;
   }
 
@@ -334,9 +416,13 @@ async function compileAsync(
   defaultOffset: number,
 ): Promise<RaptorNet> {
   const steps = compileSteps(store, idx, offsets, defaultOffset);
+  let sliceStart = performance.now();
   let next = steps.next();
   while (!next.done) {
-    await yieldToEventLoop();
+    if (performance.now() - sliceStart >= YIELD_BUDGET_MS) {
+      await yieldToEventLoop();
+      sliceStart = performance.now();
+    }
     next = steps.next();
   }
   return next.value;

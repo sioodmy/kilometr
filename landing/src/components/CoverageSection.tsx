@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   CableCar,
   Check,
@@ -31,6 +24,7 @@ import {
 import { getCoverageStats } from '../coverageStats';
 import { POLAND_OUTLINE, projectPolandPoint } from '../mapProjection';
 import { CITY_CRESTS, CityCrestStrip, RailCarrierStrip } from './kilometrUi';
+import './coverageSection.css';
 
 const MAP_VIEWBOX_SIZE = 600;
 
@@ -68,6 +62,22 @@ function buildRailArc(
   const bend = Math.min(14, dist * 0.085) * (index % 2 === 0 ? 1 : -1);
   const cx = mx - (dy / dist) * bend;
   const cy = my + (dx / dist) * bend;
+  return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+}
+
+// Wyższy łuk kartograficzny pokazujący relację między wybranym a najechanym miastem.
+function buildHoverArc(a: { x: number; y: number }, b: { x: number; y: number }): string {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  const bend = Math.min(34, Math.max(10, dist * 0.16));
+  const nx = -dy / dist;
+  const ny = dx / dist;
+  const dir = ny <= 0 ? 1 : -1;
+  const cx = mx + nx * bend * dir;
+  const cy = my + ny * bend * dir;
   return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
 }
 
@@ -164,12 +174,15 @@ export function CoverageSection() {
 
   const listboxId = useId();
   const inputId = useId();
+  const sectionRef = useRef<HTMLElement>(null);
+  const mapCanvasRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const [selectedKey, setSelectedKey] = useState<string>('wroclaw');
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [inView, setInView] = useState(false);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -247,6 +260,130 @@ export function CoverageSection() {
   );
 
   const stats = getCoverageStats(selectedPlace.key);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section || !('IntersectionObserver' in window)) {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), {
+      threshold: 0.05,
+    });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
+  // Delikatny przechył 3D mapy bez re-renderów Reacta.
+  useEffect(() => {
+    const canvas = mapCanvasRef.current;
+    if (!canvas) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let raf = 0;
+    let lastAt = performance.now();
+    let active = false;
+    let targetX = MAP_VIEWBOX_SIZE / 2;
+    let targetY = MAP_VIEWBOX_SIZE / 2;
+    let smoothX = targetX;
+    let smoothY = targetY;
+    let alpha = 0;
+    let tiltX = 0;
+    let tiltY = 0;
+
+    const applyVisuals = () => {
+      canvas.style.setProperty('--map-rx', `${tiltX.toFixed(2)}deg`);
+      canvas.style.setProperty('--map-ry', `${tiltY.toFixed(2)}deg`);
+    };
+
+    const tick = (now: number) => {
+      raf = 0;
+      const dt = Math.min(0.05, Math.max(0.001, (now - lastAt) / 1000));
+      lastAt = now;
+
+      if (reduced.matches) {
+        alpha = 0;
+        tiltX = 0;
+        tiltY = 0;
+        applyVisuals();
+        return;
+      }
+
+      const wasIdle = alpha < 0.01;
+      const targetAlpha = active ? 1 : 0;
+      const alphaEase = 1 - Math.exp(-dt * (active ? 8.5 : 4.8));
+      alpha += (targetAlpha - alpha) * alphaEase;
+      if (!active && alpha < 0.003) alpha = 0;
+
+      if (active) {
+        if (wasIdle) {
+          smoothX = targetX;
+          smoothY = targetY;
+        } else {
+          const posEase = 1 - Math.exp(-dt * 14);
+          smoothX += (targetX - smoothX) * posEase;
+          smoothY += (targetY - smoothY) * posEase;
+        }
+      }
+
+      const allowTilt = window.innerWidth >= 960 && alpha > 0.003;
+      const nx = allowTilt ? Math.max(-1, Math.min(1, (smoothX / MAP_VIEWBOX_SIZE) * 2 - 1)) : 0;
+      const ny = allowTilt ? Math.max(-1, Math.min(1, (smoothY / MAP_VIEWBOX_SIZE) * 2 - 1)) : 0;
+      const targetTiltX = -ny * 2.2 * alpha;
+      const targetTiltY = nx * 2.4 * alpha;
+      const tiltEase = 1 - Math.exp(-dt * 6);
+      tiltX += (targetTiltX - tiltX) * tiltEase;
+      tiltY += (targetTiltY - tiltY) * tiltEase;
+      if (!active && Math.abs(tiltX) < 0.015 && Math.abs(tiltY) < 0.015) {
+        tiltX = 0;
+        tiltY = 0;
+      }
+
+      applyVisuals();
+
+      if (active || alpha > 0 || Math.abs(tiltX) > 0 || Math.abs(tiltY) > 0) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    const schedule = () => {
+      if (!raf) {
+        lastAt = performance.now();
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    const handleMove = (event: PointerEvent) => {
+      if (reduced.matches || event.pointerType === 'touch') return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      targetX = ((event.clientX - rect.left) / rect.width) * MAP_VIEWBOX_SIZE;
+      targetY = ((event.clientY - rect.top) / rect.height) * MAP_VIEWBOX_SIZE;
+      active = true;
+      schedule();
+    };
+
+    const handleLeave = () => {
+      active = false;
+      schedule();
+    };
+
+    const handleReducedChange = () => {
+      if (reduced.matches) {
+        active = false;
+        schedule();
+      }
+    };
+
+    canvas.addEventListener('pointermove', handleMove, { passive: true });
+    canvas.addEventListener('pointerleave', handleLeave);
+    reduced.addEventListener('change', handleReducedChange);
+    return () => {
+      cancelAnimationFrame(raf);
+      canvas.removeEventListener('pointermove', handleMove);
+      canvas.removeEventListener('pointerleave', handleLeave);
+      reduced.removeEventListener('change', handleReducedChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -332,6 +469,17 @@ export function CoverageSection() {
     return projectedCities.find((item) => item.place.key === key) ?? null;
   }, [hoveredKey, selectedPlace.key, projectedCities]);
 
+  const hoverArc = useMemo(() => {
+    if (!hoveredKey || hoveredKey === selectedPlace.key) return null;
+    const from = projectedByKey.get(selectedPlace.key);
+    const to = projectedByKey.get(hoveredKey);
+    if (!from || !to) return null;
+    return {
+      key: `${selectedPlace.key}-${hoveredKey}`,
+      d: buildHoverArc(from, to),
+    };
+  }, [hoveredKey, selectedPlace.key, projectedByKey]);
+
   const activeOptionId =
     isOpen && activeIndex >= 0 && filteredCities[activeIndex]
       ? `${listboxId}-opt-${filteredCities[activeIndex]!.key}`
@@ -340,12 +488,15 @@ export function CoverageSection() {
   return (
     <section
       id="zasieg"
-      className="release-section coverage-release"
+      ref={sectionRef}
+      className={`release-section coverage-release${inView ? ' is-in-view' : ''}`}
       aria-labelledby="coverage-title"
     >
       <div className="release-inner">
         <div className="release-head release-head-center">
-          <h2 className="release-title" id="coverage-title">{c.title}</h2>
+          <h2 className="release-title" id="coverage-title">
+            {c.title}
+          </h2>
           <p className="release-lead">{c.body(cityCount)}</p>
         </div>
 
@@ -365,7 +516,7 @@ export function CoverageSection() {
         <div className="cov-board">
           {/* Left Pane: Precision Cartographic Poland Map */}
           <div className="cov-map-pane">
-            <div className="cov-map-canvas">
+            <div className="cov-map-canvas" ref={mapCanvasRef}>
               <svg
                 className="cov-map-svg"
                 viewBox={`0 0 ${MAP_VIEWBOX_SIZE} ${MAP_VIEWBOX_SIZE}`}
@@ -419,23 +570,24 @@ export function CoverageSection() {
                 <g className="cov-rail-links" aria-hidden="true">
                   {railCorridors.map((corridor) => {
                     const touchesActive =
-                      corridor.fromId === selectedPlace.key ||
-                      corridor.toId === selectedPlace.key;
+                      corridor.fromId === selectedPlace.key || corridor.toId === selectedPlace.key;
+                    const touchesHovered =
+                      hoveredKey != null &&
+                      hoveredKey !== selectedPlace.key &&
+                      (corridor.fromId === hoveredKey || corridor.toId === hoveredKey);
+                    const linkClass = `cov-rail-link${touchesActive ? ' is-active' : ''}${touchesHovered ? ' is-hovered' : ''}`;
+                    const streakClass = `cov-rail-streak${touchesActive ? ' is-active' : ''}${touchesHovered ? ' is-hovered' : ''}`;
                     return (
                       <g key={corridor.id}>
-                        <path
-                          d={corridor.d}
-                          fill="none"
-                          className={touchesActive ? 'cov-rail-link is-active' : 'cov-rail-link'}
-                        />
+                        <path d={corridor.d} fill="none" className={linkClass} />
                         <path
                           d={corridor.d}
                           fill="none"
                           pathLength={100}
-                          filter="url(#covStreakGlow)"
-                          className={
-                            touchesActive ? 'cov-rail-streak is-active' : 'cov-rail-streak'
+                          filter={
+                            touchesActive || touchesHovered ? 'url(#covStreakGlow)' : undefined
                           }
+                          className={streakClass}
                           style={{
                             animationDuration: `${corridor.duration}s`,
                             animationDelay: `${corridor.delay}s`,
@@ -447,13 +599,26 @@ export function CoverageSection() {
                   })}
                 </g>
 
+                {hoverArc && (
+                  <g key={hoverArc.key} className="cov-hover-route" aria-hidden="true">
+                    <path d={hoverArc.d} fill="none" className="cov-hover-arc-glow" />
+                    <path d={hoverArc.d} fill="none" pathLength={100} className="cov-hover-arc" />
+                    <path
+                      d={hoverArc.d}
+                      fill="none"
+                      pathLength={100}
+                      className="cov-hover-arc-pulse"
+                    />
+                  </g>
+                )}
+
                 {orderedProjectedCities.map(({ place, x, y, hasLive }) => {
                   const isSelected = place.key === selectedPlace.key;
                   const isHovered = place.key === hoveredKey;
                   const isDimmed = isSearching && !matchedKeys.has(place.key) && !isSelected;
                   const baseR = place.pinRadius;
                   const dotR = Number(
-                    (isSelected ? baseR + 2 : isHovered ? baseR + 1.3 : baseR).toFixed(2),
+                    (isSelected ? baseR + 2 : isHovered ? baseR + 1.4 : baseR).toFixed(2),
                   );
                   const hitR = Number(
                     Math.max(8, baseR + Math.max(1.2, 5 - baseR * 0.45)).toFixed(2),
@@ -489,6 +654,12 @@ export function CoverageSection() {
                           <circle className="cov-pin-ring" r={ringR} cx={0} cy={0} />
                         </>
                       )}
+                      {isHovered && !isSelected && (
+                        <>
+                          <circle className="cov-pin-hover-halo" r={haloR - 1.4} cx={0} cy={0} />
+                          <circle className="cov-pin-hover-ring" r={ringR - 0.6} cx={0} cy={0} />
+                        </>
+                      )}
                       <circle className="cov-pin-dot" r={dotR} cx={0} cy={0} />
                       {isSelected && <circle className="cov-pin-core" r={2.3} cx={0} cy={0} />}
                     </g>
@@ -499,7 +670,7 @@ export function CoverageSection() {
                   (() => {
                     const activeR =
                       activeCalloutItem.place.pinRadius +
-                      (activeCalloutItem.place.key === selectedPlace.key ? 2 : 1.3);
+                      (activeCalloutItem.place.key === selectedPlace.key ? 2 : 1.4);
                     const pos = computeCalloutPosition(
                       activeCalloutItem.x,
                       activeCalloutItem.y,
@@ -507,7 +678,12 @@ export function CoverageSection() {
                       activeR,
                     );
                     return (
-                      <g className="cov-callout" pointerEvents="none" aria-hidden="true">
+                      <g
+                        key={activeCalloutItem.place.key}
+                        className="cov-callout"
+                        pointerEvents="none"
+                        aria-hidden="true"
+                      >
                         <rect x={pos.boxX} y={pos.boxY} width={pos.boxW} height={28} rx={14} />
                         <text x={pos.textX} y={pos.textY} textAnchor="middle">
                           {activeCalloutItem.place.name}

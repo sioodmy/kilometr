@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { pl } from '../src/i18n/landing/pl';
 import { PLAY_STORE_URL } from './src/data';
 import { appLinkFiles } from './appLinks';
+import { buildLlmsTxt } from './llmsTxt';
 
 export default defineConfig({
   plugins: [
@@ -15,6 +16,16 @@ export default defineConfig({
           process.env.APPLE_TEAM_ID ?? '',
         ))
           this.emitFile({ type: 'asset', ...asset });
+      },
+    },
+    {
+      name: 'llms-txt',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'llms.txt',
+          source: buildLlmsTxt(),
+        });
       },
     },
     {

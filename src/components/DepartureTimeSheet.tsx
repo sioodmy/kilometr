@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BackHandler,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,6 +29,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCircle, Clock3, Flag, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
+import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
+import {
+  DESKTOP_SHEET_TOP_SPACER_HEIGHT,
+  DesktopSheetTopSpacer,
+  getDesktopSheetProps,
+  useEscapeKey,
+  useWebLayout,
+} from '../theme/layout';
 import { scheme, shape, type } from '../theme/tokens';
 import { getLocaleSync, useStrings } from '../i18n';
 import type { JourneyTimeMode } from '../services/routing/types';
@@ -195,6 +203,14 @@ function WheelPicker({
   const scrollRef = useRef<ScrollView>(null);
   const isUserScrolling = useRef(false);
   const didMount = useRef(false);
+  const webScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (webScrollTimer.current) clearTimeout(webScrollTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     const index = values.indexOf(selectedValue);
@@ -207,17 +223,32 @@ function WheelPicker({
     return () => cancelAnimationFrame(frame);
   }, [selectedValue, values, itemHeight, reduceMotion]);
 
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const commitOffset = (offsetY: number) => {
     isUserScrolling.current = false;
     const index = Math.max(
       0,
-      Math.min(values.length - 1, Math.round(e.nativeEvent.contentOffset.y / itemHeight)),
+      Math.min(values.length - 1, Math.round(offsetY / itemHeight)),
     );
     const next = values[index];
     if (next !== selectedValue) {
       void Haptics.selectionAsync().catch(() => {});
     }
     onValueChange(next);
+  };
+
+  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    commitOffset(e.nativeEvent.contentOffset.y);
+  };
+
+  // Na Web RNW nie wywołuje onMomentumScrollEnd, więc zatwierdzamy pozycję po ustaniu scrolla.
+  const handleWebScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (Platform.OS !== 'web') return;
+    const y = e.nativeEvent.contentOffset.y;
+    isUserScrolling.current = true;
+    if (webScrollTimer.current) clearTimeout(webScrollTimer.current);
+    webScrollTimer.current = setTimeout(() => {
+      commitOffset(y);
+    }, 90);
   };
 
   return (
@@ -251,16 +282,26 @@ function WheelPicker({
     >
       <ScrollView
         ref={scrollRef}
-        style={{ height: itemHeight * 3 }}
+        style={[
+          { height: itemHeight * 3 },
+          Platform.OS === 'web'
+            ? ({
+                scrollSnapType: 'y mandatory',
+                scrollbarWidth: 'none',
+              } as unknown as Record<string, string>)
+            : null,
+        ]}
         showsVerticalScrollIndicator={false}
         snapToInterval={itemHeight}
         decelerationRate="fast"
         nestedScrollEnabled
         overScrollMode="never"
+        scrollEventThrottle={16}
         contentOffset={{ x: 0, y: Math.max(0, values.indexOf(selectedValue)) * itemHeight }}
         contentContainerStyle={{ paddingVertical: itemHeight }}
         importantForAccessibility="no-hide-descendants"
         accessibilityElementsHidden
+        onScroll={Platform.OS === 'web' ? handleWebScroll : undefined}
         onScrollBeginDrag={() => {
           isUserScrolling.current = true;
         }}
@@ -284,6 +325,9 @@ function WheelPicker({
               style={({ pressed }) => [
                 styles.wheelItem,
                 { height: itemHeight },
+                Platform.OS === 'web'
+                  ? ({ scrollSnapAlign: 'center' } as unknown as Record<string, string>)
+                  : null,
                 pressed && !active && styles.wheelItemPressed,
               ]}
             >
@@ -308,13 +352,19 @@ export function DepartureTimeSheet({
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const { height, width, fontScale } = useWindowDimensions();
+  const webLayout = useWebLayout();
   const itemHeight = Math.max(54, Math.ceil(46 * fontScale));
-  const compact = width / fontScale < 300;
-  const sheetHeight = Math.min(
-    height - insets.top - insets.bottom - 16,
-    696 + Math.max(0, fontScale - 1) * 380,
-  );
+  const sheetHeight = webLayout.isMedium
+    ? Math.min(height - 72, 704 + Math.max(0, fontScale - 1) * 220)
+    : Math.min(
+        height - insets.top - insets.bottom - 16,
+        696 + Math.max(0, fontScale - 1) * 380,
+      );
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 520, sheetHeight);
+  const effectiveWidth = webLayout.isMedium ? sheetProps.innerWidth : width;
+  const compact = effectiveWidth / fontScale < 300;
   const sheetRef = useRef<BottomSheet>(null);
+  useEscapeKey(true, () => sheetRef.current?.close());
   const dayScrollRef = useRef<ScrollView>(null);
   const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
@@ -323,13 +373,7 @@ export function DepartureTimeSheet({
     sheetRef.current?.close();
   }, []);
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      requestClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [requestClose]);
+  const { onSheetChange } = useSheetBackHandler(sheetRef, onClose);
 
   const [openedAt] = useState(() => new Date());
   const [mode, setMode] = useState(initialMode);
@@ -508,16 +552,22 @@ export function DepartureTimeSheet({
       index={0}
       snapPoints={snapPoints}
       animationConfigs={animationConfigs}
-      handleComponent={SheetHandle}
-      bottomInset={insets.bottom}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : SheetHandle}
+      bottomInset={sheetProps.bottomInset}
+      detached={sheetProps.detached}
+      style={sheetProps.sheetStyle}
       enableDynamicSizing={false}
-      enablePanDownToClose
+      enablePanDownToClose={!webLayout.isMedium}
       enableContentPanningGesture={false}
+      onChange={onSheetChange}
       onClose={onClose}
       backdropComponent={renderBackdrop}
-      backgroundStyle={styles.sheet}
+      backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
     >
-      <View style={{ height: sheetHeight - HANDLE_HEIGHT }} accessibilityViewIsModal>
+      <View
+        style={{ height: sheetHeight - (webLayout.isMedium ? DESKTOP_SHEET_TOP_SPACER_HEIGHT : HANDLE_HEIGHT) }}
+        accessibilityViewIsModal
+      >
         <View style={styles.header}>
           <View style={styles.headerTitleGroup}>
             <View style={styles.headerIconBadge}>
@@ -616,6 +666,11 @@ export function DepartureTimeSheet({
             horizontal
             showsHorizontalScrollIndicator={false}
             overScrollMode="never"
+            style={
+              Platform.OS === 'web'
+                ? ({ scrollbarWidth: 'none' } as unknown as Record<string, string>)
+                : undefined
+            }
             contentContainerStyle={styles.daySelector}
           >
             {days.map((option) => {
@@ -781,7 +836,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   handleContainer: {
@@ -850,7 +905,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -868,7 +923,7 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
@@ -905,7 +960,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   modeTabCompactActive: {
@@ -935,7 +990,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -970,7 +1025,7 @@ const styles = StyleSheet.create({
     minHeight: 62,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -1003,7 +1058,7 @@ const styles = StyleSheet.create({
   wheelCard: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingTop: 10,
@@ -1039,7 +1094,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: scheme.primaryContainer,
     borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.primary + '55',
   },
   wheelItem: {
@@ -1077,7 +1132,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingTop: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
   },
   minutePreset: {
@@ -1107,7 +1162,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 16,
     gap: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
   },
   selectionPill: {
@@ -1120,7 +1175,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
   },
   selection: {

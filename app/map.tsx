@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -35,6 +36,7 @@ import { DirectionsWalk } from '../src/components/DirectionsWalk';
 import { MorphingLoader } from '../src/components/MorphingLoader';
 import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
 import { SpringPressable } from '../src/components/SpringPressable';
+import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
@@ -87,6 +89,7 @@ export default function RouteMapScreen() {
   const s = useStrings();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webLayout = useWebLayout();
   const { width, fontScale } = useWindowDimensions();
   const { id: routeId, stageId: initialStageId } = useLocalSearchParams<{
     id: string;
@@ -128,6 +131,18 @@ export default function RouteMapScreen() {
       liveTracker.acquire();
       return () => liveTracker.release();
     }, []),
+  );
+
+  // Gest wstecz zamyka kartę klikniętego przystanku przed wyjściem z mapy.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!inspectedStop) return false;
+        setInspectedStop(null);
+        return true;
+      });
+      return () => sub.remove();
+    }, [inspectedStop]),
   );
   const shownVehicleRef = useRef<string | null>(null);
 
@@ -691,7 +706,11 @@ export default function RouteMapScreen() {
 
       {/* Pływający górny pasek: osobny przycisk wstecz + kapsuła podsumowania trasy */}
       <View style={[styles.topBar, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
-        <View style={styles.topRow} onLayout={handleHeaderLayout} pointerEvents="box-none">
+        <View
+          style={[styles.topRow, webLayout.isMedium && styles.topRowDesktop]}
+          onLayout={handleHeaderLayout}
+          pointerEvents="box-none"
+        >
           <SpringPressable
             onPress={goBack}
             haptic="selection"
@@ -736,7 +755,10 @@ export default function RouteMapScreen() {
         </View>
 
         {offlineBase !== undefined && tilesDown && showOfflinePill && (
-          <View style={styles.offlinePill} accessibilityRole="alert">
+          <View
+            style={[styles.offlinePill, webLayout.isMedium && styles.offlinePillDesktop]}
+            accessibilityRole="alert"
+          >
             <WifiOff size={16} color={scheme.warning} />
             <Text style={styles.offlineText} numberOfLines={2}>
               {mapError ? s.map.offlineTitle : s.map.offlineSub}
@@ -759,7 +781,12 @@ export default function RouteMapScreen() {
 
       {/* Szyna akcji po prawej krawędzi mapy */}
       <View
-        style={[styles.railWrap, { bottom: panelHeight + (inspectedStop ? 96 : 16) }]}
+        style={[
+          styles.railWrap,
+          webLayout.isMedium
+            ? styles.railWrapDesktop
+            : { bottom: panelHeight + (inspectedStop ? 96 : 16) },
+        ]}
         pointerEvents="box-none"
       >
         <MapActionRail
@@ -772,7 +799,12 @@ export default function RouteMapScreen() {
       {/* Pływająca karta klikniętego przystanku (Stop Inspector) */}
       {inspectedStop && (
         <View
-          style={[styles.stopInspectorWrap, { bottom: panelHeight + 12 }]}
+          style={[
+            styles.stopInspectorWrap,
+            webLayout.isMedium
+              ? [styles.stopInspectorWrapDesktop, { bottom: panelHeight + 28 }]
+              : { bottom: panelHeight + 12 },
+          ]}
           pointerEvents="box-none"
         >
           <View style={styles.stopInspectorCard}>
@@ -815,19 +847,26 @@ export default function RouteMapScreen() {
 
       {/* Zwijany dolny panel etapów w stylu M3 Expressive */}
       <View
-        style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 12) + 6 }]}
+        style={[
+          styles.panel,
+          webLayout.isMedium
+            ? styles.panelDesktop
+            : { paddingBottom: Math.max(insets.bottom, 12) + 6 },
+        ]}
         onLayout={handlePanelLayout}
       >
-        <SpringPressable
-          onPress={() => setDeckCollapsed((v) => !v)}
-          haptic="selection"
-          scaleDelta={0.015}
-          style={styles.panelHandleTouch}
-          accessibilityRole="button"
-          accessibilityLabel={deckCollapsed ? s.map.expandDeckA11y : s.map.collapseDeckA11y}
-        >
-          <View style={styles.panelHandle} />
-        </SpringPressable>
+        {!webLayout.isMedium && (
+          <SpringPressable
+            onPress={() => setDeckCollapsed((v) => !v)}
+            haptic="selection"
+            scaleDelta={0.015}
+            style={styles.panelHandleTouch}
+            accessibilityRole="button"
+            accessibilityLabel={deckCollapsed ? s.map.expandDeckA11y : s.map.collapseDeckA11y}
+          >
+            <View style={styles.panelHandle} />
+          </SpringPressable>
+        )}
 
         <View style={styles.panelHead}>
           <View style={styles.panelTitleWrap}>
@@ -1069,6 +1108,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  topRowDesktop: {
+    maxWidth: 520,
+    width: '100%',
+  },
   headerSafe: {
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -1080,7 +1123,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1096,7 +1139,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -1128,9 +1171,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
+  },
+  offlinePillDesktop: {
+    maxWidth: 520,
+    alignSelf: 'flex-start',
   },
   offlineText: { ...type.bodySmall, color: scheme.onSurface, flex: 1 },
   offlineRetryBtn: {
@@ -1146,11 +1193,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
   },
+  railWrapDesktop: {
+    right: 20,
+    bottom: 20,
+  },
 
   stopInspectorWrap: {
     position: 'absolute',
     left: 14,
     right: 76,
+  },
+  stopInspectorWrapDesktop: {
+    left: 16,
+    right: undefined,
+    width: 420,
+    maxWidth: '80%',
   },
   stopInspectorCard: {
     flexDirection: 'row',
@@ -1161,7 +1218,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -1220,9 +1277,20 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2,
     borderTopColor: scheme.outlineVariant,
     ...elev.level3,
+  },
+  panelDesktop: {
+    left: 16,
+    right: 86,
+    bottom: 16,
+    maxWidth: 820,
+    borderRadius: shape.extraLarge,
+    borderWidth: 2,
+    borderColor: scheme.outlineVariant,
+    paddingTop: 12,
+    paddingBottom: 14,
   },
   panelHandleTouch: {
     alignItems: 'center',
@@ -1288,7 +1356,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1298,7 +1366,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1318,7 +1386,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minHeight: 64,
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 2,
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerHigh,
   },

@@ -125,6 +125,35 @@ export const pl = {
   invalidBody: 'Link jest niepełny lub uszkodzony. Poproś o ponowne udostępnienie połączenia.',
   home: 'Strona Kilometra',
   dayLater: (n: number) => `+${n} d`,
+  liveStatusNote: (time: string) => `Opóźnienia na żywo (stan z ${time}).`,
+  estimatedDelay: (min: number) => `Szac. +${min} min`,
+  estimatedPositionLive: 'Pozycja skorygowana o bieżące opóźnienie',
+  cancelledService: 'Kurs odwołany',
+  scheduledTime: (time: string) => `planowo ${time}`,
+  typicalDelayNote: (min: number) => `Zwykle ok. +${min} min o tej porze`,
+  share: 'Udostępnij',
+  openInPwa: 'Otwórz w wersji web',
+  fullscreenMap: 'Pełny ekran',
+  showWholeRoute: 'Cała trasa',
+  stageCounter: (current: number, total: number) => `Etap ${current}/${total}`,
+  boardLabel: 'Wsiądź',
+  alightLabel: 'Wysiądź',
+  previousStage: 'Poprzedni etap',
+  nextStage: 'Następny etap',
+  zoomIn: 'Przybliż mapę',
+  zoomOut: 'Oddal mapę',
+  vehicleLineLive: (line: string) => `Pojazd ${line} na żywo`,
+  followActiveTitle: 'Obserwujesz to połączenie',
+  followShort: 'Przypnij',
+  stopFollowShort: 'Zakończ',
+  transferLabel: 'Przesiadka',
+  directRide: 'Przejazd bezpośredni (1 przystanek)',
+  intermediateStops: (n: number) =>
+    n === 1
+      ? '1 przystanek pośredni'
+      : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+        ? `${n} przystanki pośrednie`
+        : `${n} przystanków pośrednich`,
 };
 
 export type ShareStrings = typeof pl;
