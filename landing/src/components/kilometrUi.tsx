@@ -5,7 +5,7 @@ import './kilometrUi.css';
 
 type RailIconKey = keyof typeof RAIL_ICON_SPECS;
 
-function RailCarrierMark({
+export function RailCarrierMark({
   agency,
   color = 'currentColor',
   size = 15,

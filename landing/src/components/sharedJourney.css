@@ -1,862 +1,1873 @@
-.shared-journey {
-  width: min(100% - 2rem, 42rem);
+/* Tryb udostępnionego połączenia: 1:1 powierzchnia i tokeny M3 aplikacji/PWA */
+
+body.is-shared-view {
+  background: #111414;
+  color: #e0e3e1;
+}
+
+.km-shared-shell {
+  --km-surface: #111414;
+  --km-surface-lowest: #0c0f0e;
+  --km-surface-low: #171d1c;
+  --km-surface-container: #1b2120;
+  --km-surface-high: #252b2a;
+  --km-surface-highest: #303635;
+  --km-on-surface: #e0e3e1;
+  --km-on-variant: #bfc9c5;
+  --km-outline: #899390;
+  --km-outline-variant: #3f4946;
+  --km-primary: #5cdbbe;
+  --km-on-primary: #003831;
+  --km-primary-container: #005047;
+  --km-on-primary-container: #7df8de;
+  --km-secondary-container: #334b46;
+  --km-on-secondary-container: #cde8e1;
+  --km-tertiary-container: #244c63;
+  --km-on-tertiary-container: #c4e7ff;
+  --km-success-container: #005321;
+  --km-on-success-container: #98f5af;
+  --km-warning-container: #633f00;
+  --km-on-warning-container: #ffddb5;
+  --km-error-container: #93000a;
+  --km-on-error-container: #ffdad6;
+
+  width: 100%;
+  max-width: 740px;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 1.5rem 0 4rem;
-  --journey-primary: var(--accent, #7fdbb1);
-  --journey-on-primary: var(--on-accent, #10291c);
-  --journey-container: var(--tint, #203a2c);
-  --journey-container-strong: var(--tint-strong, #2a513b);
-  --journey-on-container: var(--text, #eef4ee);
-  --journey-card: var(--surface, #19231c);
-  --journey-card-raised: var(--surface-raised, #202d24);
-  --journey-text: var(--text, #eef4ee);
-  --journey-muted: var(--muted, #b1bfb2);
-  --journey-line: var(--line, #344438);
-  --journey-rail: var(--subtle, #a3b2a5);
-  color: var(--journey-text);
+  padding: max(10px, env(safe-area-inset-top)) 14px max(32px, env(safe-area-inset-bottom));
+  background: var(--km-surface);
+  color: var(--km-on-surface);
+  font-family: 'Demo Roboto', var(--font);
+  font-variant-numeric: tabular-nums;
 }
 
-.journey-heading {
-  display: grid;
-  gap: 1rem;
-  margin-bottom: 1.75rem;
+.km-shared-shell :is(button, a, select):focus-visible {
+  outline: 2.5px solid var(--km-primary);
+  outline-offset: 3px;
 }
 
-.journey-topbar {
+/* ─── Górny pasek aplikacji ──────────────────────────────────────────────── */
+
+.km-app-header {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
+  gap: 10px;
+  padding: 6px 0 14px;
 }
 
-.journey-brand {
-  font-size: 1.125rem;
-  min-height: 2.75rem;
+.km-back-btn,
+.km-icon-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--km-surface-high);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-surface);
+  transition: transform 0.14s ease, background-color 0.14s ease;
 }
 
-.journey-date {
-  color: var(--journey-muted);
-  font-size: 0.875rem;
-  line-height: 1.4;
+.km-back-btn:hover,
+.km-icon-btn:hover {
+  background: var(--km-surface-highest);
 }
 
-.journey-hero-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1.125rem 1.25rem;
-  border-radius: 1.375rem;
-  background: var(--journey-card);
-  border: 1px solid var(--journey-line);
+.km-back-btn:active,
+.km-icon-btn:active {
+  transform: scale(0.95);
 }
 
-.journey-heading-copy {
+.km-header-copy {
+  flex: 1;
   min-width: 0;
   display: grid;
-  gap: 0.3rem;
+  gap: 1px;
 }
 
-.journey-heading h1 {
-  font-size: clamp(1.25rem, 2.5vw, 1.625rem);
-  font-weight: 650;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+.km-header-copy h1 {
+  font-size: 1.125rem;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--km-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.journey-app-hint {
-  color: var(--journey-muted);
-  font-size: 0.875rem;
-  line-height: 1.45;
+.km-header-copy p {
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--km-on-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.journey-app-cta {
-  width: 100%;
+.km-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.journey-layout {
-  display: grid;
-  gap: 2rem;
-}
-
-.journey-overview,
-.journey-itinerary {
-  min-width: 0;
-}
-
-.journey-ticket {
-  border-radius: 1.75rem;
-  overflow: hidden;
-  background: var(--journey-card);
-  border: 1px solid var(--journey-line);
-}
-
-.journey-ticket-hero {
-  background: var(--journey-container);
-  padding: 1.25rem 1.375rem 1.375rem;
-  display: grid;
-  gap: 0.65rem;
-}
-
-.journey-ticket-ended .journey-ticket-hero {
-  background: var(--journey-card-raised);
-}
-
-.journey-status-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.journey-status {
+.km-open-app-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--journey-on-container);
-}
-
-.journey-live-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: var(--journey-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--journey-primary) 24%, transparent);
-}
-
-.journey-countdown {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.7rem;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
   border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 650;
-  background: var(--journey-card);
-  color: var(--journey-text);
-}
-
-.journey-countdown-accent {
-  background: var(--journey-primary);
-  color: var(--journey-on-primary);
-}
-
-.journey-hero-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: color-mix(in srgb, var(--journey-on-container) 78%, transparent);
-  margin-top: 0.2rem;
-}
-
-.journey-arrival-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.journey-time {
-  font-size: clamp(2.5rem, 8vw, 3.25rem);
-  line-height: 1.05;
+  background: var(--km-primary);
+  color: var(--km-on-primary);
+  font-size: 0.84rem;
   font-weight: 700;
-  letter-spacing: -0.045em;
-  font-variant-numeric: tabular-nums;
-  color: var(--journey-on-container);
+  white-space: nowrap;
+  transition: transform 0.14s ease, filter 0.14s ease;
 }
 
-.journey-day-later {
-  font-size: 0.875rem;
-  font-weight: 650;
-  color: var(--journey-on-container);
+.km-open-app-pill:hover {
+  filter: brightness(1.06);
 }
 
-.journey-scheduled-strike {
-  font-size: 0.9375rem;
-  font-weight: 500;
-  text-decoration: line-through;
-  color: color-mix(in srgb, var(--journey-on-container) 72%, transparent);
-  font-variant-numeric: tabular-nums;
+.km-open-app-pill:active {
+  transform: scale(0.97);
 }
 
-.journey-delay-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.journey-delay-pill {
+.km-action-cluster {
   display: inline-flex;
   align-items: center;
-  padding: 0.22rem 0.65rem;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 650;
-  line-height: 1.3;
-  font-variant-numeric: tabular-nums;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 18px;
+  background: var(--km-surface-high);
+  border: 1px solid var(--km-outline-variant);
 }
 
-.journey-delay-pill-late {
-  background: #93000a;
-  color: #ffdad6;
-}
-
-.journey-delay-pill-warn {
-  background: #633f00;
-  color: #ffddb5;
-}
-
-.journey-delay-pill-ontime {
-  background: #005321;
-  color: #98f5af;
-}
-
-.journey-leg-live-row {
-  display: flex;
-  flex-wrap: wrap;
+.km-cluster-btn {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin-top: 0.75rem;
+  justify-content: center;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--km-on-surface);
+  transition: background-color 0.14s ease, transform 0.14s ease;
 }
 
-.journey-leg-live-meta {
-  font-size: 0.8125rem;
-  color: var(--journey-muted);
+.km-cluster-btn:hover {
+  background: var(--km-surface-highest);
 }
 
-.journey-leg-strike {
-  font-size: 0.8125rem;
-  text-decoration: line-through;
-  color: var(--journey-muted);
-  font-variant-numeric: tabular-nums;
+.km-cluster-btn:active {
+  transform: scale(0.94);
 }
 
-.journey-destination {
-  font-size: 1.1875rem;
-  font-weight: 650;
-  line-height: 1.3;
-  letter-spacing: -0.015em;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  color: var(--journey-on-container);
+.km-cluster-btn.is-active {
+  background: var(--km-primary-container);
+  color: var(--km-on-primary-container);
 }
 
-.journey-progress {
-  height: 4px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--journey-on-container) 18%, transparent);
-  overflow: hidden;
-  margin-top: 0.35rem;
+@media (max-width: 520px) {
+  .km-app-header {
+    flex-wrap: wrap;
+  }
+
+  .km-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .km-open-app-pill {
+    flex: 1;
+  }
 }
 
-.journey-progress > span {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--journey-primary);
-}
+/* ─── Układ kolumnowy (Mobile 1 kolumna, Desktop 2 kolumny jak PWA) ──────── */
 
-.journey-ticket-body {
-  padding: 1.25rem 1.375rem 1.375rem;
+.km-split-layout {
   display: grid;
-  gap: 1.125rem;
+  gap: 14px;
 }
 
-.journey-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem 1.25rem;
-}
-
-.journey-origin-col {
-  flex: 1 1 12rem;
+.km-left-col {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: 14px;
+  align-content: start;
 }
 
-.journey-meta-label {
-  font-size: 0.8125rem;
-  color: var(--journey-muted);
-  font-variant-numeric: tabular-nums;
+.km-right-col {
+  display: none;
 }
 
-.journey-origin-name {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
+.km-map-mobile-slot {
+  min-width: 0;
 }
 
-.journey-facts-col {
+/* ─── Wspólna karta M3 aplikacji ─────────────────────────────────────────── */
+
+.km-card {
+  background: var(--km-surface-container);
+  border-radius: 28px;
+  border: 1px solid var(--km-outline-variant);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
+}
+
+/* ─── Karta Hero (1:1 SharedJourneyHero.tsx) ─────────────────────────────── */
+
+.km-hero-card {
+  padding: 16px;
   display: grid;
-  gap: 0.2rem;
+  gap: 14px;
+}
+
+.km-hero-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.km-hero-top-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.km-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-variant);
+}
+
+.km-status-pill.is-active {
+  background: var(--km-tertiary-container);
+  border-color: transparent;
+  color: var(--km-on-tertiary-container);
+}
+
+.km-status-pill.is-upcoming {
+  background: var(--km-primary-container);
+  border-color: transparent;
+  color: var(--km-on-primary-container);
+}
+
+.km-status-pill.is-ended {
+  background: var(--km-surface-high);
+  border-color: transparent;
+  color: var(--km-on-variant);
+}
+
+.km-live-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 26%, transparent);
+  flex-shrink: 0;
+}
+
+.km-delay-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.km-delay-pill.is-late {
+  background: var(--km-error-container);
+  color: var(--km-on-error-container);
+}
+
+.km-delay-pill.is-warn {
+  background: var(--km-warning-container);
+  color: var(--km-on-warning-container);
+}
+
+.km-delay-pill.is-ontime {
+  background: var(--km-success-container);
+  color: var(--km-on-success-container);
+}
+
+.km-duration-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--km-secondary-container);
+  color: var(--km-on-secondary-container);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.km-route-axis {
+  display: grid;
+  gap: 10px;
+}
+
+.km-axis-times {
+  display: grid;
+  grid-template-columns: auto minmax(52px, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.km-axis-col {
+  display: grid;
+  gap: 2px;
+}
+
+.km-axis-col.is-right {
   justify-items: end;
   text-align: right;
 }
 
-.journey-facts-col strong {
-  font-size: 1rem;
-  font-weight: 650;
+.km-endpoint-tag {
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+  color: var(--km-on-variant);
 }
 
-.journey-facts-col span {
-  color: var(--journey-muted);
-  font-size: 0.8125rem;
+.km-endpoint-tag.is-primary {
+  color: var(--km-primary);
 }
 
-.journey-services {
+.km-hero-time {
+  font-size: clamp(1.875rem, 6vw, 2.15rem);
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--km-on-surface);
+}
+
+.km-hero-time.is-primary {
+  color: var(--km-primary);
+}
+
+.km-arrival-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.km-day-badge {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--km-primary);
+}
+
+.km-hero-strike {
+  font-size: 0.76rem;
+  color: var(--km-on-variant);
+  text-decoration: line-through;
+}
+
+.km-axis-bridge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding-top: 14px;
+}
+
+.km-arrow-mobile {
+  display: none;
+}
+
+.km-bridge-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-variant);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.km-axis-places {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.km-place-left,
+.km-place-right {
+  font-size: 0.89rem;
+  line-height: 1.35;
+  font-weight: 700;
+  color: var(--km-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.km-place-right {
+  text-align: right;
+}
+
+@media (max-width: 350px) {
+  .km-axis-times {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .km-axis-col.is-right {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .km-axis-bridge {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .km-arrow-desktop {
+    display: none;
+  }
+
+  .km-arrow-mobile {
+    display: inline-flex;
+  }
+
+  .km-axis-places {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .km-place-right {
+    text-align: left;
+  }
+}
+
+/* ─── Pasek postępu w trakcie podróży ────────────────────────────────────── */
+
+.km-progress-box {
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
+  border-radius: 18px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.km-progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.km-step-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.km-step-text {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--km-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.km-eta-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--km-primary);
+  color: var(--km-on-primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.km-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--km-surface-highest);
+  overflow: hidden;
+}
+
+.km-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--km-primary);
+  transition: width 0.5s ease;
+}
+
+/* ─── Proporcjonalny JourneyStrip ────────────────────────────────────────── */
+
+.km-strip-surface {
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
+  border-radius: 18px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 9px;
+}
+
+.km-strip-surface.is-dimmed {
+  opacity: 0.72;
+}
+
+.km-strip-badges {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--journey-line);
+  gap: 6px;
 }
 
-.journey-service-step {
+.km-strip-walk {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 3px;
+  color: var(--km-on-variant);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0 3px;
 }
 
-.journey-chain-arrow {
-  color: var(--journey-muted);
-  flex-shrink: 0;
-}
-
-.journey-service {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 2rem;
-  padding: 0.3rem 0.65rem;
-  background: var(--journey-card-raised);
-  color: var(--journey-text);
-  border-radius: 0.625rem;
-  font-size: 0.875rem;
-  font-weight: 650;
-  overflow-wrap: anywhere;
-}
-
-.journey-service svg {
-  flex-shrink: 0;
-}
-
-.journey-service[data-mode='walk'] {
-  background: var(--journey-card-raised);
-  color: var(--journey-muted);
-}
-
-.journey-service[data-mode]:not([data-mode='walk']) {
-  background: var(--leg-accent, var(--journey-container-strong));
-  color: var(--leg-on-accent, var(--journey-on-container));
-}
-
-.journey-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.625rem;
-  margin-top: 1rem;
-}
-
-.journey-actions > :first-child {
-  grid-column: 1 / -1;
-}
-
-.journey-button,
-.journey-sms {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.55rem;
-  min-height: 3rem;
-  padding: 0.75rem 1.125rem;
-  border: 1px solid var(--journey-line);
-  border-radius: 1rem;
-  background: var(--journey-card);
-  color: var(--journey-text);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  line-height: 1.35;
-  text-align: center;
-  overflow-wrap: anywhere;
-  transition:
-    background 0.16s ease,
-    border-color 0.16s ease,
-    transform 0.16s ease;
-}
-
-.journey-button-primary {
-  background: var(--journey-primary);
-  color: var(--journey-on-primary);
-  border-color: transparent;
-  font-weight: 650;
-}
-
-.journey-button:hover,
-.journey-sms:hover {
-  background: var(--journey-card-raised);
-}
-
-.journey-button-primary:hover {
-  background: var(--accent-hover, var(--journey-primary));
-}
-
-.journey-button:active,
-.journey-sms:active {
-  transform: scale(0.98);
-}
-
-.journey-button svg,
-.journey-sms svg {
-  flex-shrink: 0;
-}
-
-.journey-note {
-  color: var(--journey-muted);
-  font-size: 0.8125rem;
-  line-height: 1.55;
-  margin-top: 0.875rem;
-  padding-inline: 0.25rem;
-}
-
-.journey-error {
-  color: var(--journey-text);
-  margin-top: 0.75rem;
-}
-
-.journey-itinerary > h2 {
-  font-size: 1.25rem;
-  font-weight: 650;
-  margin-bottom: 1rem;
-  letter-spacing: -0.025em;
-  white-space: normal;
-}
-
-.journey-legs {
-  list-style: none;
-  display: grid;
-  gap: 0.875rem;
-  margin: 0;
-  padding: 0;
-}
-
-.journey-leg {
-  position: relative;
-  background: var(--journey-card);
-  border: 1px solid var(--journey-line);
-  border-radius: 1.375rem;
-  padding: 1.25rem;
-}
-
-.journey-leg-walk {
-  background: transparent;
-  border-color: transparent;
-  padding-block: 0.375rem;
-}
-
-.journey-leg-heading {
+.km-strip-bar {
   display: flex;
-  gap: 0.875rem;
   align-items: center;
-  margin-bottom: 0.875rem;
+  gap: 4px;
+  height: 6px;
 }
 
-.journey-leg-heading > div {
+.km-strip-seg {
+  height: 6px;
+  min-width: 10px;
+  border-radius: 999px;
+}
+
+.km-strip-seg.is-walk {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--km-outline) 0 4px,
+    transparent 4px 8px
+  );
+  opacity: 0.75;
+}
+
+/* ─── LineBadge (1:1 z LineBadge.tsx) ────────────────────────────────────── */
+
+.km-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 38px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.km-badge.is-compact {
+  min-width: 28px;
+  min-height: 26px;
+  padding: 3px 6px;
+  gap: 4px;
+  font-size: 0.76rem;
+}
+
+.km-badge-walk {
+  min-width: 28px;
+  background: var(--km-surface-highest);
+  color: var(--km-on-variant);
+}
+
+/* ─── Karta Mapy (1:1 SharedJourneyMapCard.tsx / RouteMapCard.tsx) ────────── */
+
+.km-map-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.km-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.km-map-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex: 1;
   min-width: 0;
 }
 
-.journey-leg-icon {
-  display: flex;
+.km-map-icon-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--km-primary-container);
+  color: var(--km-on-primary-container);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.375rem;
-  min-width: 2.5rem;
-  min-height: 2.5rem;
-  padding: 0.5rem;
   flex-shrink: 0;
-  border-radius: 0.75rem;
-  background: var(--leg-accent, var(--journey-card-raised));
-  color: var(--leg-on-accent, var(--journey-text));
 }
 
-.journey-leg-icon strong {
-  overflow-wrap: anywhere;
-  max-width: 5rem;
-}
-
-.journey-leg-heading h3 {
-  font-size: 1rem;
-  font-weight: 650;
-  margin: 0.125rem 0 0.2rem;
-  overflow-wrap: anywhere;
-  letter-spacing: -0.01em;
-  line-height: 1.35;
-}
-
-.journey-leg-heading p {
-  font-size: 0.8125rem;
-  color: var(--journey-muted);
-  overflow-wrap: anywhere;
-  line-height: 1.45;
-}
-
-.journey-leg-duration {
-  color: var(--journey-muted);
-  font-size: 0.8125rem;
-  white-space: nowrap;
-}
-
-.journey-leg-summary {
+.km-map-title-copy {
+  min-width: 0;
   display: grid;
-  gap: 0.45rem;
-  padding-bottom: 0.5rem;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  gap: 1px;
 }
 
-.journey-leg-summary :is(span, time) {
-  color: var(--journey-muted);
-}
-
-.journey-leg-summary time {
+.km-map-title-copy h2 {
+  font-size: 1rem;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--km-on-surface);
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.journey-stops {
+.km-map-title-copy p {
+  font-size: 0.76rem;
+  line-height: 1.3;
+  color: var(--km-on-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.km-expand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--km-secondary-container);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-secondary-container);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 0.14s ease, filter 0.14s ease;
+}
+
+.km-expand-pill:hover {
+  filter: brightness(1.08);
+}
+
+.km-expand-pill:active {
+  transform: scale(0.97);
+}
+
+.km-map-frame {
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
   display: flex;
   flex-direction: column;
 }
 
-.journey-stops summary {
+.km-map-viewport {
+  position: relative;
+  height: 276px;
+  background: var(--km-surface-lowest);
+}
+
+.km-map-viewport.is-fullscreen {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.km-map-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.km-map-canvas .maplibregl-ctrl-attrib {
+  background: rgb(16 20 19 / 72%) !important;
+  color: var(--km-on-variant) !important;
+  font-size: 10px !important;
+  border-radius: 8px 0 0 0;
+}
+
+.km-map-canvas .maplibregl-ctrl-attrib a {
+  color: var(--km-on-variant) !important;
+}
+
+.km-map-top-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  list-style: none;
-  cursor: pointer;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.25rem;
-  color: var(--journey-muted);
-  font-size: 0.875rem;
-  font-weight: 600;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 3;
 }
 
-.journey-stops summary::-webkit-details-marker {
-  display: none;
-}
-
-.journey-expand-pill {
+.km-map-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 2rem;
-  padding: 0.35rem 0.85rem;
+  gap: 6px;
+  padding: 5px 11px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--journey-primary) 16%, transparent);
-  color: var(--journey-primary);
-  transition: background 160ms ease, color 160ms ease;
+  background: var(--km-surface-high);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-surface);
+  font-size: 0.72rem;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
 }
 
-.journey-stops[open] .journey-expand-pill {
-  background: color-mix(in srgb, var(--journey-primary) 24%, transparent);
+.km-map-badge-live {
+  background: var(--km-primary-container);
+  border-color: var(--km-primary);
+  color: var(--km-on-primary-container);
 }
 
-.journey-stops[open] summary svg {
-  transform: rotate(180deg);
+.km-map-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 3;
 }
 
-.journey-stops .journey-hide-stops,
-.journey-stops[open] .journey-show-stops {
+.km-map-controls.is-rail {
+  right: 14px;
+  bottom: 18px;
+}
+
+.km-map-fab {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--km-surface-high);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-surface);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 35%);
+  transition: transform 0.14s ease, background-color 0.14s ease;
+}
+
+.km-map-fab:hover {
+  background: var(--km-surface-highest);
+}
+
+.km-map-fab:active {
+  transform: scale(0.94);
+}
+
+.km-map-empty,
+.km-map-error-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  min-height: 220px;
+  background: var(--km-surface-low);
+  text-align: center;
+  color: var(--km-on-variant);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.km-map-error-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  min-height: 0;
+}
+
+.km-map-stage-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: var(--km-surface-low);
+  border-top: 1px solid var(--km-outline-variant);
+}
+
+.km-map-step-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--km-surface-high);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-surface);
+}
+
+.km-map-stage-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.km-map-stage-copy strong {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--km-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.km-map-stage-copy span {
+  font-size: 0.76rem;
+  color: var(--km-on-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.km-map-stage-rail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.km-map-stage-rail::-webkit-scrollbar {
   display: none;
 }
 
-.journey-stops[open] .journey-hide-stops {
-  display: inline;
+.km-map-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  max-width: 240px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-variant);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
 }
 
-.journey-position-label {
-  font-size: 0.8125rem;
-  color: var(--journey-muted);
-  line-height: 1.5;
-  margin: 0.25rem 0 1rem;
+.km-map-stage-pill.is-active {
+  border-radius: 999px;
+  background: var(--km-primary-container);
+  border: 1.5px solid var(--km-primary);
+  color: var(--km-on-primary-container);
+  font-weight: 700;
 }
 
-.journey-stop-list {
-  margin: 0.5rem 0 0;
-  padding: 0;
-  list-style: none;
+.km-map-stage-num {
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.85;
 }
 
-.journey-stop {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
-  gap: 0.625rem;
-  min-height: 3rem;
-  font-size: 0.875rem;
-  line-height: 1.5rem;
-}
-
-.journey-stop-list-train .journey-stop-dual {
-  min-height: 3.75rem;
-  align-items: start;
-}
-
-.journey-stop-copy {
-  display: grid;
-  gap: 0.15rem;
-  padding-bottom: 1.5rem;
-  min-width: 0;
-}
-
-.journey-stop-name {
-  overflow-wrap: anywhere;
-}
-
-.journey-stop-meta {
-  color: var(--journey-muted);
-  font-size: 0.75rem;
-  line-height: 1.35;
-}
-
-.journey-stop:last-child {
-  min-height: 1.5rem;
-}
-
-.journey-stop:last-child .journey-stop-copy {
-  padding-bottom: 0;
-}
-
-.journey-stop-endpoint .journey-stop-name {
-  font-weight: 650;
-}
-
-.journey-stop-passed {
-  color: var(--journey-muted);
-}
-
-.journey-stop-times {
-  display: grid;
-  gap: 0.15rem;
-  justify-items: end;
-  color: var(--journey-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.journey-stop-time-label {
+.km-map-stage-stop {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.journey-stop time {
-  color: inherit;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.km-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
-.journey-stop time small {
-  display: block;
-  font-size: 0.75rem;
-  text-align: right;
-}
-
-.journey-stop-rail {
-  position: relative;
+.km-map-footer {
   display: flex;
-  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--km-surface-low);
+  border-radius: 14px;
+  padding: 9px 12px;
 }
 
-.journey-stop-rail::after {
-  content: '';
-  position: absolute;
-  top: 0.75rem;
-  bottom: -0.75rem;
-  width: 3px;
-  background: var(--journey-rail);
+.km-map-footer-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--km-on-variant);
 }
 
-.journey-stop-passed .journey-stop-rail::after {
-  background: var(--journey-rail);
+.km-map-footer-icon.is-primary {
+  color: var(--km-primary);
 }
 
-.journey-stop:last-child .journey-stop-rail::after {
-  display: none;
+.km-map-footer p {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--km-on-variant);
 }
 
-.journey-stop-dot {
+/* Markery MapLibre (1:1 z routeMapDocument.ts) */
+
+.km-map-pin {
   position: relative;
-  z-index: 1;
-  width: 0.75rem;
-  height: 0.75rem;
-  margin-top: 0.375rem;
-  border: 2px solid var(--journey-rail);
-  border-radius: 50%;
-  background: var(--journey-card);
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
 }
 
-.journey-stop-passed .journey-stop-dot {
-  border-color: var(--journey-rail);
-  background: var(--journey-rail);
-}
-
-.journey-vehicle {
+.km-map-pin i {
   position: absolute;
-  left: 0.875rem;
-  transform: translate(-50%, -50%);
-  z-index: 2;
+  left: 2px;
+  top: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 62%);
+  display: block;
+}
+
+.km-map-pin b {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: block;
+}
+
+.km-map-pin-start i {
+  background: #22c55e;
+}
+
+.km-map-pin-end i {
+  background: #ef4444;
+}
+
+.km-map-stop-pin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #111414;
+  border: 2.5px solid #f4f8f6;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 55%);
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border: 3px solid var(--journey-card);
+  pointer-events: none;
+}
+
+.km-map-stop-pin i {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--journey-primary);
-  color: var(--journey-on-primary);
-  transition: top 1s linear;
+  background: #5cdbbe;
+  display: block;
 }
 
-.journey-vehicle svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.journey-leg-walk .journey-stop-rail::after {
+.km-map-veh {
+  position: relative;
   width: 0;
-  background: none;
-  border-left: 2px dashed var(--journey-rail);
+  height: 0;
+  pointer-events: none;
 }
 
-.journey-data-state {
-  color: var(--journey-muted);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  margin-top: 1rem;
+.km-map-veh-halo {
+  position: absolute;
+  left: -17px;
+  top: -17px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.26;
 }
 
-.journey-retry {
+.km-map-veh-body {
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: currentColor;
+  border: 2.5px solid #101413;
+  box-shadow: 0 0 0 1.8px rgb(255 255 255 / 92%), 0 2px 10px rgb(0 0 0 / 65%);
+}
+
+/* Fullscreen modal mapy */
+
+.km-map-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--km-surface);
+}
+
+.km-map-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+  border-bottom: 1px solid var(--km-outline-variant);
+}
+
+.km-map-modal-bottom {
+  background: var(--km-surface);
+  border-top: 1px solid var(--km-outline-variant);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.km-map-modal-rail {
+  padding: 10px 14px;
+}
+
+/* ─── Sekcja Przebieg podróży (3-kolumnowa oś 1:1 z LegTimeline.tsx) ─────── */
+
+.km-itinerary-section {
+  display: grid;
+  gap: 10px;
+}
+
+.km-itinerary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.km-itinerary-header h2 {
+  font-size: 1rem;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--km-on-surface);
+}
+
+.km-loading-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 2.75rem;
-  color: var(--journey-primary);
-  background: transparent;
-  padding: 0.5rem 0;
-  border: 0;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--km-surface-container);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-variant);
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
-.shared-journey :is(button, a, summary):focus-visible {
-  outline: 3px solid var(--journey-primary);
-  outline-offset: 4px;
-}
-
-.shared-empty {
-  width: min(100% - 2rem, 32rem);
-  padding-top: 4rem;
-}
-
-.shared-empty-card {
+.km-leg-list {
   display: grid;
-  justify-items: start;
-  gap: 1rem;
-  padding: 1.75rem;
-  border-radius: 1.5rem;
-  background: var(--journey-card);
-  border: 1px solid var(--journey-line);
+  gap: 10px;
 }
 
-.shared-empty-icon {
+.km-leg-group {
+  display: grid;
+  gap: 10px;
+}
+
+.km-leg-card {
+  background: var(--km-surface-container);
+  border-radius: 28px;
+  border: 1px solid var(--km-outline-variant);
+  padding: 16px 14px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
+}
+
+.km-grid-row {
+  display: grid;
+  grid-template-columns: 54px 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.km-endpoint-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.km-time-strong {
+  font-size: 1.09rem;
+  line-height: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--km-on-surface);
+  white-space: nowrap;
+}
+
+.km-day-small {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--km-primary);
+}
+
+.km-time-strike {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--km-on-variant);
+  text-decoration: line-through;
+}
+
+.km-duration-col {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 15px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--km-on-variant);
+}
+
+.km-rail-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.km-node-start {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2.5px solid var(--leg-rail, var(--km-primary));
+  background: var(--km-surface-container);
+  margin-top: 5px;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.km-spine-down {
+  position: absolute;
+  top: 17px;
+  bottom: 0;
+  width: 3px;
+}
+
+.km-spine-full {
+  flex: 1;
+  width: 3px;
+  min-height: 8px;
+}
+
+.km-spine-up {
+  position: absolute;
+  top: 0;
+  height: 11px;
+  width: 3px;
+}
+
+.km-node-end {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: 5px;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.km-departure-content {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  min-width: 0;
+}
+
+.km-arrival-content {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.km-stop-endpoint-title {
+  font-size: 1.125rem;
+  line-height: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--km-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.km-platform-badge {
+  justify-self: start;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--km-secondary-container);
+  color: var(--km-on-secondary-container);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.km-body-content {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
+  min-width: 0;
+}
+
+.km-line-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: var(--km-surface-high);
+}
+
+.km-line-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.km-line-direction {
+  font-size: 0.91rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--km-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.km-line-sub {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--km-on-variant);
+}
+
+.km-live-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: var(--km-surface-low);
+}
+
+.km-live-banner-meta {
+  font-size: 0.78rem;
+  color: var(--km-on-variant);
+  line-height: 1.35;
+}
+
+.km-stops-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--km-surface-high);
+  color: var(--km-on-surface);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.km-stops-toggle:hover {
+  background: var(--km-surface-highest);
+}
+
+.km-stops-toggle.is-open {
+  background: var(--km-secondary-container);
+  color: var(--km-on-secondary-container);
+}
+
+.km-stops-chevron {
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.km-stops-toggle.is-open .km-stops-chevron {
+  transform: rotate(180deg);
+}
+
+.km-direct-ride {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--km-on-variant);
+  padding: 4px 2px;
+}
+
+/* ─── Rozwijana tacka przystanków pośrednich (wyrównana oś X szyny) ──────── */
+
+.km-tray-wrap {
+  margin: 0 -6px;
+}
+
+.km-tray-card {
+  background: var(--km-surface-low);
+  border: 1px solid var(--km-outline-variant);
+  border-radius: 18px;
+  padding: 0 5px;
+}
+
+.km-tray-cap {
+  display: grid;
+  grid-template-columns: 54px 28px minmax(0, 1fr);
+  gap: 8px;
+  height: 8px;
+}
+
+.km-tray-connector {
+  display: grid;
+  grid-template-columns: 54px 28px minmax(0, 1fr);
+  gap: 8px;
+  height: 10px;
+  padding: 0 6px;
+}
+
+.km-tray-note {
+  font-size: 0.72rem;
+  color: var(--km-on-variant);
+  padding: 2px 10px 6px 90px;
+  line-height: 1.4;
+}
+
+.km-stop-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.km-stop-row {
+  display: grid;
+  grid-template-columns: 54px 28px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 44px;
+  align-items: stretch;
+}
+
+.km-stop-time-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 7px 0;
+  gap: 1px;
+}
+
+.km-stop-time-single {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--km-on-surface);
+}
+
+.km-stop-time-pri {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--km-on-surface);
+}
+
+.km-stop-time-sec {
+  font-size: 0.69rem;
+  font-weight: 500;
+  color: var(--km-on-variant);
+}
+
+.km-stop-time-single.is-passed,
+.km-stop-time-pri.is-passed {
+  color: var(--km-on-variant);
+  font-weight: 500;
+}
+
+.km-rail-half {
+  flex: 1;
+  width: 3px;
+  min-height: 8px;
+}
+
+.km-dot-passed {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--km-outline);
+  flex-shrink: 0;
+}
+
+.km-ring-upcoming {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2.5px solid var(--leg-rail, var(--km-primary));
+  background: var(--km-surface-low);
+  flex-shrink: 0;
+}
+
+.km-veh-squircle {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 999px;
-  background: var(--journey-container);
-  color: var(--journey-primary);
+  flex-shrink: 0;
+  z-index: 3;
 }
 
-.shared-empty h1 {
-  font-size: 1.5rem;
+.km-stop-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8px 6px 8px 0;
+  gap: 2px;
+  min-width: 0;
+}
+
+.km-stop-name {
+  font-size: 0.875rem;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--km-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.km-stop-name.is-passed {
+  color: var(--km-on-variant);
+  font-weight: 500;
+}
+
+.km-stop-name.is-active {
+  color: var(--km-on-surface);
+  font-weight: 800;
+}
+
+.km-stop-meta {
+  font-size: 0.74rem;
+  color: var(--km-on-variant);
+}
+
+.km-in-transit-row {
+  display: grid;
+  grid-template-columns: 54px 28px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 38px;
+  align-items: stretch;
+}
+
+.km-in-transit-copy {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 0;
+  min-width: 0;
+}
+
+.km-in-transit-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--km-primary-container);
+  color: var(--km-on-primary-container);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ─── Łącznik przesiadki / dojścia pieszego ──────────────────────────────── */
+
+.km-connector-row {
+  display: grid;
+  grid-template-columns: 54px 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 0 14px;
+}
+
+.km-connector-time {
+  text-align: right;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--km-on-variant);
+}
+
+.km-connector-tick {
+  width: 2px;
+  height: 8px;
+  background: var(--km-outline-variant);
+  border-radius: 1px;
+}
+
+.km-walk-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--km-secondary-container);
+  color: var(--km-on-secondary-container);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2px 0;
+}
+
+.km-connector-copy {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.km-connector-copy strong {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--km-on-surface);
+}
+
+.km-connector-copy span {
+  font-size: 0.76rem;
+  color: var(--km-on-variant);
+  overflow-wrap: anywhere;
+}
+
+/* ─── Stany pomocnicze, przyciski, stopka ────────────────────────────────── */
+
+.km-retry-card {
+  background: var(--km-surface-container);
+  border: 1px solid var(--km-outline-variant);
+  border-radius: 24px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  color: var(--km-on-variant);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.km-tonal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--km-secondary-container);
+  color: var(--km-on-secondary-container);
+  font-size: 0.86rem;
+  font-weight: 700;
+  justify-self: start;
+}
+
+.km-primary-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--km-primary);
+  color: var(--km-on-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.km-bottom-panel {
+  display: grid;
+  gap: 12px;
+  padding: 4px 4px 8px;
+}
+
+.km-status-footnote {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--km-on-variant);
+}
+
+.km-error-banner {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--km-error-container);
+  color: var(--km-on-error-container);
+  font-size: 0.84rem;
+}
+
+.km-bottom-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--km-outline-variant);
+}
+
+.km-pwa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--km-surface-container);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: background-color 0.14s ease;
+}
+
+.km-pwa-link:hover {
+  background: var(--km-surface-high);
+}
+
+.km-mini-footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.km-mini-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 6px;
+  color: var(--km-on-variant);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.km-mini-brand:hover {
+  color: var(--km-on-surface);
+}
+
+.km-lang-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 24px 0 11px;
+  border-radius: 999px;
+  background: var(--km-surface-container);
+  border: 1px solid var(--km-outline-variant);
+  color: var(--km-on-variant);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.km-lang-pill select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.km-lang-pill svg {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+}
+
+/* Pusty stan / uszkodzony link */
+
+.km-shared-empty {
+  display: grid;
+  place-items: center;
+  padding-top: 40px;
+}
+
+.km-empty-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px 24px;
+  border-radius: 28px;
+  background: var(--km-surface-container);
+  border: 1px solid var(--km-outline-variant);
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.km-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--km-secondary-container);
+  color: var(--km-on-secondary-container);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.km-empty-card h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
   line-height: 1.25;
 }
 
-.shared-empty p {
-  line-height: 1.6;
-  color: var(--journey-muted);
+.km-empty-card p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--km-on-variant);
 }
 
-@media (min-width: 42rem) {
-  .shared-journey {
-    width: min(100% - 4rem, 42rem);
-    padding-top: 2rem;
-  }
+/* Spinner */
 
-  .journey-hero-bar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.5rem;
-    padding: 1.25rem 1.5rem;
-  }
+.km-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2.5px solid var(--km-surface-highest);
+  border-top-color: var(--km-primary);
+  animation: km-spin 0.8s linear infinite;
+}
 
-  .journey-app-cta {
-    width: auto;
-  }
+.km-spinner.is-sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
 
-  .journey-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .journey-actions > :first-child {
-    grid-column: auto;
-  }
-
-  .journey-leg {
-    padding: 1.5rem;
+@keyframes km-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-@media (min-width: 62rem) {
-  .shared-journey {
-    width: min(100% - 4rem, 1040px);
-    padding-top: 2.5rem;
+/* ─── Desktop Split (1024px+): układ 1:1 z app/shared.tsx (PWA) ──────────── */
+
+@media (min-width: 1024px) {
+  .km-shared-shell {
+    max-width: 1320px;
+    padding: 16px 28px 24px;
   }
 
-  .journey-heading {
-    margin-bottom: 2.25rem;
-  }
-
-  .journey-layout {
-    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-    gap: 2rem;
+  .km-split-layout {
+    grid-template-columns: 440px minmax(0, 1fr);
+    gap: 24px;
     align-items: start;
   }
 
-  .journey-overview {
+  .km-map-mobile-slot {
+    display: none;
+  }
+
+  .km-right-col {
+    display: flex;
+    flex-direction: column;
     position: sticky;
-    top: 2rem;
+    top: 16px;
+    height: calc(100dvh - 104px);
+    min-height: 460px;
+  }
+
+  .km-right-col .km-map-card {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .km-right-col .km-map-frame {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .km-right-col .km-map-viewport {
+    flex: 1;
+    height: auto;
+    min-height: 320px;
+  }
+
+  .km-right-col .km-map-empty {
+    flex: 1;
+  }
+}
+
+@media (min-width: 1280px) {
+  .km-split-layout {
+    grid-template-columns: 500px minmax(0, 1fr);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .journey-button,
-  .journey-sms,
-  .journey-expand-pill,
-  .journey-vehicle {
+  .km-back-btn,
+  .km-icon-btn,
+  .km-open-app-pill,
+  .km-cluster-btn,
+  .km-expand-pill,
+  .km-map-fab,
+  .km-stops-toggle,
+  .km-stops-chevron,
+  .km-progress-fill,
+  .km-spinner {
     transition: none;
-  }
-
-  .journey-button:active,
-  .journey-sms:active {
-    transform: none;
+    animation: none;
   }
 }
