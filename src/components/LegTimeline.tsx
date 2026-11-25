@@ -83,7 +83,7 @@ const RAIL_COL_W = 28;
 const COL_GAP = 8;
 const SPINE_W = 3;
 const TRAY_BLEED = 6;
-const TRAY_BORDER_W = 2;
+const TRAY_BORDER_W = 1;
 
 function genericModeNom(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.leg.modeTram;
@@ -1842,7 +1842,7 @@ const s = StyleSheet.create({
     width: '100%',
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: CARD_PAD_H,
     paddingVertical: 16,

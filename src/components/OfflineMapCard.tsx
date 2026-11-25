@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   others: {
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
     paddingTop: 14,
     gap: 4,

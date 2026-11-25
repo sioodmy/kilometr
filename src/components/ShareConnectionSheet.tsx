@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 14,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   content: {
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   urlText: {

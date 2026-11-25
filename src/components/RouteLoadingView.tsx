@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   heroTop: {
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
   skelCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 16,
     paddingVertical: 15,
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     gap: 10,
   },

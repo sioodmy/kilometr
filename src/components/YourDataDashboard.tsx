@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.large,
     padding: 14,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
   },
   railIconBox: {
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
   },
   destItemLead: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
   },
   destRow: {

@@ -582,7 +582,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
   stripSurface: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -857,7 +857,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 10,
