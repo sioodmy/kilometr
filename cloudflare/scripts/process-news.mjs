@@ -14,6 +14,11 @@ const DATA_DIR = path.join(ROOT_DIR, 'cloudflare/data');
 const DIST_DIR = path.join(ROOT_DIR, 'cloudflare/dist');
 const CACHE_FILE = path.join(DATA_DIR, 'news-cache.json');
 
+// Warszawa: gotowy GTFS-RT alerts z tego samego źródła co GTFS WTP
+// (mkuran.pl, CC0). Kanał RSS WTP blokuje CloudFront z runnerów GitHuba,
+// a ten plik ma już ustrukturyzowane linie, tytuł i pełną treść.
+export const WARSAW_ALERTS_URL = 'https://mkuran.pl/gtfs/warsaw/alerts.json';
+
 const SUPPORTED_CITIES = [
   'wroclaw',
   'gzm',
@@ -192,6 +197,120 @@ function cleanHtml(html) {
     .replace(/\n\s*\n\s*\n/g, '\n\n')
     .replace(/^[ \t]+|[ \t]+$/gm, '')
     .trim();
+}
+
+function compactText(value, max) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || !max || text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${cut.slice(0, lastSpace > 40 ? lastSpace : max).trim()}…`;
+}
+
+function warsawLineIds(routes) {
+  const seen = new Set();
+  const lines = [];
+  for (const raw of Array.isArray(routes) ? routes : []) {
+    const line = String(raw ?? '').trim().toUpperCase();
+    if (!line || seen.has(line)) continue;
+    seen.add(line);
+    lines.push(line);
+  }
+  return lines;
+}
+
+function inferWarsawAlertType(title, body) {
+  const text = `${title} ${body}`.toLowerCase();
+  if (/wypadek|kolizj|zderzeni|potrącen|wykolejen|awari[ae]?\s+(?:tramwaju|autobusu|sygnalizacji|torowiska|trakcji)/.test(text)) return 'accident';
+  if (/zgromadzeni|demonstracj|\bmecz\b|maraton|koncert|festyn|jarmark|parad[ay]|procesj|imprez|wydarzeni/.test(text)) return 'event';
+  if (/\bpogod|\bwiatr(?:u|em|y|ów)?\b|śnieg|ulew|mgła|gołoledź|oblodzeni|upał/.test(text)) return 'weather';
+  if (/bilet|taryf|kasownik|honorowani/.test(text)) return 'fare';
+  if (/remont|przebudow|budow|modernizac|frezer|wymian[ay]\s+(?:nawierzchni|torowisk|sieci|trakcji)|prac[ay]\s+(?:drogow|torow|budowlan)/.test(text)) return 'planned_works';
+  if (/wstrzymani[ae]? ruchu|nieprzejezdn|uszkodzon|awari/.test(text)) return 'infrastructure_failure';
+  return 'other';
+}
+
+function isWarsawResolvedAlert(title, body) {
+  const first = title.trim().toLowerCase();
+  if (/^(?:przywrócen|przywrócen|przywrócono|wraca|wróci|zakończon|zakończył|zniesion)/.test(first)) return true;
+  return /utrudnienia (?:zostały )?odwołane|odwołan[eo] (?:utrudnien|objazd|zamknięc)/.test(
+    `${title} ${body}`.toLowerCase(),
+  );
+}
+
+function isWarsawEmergencyAlert(title, body, resolved, type) {
+  if (resolved || type === 'event' || type === 'planned_works' || type === 'fare') return false;
+  return /wstrzyman|wstrzymuje|zablokowan(?:y|a|e)?\s+(?:przejazd|ruch|torowisk|jezdni)|wypadek|kolizj|zderzeni|awari|wykolejen|nieprzejezdn/.test(
+    `${title} ${body}`.toLowerCase(),
+  );
+}
+
+function inferWarsawSeverity(title, body, type, resolved, emergency) {
+  if (resolved) return 'info';
+  if (emergency) return 'major';
+  const text = `${title} ${body}`.toLowerCase();
+  if (type === 'planned_works' && /objazd|zmian[ay] tras|skierowan|zawieszon|wstrzyman/.test(text)) return 'major';
+  return 'minor';
+}
+
+/**
+ * GTFS-RT alerts WTP (mkuran.pl) na format disruptions.json.
+ * Linie i treść są już w źródle, więc ten wariant nie woła LLM.
+ */
+export function warsawAlertsToDisruptions(payload, generatedAt = new Date().toISOString()) {
+  const rawAlerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
+  const validFrom = typeof payload?.time === 'string' && payload.time ? payload.time : generatedAt;
+  const alerts = [];
+
+  for (const raw of rawAlerts) {
+    if (!raw || typeof raw !== 'object') continue;
+    const title = compactText(raw.title, 220);
+    const body = compactText(
+      cleanHtml(raw.body || raw.htmlbody || '')
+        .replace(/^#{1,6}\s*/gm, '')
+        .replace(/\*\*(.*?)\*\*/g, '$1'),
+      1200,
+    );
+    if (!title && !body) continue;
+
+    const lines = warsawLineIds(raw.routes);
+    const type = inferWarsawAlertType(title, body);
+    const resolved = isWarsawResolvedAlert(title, body);
+    const emergency = isWarsawEmergencyAlert(title, body, resolved, type);
+    const severity = inferWarsawSeverity(title, body, type, resolved, emergency);
+    const fallbackId = crypto.createHash('sha256').update(`${title}|${raw.link || ''}`).digest('hex').slice(0, 16);
+
+    alerts.push({
+      id: String(raw.id || fallbackId),
+      source_title: title || 'Komunikat WTP',
+      link: typeof raw.link === 'string' ? raw.link : '',
+      published_at: validFrom,
+      is_transit_alert: true,
+      headline: title || 'Komunikat WTP',
+      disruption_type: type,
+      is_emergency: emergency,
+      is_resolved: resolved,
+      severity,
+      map_label: null,
+      glance: {
+        problem: body ? compactText(body, 600) : title,
+        solution: null,
+        timeframe: '',
+      },
+      corridor: null,
+      ticket_honoring: null,
+      phases: [],
+      valid_from: validFrom,
+      valid_to: null,
+      all_lines: lines,
+      line_changes: [],
+      temporary_lines: [],
+      impacted_lines: [],
+      stops: [],
+    });
+  }
+
+  return alerts;
 }
 
 async function fetchFullArticleText(url) {
@@ -703,6 +822,28 @@ async function fetchCityFeed(city, limit) {
     default:
       throw new Error(`Nieobsługiwane miasto: ${city}. Dostępne: ${SUPPORTED_CITIES.join(', ')}`);
   }
+}
+
+/** Miasta z gotowym feedem alerts, które nie potrzebują analizy LLM. */
+async function fetchStructuredCityAlerts(city) {
+  if (city !== 'warszawa') return null;
+  const data = await fetchFeed(WARSAW_ALERTS_URL, 'WTP GTFS-RT', undefined, 'json');
+  return warsawAlertsToDisruptions(data);
+}
+
+function writeDisruptions(city, alerts) {
+  const cityDistDir = path.join(DIST_DIR, city);
+  fs.mkdirSync(cityDistDir, { recursive: true });
+  const disruptionsFile = path.join(cityDistDir, 'disruptions.json');
+  const payload = {
+    schema_version: 2,
+    city,
+    generated_at: new Date().toISOString(),
+    alerts_count: alerts.length,
+    alerts,
+  };
+  fs.writeFileSync(disruptionsFile, JSON.stringify(payload, null, 2), 'utf8');
+  console.log(`Zapisano ${alerts.length} alertów do: ${disruptionsFile}`);
 }
 
 const SYSTEM_INSTRUCTION = `Jesteś silnikiem analizy operacyjnej i topologicznej dla aplikacji transportu publicznego Kilometr.
@@ -1406,6 +1547,31 @@ async function processCity(city, limit, cache) {
   console.log(`\n============================================================`);
   console.log(`Miasto: ${city.toUpperCase()} | Pobieranie feedu...`);
 
+  // Warszawa ma gotowe GTFS-RT alerts: linie i treść są w źródle, więc
+  // nie płacimy za LLM i nie dotykamy CloudFrontu, który blokuje runner.
+  if (city === 'warszawa') {
+    let structured = null;
+    try {
+      structured = await fetchStructuredCityAlerts(city);
+    } catch (err) {
+      console.warn(`[!] Warszawa: brak GTFS-RT alerts (${err.message}), próbuję RSS WTP.`);
+    }
+    if (structured) {
+      if (structured.length === 0) {
+        console.error(`[!] Pusty feed GTFS-RT dla ${city}.`);
+        console.error(`[!] Zostawiam poprzednie ${city}/disruptions.json w R2.`);
+        return null;
+      }
+      console.log(`Pobrano ${structured.length} alertów GTFS-RT.`);
+      if (DRY_RUN) {
+        for (const alert of structured) console.log(`--- ${alert.headline} [${alert.all_lines.join(', ')}]`);
+      } else {
+        writeDisruptions(city, structured);
+      }
+      return structured;
+    }
+  }
+
   let items = [];
   try {
     items = await fetchCityFeed(city, limit);
@@ -1520,24 +1686,7 @@ async function processCity(city, limit, cache) {
     }
   }
 
-  // Zapis pliku wynikowego {city}/disruptions.json
-  const cityDistDir = path.join(DIST_DIR, city);
-  if (!fs.existsSync(cityDistDir)) {
-    fs.mkdirSync(cityDistDir, { recursive: true });
-  }
-
-  const disruptionsFile = path.join(cityDistDir, 'disruptions.json');
-  const payload = {
-    schema_version: 2,
-    city,
-    generated_at: new Date().toISOString(),
-    alerts_count: acceptedAlerts.length,
-    alerts: acceptedAlerts,
-  };
-
-  fs.writeFileSync(disruptionsFile, JSON.stringify(payload, null, 2), 'utf8');
-  console.log(`Zapisano ${acceptedAlerts.length} alertów do: ${disruptionsFile}`);
-
+  writeDisruptions(city, acceptedAlerts);
   return acceptedAlerts;
 }
 
@@ -1569,7 +1718,8 @@ async function main() {
   }
   console.log(`Miasta: ${targetCities.join(', ')}`);
 
-  if (LLM_TARGETS.length === 0 && !DRY_RUN) {
+  const needsLlm = targetCities.some((city) => city !== 'warszawa');
+  if (needsLlm && LLM_TARGETS.length === 0 && !DRY_RUN) {
     console.error(`\n[!] Brak klucza OPENCODE_API_KEY i DEEPSEEK_API_KEY.`);
     process.exit(1);
   }
