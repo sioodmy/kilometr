@@ -51,13 +51,21 @@ export function rankWithFrecency(
       const remembered = byId.get(item.id) ?? byPlace.get(suggestionIdentity(item)) ?? item;
       const match = matches[index];
       const exact = normalizePolish(item.title) === normQuery;
-      const tier = exact
-        ? 3
-        : item.kind === 'stop' && match >= 80
-          ? 2
-          : wantsAddress && item.kind === 'address'
-            ? 1
-            : 0;
+      const isSaved = item.savedIcon != null;
+      const tier =
+        isSaved && match >= 65
+          ? exact
+            ? 4
+            : match >= 85
+              ? 3
+              : 2
+          : exact
+            ? 3
+            : item.kind === 'stop' && match >= 80
+              ? 2
+              : wantsAddress && item.kind === 'address'
+                ? 1
+                : 0;
       const usage = frecency(remembered, now);
       const bonus = 24 * usage / (usage + 4);
       const score =

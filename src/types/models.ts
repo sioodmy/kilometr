@@ -26,6 +26,8 @@ export interface Suggestion extends LatLon {
   stopM?: number;
   /** stop popularity: departures served (drives stop ranking) */
   weight?: number;
+  /** Ikona zapisanego miejsca użytkownika (gdy podpowiedź pochodzi z zapisanych miejsc). */
+  savedIcon?: SavedPlaceIcon;
   /** Wygaszana częstotliwość wyborów, zapisywana tylko w historii wyszukiwania. */
   searchUsage?: { score: number; lastUsedAt: number };
 }
