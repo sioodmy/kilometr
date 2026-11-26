@@ -175,10 +175,18 @@ export const SearchService: ISearchService = {
       };
       const addressIndexWarm = hasOfflineAddressIndex();
       let localBatchDone = false;
+      let earlyAddressPublish = false;
       const addressesTask = addressesPromise.then((hits) => {
         if (completed || ctrl.signal.aborted || cityId !== getActiveCityIdSync()) return;
         addresses = hits;
-        if (localBatchDone) schedulePublish();
+        if (localBatchDone) {
+          schedulePublish();
+        } else if (hits.length) {
+          // Adresy są niezależne od POI: pokazujemy je od razu, zamiast
+          // czekać na wolniejsze źródła.
+          earlyAddressPublish = true;
+          schedulePublish();
+        }
         if (!hits.length && q.length >= 4 && hasOfflineAddressIndex()) {
           fuzzyPromise = searchFuzzyAddresses();
         }
@@ -224,8 +232,9 @@ export const SearchService: ISearchService = {
         !addresses.length &&
         allowRemote &&
         (isAddressWithNumber || local.length < 5);
-      // Publikujemy lokalny pakiet raz, tylko gdy czekamy jeszcze na fuzzy albo Nominatim.
-      if ((fuzzyPromise || willFetchRemote) && local.length) {
+      // Publikujemy lokalny pakiet raz, gdy czekamy jeszcze na fuzzy albo Nominatim.
+      // Jeśli adresy wyszły wcześniej, doliczamy do nich resztę źródeł.
+      if (earlyAddressPublish || ((fuzzyPromise || willFetchRemote) && local.length)) {
         onPartial?.(rank(merge([]), history));
       }
       if (fuzzyPromise) await fuzzyPromise;
