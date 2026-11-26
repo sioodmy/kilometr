@@ -67,6 +67,8 @@ interface LiveVehiclesMapProps {
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
+  onRendered?: () => void;
+  onReloading?: () => void;
 }
 
 /** Mapa wszystkich aktywnych pojazdów live, przystanków i korytarzy utrudnień. */
@@ -100,6 +102,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       onTilesStatus,
       onError,
       onReady,
+      onRendered,
+      onReloading,
     },
     ref,
   ) {
@@ -192,8 +196,9 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     const restart = useCallback(() => {
       firstLoad.current = true;
       readyRef.current = false;
+      onReloading?.();
       setAttempt((a) => a + 1);
-    }, []);
+    }, [onReloading]);
 
     useImperativeHandle(
       ref,
@@ -301,6 +306,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           onReady?.();
           return;
         }
+        if (msg.t === 'rendered') {
+          onRendered?.();
+          return;
+        }
         if (msg.t === 'select') {
           onSelectVehicle?.(msg.vehicleId);
           return;
@@ -349,6 +358,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         onClearSelection,
         onError,
         onReady,
+        onRendered,
         onSelectDelay,
         onSelectDisruption,
         onSelectStop,
