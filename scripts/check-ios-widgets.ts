@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import Module, { createRequire } from 'node:module';
 import { pl } from '../src/i18n/pl';
 import { de } from '../src/i18n/de';
-import { setLocaleInternal } from '../src/i18n/locale';
+import { loadLocaleDict, setLocaleInternal } from '../src/i18n/locale';
 
 const require = createRequire(import.meta.url);
 const files = new Map<string, string>();
@@ -101,6 +101,7 @@ async function main() {
   );
   assert.equal(androidReloads, 0, 'iOS never calls the Android reload method');
 
+  await loadLocaleDict('de');
   setLocaleInternal('de', 'de');
   await mergeWidgetSnapshot({});
   const translated = JSON.parse(shared.at(-1)!);

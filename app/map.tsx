@@ -39,6 +39,8 @@ import { SpringPressable } from '../src/components/SpringPressable';
 import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
+import { getPlannedConnection } from '../src/services/api';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import { liveTracker } from '../src/services/liveTracker';
 import { isLegRunning, matchVehicleToLeg, type LegVehicleMatch } from '../src/services/liveVehicle';
 import {
@@ -98,7 +100,10 @@ export default function RouteMapScreen() {
   const id = normalizeConnectionId(routeId ?? '');
 
   const { location: userLoc } = useCurrentLocation(true, false);
-  const [loadedItem, setItem] = useState<Connection | null>(null);
+  const transitionSettled = useScreenTransitionSettled();
+  const [loadedItem, setItem] = useState<Connection | null>(() =>
+    id ? (getPlannedConnection(id) ?? null) : null,
+  );
   const { trip: trackedTrip } = useTrackedTrip();
   const trackedConnection =
     trackedTrip?.connection.id === String(id) ? trackedTrip.connection : null;
@@ -282,6 +287,7 @@ export default function RouteMapScreen() {
   // ─── Zestaw mapy offline ──────────────────────────────────────
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   useEffect(() => {
+    if (!transitionSettled) return;
     let cancelled = false;
     let release: (() => void) | null = null;
     (async () => {
@@ -298,10 +304,10 @@ export default function RouteMapScreen() {
       cancelled = true;
       release?.();
     };
-  }, [markTilesOk, route]);
+  }, [markTilesOk, route, transitionSettled]);
 
   useEffect(() => {
-    if (!route) return;
+    if (!transitionSettled || !route) return;
     let cancelled = false;
     const abort = new AbortController();
     geometryRef.current.clear();
@@ -325,7 +331,7 @@ export default function RouteMapScreen() {
       cancelled = true;
       abort.abort();
     };
-  }, [route, pushGeometry]);
+  }, [route, pushGeometry, transitionSettled]);
 
   const handleMapReady = useCallback(() => {
     geometryRef.current.forEach((coords, legId) => {
@@ -338,7 +344,7 @@ export default function RouteMapScreen() {
 
   // ─── Pojazd na żywo ───────────────────────────────────────────
   useEffect(() => {
-    if (!item) return;
+    if (!transitionSettled || !item) return;
     let cancelled = false;
 
     const update = () => {
@@ -423,7 +429,7 @@ export default function RouteMapScreen() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [item, route, trackedConnection]);
+  }, [item, route, trackedConnection, transitionSettled]);
 
   // Automatyczne podążanie kamery za pojazdem live, dopóki użytkownik nie przesunie mapy.
   useEffect(() => {
@@ -674,7 +680,7 @@ export default function RouteMapScreen() {
 
   return (
     <View style={styles.root}>
-      {offlineBase !== undefined ? (
+      {transitionSettled && offlineBase !== undefined ? (
         <RouteMap
           ref={mapRef}
           route={route}
@@ -1123,7 +1129,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1139,7 +1145,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -1171,7 +1177,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -1218,7 +1224,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -1277,7 +1283,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -1287,7 +1293,7 @@ const styles = StyleSheet.create({
     bottom: 16,
     maxWidth: 820,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     paddingTop: 12,
     paddingBottom: 14,
@@ -1356,7 +1362,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1366,7 +1372,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1386,7 +1392,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minHeight: 64,
     borderRadius: 18,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainerHigh,
   },

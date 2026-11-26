@@ -68,6 +68,9 @@ function ModeIcon({
 }
 
 function strategyLabel(alt: TransferAlternative, currentLine: string | undefined, s: Strings): string {
+  if (alt.source === 'group' && alt.connection.transfers === 0) {
+    return s.transferGuard.strategyStayDirect(currentLine || alt.nextLine);
+  }
   if (alt.source === 'legSwap') return s.transferGuard.strategyLegSwap;
   if (alt.kind === 'stayOn') {
     return currentLine
@@ -707,7 +710,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    borderWidth: 2,
+    borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: scheme.outlineVariant,
     paddingTop: 10,
@@ -779,7 +782,7 @@ const styles = StyleSheet.create({
   corridorCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: 24,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 14,
@@ -858,7 +861,7 @@ const styles = StyleSheet.create({
     minWidth: 132,
     maxWidth: 190,
     gap: 3,
-    borderWidth: 2,
+    borderWidth: 1,
   },
   stripPillCurrent: {
     backgroundColor: scheme.primaryContainer,
@@ -998,7 +1001,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     borderRadius: 16,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     backgroundColor: scheme.surfaceContainer,
     flexDirection: 'row',

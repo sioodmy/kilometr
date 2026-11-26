@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import {
@@ -67,17 +68,31 @@ interface TransitStep {
   };
 }
 
-export function JourneyShareCard({ journey }: { journey: SharedConnection }) {
+const shareDateFormatters = new Map<string, Intl.DateTimeFormat>();
+function formatShareCardDate(isoDate: string, locale: string): string {
+  let formatter = shareDateFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    });
+    shareDateFormatters.set(locale, formatter);
+  }
+  return formatter.format(new Date(`${isoDate}T12:00:00Z`));
+}
+
+export const JourneyShareCard = memo(function JourneyShareCard({
+  journey,
+}: {
+  journey: SharedConnection;
+}) {
   const { share: s, city } = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const stacked = width / fontScale < 305;
 
-  const date = new Intl.DateTimeFormat(getLocaleSync(), {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  }).format(new Date(`${journey.date}T12:00:00Z`));
+  const date = formatShareCardDate(journey.date, getLocaleSync());
 
   const arrivalDay = Math.floor(journey.arrival / 1440);
   const totalMin = Math.max(1, journey.arrival - journey.departure);
@@ -517,14 +532,14 @@ export function JourneyShareCard({ journey }: { journey: SharedConnection }) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
     borderRadius: shape.extraLarge,
     overflow: 'hidden',
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     padding: 18,
     gap: 14,
@@ -554,7 +569,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     flexShrink: 1,
   },
@@ -589,7 +604,7 @@ const styles = StyleSheet.create({
   },
   transfersPill: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -679,7 +694,7 @@ const styles = StyleSheet.create({
   itineraryBox: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 20,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 14,

@@ -1,21 +1,36 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withSpring,
+  type AnimatedStyle,
 } from 'react-native-reanimated';
-import { Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
+import { AltRoute, ChevronRight, Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
 import { hapticTap } from '../services/haptics';
 import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
+import type { ConnectionGroupOption } from '../services/routing/connectionGroups';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
+import { VariantLegChain } from './VariantLegChain';
 import { DirectionsWalk } from './DirectionsWalk';
 import { LiveSensors } from './LiveDot';
 import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionPeek';
 import { RailAlertsChip } from './RailAlertsChip';
+import { useRouteCardTransition } from './RouteCardTransition';
+import type { CardSurfaceVariant, TransitionRect } from './routeCardTransitionMath';
 import {
   formatDistance,
   formatWalkTime,
@@ -38,7 +53,6 @@ import {
 import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const PRESS_SPRING = motion.spring.press;
 const DASH_COUNT = 20;
 const DASH_INDICES = Array.from({ length: DASH_COUNT }, (_, i) => i);
@@ -70,12 +84,14 @@ type BarSegment =
   | { key: string; kind: 'longWalk'; min: number }
   | { key: string; kind: 'riskTight' | 'riskCritical'; min: number };
 
-export function JourneyStrip({
+export const JourneyStrip = memo(function JourneyStrip({
   insights,
   dimmed = false,
+  interactive = true,
 }: {
   insights: ConnectionInsights;
   dimmed?: boolean;
+  interactive?: boolean;
 }) {
   const s = useStrings();
   const { width } = useWindowDimensions();
@@ -84,10 +100,14 @@ export function JourneyStrip({
   const contentWRef = useRef(0);
   const [stripOverflows, setStripOverflows] = useState(false);
 
-  const syncStripOverflow = useCallback((boxW: number, contentW: number) => {
-    const next = boxW > 0 && contentW > boxW + 2;
-    setStripOverflows((prev) => (prev === next ? prev : next));
-  }, []);
+  const syncStripOverflow = useCallback(
+    (boxW: number, contentW: number) => {
+      if (!interactive) return;
+      const next = boxW > 0 && contentW > boxW + 2;
+      setStripOverflows((prev) => (prev === next ? prev : next));
+    },
+    [interactive],
+  );
 
   if (insights.transitLegs.length === 0) return null;
 
@@ -155,6 +175,49 @@ export function JourneyStrip({
     });
   }
 
+  const stripItems = steps.map((step) => {
+    if (step.kind === 'leg') {
+      return (
+        <LineBadge
+          key={step.key}
+          leg={step.leg}
+          compact
+          maxWidth={Math.min(width, 640) - 128}
+        />
+      );
+    }
+
+    if (step.kind === 'risk') {
+      const critical = step.risk.level === 'critical';
+      const fg = critical ? scheme.onErrorContainer : scheme.onWarningContainer;
+      const timeLabel = step.risk.slackMin <= 0 ? "<1'" : `${step.risk.slackMin}'`;
+      return (
+        <View
+          key={step.key}
+          style={[
+            styles.riskConnector,
+            critical ? styles.riskConnectorCritical : styles.riskConnectorTight,
+          ]}
+        >
+          <TriangleAlert size={11} color={fg} />
+          {step.walkMin > 0 && <DirectionsWalk size={12} color={fg} />}
+          <Text style={[styles.riskConnectorText, { color: fg }]}>{timeLabel}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View key={step.key} style={styles.walkStep}>
+        <DirectionsWalk size={13} color={scheme.onSurfaceVariant} />
+        <Text style={styles.walkMinutes}>{`${step.walkMin}'`}</Text>
+      </View>
+    );
+  });
+
+  // Większość kart ma 1-2 etapy i nigdy nie przelewa szerokości: zwykły View
+  // omija montaż natywnego HorizontalScrollView i podwójny layout pass w FlatList.
+  const needsHorizontalScroll = interactive && (steps.length > 2 || pinFinalWalk);
+
   return (
     <View
       style={[styles.stripSurface, dimmed && styles.stripSurfaceDimmed]}
@@ -162,62 +225,29 @@ export function JourneyStrip({
       importantForAccessibility="no-hide-descendants"
     >
       <View style={styles.stripTopRow}>
-        <ScrollView
-          horizontal
-          style={styles.stripScroll}
-          contentContainerStyle={styles.stripContent}
-          showsHorizontalScrollIndicator={false}
-          scrollEnabled={stripOverflows}
-          nestedScrollEnabled={stripOverflows}
-          onLayout={(event) => {
-            const w = event.nativeEvent.layout.width;
-            boxWRef.current = w;
-            syncStripOverflow(w, contentWRef.current);
-          }}
-          onContentSizeChange={(w) => {
-            contentWRef.current = w;
-            syncStripOverflow(boxWRef.current, w);
-          }}
-        >
-          {steps.map((step) => {
-            if (step.kind === 'leg') {
-              return (
-                <LineBadge
-                  key={step.key}
-                  leg={step.leg}
-                  compact
-                  maxWidth={Math.min(width, 640) - 128}
-                />
-              );
-            }
-
-            if (step.kind === 'risk') {
-              const critical = step.risk.level === 'critical';
-              const fg = critical ? scheme.onErrorContainer : scheme.onWarningContainer;
-              const timeLabel = step.risk.slackMin <= 0 ? "<1'" : `${step.risk.slackMin}'`;
-              return (
-                <View
-                  key={step.key}
-                  style={[
-                    styles.riskConnector,
-                    critical ? styles.riskConnectorCritical : styles.riskConnectorTight,
-                  ]}
-                >
-                  <TriangleAlert size={11} color={fg} />
-                  {step.walkMin > 0 && <DirectionsWalk size={12} color={fg} />}
-                  <Text style={[styles.riskConnectorText, { color: fg }]}>{timeLabel}</Text>
-                </View>
-              );
-            }
-
-            return (
-              <View key={step.key} style={styles.walkStep}>
-                <DirectionsWalk size={13} color={scheme.onSurfaceVariant} />
-                <Text style={styles.walkMinutes}>{`${step.walkMin}'`}</Text>
-              </View>
-            );
-          })}
-        </ScrollView>
+        {needsHorizontalScroll ? (
+          <ScrollView
+            horizontal
+            style={styles.stripScroll}
+            contentContainerStyle={styles.stripContent}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={stripOverflows}
+            nestedScrollEnabled={stripOverflows}
+            onLayout={(event) => {
+              const w = event.nativeEvent.layout.width;
+              boxWRef.current = w;
+              syncStripOverflow(w, contentWRef.current);
+            }}
+            onContentSizeChange={(w) => {
+              contentWRef.current = w;
+              syncStripOverflow(boxWRef.current, w);
+            }}
+          >
+            {stripItems}
+          </ScrollView>
+        ) : (
+          <View style={[styles.stripScroll, styles.stripContent]}>{stripItems}</View>
+        )}
 
         {pinFinalWalk && (
           <View style={styles.pinnedFinalWalk}>
@@ -275,28 +305,11 @@ export function JourneyStrip({
       )}
     </View>
   );
-}
+});
 
-export const ConnectionCard = memo(function ConnectionCard({
-  item,
-  onPress,
-  dimmed = false,
-  tick = 0,
-  peek,
-}: {
-  item: Connection;
-  onPress: (item: Connection) => void;
-  /** historyczne (przeszłe) połączenie: przygaszony wygląd tła karty */
-  dimmed?: boolean;
-  /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
-  tick?: number;
-  peek?: ConnectionPeekHandlers;
-}) {
+function useConnectionCardModel(item: Connection, dimmed: boolean, tick: number) {
   const s = useStrings();
   const { width, fontScale } = useWindowDimensions();
-  const reduceMotion = useReducedMotion();
-  const [focused, setFocused] = useState(false);
-  const press = useSharedValue(0);
 
   const verticalTimes = (width - 64) / fontScale < 148;
   const walkMps = useWalkSpeedMps();
@@ -403,6 +416,434 @@ export const ConnectionCard = memo(function ConnectionCard({
     .filter(Boolean)
     .join('. ');
 
+  const showLongWalkStyle = insights.hasLongDestinationWalk && !dimmed && !item.boarded;
+  const surfaceVariant: CardSurfaceVariant = dimmed
+    ? 'past'
+    : item.boarded
+      ? 'boarded'
+      : showLongWalkStyle
+        ? 'longWalk'
+        : 'default';
+
+  return {
+    s,
+    fontScale,
+    verticalTimes,
+    walkOnly,
+    insights,
+    departAt,
+    notice,
+    scheduledDeparture,
+    walkM,
+    departureText,
+    showLiveOnTime,
+    showDelayPill,
+    departureColor,
+    contextRightText,
+    accessibilityDesc,
+    showLongWalkStyle,
+    surfaceVariant,
+  };
+}
+
+type ConnectionCardModel = ReturnType<typeof useConnectionCardModel>;
+
+function ConnectionCardBody({
+  item,
+  dimmed,
+  model,
+  interactive = true,
+  onStripLayout,
+  stripAnimatedStyle,
+}: {
+  item: Connection;
+  dimmed: boolean;
+  model: ConnectionCardModel;
+  interactive?: boolean;
+  onStripLayout?: (event: LayoutChangeEvent) => void;
+  stripAnimatedStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
+}) {
+  const {
+    s,
+    fontScale,
+    verticalTimes,
+    walkOnly,
+    insights,
+    departAt,
+    notice,
+    scheduledDeparture,
+    walkM,
+    departureText,
+    showLiveOnTime,
+    showDelayPill,
+    departureColor,
+    contextRightText,
+  } = model;
+
+  return (
+    <>
+      <View style={styles.headerRow}>
+        <View style={styles.headerLeft}>
+          <Text style={[styles.departure, { color: departureColor }]}>
+            {walkOnly ? s.connection.walkRoute : departureText}
+          </Text>
+
+          {showLiveOnTime && (
+            <View style={styles.onTimePill}>
+              <LiveSensors
+                size={13}
+                color={scheme.onSuccessContainer}
+                pulse={false}
+              />
+              <Text style={styles.onTimePillText}>{s.connection.onTimeBadge}</Text>
+            </View>
+          )}
+
+          {showDelayPill && (
+            <View
+              style={[
+                styles.delayPill,
+                item.delayMin > 0 ? styles.delayPillLate : styles.delayPillEarly,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.delayPillText,
+                  {
+                    color:
+                      item.delayMin > 0 ? scheme.onErrorContainer : scheme.onWarningContainer,
+                  },
+                ]}
+              >
+                {item.delayMin > 0 ? `+${item.delayMin} min` : `${item.delayMin} min`}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.headerRight}>
+          <RailAlertsChip connection={item} dimmed={dimmed} />
+          <View style={[styles.durationPill, dimmed && styles.durationPillDimmed]}>
+            <Text style={[styles.durationText, dimmed && styles.durationTextDimmed]}>
+              {s.common.durMin(item.durationMin)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.timeRow, fontScale > 1.3 && styles.timeRowStacked]}>
+        <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
+          <Text style={[styles.departClock, dimmed && styles.textDimmed]}>{departAt}</Text>
+          {verticalTimes ? (
+            <M3SolidArrowDown
+              size={15}
+              color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
+            />
+          ) : (
+            <M3SolidArrowRight
+              size={15}
+              width={22}
+              color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
+            />
+          )}
+          <Text style={[styles.arriveClock, dimmed && styles.textDimmed]}>{item.arriveAt}</Text>
+          {scheduledDeparture != null && item.live && item.delayMin !== 0 && (
+            <Text style={styles.plannedInline}>
+              {s.connection.plannedShort(secondsToTimeString(scheduledDeparture))}
+            </Text>
+          )}
+        </View>
+
+        <Text
+          style={styles.contextRight}
+          numberOfLines={fontScale > 1.3 ? 2 : 1}
+          ellipsizeMode="tail"
+        >
+          {contextRightText}
+        </Text>
+      </View>
+
+      {walkOnly ? (
+        <View
+          style={[
+            styles.walkOnlyBox,
+            insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyBoxLong,
+            dimmed && styles.stripSurfaceDimmed,
+          ]}
+        >
+          <View
+            style={[
+              styles.walkIconBadge,
+              insights.hasLongDestinationWalk && !dimmed && styles.walkIconBadgeLong,
+            ]}
+          >
+            <Footprints
+              size={16}
+              color={
+                insights.hasLongDestinationWalk && !dimmed
+                  ? scheme.onWarningContainer
+                  : scheme.onSurfaceVariant
+              }
+            />
+          </View>
+          <Text
+            style={[
+              styles.walkOnlyLabel,
+              insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyLabelLong,
+            ]}
+          >
+            {s.connection.walkAll}
+            {walkM != null && walkM > 0 ? ` · ${formatDistance(walkM)}` : ''}
+          </Text>
+        </View>
+      ) : insights.transitLegs.length > 0 ? (
+        stripAnimatedStyle ? (
+          <Animated.View style={stripAnimatedStyle}>
+            <JourneyStrip insights={insights} dimmed={dimmed} interactive={interactive} />
+          </Animated.View>
+        ) : onStripLayout ? (
+          <View collapsable={false} onLayout={onStripLayout}>
+            <JourneyStrip insights={insights} dimmed={dimmed} interactive={interactive} />
+          </View>
+        ) : (
+          <JourneyStrip insights={insights} dimmed={dimmed} interactive={interactive} />
+        )
+      ) : null}
+
+      {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
+    </>
+  );
+}
+
+/** Zgrupowane warianty przesiadkowe współdzielące pierwszy kurs karty głównej. */
+const ConnectionCardVariants = memo(function ConnectionCardVariants({
+  alternatives,
+  primaryLines,
+  dimmed,
+  interactive = true,
+  onSelect,
+}: {
+  alternatives: ConnectionGroupOption[];
+  primaryLines: string[];
+  dimmed: boolean;
+  interactive?: boolean;
+  onSelect?: (connection: Connection) => void;
+}) {
+  const s = useStrings();
+  const primaryLineSet = useMemo(() => new Set(primaryLines), [primaryLines]);
+  if (alternatives.length === 0) return null;
+
+  return (
+    <View style={styles.variantsSection}>
+      <View style={styles.variantsHeader}>
+        <Text style={styles.variantsHeading}>{s.connection.variantAlternativeHeading}</Text>
+        <View style={styles.variantsHeaderLine} />
+      </View>
+      <View style={styles.variantsBox}>
+        {alternatives.map((opt, idx) => {
+          const contTags = opt.continuationLegs
+            .map((leg) => leg.line || leg.mode)
+            .filter(Boolean);
+          const sameLineAsPrimary =
+            contTags.length > 0 && contTags.every((tag) => primaryLineSet.has(tag));
+          const showStopFallback = sameLineAsPrimary && Boolean(opt.firstTransferStop);
+
+          const chainLabel = opt.transitSteps
+            .map((step) => step.leg.line || step.leg.mode)
+            .filter(Boolean)
+            .join(', ');
+          const a11ySummary = showStopFallback
+            ? `${chainLabel}, ${opt.firstTransferStop}`
+            : chainLabel;
+          const a11yLabel = s.connection.variantCardA11y(a11ySummary, opt.connection.arriveAt);
+
+          const rowBody = (
+            <>
+              {opt.savedMin > 0 && (
+                <View style={styles.variantTopRow}>
+                  <AltRoute
+                    size={13}
+                    color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
+                  />
+                  <Text style={[styles.variantFasterText, dimmed && styles.textDimmed]}>
+                    {s.connection.variantFasterBy(opt.savedMin)}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.variantBottomRow}>
+                <View style={styles.variantLeft}>
+                  <VariantLegChain steps={opt.transitSteps} dimmed={dimmed} dense />
+                  {showStopFallback && (
+                    <View style={styles.variantStopChip}>
+                      <Text style={styles.variantStopChipText} numberOfLines={1}>
+                        {opt.firstTransferStop}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.variantRight}>
+                  <Text style={[styles.variantArrive, dimmed && styles.textDimmed]}>
+                    {opt.connection.arriveAt}
+                  </Text>
+                  <ChevronRight size={12} color={scheme.onSurfaceVariant} />
+                </View>
+              </View>
+            </>
+          );
+
+          if (!interactive) {
+            return (
+              <View
+                key={opt.connection.id}
+                style={[styles.variantRow, idx > 0 && styles.variantRowDivider]}
+              >
+                {rowBody}
+              </View>
+            );
+          }
+
+          return (
+            <Pressable
+              key={opt.connection.id}
+              onPress={() => {
+                hapticTap();
+                onSelect?.(opt.connection);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={a11yLabel}
+              style={({ pressed }) => [
+                styles.variantRow,
+                idx > 0 && styles.variantRowDivider,
+                pressed && styles.variantRowPressed,
+              ]}
+            >
+              {rowBody}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+});
+
+/** Nieinteraktywna kopia karty używana w kontenerowym przejściu do ekranu szczegółów. */
+export const ConnectionCardMorphPreview = memo(function ConnectionCardMorphPreview({
+  item,
+  dimmed = false,
+  stripAnimatedStyle,
+  alternatives,
+}: {
+  item: Connection;
+  dimmed?: boolean;
+  stripAnimatedStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
+  alternatives?: ConnectionGroupOption[];
+}) {
+  const model = useConnectionCardModel(item, dimmed, 0);
+  const hasAlts = (alternatives?.length ?? 0) > 0;
+  const primaryLines = useMemo(
+    () =>
+      item.legs
+        .filter((leg) => leg.mode !== 'walk')
+        .map((leg) => leg.line || leg.mode),
+    [item.legs],
+  );
+  return (
+    <View
+      style={[
+        styles.cardShell,
+        model.showLongWalkStyle && styles.longWalkCard,
+        item.boarded && styles.boardedCard,
+        dimmed && styles.pastCard,
+        styles.morphGhostCard,
+        item.boarded && styles.morphGhostBoardedTint,
+      ]}
+    >
+      <View style={[styles.primaryArea, hasAlts && styles.primaryAreaWithAlts]}>
+        <ConnectionCardBody
+          item={item}
+          dimmed={dimmed}
+          model={model}
+          interactive={false}
+          stripAnimatedStyle={stripAnimatedStyle}
+        />
+      </View>
+      {hasAlts && alternatives && (
+        <ConnectionCardVariants
+          alternatives={alternatives}
+          primaryLines={primaryLines}
+          dimmed={dimmed}
+          interactive={false}
+        />
+      )}
+    </View>
+  );
+});
+
+export const ConnectionCard = memo(function ConnectionCard({
+  item,
+  onPress,
+  dimmed = false,
+  tick = 0,
+  peek,
+  alternatives,
+  onSelectAlternative,
+}: {
+  item: Connection;
+  onPress: (item: Connection) => void;
+  /** historyczne (przeszłe) połączenie: przygaszony wygląd tła karty */
+  dimmed?: boolean;
+  /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
+  tick?: number;
+  peek?: ConnectionPeekHandlers;
+  alternatives?: ConnectionGroupOption[];
+  onSelectAlternative?: (connection: Connection) => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const transition = useRouteCardTransition();
+  const [focused, setFocused] = useState(false);
+  const press = useSharedValue(0);
+  const cardBoundsRef = useRef<View>(null);
+  const stripLocalRectRef = useRef<TransitionRect | null>(null);
+
+  const model = useConnectionCardModel(item, dimmed, tick);
+  const hasAlts = (alternatives?.length ?? 0) > 0;
+  const primaryLines = useMemo(
+    () =>
+      item.legs
+        .filter((leg) => leg.mode !== 'walk')
+        .map((leg) => leg.line || leg.mode),
+    [item.legs],
+  );
+  const variantRef = useRef<CardSurfaceVariant>(model.surfaceVariant);
+  variantRef.current = model.surfaceVariant;
+  const dimmedRef = useRef(dimmed);
+  dimmedRef.current = dimmed;
+
+  useEffect(() => {
+    if (!transition) return undefined;
+    return transition.registerCard(item.id, {
+      viewRef: cardBoundsRef,
+      getStripLocalRect: () => stripLocalRectRef.current,
+      getVariant: () => variantRef.current,
+      getDimmed: () => dimmedRef.current,
+    });
+  }, [item.id, transition]);
+
+  useEffect(() => {
+    if (model.walkOnly || model.insights.transitLegs.length === 0) {
+      stripLocalRectRef.current = null;
+    }
+  }, [model.insights.transitLegs.length, model.walkOnly]);
+
+  const handleStripLayout = useCallback((event: LayoutChangeEvent) => {
+    const { x, y, width, height } = event.nativeEvent.layout;
+    if (width > 0 && height > 0) {
+      stripLocalRectRef.current = { x, y, width, height };
+    }
+  }, []);
+
   const animatedCardStyle = useAnimatedStyle(() => {
     if (reduceMotion) return {};
     return {
@@ -424,170 +865,182 @@ export const ConnectionCard = memo(function ConnectionCard({
     onPress(item);
   }, [item, onPress]);
 
-  const showLongWalkStyle = insights.hasLongDestinationWalk && !dimmed && !item.boarded;
-
   return (
-    <ConnectionPeekTarget item={item} handlers={peek}>
-        <AnimatedPressable
-          collapsable={false}
-          unstable_pressDelay={55}
-          onPress={handlePress}
-          onPressIn={() => setPress(1)}
-          onPressOut={() => setPress(0)}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityDesc}
-          accessibilityHint={peek ? s.connection.previewHint : undefined}
-          accessibilityActions={
-            peek
-              ? [{ name: 'activate' }, { name: 'longpress', label: s.connection.previewTitle }]
-              : undefined
-          }
-          onAccessibilityTap={handlePress}
-          onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
-            if (event.nativeEvent.actionName === 'activate') handlePress();
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={[
-            styles.card,
-            showLongWalkStyle && styles.longWalkCard,
-            item.boarded && styles.boardedCard,
-            dimmed && styles.pastCard,
-            focused && styles.focused,
-            animatedCardStyle,
-          ]}
-        >
-          <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
-              <Text style={[styles.departure, { color: departureColor }]}>
-                {walkOnly ? s.connection.walkRoute : departureText}
-              </Text>
+    <View ref={cardBoundsRef} collapsable={false}>
+      <Animated.View
+        style={[
+          styles.cardShell,
+          model.showLongWalkStyle && styles.longWalkCard,
+          item.boarded && styles.boardedCard,
+          dimmed && styles.pastCard,
+          focused && styles.focused,
+          animatedCardStyle,
+        ]}
+      >
+        <ConnectionPeekTarget item={item} handlers={peek}>
+          <Pressable
+            collapsable={false}
+            unstable_pressDelay={55}
+            onPress={handlePress}
+            onPressIn={() => setPress(1)}
+            onPressOut={() => setPress(0)}
+            accessibilityRole="button"
+            accessibilityLabel={model.accessibilityDesc}
+            accessibilityHint={peek ? model.s.connection.previewHint : undefined}
+            accessibilityActions={
+              peek
+                ? [{ name: 'activate' }, { name: 'longpress', label: model.s.connection.previewTitle }]
+                : undefined
+            }
+            onAccessibilityTap={handlePress}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
+              if (event.nativeEvent.actionName === 'activate') handlePress();
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={[styles.primaryArea, hasAlts && styles.primaryAreaWithAlts]}
+          >
+            <ConnectionCardBody
+              item={item}
+              dimmed={dimmed}
+              model={model}
+              onStripLayout={handleStripLayout}
+            />
+          </Pressable>
+        </ConnectionPeekTarget>
 
-              {showLiveOnTime && (
-                <View style={styles.onTimePill}>
-                  <LiveSensors size={13} color={scheme.onSuccessContainer} pulse={!dimmed} />
-                  <Text style={styles.onTimePillText}>{s.connection.onTimeBadge}</Text>
-                </View>
-              )}
-
-              {showDelayPill && (
-                <View
-                  style={[
-                    styles.delayPill,
-                    item.delayMin > 0 ? styles.delayPillLate : styles.delayPillEarly,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.delayPillText,
-                      {
-                        color:
-                          item.delayMin > 0 ? scheme.onErrorContainer : scheme.onWarningContainer,
-                      },
-                    ]}
-                  >
-                    {item.delayMin > 0 ? `+${item.delayMin} min` : `${item.delayMin} min`}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.headerRight}>
-              <RailAlertsChip connection={item} dimmed={dimmed} />
-              <View style={[styles.durationPill, dimmed && styles.durationPillDimmed]}>
-                <Text style={[styles.durationText, dimmed && styles.durationTextDimmed]}>
-                  {s.common.durMin(item.durationMin)}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={[styles.timeRow, fontScale > 1.3 && styles.timeRowStacked]}>
-            <View style={[styles.timeRange, verticalTimes && styles.timeRangeStacked]}>
-              <Text style={[styles.departClock, dimmed && styles.textDimmed]}>{departAt}</Text>
-              {verticalTimes ? (
-                <M3SolidArrowDown
-                  size={15}
-                  color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
-                />
-              ) : (
-                <M3SolidArrowRight
-                  size={15}
-                  width={22}
-                  color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
-                />
-              )}
-              <Text style={[styles.arriveClock, dimmed && styles.textDimmed]}>{item.arriveAt}</Text>
-              {scheduledDeparture != null && item.live && item.delayMin !== 0 && (
-                <Text style={styles.plannedInline}>
-                  {s.connection.plannedShort(secondsToTimeString(scheduledDeparture))}
-                </Text>
-              )}
-            </View>
-
-            <Text
-              style={styles.contextRight}
-              numberOfLines={fontScale > 1.3 ? 2 : 1}
-              ellipsizeMode="tail"
-            >
-              {contextRightText}
-            </Text>
-          </View>
-
-          {walkOnly ? (
-            <View
-              style={[
-                styles.walkOnlyBox,
-                insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyBoxLong,
-                dimmed && styles.stripSurfaceDimmed,
-              ]}
-            >
-              <View
-                style={[
-                  styles.walkIconBadge,
-                  insights.hasLongDestinationWalk && !dimmed && styles.walkIconBadgeLong,
-                ]}
-              >
-                <Footprints
-                  size={16}
-                  color={
-                    insights.hasLongDestinationWalk && !dimmed
-                      ? scheme.onWarningContainer
-                      : scheme.onSurfaceVariant
-                  }
-                />
-              </View>
-              <Text
-                style={[
-                  styles.walkOnlyLabel,
-                  insights.hasLongDestinationWalk && !dimmed && styles.walkOnlyLabelLong,
-                ]}
-              >
-                {s.connection.walkAll}
-                {walkM != null && walkM > 0 ? ` · ${formatDistance(walkM)}` : ''}
-              </Text>
-            </View>
-          ) : insights.transitLegs.length > 0 ? (
-            <JourneyStrip insights={insights} dimmed={dimmed} />
-          ) : null}
-
-          {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
-      </AnimatedPressable>
-    </ConnectionPeekTarget>
+        {hasAlts && alternatives && (
+          <ConnectionCardVariants
+            alternatives={alternatives}
+            primaryLines={primaryLines}
+            dimmed={dimmed}
+            onSelect={onSelectAlternative ?? onPress}
+          />
+        )}
+      </Animated.View>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
-  card: {
+  cardShell: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
+    ...elev.level1,
+  },
+  primaryArea: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 10,
-    ...elev.level1,
+  },
+  primaryAreaWithAlts: {
+    paddingBottom: 8,
+  },
+  variantsSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  variantsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  variantsHeading: {
+    ...type.labelSmall,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+  },
+  variantsHeaderLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: scheme.outlineVariant + '80',
+  },
+  variantsBox: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant + '85',
+    overflow: 'hidden',
+  },
+  variantRow: {
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 5,
+  },
+  variantRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant + '55',
+  },
+  variantRowPressed: {
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
+  variantTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  variantFasterText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: scheme.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  variantBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  variantLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingLeft: 7,
+  },
+  variantStopChip: {
+    maxWidth: 132,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
+  variantStopChipText: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  variantRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    flexShrink: 0,
+  },
+  variantArrive: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
+  },
+  morphGhostCard: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  morphGhostBoardedTint: {
+    backgroundColor: scheme.primaryContainer + '35',
   },
   boardedCard: {
     backgroundColor: scheme.primaryContainer + '35',
@@ -747,7 +1200,7 @@ const styles = StyleSheet.create({
   stripSurface: {
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -857,7 +1310,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: 18,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 10,

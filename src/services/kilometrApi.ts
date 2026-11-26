@@ -6,7 +6,7 @@ import type { Connection } from '../types/models';
 import { KILOMETR_API } from './gtfsConfig';
 import { withTimeout } from './net';
 import { kvGet, kvSet } from './storage';
-import type { RawVehicleRow, TrackedVehicle } from './liveTracker';
+import type { RawVehicleRow } from './liveTracker';
 import type { ZbKdVehicle } from './zbiorkom';
 
 export type ViewportBbox = [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
@@ -32,24 +32,7 @@ export interface BackendDelayIntel {
   byLine: Map<string, BackendLineDelayProfile>;
 }
 
-interface DelayHeatmapZone {
-  id: string;
-  lat: number;
-  lon: number;
-  radiusM: number;
-  avgDelaySec: number;
-  maxDelaySec: number;
-  p90DelaySec: number;
-  intensity: number;
-  severity: 'moderate' | 'heavy' | 'severe';
-  vehicleCount: number;
-  delayedCount: number;
-  topLines: string[];
-  hubName?: string;
-  typicalDelaySec?: number;
-}
-
-interface DelayHubSummary {
+export interface DelayHubSummary {
   id: string;
   name: string;
   lat: number;
@@ -63,21 +46,6 @@ interface DelayHubSummary {
   topLines: string[];
   typicalDelaySec?: number;
   deltaVsTypicalSec?: number;
-}
-
-export interface DelayHeatmapData {
-  city: string;
-  updatedAt: number;
-  source: 'backend' | 'local';
-  zones: DelayHeatmapZone[];
-  hubs: DelayHubSummary[];
-  summary: {
-    activeVehicles: number;
-    delayedVehicles: number;
-    avgDelaySec: number;
-    p90DelaySec: number;
-    hottestHub?: string;
-  };
 }
 
 export interface SharedLiveLegInput {
@@ -250,6 +218,11 @@ export function isKilometrApiAvailable(now = Date.now()): boolean {
   return now >= circuitOpenUntil;
 }
 
+/** Sam stan obwodu, niezależny od tego, czy domyślny host jest włączony. */
+function circuitAllows(now = Date.now()): boolean {
+  return now >= circuitOpenUntil;
+}
+
 function recordSuccess(): void {
   consecutiveFailures = 0;
   circuitOpenUntil = 0;
@@ -354,7 +327,7 @@ async function fetchJson<T>(
   init?: RequestInit,
   baseUrl = KILOMETR_API.baseUrl,
 ): Promise<T | null> {
-  if (!isKilometrApiAvailable()) return null;
+  if (!baseUrl || !circuitAllows()) return null;
   const externalSignal = init?.signal;
   const timeout = withTimeout(timeoutMs, externalSignal);
   try {
@@ -554,36 +527,18 @@ export async function fetchBackendLineDelays(
   return task;
 }
 
-/** Pobiera mapę stref opóźnień i węzłów dla widoku mapy live. */
-export async function fetchBackendHeatmap(
+/** Pobiera podsumowania węzłów opóźnień (w tym normy historyczne) z backendu dla wzbogacenia korytarzy live. */
+export async function fetchBackendDelayHubs(
   cityId: string,
   bbox?: ViewportBbox | null,
   signal?: AbortSignal,
   baseUrl?: string,
-): Promise<DelayHeatmapData | null> {
+): Promise<DelayHubSummary[] | null> {
   const params = new URLSearchParams();
   params.set('city', cityId);
   if (bbox) params.set('bbox', bbox.map((n) => n.toFixed(5)).join(','));
 
   const raw = await fetchJson<{
-    city?: string;
-    updated_at?: number;
-    zones?: Array<{
-      id: string;
-      lat: number;
-      lon: number;
-      radius_m: number;
-      avg_delay_sec: number;
-      max_delay_sec: number;
-      p90_delay_sec: number;
-      intensity: number;
-      severity: 'moderate' | 'heavy' | 'severe';
-      vehicle_count: number;
-      delayed_count: number;
-      top_lines: string[];
-      hub_name?: string;
-      typical_delay_sec?: number;
-    }>;
     hubs?: Array<{
       id: string;
       name: string;
@@ -599,13 +554,6 @@ export async function fetchBackendHeatmap(
       typical_delay_sec?: number;
       delta_vs_typical_sec?: number;
     }>;
-    summary?: {
-      active_vehicles: number;
-      delayed_vehicles: number;
-      avg_delay_sec: number;
-      p90_delay_sec: number;
-      hottest_hub?: string;
-    };
   }>(
     `/v1/delays/heatmap?${params.toString()}`,
     KILOMETR_API.analyticsTimeoutMs,
@@ -613,255 +561,23 @@ export async function fetchBackendHeatmap(
     baseUrl,
   );
 
-  if (!raw || !Array.isArray(raw.zones) || !Array.isArray(raw.hubs)) return null;
-  if ((raw.summary?.active_vehicles ?? 0) === 0 && raw.zones.length === 0) return null;
+  if (!raw || !Array.isArray(raw.hubs)) return null;
 
-  return {
-    city: raw.city ?? cityId,
-    updatedAt: raw.updated_at ?? Date.now(),
-    source: 'backend',
-    zones: raw.zones.map((z) => ({
-      id: z.id,
-      lat: z.lat,
-      lon: z.lon,
-      radiusM: z.radius_m,
-      avgDelaySec: z.avg_delay_sec,
-      maxDelaySec: z.max_delay_sec,
-      p90DelaySec: z.p90_delay_sec,
-      intensity: z.intensity,
-      severity: z.severity,
-      vehicleCount: z.vehicle_count,
-      delayedCount: z.delayed_count,
-      topLines: z.top_lines ?? [],
-      hubName: z.hub_name,
-      typicalDelaySec: z.typical_delay_sec,
-    })),
-    hubs: raw.hubs.map((h) => ({
-      id: h.id,
-      name: h.name,
-      lat: h.lat,
-      lon: h.lon,
-      avgDelaySec: h.avg_delay_sec,
-      p90DelaySec: h.p90_delay_sec,
-      maxDelaySec: h.max_delay_sec,
-      vehicleCount: h.vehicle_count,
-      delayedCount: h.delayed_count,
-      severity: h.severity,
-      topLines: h.top_lines ?? [],
-      typicalDelaySec: h.typical_delay_sec,
-      deltaVsTypicalSec: h.delta_vs_typical_sec,
-    })),
-    summary: {
-      activeVehicles: raw.summary?.active_vehicles ?? 0,
-      delayedVehicles: raw.summary?.delayed_vehicles ?? 0,
-      avgDelaySec: raw.summary?.avg_delay_sec ?? 0,
-      p90DelaySec: raw.summary?.p90_delay_sec ?? 0,
-      hottestHub: raw.summary?.hottest_hub,
-    },
-  };
-}
-
-/**
- * Lokalny generator stref opóźnień (safe fallback bez backendu):
- * grupuje świeże pojazdy z liveTrackera w tę samą siatkę ~350m i węzły,
- * dzięki czemu warstwa opóźnień M3 na mapie działa również bez VPS.
- */
-export function buildLocalDelayHeatmap(
-  vehicles: readonly TrackedVehicle[],
-  cityId: string,
-): DelayHeatmapData {
-  const LAT_STEP = 0.00315;
-  const LON_STEP = 0.005;
-  const LATE_SEC = 180;
-
-  const cells = new Map<
-    string,
-    {
-      sumLat: number;
-      sumLon: number;
-      delays: number[];
-      delayed: number;
-      lines: Map<string, number>;
-      hubVotes: Map<string, number>;
-    }
-  >();
-  const hubs = new Map<
-    string,
-    {
-      name: string;
-      sumLat: number;
-      sumLon: number;
-      delays: number[];
-      delayed: number;
-      lines: Map<string, number>;
-    }
-  >();
-
-  let activeVehicles = 0;
-  let delayedVehicles = 0;
-  const allDelays: number[] = [];
-
-  for (const v of vehicles) {
-    if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) continue;
-    activeVehicles += 1;
-    if (v.delaySec == null || !Number.isFinite(v.delaySec)) continue;
-    const pos = Math.max(0, v.delaySec);
-    allDelays.push(pos);
-    if (v.delaySec >= LATE_SEC) delayedVehicles += 1;
-
-    const clat = Math.floor(v.lat / LAT_STEP);
-    const clon = Math.floor(v.lon / LON_STEP);
-    const cellKey = `cell:${clat}:${clon}`;
-    let cell = cells.get(cellKey);
-    if (!cell) {
-      cell = {
-        sumLat: 0,
-        sumLon: 0,
-        delays: [],
-        delayed: 0,
-        lines: new Map(),
-        hubVotes: new Map(),
-      };
-      cells.set(cellKey, cell);
-    }
-    cell.sumLat += v.lat;
-    cell.sumLon += v.lon;
-    cell.delays.push(pos);
-    if (v.delaySec >= LATE_SEC) {
-      cell.delayed += 1;
-      cell.lines.set(v.line, (cell.lines.get(v.line) ?? 0) + 1);
-    }
-
-    const stopName = (v.currentStopName || v.nextStopName || '').trim();
-    if (stopName.length >= 2) {
-      cell.hubVotes.set(stopName, (cell.hubVotes.get(stopName) ?? 0) + 1);
-      const hubKey = stopName.toLowerCase();
-      let hub = hubs.get(hubKey);
-      if (!hub) {
-        hub = {
-          name: stopName,
-          sumLat: 0,
-          sumLon: 0,
-          delays: [],
-          delayed: 0,
-          lines: new Map(),
-        };
-        hubs.set(hubKey, hub);
-      }
-      hub.sumLat += v.lat;
-      hub.sumLon += v.lon;
-      hub.delays.push(pos);
-      if (v.delaySec >= LATE_SEC) {
-        hub.delayed += 1;
-        hub.lines.set(v.line, (hub.lines.get(v.line) ?? 0) + 1);
-      }
-    }
-  }
-
-  const pct = (sorted: number[], p: number): number => {
-    if (sorted.length === 0) return 0;
-    return sorted[Math.min(sorted.length - 1, Math.round((sorted.length - 1) * p))];
-  };
-
-  const classify = (avg: number, p90: number, delayed: number): 'normal' | 'moderate' | 'heavy' | 'severe' => {
-    if ((avg >= 420 && delayed >= 2) || avg >= 540 || (p90 >= 720 && delayed >= 2)) return 'severe';
-    if (avg >= 240 || (p90 >= 420 && delayed >= 2)) return 'heavy';
-    if (avg >= 120) return 'moderate';
-    return 'normal';
-  };
-
-  const zones: DelayHeatmapZone[] = [];
-  for (const [id, c] of cells) {
-    const n = c.delays.length;
-    if (n === 0) continue;
-    c.delays.sort((a, b) => a - b);
-    const avg = Math.round(c.delays.reduce((a, b) => a + b, 0) / n);
-    const maxD = c.delays[n - 1] ?? 0;
-    const p90 = pct(c.delays, 0.9);
-    if (avg < 120 && maxD < 240) continue;
-    const sev = classify(avg, p90, c.delayed);
-    if (sev === 'normal') continue;
-    const delayFactor = Math.max(0, Math.min(1, (avg - 90) / 510));
-    const corrob = c.lines.size >= 2 || c.delayed >= 2 ? 1.0 : maxD >= 360 ? 0.72 : 0.42;
-    const topLines = Array.from(c.lines.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([l]) => l);
-    let bestHub: string | undefined;
-    let bestHubVotes = 0;
-    for (const [name, count] of c.hubVotes) {
-      if (count > bestHubVotes) {
-        bestHubVotes = count;
-        bestHub = name;
-      }
-    }
-    zones.push({
-      id,
-      lat: c.sumLat / n,
-      lon: c.sumLon / n,
-      radiusM: sev === 'severe' ? 420 : 320,
-      avgDelaySec: avg,
-      maxDelaySec: maxD,
-      p90DelaySec: p90,
-      intensity: Math.round(Math.max(0.15, Math.min(1, delayFactor * corrob)) * 100) / 100,
-      severity: sev,
-      vehicleCount: n,
-      delayedCount: c.delayed,
-      topLines,
-      hubName: bestHub,
-    });
-  }
-  zones.sort((a, b) => b.intensity - a.intensity || b.avgDelaySec - a.avgDelaySec);
-
-  const hubList: DelayHubSummary[] = [];
-  for (const [key, h] of hubs) {
-    const n = h.delays.length;
-    if (n === 0) continue;
-    h.delays.sort((a, b) => a - b);
-    const avg = Math.round(h.delays.reduce((a, b) => a + b, 0) / n);
-    const maxD = h.delays[n - 1] ?? 0;
-    const p90 = pct(h.delays, 0.9);
-    const sev = classify(avg, p90, h.delayed);
-    if (sev === 'normal') continue;
-    hubList.push({
-      id: `hub:${key}`,
-      name: h.name,
-      lat: h.sumLat / n,
-      lon: h.sumLon / n,
-      avgDelaySec: avg,
-      p90DelaySec: p90,
-      maxDelaySec: maxD,
-      vehicleCount: n,
-      delayedCount: h.delayed,
-      severity: sev,
-      topLines: Array.from(h.lines.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6)
-        .map(([l]) => l),
-    });
-  }
-  hubList.sort((a, b) => b.avgDelaySec - a.avgDelaySec || b.delayedCount - a.delayedCount);
-
-  allDelays.sort((a, b) => a - b);
-  const avgAll =
-    allDelays.length > 0
-      ? Math.round(allDelays.reduce((a, b) => a + b, 0) / allDelays.length)
-      : 0;
-
-  return {
-    city: cityId,
-    updatedAt: Date.now(),
-    source: 'local',
-    zones: zones.slice(0, 100),
-    hubs: hubList.slice(0, 20),
-    summary: {
-      activeVehicles,
-      delayedVehicles,
-      avgDelaySec: avgAll,
-      p90DelaySec: pct(allDelays, 0.9),
-      hottestHub: hubList[0]?.name,
-    },
-  };
+  return raw.hubs.map((h) => ({
+    id: h.id,
+    name: h.name,
+    lat: h.lat,
+    lon: h.lon,
+    avgDelaySec: h.avg_delay_sec,
+    p90DelaySec: h.p90_delay_sec,
+    maxDelaySec: h.max_delay_sec,
+    vehicleCount: h.vehicle_count,
+    delayedCount: h.delayed_count,
+    severity: h.severity,
+    topLines: h.top_lines ?? [],
+    typicalDelaySec: h.typical_delay_sec,
+    deltaVsTypicalSec: h.delta_vs_typical_sec,
+  }));
 }
 
 /** Batchowe pobranie opóźnień live i estymacji dla udostępnionego połączenia lub trasy. */

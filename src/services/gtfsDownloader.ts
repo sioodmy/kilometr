@@ -14,16 +14,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { strFromU8, unzipSync } from 'fflate';
 import { GTFS } from './gtfsConfig';
 import { API_URL } from '../config';
-import { getLocaleSync, type Strings } from '../i18n';
-import { pl } from '../i18n/pl';
-import { en } from '../i18n/en';
-import { de } from '../i18n/de';
-import { uk } from '../i18n/uk';
-
-const DL_DICTS: Record<string, Strings> = { pl, en, de, uk };
+import { tr } from '../i18n/locale';
 
 function dlTr() {
-  return (DL_DICTS[getLocaleSync()] ?? pl).downloader;
+  return tr().downloader;
 }
 
 interface GtfsArchiveCandidate {

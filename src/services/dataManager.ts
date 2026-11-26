@@ -32,16 +32,10 @@ import { getTimetableDownloadGate, markTimetableDownloaded } from './downloadLim
 import { getActiveCityIdSync } from './cityStore';
 import { invalidateLocalTimetableCache } from './offlineCache';
 import { kvGet, kvRemove, kvSet } from './storage';
-import { getLocaleSync, type Strings } from '../i18n';
-import { pl } from '../i18n/pl';
-import { en } from '../i18n/en';
-import { de } from '../i18n/de';
-import { uk } from '../i18n/uk';
+import { tr } from '../i18n/locale';
 
-const DATA_DICTS: Record<string, Strings> = { pl, en, de, uk };
-
-function dataTr(): Strings['data'] {
-  return (DATA_DICTS[getLocaleSync()] ?? pl).data;
+function dataTr() {
+  return tr().data;
 }
 
 import {

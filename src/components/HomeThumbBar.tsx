@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -67,7 +67,7 @@ interface HomeThumbBarProps {
 }
 
 /** Dolny dock ekranu głównego ze sprężystą reakcją M3 Expressive i falującym paskiem postępu. */
-export function HomeThumbBar({
+export const HomeThumbBar = memo(function HomeThumbBar({
   onOpenSearch,
   startTitle,
   isCustomStart,
@@ -201,35 +201,56 @@ export function HomeThumbBar({
     transform: [{ translateY: iconNudge.value }],
   }));
 
-  const activeWaveClipStyle = useAnimatedStyle(() => {
+  const activeRightMaskStyle = useAnimatedStyle(() => {
     const w = trackWidth.value;
-    if (w <= 0) return { width: 0, left: 0 };
+    if (w <= 0) return { opacity: 0, transform: [{ translateX: -9999 }] };
     if (isIndeterminate.value > 0.5) {
       const seg = Math.max(44, w * 0.34);
       const left = -seg + indetPos.value * (w + seg);
-      return { width: seg, left };
+      const rightEdge = left + seg;
+      return { opacity: 1, transform: [{ translateX: rightEdge - w }] };
     }
     const filled = Math.max(14, Math.min(w, progress.value * w));
-    return { width: filled, left: 0 };
+    return { opacity: 1, transform: [{ translateX: filled - w }] };
   });
 
-  const waveShiftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -WAVE_LENGTH + wavePhase.value * WAVE_LENGTH }],
-  }));
+  const activeLeftMaskStyle = useAnimatedStyle(() => {
+    const w = trackWidth.value;
+    if (w <= 0) return { transform: [{ translateX: 0 }] };
+    if (isIndeterminate.value > 0.5) {
+      const seg = Math.max(44, w * 0.34);
+      return { transform: [{ translateX: w - seg }] };
+    }
+    const filled = Math.max(14, Math.min(w, progress.value * w));
+    return { transform: [{ translateX: w - filled }] };
+  });
+
+  const waveShiftStyle = useAnimatedStyle(() => {
+    const w = trackWidth.value;
+    let left = 0;
+    if (w > 0 && isIndeterminate.value > 0.5) {
+      const seg = Math.max(44, w * 0.34);
+      left = -seg + indetPos.value * (w + seg);
+    }
+    return {
+      transform: [{ translateX: -left - WAVE_LENGTH + wavePhase.value * WAVE_LENGTH }],
+    };
+  });
 
   const inactiveTrackStyle = useAnimatedStyle(() => {
     const w = trackWidth.value;
-    if (w <= 0) return { left: 0, width: 0, opacity: 0 };
+    if (w <= 0) return { opacity: 0, transform: [{ translateX: 0 }, { scaleX: 0.001 }] };
     if (isIndeterminate.value > 0.5) {
-      return { left: 0, width: w, opacity: 1 };
+      return { opacity: 1, transform: [{ translateX: 0 }, { scaleX: 1 }] };
     }
     const filled = Math.max(14, Math.min(w, progress.value * w));
     const start = filled + TRACK_GAP;
     const rem = Math.max(0, w - start);
+    const scaleX = Math.max(0.001, rem / w);
+    const tx = start + rem * 0.5 - w * 0.5;
     return {
-      left: start,
-      width: rem,
       opacity: rem > 4 ? 1 : 0,
+      transform: [{ translateX: tx }, { scaleX }],
     };
   });
 
@@ -302,17 +323,19 @@ export function HomeThumbBar({
                 ]}
               />
             ) : (
-              <Animated.View style={[styles.activeWaveClip, activeWaveClipStyle]}>
-                <Animated.View style={[styles.waveSvgWrap, waveShiftStyle]}>
-                  <Svg width={waveSvgWidth} height={WAVE_HEIGHT}>
-                    <Path
-                      d={wavePath}
-                      fill="none"
-                      stroke={scheme.primary}
-                      strokeWidth={WAVE_STROKE}
-                      strokeLinecap="round"
-                    />
-                  </Svg>
+              <Animated.View style={[styles.activeWaveClip, activeRightMaskStyle]}>
+                <Animated.View style={[styles.activeWaveClip, activeLeftMaskStyle]}>
+                  <Animated.View style={[styles.waveSvgWrap, waveShiftStyle]}>
+                    <Svg width={waveSvgWidth} height={WAVE_HEIGHT}>
+                      <Path
+                        d={wavePath}
+                        fill="none"
+                        stroke={scheme.primary}
+                        strokeWidth={WAVE_STROKE}
+                        strokeLinecap="round"
+                      />
+                    </Svg>
+                  </Animated.View>
                 </Animated.View>
               </Animated.View>
             )}
@@ -444,7 +467,7 @@ export function HomeThumbBar({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   dock: {
@@ -453,9 +476,9 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -547,6 +570,8 @@ const styles = StyleSheet.create({
   },
   inactiveTrack: {
     position: 'absolute',
+    left: 0,
+    right: 0,
     height: WAVE_STROKE,
     borderRadius: WAVE_STROKE / 2,
     backgroundColor: scheme.outlineVariant,
@@ -558,6 +583,8 @@ const styles = StyleSheet.create({
   },
   activeWaveClip: {
     position: 'absolute',
+    left: 0,
+    right: 0,
     top: 0,
     bottom: 0,
     overflow: 'hidden',
@@ -632,7 +659,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },

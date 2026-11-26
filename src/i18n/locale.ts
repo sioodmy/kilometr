@@ -6,15 +6,44 @@
 // Dzięki temu `tr()` działa wszędzie, także poza Reactem.
 
 import { pl, type Strings } from './pl';
-import { en } from './en';
-import { de } from './de';
-import { uk } from './uk';
 
 export type Locale = 'pl' | 'en' | 'de' | 'uk';
 export type LocaleSetting = Locale | 'system';
 export type { Strings };
 
-export const DICTS: Record<Locale, Strings> = { pl, en, de, uk };
+const loadedDicts: Partial<Record<Locale, Strings>> = { pl };
+const dictLoads = new Map<Locale, Promise<Strings>>();
+
+/** Leniwie ładuje i buforuje słownik dla wskazanego języka (PL jest zawsze w pamięci). */
+export async function loadLocaleDict(locale: Locale): Promise<Strings> {
+  const existing = loadedDicts[locale];
+  if (existing) return existing;
+  const inflight = dictLoads.get(locale);
+  if (inflight) return inflight;
+
+  const task = (async () => {
+    try {
+      let dict: Strings = pl;
+      if (locale === 'en') dict = (await import('./en')).en;
+      else if (locale === 'de') dict = (await import('./de')).de;
+      else if (locale === 'uk') dict = (await import('./uk')).uk;
+      loadedDicts[locale] = dict;
+      return dict;
+    } catch {
+      return pl;
+    } finally {
+      dictLoads.delete(locale);
+    }
+  })();
+
+  dictLoads.set(locale, task);
+  return task;
+}
+
+/** Zwraca załadowany słownik dla podanego języka lub fallback PL. */
+export function getLocaleDict(locale: Locale): Strings {
+  return loadedDicts[locale] ?? pl;
+}
 
 let currentSetting: LocaleSetting = 'system';
 let currentLocale: Locale = 'pl';
@@ -31,6 +60,11 @@ export function getLocaleSettingSync(): LocaleSetting {
 export function setLocaleInternal(setting: LocaleSetting, resolved: Locale): void {
   currentSetting = setting;
   currentLocale = resolved;
+  if (!loadedDicts[resolved]) {
+    void loadLocaleDict(resolved).then(() => {
+      if (currentLocale === resolved) notifyLocaleListeners();
+    });
+  }
   notifyLocaleListeners();
 }
 
@@ -51,5 +85,5 @@ export function getLocaleSync(): Locale {
  * (inaczej zmiana języka nie odświeży tekstów).
  */
 export function tr(): Strings {
-  return DICTS[currentLocale] ?? pl;
+  return loadedDicts[currentLocale] ?? pl;
 }

@@ -57,8 +57,7 @@ import { MapActionRail, type MapActionItem } from '../src/components/MapActionRa
 import { SpringPressable } from '../src/components/SpringPressable';
 import { useEscapeKey, useWebLayout } from '../src/theme/layout';
 import type {
-  LiveMapDelayHubItem,
-  LiveMapDelayZoneItem,
+  LiveMapDelaySegmentItem,
   LiveMapDisruptionItem,
   LiveMapSelectedRoute,
   LiveMapStopItem,
@@ -91,9 +90,16 @@ import {
   type LiveMapDisruptionMarker,
 } from '../src/services/liveMapDisruptions';
 import {
-  buildLocalDelayHeatmap,
-  fetchBackendHeatmap,
-  type DelayHeatmapData,
+  buildLiveMapDelayCorridors,
+  corridorGeometryCacheKey,
+  getCachedRoadCorridorGeometry,
+  polylineMidpointLonLat,
+  resolveRoadCorridorGeometry,
+  type LiveMapDelayCorridor,
+} from '../src/services/liveMapDelays';
+import {
+  fetchBackendDelayHubs,
+  type DelayHubSummary,
   type ViewportBbox,
 } from '../src/services/kilometrApi';
 import { liveTracker, type TrackedVehicle } from '../src/services/liveTracker';
@@ -119,6 +125,7 @@ import {
   resolveLiveVehicleRouteGeometry,
 } from '../src/services/routeGeometry';
 import { gtfsStore } from '../src/services/routing/store';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import type { LegMode } from '../src/types/models';
@@ -137,6 +144,7 @@ const BADGE_ENTERING = FadeIn.duration(motion.state.duration)
   .easing(motion.state.easing)
   .reduceMotion(motion.state.reduceMotion);
 const BADGE_EXITING = FadeOut.duration(140).reduceMotion(motion.state.reduceMotion);
+const MAP_LOADER_EXITING = FadeOut.duration(220).reduceMotion(motion.state.reduceMotion);
 const SMOOTH_LAYOUT = LinearTransition.duration(motion.state.duration)
   .easing(motion.state.easing)
   .reduceMotion(motion.state.reduceMotion);
@@ -190,6 +198,8 @@ export default function LiveVehiclesMapScreen() {
   const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
   const { cityId, city } = useActiveCity();
+  const transitionSettled = useScreenTransitionSettled();
+  const [screenFocused, setScreenFocused] = useState(false);
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const returnTarget: 'home' | 'routes' = returnTo === 'routes' ? 'routes' : 'home';
 
@@ -204,7 +214,7 @@ export default function LiveVehiclesMapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showStops, setShowStops] = useState(true);
   const [showDisruptions, setShowDisruptions] = useState(true);
-  const [showDelayHeatmap, setShowDelayHeatmap] = useState(true);
+  const [showDelays, setShowDelays] = useState(true);
   const [followVehicle, setFollowVehicle] = useState(false);
   const [zoomMode, setZoomMode] = useState<'dots' | 'pills'>('pills');
   const [sheetExpanded, setSheetExpanded] = useState(false);
@@ -212,8 +222,13 @@ export default function LiveVehiclesMapScreen() {
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [routeStopFallback, setRouteStopFallback] = useState<LiveMapStopItem | null>(null);
   const [selectedDisruptionId, setSelectedDisruptionId] = useState<string | null>(null);
-  const [selectedDelayHubId, setSelectedDelayHubId] = useState<string | null>(null);
-  const [backendHeatmap, setBackendHeatmap] = useState<DelayHeatmapData | null>(null);
+  const [selectedDelayId, setSelectedDelayId] = useState<string | null>(null);
+  const [backendDelayHubs, setBackendDelayHubs] = useState<{
+    city: string;
+    hubs: DelayHubSummary[];
+    updatedAt: number;
+  } | null>(null);
+  const [roadGeomVersion, setRoadGeomVersion] = useState(0);
   const viewportRef = useRef<ViewportBbox | null>(null);
   const [newsItems, setNewsItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
@@ -222,6 +237,7 @@ export default function LiveVehiclesMapScreen() {
   const [nowSec, setNowSec] = useState(() => warsawNow().sec);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [mapRendered, setMapRendered] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
   const [railShapeVersion, setRailShapeVersion] = useState(0);
   const [asyncRouteData, setAsyncRouteData] = useState<{
@@ -250,87 +266,98 @@ export default function LiveVehiclesMapScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      liveTracker.acquire(true);
-      let cancelled = false;
-      const newsController = new AbortController();
-      setLiveWaitExpired(false);
-      const liveWaitTimer = setTimeout(() => setLiveWaitExpired(true), 12000);
-
-      void loadLiveMapSchedule()
-        .then((ctx) => {
-          if (cancelled) return;
-          setGtfsLoaded(gtfsStore.isLoaded);
-          if (ctx) {
-            setScheduleCtx(ctx);
-            setNowSec(ctx.nowSec);
-          }
-        })
-        .catch(() => {});
-
-      const unsubNews = subscribeNewsCache(() => {
-        if (cancelled) return;
-        const cached = getCachedNews();
-        if (cached) setNewsItems(cached);
-      });
-
-      if (city.features.news) {
-        void (async () => {
-          const cached = getCachedNews();
-          if (cached && cached.length > 0) {
-            if (!cancelled) setNewsItems(cached);
-          } else {
-            const stored = await loadNewsCache(cityId);
-            if (!cancelled && stored && stored.length > 0) {
-              setNewsItems(stored);
-            }
-          }
-          try {
-            const fresh = await fetchCityNews(newsController.signal);
-            if (!cancelled && !newsController.signal.aborted) {
-              setNewsItems(fresh);
-            }
-          } catch {
-            // Ciche zachowanie istniejącego cache komunikatów przy braku sieci.
-          }
-        })();
-      } else {
-        setNewsItems([]);
-      }
-
-      void liveTracker.ensureFresh();
-      setVehicles(liveTracker.snapshot());
-      const unsub = liveTracker.subscribe(() => {
-        setVehicles(liveTracker.snapshot());
-        setNowSec(warsawNow().sec);
-      });
-      const clock = setInterval(() => {
-        setNowSec(warsawNow().sec);
-      }, 15000);
-      const refreshHeatmap = () => {
-        if (cancelled) return;
-        void fetchBackendHeatmap(cityId, viewportRef.current)
-          .then((data) => {
-            if (!cancelled && data) setBackendHeatmap(data);
-          })
-          .catch(() => {});
-      };
-      refreshHeatmap();
-      const heatmapTimer = setInterval(refreshHeatmap, 20000);
+      setScreenFocused(true);
       return () => {
-        cancelled = true;
-        newsController.abort();
-        clearInterval(clock);
-        clearInterval(heatmapTimer);
-        clearTimeout(liveWaitTimer);
-        unsubNews();
-        unsub();
-        liveTracker.setMapViewport(null);
-        liveTracker.release(true);
+        setScreenFocused(false);
       };
-    }, [city.features.news, cityId]),
+    }, []),
   );
 
   useEffect(() => {
+    if (!transitionSettled || !screenFocused) return;
+    liveTracker.acquire(true);
+    let cancelled = false;
+    const newsController = new AbortController();
+    setLiveWaitExpired(false);
+    const liveWaitTimer = setTimeout(() => setLiveWaitExpired(true), 12000);
+
+    void loadLiveMapSchedule()
+      .then((ctx) => {
+        if (cancelled) return;
+        setGtfsLoaded(gtfsStore.isLoaded);
+        if (ctx) {
+          setScheduleCtx(ctx);
+          setNowSec(ctx.nowSec);
+        }
+      })
+      .catch(() => {});
+
+    const unsubNews = subscribeNewsCache(() => {
+      if (cancelled) return;
+      const cached = getCachedNews();
+      if (cached) setNewsItems(cached);
+    });
+
+    if (city.features.news) {
+      void (async () => {
+        const cached = getCachedNews();
+        if (cached && cached.length > 0) {
+          if (!cancelled) setNewsItems(cached);
+        } else {
+          const stored = await loadNewsCache(cityId);
+          if (!cancelled && stored && stored.length > 0) {
+            setNewsItems(stored);
+          }
+        }
+        try {
+          const fresh = await fetchCityNews(newsController.signal);
+          if (!cancelled && !newsController.signal.aborted) {
+            setNewsItems(fresh);
+          }
+        } catch {
+          // Ciche zachowanie istniejącego cache komunikatów przy braku sieci.
+        }
+      })();
+    } else {
+      setNewsItems([]);
+    }
+
+    void liveTracker.ensureFresh();
+    setVehicles(liveTracker.snapshot());
+    const unsub = liveTracker.subscribe(() => {
+      setVehicles(liveTracker.snapshot());
+      setNowSec(warsawNow().sec);
+    });
+    const clock = setInterval(() => {
+      setNowSec(warsawNow().sec);
+    }, 15000);
+    const refreshDelayHubs = () => {
+      if (cancelled) return;
+      void fetchBackendDelayHubs(cityId, viewportRef.current)
+        .then((hubs) => {
+          if (!cancelled && hubs) {
+            setBackendDelayHubs({ city: cityId, hubs, updatedAt: Date.now() });
+          }
+        })
+        .catch(() => {});
+    };
+    refreshDelayHubs();
+    const delayHubsTimer = setInterval(refreshDelayHubs, 30000);
+    return () => {
+      cancelled = true;
+      newsController.abort();
+      clearInterval(clock);
+      clearInterval(delayHubsTimer);
+      clearTimeout(liveWaitTimer);
+      unsubNews();
+      unsub();
+      liveTracker.setMapViewport(null);
+      liveTracker.release(true);
+    };
+  }, [city.features.news, cityId, screenFocused, transitionSettled]);
+
+  useEffect(() => {
+    if (!transitionSettled) return;
     let cancelled = false;
     let release: (() => void) | null = null;
     (async () => {
@@ -346,7 +373,7 @@ export default function LiveVehiclesMapScreen() {
       cancelled = true;
       release?.();
     };
-  }, [cityId]);
+  }, [cityId, transitionSettled]);
 
   const clearOfflineTimer = useCallback(() => {
     if (offlinePillTimer.current) {
@@ -374,6 +401,7 @@ export default function LiveVehiclesMapScreen() {
   useEffect(() => () => clearOfflineTimer(), [clearOfflineTimer]);
 
   useEffect(() => {
+    if (!transitionSettled) return;
     const railCandidates: Array<{
       vehicleId: string;
       line: string;
@@ -405,10 +433,11 @@ export default function LiveVehiclesMapScreen() {
       }
     });
     return () => ctrl.abort();
-  }, [cityId, vehicles]);
+  }, [cityId, transitionSettled, vehicles]);
 
   // Pełna lista pojazdów przed filtrami (do liczników i wyszukiwarki linii).
   const allVehicleItems = useMemo<LiveMapVehicleItem[]>(() => {
+    if (!transitionSettled) return [];
     void railShapeVersion;
     const out: LiveMapVehicleItem[] = [];
     const seen = new Set<string>();
@@ -547,7 +576,7 @@ export default function LiveVehiclesMapScreen() {
       if (!seen.has(key)) motionRef.current.delete(key);
     }
     return out;
-  }, [asyncRouteData, cityId, gtfsLoaded, railShapeVersion, selectedId, vehicles]);
+  }, [asyncRouteData, cityId, gtfsLoaded, railShapeVersion, selectedId, transitionSettled, vehicles]);
 
   const modeCounts = useMemo(() => {
     let tram = 0;
@@ -662,22 +691,46 @@ export default function LiveVehiclesMapScreen() {
     );
   }, [city.features.news, gtfsLoaded, newsItems, scheduleCtx?.dayIndex]);
 
-  const mapDisruptionItems = useMemo<LiveMapDisruptionItem[]>(
-    () =>
-      disruptionMarkers.map((d) => ({
+  const mapDisruptionItems = useMemo<LiveMapDisruptionItem[]>(() => {
+    void roadGeomVersion;
+    return disruptionMarkers.map((d) => {
+      let corridorCoords: [number, number][] | undefined;
+      let anchorLat = d.lat;
+      let anchorLon = d.lon;
+      if (d.corridorCoords.length >= 2) {
+        const waypointsLatLon: [number, number][] = d.corridorCoords.map(([lon, lat]) => [lat, lon]);
+        const routed = getCachedRoadCorridorGeometry(waypointsLatLon, d.mode);
+        if (routed && routed.length >= 2) {
+          corridorCoords = routed;
+          const mid = polylineMidpointLonLat(routed);
+          anchorLat = mid.lat;
+          anchorLon = mid.lon;
+        } else if (
+          d.corridorCoords.length === 2 &&
+          distanceMeters(
+            d.corridorCoords[0][1],
+            d.corridorCoords[0][0],
+            d.corridorCoords[1][1],
+            d.corridorCoords[1][0],
+          ) <= 220
+        ) {
+          corridorCoords = d.corridorCoords;
+        }
+      }
+      return {
         id: d.id,
         label: d.shortLabel,
         severity: d.severity,
-        lat: d.lat,
-        lon: d.lon,
-        corridorCoords: d.corridorCoords.length >= 2 ? d.corridorCoords : undefined,
+        lat: anchorLat,
+        lon: anchorLon,
+        corridorCoords,
         stopPoints:
           d.affectedStops.length > 0
             ? d.affectedStops.map((st) => [st.lon, st.lat] as [number, number])
             : undefined,
-      })),
-    [disruptionMarkers],
-  );
+      };
+    });
+  }, [disruptionMarkers, roadGeomVersion]);
 
   const stopsById = useMemo(() => {
     const map = new Map<string, LiveMapStopItem>();
@@ -901,50 +954,115 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers, selectedDisruptionId],
   );
 
-  // Aktywna warstwa opóźnień: świeże dane Data Science z backendu lub bezpieczny lokalny fallback.
-  const activeHeatmap = useMemo<DelayHeatmapData>(() => {
-    if (
-      backendHeatmap &&
-      backendHeatmap.city === cityId &&
-      Date.now() - backendHeatmap.updatedAt < 90_000
-    ) {
-      return backendHeatmap;
+  // Korytarze opóźnień wyznaczone z aktywnych pojazdów i lokalnego GTFS, wzbogacone o normy z backendu.
+  const delayCorridors = useMemo<LiveMapDelayCorridor[]>(() => {
+    if (!gtfsLoaded) return [];
+    const hubs =
+      backendDelayHubs &&
+      backendDelayHubs.city === cityId &&
+      Date.now() - backendDelayHubs.updatedAt < 120_000
+        ? backendDelayHubs.hubs
+        : null;
+    return buildLiveMapDelayCorridors(
+      vehicles,
+      gtfsStore,
+      scheduleCtx?.dayIndex ?? null,
+      cityId,
+      hubs,
+    );
+  }, [backendDelayHubs, cityId, gtfsLoaded, scheduleCtx?.dayIndex, vehicles]);
+
+  // Lista zadań geometrii drogowej/torowej dla opóźnień oraz korytarzy utrudnień.
+  const corridorRoutingTasks = useMemo(() => {
+    const map = new Map<string, { waypoints: [number, number][]; mode: LiveMapDelayCorridor['mode'] }>();
+    if (showDelays) {
+      for (const c of delayCorridors) {
+        if (c.waypoints.length < 2) continue;
+        const key = corridorGeometryCacheKey(c.waypoints, c.mode);
+        if (!map.has(key)) map.set(key, { waypoints: c.waypoints, mode: c.mode });
+      }
     }
-    return buildLocalDelayHeatmap(vehicles, cityId);
-  }, [backendHeatmap, cityId, vehicles]);
+    if (showDisruptions) {
+      for (const d of disruptionMarkers) {
+        if (d.corridorCoords.length < 2) continue;
+        const waypoints: [number, number][] = d.corridorCoords.map(([lon, lat]) => [lat, lon]);
+        const key = corridorGeometryCacheKey(waypoints, d.mode);
+        if (!map.has(key)) map.set(key, { waypoints, mode: d.mode });
+      }
+    }
+    return Array.from(map.entries());
+  }, [delayCorridors, disruptionMarkers, showDelays, showDisruptions]);
 
-  const mapDelayZones = useMemo<LiveMapDelayZoneItem[]>(
-    () =>
-      activeHeatmap.zones.map((z) => ({
-        id: z.id,
-        lat: z.lat,
-        lon: z.lon,
-        intensity: z.intensity,
-        severity: z.severity,
-      })),
-    [activeHeatmap.zones],
+  const corridorRoutingKey = useMemo(
+    () => corridorRoutingTasks.map(([k]) => k).join('|'),
+    [corridorRoutingTasks],
   );
+  const corridorRoutingTasksRef = useRef(corridorRoutingTasks);
+  corridorRoutingTasksRef.current = corridorRoutingTasks;
 
-  const mapDelayHubs = useMemo<LiveMapDelayHubItem[]>(
-    () =>
-      activeHeatmap.hubs
-        .filter((h) => h.severity !== 'normal')
-        .map((h) => ({
-          id: h.id,
-          label: `+${Math.max(1, Math.round(h.avgDelaySec / 60))}m`,
-          severity: h.severity === 'normal' ? 'moderate' : h.severity,
-          lat: h.lat,
-          lon: h.lon,
-        })),
-    [activeHeatmap.hubs],
-  );
+  useEffect(() => {
+    const tasks = corridorRoutingTasksRef.current.filter(
+      ([, t]) => getCachedRoadCorridorGeometry(t.waypoints, t.mode) === undefined,
+    );
+    if (tasks.length === 0) return;
 
-  const selectedDelayHub = useMemo(
+    const ctrl = new AbortController();
+    let idx = 0;
+    let resolvedAny = false;
+    const CONCURRENCY = 4;
+
+    const worker = async () => {
+      while (idx < tasks.length && !ctrl.signal.aborted) {
+        const current = tasks[idx++];
+        if (!current) break;
+        const res = await resolveRoadCorridorGeometry(
+          current[1].waypoints,
+          current[1].mode,
+          ctrl.signal,
+        );
+        if (res && !ctrl.signal.aborted) {
+          resolvedAny = true;
+        }
+      }
+    };
+
+    void Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, () => worker()),
+    ).then(() => {
+      if (resolvedAny && !ctrl.signal.aborted) {
+        setRoadGeomVersion((v) => v + 1);
+      }
+    });
+
+    return () => ctrl.abort();
+  }, [corridorRoutingKey]);
+
+  const mapDelaySegments = useMemo<LiveMapDelaySegmentItem[]>(() => {
+    void roadGeomVersion;
+    const out: LiveMapDelaySegmentItem[] = [];
+    for (const c of delayCorridors) {
+      const routed = getCachedRoadCorridorGeometry(c.waypoints, c.mode);
+      if (!routed || routed.length < 2) continue;
+      const anchor = polylineMidpointLonLat(routed);
+      out.push({
+        id: c.id,
+        label: `+${Math.max(1, Math.round(c.avgDelaySec / 60))}m`,
+        severity: c.severity,
+        coords: routed,
+        anchorLat: anchor.lat,
+        anchorLon: anchor.lon,
+        showBadge: c.severity !== 'moderate' || c.avgDelaySec >= 180,
+      });
+    }
+    return out;
+  }, [delayCorridors, roadGeomVersion]);
+
+  const selectedDelaySegment = useMemo(
     () =>
-      selectedDelayHubId
-        ? (activeHeatmap.hubs.find((h) => h.id === selectedDelayHubId) ?? null)
+      selectedDelayId
+        ? (delayCorridors.find((c) => c.id === selectedDelayId) ?? null)
         : null,
-    [activeHeatmap.hubs, selectedDelayHubId],
+    [delayCorridors, selectedDelayId],
   );
 
   const closeSearch = useCallback(() => {
@@ -968,7 +1086,7 @@ export default function LiveVehiclesMapScreen() {
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
-      setSelectedDelayHubId(null);
+      setSelectedDelayId(null);
       setSelectedId(vehicleId);
       setFollowVehicle(false);
       setSheetExpanded(false);
@@ -1006,7 +1124,7 @@ export default function LiveVehiclesMapScreen() {
       setSelectedId(null);
       setFollowVehicle(false);
       setSelectedDisruptionId(null);
-      setSelectedDelayHubId(null);
+      setSelectedDelayId(null);
       setSelectedStopId(stopId);
       setSheetExpanded(false);
       const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId) ?? routeStop;
@@ -1028,7 +1146,7 @@ export default function LiveVehiclesMapScreen() {
       setFollowVehicle(false);
       setSelectedStopId(null);
       setRouteStopFallback(null);
-      setSelectedDelayHubId(null);
+      setSelectedDelayId(null);
       setSelectedDisruptionId(disruptionId);
       setSheetExpanded(false);
       const found = disruptionMarkers.find((d) => d.id === disruptionId);
@@ -1039,22 +1157,22 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers],
   );
 
-  const handleSelectDelayHub = useCallback(
-    (hubId: string) => {
+  const handleSelectDelay = useCallback(
+    (delayId: string) => {
       void Haptics.selectionAsync().catch(() => {});
       setSelectedId(null);
       setFollowVehicle(false);
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
-      setSelectedDelayHubId(hubId);
+      setSelectedDelayId(delayId);
       setSheetExpanded(false);
-      const found = activeHeatmap.hubs.find((h) => h.id === hubId);
+      const found = mapDelaySegments.find((seg) => seg.id === delayId);
       if (found) {
-        mapRef.current?.centerOn(found.lat, found.lon, 14.6);
+        mapRef.current?.centerOn(found.anchorLat, found.anchorLon, 14.6);
       }
     },
-    [activeHeatmap.hubs],
+    [mapDelaySegments],
   );
 
   const handleViewportChange = useCallback(
@@ -1071,7 +1189,7 @@ export default function LiveVehiclesMapScreen() {
     setSelectedStopId(null);
     setRouteStopFallback(null);
     setSelectedDisruptionId(null);
-    setSelectedDelayHubId(null);
+    setSelectedDelayId(null);
     setSheetExpanded(false);
     setSheetHeight(0);
   }, []);
@@ -1112,11 +1230,11 @@ export default function LiveVehiclesMapScreen() {
     });
   }, []);
 
-  const handleToggleDelayHeatmap = useCallback(() => {
+  const handleToggleDelays = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
-    setShowDelayHeatmap((prev) => {
+    setShowDelays((prev) => {
       const next = !prev;
-      if (!next) setSelectedDelayHubId(null);
+      if (!next) setSelectedDelayId(null);
       return next;
     });
   }, []);
@@ -1191,9 +1309,27 @@ export default function LiveVehiclesMapScreen() {
     });
   }, [router, selectedDisruption]);
 
+  useEffect(() => {
+    setMapRendered(false);
+  }, [cityId]);
+
+  const handleMapReady = useCallback(() => {
+    setMapError(null);
+  }, []);
+
+  const handleMapRendered = useCallback(() => {
+    setMapError(null);
+    setMapRendered(true);
+  }, []);
+
+  const handleMapReloading = useCallback(() => {
+    setMapRendered(false);
+  }, []);
+
   const handleRetryMap = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
     setMapError(null);
+    setMapRendered(false);
     mapRef.current?.reload();
   }, []);
 
@@ -1204,7 +1340,7 @@ export default function LiveVehiclesMapScreen() {
   const liveState = liveTracker.getLiveState();
   const isInitialLoading = vehicles.length === 0 && liveState === 'unknown' && !liveWaitExpired;
   const hasSheet = Boolean(
-    (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelayHub,
+    (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelaySegment,
   );
   useEscapeKey(hasSheet && !searchOpen, handleClearSelection);
   const hasSheetRef = useRef(hasSheet);
@@ -1323,21 +1459,20 @@ export default function LiveVehiclesMapScreen() {
 
   return (
     <View style={styles.root}>
-      {offlineBase !== undefined && (
+      {transitionSettled && offlineBase !== undefined && (
         <LiveVehiclesMap
           ref={mapRef}
           vehicles={mapItems}
           stops={mapStops}
           disruptions={mapDisruptionItems}
-          delayZones={mapDelayZones}
-          delayHubs={mapDelayHubs}
+          delaySegments={mapDelaySegments}
           selectedId={selectedId}
           selectedStopId={selectedStopId}
           selectedRoute={selectedRoute}
           selectedDisruptionId={selectedDisruptionId}
-          selectedDelayHubId={selectedDelayHubId}
+          selectedDelayId={selectedDelayId}
           showDisruptions={showDisruptions}
-          showDelayHeatmap={showDelayHeatmap}
+          showDelays={showDelays}
           showStops={showStops}
           userLat={userLoc?.lat ?? null}
           userLon={userLoc?.lon ?? null}
@@ -1348,15 +1483,28 @@ export default function LiveVehiclesMapScreen() {
           onSelectVehicle={handleSelectVehicle}
           onSelectStop={handleSelectStop}
           onSelectDisruption={handleSelectDisruption}
-          onSelectDelayHub={handleSelectDelayHub}
+          onSelectDelay={handleSelectDelay}
           onClearSelection={handleClearSelection}
           onUserDrag={handleUserDrag}
           onZoomModeChange={setZoomMode}
           onViewportChange={handleViewportChange}
           onTilesStatus={handleTilesStatus}
           onError={setMapError}
-          onReady={() => setMapError(null)}
+          onReady={handleMapReady}
+          onRendered={handleMapRendered}
+          onReloading={handleMapReloading}
         />
+      )}
+
+      {!mapRendered && !mapError && (
+        <Animated.View
+          exiting={MAP_LOADER_EXITING}
+          style={styles.mapLoaderOverlay}
+          accessibilityLiveRegion="polite"
+        >
+          <MorphingLoader variant="contained" size={44} startIndex={3} />
+          <Text style={styles.mapLoaderText}>{s.compass.mapLoading}</Text>
+        </Animated.View>
       )}
 
       {/* Górna pływająca warstwa: powrót, wyszukiwarka/nagłówek, filtry z licznikami */}
@@ -1569,24 +1717,20 @@ export default function LiveVehiclesMapScreen() {
               </SpringPressable>
             )}
 
-            {mapDelayZones.length > 0 && (
+            {mapDelaySegments.length > 0 && (
               <SpringPressable
-                onPress={handleToggleDelayHeatmap}
+                onPress={handleToggleDelays}
                 accessibilityRole="button"
-                accessibilityState={{ selected: showDelayHeatmap }}
-                style={[styles.filterChip, showDelayHeatmap && styles.delayChipActive]}
+                accessibilityState={{ selected: showDelays }}
+                style={[styles.filterChip, showDelays && styles.delayChipActive]}
                 scaleDelta={0.03}
               >
                 <Clock3
                   size={15}
-                  color={showDelayHeatmap ? scheme.onWarningContainer : scheme.onSurfaceVariant}
+                  color={showDelays ? scheme.onWarningContainer : scheme.onSurfaceVariant}
                 />
-                <Text
-                  style={[styles.filterText, showDelayHeatmap && styles.delayChipTextActive]}
-                >
-                  {mapDelayHubs.length > 0
-                    ? `${s.liveMap.filterDelays} (${mapDelayHubs.length})`
-                    : s.liveMap.filterDelays}
+                <Text style={[styles.filterText, showDelays && styles.delayChipTextActive]}>
+                  {`${s.liveMap.filterDelays} (${mapDelaySegments.length})`}
                 </Text>
               </SpringPressable>
             )}
@@ -1644,7 +1788,7 @@ export default function LiveVehiclesMapScreen() {
       </View>
 
       {/* Prawa szyna szybkich akcji mapy (śledzenie, cała trasa, zoom, GPS) */}
-      {!searchOpen && !mapError && (
+      {!searchOpen && !mapError && mapRendered && (
         <View
           style={[
             styles.railWrap,
@@ -1661,7 +1805,7 @@ export default function LiveVehiclesMapScreen() {
         </View>
       )}
 
-      {isInitialLoading && !mapError && (
+      {mapRendered && isInitialLoading && !mapError && (
         <Animated.View
           entering={BADGE_ENTERING}
           exiting={BADGE_EXITING}
@@ -1704,7 +1848,7 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
-      {!isInitialLoading && mapItems.length === 0 && !hasSheet && !mapError && (
+      {mapRendered && !isInitialLoading && mapItems.length === 0 && !hasSheet && !mapError && (
         <Animated.View
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
@@ -1856,10 +2000,10 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
-      {/* Dolna karta wybranego węzła opóźnień (heatmapa M3 Expressive) */}
-      {selectedDelayHub && (
+      {/* Dolna karta wybranego odcinka opóźnień naniesionego na drogę/torowisko */}
+      {selectedDelaySegment && (
         <Animated.View
-          key={`delay-hub-${selectedDelayHub.id}`}
+          key={`delay-seg-${selectedDelaySegment.id}`}
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
@@ -1871,20 +2015,20 @@ export default function LiveVehiclesMapScreen() {
           ]}
         >
           {(() => {
-            const avgMin = Math.max(1, Math.round(selectedDelayHub.avgDelaySec / 60));
-            const p90Min = Math.max(avgMin, Math.round(selectedDelayHub.p90DelaySec / 60));
+            const avgMin = Math.max(1, Math.round(selectedDelaySegment.avgDelaySec / 60));
+            const p90Min = Math.max(avgMin, Math.round(selectedDelaySegment.p90DelaySec / 60));
             const deltaMin =
-              selectedDelayHub.deltaVsTypicalSec != null
-                ? Math.round(selectedDelayHub.deltaVsTypicalSec / 60)
+              selectedDelaySegment.deltaVsTypicalSec != null
+                ? Math.round(selectedDelaySegment.deltaVsTypicalSec / 60)
                 : null;
-            const isSevere = selectedDelayHub.severity === 'severe';
+            const isSevere = selectedDelaySegment.severity === 'severe';
             const tone = isSevere
               ? { bg: scheme.errorContainer, fg: scheme.onErrorContainer }
               : { bg: scheme.warningContainer, fg: scheme.onWarningContainer };
             const sevLabel =
-              selectedDelayHub.severity === 'severe'
+              selectedDelaySegment.severity === 'severe'
                 ? s.liveMap.delaySeveritySevere
-                : selectedDelayHub.severity === 'heavy'
+                : selectedDelaySegment.severity === 'heavy'
                   ? s.liveMap.delaySeverityHeavy
                   : s.liveMap.delaySeverityModerate;
             return (
@@ -1904,7 +2048,7 @@ export default function LiveVehiclesMapScreen() {
                       <Text style={styles.metaMuted}>{s.liveMap.delayZoneSheetTitle}</Text>
                     </View>
                     <Text style={styles.sheetTitle} numberOfLines={2}>
-                      {selectedDelayHub.name}
+                      {selectedDelaySegment.title}
                     </Text>
                   </View>
                   <SpringPressable
@@ -1930,8 +2074,8 @@ export default function LiveVehiclesMapScreen() {
                   <View style={styles.delayMetricCardNeutral}>
                     <Text style={styles.delayMetricNeutralTitle} numberOfLines={1}>
                       {s.liveMap.delayVehiclesAffected(
-                        selectedDelayHub.delayedCount,
-                        selectedDelayHub.vehicleCount,
+                        selectedDelaySegment.delayedCount,
+                        selectedDelaySegment.vehicleCount,
                       )}
                     </Text>
                     {deltaMin != null && Math.abs(deltaMin) >= 1 ? (
@@ -1950,7 +2094,7 @@ export default function LiveVehiclesMapScreen() {
                   </View>
                 </View>
 
-                {selectedDelayHub.topLines.length > 0 && (
+                {selectedDelaySegment.topLines.length > 0 && (
                   <View style={styles.delayLinesSection}>
                     <Text style={styles.metaMuted}>{s.liveMap.delayAffectedLines}</Text>
                     <ScrollView
@@ -1959,14 +2103,14 @@ export default function LiveVehiclesMapScreen() {
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.disruptionLinesRow}
                     >
-                      {selectedDelayHub.topLines.map((line) => (
+                      {selectedDelaySegment.topLines.map((line) => (
                         <SpringPressable
                           key={line}
                           onPress={() => {
                             void Haptics.selectionAsync().catch(() => {});
                             setFilter('all');
                             setLineFilter(line);
-                            setSelectedDelayHubId(null);
+                            setSelectedDelayId(null);
                           }}
                           accessibilityRole="button"
                           accessibilityLabel={line}
@@ -2249,46 +2393,41 @@ export default function LiveVehiclesMapScreen() {
                       key={`${stop.stopId}-${idx}`}
                       onPress={() => handleSelectStop(stop.stopId)}
                       accessibilityRole="button"
-                      style={[styles.vehStopRow, idx > 0 && styles.depRowBorder]}
+                      style={styles.vehStopRow}
                       scaleDelta={0.015}
                     >
                       <View style={styles.timelineRail}>
+                        {idx > 0 && <View style={styles.timelineLineTop} />}
+                        {!isLast && <View style={styles.timelineLineBottom} />}
                         <View
-                          style={[
-                            styles.timelineLineTop,
-                            idx === 0 && styles.timelineLineHidden,
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.timelineDot,
-                            stop.isNext && styles.timelineDotNext,
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.timelineLineBottom,
-                            isLast && styles.timelineLineHidden,
-                          ]}
+                          style={
+                            stop.isNext
+                              ? styles.timelineDotNext
+                              : isLast
+                                ? styles.timelineDotEnd
+                                : styles.timelineDot
+                          }
                         />
                       </View>
-                      <Text
-                        style={[styles.vehStopName, stop.isNext && styles.vehStopNameNext]}
-                        numberOfLines={1}
-                      >
-                        {stop.stopName}
-                      </Text>
-                      <Text style={styles.vehStopTime}>
-                        {secondsToTimeString(stop.expectedSec)}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.vehStopCountdown,
-                          stop.isNext && styles.vehStopCountdownNext,
-                        ]}
-                      >
-                        {s.liveMap.departInMin(diffMin)}
-                      </Text>
+                      <View style={[styles.vehStopContent, idx > 0 && styles.depRowBorder]}>
+                        <Text
+                          style={[styles.vehStopName, stop.isNext && styles.vehStopNameNext]}
+                          numberOfLines={1}
+                        >
+                          {stop.stopName}
+                        </Text>
+                        <Text style={styles.vehStopTime}>
+                          {secondsToTimeString(stop.expectedSec)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.vehStopCountdown,
+                            stop.isNext && styles.vehStopCountdownNext,
+                          ]}
+                        >
+                          {s.liveMap.departInMin(diffMin)}
+                        </Text>
+                      </View>
                     </SpringPressable>
                   );
                 })}
@@ -2349,6 +2488,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: scheme.surface,
   },
+  mapLoaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    paddingHorizontal: 24,
+    backgroundColor: scheme.surface,
+  },
+  mapLoaderText: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
+  },
   topOverlay: {
     position: 'absolute',
     top: 0,
@@ -2371,7 +2527,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2382,7 +2538,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingLeft: 16,
     paddingRight: 8,
@@ -2445,7 +2601,7 @@ const styles = StyleSheet.create({
   searchDropdown: {
     borderRadius: 22,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -2488,7 +2644,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   searchLineCount: {
@@ -2528,7 +2684,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     borderRadius: 16,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2643,7 +2799,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -2661,7 +2817,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level2,
   },
@@ -2693,7 +2849,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level3,
   },
@@ -2708,7 +2864,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     gap: 14,
     ...elev.level3,
@@ -2751,7 +2907,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     gap: 6,
     ...elev.level3,
@@ -2788,7 +2944,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
     paddingHorizontal: 18,
     paddingTop: 4,
@@ -2800,7 +2956,7 @@ const styles = StyleSheet.create({
     right: undefined,
     bottom: 16,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     paddingTop: 14,
   },
@@ -2945,7 +3101,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   depRowBorder: {
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   depInfo: {
@@ -2969,47 +3125,63 @@ const styles = StyleSheet.create({
   },
   vehStopRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+    minHeight: 44,
+  },
+  vehStopContent: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingVertical: 10,
     minHeight: 44,
-    paddingVertical: 6,
+    minWidth: 0,
   },
   timelineRail: {
-    width: 16,
-    alignSelf: 'stretch',
+    width: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   timelineLineTop: {
     position: 'absolute',
-    top: -6,
+    top: 0,
     bottom: '50%',
-    width: 2,
+    width: 2.5,
     backgroundColor: scheme.outlineVariant,
   },
   timelineLineBottom: {
     position: 'absolute',
     top: '50%',
-    bottom: -6,
-    width: 2,
+    bottom: 0,
+    width: 2.5,
     backgroundColor: scheme.outlineVariant,
   },
-  timelineLineHidden: {
-    opacity: 0,
-  },
   timelineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: shape.full,
+    borderWidth: 2,
+    borderColor: scheme.outline,
+    backgroundColor: scheme.surfaceContainerLow,
+    zIndex: 2,
+  },
+  timelineDotEnd: {
+    width: 10,
+    height: 10,
+    borderRadius: shape.full,
     backgroundColor: scheme.outline,
+    zIndex: 2,
   },
   timelineDotNext: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: scheme.primaryContainer,
+    zIndex: 2,
   },
   vehStopName: {
     flex: 1,
@@ -3067,7 +3239,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 16,
     flexDirection: 'row',

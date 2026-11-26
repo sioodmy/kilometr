@@ -37,6 +37,8 @@ import { StationAmenities } from './StationAmenities';
 import { shouldShowStationAmenities } from './stationAmenitiesGate';
 import { VehicleSpecsStrip, formatVehicleSpecsA11y } from './VehicleSpecsStrip';
 import { LiveSensors } from './LiveDot';
+import { SkeletonPulse, useDeferredReveal } from './SkeletonPulse';
+import { ConnectorSkeleton, LegCardSkeleton } from './RouteDetailsSkeleton';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { liveTracker, type TrackedVehicle } from '../services/liveTracker';
@@ -83,7 +85,7 @@ const RAIL_COL_W = 28;
 const COL_GAP = 8;
 const SPINE_W = 3;
 const TRAY_BLEED = 6;
-const TRAY_BORDER_W = 2;
+const TRAY_BORDER_W = 1;
 
 function genericModeNom(t: Strings, mode: Leg['mode']): string {
   if (mode === 'tram') return t.leg.modeTram;
@@ -328,6 +330,12 @@ const IntermediateStopRow = memo(function IntermediateStopRow({
   );
 });
 
+/** Ile przystanków pośrednich montujemy w jednej klatce po rozwinięciu długiego odcinka. */
+const STOP_BATCH_SIZE = 10;
+
+/** Ile elementów osi czasu montujemy natychmiast; kolejne dochodzą po 1 na klatkę. */
+const INITIAL_VISIBLE_LEGS = 2;
+
 /** Rozwijana taca stacji / przystanków pośrednich z ciągłą osią czasu. */
 const LegStopsTray = memo(function LegStopsTray({
   leg,
@@ -366,8 +374,46 @@ const LegStopsTray = memo(function LegStopsTray({
     return out;
   }, [segment.start, segment.end]);
 
+  const [visibleStopCount, setVisibleStopCount] = useState(() =>
+    Math.min(intermediateIndices.length, STOP_BATCH_SIZE),
+  );
+
+  useEffect(() => {
+    if (loading || intermediateIndices.length <= STOP_BATCH_SIZE) {
+      setVisibleStopCount(intermediateIndices.length);
+      return;
+    }
+    let cancelled = false;
+    let rafId: number | null = null;
+    setVisibleStopCount((prev) => Math.max(prev, STOP_BATCH_SIZE));
+
+    const step = () => {
+      if (cancelled) return;
+      setVisibleStopCount((prev) => {
+        const next = Math.min(intermediateIndices.length, prev + STOP_BATCH_SIZE);
+        if (next < intermediateIndices.length) {
+          rafId = requestAnimationFrame(step);
+        }
+        return next;
+      });
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [loading, intermediateIndices.length]);
+
+  const visibleIndices =
+    visibleStopCount < intermediateIndices.length
+      ? intermediateIndices.slice(0, visibleStopCount)
+      : intermediateIndices;
+  const pendingStopMocks = Math.min(3, Math.max(0, intermediateIndices.length - visibleIndices.length));
+
   const showTrailingInTransit =
     !loading &&
+    visibleStopCount >= intermediateIndices.length &&
     livePosition?.marker?.placement === 'between' &&
     livePosition.marker.index === segment.end - 1 &&
     segment.end > segment.start;
@@ -385,7 +431,7 @@ const LegStopsTray = memo(function LegStopsTray({
         </View>
 
         {loading ? (
-          <View accessible accessibilityLabel={t.leg.stopsLoading}>
+          <SkeletonPulse accessibilityLabel={t.leg.stopsLoading}>
             {[0, 1, 2].map((idx) => (
               <View key={idx} style={s.stopGridRow}>
                 <View style={s.stopTimeCol}>
@@ -401,10 +447,10 @@ const LegStopsTray = memo(function LegStopsTray({
                 </View>
               </View>
             ))}
-          </View>
+          </SkeletonPulse>
         ) : (
           <>
-            {intermediateIndices.map((i) => {
+            {visibleIndices.map((i) => {
               const stop = stops[i];
               if (!stop) return null;
               const prevStop = stops[i - 1];
@@ -455,6 +501,26 @@ const LegStopsTray = memo(function LegStopsTray({
               );
             })}
 
+            {pendingStopMocks > 0 ? (
+              <SkeletonPulse>
+                {Array.from({ length: pendingStopMocks }, (_, idx) => (
+                  <View key={`pending-stop-${idx}`} style={s.stopGridRow}>
+                    <View style={s.stopTimeCol}>
+                      <View style={[s.skeletonBar, { width: 34 }]} />
+                    </View>
+                    <View style={s.railCol}>
+                      <View style={[s.railHalfTop, { backgroundColor: railStroke }]} />
+                      <View style={[s.upcomingStopRing, { borderColor: railStroke }]} />
+                      <View style={[s.railHalfBottom, { backgroundColor: railStroke }]} />
+                    </View>
+                    <View style={s.stopContentCol}>
+                      <View style={[s.skeletonBar, { width: `${68 - idx * 12}%` }]} />
+                    </View>
+                  </View>
+                ))}
+              </SkeletonPulse>
+            ) : null}
+
             {showTrailingInTransit ? (
               <InTransitRow
                 nextStopName={leg.toStop}
@@ -491,6 +557,85 @@ const LegStopsTray = memo(function LegStopsTray({
         <View style={s.capSpacer} />
       </View>
     </View>
+  );
+});
+
+/** Animowany obrót strzałki montowany dopiero po pierwszym rozwinięciu przystanków. */
+const AnimatedExpandChevron = memo(function AnimatedExpandChevron({
+  expanded,
+}: {
+  expanded: boolean;
+}) {
+  const chevron = useSharedValue(0);
+
+  useEffect(() => {
+    chevron.value = withSpring(expanded ? 1 : 0, motion.spring.spatialFast);
+  }, [expanded, chevron]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevron.value * 180}deg` }],
+  }));
+
+  return (
+    <Animated.View style={chevronStyle}>
+      <ChevronDown
+        size={18}
+        color={expanded ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+      />
+    </Animated.View>
+  );
+});
+
+/** Animowany kontener tacy przystanków tworzący worklety dopiero po pierwszym otwarciu. */
+const ExpandableStopsTray = memo(function ExpandableStopsTray({
+  expanded,
+  estimatedInitialHeight,
+  children,
+}: {
+  expanded: boolean;
+  estimatedInitialHeight: number;
+  children: ReactNode;
+}) {
+  const measuredHeight = useSharedValue(0);
+  const stopsHeightAnim = useSharedValue(0);
+
+  useEffect(() => {
+    const targetHeight = measuredHeight.value > 0 ? measuredHeight.value : estimatedInitialHeight;
+    stopsHeightAnim.value = withSpring(expanded ? targetHeight : 0, motion.spring.spatialDefault);
+  }, [expanded, stopsHeightAnim, measuredHeight, estimatedInitialHeight]);
+
+  const stopsAnimStyle = useAnimatedStyle(() => {
+    const height = stopsHeightAnim.value;
+    const maxH = Math.max(1, measuredHeight.value || estimatedInitialHeight);
+    const opacity = Math.min(1, Math.max(0, height / Math.min(40, maxH)));
+    return {
+      height,
+      opacity,
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents={expanded ? 'auto' : 'none'}
+      style={[s.trayAnimClip, stopsAnimStyle]}
+      accessibilityElementsHidden={!expanded}
+      importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+    >
+      <View
+        style={s.trayMeasuredWrap}
+        onLayout={(e) => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
+            measuredHeight.value = h;
+            if (expanded) {
+              stopsHeightAnim.value = withTiming(h, motion.state);
+            }
+          }
+        }}
+      >
+        {children}
+      </View>
+    </Animated.View>
   );
 });
 
@@ -580,6 +725,7 @@ function lookupTrackedVehicle(leg: Leg, allowLive: boolean): TrackedVehicle | nu
 
 const TransitLegCard = memo(function TransitLegCard({
   leg,
+  legIndex = 0,
   expanded,
   onToggle,
   userLocation,
@@ -592,6 +738,7 @@ const TransitLegCard = memo(function TransitLegCard({
   footer,
 }: {
   leg: Leg;
+  legIndex?: number;
   expanded: boolean;
   onToggle: (id: string) => void;
   userLocation: CurrentLocation | null;
@@ -938,7 +1085,7 @@ const TransitLegCard = memo(function TransitLegCard({
     () => classifyVehicleModel(vehicle?.model ?? leg.vehicleModel, leg.mode),
     [vehicle?.model, leg.vehicleModel, leg.mode],
   );
-  const railAmenities = useRailAmenities({
+  const { amenities: railAmenities, loading: railAmenitiesLoading } = useRailAmenities({
     enabled: isTrain,
     deferLoad: deferSecondaryWork,
     tripId: leg.tripId,
@@ -947,7 +1094,13 @@ const TransitLegCard = memo(function TransitLegCard({
     line: leg.line,
     trainName: leg.trainName,
   });
-  const hasSpecsTray = Boolean(vehicleSpecs || (railAmenities && railAmenities.keys.length > 0));
+  // Odkładamy montaż gęstych ikon (udogodnienia składu, dworca) o 1-4 klatki per noga.
+  const graphicsReady = useDeferredReveal(!deferSecondaryWork, 1 + Math.min(legIndex, 3));
+  const hasSpecsTray = Boolean(
+    vehicleSpecs ||
+      (railAmenities && railAmenities.keys.length > 0) ||
+      (isTrain && railAmenitiesLoading),
+  );
   const directionLabel =
     leg.mode === 'train' ? railDirectionLabel(leg) || leg.direction : leg.direction;
   const isNationalRail =
@@ -961,37 +1114,27 @@ const TransitLegCard = memo(function TransitLegCard({
   const specsA11y = formatVehicleSpecsA11y(vehicleSpecs, t, railAmenities);
   const lineCardA11y = specsA11y ? `${lineCardBaseA11y}. ${specsA11y}` : lineCardBaseA11y;
 
-  const lineCardRef = useRef<View>(null);
-
   const openLineTimetable = useCallback(() => {
     if (!canOpenLine) return;
-    const navigate = (fromY?: number) => {
-      router.push({
-        pathname: '/line',
-        params: {
-          ...(leg.routeId ? { routeId: leg.routeId } : {}),
-          ...(leg.line ? { line: leg.line } : {}),
-          ...(leg.mode ? { mode: leg.mode } : {}),
-          ...(leg.tripId ? { tripId: leg.tripId } : {}),
-          ...(leg.direction || directionLabel
-            ? { direction: leg.direction || directionLabel }
-            : {}),
-          ...(leg.fromStopId ? { fromStopId: leg.fromStopId } : {}),
-          ...(leg.toStopId ? { toStopId: leg.toStopId } : {}),
-          ...(leg.fromStop ? { fromStop: leg.fromStop } : {}),
-          ...(leg.toStop ? { toStop: leg.toStop } : {}),
-          ...(leg.departAt ? { departAt: leg.departAt } : {}),
-          ...(leg.arriveAt ? { arriveAt: leg.arriveAt } : {}),
-          ...(fromY != null ? { fromY: String(Math.round(fromY)) } : {}),
-          ...(isNationalRail ? { dbTarget: 'national' } : {}),
-        },
-      });
-    };
-    if (lineCardRef.current) {
-      lineCardRef.current.measureInWindow((_x, y) => navigate(y));
-    } else {
-      navigate();
-    }
+    router.push({
+      pathname: '/line',
+      params: {
+        ...(leg.routeId ? { routeId: leg.routeId } : {}),
+        ...(leg.line ? { line: leg.line } : {}),
+        ...(leg.mode ? { mode: leg.mode } : {}),
+        ...(leg.tripId ? { tripId: leg.tripId } : {}),
+        ...(leg.direction || directionLabel
+          ? { direction: leg.direction || directionLabel }
+          : {}),
+        ...(leg.fromStopId ? { fromStopId: leg.fromStopId } : {}),
+        ...(leg.toStopId ? { toStopId: leg.toStopId } : {}),
+        ...(leg.fromStop ? { fromStop: leg.fromStop } : {}),
+        ...(leg.toStop ? { toStop: leg.toStop } : {}),
+        ...(leg.departAt ? { departAt: leg.departAt } : {}),
+        ...(leg.arriveAt ? { arriveAt: leg.arriveAt } : {}),
+        ...(isNationalRail ? { dbTarget: 'national' } : {}),
+      },
+    });
   }, [
     canOpenLine,
     router,
@@ -1016,50 +1159,9 @@ const TransitLegCard = memo(function TransitLegCard({
     onToggle(leg.id);
   }, [intermediateStats.hasExpandable, onToggle, leg.id]);
 
-  // Animacja rozwijania tacy przystanków
   const showStationArrivals = isIntercityTrain(leg) || isTrain;
   const estimatedInitialHeight =
     Math.max(1, intermediateStats.count) * (showStationArrivals ? 58 : 46) + 28;
-  const chevron = useSharedValue(expanded ? 1 : 0);
-  const measuredHeight = useSharedValue(0);
-  const stopsHeightAnim = useSharedValue(expanded ? estimatedInitialHeight : 0);
-  const didMountExpandAnim = useRef(false);
-
-  useEffect(() => {
-    // Na pierwszym montowaniu stan początkowy jest już zgodny z `expanded`;
-    // pomijamy uruchamianie sprężyn Reanimated dla zwiniętych kart w klatce otwarcia.
-    if (!didMountExpandAnim.current) {
-      didMountExpandAnim.current = true;
-      return;
-    }
-    chevron.value = withSpring(expanded ? 1 : 0, motion.spring.spatialFast);
-    const targetHeight = measuredHeight.value > 0 ? measuredHeight.value : estimatedInitialHeight;
-    stopsHeightAnim.value = withSpring(
-      expanded && intermediateStats.hasExpandable ? targetHeight : 0,
-      motion.spring.spatialDefault,
-    );
-  }, [
-    expanded,
-    intermediateStats.hasExpandable,
-    chevron,
-    stopsHeightAnim,
-    measuredHeight,
-    estimatedInitialHeight,
-  ]);
-
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${chevron.value * 180}deg` }],
-  }));
-
-  const stopsAnimStyle = useAnimatedStyle(() => {
-    const height = stopsHeightAnim.value;
-    const maxH = Math.max(1, measuredHeight.value || estimatedInitialHeight);
-    const opacity = Math.min(1, Math.max(0, height / Math.min(40, maxH)));
-    return {
-      height,
-      opacity,
-    };
-  });
 
   // Stany szyny: przebyty vs nadchodzący odcinek
   const departurePassed = livePosition != null && segment.start <= livePosition.passedStopIndex;
@@ -1208,40 +1310,40 @@ const TransitLegCard = memo(function TransitLegCard({
         <View style={s.bodyContentCol}>
           {/* Karta linii / pociągu z przejściem do rozkładu i parametrami konkretnego pojazdu */}
           {canOpenLine ? (
-            <View ref={lineCardRef} collapsable={false}>
-              <SpringPressable
-                onPress={openLineTimetable}
-                haptic="selection"
-                scaleDelta={0.02}
-                accessibilityRole="button"
-                accessibilityLabel={lineCardA11y}
-                style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}
-              >
-                <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
-                  <LineBadge leg={leg} />
-                  <View style={s.lineTextCol}>
-                    {directionLabel ? (
-                      <Text style={s.lineDirection} numberOfLines={1}>
-                        {directionLabel}
-                      </Text>
-                    ) : null}
-                    {agencySubtitle ? (
-                      <Text style={s.lineAgencySub} numberOfLines={1}>
-                        {agencySubtitle}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+            <SpringPressable
+              onPress={openLineTimetable}
+              haptic="selection"
+              scaleDelta={0.02}
+              accessibilityRole="button"
+              accessibilityLabel={lineCardA11y}
+              style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}
+            >
+              <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
+                <LineBadge leg={leg} />
+                <View style={s.lineTextCol}>
+                  {directionLabel ? (
+                    <Text style={s.lineDirection} numberOfLines={1}>
+                      {directionLabel}
+                    </Text>
+                  ) : null}
+                  {agencySubtitle ? (
+                    <Text style={s.lineAgencySub} numberOfLines={1}>
+                      {agencySubtitle}
+                    </Text>
+                  ) : null}
                 </View>
-                {hasSpecsTray ? (
-                  <VehicleSpecsStrip
-                    specs={vehicleSpecs}
-                    railAmenities={railAmenities}
-                    mode={leg.mode}
-                  />
-                ) : null}
-              </SpringPressable>
-            </View>
+                <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+              </View>
+              {hasSpecsTray ? (
+                <VehicleSpecsStrip
+                  specs={vehicleSpecs}
+                  railAmenities={railAmenities}
+                  loading={isTrain && railAmenitiesLoading}
+                  deferGraphics={!graphicsReady}
+                  mode={leg.mode}
+                />
+              ) : null}
+            </SpringPressable>
           ) : (
             <View style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}>
               <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
@@ -1263,6 +1365,8 @@ const TransitLegCard = memo(function TransitLegCard({
                 <VehicleSpecsStrip
                   specs={vehicleSpecs}
                   railAmenities={railAmenities}
+                  loading={isTrain && railAmenitiesLoading}
+                  deferGraphics={!graphicsReady}
                   mode={leg.mode}
                 />
               ) : null}
@@ -1326,12 +1430,11 @@ const TransitLegCard = memo(function TransitLegCard({
                   ? t.leg.intermediateStationsCount(intermediateStats.count)
                   : t.leg.intermediateStopsCount(intermediateStats.count)}
               </Text>
-              <Animated.View style={chevronStyle}>
-                <ChevronDown
-                  size={18}
-                  color={expanded ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
-                />
-              </Animated.View>
+              {hasExpanded ? (
+                <AnimatedExpandChevron expanded={expanded} />
+              ) : (
+                <ChevronDown size={18} color={scheme.onSurfaceVariant} />
+              )}
             </Pressable>
           ) : (
             <View style={s.directRideRow}>
@@ -1345,40 +1448,25 @@ const TransitLegCard = memo(function TransitLegCard({
 
       {/* 3. Rozwijana taca stacji / przystanków pośrednich na pełnej szerokości 3 kolumn */}
       {intermediateStats.hasExpandable && (expanded || hasExpanded) ? (
-        <Animated.View
-          pointerEvents={expanded ? 'auto' : 'none'}
-          style={[s.trayAnimClip, stopsAnimStyle]}
-          accessibilityElementsHidden={!expanded}
-          importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+        <ExpandableStopsTray
+          expanded={expanded}
+          estimatedInitialHeight={estimatedInitialHeight}
         >
-          <View
-            style={s.trayMeasuredWrap}
-            onLayout={(e) => {
-              const h = Math.round(e.nativeEvent.layout.height);
-              if (h > 0 && Math.abs(h - measuredHeight.value) > 1) {
-                measuredHeight.value = h;
-                if (expanded) {
-                  stopsHeightAnim.value = withTiming(h, motion.state);
-                }
-              }
-            }}
-          >
-            <LegStopsTray
-              leg={leg}
-              stops={stops}
-              segment={segment}
-              isTrain={isTrain}
-              railStroke={railStroke}
-              badgeBg={badgeBg}
-              badgeFg={badgeFg}
-              livePosition={livePosition}
-              loading={loading}
-              delayShiftSec={delayShiftSec}
-              entrySpineColor={trayEntrySpineColor}
-              exitSpineColor={arrivalTopSpineColor}
-            />
-          </View>
-        </Animated.View>
+          <LegStopsTray
+            leg={leg}
+            stops={stops}
+            segment={segment}
+            isTrain={isTrain}
+            railStroke={railStroke}
+            badgeBg={badgeBg}
+            badgeFg={badgeFg}
+            livePosition={livePosition}
+            loading={loading}
+            delayShiftSec={delayShiftSec}
+            entrySpineColor={trayEntrySpineColor}
+            exitSpineColor={arrivalTopSpineColor}
+          />
+        </ExpandableStopsTray>
       ) : null}
 
       {/* 4. Wiersz przyjazdu: godzina | pełny węzeł końcowy | stacja, peron, udogodnienia dworca */}
@@ -1445,6 +1533,7 @@ const TransitLegCard = memo(function TransitLegCard({
               lon={leg.toLon}
               showLabel
               deferLoad={deferSecondaryWork}
+              deferGraphics={!graphicsReady}
             />
           ) : null}
         </View>
@@ -1600,6 +1689,42 @@ export const LegTimeline = memo(function LegTimeline({
     ? displayLegs.find((l) => l.mode !== 'walk')?.id
     : undefined;
 
+  const legsKey = useMemo(() => displayLegs.map((l) => l.id).join('|'), [displayLegs]);
+  const [mountedCount, setMountedCount] = useState(() =>
+    Math.min(displayLegs.length, INITIAL_VISIBLE_LEGS),
+  );
+
+  useEffect(() => {
+    if (displayLegs.length <= INITIAL_VISIBLE_LEGS) {
+      setMountedCount(displayLegs.length);
+      return;
+    }
+    if (deferSecondaryWork) {
+      setMountedCount(Math.min(displayLegs.length, INITIAL_VISIBLE_LEGS));
+      return;
+    }
+    let cancelled = false;
+    let rafId: number | null = null;
+    setMountedCount((prev) => Math.max(prev, Math.min(displayLegs.length, INITIAL_VISIBLE_LEGS)));
+
+    const step = () => {
+      if (cancelled) return;
+      setMountedCount((prev) => {
+        const next = Math.min(displayLegs.length, prev + 1);
+        if (next < displayLegs.length) {
+          rafId = requestAnimationFrame(step);
+        }
+        return next;
+      });
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [legsKey, displayLegs.length, deferSecondaryWork]);
+
   const isProtectedBridge = (fromLeg?: Leg | null, toLeg?: Leg | null) =>
     Boolean(
       transferState &&
@@ -1616,6 +1741,13 @@ export const LegTimeline = memo(function LegTimeline({
   return (
     <View style={s.list}>
       {displayLegs.map((leg, i) => {
+        if (i >= mountedCount) {
+          return leg.mode === 'walk' ? (
+            <ConnectorSkeleton key={leg.id} />
+          ) : (
+            <LegCardSkeleton key={leg.id} withAmenities={isTrainLeg(leg)} />
+          );
+        }
         if (leg.mode === 'walk') {
           const walkMin = walkMinutesFor(leg.walkM ?? 200, walkMps);
           const isSameStop =
@@ -1769,6 +1901,7 @@ export const LegTimeline = memo(function LegTimeline({
               renderCard={(footer) => (
                 <TransitLegCard
                   leg={leg}
+                  legIndex={i}
                   expanded={expandedId === leg.id}
                   userLocation={observeOnly || expandedId !== leg.id ? null : location}
                   allowLive={!observeOnly || leg.live}
@@ -1842,7 +1975,7 @@ const s = StyleSheet.create({
     width: '100%',
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: CARD_PAD_H,
     paddingVertical: 16,

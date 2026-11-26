@@ -50,6 +50,7 @@ import type { TransferAlternative, TransferProtectionState } from './transferTyp
 import { hasTransfer } from './transferTypes';
 import { applyLiveDelays } from '../routing/engine';
 import { anchorConnectionToPlan } from '../routing/connectionTimes';
+import { normalizeConnectionId } from '../routing/connectionIdentity';
 import { sharedTimeMs } from '../../sharing/progress';
 import type { ForegroundTransferProtection } from './transferForeground';
 import { decodeSharedConnection } from '../../sharing/connection';
@@ -725,10 +726,12 @@ async function syncTransferProtection(): Promise<void> {
 }
 
 export interface UpdateTrackedConnectionOptions {
-  reason?: 'legSwap' | 'alternative';
+  reason?: 'legSwap' | 'alternative' | 'variantSwitch';
   activeLegIndex?: number;
   nextLine?: string;
   transferStop?: string;
+  enableProtection?: boolean;
+  groupAlternatives?: Connection[];
 }
 
 /**
@@ -762,7 +765,23 @@ async function updateTrackedConnectionNow(
   const walkSpeedMps = profileWalkSpeedMps(getSettingsSync().walkPace);
   const nextProgress = computeTripProgress(connection, { now: nowDate, walkSpeedMps });
   const stillHasTransfer = !current.sharedJourney && hasTransfer(connection);
-  const protectionEnabled = current.protectionEnabled === true && stillHasTransfer;
+  const wantProtection = options.enableProtection ?? (current.protectionEnabled === true);
+  const protectionEnabled = wantProtection && stillHasTransfer;
+
+  const nextNormId = normalizeConnectionId(connection.id);
+  const rawPool = options.groupAlternatives ?? [
+    current.connection,
+    ...(current.groupAlternatives ?? []),
+  ];
+  const seenAltIds = new Set<string>([nextNormId]);
+  const nextGroupAlternatives: Connection[] = [];
+  for (const cand of rawPool) {
+    const candNormId = normalizeConnectionId(cand.id);
+    if (seenAltIds.has(candNormId)) continue;
+    seenAltIds.add(candNormId);
+    nextGroupAlternatives.push(cand);
+    if (nextGroupAlternatives.length >= 3) break;
+  }
 
   const nextTransfer: TransferProtectionState | undefined = protectionEnabled
     ? {
@@ -774,7 +793,8 @@ async function updateTrackedConnectionNow(
         nextLine: options.nextLine,
         transferStop: options.transferStop,
         scope: usesNativeTransferProtection() ? 'background' : 'foreground',
-        swappedByUser: options.reason === 'legSwap' ? true : undefined,
+        swappedByUser:
+          options.reason === 'legSwap' || options.reason === 'variantSwitch' ? true : undefined,
       }
     : undefined;
 
@@ -782,6 +802,7 @@ async function updateTrackedConnectionNow(
   tracked = {
     ...current,
     connection,
+    groupAlternatives: nextGroupAlternatives.length > 0 ? nextGroupAlternatives : undefined,
     fromTitle: connection.fromTitle || current.fromTitle,
     fromLat: connection.legs[0]?.fromLat ?? current.fromLat,
     fromLon: connection.legs[0]?.fromLon ?? current.fromLon,

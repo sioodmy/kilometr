@@ -1,5 +1,15 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import { AppState, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AppState,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import Animated, { type AnimatedStyle } from 'react-native-reanimated';
 import { Clock3, M3SolidArrowDown, M3SolidArrowRight } from './icons';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -12,17 +22,23 @@ import { boardingDepartureSec } from '../services/routing/connectionTimes';
 import { secondsToTimeString, timeStringToSeconds } from '../gtfs/geo';
 import { nowSecOfDay } from '../services/vehiclePosition';
 import { useTransferThresholds, useWalkSpeedMps } from '../services/settings';
+import type { TransitionRect } from './routeCardTransitionMath';
 
 export const ConnectionSummary = memo(function ConnectionSummary({
   item,
   offline = false,
   availableWidth,
   showLegStrip = false,
+  onStripLayoutInParent,
+  stripAnimatedStyle,
 }: {
   item: Connection;
   offline?: boolean;
   availableWidth?: number;
   showLegStrip?: boolean;
+  /** Pozycja JourneyStrip względem rodzica ConnectionSummary, liczona czystym onLayout bez wpływu transform. */
+  onStripLayoutInParent?: (rect: TransitionRect) => void;
+  stripAnimatedStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
 }) {
   const s = useStrings();
   const walkMps = useWalkSpeedMps();
@@ -82,6 +98,55 @@ export const ConnectionSummary = memo(function ConnectionSummary({
   const departurePlace = item.boarded ? item.fromTitle : (firstVehicle?.fromStop ?? item.fromTitle);
   const showArrivalDelay =
     arrivalDelay !== 0 && (item.boarded || arrivalDelay !== departureDelay);
+
+  const summaryLayoutRef = useRef<{ x: number; y: number } | null>(null);
+  const contentLayoutRef = useRef<{ x: number; y: number } | null>(null);
+  const stripLayoutRef = useRef<TransitionRect | null>(null);
+  const onStripLayoutInParentRef = useRef(onStripLayoutInParent);
+  onStripLayoutInParentRef.current = onStripLayoutInParent;
+
+  const emitStripLayout = useCallback(() => {
+    const cb = onStripLayoutInParentRef.current;
+    const summaryL = summaryLayoutRef.current;
+    const contentL = contentLayoutRef.current;
+    const stripL = stripLayoutRef.current;
+    if (!cb || !summaryL || !contentL || !stripL) return;
+    cb({
+      x: summaryL.x + contentL.x + stripL.x,
+      y: summaryL.y + contentL.y + stripL.y,
+      width: stripL.width,
+      height: stripL.height,
+    });
+  }, []);
+
+  const handleSummaryLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { x, y } = event.nativeEvent.layout;
+      summaryLayoutRef.current = { x, y };
+      emitStripLayout();
+    },
+    [emitStripLayout],
+  );
+
+  const handleContentLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { x, y } = event.nativeEvent.layout;
+      contentLayoutRef.current = { x, y };
+      emitStripLayout();
+    },
+    [emitStripLayout],
+  );
+
+  const handleStripLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { x, y, width: w, height: h } = event.nativeEvent.layout;
+      if (w > 0 && h > 0) {
+        stripLayoutRef.current = { x, y, width: w, height: h };
+        emitStripLayout();
+      }
+    },
+    [emitStripLayout],
+  );
 
   const innerContent = (
     <>
@@ -315,13 +380,33 @@ export const ConnectionSummary = memo(function ConnectionSummary({
       )}
 
       {/* 3. Pasek składu podróży: kolejne linie i dojścia na jednym rzucie oka */}
-      {showLegStrip && insights ? <JourneyStrip insights={insights} /> : null}
+      {showLegStrip && insights ? (
+        onStripLayoutInParent || stripAnimatedStyle ? (
+          <Animated.View
+            collapsable={false}
+            onLayout={onStripLayoutInParent ? handleStripLayout : undefined}
+            style={stripAnimatedStyle}
+          >
+            <JourneyStrip insights={insights} />
+          </Animated.View>
+        ) : (
+          <JourneyStrip insights={insights} />
+        )
+      ) : null}
     </>
   );
 
   return (
-    <View style={styles.summary}>
-      <View style={styles.content}>{innerContent}</View>
+    <View
+      style={styles.summary}
+      onLayout={onStripLayoutInParent ? handleSummaryLayout : undefined}
+    >
+      <View
+        style={styles.content}
+        onLayout={onStripLayoutInParent ? handleContentLayout : undefined}
+      >
+        {innerContent}
+      </View>
     </View>
   );
 });
@@ -331,7 +416,7 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level1,
   },
@@ -375,7 +460,7 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -443,7 +528,7 @@ const styles = StyleSheet.create({
   },
   bridgePill: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 9,
     paddingVertical: 3,

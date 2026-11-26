@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BusFront, CableCar, TrainFront, TramFront } from './icons';
 import { DirectionsWalk } from './DirectionsWalk';
@@ -38,7 +39,7 @@ export function resolveLegBadgeColors({
   return { bg, fg };
 }
 
-export function LineBadge({
+export const LineBadge = memo(function LineBadge({
   mode,
   line,
   leg,
@@ -53,7 +54,7 @@ export function LineBadge({
   compact?: boolean;
   active?: boolean;
   maxWidth?: number;
-  size?: 'medium' | 'large';
+  size?: 'small' | 'medium' | 'large';
 }) {
   // Miasto tylko dla heurystyki numerów, gdy brak trybu (np. badge newsów).
   const { cityId } = useActiveCity();
@@ -106,11 +107,12 @@ export function LineBadge({
           : BusFront;
 
   const charCount = (normalizedLine || '').length;
-  const isSmallText = compact && charCount >= 4;
-  const isTinyText = compact && charCount >= 6;
-  const large = size === 'large' && !compact;
+  const small = size === 'small';
+  const isSmallText = (compact || small) && charCount >= 4;
+  const isTinyText = (compact || small) && charCount >= 6;
+  const large = size === 'large' && !compact && !small;
 
-  const iconSize = compact ? 11 : large ? 18 : 13;
+  const iconSize = small ? 9.5 : compact ? 11 : large ? 18 : 13;
 
   return (
     <View
@@ -118,6 +120,7 @@ export function LineBadge({
         styles.badge,
         large && styles.large,
         compact && styles.compact,
+        small && styles.smallBadge,
         maxWidth != null && { maxWidth },
         { backgroundColor: bg },
       ]}
@@ -132,8 +135,10 @@ export function LineBadge({
           styles.text,
           large && styles.largeText,
           compact && styles.compactText,
+          small && styles.smallBadgeText,
           isSmallText && styles.smallText,
           isTinyText && styles.tinyText,
+          small && isSmallText && styles.smallBadgeNarrowText,
           { color: fg },
         ]}
         numberOfLines={1}
@@ -143,7 +148,7 @@ export function LineBadge({
       </Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   badge: {
@@ -161,6 +166,14 @@ const styles = StyleSheet.create({
   compactWalk: { minWidth: 24, paddingHorizontal: 4, minHeight: 26 },
   walkActive: { backgroundColor: scheme.secondaryContainer },
   compact: { paddingHorizontal: 5, minWidth: 28, minHeight: 26, gap: 3 },
+  smallBadge: {
+    paddingHorizontal: 4.5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    minWidth: 23,
+    minHeight: 20,
+    gap: 2.5,
+  },
   text: { ...type.labelLarge, fontWeight: '700', flexShrink: 1 },
   large: {
     minWidth: 64,
@@ -179,6 +192,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   compactText: { fontSize: 12, lineHeight: 14, fontWeight: '700' },
+  smallBadgeText: { fontSize: 10.5, lineHeight: 12, fontWeight: '700' },
+  smallBadgeNarrowText: { fontSize: 9.5, lineHeight: 11, letterSpacing: -0.3 },
   smallText: { fontSize: 11, lineHeight: 13, letterSpacing: -0.3 },
   tinyText: { fontSize: 10, lineHeight: 12, letterSpacing: -0.5 },
 });

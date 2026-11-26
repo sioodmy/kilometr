@@ -1352,6 +1352,7 @@ export const pl = {
     optionSameTime: 'Ten sam przyjazd',
     strategyLegSwap: 'Inny kurs z tego przystanku',
     strategyStayOn: 'Jedź dalej i przesiądź się później',
+    strategyStayDirect: (line: string) => `Jedź dalej linią ${line} bezpośrednio do celu`,
     strategySameStop: 'Inna linia z tego przystanku',
     walkTransfer: (min: number, m: number) => `${min} min pieszo (${m} m)`,
     samePlatform: 'Ten sam przystanek',
@@ -1387,7 +1388,7 @@ export const pl = {
     today: 'Dziś',
     tomorrow: 'Jutro',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `za ${n} min`,
+    departIn: (n: number) => `za ${formatDuration(n)}`,
     departNow: 'za chwilę',
     departAgo: (n: number) => `${n} min temu`,
     departJustAgo: 'przed chwilą',
@@ -1783,100 +1784,13 @@ export const pl = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Wybierz miasto, a rozkład pobierze się w tle. Połączenia wyszukasz także bez internetu.',
+    intro: 'Rozkłady 132 miast. Działa też offline.',
     openSettings: 'Otwórz ustawienia',
     permissionDenied:
       'Możesz kontynuować bez tej zgody i zmienić ją później w ustawieniach telefonu.',
-    steps: ['Witaj', 'Miasto', 'Dostęp', 'Miejsca'] as string[],
+    steps: ['Witaj', 'Miasto', 'Dostęp'] as string[],
     granted: 'Włączone',
     denied: 'Wyłączone',
-    slotHome: 'Dom',
-    slotHomeHint: (id: string): string =>
-      id === 'krakow'
-        ? 'np. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'np. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'np. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'np. Długa 12'
-              : id === 'lodz'
-                ? 'np. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'np. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'np. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'np. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'np. Lipowa 12'
-                        : id === 'opole'
-                          ? 'np. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'np. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'np. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'np. Żeromskiego 12'
-                                : 'np. Swojczycka 41',
-    slotWork: 'Praca',
-    slotWorkHint: (id: string): string =>
-      id === 'krakow'
-        ? 'np. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'np. Złote Tarasy'
-          : id === 'poznan'
-            ? 'np. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'np. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'np. Manufaktura'
-                : id === 'szczecin'
-                  ? 'np. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'np. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'np. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'np. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'np. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'np. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'np. Felicity'
-                              : id === 'radom'
-                                ? 'np. Galeria Słoneczna'
-                                : 'np. Sky Tower',
-    slotUni: 'Uczelnia',
-    slotUniHint: (id: string): string =>
-      id === 'krakow'
-        ? 'np. AGH'
-        : id === 'warszawa'
-          ? 'np. Uniwersytet'
-          : id === 'poznan'
-            ? 'np. UAM'
-            : id === 'trojmiasto'
-              ? 'np. UG'
-              : id === 'lodz'
-                ? 'np. UŁ'
-                : id === 'szczecin'
-                  ? 'np. US'
-                  : id === 'kielce'
-                    ? 'np. UJK'
-                    : id === 'olsztyn'
-                      ? 'np. UWM'
-                      : id === 'bialystok'
-                        ? 'np. UwB'
-                        : id === 'opole'
-                          ? 'np. UO'
-                          : id === 'rzeszow'
-                            ? 'np. PRz'
-                            : id === 'lublin'
-                              ? 'np. UMCS'
-                              : id === 'radom'
-                                ? 'np. UTH'
-                                : 'np. Politechnika',
     backA11y: 'Wstecz',
     stepOf: (n: number, len: number, name: string) => `Krok ${n} z ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1886,10 +1800,17 @@ export const pl = {
     noPay: 'Bez mikropłatności',
     detectGpsAction: 'Wykryj moje miasto przez GPS',
     detectGpsHint: 'Automatycznie dobierze rozkład dla Twojej okolicy',
-    citySearchPlaceholder: 'Szukaj miasta lub aglomeracji…',
+    detectGpsShort: 'Wykryj',
+    detectGpsLocating: 'Szukam…',
+    citySearchPlaceholder: 'Wpisz miasto…',
     cityNoSearchMatch: (q: string) => `Nie znaleziono miasta „${q}”.`,
     cityClearSearchA11y: 'Wyczyść wyszukiwanie',
     citySubtitleAuto: 'Rozkład pobierze się automatycznie w tle.',
+    cityPopularSection: 'Największe miasta',
+    cityAllSection: 'Pozostałe miasta',
+    citySelectedLabel: 'Wybrane miasto',
+    cityPickPrompt: 'Wybierz miasto',
+    cityNextWith: (name: string) => `Dalej · ${name}`,
     bgDlDownloading: (gen: string, pct: number) => `Pobieram rozkład ${gen}… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Przygotowuję rozkład ${gen}… ${pct}%`,
     bgDlReady: (gen: string) => `Rozkład ${gen} gotowy offline`,
@@ -1898,12 +1819,16 @@ export const pl = {
     bgDlRetry: 'Ponów',
     bgDlStart: 'Pobierz',
     startUsing: 'Zacznij korzystać',
-    permTitle: 'Dostęp aplikacji',
-    permSub: 'Lokalizacja i powiadomienia. Oba opcjonalne.',
-    permSubWeb: 'Dodaj aplikację do ekranu głównego i włącz lokalizację.',
-    pwaTitle: 'Zainstaluj na ekranie głównym',
+    permTitle: 'Ostatni krok',
+    permSub: 'Włącz, czego potrzebujesz. Wszystko opcjonalne.',
+    permSubWeb: 'Włącz lokalizację lub dodaj skrót na ekran.',
+    permEnable: 'Włącz',
+    pwaTitle: 'Ekran główny',
     pwaSub:
       'Nie korzystaj z Kilometru w karcie przeglądarki. Jako aplikacja na pulpicie działa na pełnym ekranie i trzyma pobrany rozkład offline.',
+    pwaShortBody: 'Pełny ekran i szybszy start offline.',
+    pwaHowTo: 'Instrukcja',
+    pwaInstallShort: 'Zainstaluj',
     pwaInstalled: 'Aplikacja działa już z ekranu głównego.',
     pwaInstallBtn: 'Zainstaluj jednym kliknięciem',
     pwaTabIos: 'iPhone / iPad',
@@ -1917,20 +1842,24 @@ export const pl = {
     locTitle: 'Lokalizacja',
     locBody:
       'Pokazuje pobliskie przystanki i postęp aktywnej podróży. Przy ustalaniu adresu współrzędne trafiają do OpenStreetMap Nominatim. Podczas aktywnej podróży GPS może działać przy zgaszonym ekranie.',
+    locShortBody: 'Najbliższe przystanki i prowadzenie w trasie.',
+    locDisclosure:
+      'Adresy sprawdzamy w OSM Nominatim. Podczas podróży GPS może działać przy zgaszonym ekranie.',
     locOn: 'Lokalizacja włączona.',
     locAllow: 'Zezwól na lokalizację',
     notifTitle: 'Powiadomienia',
     notifBody: 'Pokazują przypiętą podróż i przypominają o wybranym odjeździe lub wysiadaniu.',
+    notifShortBody: 'Przypięta podróż i przypomnienia o wysiadaniu.',
     notifOn: 'Powiadomienia włączone.',
     notifExpoGo:
       'Podgląd w Expo Go: powiadomienia (przypięte połączenie) działają w buildzie deweloperskim.',
     notifAllow: 'Włącz powiadomienia',
-    cityTitle: 'W którym mieście jeździsz?',
+    cityTitle: 'Wybierz miasto',
     cityBody:
       'Rozkład, mapa i aktualności dopasują się do wyboru. Miasto zmienisz później w ustawieniach.',
-    cityNoGps: 'Bez dostępu do GPS wybierz miasto z listy.',
+    cityNoGps: 'Brak dostępu do GPS. Wybierz miasto z listy lub włącz w ustawieniach.',
     cityLocating: 'Szukam pozycji GPS…',
-    cityNoMatch: 'Nie znalazłem Cię w obsługiwanym mieście. Wybierz z listy.',
+    cityNoMatch: 'Nie znaleziono obsługiwanego miasta w pobliżu. Wybierz z listy.',
     cityPickA11y: (name: string) => `Wybierz miasto: ${name}`,
     dlTitle: (gen: string) => `Pobierz rozkład ${gen}`,
     dlBody: (feeds: string) =>
@@ -1944,25 +1873,13 @@ export const pl = {
     dlDoneSub: (stops: number, trips: number) => `${stops} przystanków • ${trips} kursów.`,
     dlFail: 'Coś poszło nie tak',
     dlFailBody: (msg: string) => `${msg}. Sprawdź internet i spróbuj ponownie.`,
-    saveFail: 'Nie udało się zapisać miejsca',
-    saveFailBody: 'Spróbuj ponownie.',
-    placesTitle: 'Gdzie bywasz najczęściej?',
-    placesBody: 'Zapisane miejsca przyspieszają wyszukiwanie. Ten krok można pominąć.',
-    added: 'Dodane',
-    removeSlotA11y: (name: string) => `Usuń ${name}`,
-    closeAction: 'Zamknij',
-    addAction: '+ Dodaj',
-    addressFor: (name: string) => `Adres dla: ${name}…`,
-    noResults: (q: string) =>
-      `Brak wyników dla „${q}”. Przystanki szukamy offline, adresy wymagają internetu.`,
-    start: 'Skonfiguruj Kilometr',
+    start: 'Zaczynamy',
     next: 'Dalej',
     later: 'Później',
     footerRetry: 'Spróbuj ponownie',
     footerDownloading: 'Pobieranie…',
     footerDownload: 'Pobierz rozkład',
     needTimetable: 'Bez rozkładu nie da się wyszukać połączeń.',
-    doneCount: (n: number) => `Gotowe (${n})`,
     donePlain: 'Gotowe',
     skip: 'Pomiń na razie',
     skipTimetable: 'Pomiń, pobiorę rozkład później',
@@ -2522,6 +2439,15 @@ export const pl = {
     fromStopLabel: (stop: string) => `z: ${stop}`,
     exitStopLabel: (stop: string) => `wysiadka: ${stop}`,
     finalWalkPill: (min: number) => `${min}' do celu`,
+    variantAlternativeHeading: 'Alternatywnie',
+    variantFasterBy: (min: number) => `Szybciej o ${min} min`,
+    variantDirect: 'Bezpośrednio',
+    variantSlackShort: (min: number) => (min <= 0 ? 'na styk' : `${min} min zapasu`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Alternatywny wariant ${label}, przyjazd ${arrAt}`,
+    variantSwitcherA11y: 'Warianty przesiadek tego kursu',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, przyjazd ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'Brak danych o trasie',
@@ -3059,7 +2985,7 @@ export const pl = {
     openTimetableCta: 'Rozkład linii',
     toggleSheetA11y: 'Rozwiń lub zwiń szczegóły',
     filterDelays: 'Opóźnienia',
-    delayZoneSheetTitle: 'Węzeł opóźnień',
+    delayZoneSheetTitle: 'Opóźnienia na odcinku',
     delayAvgNow: (min: number) => `Średnio +${min} min`,
     delayP90: (min: number) => `Szczyt (p90): +${min} min`,
     delayVsTypicalHigher: (min: number) => `+${min} min powyżej normy`,

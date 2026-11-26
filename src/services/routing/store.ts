@@ -15,6 +15,7 @@ import {
   invokeRustSync,
 } from '../../../modules/kilometr-raptor';
 import { clearRaptorNetCache } from './network';
+import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './yieldFrame';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
@@ -141,13 +142,8 @@ function readInt32HexAt(hex: string, idx: number): number {
   return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
 }
 
-/** Budżet czasu jednej porcji pracy przed oddaniem kolejki JS (utrzymuje ~60 FPS). */
-const YIELD_BUDGET_MS = 12;
-
-/** Oddaje kolejkę JS między porcjami ciężkiej pracy (tap/animacja nie czekają). */
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
+/** Maksymalna liczba kursów z blobami pobierana z SQLite w jednym rzucie przez mostek JSI. */
+const TRIP_BLOB_PAGE_SIZE = 300;
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
 function mergePolinkaTrips(
@@ -299,7 +295,9 @@ export class LocalGtfsStore {
 
     // 1. Load stops (ORDER BY stop_id wykorzystuje klucz główny i od razu daje kolejność stopRefs).
     const stopsRows = await db.getAllAsync<{stop_id: string, code: string, name: string, lat: number, lon: number, norm: string}>('SELECT * FROM stops ORDER BY stop_id');
+    if (generation !== this.generation) return;
     const stopRefs = new Array<string>(stopsRows.length);
+    let stopSliceStart = performance.now();
     for (let i = 0; i < stopsRows.length; i++) {
       const r = stopsRows[i];
       stopRefs[i] = r.stop_id;
@@ -311,6 +309,11 @@ export class LocalGtfsStore {
         stop_lon: r.lon,
         normalized_name: r.norm
       });
+      if ((i & 255) === 255 && performance.now() - stopSliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        stopSliceStart = performance.now();
+        if (generation !== this.generation) return;
+      }
     }
 
     // 2. Load routes
@@ -326,21 +329,24 @@ export class LocalGtfsStore {
 
     if (generation !== this.generation) return;
 
-    // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
-    // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
+    // 3. Przesiadki piesze z prebuilt bloba czytamy przed dodaniem syntetycznych stacji Polinki,
+    // żeby liczba przystanków zgadzała się z nagłówkiem bloba; linki Polinki dokładamy punktowo.
+    const footpathsFromBlob = await this.loadFootpathsBlob(db, stops, footpaths, stopRefs, generation).catch((err) => {
+      console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
+      return false;
+    });
+    if (generation !== this.generation) return;
+
+    // 4. Kolej linowa Polinka: stacje i linia (tylko miasta z koleją linową).
     if (this.cableEnabled) this.injectPolinkaStopsAndRoute(stops, routes);
 
-    // 4. Przesiadki piesze: blob z buildera (liczony natywnie w buildzie), a gdy
-    // go nie ma, dawny grid w JS. Miasta z koleją linową zostają na JS, bo
-    // stacje Polinki dokładamy dopiero tutaj i nie ma ich w blobie.
-    let footpathsFromBlob = false;
-    if (!this.cableEnabled) {
-      footpathsFromBlob = await this.loadFootpathsBlob(db, stops, footpaths, stopRefs).catch((err) => {
-        console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
-        return false;
-      });
+    if (footpathsFromBlob) {
+      if (this.cableEnabled) {
+        this.appendFootpathsForStops(polinkaStops(), stops, footpaths);
+      }
+    } else {
+      await this.buildFootpathsAsync(stops, footpaths, generation);
     }
-    if (!footpathsFromBlob) this.buildFootpaths(stops, footpaths);
 
     if (generation !== this.generation) return;
 
@@ -410,10 +416,79 @@ export class LocalGtfsStore {
     return { tripIds, byRouteId: new Map([[POLINKA_ROUTE_ID, group]]) };
   }
 
+  /** Dolicza dwukierunkowe dojścia piesze tylko dla nowo wstrzykniętych przystanków (np. stacje Polinki). */
+  private appendFootpathsForStops(
+    addedStops: StoreStop[],
+    stops = this.stops,
+    footpaths = this.footpaths,
+  ): void {
+    const MAX_DLAT = 0.0075;
+    const MAX_DLON = 0.014;
+    const invSpeed = WALK_DETOUR_FACTOR / WALK_SPEED_MPS;
+    for (const s1 of addedStops) {
+      if (isFareBoundary(s1.stop_name ?? '')) continue;
+      const out = footpaths.get(s1.stop_id) ?? [];
+      const existingOut = new Set(out.map((fp) => fp.to_stop_id));
+      for (const s2 of stops.values()) {
+        if (s1.stop_id === s2.stop_id) continue;
+        if (isFareBoundary(s2.stop_name ?? '')) continue;
+        if (
+          Math.abs(s1.stop_lat - s2.stop_lat) > MAX_DLAT ||
+          Math.abs(s1.stop_lon - s2.stop_lon) > MAX_DLON
+        ) {
+          continue;
+        }
+        const dist = distanceMeters(s1.stop_lat, s1.stop_lon, s2.stop_lat, s2.stop_lon);
+        if (dist > MAX_TRANSFER_METERS) continue;
+        const distance_m = Math.round(dist);
+        const duration_sec = Math.max(MIN_FOOTPATH_SEC, Math.round(dist * invSpeed));
+        if (!existingOut.has(s2.stop_id)) {
+          out.push({ from_stop_id: s1.stop_id, to_stop_id: s2.stop_id, distance_m, duration_sec });
+          existingOut.add(s2.stop_id);
+        }
+        const back = footpaths.get(s2.stop_id) ?? [];
+        if (!back.some((fp) => fp.to_stop_id === s1.stop_id)) {
+          back.push({ from_stop_id: s2.stop_id, to_stop_id: s1.stop_id, distance_m, duration_sec });
+          footpaths.set(s2.stop_id, back);
+        }
+      }
+      if (out.length > 0) {
+        footpaths.set(s1.stop_id, out);
+      }
+    }
+  }
+
   private buildFootpaths(
     stops = this.stops,
     footpaths = this.footpaths,
   ) {
+    const steps = this.buildFootpathsSteps(stops, footpaths);
+    let next = steps.next();
+    while (!next.done) next = steps.next();
+  }
+
+  private async buildFootpathsAsync(
+    stops = this.stops,
+    footpaths = this.footpaths,
+    genAtStart = this.generation,
+  ): Promise<void> {
+    const steps = this.buildFootpathsSteps(stops, footpaths);
+    let sliceStart = performance.now();
+    let next = steps.next();
+    while (!next.done) {
+      if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+        if (this.generation !== genAtStart) return;
+      }
+      next = steps.next();
+    }
+  }
+
+  private *buildFootpathsSteps(
+    stops = this.stops,
+    footpaths = this.footpaths,
+  ): Generator<void, void, void> {
     const GRID_DEG_LAT = 0.001;
     const GRID_DEG_LON = 0.0015;
     // Liczbowy klucz komórki siatki eliminuje ~700 tys. alokacji stringów na starcie.
@@ -476,6 +551,7 @@ export class LocalGtfsStore {
       if (paths.length > 0) {
         footpaths.set(s1.stop_id, paths);
       }
+      if ((i & 15) === 15) yield;
     }
   }
 
@@ -616,92 +692,109 @@ export class LocalGtfsStore {
 
     if (await this.hasTripBlobs(db)) {
       if (this.generation !== genAtStart) return emptyIdx;
-      // hex() omija limit referencji JNI: trzy BLOB-y na kurs przepełniały go przy dużych rozkładach.
-      const rows = await db.getAllAsync<{
-        trip_id: string;
-        route_id: string;
-        service_id: string;
-        headsign: string;
-        direction: number;
-        shape: string;
-        seq_blob: string | null;
-        arr_blob: string | null;
-        dep_blob: string | null;
-      }>(
-        `SELECT trip_id, route_id, service_id, headsign, direction, shape,
-                CASE WHEN seq_blob IS NOT NULL THEN hex(seq_blob) END AS seq_blob,
-                CASE WHEN arr_blob IS NOT NULL THEN hex(arr_blob) END AS arr_blob,
-                CASE WHEN dep_blob IS NOT NULL THEN hex(dep_blob) END AS dep_blob
-         FROM trips
-         WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ?`,
-        ...serviceIds,
-        bTo,
-        bFrom,
-      );
-      if (this.generation !== genAtStart) return emptyIdx;
-      const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
+      const stopRefs = await this.getStopRefs(db);
       if (this.generation !== genAtStart) return emptyIdx;
       const missing: string[] = [];
       // Wiele kursów współdzieli ten sam seq_blob: dekodujemy sekwencję raz na wzorzec.
       const seqCache = new Map<string, { key: string; stopIds: string[] }>();
+      // Czytamy kursy stronami po rowid: jedno zapytanie na 5 tys. wierszy z trzema
+      // hex-blobami zamrażało wątek JS podczas deserializacji mostka i wywoływało GC spike.
+      let lastRowId = 0;
       let sliceStart = performance.now();
-      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-        const r = rows[rowIdx];
-        const t = {
-          trip_id: r.trip_id,
-          route_id: r.route_id,
-          service_id: r.service_id,
-          trip_headsign: r.headsign,
-          direction_id: r.direction,
-          shape_id: r.shape,
-        };
-        this.trips.set(r.trip_id, t);
-        let group = tripsByRouteId.get(r.route_id);
-        if (!group) {
-          group = [];
-          tripsByRouteId.set(r.route_id, group);
-        }
-        group.push(t);
-        tripIds.push(r.trip_id);
-        if (r.seq_blob !== null && r.arr_blob !== null && r.dep_blob !== null) {
-          let seqEntry = seqCache.get(r.seq_blob);
-          if (!seqEntry) {
-            const nSeq = r.seq_blob.length >>> 3;
-            const stopIds = new Array<string>(nSeq);
-            for (let i = 0; i < nSeq; i++) {
-              stopIds[i] = stopRefs[readInt32HexAt(r.seq_blob, i)];
+      while (true) {
+        const rows = await db.getAllAsync<{
+          _rowid?: number;
+          trip_id: string;
+          route_id: string;
+          service_id: string;
+          headsign: string;
+          direction: number;
+          shape: string;
+          seq_blob: string | null;
+          arr_blob: string | null;
+          dep_blob: string | null;
+        }>(
+          `SELECT rowid AS _rowid, trip_id, route_id, service_id, headsign, direction, shape,
+                  CASE WHEN seq_blob IS NOT NULL THEN hex(seq_blob) END AS seq_blob,
+                  CASE WHEN arr_blob IS NOT NULL THEN hex(arr_blob) END AS arr_blob,
+                  CASE WHEN dep_blob IS NOT NULL THEN hex(dep_blob) END AS dep_blob
+           FROM trips
+           WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ? AND rowid > ?
+           ORDER BY rowid
+           LIMIT ${TRIP_BLOB_PAGE_SIZE}`,
+          ...serviceIds,
+          bTo,
+          bFrom,
+          lastRowId,
+        );
+        if (this.generation !== genAtStart) return emptyIdx;
+        if (rows.length === 0) break;
+        for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+          const r = rows[rowIdx];
+          const t = {
+            trip_id: r.trip_id,
+            route_id: r.route_id,
+            service_id: r.service_id,
+            trip_headsign: r.headsign,
+            direction_id: r.direction,
+            shape_id: r.shape,
+          };
+          this.trips.set(r.trip_id, t);
+          let group = tripsByRouteId.get(r.route_id);
+          if (!group) {
+            group = [];
+            tripsByRouteId.set(r.route_id, group);
+          }
+          group.push(t);
+          tripIds.push(r.trip_id);
+          if (r.seq_blob !== null && r.arr_blob !== null && r.dep_blob !== null) {
+            let seqEntry = seqCache.get(r.seq_blob);
+            if (!seqEntry) {
+              const nSeq = r.seq_blob.length >>> 3;
+              const stopIds = new Array<string>(nSeq);
+              for (let i = 0; i < nSeq; i++) {
+                stopIds[i] = stopRefs[readInt32HexAt(r.seq_blob, i)];
+              }
+              seqEntry = { key: stopIds.join(','), stopIds };
+              seqCache.set(r.seq_blob, seqEntry);
             }
-            seqEntry = { key: stopIds.join(','), stopIds };
-            seqCache.set(r.seq_blob, seqEntry);
+            const stopIds = seqEntry.stopIds;
+            const n = Math.min(stopIds.length, r.arr_blob.length >>> 3, r.dep_blob.length >>> 3);
+            const times = new Array<GtfsStopTime>(n);
+            const arrHex = r.arr_blob;
+            const depHex = r.dep_blob;
+            for (let i = 0; i < n; i++) {
+              times[i] = {
+                trip_id: r.trip_id,
+                stop_id: stopIds[i],
+                arrival_sec: readInt32HexAt(arrHex, i),
+                departure_sec: readInt32HexAt(depHex, i),
+                stop_sequence: i,
+              };
+            }
+            this.stopTimes.set(r.trip_id, times);
+            if (n === stopIds.length) {
+              tripPatternMeta.set(r.trip_id, seqEntry);
+            }
+          } else {
+            // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
+            missing.push(r.trip_id);
           }
-          const stopIds = seqEntry.stopIds;
-          const n = Math.min(stopIds.length, r.arr_blob.length >>> 3, r.dep_blob.length >>> 3);
-          const times = new Array<GtfsStopTime>(n);
-          const arrHex = r.arr_blob;
-          const depHex = r.dep_blob;
-          for (let i = 0; i < n; i++) {
-            times[i] = {
-              trip_id: r.trip_id,
-              stop_id: stopIds[i],
-              arrival_sec: readInt32HexAt(arrHex, i),
-              departure_sec: readInt32HexAt(depHex, i),
-              stop_sequence: i,
-            };
+          if ((rowIdx & 31) === 31 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+            await yieldToUiFrame();
+            sliceStart = performance.now();
+            // Reset/import mógł wyczyścić mapy w trakcie porcji.
+            if (this.generation !== genAtStart) return emptyIdx;
           }
-          this.stopTimes.set(r.trip_id, times);
-          if (n === stopIds.length) {
-            tripPatternMeta.set(r.trip_id, seqEntry);
-          }
-        } else {
-          // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
-          missing.push(r.trip_id);
         }
-        if ((rowIdx & 127) === 127 && performance.now() - sliceStart >= YIELD_BUDGET_MS) {
-          await yieldToEventLoop();
-          sliceStart = performance.now();
-          // Reset/import mógł wyczyścić mapy w trakcie porcji.
-          if (this.generation !== genAtStart) return emptyIdx;
+        const tailRowId = rows[rows.length - 1]._rowid;
+        if (rows.length < TRIP_BLOB_PAGE_SIZE || tailRowId == null || tailRowId <= lastRowId) {
+          break;
         }
+        lastRowId = tailRowId;
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+        if (this.generation !== genAtStart) return emptyIdx;
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
@@ -766,8 +859,15 @@ export class LocalGtfsStore {
     // zapytania bywa różny między bazami/urządzeniami), a od niej zależy numeracja
     // p0/p1... i kolejność wzorców w sieci RAPTOR-a, więc i dobór równorzędnych
     // połączeń w wyniku. Sortowanie daje ten sam wynik wszędzie.
+    let sortSliceStart = performance.now();
+    let sortedGroups = 0;
     for (const group of tripsByRouteId.values()) {
       group.sort((a, b) => (a.trip_id < b.trip_id ? -1 : a.trip_id > b.trip_id ? 1 : 0));
+      if ((++sortedGroups & 31) === 0 && performance.now() - sortSliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sortSliceStart = performance.now();
+        if (this.generation !== genAtStart) return emptyIdx;
+      }
     }
     const sortedByRoute = new Map(
       [...tripsByRouteId.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
@@ -817,10 +917,16 @@ export class LocalGtfsStore {
     stops: Map<string, StoreStop>,
     footpaths: Map<string, Footpath[]>,
     knownStopRefs?: string[],
+    genAtStart = this.generation,
   ): Promise<boolean> {
+    const hasTable = await db.getFirstAsync<{ ok: number }>(
+      "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'footpaths' LIMIT 1",
+    );
+    if (this.generation !== genAtStart || !hasTable?.ok) return false;
     const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
       'SELECT blob FROM footpaths WHERE id = 1',
     );
+    if (this.generation !== genAtStart) return false;
     if (!row?.blob) return false;
     const bytes = row.blob instanceof Uint8Array ? row.blob : new Uint8Array(row.blob);
     if (bytes.byteLength < 8) return false;
@@ -840,6 +946,9 @@ export class LocalGtfsStore {
               'SELECT stop_id FROM stops ORDER BY stop_id',
             )
           ).map((r) => r.stop_id);
+    if (this.generation !== genAtStart) return false;
+    let sliceStart = performance.now();
+    let decodedStops = 0;
     while (w + 8 <= bytes.byteLength) {
       const fromRef = view.getInt32(w, true);
       w += 4;
@@ -860,6 +969,14 @@ export class LocalGtfsStore {
       }
       if (!isFareBoundary(stops.get(fromId)?.stop_name ?? '')) {
         footpaths.set(fromId, list.filter((path) => !isFareBoundary(stops.get(path.to_stop_id)?.stop_name ?? '')));
+      }
+      if ((++decodedStops & 63) === 0 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+        if (this.generation !== genAtStart) {
+          footpaths.clear();
+          return false;
+        }
       }
     }
     console.log(`[LocalGtfsStore] Footpaths z bloba: ${footpaths.size} przystanków.`);
@@ -980,8 +1097,8 @@ export class LocalGtfsStore {
     let sliceStart = performance.now();
     let next = steps.next();
     while (!next.done) {
-      if (performance.now() - sliceStart >= YIELD_BUDGET_MS) {
-        await yieldToEventLoop();
+      if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
         sliceStart = performance.now();
       }
       next = steps.next();
@@ -1024,7 +1141,7 @@ export class LocalGtfsStore {
           patternGroups.set(key, group);
         }
         group.trips.push(trip);
-        if ((tripIdx & 511) === 511) yield;
+        if ((tripIdx & 63) === 63) yield;
       }
 
       let patIdx = 0;
@@ -1092,7 +1209,7 @@ export class LocalGtfsStore {
           routesSet.add(patternId);
         }
       }
-      if ((routeIdx++ & 15) === 15) yield;
+      if ((routeIdx++ & 3) === 3) yield;
     }
 
     return { stopRoutes, routeStops, routeTrips, patterns };

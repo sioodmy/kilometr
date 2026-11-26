@@ -11,7 +11,8 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import Animated, {
   Easing,
   FadeInDown,
@@ -62,7 +63,7 @@ function toneColors(tone: Tone) {
     return {
       card: scheme.surfaceContainerLow,
       border: scheme.warning + '55',
-      borderWidth: 2,
+      borderWidth: 1,
       ink: scheme.onSurface,
       muted: scheme.onSurfaceVariant,
       accent: scheme.warning,
@@ -72,7 +73,7 @@ function toneColors(tone: Tone) {
     return {
       card: scheme.surfaceContainerLowest,
       border: scheme.outlineVariant,
-      borderWidth: 2,
+      borderWidth: StyleSheet.hairlineWidth,
       ink: scheme.onSurfaceVariant,
       muted: scheme.outline,
       accent: scheme.onSurfaceVariant,
@@ -81,7 +82,7 @@ function toneColors(tone: Tone) {
   return {
     card: scheme.surfaceContainerLow,
     border: scheme.outlineVariant,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     ink: scheme.onSurface,
     muted: scheme.onSurfaceVariant,
     accent: scheme.onSurfaceVariant,
@@ -202,7 +203,9 @@ function SkeletonCard() {
 export default function NewsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
+  const transitionSettled = useScreenTransitionSettled();
   const { cityId } = useActiveCity();
   const operator = s.city.operator(cityId);
   const portal = s.city.portal(cityId);
@@ -308,6 +311,7 @@ export default function NewsScreen() {
   }, [cityId]);
 
   useEffect(() => {
+    if (!transitionSettled) return;
     let live = true;
     void markNewsSeen();
     const unsub = subscribeNewsCache(() => {
@@ -334,7 +338,7 @@ export default function NewsScreen() {
       live = false;
       unsub();
     };
-  }, [cityId, load, refreshMyLines]);
+  }, [cityId, load, refreshMyLines, transitionSettled]);
 
   const openItem = useCallback(
     (item: MpkNewsItem) => {
@@ -407,7 +411,7 @@ export default function NewsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       <View style={[styles.header, webLayout.isMedium && styles.mediumCentered]}>
         {!webLayout.isDesktop && (
           <Pressable
@@ -543,6 +547,9 @@ export default function NewsScreen() {
         <FlatList
           data={rows}
           keyExtractor={keyExtractor}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={7}
           contentContainerStyle={[styles.list, webLayout.isMedium && styles.mediumCentered]}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
@@ -582,7 +589,7 @@ export default function NewsScreen() {
           }
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -656,7 +663,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: shape.medium,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.warning + '55',
   },
   errorBannerText: { ...type.bodySmall, color: scheme.onSurface, flex: 1 },
@@ -726,7 +733,7 @@ const styles = StyleSheet.create({
   resolvedText: { ...type.labelMedium, fontWeight: '700', color: scheme.onPrimaryContainer },
   solutionBox: {
     backgroundColor: scheme.surface,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     borderRadius: shape.large,
     padding: 12,

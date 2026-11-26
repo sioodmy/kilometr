@@ -9,6 +9,7 @@ import { reliabilityNotice } from '../src/components/reliabilityNotice';
 import { pl } from '../src/i18n/pl';
 import type { Connection } from '../src/types/models';
 
+async function main() {
 function network(lines: { id: string; stops: string[]; times: number[][]; kind?: number }[]) {
   const store = new LocalGtfsStore();
   const index: DayIndex = {
@@ -109,11 +110,11 @@ gtfsStore.stops = matchedNet.store.stops;
 gtfsStore.trips = matchedNet.store.trips;
 gtfsStore.stopTimes = matchedNet.store.stopTimes;
 const matcher = liveTracker as unknown as {
-  matchRowsRust(
+  matchRowsRustAsync(
     rows: RawVehicleRow[],
     index: DayIndex,
     nowSec: number,
-  ): Map<string, { tracked: TrackedVehicle }> | null;
+  ): Promise<Map<string, { tracked: TrackedVehicle }> | null>;
   matchRow(
     row: RawVehicleRow,
     index: DayIndex,
@@ -125,7 +126,7 @@ const matcher = liveTracker as unknown as {
 const realNow = Date.now;
 Date.now = () => ms;
 try {
-  const rust = matcher.matchRowsRust([row], matchedNet.index, sec);
+  const rust = await matcher.matchRowsRustAsync([row], matchedNet.index, sec);
   assert(rust, 'Nowy matcher WASM musi być dostępny');
   const js = matcher.matchRow(row, matchedNet.index, sec, new Map());
   assert.equal(rust.get('145-v')?.tracked.matchedTripId, '145_0');
@@ -134,7 +135,7 @@ try {
   assert.equal(js.tracked.delaySec, 2400);
   const wrong = { ...row, headsign: 'C' };
   assert.equal(
-    matcher.matchRowsRust([wrong], matchedNet.index, sec)?.get('145-v')?.tracked.matchedTripId,
+    (await matcher.matchRowsRustAsync([wrong], matchedNet.index, sec))?.get('145-v')?.tracked.matchedTripId,
     undefined,
   );
   assert.equal(
@@ -144,7 +145,7 @@ try {
   matcher.byId.set('145-v', { ...js.tracked, delaySec: 2400, updatedAt: ms - 5000 });
   const jump = { ...row, delaySec: 0 };
   assert.equal(
-    matcher.matchRowsRust([jump], matchedNet.index, sec)?.get('145-v')?.tracked.matchedTripId,
+    (await matcher.matchRowsRustAsync([jump], matchedNet.index, sec))?.get('145-v')?.tracked.matchedTripId,
     '145_0',
   );
   assert.equal(
@@ -153,7 +154,7 @@ try {
   );
   const noApi = { ...row, delaySec: undefined };
   assert.equal(
-    matcher.matchRowsRust([noApi], matchedNet.index, sec)?.get('145-v')?.tracked.matchedTripId,
+    (await matcher.matchRowsRustAsync([noApi], matchedNet.index, sec))?.get('145-v')?.tracked.matchedTripId,
     '145_0',
   );
   assert.equal(
@@ -168,7 +169,7 @@ try {
     upcomingStops: [{ name: 'B', schedSec: sec - 2100 }],
   };
   assert.equal(
-    matcher.matchRowsRust([timetable], matchedNet.index, sec)?.get('145-v')?.tracked.matchedTripId,
+    (await matcher.matchRowsRustAsync([timetable], matchedNet.index, sec))?.get('145-v')?.tracked.matchedTripId,
     '145_0',
   );
   assert.equal(
@@ -177,7 +178,7 @@ try {
   );
   const sampled = { ...timetable, timestamp: ms - 60000 };
   assert.equal(
-    matcher.matchRowsRust([sampled], matchedNet.index, sec)?.get('145-v')?.tracked.delaySec,
+    (await matcher.matchRowsRustAsync([sampled], matchedNet.index, sec))?.get('145-v')?.tracked.delaySec,
     2340,
   );
   assert.equal(matcher.matchRow(sampled, matchedNet.index, sec, new Map()).tracked.delaySec, 2340);
@@ -191,7 +192,7 @@ try {
   gtfsStore.stopTimes = long.store.stopTimes;
   const veryLate = { ...row, delaySec: 5400 };
   assert.equal(
-    matcher.matchRowsRust([veryLate], long.index, sec)?.get('145-v')?.tracked.delaySec,
+    (await matcher.matchRowsRustAsync([veryLate], long.index, sec))?.get('145-v')?.tracked.delaySec,
     5400,
   );
   assert.equal(matcher.matchRow(veryLate, long.index, sec, new Map()).tracked.delaySec, 5400);
@@ -201,7 +202,7 @@ try {
   gtfsStore.trips = terminal.store.trips;
   gtfsStore.stopTimes = terminal.store.stopTimes;
   const atStop = { ...row, x: 51, delaySec: undefined, headsign: undefined, upcomingStops: [{ name: 'A', schedSec: sec - 2400 }] };
-  assert.equal(matcher.matchRowsRust([atStop], terminal.index, sec)?.get('145-v')?.tracked.matchedTripId, '145_0');
+  assert.equal((await matcher.matchRowsRustAsync([atStop], terminal.index, sec))?.get('145-v')?.tracked.matchedTripId, '145_0');
   assert.equal(matcher.matchRow(atStop, terminal.index, sec, new Map()).tracked.matchedTripId, '145_0');
 } finally {
   Date.now = realNow;
@@ -406,3 +407,6 @@ for (const train of [false, true]) {
 console.log(
   'PASS: bufory przesiadki w obu kierunkach, wybór późniejszego kursu, rzeczywiste godziny, ranking',
 );
+
+}
+void main();

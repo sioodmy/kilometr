@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   pill: {
     borderRadius: shape.large,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },

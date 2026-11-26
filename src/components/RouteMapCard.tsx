@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import Animated, { FadeOut, ReduceMotion } from 'react-native-reanimated';
 import {
@@ -76,17 +75,19 @@ export const RouteMapCard = memo(function RouteMapCard({
   vehicle = null,
   onOpenMap,
   desktopFill = false,
-  deferMapMount = false,
 }: {
   connection: Connection;
   vehicle?: MapVehicle | null;
   onOpenMap: (stageId?: string) => void;
   desktopFill?: boolean;
-  deferMapMount?: boolean;
 }) {
   const s = useStrings();
-  const enriched = useEnrichedConnection(connection) ?? connection;
-  const shapeKey = useMemo(() => routeShapeKey(enriched), [enriched]);
+  const [readyToMountMap, setReadyToMountMap] = useState(false);
+  const enriched = useEnrichedConnection(connection, readyToMountMap) ?? connection;
+  const shapeKey = useMemo(
+    () => (readyToMountMap ? routeShapeKey(enriched) : connection.id),
+    [readyToMountMap, enriched, connection.id],
+  );
   const builtRoute = useRef<{ key: string; route: MapRoute } | null>(null);
   const route = useMemo(() => {
     if (builtRoute.current?.key === shapeKey) return builtRoute.current.route;
@@ -105,24 +106,6 @@ export const RouteMapCard = memo(function RouteMapCard({
   const [attempt, setAttempt] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
-  const [readyToMountMap, setReadyToMountMap] = useState(desktopFill && !deferMapMount);
-  const cardRef = useRef<View>(null);
-  const mountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (desktopFill && !deferMapMount) setReadyToMountMap(true);
-  }, [desktopFill, deferMapMount]);
-
-  useEffect(() => {
-    return () => {
-      if (mountTimerRef.current) {
-        clearTimeout(mountTimerRef.current);
-        mountTimerRef.current = null;
-      }
-    };
-  }, []);
-  const measuredRef = useRef(false);
-  const { height: windowHeight } = useWindowDimensions();
 
   const stages = useMemo(() => {
     void geometryVersion;
@@ -134,9 +117,12 @@ export const RouteMapCard = memo(function RouteMapCard({
     [stages, selectedStageId],
   );
 
+  // Przy przejściu na inną trasę wracamy do trybu tap to load,
+  // żeby ciężki WebView nie uruchamiał się samoczynnie.
   useEffect(() => {
+    setReadyToMountMap(false);
     setSelectedStageId(null);
-  }, [route.id]);
+  }, [connection.id]);
 
   // Automatycznie przewija poziomy pasek chipów do aktywnie wybranego etapu.
   useEffect(() => {
@@ -148,24 +134,6 @@ export const RouteMapCard = memo(function RouteMapCard({
   }, [activeStage]);
 
   const mountMap = useCallback(() => setReadyToMountMap(true), []);
-
-  // WebView (MapLibre GL) jest ciężki: montujemy go dopiero, gdy karta zbliży się
-  // do viewportu, albo po ręcznym dotknięciu placeholdera.
-  const measureCard = useCallback(() => {
-    if (measuredRef.current) return;
-    const node = cardRef.current;
-    if (!node) return;
-    node.measureInWindow((_x, y, _w, h) => {
-      measuredRef.current = true;
-      if (y < windowHeight + 180 && y + h > -160) {
-        if (mountTimerRef.current) clearTimeout(mountTimerRef.current);
-        mountTimerRef.current = setTimeout(() => {
-          mountTimerRef.current = null;
-          mountMap();
-        }, 60);
-      }
-    });
-  }, [mountMap, windowHeight]);
 
   const lastRouteId = useRef<string | null>(null);
   useEffect(() => {
@@ -284,12 +252,7 @@ export const RouteMapCard = memo(function RouteMapCard({
   );
 
   return (
-    <View
-      ref={cardRef}
-      collapsable={false}
-      onLayout={measureCard}
-      style={[styles.card, desktopFill && styles.cardDesktopFill]}
-    >
+    <View style={[styles.card, desktopFill && styles.cardDesktopFill]}>
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
           <View style={styles.headerIconBadge}>
@@ -582,7 +545,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 14,
     gap: 12,
@@ -638,7 +601,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   expandPillText: {
@@ -650,7 +613,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   mapFrameDesktopFill: {
@@ -679,7 +642,7 @@ const styles = StyleSheet.create({
   canvasBadge: {
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 11,
     paddingVertical: 5,
@@ -752,7 +715,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   stepBtn: {
@@ -762,7 +725,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   stageFooterBody: {
@@ -799,7 +762,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     maxWidth: 236,
   },

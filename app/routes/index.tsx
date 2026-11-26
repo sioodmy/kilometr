@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
+  InteractionManager,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  InteractionManager,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../../src/hooks/useScreenTransitionSettled';
 import {
   AlertCircle,
   ChevronDown,
@@ -39,7 +41,6 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { MorphingLoader } from '../../src/components/MorphingLoader';
 import { RouteLoadingView } from '../../src/components/RouteLoadingView';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { EarlierConnectionsPull } from '../../src/components/EarlierConnectionsPull';
@@ -48,6 +49,8 @@ import {
   type CardEnterMode,
   type ReorderAnimationToken,
 } from '../../src/components/ConnectionListItem';
+import { useRouteCardTransition } from '../../src/components/RouteCardTransition';
+import { normalizeConnectionId } from '../../src/services/routing/connectionIdentity';
 import {
   EARLIER_PULL_EDGE_MAX,
   EARLIER_PULL_LOADING,
@@ -84,9 +87,14 @@ import {
 // Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
-import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
+import { getSettingsSync, loadSettings, profileWalkSpeedMps, useTransferThresholds, useWalkSpeedMps } from '../../src/services/settings';
 import { stopTracking } from '../../src/services/notifications';
 import { isIntercityRouteQuery, rememberPlannedConnection } from '../../src/services/api';
+import {
+  groupConnections,
+  rememberConnectionGroup,
+  type ConnectionGroup,
+} from '../../src/services/routing/connectionGroups';
 import {
   ensureNationalTimetable,
   nationalTimetableReady,
@@ -101,6 +109,7 @@ import {
 import {
   getDataStatus,
   importGtfsFromNetwork,
+  refreshDataStatus,
   subscribeDataStatus,
   type DataStatus,
 } from '../../src/services/dataManager';
@@ -125,27 +134,41 @@ import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import { ensureStopHintsLoaded } from '../../src/services/stopHints';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
+import type { ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
-import {
-  DepartureTimeSheet,
-  type JourneyTimeSelection,
-} from '../../src/components/DepartureTimeSheet';
-import {
-  RouteFilterSheet,
-  type RouteModeFilter,
-  type RouteTransfersFilter,
+import type { JourneyTimeSelection } from '../../src/components/DepartureTimeSheet';
+import type {
+  RouteModeFilter,
+  RouteTransfersFilter,
 } from '../../src/components/RouteFilterSheet';
 import { SearchSheet } from '../../src/components/SearchSheet';
+import { SheetLoadingFallback } from '../../src/components/SkeletonPulse';
 import { useStrings } from '../../src/i18n';
+
+const ConnectionPeek = lazy(() =>
+  import('../../src/components/ConnectionPeek').then((m) => ({ default: m.ConnectionPeek })),
+);
+const DepartureTimeSheet = lazy(() =>
+  import('../../src/components/DepartureTimeSheet').then((m) => ({
+    default: m.DepartureTimeSheet,
+  })),
+);
+const RouteFilterSheet = lazy(() =>
+  import('../../src/components/RouteFilterSheet').then((m) => ({ default: m.RouteFilterSheet })),
+);
 
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
-const connectionKey = (item: Connection) => item.id;
+const groupKey = (group: ConnectionGroup) => group.key;
 
-// Szybkie wyszukiwania kończą się przed tym czasem, więc pełnoekranowy
-// wskaźnik nie mruga między wejściem w ekran a pierwszą kartą wyniku.
-const INITIAL_LOADING_DELAY_MS = 700;
+// Krótkie opóźnienie daje szansę na natychmiastowy hit z cache bez mrugnięcia skeletonem,
+// a na świeżej aplikacji pokazuje skeleton od razu zamiast długiej pustki.
+const INITIAL_LOADING_DELAY_MS = 120;
+// Mały chip „Sprawdzam kolejne kursy” pokazujemy dopiero przy dłuższym odświeżaniu na tle cache,
+// żeby nie mrugał na ułamek sekundy i nie podbijał wysokości nagłówka listy.
+const UPDATING_CHIP_DELAY_MS = 400;
+// Pierwszy poll live po starcie apki ma chwilę na odpowiedź, zanim pokażemy chip „brak danych”.
+const INITIAL_LIVE_GRACE_MS = 3500;
 
 function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
   if (!raw) return null;
@@ -163,6 +186,7 @@ function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
 export default function RoutesScreen() {
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const transitionSettled = useScreenTransitionSettled();
   const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const cityDef = defaultLocationForCity(cityId);
@@ -300,6 +324,7 @@ export default function RoutesScreen() {
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
+  const [initialAnchorReady, setInitialAnchorReady] = useState(() => Boolean(boardedTrip));
   const dismissedAnchorsRef = useRef<Set<string>>(new Set());
   const fetchSeq = useRef(0);
   const initialAnchorCheckedRef = useRef(false);
@@ -372,6 +397,7 @@ export default function RoutesScreen() {
   const arrivalMode = timeMode === 'arrival';
   const [loading, setLoading] = useState(true);
   const [showInitialLoading, setShowInitialLoading] = useState(false);
+  const [showUpdatingChip, setShowUpdatingChip] = useState(false);
   const [loadError, setLoadError] = useState(false);
   useEffect(() => {
     if (!loading || items.length > 0) {
@@ -379,6 +405,14 @@ export default function RoutesScreen() {
       return;
     }
     const timer = setTimeout(() => setShowInitialLoading(true), INITIAL_LOADING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [items.length, loading]);
+  useEffect(() => {
+    if (!loading || items.length === 0) {
+      setShowUpdatingChip(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowUpdatingChip(true), UPDATING_CHIP_DELAY_MS);
     return () => clearTimeout(timer);
   }, [items.length, loading]);
   const [offline, setOffline] = useState(false);
@@ -394,15 +428,52 @@ export default function RoutesScreen() {
   useFocusEffect(useCallback(() => closePreview, [closePreview]));
   // Śledzimy fokus refem zamiast useIsFocused(), żeby kliknięcie karty nie wywoływało
   // re-renderu całej listy w klatce startu animacji przejścia na szczegóły.
+  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
+  useEffect(() => subscribeDataStatus(setDataStatus), []);
+  const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const timetableReady = dataStatus.state === 'ready';
+
   const isFocusedRef = useRef(true);
   const syncLiveOnFocusRef = useRef<(() => void) | null>(null);
   const restoreListScrollRef = useRef<(() => void) | null>(null);
-  // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna.
+  const timetableReadyRef = useRef(timetableReady);
+  timetableReadyRef.current = timetableReady;
+  const liveAcquiredRef = useRef(false);
+  const liveAcquireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const syncLiveTrackerLease = useCallback(() => {
+    const shouldAcquire = isFocusedRef.current && timetableReadyRef.current;
+    if (!shouldAcquire) {
+      if (liveAcquireTimerRef.current !== null) {
+        clearTimeout(liveAcquireTimerRef.current);
+        liveAcquireTimerRef.current = null;
+      }
+      if (liveAcquiredRef.current) {
+        liveAcquiredRef.current = false;
+        liveTracker.release();
+      }
+      return;
+    }
+    if (liveAcquiredRef.current || liveAcquireTimerRef.current !== null) return;
+    liveAcquireTimerRef.current = setTimeout(() => {
+      liveAcquireTimerRef.current = null;
+      if (!isFocusedRef.current || !timetableReadyRef.current || liveAcquiredRef.current) return;
+      liveAcquiredRef.current = true;
+      liveTracker.acquire();
+    }, 240);
+  }, []);
+
+  useEffect(() => {
+    syncLiveTrackerLease();
+  }, [timetableReady, syncLiveTrackerLease]);
+
+  // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna i ma gotowy rozkład.
+  // Start polla odraczamy o 240 ms, żeby na świeżej aplikacji nie ścigał się z animacją wejścia i budową pierwszego wycinka.
   useFocusEffect(
     useCallback(() => {
       const wasBlurred = !isFocusedRef.current;
       isFocusedRef.current = true;
-      liveTracker.acquire();
+      syncLiveTrackerLease();
       if (wasBlurred) {
         syncLiveOnFocusRef.current?.();
         setNowTick(Date.now());
@@ -412,34 +483,37 @@ export default function RoutesScreen() {
       }
       return () => {
         isFocusedRef.current = false;
-        liveTracker.release();
+        syncLiveTrackerLease();
       };
-    }, []),
+    }, [syncLiveTrackerLease]),
   );
-  // Rozkład trzymany na telefonie: bez niego RAPTOR nie ma czym liczyć, więc
-  // pusty wynik to nie „brak serwera", tylko brak danych offline.
-  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
-  useEffect(() => subscribeDataStatus(setDataStatus), []);
-  const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
-  const timetableReady = dataStatus.state === 'ready';
-  // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
-  // że planer po prostu nie umie opóźnień.
-  // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
-  // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
+  // Stan live: 'stale' pokazujemy od razu, a 'unknown' dopiero po krótkiej karencji na pierwszy poll,
+  // żeby chip „brak danych na żywo” nie pojawiał się na sekundę i nie podbijał listy po starcie apki.
+  const [liveGraceElapsed, setLiveGraceElapsed] = useState(
+    () => !liveTracker.supportsLive() || liveTracker.getLiveState() !== 'unknown',
+  );
+  useEffect(() => {
+    if (liveGraceElapsed) return;
+    const timer = setTimeout(() => setLiveGraceElapsed(true), INITIAL_LIVE_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [liveGraceElapsed]);
   const [liveStale, setLiveStale] = useState(
-    () => liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh',
+    () => liveTracker.supportsLive() && liveTracker.getLiveState() === 'stale',
   );
   // Tick przerysowujący opóźnienia: wyplanowane połączenia mają flagi live
   // z chwili wyszukiwania, bez tickera byłyby zamrożone od wyszukania.
   const initialLiveOk = liveTracker.getLastOk();
   const [liveTick, setLiveTick] = useState(initialLiveOk);
   const lastLiveOk = useRef(initialLiveOk);
+  const liveGraceElapsedRef = useRef(liveGraceElapsed);
+  liveGraceElapsedRef.current = liveGraceElapsed;
   useEffect(() => {
     const check = () => {
       if (!isFocusedRef.current) return;
-      // Miasto bez feedu live nie może pokazywać chipa „brak danych”:
-      // to nie awaria, tylko nieistniejące źródło (features.live).
-      const stale = liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh';
+      const state = liveTracker.getLiveState();
+      const stale =
+        liveTracker.supportsLive() &&
+        (state === 'stale' || (state === 'unknown' && liveGraceElapsedRef.current));
       setLiveStale((prev) => (prev === stale ? prev : stale));
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
@@ -456,7 +530,7 @@ export default function RoutesScreen() {
       unsub();
       clearInterval(t);
     };
-  }, []);
+  }, [liveGraceElapsed]);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
   const [nowTick, setNowTick] = useState(0);
@@ -467,15 +541,23 @@ export default function RoutesScreen() {
     return () => clearInterval(t);
   }, []);
 
-  // Rozgrzewamy lokalny słownik podpowiedzi przystanków w tle po pokazaniu wyników,
-  // żeby wejście w szczegóły połączenia miało wskazówki od razu w pamięci bez parsowania bundla.
+  // Rozgrzewamy lokalny słownik podpowiedzi przystanków dopiero po ustabilizowaniu
+  // pierwszej listy, żeby parsowanie nie zabierało klatek przy wejściu i scrollu.
   const hasResults = items.length > 0;
   useEffect(() => {
     if (!hasResults) return;
-    const timer = setTimeout(() => {
-      if (isFocusedRef.current) void ensureStopHintsLoaded(cityId);
-    }, 350);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        if (!cancelled && isFocusedRef.current) void ensureStopHintsLoaded(cityId);
+      }, 900);
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, [cityId, hasResults]);
 
   const [loadingMore, setLoadingMore] = useState(false);
@@ -527,7 +609,12 @@ export default function RoutesScreen() {
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
-  const liveItems = useRailLiveConnections(items, tripDelays, !offline, isFocusedRef);
+  const liveItems = useRailLiveConnections(
+    items,
+    tripDelays,
+    !offline && transitionSettled,
+    isFocusedRef,
+  );
 
   const displayed = useMemo(() => {
     let list = liveItems;
@@ -571,11 +658,28 @@ export default function RoutesScreen() {
     );
   }, [liveItems, transfersFilter, liveOnly, modeFilter]);
 
-  const listRef = useRef<FlatList<Connection>>(null);
+  const walkMps = useWalkSpeedMps();
+  const thresholds = useTransferThresholds();
+  const groups = useMemo(
+    () => groupConnections(displayed, walkMps, thresholds),
+    [displayed, walkMps, thresholds],
+  );
+  const groupByConnIdRef = useRef<Map<string, ConnectionGroup>>(new Map());
+  groupByConnIdRef.current = useMemo(() => {
+    const map = new Map<string, ConnectionGroup>();
+    for (const group of groups) {
+      for (const opt of group.options) {
+        map.set(normalizeConnectionId(opt.connection.id), group);
+      }
+    }
+    return map;
+  }, [groups]);
+
+  const listRef = useRef<FlatList<ConnectionGroup>>(null);
   const listContentHeightRef = useRef(0);
   const listViewportHeightRef = useRef(0);
 
-  const queryAt = (depSec: number | undefined) => {
+  const queryAt = (depSec: number | undefined, searchAheadOverride?: number) => {
     const cfg = getSettingsSync();
     return {
       fromId: fromId || undefined,
@@ -607,7 +711,7 @@ export default function RoutesScreen() {
       // Miasto: godzina w przód wystarcza na pierwsze odjazdy i mieści się
       // w wycinku, który liveTracker i tak buduje na starcie. Kolej
       // międzymiastowa ma własny horyzont w planIntercity.
-      searchAheadSec: intercityQuery ? undefined : 3600,
+      searchAheadSec: intercityQuery ? undefined : (searchAheadOverride ?? 3600),
     };
   };
 
@@ -659,18 +763,24 @@ export default function RoutesScreen() {
   }, [intercityQuery, items.length]);
 
   useEffect(() => {
+    if (!transitionSettled) return;
+    let cancelled = false;
     SearchService.recent()
-      .then(setRecent)
+      .then((list) => {
+        if (!cancelled) setRecent(list);
+      })
       .catch(() => {});
     Promise.all([FavoritesService.list(), loadSettings()])
       .then(([places, currentSettings]) => {
+        if (cancelled) return;
         setSavedPlaces(places);
         setSavedQuick(
           places.map((p) => ({
-            id: p.placeId,
+            id: p.placeId || `saved:${p.id}`,
             title: p.name,
             address: p.address,
-            kind: 'history' as const,
+            kind: 'place' as const,
+            savedIcon: p.icon,
             lat: p.lat,
             lon: p.lon,
           })),
@@ -699,17 +809,23 @@ export default function RoutesScreen() {
             setFromLat(startLat);
             setFromLon(startLon);
           }
+          setInitialAnchorReady(true);
         }
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        if (!cancelled) setInitialAnchorReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [transitionSettled]);
 
   // Start z GPS bez kotwicy liczy się z fixu, który mógł być słaby (Balanced
   // potrafi trafić o setki metrów i wybrać przystanek po złej stronie osiedla).
   // Po wyszukaniu bierzemy dokładniejszy fix w tle; gdy pozycja faktycznie się
   // przesunęła, podmieniamy origin, a lista odświeża się seamless, bez spinnera.
   useEffect(() => {
-    if (!gpsOrigin || activeAnchor || boardedTrip) return;
+    if (!transitionSettled || !gpsOrigin || activeAnchor || boardedTrip) return;
     let cancelled = false;
     const gen = startSelGen.current;
     const apply = (loc: LocationResult) => {
@@ -735,7 +851,17 @@ export default function RoutesScreen() {
       cancelled = true;
       unsubscribe();
     };
-  }, [gpsOrigin, activeAnchor, boardedTrip]);
+  }, [gpsOrigin, activeAnchor, boardedTrip, transitionSettled]);
+
+  const handleSearchQuery = useCallback((next: string) => {
+    setQuery(next);
+    if (next.trim()) {
+      setSearchLoading(true);
+    } else {
+      setSearchLoading(false);
+      setResults([]);
+    }
+  }, []);
 
   // Lokalny indeks odpowiada od razu, odległości względem aktualnego startu.
   const searchSeq = useRef(0);
@@ -901,6 +1027,10 @@ export default function RoutesScreen() {
 
   const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
+    if (items.length === 0) {
+      hasUserScrolledRef.current = false;
+      scrolledBeyondThreshold.value = false;
+    }
     setLoading(true);
     setLoadError(false);
     setOffline(false);
@@ -910,6 +1040,12 @@ export default function RoutesScreen() {
     setLoadMoreFailed(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : targetTimeSec;
     try {
+      // Przy bezpośrednim otwarciu /routes (np. F5 w PWA) status w pamięci może być jeszcze 'empty'
+      // mimo istniejącej bazy w OPFS; odświeżamy go przed pokazaniem błędu braku rozkładu.
+      if (getDataStatus().state === 'empty') {
+        await refreshDataStatus();
+        if (seq !== fetchSeq.current) return;
+      }
       // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
       // pokazywał to jako wynik wyszukiwania.
       if (noTimetable()) {
@@ -935,16 +1071,20 @@ export default function RoutesScreen() {
             setItems(seeded);
           }
         }
+        if (!hadSeeded) {
+          setShowInitialLoading(true);
+        }
       }
-      // Na zimnym starcie strumieniujemy pierwsze okno RAPTOR-a od razu do listy,
-      // żeby użytkownik widział najbliższe odjazdy zanim policzą się dalsze godziny.
-      const streamPartial = hadSeeded
-        ? undefined
-        : (partial: Connection[]) => {
-            if (seq !== fetchSeq.current || noTimetable()) return;
-            const livePartial = applyLiveList(partial, depSec);
-            if (livePartial.length > 0) setItems(livePartial);
-          };
+      // Dla standardowego 1-godzinnego okna miejskiego czekamy na komplet wyników zamiast
+      // montować pół-pustą listę z migającym spinnerem i przeskakującym nagłówkiem.
+      const streamPartial =
+        hadSeeded || q.searchAheadSec === 3600
+          ? undefined
+          : (partial: Connection[]) => {
+              if (seq !== fetchSeq.current || noTimetable()) return;
+              const livePartial = applyLiveList(partial, depSec);
+              if (livePartial.length > 0) setItems(livePartial);
+            };
       let c = await RoutingService.getConnections(q, streamPartial);
       // Godzinne okno wystarcza na pierwsze odjazdy i mieści się w wycinku
       // live. Gdy naprawdę nic nie ma w godzinę, dociągamy szerszy horyzont,
@@ -1046,7 +1186,16 @@ export default function RoutesScreen() {
   }, [offline]);
 
   const handleLoadMore = async () => {
-    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline)
+    // Ekran szczegółów przykrywa listę w stosie; nie dociągamy w tym czasie kolejnych dni w tle.
+    if (
+      !isFocusedRef.current ||
+      loading ||
+      loadingMore ||
+      loadingEarlier ||
+      items.length === 0 ||
+      noMoreLater ||
+      offline
+    )
       return;
 
     setLoadingMore(true);
@@ -1117,7 +1266,7 @@ export default function RoutesScreen() {
     try {
       const result = await loadEarlierConnections(
         items,
-        (at) => RoutingService.getConnections(queryAt(at)),
+        (at, aheadSec) => RoutingService.getConnections(queryAt(at, aheadSec)),
         () => seq !== fetchSeq.current,
       );
       if (!result) return;
@@ -1168,9 +1317,34 @@ export default function RoutesScreen() {
     [],
   );
 
+  const groupsCountRef = useRef(0);
+  groupsCountRef.current = groups.length;
+  const hasUserScrolledRef = useRef(false);
+  const lastEndReachedAtRef = useRef(0);
+  const scrolledBeyondThreshold = useSharedValue(false);
+  const markUserScrolled = useCallback(() => {
+    hasUserScrolledRef.current = true;
+  }, []);
+
   // Ref na aktualną funkcję: handler gestu i przycisku pozostają stabilne.
   const loadEarlierRef = useRef(handleLoadEarlier);
   loadEarlierRef.current = handleLoadEarlier;
+  const loadMoreRef = useRef(handleLoadMore);
+  loadMoreRef.current = handleLoadMore;
+  const handleLoadMoreStable = useCallback(() => {
+    void loadMoreRef.current();
+  }, []);
+  const handleEndReachedStable = useCallback(() => {
+    if (listViewportHeightRef.current <= 0) return;
+    if (groupsCountRef.current >= 10 && !hasUserScrolledRef.current) return;
+    const now = Date.now();
+    if (now - lastEndReachedAtRef.current < 800) return;
+    lastEndReachedAtRef.current = now;
+    void loadMoreRef.current();
+  }, []);
+  const handleQuietRefresh = useCallback(() => {
+    void quietRefreshRef.current();
+  }, []);
 
   useEffect(() => {
     if (samePlace) {
@@ -1182,11 +1356,9 @@ export default function RoutesScreen() {
     // Intercity: nie ruszaj RAPTOR-a, dopóki nie wiemy, czy baza polska jest.
     // Inaczej pierwsze wyszukiwanie idzie w kosz (railDbReady: null → true/false).
     if (intercityQuery && railDbReady === null) return;
-    const task = InteractionManager.runAfterInteractions(() => {
-      fetchRoutes(targetTimeSec, items.length > 0);
-    });
+    if (!transitionSettled || !initialAnchorReady) return;
+    fetchRoutes(targetTimeSec, items.length > 0);
     return () => {
-      task.cancel();
       fetchSeq.current++;
     };
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
@@ -1202,12 +1374,14 @@ export default function RoutesScreen() {
     toId,
     samePlace,
     activeAnchor,
+    initialAnchorReady,
     boardedTrip,
     timetableReady,
     targetTimeSec,
     timeMode,
     intercityQuery,
     railDbReady,
+    transitionSettled,
   ]);
 
   // Przycisk i gest dokładają wcześniejsze odjazdy do tej samej listy.
@@ -1291,6 +1465,10 @@ export default function RoutesScreen() {
   const handleListScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       listScrollY.value = event.contentOffset.y;
+      if (!scrolledBeyondThreshold.value && event.contentOffset.y >= 60) {
+        scrolledBeyondThreshold.value = true;
+        runOnJS(markUserScrolled)();
+      }
     },
   });
 
@@ -1563,16 +1741,85 @@ export default function RoutesScreen() {
   };
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
+  const cardTransition = useRouteCardTransition();
+  const openingRouteRef = useRef(false);
+  const openingUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (openingUnlockTimerRef.current !== null) {
+        clearTimeout(openingUnlockTimerRef.current);
+      }
+    },
+    [],
+  );
+  useFocusEffect(
+    useCallback(() => {
+      openingRouteRef.current = false;
+    }, []),
+  );
+
   const openConnection = useCallback(
     (item: Connection) => {
-      rememberPlannedConnection(item);
+      if (openingRouteRef.current) return;
+      openingRouteRef.current = true;
+      if (openingUnlockTimerRef.current !== null) {
+        clearTimeout(openingUnlockTimerRef.current);
+      }
+      openingUnlockTimerRef.current = setTimeout(() => {
+        openingRouteRef.current = false;
+        openingUnlockTimerRef.current = null;
+      }, 360);
+
+      const group = groupByConnIdRef.current.get(normalizeConnectionId(item.id));
+      if (group) {
+        for (const opt of group.options) rememberPlannedConnection(opt.connection);
+        rememberConnectionGroup(group);
+      } else {
+        rememberPlannedConnection(item);
+      }
       closePreview();
-      router.push({
-        pathname: '/routes/[id]',
-        params: { id: item.id },
+
+      if (reduceMotion || webLayout.isMedium || !cardTransition) {
+        router.push({
+          pathname: '/routes/[id]',
+          params: { id: item.id },
+        });
+        return;
+      }
+
+      const cardConnection = group ? group.primary : item;
+      const cardId = cardConnection.id;
+      const isPrimary =
+        !group || normalizeConnectionId(item.id) === normalizeConnectionId(cardId);
+
+      void cardTransition.measureCard(cardId).then((measured) => {
+        if (!measured) {
+          router.push({
+            pathname: '/routes/[id]',
+            params: { id: item.id },
+          });
+          return;
+        }
+        cardTransition.prepareTransition({
+          connectionId: item.id,
+          normalizedId: normalizeConnectionId(item.id),
+          cardConnectionId: cardId,
+          cardNormalizedId: normalizeConnectionId(cardId),
+          alternatives: group && group.alternatives.length > 0 ? group.alternatives : undefined,
+          connection: cardConnection,
+          cardRect: measured.cardRect,
+          stripRect: isPrimary ? measured.stripRect : null,
+          variant: measured.variant,
+          dimmed: measured.dimmed,
+          capturedAt: Date.now(),
+        });
+        router.push({
+          pathname: '/routes/[id]',
+          params: { id: item.id, morph: '1' },
+        });
       });
     },
-    [closePreview, router],
+    [cardTransition, closePreview, reduceMotion, router, webLayout.isMedium],
   );
 
   const peek = useMemo<ConnectionPeekHandlers>(
@@ -1612,7 +1859,7 @@ export default function RoutesScreen() {
   });
   const reorderSeqRef = useRef(0);
   const reorderTokens = useMemo(() => {
-    const ids = displayed.map((c) => c.id);
+    const ids = groups.map((g) => g.key);
     const prev = prevDisplayRef.current;
     if (prev.queryKey !== routeQueryKey || prev.ids.length < 2 || ids.length < 2) {
       return null;
@@ -1625,20 +1872,20 @@ export default function RoutesScreen() {
       map.set(id, { ...shift, seq });
     }
     return map;
-  }, [displayed, routeQueryKey]);
+  }, [groups, routeQueryKey]);
 
   useLayoutEffect(() => {
     prevDisplayRef.current = {
       queryKey: routeQueryKey,
-      ids: displayed.map((c) => c.id),
+      ids: groups.map((g) => g.key),
     };
-  }, [displayed, routeQueryKey]);
+  }, [groups, routeQueryKey]);
 
   useEffect(() => {
-    if (displayed.length === 0) return;
-    for (const conn of displayed) seenCardIdsRef.current.add(conn.id);
+    if (groups.length === 0) return;
+    for (const group of groups) seenCardIdsRef.current.add(group.key);
     initialEnterDoneRef.current = true;
-  }, [displayed]);
+  }, [groups]);
 
   const handleMeasureCardHeight = useCallback((id: string, height: number) => {
     cardHeightsRef.current.set(id, height);
@@ -1648,8 +1895,8 @@ export default function RoutesScreen() {
   nowTickRef.current = nowTick;
 
   const getCellStyle = useCallback(
-    ({ item }: { item: Connection }) => {
-      const token = reorderTokens?.get(item.id);
+    ({ item }: { item: ConnectionGroup }) => {
+      const token = reorderTokens?.get(item.key);
       if (token?.direction === 'up') return styles.reorderedUpCell;
       if (token?.direction === 'down') return styles.reorderedDownCell;
       return undefined;
@@ -1658,15 +1905,18 @@ export default function RoutesScreen() {
   );
 
   const renderConnection = useCallback(
-    ({ item, index }: { item: Connection; index: number }) => {
+    ({ item: group, index }: { item: ConnectionGroup; index: number }) => {
+      const item = group.primary;
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
       // zamontowaniu ekranu zmroził nam style dłużej niż minutę, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
       const past =
         !item.boarded && item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
-      const enterMode: CardEnterMode = recentEarlierIdsRef.current.has(item.id)
+      const enterMode: CardEnterMode = group.options.some((opt) =>
+        recentEarlierIdsRef.current.has(opt.connection.id),
+      )
         ? 'earlier'
-        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(item.id) && index < 6
+        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(group.key) && index < 4
           ? 'initial'
           : 'none';
       return (
@@ -1676,10 +1926,13 @@ export default function RoutesScreen() {
           dimmed={past}
           tick={nowTickRef.current}
           onPress={openConnection}
+          alternatives={group.alternatives.length > 0 ? group.alternatives : undefined}
+          onSelectAlternative={openConnection}
+          measureKey={group.key}
           peek={peek}
           reduceMotion={reduceMotion}
           enterMode={enterMode}
-          reorder={reorderTokens?.get(item.id)}
+          reorder={reorderTokens?.get(group.key)}
           onMeasureHeight={handleMeasureCardHeight}
         />
       );
@@ -1823,7 +2076,7 @@ export default function RoutesScreen() {
     ],
   );
 
-  const showResultBadge = !samePlace && !loadError && !loading && displayed.length > 0;
+  const showResultBadge = !samePlace && !loadError && !loading && groups.length > 0;
   const mediumConstrained = webLayout.isMedium && !webLayout.isDesktop;
 
   const topBarContent = (
@@ -1856,7 +2109,7 @@ export default function RoutesScreen() {
           style={styles.resultBadge}
         >
           <Text style={styles.resultBadgeText} numberOfLines={1}>
-            {s.connection.connections(displayed.length)}
+            {s.connection.connections(groups.length)}
           </Text>
         </Animated.View>
       ) : (
@@ -1866,6 +2119,215 @@ export default function RoutesScreen() {
   );
 
   const listPaddingHorizontal = webLayout.isDesktop ? 0 : 16;
+
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.listHeader}>
+        {showUpdatingChip && loading && groups.length > 0 && (
+          <Animated.View
+            entering={
+              reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
+            }
+            exiting={
+              reduceMotion ? undefined : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
+            }
+            style={styles.countRow}
+            accessibilityLiveRegion="polite"
+          >
+            <View style={styles.statusChip}>
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
+            </View>
+          </Animated.View>
+        )}
+        {(offline || liveStale) && (
+          <View style={styles.countRow}>
+            {offline && (
+              <SpringPressable
+                onPress={handleQuietRefresh}
+                scaleDelta={0.03}
+                haptic="selection"
+                style={styles.statusChip}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.offlineTapA11y}
+              >
+                <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
+              </SpringPressable>
+            )}
+            {liveStale && !offline && (
+              <View style={styles.statusChip}>
+                <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
+              </View>
+            )}
+          </View>
+        )}
+        {!arrivalMode && !offline && (
+          <Animated.View style={Platform.OS !== 'web' ? earlierButtonFadeStyle : undefined}>
+            <SpringPressable
+              onPress={handleButtonEarlier}
+              onFocus={() => setEarlierFocused(true)}
+              onBlur={() => setEarlierFocused(false)}
+              disabled={earlierDisabled}
+              scaleDelta={0.02}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+              style={[
+                styles.earlierButton,
+                earlierFocused && styles.earlierFocused,
+                noMoreEarlier && styles.earlierButtonDone,
+              ]}
+            >
+              {loadingEarlier && !pullTriggeredRef.current ? (
+                <ActivityIndicator size="small" color={scheme.primary} />
+              ) : !noMoreEarlier ? (
+                <ChevronUp size={17} color={scheme.onSurfaceVariant} />
+              ) : null}
+              <Text style={styles.earlierText} accessibilityLiveRegion="polite">
+                {loadingEarlier && !pullTriggeredRef.current
+                  ? s.routes.earlierLoading
+                  : noMoreEarlier
+                    ? s.routes.earlierEmpty
+                    : earlierFailed
+                      ? s.routes.earlierRetry
+                      : s.routes.earlierAction}
+              </Text>
+            </SpringPressable>
+          </Animated.View>
+        )}
+      </View>
+    ),
+    [
+      arrivalMode,
+      earlierButtonFadeStyle,
+      earlierDisabled,
+      earlierFailed,
+      earlierFocused,
+      groups.length,
+      handleButtonEarlier,
+      handleQuietRefresh,
+      liveStale,
+      loading,
+      loadingEarlier,
+      noMoreEarlier,
+      offline,
+      reduceMotion,
+      s,
+      showUpdatingChip,
+    ],
+  );
+
+  const listFooter = useMemo(
+    () =>
+      loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
+        <View style={styles.footer}>
+          {loadingMore ? (
+            <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={scheme.primary} />
+              <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
+            </View>
+          ) : loadMoreFailed ? (
+            <>
+              <Text style={styles.footerText}>{s.routes.moreFail}</Text>
+              <SpringPressable
+                onPress={handleLoadMoreStable}
+                scaleDelta={0.025}
+                haptic="light"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.moreRetryA11y}
+              >
+                <Text style={styles.retryText}>{s.common.retry}</Text>
+              </SpringPressable>
+            </>
+          ) : (
+            <View style={styles.endCapPill}>
+              <Text style={styles.footerText}>
+                {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : null,
+    [arrivalMode, handleLoadMoreStable, items.length, loadMoreFailed, loadingMore, noMoreLater, s],
+  );
+
+  const listEmpty = useMemo(
+    () =>
+      intercityQuery && railDbReady === false ? (
+        <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
+      ) : (
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIconBadge}>
+            <RouteOff size={24} color={scheme.onPrimaryContainer} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {liveOnly
+              ? s.routes.emptyLive
+              : hasActiveFilters
+                ? s.routes.emptyFiltered
+                : intercityQuery
+                  ? s.intercity.noTrainsTitle
+                  : s.routes.emptyNone}
+          </Text>
+          <Text style={styles.emptySub}>
+            {intercityQuery && !hasActiveFilters
+              ? s.intercity.noTrainsHint
+              : transfersFilter !== 'all' && modeFilter !== 'all'
+                ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
+                : transfersFilter !== 'all'
+                  ? s.routes.emptyDirect
+                  : modeFilter !== 'all'
+                    ? s.routes.emptyMode(modeGenitive(modeFilter))
+                    : arrivalMode
+                      ? s.routes.emptyArrival
+                      : s.routes.emptyPlain}
+          </Text>
+          <View style={styles.emptyActions}>
+            {transfersFilter !== 'all' && (
+              <SpringPressable
+                onPress={() => setTransfersFilter('all')}
+                scaleDelta={0.025}
+                haptic="selection"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.showWithChangesA11y}
+              >
+                <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
+              </SpringPressable>
+            )}
+            {modeFilter !== 'all' && (
+              <SpringPressable
+                onPress={() => setModeFilter('all')}
+                scaleDelta={0.025}
+                haptic="selection"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.showAllVehiclesA11y}
+              >
+                <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
+              </SpringPressable>
+            )}
+            {liveOnly && (
+              <SpringPressable
+                onPress={() => setLiveOnly(false)}
+                scaleDelta={0.025}
+                haptic="selection"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.showWithoutLive}
+              >
+                <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
+              </SpringPressable>
+            )}
+          </View>
+        </View>
+      ),
+    [arrivalMode, hasActiveFilters, intercityQuery, liveOnly, modeFilter, railDbReady, s, transfersFilter],
+  );
 
   const flatListStage = (
     <View style={styles.listStage}>
@@ -1888,15 +2350,16 @@ export default function RoutesScreen() {
           scrollEventThrottle={16}
           accessibilityState={{ busy: loading }}
           pointerEvents={loading && items.length === 0 ? 'none' : 'auto'}
-          data={displayed}
+          data={groups}
           // Bez maintainVisibleContentPosition: natywna korekta offsetu po
           // powrocie z odpiętego ekranu zostawiała pustą listę.
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={9}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          updateCellsBatchingPeriod={40}
+          windowSize={7}
           // wymusza przeliczenie etykiet "za X min" bez refetchu
           extraData={nowTick}
-          keyExtractor={connectionKey}
+          keyExtractor={groupKey}
           CellRendererComponentStyle={getCellStyle}
           contentContainerStyle={[
             styles.list,
@@ -1911,191 +2374,12 @@ export default function RoutesScreen() {
           // nagłówkiem powoduje to miganie pustych miejsc w trakcie
           // przeciągania palcem, więc trzymamy komórki podpięte.
           removeClippedSubviews={false}
-          onEndReached={handleLoadMore}
+          onEndReached={handleEndReachedStable}
           onEndReachedThreshold={0.5}
           renderItem={renderConnection}
-          ListHeaderComponent={
-            <View style={styles.listHeader}>
-              {loading && displayed.length > 0 && (
-                <Animated.View
-                  entering={
-                    reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
-                  }
-                  exiting={
-                    reduceMotion ? undefined : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
-                  }
-                  style={styles.countRow}
-                  accessibilityLiveRegion="polite"
-                >
-                  <View style={styles.statusChip}>
-                    <MorphingLoader size={17} color={scheme.primary} />
-                    <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
-                  </View>
-                </Animated.View>
-              )}
-              {(offline || liveStale) && (
-                <View style={styles.countRow}>
-                  {offline && (
-                    <SpringPressable
-                      onPress={() => quietRefresh()}
-                      scaleDelta={0.03}
-                      haptic="selection"
-                      style={styles.statusChip}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.offlineTapA11y}
-                    >
-                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
-                    </SpringPressable>
-                  )}
-                  {liveStale && !offline && (
-                    <View style={styles.statusChip}>
-                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-              {!arrivalMode && !offline && (
-                <Animated.View style={Platform.OS !== 'web' ? earlierButtonFadeStyle : undefined}>
-                  <SpringPressable
-                    onPress={handleButtonEarlier}
-                    onFocus={() => setEarlierFocused(true)}
-                    onBlur={() => setEarlierFocused(false)}
-                    disabled={earlierDisabled}
-                    scaleDelta={0.02}
-                    haptic="selection"
-                    accessibilityRole="button"
-                    accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
-                    style={[
-                      styles.earlierButton,
-                      earlierFocused && styles.earlierFocused,
-                      noMoreEarlier && styles.earlierButtonDone,
-                    ]}
-                  >
-                    {loadingEarlier && !pullTriggeredRef.current ? (
-                      <MorphingLoader size={16} color={scheme.primary} />
-                    ) : !noMoreEarlier ? (
-                      <ChevronUp size={17} color={scheme.onSurfaceVariant} />
-                    ) : null}
-                    <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                      {loadingEarlier && !pullTriggeredRef.current
-                        ? s.routes.earlierLoading
-                        : noMoreEarlier
-                          ? s.routes.earlierEmpty
-                          : earlierFailed
-                            ? s.routes.earlierRetry
-                            : s.routes.earlierAction}
-                    </Text>
-                  </SpringPressable>
-                </Animated.View>
-              )}
-            </View>
-          }
-          ListFooterComponent={
-            loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
-              <View style={styles.footer}>
-                {loadingMore ? (
-                  <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
-                    <MorphingLoader size={20} color={scheme.primary} />
-                    <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
-                  </View>
-                ) : loadMoreFailed ? (
-                  <>
-                    <Text style={styles.footerText}>{s.routes.moreFail}</Text>
-                    <SpringPressable
-                      onPress={() => void handleLoadMore()}
-                      scaleDelta={0.025}
-                      haptic="light"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.moreRetryA11y}
-                    >
-                      <Text style={styles.retryText}>{s.common.retry}</Text>
-                    </SpringPressable>
-                  </>
-                ) : (
-                  <View style={styles.endCapPill}>
-                    <Text style={styles.footerText}>
-                      {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            intercityQuery && railDbReady === false ? (
-              <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
-            ) : (
-              <View style={styles.emptyCard}>
-                <View style={styles.emptyIconBadge}>
-                  <RouteOff size={24} color={scheme.onPrimaryContainer} />
-                </View>
-                <Text style={styles.emptyTitle}>
-                  {liveOnly
-                    ? s.routes.emptyLive
-                    : hasActiveFilters
-                      ? s.routes.emptyFiltered
-                      : intercityQuery
-                        ? s.intercity.noTrainsTitle
-                        : s.routes.emptyNone}
-                </Text>
-                <Text style={styles.emptySub}>
-                  {intercityQuery && !hasActiveFilters
-                    ? s.intercity.noTrainsHint
-                    : transfersFilter !== 'all' && modeFilter !== 'all'
-                      ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
-                      : transfersFilter !== 'all'
-                        ? s.routes.emptyDirect
-                        : modeFilter !== 'all'
-                          ? s.routes.emptyMode(modeGenitive(modeFilter))
-                          : arrivalMode
-                            ? s.routes.emptyArrival
-                            : s.routes.emptyPlain}
-                </Text>
-                <View style={styles.emptyActions}>
-                  {transfersFilter !== 'all' && (
-                    <SpringPressable
-                      onPress={() => setTransfersFilter('all')}
-                      scaleDelta={0.025}
-                      haptic="selection"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.showWithChangesA11y}
-                    >
-                      <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
-                    </SpringPressable>
-                  )}
-                  {modeFilter !== 'all' && (
-                    <SpringPressable
-                      onPress={() => setModeFilter('all')}
-                      scaleDelta={0.025}
-                      haptic="selection"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.showAllVehiclesA11y}
-                    >
-                      <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
-                    </SpringPressable>
-                  )}
-                  {liveOnly && (
-                    <SpringPressable
-                      onPress={() => setLiveOnly(false)}
-                      scaleDelta={0.025}
-                      haptic="selection"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.showWithoutLive}
-                    >
-                      <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
-                    </SpringPressable>
-                  )}
-                </View>
-              </View>
-            )
-          }
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          ListEmptyComponent={listEmpty}
         />
       </Animated.View>
     </View>
@@ -2121,7 +2405,7 @@ export default function RoutesScreen() {
         <Text style={styles.emptySub}>{s.routes.samePlaceBody}</Text>
       </View>
     </ScrollView>
-  ) : loading && displayed.length === 0 ? (
+  ) : loading && groups.length === 0 ? (
     <ScrollView
       contentContainerStyle={[
         {
@@ -2204,7 +2488,7 @@ export default function RoutesScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       {webLayout.isDesktop ? (
         <View style={styles.desktopSplit}>
           <View style={[styles.desktopLeftCol, { width: webLayout.isWide ? 380 : 340 }]}>
@@ -2229,31 +2513,35 @@ export default function RoutesScreen() {
       )}
 
       {filtersOpen && (
-        <RouteFilterSheet
-          availableModes={availableModes}
-          selectedMode={modeFilter}
-          transfersFilter={transfersFilter}
-          liveOnly={liveOnly}
-          resultCount={displayed.length}
-          onSelectMode={setModeFilter}
-          onSelectTransfers={setTransfersFilter}
-          onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
-          onReset={() => {
-            setModeFilter('all');
-            setTransfersFilter('all');
-            setLiveOnly(false);
-          }}
-          onClose={() => setFiltersOpen(false)}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <RouteFilterSheet
+            availableModes={availableModes}
+            selectedMode={modeFilter}
+            transfersFilter={transfersFilter}
+            liveOnly={liveOnly}
+            resultCount={groups.length}
+            onSelectMode={setModeFilter}
+            onSelectTransfers={setTransfersFilter}
+            onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
+            onReset={() => {
+              setModeFilter('all');
+              setTransfersFilter('all');
+              setLiveOnly(false);
+            }}
+            onClose={() => setFiltersOpen(false)}
+          />
+        </Suspense>
       )}
 
       {timeSheetOpen && (
-        <DepartureTimeSheet
-          initialTimeSec={targetTimeSec}
-          initialMode={timeMode}
-          onClose={() => setTimeSheetOpen(false)}
-          onSelect={handleTimeSelect}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <DepartureTimeSheet
+            initialTimeSec={targetTimeSec}
+            initialMode={timeMode}
+            onClose={() => setTimeSheetOpen(false)}
+            onSelect={handleTimeSelect}
+          />
+        </Suspense>
       )}
 
       {sheetFor && (
@@ -2299,7 +2587,7 @@ export default function RoutesScreen() {
                 }
               : undefined
           }
-          onQuery={setQuery}
+          onQuery={handleSearchQuery}
           onSelect={handleSuggestionSelect}
           onClose={() => {
             setSheetFor(null);
@@ -2309,17 +2597,19 @@ export default function RoutesScreen() {
       )}
 
       {preview && (
-        <ConnectionPeek
-          item={preview.item}
-          sticky={preview.sticky}
-          ready={previewReady}
-          offline={offline || liveStale}
-          dragY={peekDragY}
-          onClose={closePreview}
-          onOpen={() => openConnection(preview.item)}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <ConnectionPeek
+            item={preview.item}
+            sticky={preview.sticky}
+            ready={previewReady}
+            offline={offline || liveStale}
+            dragY={peekDragY}
+            onClose={closePreview}
+            onOpen={() => openConnection(preview.item)}
+          />
+        </Suspense>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -2370,7 +2660,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2388,7 +2678,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   resultBadgeText: {
@@ -2423,7 +2713,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.full,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2434,12 +2724,12 @@ const styles = StyleSheet.create({
   },
   actionCardTimeActive: {
     backgroundColor: scheme.primaryContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.primary,
   },
   actionCardFilterActive: {
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.secondary,
   },
   actionCardText: {
@@ -2508,7 +2798,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     flexShrink: 1,
   },
@@ -2528,7 +2818,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   earlierButtonDone: {
@@ -2562,7 +2852,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   footerText: {
@@ -2576,7 +2866,7 @@ const styles = StyleSheet.create({
     paddingVertical: 30,
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     gap: 10,

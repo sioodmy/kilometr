@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 import {
   Accessible,
   AcUnit,
@@ -19,6 +20,7 @@ import {
   VolumeOff,
   Wifi,
 } from './icons';
+import { SkeletonBone, SkeletonPulse } from './SkeletonPulse';
 import { useStrings, type Strings } from '../i18n';
 import type { RailAmenities } from '../services/railAmenities';
 import { selectRailAmenitiesForStrip, type VehicleSpecs } from '../services/vehicleInfo';
@@ -39,10 +41,20 @@ const AMENITY_ICONS: Record<RailAmenity, ComponentType<{ size?: number; color?: 
   strefa_ciszy: VolumeOff,
 };
 
+/** Ile chipów z ikonami montujemy na raz, by starsze urządzenia nie gubiły klatek. */
+const CHIP_BATCH_SIZE = 4;
+
+/** Szerokości mock chipów (px) imitujące typowe etykiety udogodnień składu. */
+const MOCK_CHIP_WIDTHS = [68, 86, 54, 78, 62, 74] as const;
+
 interface VehicleSpecsStripProps {
   specs?: VehicleSpecs | null;
   railAmenities?: RailAmenities | null;
   mode: LegMode;
+  /** Dane udogodnień składu wczytują się z lokalnej bazy. */
+  loading?: boolean;
+  /** Odracza montaż ciężkich ikon na kolejną klatkę po otwarciu ekranu. */
+  deferGraphics?: boolean;
 }
 
 /** Zwraca zwięzły opis cech pojazdu i udogodnień składu dla czytnika ekranu (TalkBack/VoiceOver). */
@@ -85,15 +97,127 @@ function ModeGlyph({ mode, color }: { mode: LegMode; color: string }) {
   return <BusFront size={13} color={color} />;
 }
 
+/** Mock chip (kółko ikony + pasek etykiety) o wymiarach zgodnych z prawdziwym chipem. */
+function MockChip({ width }: { width: number }) {
+  return (
+    <View style={s.mockChip}>
+      <SkeletonBone width={13} height={13} radius={shape.full} />
+      <SkeletonBone width={width} height={10} radius={5} />
+    </View>
+  );
+}
+
+/** Mock paska pojazdu / udogodnień składu w stanie ładowania. */
+const VehicleSpecsSkeleton = memo(function VehicleSpecsSkeleton({
+  chipCount,
+  headerLabel,
+}: {
+  chipCount: number;
+  headerLabel?: string;
+}) {
+  const count = Math.max(0, Math.min(6, chipCount));
+  return (
+    <View style={s.tray}>
+      <SkeletonPulse style={s.skeletonInner}>
+        <View style={s.headerRow}>
+          <SkeletonBone width={13} height={13} radius={4} />
+          {headerLabel ? (
+            <Text style={s.modelText} numberOfLines={1} ellipsizeMode="tail">
+              {headerLabel}
+            </Text>
+          ) : (
+            <SkeletonBone width={128} height={12} radius={6} />
+          )}
+        </View>
+        {count > 0 ? (
+          <View style={s.chipsRow}>
+            {Array.from({ length: count }, (_, idx) => (
+              <MockChip
+                key={idx}
+                width={MOCK_CHIP_WIDTHS[idx % MOCK_CHIP_WIDTHS.length]}
+              />
+            ))}
+          </View>
+        ) : null}
+      </SkeletonPulse>
+    </View>
+  );
+});
+
 /**
  * Zagnieżdżony pasek M3 Expressive wewnątrz karty linii w szczegółach połączenia.
  * Pokazuje model pojazdu z zbiorkom.live (podłoga, klima, starszy tabor) oraz
  * spójne wizualnie chipy udogodnień składu z vagonweb dla pociągów.
+ * Przy ładowaniu lub dużej liczbie ikon renderuje mock chipy w loading state
+ * i progresywnie odsłania kolejne partie bez blokowania klatek.
  */
-export function VehicleSpecsStrip({ specs, railAmenities, mode }: VehicleSpecsStripProps) {
+export const VehicleSpecsStrip = memo(function VehicleSpecsStrip({
+  specs,
+  railAmenities,
+  mode,
+  loading = false,
+  deferGraphics = false,
+}: VehicleSpecsStripProps) {
   const t = useStrings();
+  const reduceMotion = useReducedMotion();
 
   const amenityKeys = railAmenities ? selectRailAmenitiesForStrip(railAmenities.keys, specs) : [];
+  const hasSpecsData = Boolean(specs || amenityKeys.length > 0);
+
+  const floorCount = specs && specs.floor !== 'unknown' ? 1 : 0;
+  const acCount = specs && specs.ac !== 'unknown' ? 1 : 0;
+  const totalChipCount = floorCount + acCount + amenityKeys.length;
+  const isWaitingForData = loading && !hasSpecsData;
+  const isDeferred = deferGraphics && (hasSpecsData || loading);
+
+  const [revealedCount, setRevealedCount] = useState(() =>
+    isWaitingForData || isDeferred
+      ? 0
+      : Math.min(totalChipCount, CHIP_BATCH_SIZE),
+  );
+
+  useEffect(() => {
+    if (isWaitingForData || isDeferred) {
+      setRevealedCount(0);
+      return;
+    }
+    if (totalChipCount <= CHIP_BATCH_SIZE) {
+      setRevealedCount(totalChipCount);
+      return;
+    }
+    let cancelled = false;
+    let rafId: number | null = null;
+    setRevealedCount((prev) => Math.max(prev, CHIP_BATCH_SIZE));
+
+    const step = () => {
+      if (cancelled) return;
+      setRevealedCount((prev) => {
+        const next = Math.min(totalChipCount, prev + CHIP_BATCH_SIZE);
+        if (next < totalChipCount) {
+          rafId = requestAnimationFrame(step);
+        }
+        return next;
+      });
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isWaitingForData, isDeferred, totalChipCount]);
+
+  if (isWaitingForData || isDeferred) {
+    const placeholderChips =
+      loading && !hasSpecsData ? 4 : Math.min(6, totalChipCount);
+    return (
+      <VehicleSpecsSkeleton
+        chipCount={placeholderChips}
+        headerLabel={specs?.model}
+      />
+    );
+  }
+
   if (!specs && amenityKeys.length === 0) return null;
 
   const floorChip =
@@ -149,9 +273,16 @@ export function VehicleSpecsStrip({ specs, railAmenities, mode }: VehicleSpecsSt
 
   const headerTitle = specs ? specs.model : t.railAmenities.title;
   const hasChips = floorChip !== null || acChip !== null || amenityKeys.length > 0;
+  const prefixCount = (floorChip ? 1 : 0) + (acChip ? 1 : 0);
+  const visibleAmenitiesCount = Math.max(0, revealedCount - prefixCount);
+  const visibleAmenityKeys = amenityKeys.slice(0, visibleAmenitiesCount);
+  const pendingMockCount = Math.max(0, amenityKeys.length - visibleAmenityKeys.length);
 
   return (
-    <View style={s.tray}>
+    <Animated.View
+      entering={!reduceMotion ? FadeIn.duration(150).reduceMotion(ReduceMotion.System) : undefined}
+      style={s.tray}
+    >
       <View style={s.headerRow}>
         <ModeGlyph
           mode={mode}
@@ -186,7 +317,7 @@ export function VehicleSpecsStrip({ specs, railAmenities, mode }: VehicleSpecsSt
             </View>
           ) : null}
           {railAmenities
-            ? amenityKeys.map((key) => {
+            ? visibleAmenityKeys.map((key) => {
                 const Icon = AMENITY_ICONS[key];
                 const isAccess = key === 'dostepny_wozkarze';
                 const isAc = key === 'klimatyzacja';
@@ -215,11 +346,21 @@ export function VehicleSpecsStrip({ specs, railAmenities, mode }: VehicleSpecsSt
                 );
               })
             : null}
+          {pendingMockCount > 0 ? (
+            <SkeletonPulse style={s.pendingChipsWrap}>
+              {Array.from({ length: pendingMockCount }, (_, idx) => (
+                <MockChip
+                  key={`pending-${idx}`}
+                  width={MOCK_CHIP_WIDTHS[(visibleAmenityKeys.length + idx) % MOCK_CHIP_WIDTHS.length]}
+                />
+              ))}
+            </SkeletonPulse>
+          ) : null}
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
-}
+});
 
 const s = StyleSheet.create({
   tray: {
@@ -227,6 +368,9 @@ const s = StyleSheet.create({
     borderRadius: shape.medium,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    gap: 7,
+  },
+  skeletonInner: {
     gap: 7,
   },
   headerRow: {
@@ -264,6 +408,11 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
+  pendingChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -272,6 +421,15 @@ const s = StyleSheet.create({
     borderRadius: shape.small,
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  mockChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 23,
+    borderRadius: shape.small,
+    paddingHorizontal: 8,
+    backgroundColor: scheme.surfaceContainerHigh,
   },
   chipLowFloor: {
     backgroundColor: scheme.secondaryContainer,
