@@ -79,11 +79,13 @@ export const ZBIORKOM = {
 
 /**
  * Backend realtime i analityki opóźnień Kilometr (VPS api.kilometr.app).
- * Zawsze działa z bezpiecznym fallbackiem: przy awarii lub offline aplikacja
+ * Domyślnie wyłączony: pusty baseUrl blokuje wszystkie żądania, dopóki backend
+ * nie działa. Funkcje włączamy pojedynczo przez EXPO_PUBLIC_BACKEND_URL.
+ * Zawsze działa bezpieczny fallback: przy awarii lub offline aplikacja
  * natychmiast wraca do bezpośrednich źródeł (zbiorkom, KP, MPK, Worker).
  */
 export const KILOMETR_API = {
-  baseUrl: (process.env.EXPO_PUBLIC_BACKEND_URL || 'https://api.kilometr.app').replace(/\/$/, ''),
+  baseUrl: (process.env.EXPO_PUBLIC_BACKEND_URL || '').replace(/\/$/, ''),
   liveTimeoutMs: 3500,
   analyticsTimeoutMs: 4500,
 } as const;
