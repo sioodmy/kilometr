@@ -1,6 +1,5 @@
 // Flaga ukończenia onboardingu startowego (witaj, miasto z pobieraniem w tle,
-// dostęp aplikacji, zapisane miejsca). Dopiero po niej _layout puszcza
-// użytkownika na ekran główny.
+// dostęp aplikacji). Dopiero po niej _layout puszcza użytkownika na ekran główny.
 import { kvGet, kvSet } from './storage';
 
 const KEY = 'kilometr.onboardingSeen.v1';

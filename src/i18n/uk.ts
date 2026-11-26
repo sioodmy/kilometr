@@ -1799,96 +1799,9 @@ export const uk: Strings = {
     openSettings: 'Відкрити налаштування',
     permissionDenied:
       'Можна продовжити без цього дозволу та змінити його пізніше в налаштуваннях телефона.',
-    steps: ['Вітаємо', 'Місто', 'Доступи', 'Місця'],
+    steps: ['Вітаємо', 'Місто', 'Доступи'],
     granted: 'Увімкнено',
     denied: 'Вимкнено',
-    slotHome: 'Дім',
-    slotHomeHint: (id: string) =>
-      id === 'krakow'
-        ? 'напр. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'напр. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'напр. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'напр. Długa 12'
-              : id === 'lodz'
-                ? 'напр. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'напр. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'напр. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'напр. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'напр. Lipowa 12'
-                        : id === 'opole'
-                          ? 'напр. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'напр. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'напр. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'напр. Żeromskiego 12'
-                                : 'напр. Swojczycka 41',
-    slotWork: 'Робота',
-    slotWorkHint: (id: string) =>
-      id === 'krakow'
-        ? 'напр. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'напр. Złote Tarasy'
-          : id === 'poznan'
-            ? 'напр. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'напр. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'напр. Manufaktura'
-                : id === 'szczecin'
-                  ? 'напр. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'np. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'напр. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'напр. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'напр. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'напр. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'напр. Felicity'
-                              : id === 'radom'
-                                ? 'напр. Galeria Słoneczna'
-                                : 'напр. Sky Tower',
-    slotUni: 'Універ',
-    slotUniHint: (id: string) =>
-      id === 'krakow'
-        ? 'напр. AGH'
-        : id === 'warszawa'
-          ? 'напр. Університет'
-          : id === 'poznan'
-            ? 'напр. UAM'
-            : id === 'trojmiasto'
-              ? 'напр. UG'
-              : id === 'lodz'
-                ? 'напр. UŁ'
-                : id === 'szczecin'
-                  ? 'напр. US'
-                  : id === 'kielce'
-                    ? 'напр. UJK'
-                    : id === 'olsztyn'
-                      ? 'напр. UWM'
-                      : id === 'bialystok'
-                        ? 'напр. UwB'
-                        : id === 'opole'
-                          ? 'напр. UO'
-                          : id === 'rzeszow'
-                            ? 'напр. PRz'
-                            : id === 'lublin'
-                              ? 'напр. UMCS'
-                              : id === 'radom'
-                                ? 'напр. UTH'
-                                : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1955,17 +1868,6 @@ export const uk: Strings = {
     dlDoneSub: (stops: number, trips: number) => `${stops} зупинок • ${trips} рейсів.`,
     dlFail: 'Щось пішло не так',
     dlFailBody: (msg: string) => `${msg}. Перевір інтернет і спробуй знову.`,
-    saveFail: 'Не вдалося зберегти місце',
-    saveFailBody: 'Спробуйте ще раз.',
-    placesTitle: 'Де буваєш найчастіше?',
-    placesBody: 'Збережені місця прискорюють пошук. Цей крок можна пропустити.',
-    added: 'Додано',
-    removeSlotA11y: (name: string) => `Видалити ${name}`,
-    closeAction: 'Закрити',
-    addAction: '+ Додати',
-    addressFor: (name: string) => `Адреса для: ${name}…`,
-    noResults: (q: string) =>
-      `Немає результатів для „${q}“. Зупинки шукаємо офлайн, адреси потребують інтернету.`,
     start: 'Налаштувати Kilometr',
     next: 'Далі',
     later: 'Пізніше',
@@ -1973,7 +1875,6 @@ export const uk: Strings = {
     footerDownloading: 'Завантаження…',
     footerDownload: 'Завантажити розклад',
     needTimetable: 'Без розкладу не знайти сполучень.',
-    doneCount: (n: number) => `Готово (${n})`,
     donePlain: 'Готово',
     skip: 'Пропустити',
     skipTimetable: 'Пропустити, розклад завантажу пізніше',

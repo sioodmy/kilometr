@@ -16,10 +16,6 @@ import { setActiveCityId } from '../src/services/cityStore';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseLublinInfo, ZDITM_LUBLIN_INFO_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -180,21 +176,6 @@ describe('Tryb linii: autobusy 2–85, trolejbusy 150–162 i 950');
   expect('N1 to autobus nocny', inferTransitMode(undefined, 'N1', 'lublin'), 'bus');
   expect('801 to autobus', inferTransitMode(undefined, '801', 'lublin'), 'bus');
   expect('reguła niskich numerów działa poza Lublinem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla lublin hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('lublin'), 'np. Krakowskie Przedmieście 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('lublin'), 'np. Felicity');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('lublin'), 'np. UMCS');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: lublin nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('lublin') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu ZDiTM Lublin (section.main-center-panel)');

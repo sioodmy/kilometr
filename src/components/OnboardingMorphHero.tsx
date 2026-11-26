@@ -85,22 +85,15 @@ function superellipseRadius(theta: number, r: number, power: number, rotRad = 0)
 }
 
 /**
- * Cztery tarcze transportowe M3 Expressive (120x120):
+ * Trzy tarcze transportowe M3 Expressive (120x120):
  * 0: squircle loga aplikacji (rx ≈ 232/1024)
  * 1: okrągły znak przystanku D-15 (Miasto)
  * 2: zaokrąglony romb kompasu (Dostęp)
- * 3: tarcza kierunkowa pod pinezkę (Miejsca)
  */
 const SHIELD_SHAPES: readonly (readonly number[])[] = [
   buildShieldContour((t) => superellipseRadius(t, SHIELD_RADIUS, 4.3, 0)),
   buildShieldContour(() => SHIELD_RADIUS),
   buildShieldContour((t) => superellipseRadius(t, SHIELD_RADIUS * 1.01, 2.55, Math.PI / 4)),
-  buildShieldContour((t) => {
-    const base = superellipseRadius(t, SHIELD_RADIUS * 0.96, 2.8, 0);
-    const bottomPull = Math.max(0, Math.sin(t)) * 5.2;
-    const waistNarrow = Math.max(0, Math.sin(t)) * Math.abs(Math.cos(t)) * 5.8;
-    return base + bottomPull - waistNarrow;
-  }),
 ];
 
 function interpolateShieldPath(from: readonly number[], to: readonly number[], t: number): string {
@@ -126,8 +119,8 @@ function initialShieldPath(index: number): string {
   return interpolateShieldPath(safe, safe, 0);
 }
 
-/** Docelowa sylwetka piktogramu dla kroków 1..3: 1 tramwaj, 2 pociąg, 3 pinezka. */
-const STEP_TARGET_SHAPE: readonly TransitShapeIndex[] = [0, 0, 2, 3];
+/** Docelowa sylwetka piktogramu dla kroków 1..2: 1 tramwaj, 2 pociąg. */
+const STEP_TARGET_SHAPE: readonly TransitShapeIndex[] = [0, 0, 2];
 
 export const HERO_LOGO_SIZE = 128;
 const COMPACT_SCALE = 0.485;
@@ -147,15 +140,15 @@ function directAccessoryPresence(
 }
 
 interface OnboardingMorphHeroProps {
-  /** Aktualny krok onboardingu (0 = Logo Witaj, 1 = Miasto, 2 = Dostęp, 3 = Miejsca). */
-  step: 0 | 1 | 2 | 3;
+  /** Aktualny krok onboardingu (0 = Logo Witaj, 1 = Miasto, 2 = Dostęp). */
+  step: 0 | 1 | 2;
   /** Szerokość kontenera roboczego (px). */
   workspaceWidth: number;
   /** Dokładny środek Y slotu na logo na kroku powitalnym (px od góry kontenera roboczego). */
   welcomeCenterY: number;
-  /** Wysokość kompaktowego nagłówka na krokach 1..3 (px). */
+  /** Wysokość kompaktowego nagłówka na krokach 1..2 (px). */
   compactHeaderHeight: number;
-  /** Impuls po akcji (wybór miasta, włączenie zgody, zapisanie miejsca). */
+  /** Impuls po akcji (wybór miasta, włączenie zgody). */
   pulseKey: number;
 }
 
@@ -163,7 +156,7 @@ interface OnboardingMorphHeroProps {
  * Wspólna animacja marki i morfingu onboardingu:
  * na kroku powitalnym rysuje logo Kilometra jak linię na mapie (tory, zwrotnice, węzeł,
  * strzałka i przystanek, dokładnie jak w outro filmu), a po kliknięciu dalej sprężyście
- * przelatuje do nagłówka i morfuje z tarczy loga w Tramwaj, Pociąg i Pinezkę celu.
+ * przelatuje do nagłówka i morfuje z tarczy loga w Tramwaj i Pociąg.
  */
 export const OnboardingMorphHero = memo(function OnboardingMorphHero({
   step,
@@ -174,7 +167,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
 }: OnboardingMorphHeroProps) {
   const reduceMotion = useReducedMotion();
 
-  // 1 = pełne wycentrowane logo (krok 0), 0 = kompaktowy medalion w nagłówku (kroki 1..3).
+  // 1 = pełne wycentrowane logo (krok 0), 0 = kompaktowy medalion w nagłówku (kroki 1..2).
   const expand = useSharedValue(step === 0 ? 1 : 0);
 
   // Sekwencja rysowania loga z outro (tor główny -> zwrotnica góra -> zwrotnica dół -> węzeł -> strzałka -> przystanek).
@@ -199,10 +192,10 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
   const orbitAngle = useSharedValue(0);
   const pulse = useSharedValue(0);
 
-  const prevStepRef = useRef<0 | 1 | 2 | 3>(step);
+  const prevStepRef = useRef<0 | 1 | 2>(step);
   const prevPulseRef = useRef(pulseKey);
 
-  // Ciągły subtelny pierścień trasy widoczny na krokach 1..3.
+  // Ciągły subtelny pierścień trasy widoczny na krokach 1..2.
   useEffect(() => {
     if (reduceMotion) {
       cancelAnimation(orbitAngle);
@@ -322,7 +315,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
   const staticShield = initialShieldPath(step);
   const staticBody = initialTransitPath(STEP_TARGET_SHAPE[step]);
 
-  // Lot ze środka kroku powitalnego do prawego narożnika nagłówka kroków 1..3.
+  // Lot ze środka kroku powitalnego do prawego narożnika nagłówka kroków 1..2.
   const medalFlightStyle = useAnimatedStyle(() => {
     const half = HERO_LOGO_SIZE / 2;
     const compactRadius = (HERO_LOGO_SIZE * COMPACT_SCALE) / 2;
@@ -418,7 +411,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
     strokeOpacity: arrowPop.value,
   }));
 
-  // Warstwa morfującego pojazdu (wyłania się płynnie z loga po przejściu do kroku 1..3).
+  // Warstwa morfującego pojazdu (wyłania się płynnie z loga po przejściu do kroku 1..2).
   const vehicleLayerStyle = useAnimatedStyle(() => {
     const k = interpolate(expand.value, [0.05, 0.62], [1, 0], 'clamp');
     const b = directBlend.value;
@@ -458,12 +451,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
     return { opacity: p, transform: [{ scale: 0.9 + p * 0.1 }] };
   });
 
-  const pinAccStyle = useAnimatedStyle(() => {
-    const p = directAccessoryPresence(directFrom.value, directTo.value, directBlend.value, 3);
-    return { opacity: p * 0.78, transform: [{ scale: 0.9 + p * 0.1 }] };
-  });
-
-  // Zewnętrzny pierścień trasy widoczny tylko w trybie kompaktowym (kroki 1..3),
+  // Zewnętrzny pierścień trasy widoczny tylko w trybie kompaktowym (kroki 1..2),
   // żeby logo na kroku powitalnym było czyste jak w outro filmu.
   const compactOrbitStyle = useAnimatedStyle(() => {
     const vis = interpolate(expand.value, [0, 0.5], [1, 0], 'clamp');
@@ -492,7 +480,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
     >
       {!reduceMotion && <Animated.View style={[styles.pulseHalo, pulseRingStyle]} />}
 
-      {/* Subtelny pierścień trasy na krokach 1..3 */}
+      {/* Subtelny pierścień trasy na krokach 1..2 */}
       <Animated.View style={[StyleSheet.absoluteFill, compactOrbitStyle]}>
         <Svg width={HERO_LOGO_SIZE} height={HERO_LOGO_SIZE}>
           <Circle
@@ -518,7 +506,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
         </Svg>
       </Animated.View>
 
-      {/* Morfująca tarcza tła: ciemny kontener pod piktogramy (kroki 1..3) + nakładka loga (krok 0) */}
+      {/* Morfująca tarcza tła: ciemny kontener pod piktogramy (kroki 1..2) + nakładka loga (krok 0) */}
       <Animated.View style={[styles.shieldLayer, shieldTiltStyle]}>
         <Animated.View style={shieldContainerStrokeStyle}>
           <Svg width={HERO_LOGO_SIZE - 8} height={HERO_LOGO_SIZE - 8} viewBox="0 0 120 120">
@@ -613,7 +601,7 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
         </Svg>
       </Animated.View>
 
-      {/* Morfujący piktogram transportowy kroków 1..3 (Tramwaj -> Pociąg -> Pinezka) */}
+      {/* Morfujący piktogram transportowy kroków 1..2 (Tramwaj -> Pociąg) */}
       <Animated.View
         style={[
           styles.glyphStage,
@@ -681,23 +669,6 @@ export const OnboardingMorphHero = memo(function OnboardingMorphHero({
               strokeWidth={5.2}
               strokeLinecap="round"
               strokeLinejoin="round"
-            />
-          </Svg>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            reduceMotion ? { opacity: STEP_TARGET_SHAPE[step] === 3 ? 0.78 : 0 } : pinAccStyle,
-          ]}
-        >
-          <Svg width={glyphSize} height={glyphSize} viewBox="0 0 100 100">
-            <Path
-              d="M34 91.5Q50 96 66 91.5"
-              fill="none"
-              stroke={scheme.onPrimaryContainer}
-              strokeWidth={4.6}
-              strokeLinecap="round"
             />
           </Svg>
         </Animated.View>
