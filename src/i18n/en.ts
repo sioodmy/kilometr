@@ -1360,96 +1360,9 @@ export const en: Strings = {
     openSettings: 'Open settings',
     permissionDenied:
       'You can continue without this permission and change it later in your phone settings.',
-    steps: ['Welcome', 'City', 'Access', 'Places'],
+    steps: ['Welcome', 'City', 'Access'],
     granted: 'On',
     denied: 'Off',
-    slotHome: 'Home',
-    slotHomeHint: (id: string) =>
-      id === 'krakow'
-        ? 'e.g. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'e.g. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'e.g. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'e.g. Długa 12'
-              : id === 'lodz'
-                ? 'e.g. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'e.g. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'e.g. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'e.g. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'e.g. Lipowa 12'
-                        : id === 'opole'
-                          ? 'e.g. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'e.g. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'e.g. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'e.g. Żeromskiego 12'
-                                : 'e.g. Swojczycka 41',
-    slotWork: 'Work',
-    slotWorkHint: (id: string) =>
-      id === 'krakow'
-        ? 'e.g. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'e.g. Złote Tarasy'
-          : id === 'poznan'
-            ? 'e.g. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'e.g. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'e.g. Manufaktura'
-                : id === 'szczecin'
-                  ? 'e.g. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'e.g. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'e.g. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'e.g. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'e.g. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'e.g. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'e.g. Felicity'
-                              : id === 'radom'
-                                ? 'e.g. Galeria Słoneczna'
-                                : 'e.g. Sky Tower',
-    slotUni: 'University',
-    slotUniHint: (id: string) =>
-      id === 'krakow'
-        ? 'e.g. AGH'
-        : id === 'warszawa'
-          ? 'e.g. Uniwersytet'
-          : id === 'poznan'
-            ? 'e.g. UAM'
-            : id === 'trojmiasto'
-              ? 'e.g. UG'
-              : id === 'lodz'
-                ? 'e.g. UŁ'
-                : id === 'szczecin'
-                  ? 'e.g. US'
-                  : id === 'kielce'
-                    ? 'e.g. UJK'
-                    : id === 'olsztyn'
-                      ? 'e.g. UWM'
-                      : id === 'bialystok'
-                        ? 'e.g. UwB'
-                        : id === 'opole'
-                          ? 'e.g. UO'
-                          : id === 'rzeszow'
-                            ? 'e.g. PRz'
-                            : id === 'lublin'
-                              ? 'e.g. UMCS'
-                              : id === 'radom'
-                                ? 'e.g. UTH'
-                                : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1517,17 +1430,6 @@ export const en: Strings = {
     dlDoneSub: (stops: number, trips: number) => `${stops} stops • ${trips} trips.`,
     dlFail: 'Something went wrong',
     dlFailBody: (msg: string) => `${msg}. Check your connection and try again.`,
-    saveFail: 'Could not save the place',
-    saveFailBody: 'Please try again.',
-    placesTitle: 'Where do you go most often?',
-    placesBody: 'Saved places speed up searching. You can skip this step.',
-    added: 'Added',
-    removeSlotA11y: (name: string) => `Remove ${name}`,
-    closeAction: 'Close',
-    addAction: '+ Add',
-    addressFor: (name: string) => `Address for: ${name}…`,
-    noResults: (q: string) =>
-      `No results for “${q}”. Stops are searched offline, addresses need internet.`,
     start: 'Set up Kilometr',
     next: 'Next',
     later: 'Later',
@@ -1535,7 +1437,6 @@ export const en: Strings = {
     footerDownloading: 'Downloading…',
     footerDownload: 'Download timetable',
     needTimetable: 'Without a timetable you can’t search connections.',
-    doneCount: (n: number) => `Done (${n})`,
     donePlain: 'Done',
     skip: 'Skip for now',
     skipTimetable: 'Skip, I will download the timetable later',

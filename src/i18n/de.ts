@@ -1369,96 +1369,9 @@ export const de: Strings = {
     openSettings: 'Einstellungen öffnen',
     permissionDenied:
       'Du kannst ohne diese Berechtigung fortfahren und sie später in den Telefoneinstellungen ändern.',
-    steps: ['Willkommen', 'Stadt', 'Zugriff', 'Orte'],
+    steps: ['Willkommen', 'Stadt', 'Zugriff'],
     granted: 'An',
     denied: 'Aus',
-    slotHome: 'Zuhause',
-    slotHomeHint: (id: string) =>
-      id === 'krakow'
-        ? 'z. B. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'z. B. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'z. B. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'z. B. Długa 12'
-              : id === 'lodz'
-                ? 'z. B. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'z. B. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'z. B. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'z. B. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'z. B. Lipowa 12'
-                        : id === 'opole'
-                          ? 'z. B. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'z. B. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'z. B. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'z. B. Żeromskiego 12'
-                                : 'z. B. Swojczycka 41',
-    slotWork: 'Arbeit',
-    slotWorkHint: (id: string) =>
-      id === 'krakow'
-        ? 'z. B. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'z. B. Złote Tarasy'
-          : id === 'poznan'
-            ? 'z. B. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'z. B. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'z. B. Manufaktura'
-                : id === 'szczecin'
-                  ? 'z. B. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'z. B. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'z. B. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'z. B. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'z. B. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'z. B. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'z. B. Felicity'
-                              : id === 'radom'
-                                ? 'z. B. Galeria Słoneczna'
-                                : 'z. B. Sky Tower',
-    slotUni: 'Uni',
-    slotUniHint: (id: string) =>
-      id === 'krakow'
-        ? 'z. B. AGH'
-        : id === 'warszawa'
-          ? 'z. B. Uniwersytet'
-          : id === 'poznan'
-            ? 'z. B. UAM'
-            : id === 'trojmiasto'
-              ? 'z. B. UG'
-              : id === 'lodz'
-                ? 'z. B. UŁ'
-                : id === 'szczecin'
-                  ? 'z. B. US'
-                  : id === 'kielce'
-                    ? 'z. B. UJK'
-                    : id === 'olsztyn'
-                      ? 'z. B. UWM'
-                      : id === 'bialystok'
-                        ? 'z. B. UwB'
-                        : id === 'opole'
-                          ? 'z. B. UO'
-                          : id === 'rzeszow'
-                            ? 'z. B. PRz'
-                            : id === 'lublin'
-                              ? 'z. B. UMCS'
-                              : id === 'radom'
-                                ? 'z. B. UTH'
-                                : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1527,18 +1440,6 @@ export const de: Strings = {
     dlDoneSub: (stops: number, trips: number) => `${stops} Haltestellen • ${trips} Fahrten.`,
     dlFail: 'Etwas ist schiefgelaufen',
     dlFailBody: (msg: string) => `${msg}. Verbindung prüfen und erneut versuchen.`,
-    saveFail: 'Ort konnte nicht gespeichert werden',
-    saveFailBody: 'Versuche es erneut.',
-    placesTitle: 'Wo bist du am häufigsten?',
-    placesBody:
-      'Gespeicherte Orte beschleunigen die Suche. Dieser Schritt kann übersprungen werden.',
-    added: 'Hinzugefügt',
-    removeSlotA11y: (name: string) => `${name} entfernen`,
-    closeAction: 'Schließen',
-    addAction: '+ Hinzufügen',
-    addressFor: (name: string) => `Adresse für: ${name}…`,
-    noResults: (q: string) =>
-      `Keine Ergebnisse für „${q}“. Haltestellen werden offline gesucht, Adressen brauchen Internet.`,
     start: 'Kilometr einrichten',
     next: 'Weiter',
     later: 'Später',
@@ -1546,7 +1447,6 @@ export const de: Strings = {
     footerDownloading: 'Wird geladen…',
     footerDownload: 'Fahrplan laden',
     needTimetable: 'Ohne Fahrplan keine Verbindungssuche möglich.',
-    doneCount: (n: number) => `Fertig (${n})`,
     donePlain: 'Fertig',
     skip: 'Erstmal überspringen',
     skipTimetable: 'Überspringen, Fahrplan lade ich später',

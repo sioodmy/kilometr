@@ -17,10 +17,6 @@ import { setActiveCityId } from '../src/services/cityStore';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseKielceNews, ZTM_KIELCE_NEWS_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -232,21 +228,6 @@ describe('Tryb linii: Kielce to same autobusy');
   expect('N1 to autobus', inferTransitMode(undefined, 'N1', 'kielce'), 'bus');
   expect('E to autobus', inferTransitMode(undefined, 'E', 'kielce'), 'bus');
   expect('reguła niskich numerów działa poza Kielcami', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla kielce hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('kielce'), 'np. Sienkiewicza 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('kielce'), 'np. Galeria Echo');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('kielce'), 'np. UJK');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: kielce nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('kielce') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu ZTM (div.com-content-article__body)');

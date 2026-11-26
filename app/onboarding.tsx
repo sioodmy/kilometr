@@ -1,12 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   AppState,
   BackHandler,
   FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -23,9 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import Animated, {
-  FadeIn,
   FadeInDown,
-  LinearTransition,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -33,15 +28,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   Bell,
-  Briefcase,
   Check,
   ChevronRight,
   Download,
-  GraduationCap,
-  Home,
   LocateFixed,
   M3SolidArrowRight,
-  MapPin,
   MapPinOff,
   Search,
   X,
@@ -51,7 +42,6 @@ import { HERO_LOGO_SIZE, OnboardingMorphHero } from '../src/components/Onboardin
 import { OnboardingProgressBar } from '../src/components/OnboardingProgressBar';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { TimetableBackgroundPill } from '../src/components/TimetableBackgroundPill';
-import { suggestionDisplayTitle } from '../src/components/SuggestionRow';
 import { useWebLayout } from '../src/theme/layout';
 import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
@@ -71,7 +61,6 @@ import {
   ensureNotificationPermission,
   hasNotificationPermission,
 } from '../src/services/notifications';
-import { FavoritesService, SearchService } from '../src/services';
 import {
   getDataStatus,
   importGtfsFromNetwork,
@@ -79,9 +68,8 @@ import {
   subscribeDataStatus,
   type DataStatus,
 } from '../src/services/dataManager';
-import type { SavedPlace, Suggestion } from '../src/types/models';
 
-type StepIndex = 0 | 1 | 2 | 3;
+type StepIndex = 0 | 1 | 2;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -164,7 +152,7 @@ function StepStage({
   return <Animated.View style={[st.stepStage, animStyle]}>{children}</Animated.View>;
 }
 
-/** Animowany nagłówek dla kroków 1..3 siedzący po lewej stronie morfującego medalionu. */
+/** Animowany nagłówek dla kroków 1..2 siedzący po lewej stronie morfującego medalionu. */
 function AnimatedStepHeader({
   step,
   direction,
@@ -468,133 +456,6 @@ function useCitySuggestion(locGranted: boolean) {
   return { suggested, status };
 }
 
-type SlotKey = 'home' | 'work' | 'school';
-const SLOT_KEYS: readonly SlotKey[] = ['home', 'work', 'school'];
-
-function useOnboardingPlaces(onSaved: () => void) {
-  const s = useStrings();
-  const [places, setPlaces] = useState<SavedPlace[]>([]);
-  const [activeSlot, setActiveSlot] = useState<SlotKey | null>(null);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Suggestion[]>([]);
-  const [searching, setSearching] = useState(false);
-  const searchSeq = useRef(0);
-  const [saving, setSaving] = useState(false);
-
-  const reload = useCallback(async () => {
-    try {
-      setPlaces(await FavoritesService.list());
-    } catch {
-      setPlaces([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
-  useEffect(() => {
-    const seq = ++searchSeq.current;
-    if (!activeSlot) return;
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    SearchService.search(q, undefined, 'onboarding', (partial) => {
-      if (seq === searchSeq.current) setResults(partial);
-    })
-      .then((r) => {
-        if (seq === searchSeq.current) setResults(r);
-      })
-      .catch(() => {
-        if (seq === searchSeq.current) setResults([]);
-      })
-      .finally(() => {
-        if (seq === searchSeq.current) setSearching(false);
-      });
-    return () => {
-      ++searchSeq.current;
-      SearchService.cancel('onboarding');
-    };
-  }, [query, activeSlot]);
-
-  const bySlot = useMemo(() => {
-    const slotNames: Record<SlotKey, string> = {
-      home: s.onboarding.slotHome,
-      work: s.onboarding.slotWork,
-      school: s.onboarding.slotUni,
-    };
-    const map = {} as Record<SlotKey, SavedPlace | undefined>;
-    for (const key of SLOT_KEYS) {
-      map[key] =
-        places.find((p) => p.icon === key) ??
-        places.find((p) => p.name.toLowerCase() === slotNames[key].toLowerCase());
-    }
-    return map;
-  }, [places, s]);
-
-  const saveForSlot = useCallback(
-    async (slot: SlotKey, sug: Suggestion) => {
-      const slotNames: Record<SlotKey, string> = {
-        home: s.onboarding.slotHome,
-        work: s.onboarding.slotWork,
-        school: s.onboarding.slotUni,
-      };
-      setSaving(true);
-      try {
-        await FavoritesService.addPlace({
-          name: slotNames[slot],
-          icon: slot,
-          address: sug.address || sug.title,
-          lat: sug.lat,
-          lon: sug.lon,
-        });
-        await reload();
-        setActiveSlot(null);
-        setQuery('');
-        setResults([]);
-        onSaved();
-      } catch {
-        Alert.alert(s.onboarding.saveFail, s.onboarding.saveFailBody);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [onSaved, reload, s],
-  );
-
-  const remove = useCallback(
-    async (id: string) => {
-      try {
-        await FavoritesService.deletePlace(id);
-      } catch (err) {
-        console.warn('[onboarding remove error]', err);
-        Alert.alert(s.common.storageFailTitle, s.common.storageFailBody);
-        return;
-      }
-      await reload();
-    },
-    [reload, s],
-  );
-
-  return {
-    places,
-    bySlot,
-    activeSlot,
-    setActiveSlot,
-    query,
-    setQuery,
-    results,
-    searching,
-    saving,
-    saveForSlot,
-    remove,
-  };
-}
-
 const CityRowItem = memo(function CityRowItem({
   entry,
   active,
@@ -658,33 +519,6 @@ export default function OnboardingScreen() {
   const [welcomeGroupHeight, setWelcomeGroupHeight] = useState(276);
   const [compactHeaderHeight, setCompactHeaderHeight] = useState(86);
   const [leaving, setLeaving] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const maxWorkspaceHeightRef = useRef(0);
-
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
-      setKeyboardHeight(e.endCoordinates?.height ?? 0);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  // Edge-to-edge na Androidzie nie zawsze kurczy okna pod klawiaturę, więc
-  // doliczamy jej wysokość do przewijanej treści tylko, gdy layout faktycznie się nie skurczył.
-  const windowShrankByKeyboard =
-    Platform.OS === 'android' &&
-    keyboardHeight > 0 &&
-    maxWorkspaceHeightRef.current - workspaceHeight > keyboardHeight * 0.5;
-  const androidKeyboardInset =
-    Platform.OS === 'android' && keyboardHeight > 0 && !windowShrankByKeyboard
-      ? keyboardHeight
-      : 0;
 
   const bumpPulse = useCallback(() => setPulseKey((k) => k + 1), []);
 
@@ -700,9 +534,7 @@ export default function OnboardingScreen() {
   const manualCityPickedRef = useRef(false);
   const prefetchedCityRef = useRef<CityId | null>(null);
 
-  const slots = useOnboardingPlaces(bumpPulse);
   const cityGen = s.city.gen(cityId);
-  const savedCount = slots.places.length;
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
@@ -773,7 +605,7 @@ export default function OnboardingScreen() {
       // Upewniamy się, że rozkład wybranego miasta pobiera się w tle przy wyjściu z wyboru miasta.
       void prefetchTimetable(cityId);
     }
-    if (step < 3) goTo((step + 1) as StepIndex);
+    if (step < 2) goTo((step + 1) as StepIndex);
   }, [cityId, goTo, prefetchTimetable, step]);
 
   const back = useCallback(() => {
@@ -829,61 +661,14 @@ export default function OnboardingScreen() {
     [cityId, s, selectCity, switchingCity],
   );
 
-  const placeSlots = useMemo(
-    () => [
-      {
-        key: 'home' as SlotKey,
-        name: s.onboarding.slotHome,
-        icon: Home,
-        hint: s.onboarding.slotHomeHint(cityId),
-      },
-      {
-        key: 'work' as SlotKey,
-        name: s.onboarding.slotWork,
-        icon: Briefcase,
-        hint: s.onboarding.slotWorkHint(cityId),
-      },
-      {
-        key: 'school' as SlotKey,
-        name: s.onboarding.slotUni,
-        icon: GraduationCap,
-        hint: s.onboarding.slotUniHint(cityId),
-      },
-    ],
-    [cityId, s],
-  );
-
-  const placesScroll = useRef<ScrollView>(null);
-  const slotY = useRef<Record<string, number>>({});
-  const scrollSlotIntoView = useCallback((key: string) => {
-    const y = slotY.current[key] ?? 0;
-    setTimeout(() => {
-      placesScroll.current?.scrollTo({ y: Math.max(0, y - 56), animated: true });
-    }, 150);
-  }, []);
-
-  // Po wysunięciu klawiatury treść dostaje dolny zapas, więc ponawiamy przewinięcie
-  // aktywnego miejsca, żeby pole i podpowiedzi zostały nad klawiaturą.
-  useEffect(() => {
-    const activeSlot = slots.activeSlot;
-    if (Platform.OS === 'web' || step !== 3 || !activeSlot || keyboardHeight === 0) {
-      return;
-    }
-    const timer = setTimeout(() => scrollSlotIntoView(activeSlot), 60);
-    return () => clearTimeout(timer);
-  }, [keyboardHeight, scrollSlotIntoView, slots.activeSlot, step, workspaceHeight]);
-
   const compactHeaderMeta = useMemo(() => {
     if (step === 1) {
       return { title: s.onboarding.cityTitle, subtitle: s.onboarding.citySubtitleAuto };
     }
-    if (step === 2) {
-      return {
-        title: s.onboarding.permTitle,
-        subtitle: Platform.OS === 'web' ? s.onboarding.permSubWeb : s.onboarding.permSub,
-      };
-    }
-    return { title: s.onboarding.placesTitle, subtitle: s.onboarding.placesBody };
+    return {
+      title: s.onboarding.permTitle,
+      subtitle: Platform.OS === 'web' ? s.onboarding.permSubWeb : s.onboarding.permSub,
+    };
   }, [s, step]);
 
   const showBackgroundPill = step >= 2 || (step === 1 && timetableTouched);
@@ -907,10 +692,7 @@ export default function OnboardingScreen() {
           onLayout={(e) => {
             const { width: w, height: h } = e.nativeEvent.layout;
             if (w > 0 && Math.abs(w - workspaceWidth) > 1) setWorkspaceWidth(Math.round(w));
-            if (h > 0) {
-              if (h > maxWorkspaceHeightRef.current) maxWorkspaceHeightRef.current = h;
-              if (Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
-            }
+            if (h > 0 && Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
           }}
         >
           {step === 0 && (
@@ -1217,173 +999,11 @@ export default function OnboardingScreen() {
               </ScrollView>
             </StepStage>
           )}
-
-          {step === 3 && (
-            <StepStage step={step} direction={direction}>
-              <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={80}
-              >
-                <ScrollView
-                  ref={placesScroll}
-                  contentContainerStyle={[
-                    st.stepScroll,
-                    { paddingBottom: 180 + webKeyboardInset + androidKeyboardInset },
-                  ]}
-                  showsVerticalScrollIndicator={false}
-                  overScrollMode="never"
-                  keyboardShouldPersistTaps="handled"
-                  keyboardDismissMode="on-drag"
-                >
-                  {placeSlots.map((slot) => {
-                    const Icon = slot.icon;
-                    const saved = slots.bySlot[slot.key];
-                    const open = slots.activeSlot === slot.key;
-                    return (
-                      <Animated.View
-                        key={slot.key}
-                        layout={
-                          reduceMotion
-                            ? undefined
-                            : LinearTransition.duration(motion.state.duration).easing(
-                                motion.state.easing,
-                              )
-                        }
-                        style={[st.card, saved && st.cardGranted, open && st.cardFocused]}
-                        onLayout={(e) => {
-                          slotY.current[slot.key] = e.nativeEvent.layout.y;
-                        }}
-                      >
-                        <View style={[st.slotRow, compact && st.slotRowCompact]}>
-                          <View style={[st.cardIcon, saved && st.cardIconSuccess]}>
-                            {saved ? (
-                              <Check size={20} color={scheme.onSuccessContainer} />
-                            ) : (
-                              <Icon size={20} color={scheme.onSecondaryContainer} />
-                            )}
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={st.cardTitle}>{slot.name}</Text>
-                            <Text
-                              style={st.cardWhy}
-                              numberOfLines={fontScale > 1.3 ? undefined : 2}
-                            >
-                              {saved ? saved.address : slot.hint}
-                            </Text>
-                          </View>
-                          {saved ? (
-                            <SpringPressable
-                              onPress={() => void slots.remove(saved.id)}
-                              haptic="selection"
-                              hitSlop={8}
-                              style={st.miniX}
-                              accessibilityLabel={s.onboarding.removeSlotA11y(slot.name)}
-                              accessibilityRole="button"
-                            >
-                              <X size={16} color={scheme.onSurfaceVariant} />
-                            </SpringPressable>
-                          ) : (
-                            <SpringPressable
-                              onPress={() => {
-                                slots.setActiveSlot(open ? null : slot.key);
-                                slots.setQuery('');
-                              }}
-                              haptic="selection"
-                              style={[st.addPill, open && st.addPillOpen]}
-                              accessibilityRole="button"
-                            >
-                              <Text style={[st.addPillText, open && st.addPillTextOpen]}>
-                                {open ? s.onboarding.closeAction : s.onboarding.addAction}
-                              </Text>
-                            </SpringPressable>
-                          )}
-                        </View>
-
-                        {open && !saved && (
-                          <Animated.View
-                            entering={reduceMotion ? undefined : FadeIn.duration(180)}
-                            style={st.slotSearchArea}
-                          >
-                            <View style={st.searchBar}>
-                              <Search size={17} color={scheme.onSurfaceVariant} />
-                              <TextInput
-                                ref={(node) => {
-                                  if (node && Platform.OS === 'web') {
-                                    requestAnimationFrame(() => node.focus());
-                                  }
-                                }}
-                                value={slots.query}
-                                onChangeText={slots.setQuery}
-                                onFocus={() => scrollSlotIntoView(slot.key)}
-                                placeholder={s.onboarding.addressFor(slot.name)}
-                                accessibilityLabel={s.onboarding.addressFor(slot.name)}
-                                placeholderTextColor={scheme.onSurfaceVariant}
-                                style={st.searchBarInput}
-                                autoFocus
-                                returnKeyType="search"
-                              />
-                              {slots.searching && (
-                                <MorphingLoader size={16} color={scheme.primary} />
-                              )}
-                            </View>
-
-                            {slots.results.length === 0 &&
-                              !slots.searching &&
-                              slots.query.trim().length >= 2 && (
-                                <View style={st.noResults}>
-                                  <Text style={st.noResultsText}>
-                                    {s.onboarding.noResults(slots.query.trim())}
-                                  </Text>
-                                </View>
-                              )}
-
-                            {slots.results.map((r) => (
-                              <SpringPressable
-                                key={r.id}
-                                onPress={() => void slots.saveForSlot(slot.key, r)}
-                                disabled={slots.saving}
-                                haptic="selection"
-                                accessibilityRole="button"
-                                accessibilityState={{ disabled: slots.saving }}
-                                style={st.resultRow}
-                              >
-                                <MapPin size={16} color={scheme.primary} />
-                                <View style={{ flex: 1 }}>
-                                  <Text
-                                    style={st.resultTitle}
-                                    numberOfLines={fontScale > 1.3 ? undefined : 2}
-                                  >
-                                    {suggestionDisplayTitle(r)}
-                                  </Text>
-                                  <Text
-                                    style={st.resultSub}
-                                    numberOfLines={fontScale > 1.3 ? undefined : 2}
-                                  >
-                                    {r.address}
-                                  </Text>
-                                </View>
-                                {slots.saving ? (
-                                  <ActivityIndicator size="small" color={scheme.primary} />
-                                ) : (
-                                  <ChevronRight size={16} color={scheme.onSurfaceVariant} />
-                                )}
-                              </SpringPressable>
-                            ))}
-                          </Animated.View>
-                        )}
-                      </Animated.View>
-                    );
-                  })}
-                </ScrollView>
-              </KeyboardAvoidingView>
-            </StepStage>
-          )}
               </View>
             </View>
           )}
 
-          {/* Wspólna warstwa logo -> morfujący medalion transportowy na krokach 0..3. */}
+          {/* Wspólna warstwa logo -> morfujący medalion transportowy na krokach 0..2. */}
           <OnboardingMorphHero
             step={step}
             workspaceWidth={workspaceWidth}
@@ -1442,26 +1062,10 @@ export default function OnboardingScreen() {
 
           {step === 2 && (
             <PrimaryBtn
-              label={s.onboarding.next}
-              onPress={next}
-              icon={<M3SolidArrowRight size={18} color={scheme.onPrimary} />}
-            />
-          )}
-
-          {step === 3 && (
-            <PrimaryBtn
-              label={
-                savedCount > 0 ? s.onboarding.doneCount(savedCount) : s.onboarding.startUsing
-              }
+              label={s.onboarding.startUsing}
               onPress={() => void finish()}
               disabled={leaving}
-              icon={
-                savedCount > 0 ? (
-                  <Check size={19} color={scheme.onPrimary} />
-                ) : (
-                  <M3SolidArrowRight size={18} color={scheme.onPrimary} />
-                )
-              }
+              icon={<M3SolidArrowRight size={18} color={scheme.onPrimary} />}
             />
           )}
         </View>
@@ -1781,9 +1385,6 @@ const st = StyleSheet.create({
   cardGranted: {
     borderColor: `${scheme.success}55`,
   },
-  cardFocused: {
-    borderColor: `${scheme.primary}77`,
-  },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1805,11 +1406,6 @@ const st = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: scheme.onSurface,
-  },
-  cardWhy: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    marginTop: 2,
   },
   cardBody: {
     ...type.bodyMedium,
@@ -1844,72 +1440,6 @@ const st = StyleSheet.create({
     color: scheme.onPrimary,
     flexShrink: 1,
     textAlign: 'center',
-  },
-  slotRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  slotRowCompact: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-  },
-  slotSearchArea: {
-    gap: 8,
-  },
-  addPill: {
-    backgroundColor: scheme.secondaryContainer,
-    borderRadius: shape.full,
-    paddingHorizontal: 16,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addPillOpen: {
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  addPillText: {
-    ...type.labelMedium,
-    color: scheme.onSecondaryContainer,
-    fontWeight: '700',
-  },
-  addPillTextOpen: {
-    color: scheme.onSurface,
-  },
-  miniX: {
-    width: 44,
-    height: 44,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: scheme.surfaceContainerHigh,
-    borderRadius: shape.large,
-    padding: 14,
-    minHeight: 56,
-  },
-  resultTitle: {
-    ...type.titleSmall,
-    color: scheme.onSurface,
-  },
-  resultSub: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-  },
-  noResults: {
-    padding: 12,
-    borderRadius: shape.large,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  noResultsText: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    lineHeight: 18,
   },
   footer: {
     paddingHorizontal: 24,

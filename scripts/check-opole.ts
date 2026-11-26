@@ -16,10 +16,6 @@ import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseOpoleRss, MZK_OPOLE_FEED_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -174,21 +170,6 @@ describe('Tryb linii: w Opolu wszystko to autobusy');
   expect('SZ1 to autobus szkolny', inferTransitMode(undefined, 'SZ1', 'opole'), 'bus');
   expect('S1 to autobus specjalny', inferTransitMode(undefined, 'S1', 'opole'), 'bus');
   expect('reguła niskich numerów działa poza Opolem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla opole hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('opole'), 'np. Ozimska 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('opole'), 'np. Solaris Center');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('opole'), 'np. UO');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: opole nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('opole') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu MZK (WordPress article + entry-content)');

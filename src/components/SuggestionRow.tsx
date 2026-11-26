@@ -55,7 +55,7 @@ const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: strin
 };
 
 /** Tytuł do wyświetlenia: przystanki w ALL CAPS odróżniają je od adresów i POI. */
-export function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>): string {
+function suggestionDisplayTitle(item: Pick<Suggestion, 'title' | 'kind'>): string {
   return item.kind === 'stop' ? item.title.toUpperCase() : item.title;
 }
 

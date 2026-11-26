@@ -16,10 +16,6 @@ import { setActiveCityId, getActiveCityIdSync } from '../src/services/cityStore'
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseMzdikRadomKomunikaty, MZDIK_RADOM_KOMUNIKATY_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -207,21 +203,6 @@ describe('Tryb linii: Radom to same autobusy');
   expect('linia 1 to autobus (nie tramwaj jak we Wrocławiu)', inferTransitMode(undefined, '1', 'radom'), 'bus');
   expect('linia 14 to autobus', inferTransitMode(undefined, '14', 'radom'), 'bus');
   expect('linia nocna N3 to autobus', inferTransitMode(undefined, 'N3', 'radom'), 'bus');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla radom hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('radom'), 'np. Żeromskiego 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('radom'), 'np. Galeria Słoneczna');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('radom'), 'np. UTH');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: radom nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('radom') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu MZDiK (section + intro + content)');
