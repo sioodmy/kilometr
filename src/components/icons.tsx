@@ -96,6 +96,7 @@ export const AcUnit = icon('ac-unit');
 export const Activity = icon('monitor-heart');
 export const AlarmClock = icon('alarm');
 export const AlertCircle = icon('error-outline');
+export const AltRoute = icon('alt-route');
 export const Anchor = icon('anchor');
 export const ArrowLeft = icon('arrow-back');
 export const ArrowRight = icon('arrow-forward');

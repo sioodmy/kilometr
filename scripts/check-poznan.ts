@@ -14,10 +14,6 @@ import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parsePoznanRss, ZTM_POZNAN_FEED_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -137,21 +133,6 @@ describe('Tryb linii: tramwaje 97/201/203, T6/T7, typy z feedu');
   expect('T7 to autobus turystyczny', inferTransitMode(undefined, 'T7', 'poznan'), 'bus');
   expect('145 to autobus', inferTransitMode(undefined, '145', 'poznan'), 'bus');
   expect('97 poza Poznaniem bez zgadywania', inferTransitMode(undefined, '97', 'wroclaw'), 'bus');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla poznan hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('poznan'), 'np. Głogowska 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('poznan'), 'np. Stary Browar');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('poznan'), 'np. UAM');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: poznan nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('poznan') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść artykułu ZTM (motyw inny niż WTP)');

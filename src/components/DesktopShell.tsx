@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import { Bell, ChevronDown, Compass, MapPin, MapPinned, Settings2 } from './icons';
-import { CitySelectSheet } from './CitySelectSheet';
+import { SheetLoadingFallback } from './SkeletonPulse';
 import { SpringPressable } from './SpringPressable';
+
+const CitySelectSheet = lazy(() =>
+  import('./CitySelectSheet').then((m) => ({ default: m.CitySelectSheet })),
+);
 import { getCity, type CityId } from '../cities';
 import { useStrings } from '../i18n';
 import { getActiveCityIdSync, useActiveCity } from '../services/cityStore';
@@ -372,13 +376,15 @@ function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; child
       <View style={styles.workspace}>{children}</View>
 
       {citySheetOpen && (
-        <CitySelectSheet
-          selectedCityId={cityId}
-          onSelectCity={(id) => void handleCitySelect(id)}
-          onClose={() => setCitySheetOpen(false)}
-          switchingCity={switchingCity}
-          switchingCityId={switchingCityId}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <CitySelectSheet
+            selectedCityId={cityId}
+            onSelectCity={(id) => void handleCitySelect(id)}
+            onClose={() => setCitySheetOpen(false)}
+            switchingCity={switchingCity}
+            switchingCityId={switchingCityId}
+          />
+        </Suspense>
       )}
     </View>
   );
@@ -392,7 +398,7 @@ const styles = StyleSheet.create({
   },
   sidebar: {
     backgroundColor: scheme.surfaceContainerLow,
-    borderRightWidth: 2,
+    borderRightWidth: 1,
     borderRightColor: scheme.outlineVariant,
     paddingHorizontal: 14,
     paddingVertical: 18,
@@ -512,7 +518,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: shape.large,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     ...elev.level1,
   },
@@ -544,7 +550,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',

@@ -66,7 +66,7 @@ export interface TransferAlternative {
   arrivalAtMs: number;
   validUntil: number;
   kind: 'sameStop' | 'stayOn' | 'fromHere';
-  source?: 'legSwap' | 'raptor';
+  source?: 'legSwap' | 'raptor' | 'group';
   /** Różnica czasu przyjazdu do celu względem bieżącego planu (w minutach). */
   deltaArrivalMin?: number;
   /** Szacowany zapas czasu na przesiadkę w tej propozycji (w sekundach). */

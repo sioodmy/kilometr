@@ -15,9 +15,15 @@ interface RailAmenitiesQuery {
   trainName?: string;
 }
 
+interface RailAmenitiesState {
+  amenities: Amenities | null;
+  loading: boolean;
+}
+
 /**
  * Ładuje udogodnienia składu z vagonweb dla odcinka kolejowego.
- * Zwraca wynik synchronicznie z cache (bez mignięcia layoutu), a przy jego braku dociąga z bazy.
+ * Zwraca wynik synchronicznie z cache, a przy jego braku sygnalizuje stan
+ * ładowania do czasu dociągnięcia danych z bazy.
  */
 export function useRailAmenities({
   enabled = true,
@@ -27,22 +33,25 @@ export function useRailAmenities({
   trainNumber,
   line,
   trainName,
-}: RailAmenitiesQuery): Amenities | null {
-  const [data, setData] = useState<Amenities | null>(() =>
-    enabled
-      ? (getCachedRailAmenities({
-          tripId,
-          railAgency: agency,
-          trainNumber,
-          line,
-          trainName,
-        }) ?? null)
-      : null,
-  );
+}: RailAmenitiesQuery): RailAmenitiesState {
+  const [state, setState] = useState<RailAmenitiesState>(() => {
+    if (!enabled) return { amenities: null, loading: false };
+    const cached = getCachedRailAmenities({
+      tripId,
+      railAgency: agency,
+      trainNumber,
+      line,
+      trainName,
+    });
+    if (cached !== undefined) return { amenities: cached, loading: false };
+    return { amenities: null, loading: true };
+  });
 
   useEffect(() => {
     if (!enabled) {
-      setData(null);
+      setState((prev) =>
+        prev.amenities === null && !prev.loading ? prev : { amenities: null, loading: false },
+      );
       return;
     }
     let alive = true;
@@ -54,11 +63,11 @@ export function useRailAmenities({
       trainName,
     });
     if (cached !== undefined) {
-      setData(cached);
+      setState({ amenities: cached, loading: false });
       return;
     }
+    setState((prev) => (prev.amenities === null && prev.loading ? prev : { amenities: null, loading: true }));
     if (deferLoad) return;
-    setData(null);
     void loadRailAmenities({
       id: '',
       mode: 'train',
@@ -74,12 +83,12 @@ export function useRailAmenities({
       line,
       trainName,
     }).then((next) => {
-      if (alive) setData(next);
+      if (alive) setState({ amenities: next, loading: false });
     });
     return () => {
       alive = false;
     };
   }, [enabled, deferLoad, tripId, agency, trainNumber, line, trainName]);
 
-  return data;
+  return state;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   InteractionManager,
@@ -26,7 +26,6 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,11 +43,18 @@ import {
 } from '../services/dataManager';
 import type { Suggestion } from '../types/models';
 import { SuggestionRow } from './SuggestionRow';
+import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
-import { frecency, matchSuggestions, rankWithFrecency } from '../services/searchFrecency';
+import {
+  frecency,
+  matchSuggestions,
+  rankWithFrecency,
+  suggestionIdentity,
+} from '../services/searchFrecency';
 import { searchTransitLines, type TransitLine } from '../services/lineTimetable';
 import { LineBadge } from './LineBadge';
 import { SpringPressable } from './SpringPressable';
+import { SkeletonBone, SkeletonPulse, useDeferredReveal } from './SkeletonPulse';
 import type { NearbyLiveVehicle } from '../services/onboardDetector';
 
 type Row =
@@ -70,14 +76,20 @@ type Row =
     };
 
 const QUICK_CHIPS = 4;
-const PERSONAL_MAX = 3;
+const PERSONAL_MAX = 4;
+/** Zapisane miejsca użytkownika są nieliczne, więc akceptujemy też trafienia w środku nazwy i adresu. */
+const SAVED_MIN_SCORE = 65;
 /** Prefiks słowa, całe słowo albo akronim; literówki i trafienia w środku słowa zaśmiecają górę listy. */
 const PERSONAL_MIN_SCORE = 85;
 const SAME_PLACE_M = 60;
 const MAX_RUBBER_UP = 18;
+/** Powyżej opóźnień sieci/fuzzy w SearchService (250-280 ms), by nie migać spinnerem w trakcie pisania. */
+const LOADING_DELAY_MS = 320;
+/** Minimalny czas widoczności pustego stanu ładowania, gdy wyniki jeszcze nie nadeszły. */
+const LOADING_MIN_VISIBLE_MS = 280;
 
-/** Arkusz wyszukiwarki M3 Expressive ze sprężystym wejściem, płynnym wyjściem i gestem ściągania. */
-export function SearchSheet({
+/** Arkusz wyszukiwarki M3 z płynnym wejściem bez odbicia, płynnym wyjściem i gestem ściągania. */
+export const SearchSheet = memo(function SearchSheet({
   query,
   loading,
   error = false,
@@ -167,8 +179,8 @@ export function SearchSheet({
       backdropProgress.value = 1;
       return;
     }
-    translateY.value = withSpring(0, motion.spring.spatialDefault);
-    backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
+    translateY.value = withTiming(0, motion.enter);
+    backdropProgress.value = withTiming(1, motion.enter);
   }, [backdropProgress, reducedMotion, translateY]);
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -242,10 +254,30 @@ export function SearchSheet({
   }, []);
 
   // Pojedynczy fallback fokusu po zakończeniu przejść nawigacji (bez podwójnego żądania IME).
-  // Na webie pomijamy opóźniony focus: asynchroniczny focus po animacji powoduje na iOS Safari
-  // wypchnięcie całego dokumentu do góry po wysunięciu klawiatury.
+  // Na webie odraczamy focus o 2 klatki z preventScroll, żeby kliknięcie przycisku nie wymuszało synchronicznego layoutu.
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') {
+      let cancelled = false;
+      let frame1: number | null = null;
+      let frame2: number | null = null;
+      frame1 = requestAnimationFrame(() => {
+        frame1 = null;
+        if (cancelled) return;
+        frame2 = requestAnimationFrame(() => {
+          frame2 = null;
+          if (cancelled || closingRef.current || focusedRef.current) return;
+          const el = inputRef.current as unknown as {
+            focus?: (opts?: { preventScroll?: boolean }) => void;
+          } | null;
+          el?.focus?.({ preventScroll: true });
+        });
+      });
+      return () => {
+        cancelled = true;
+        if (frame1 !== null) cancelAnimationFrame(frame1);
+        if (frame2 !== null) cancelAnimationFrame(frame2);
+      };
+    }
     const task = InteractionManager.runAfterInteractions(() => {
       if (!closingRef.current && !focusedRef.current) {
         inputRef.current?.focus();
@@ -302,10 +334,7 @@ export function SearchSheet({
               },
             );
           } else {
-            translateY.value = withSpring(0, {
-              ...motion.spring.spatialDefault,
-              velocity: e.velocityY,
-            });
+            translateY.value = withTiming(0, motion.state);
           }
         }),
     [backdropProgress, reducedMotion, requestClose, targetSheetHeight, translateY, webLayout.isMedium],
@@ -360,19 +389,32 @@ export function SearchSheet({
     [closeOnSelect, requestClose, onSelectLine],
   );
 
-  // Zapisane nazwy pasują od pierwszej litery, zanim odpowie lokalny indeks.
+  // Zapisane miejsca i historia pasują od pierwszej litery, zanim odpowie lokalny indeks.
   const personal = useMemo(() => {
     if (!trimmed) return [];
     const seen = new Set<string>();
+    const savedKeys = new Set<string>();
     const candidates: Suggestion[] = [];
-    for (const item of [...savedQuick, ...recent]) {
-      if (seen.has(item.id)) continue;
-      seen.add(item.id);
+    for (const item of savedQuick) {
+      const key = item.id || suggestionIdentity(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      savedKeys.add(key);
+      candidates.push(item.savedIcon ? item : { ...item, savedIcon: 'mapPin' });
+    }
+    for (const item of recent) {
+      const key = item.id || suggestionIdentity(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
       candidates.push(item);
     }
     const matches = matchSuggestions(trimmed, candidates);
     return rankWithFrecency(
-      candidates.filter((_, index) => matches[index] >= PERSONAL_MIN_SCORE),
+      candidates.filter((item, index) => {
+        const key = item.id || suggestionIdentity(item);
+        const minScore = savedKeys.has(key) ? SAVED_MIN_SCORE : PERSONAL_MIN_SCORE;
+        return matches[index] >= minScore;
+      }),
       recent,
       trimmed,
     ).slice(0, PERSONAL_MAX);
@@ -464,16 +506,61 @@ export function SearchSheet({
     return out;
   }, [trimmed, recent, ranked, s, lines, nearbyVehicles, onSelectVehicle, onOpenLiveMap]);
 
-  // Opóźnienie wskaźnika ładowania o 200 ms zapobiega mignięciu przy błyskawicznych wynikach offline.
+  // Opóźnienie wskaźnika ładowania o 320 ms (powyżej opóźnień sieci/fuzzy) eliminuje
+  // miganie przy szybkich wynikach offline i podczas pisania kolejnych liter.
   const [showLoading, setShowLoading] = useState(false);
+  const loadingShownAtRef = useRef<number | null>(null);
+  const hasRows = rows.length > 0;
   useEffect(() => {
-    if (!loading) {
+    if (!loading || !trimmed) {
+      const shownAt = loadingShownAtRef.current;
+      if (shownAt !== null && !hasRows && trimmed) {
+        const remaining = LOADING_MIN_VISIBLE_MS - (Date.now() - shownAt);
+        if (remaining > 0) {
+          const hideTimer = setTimeout(() => {
+            loadingShownAtRef.current = null;
+            setShowLoading(false);
+          }, remaining);
+          return () => clearTimeout(hideTimer);
+        }
+      }
+      loadingShownAtRef.current = null;
       setShowLoading(false);
       return;
     }
-    const timer = setTimeout(() => setShowLoading(true), 200);
+    if (loadingShownAtRef.current !== null) return;
+    const timer = setTimeout(() => {
+      loadingShownAtRef.current = Date.now();
+      setShowLoading(true);
+    }, LOADING_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [loading]);
+  }, [loading, trimmed, hasRows]);
+
+  const listReady = useDeferredReveal(true, 2);
+  const deferredRows = useDeferredValue(rows);
+  const listOpacity = useSharedValue(1);
+  const listTranslateY = useSharedValue(0);
+  const hasQuery = Boolean(trimmed);
+  const prevHasQueryRef = useRef(hasQuery);
+  const prevHasRowsRef = useRef(hasRows);
+  useEffect(() => {
+    const modeChanged = prevHasQueryRef.current !== hasQuery;
+    const resultsAppeared = hasQuery && hasRows && !prevHasRowsRef.current;
+    prevHasQueryRef.current = hasQuery;
+    prevHasRowsRef.current = hasRows;
+    if (reducedMotion || (!modeChanged && !resultsAppeared)) return;
+    cancelAnimation(listOpacity);
+    cancelAnimation(listTranslateY);
+    listOpacity.value = 0.25;
+    listTranslateY.value = 6;
+    listOpacity.value = withTiming(1, { duration: 170, easing: motion.enter.easing });
+    listTranslateY.value = withTiming(0, { duration: 190, easing: motion.enter.easing });
+  }, [hasQuery, hasRows, listOpacity, listTranslateY, reducedMotion]);
+
+  const listAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: listOpacity.value,
+    transform: [{ translateY: listTranslateY.value }],
+  }));
 
   const first = trimmed ? ranked[0] : undefined;
 
@@ -638,6 +725,160 @@ export function SearchSheet({
         ? s.settings.dataStep(dataStatus.step, Math.round(dataStatus.progress * 100))
         : null;
 
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.listHeader}>
+        {syncLabel && hasRows && (
+          <View style={styles.syncBanner} accessibilityLiveRegion="polite">
+            <MorphingLoader size={18} color={scheme.primary} />
+            <Text style={styles.syncBannerText}>{syncLabel}</Text>
+          </View>
+        )}
+        {!trimmed && savedQuick.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            overScrollMode="never"
+            style={styles.quickScroller}
+            contentContainerStyle={styles.quickRow}
+          >
+            {savedQuick.slice(0, QUICK_CHIPS).map((q) => {
+              const ChipIcon = q.savedIcon ? (SAVED_PLACE_ICONS[q.savedIcon] ?? MapPin) : MapPin;
+              return (
+                <SpringPressable
+                  key={q.id}
+                  onPress={() => handleSelect(q)}
+                  scaleDelta={0.03}
+                  haptic="selection"
+                  style={styles.quick}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.search.savedA11y(q.title)}
+                >
+                  <ChipIcon size={14} color={scheme.primary} />
+                  <Text style={styles.quickText} numberOfLines={1}>
+                    {q.title}
+                  </Text>
+                </SpringPressable>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    ),
+    [handleSelect, hasRows, s.search, savedQuick, syncLabel, trimmed],
+  );
+
+  const listFooter = useMemo(
+    () =>
+      showLoading && hasRows ? (
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeIn.duration(180)}
+          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
+          style={styles.status}
+          accessibilityLiveRegion="polite"
+        >
+          <MorphingLoader size={18} color={scheme.primary} />
+          <Text style={styles.statusText}>{s.search.searching(cityLoc)}</Text>
+        </Animated.View>
+      ) : error && hasRows ? (
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeIn.duration(160)}
+          style={styles.errorBanner}
+          accessibilityRole="alert"
+        >
+          <Text style={styles.error}>{s.search.errorHint}</Text>
+        </Animated.View>
+      ) : null,
+    [cityLoc, error, hasRows, reducedMotion, s.search, showLoading],
+  );
+
+  const listEmpty = useMemo(() => {
+    // Podczas aktywnego wyszukiwania przed progiem LOADING_DELAY_MS nie pokazujemy
+    // fałszywej karty "Brak wyników", by uniknąć mignięcia zanim nadejdą trafienia.
+    if (trimmed && loading && !showLoading && !timetableSyncing && !error) {
+      return null;
+    }
+    const emptyStateKey = syncLabel
+      ? 'sync'
+      : showLoading
+        ? 'loading'
+        : error
+          ? 'error'
+          : timetableMissing
+            ? 'missing'
+            : trimmed
+              ? 'no-results'
+              : 'idle';
+    return (
+      <Animated.View
+        key={emptyStateKey}
+        entering={reducedMotion ? undefined : FadeIn.duration(180)}
+        style={styles.emptyCard}
+        accessibilityLiveRegion="polite"
+      >
+        <View style={styles.emptyIcon}>
+          {showLoading || timetableSyncing ? (
+            <MorphingLoader size={28} color={scheme.onPrimaryContainer} />
+          ) : (
+            <Search size={26} color={scheme.onPrimaryContainer} />
+          )}
+        </View>
+        <Text style={styles.emptyTitle}>
+          {syncLabel
+            ? syncLabel
+            : showLoading
+              ? s.search.searching(cityLoc)
+              : error
+                ? s.search.errorTitle
+                : timetableMissing
+                  ? s.search.timetableMissingTitle
+                  : trimmed
+                    ? s.search.noResultsFor(trimmed)
+                    : s.search.emptyTitle}
+        </Text>
+        {!showLoading && (
+          <Text style={styles.emptySub}>
+            {timetableSyncing
+              ? s.search.timetableDownloadingHint
+              : error
+                ? s.search.errorHint
+                : timetableMissing
+                  ? s.search.timetableMissingHint(s.city.gen(cityId))
+                  : trimmed
+                    ? s.search.noResultsHint(cityId)
+                    : s.search.emptyHint}
+          </Text>
+        )}
+        {timetableMissing && !showLoading && !error && (
+          <SpringPressable
+            onPress={() => void importGtfsFromNetwork().catch(() => {})}
+            scaleDelta={0.03}
+            haptic="light"
+            style={styles.downloadBtn}
+            accessibilityRole="button"
+            accessibilityLabel={s.city.downloadAction}
+          >
+            <Text style={styles.downloadBtnText}>{s.city.downloadAction}</Text>
+          </SpringPressable>
+        )}
+      </Animated.View>
+    );
+  }, [
+    cityId,
+    cityLoc,
+    error,
+    loading,
+    reducedMotion,
+    s.city,
+    s.search,
+    showLoading,
+    syncLabel,
+    timetableMissing,
+    timetableSyncing,
+    trimmed,
+  ]);
+
   return (
     <View
       style={[
@@ -719,7 +960,7 @@ export function SearchSheet({
                 </SpringPressable>
                 <TextInput
                   ref={inputRef}
-                  autoFocus
+                  autoFocus={Platform.OS !== 'web'}
                   value={query}
                   onChangeText={onQuery}
                   placeholder={placeholder}
@@ -768,127 +1009,52 @@ export function SearchSheet({
             </View>
             <Animated.View style={[styles.headDivider, headDividerStyle]} pointerEvents="none" />
 
-            <Animated.FlatList
-              data={rows}
-              keyExtractor={keyExtractor}
-              style={styles.flatList}
-              onScroll={handleListScroll}
-              scrollEventThrottle={16}
-              overScrollMode="never"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={listContentStyle}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              removeClippedSubviews={Platform.OS === 'android'}
-              initialNumToRender={12}
-              maxToRenderPerBatch={10}
-              windowSize={7}
-              ListHeaderComponent={
-                <View style={styles.listHeader}>
-                  {syncLabel && rows.length > 0 && (
-                    <View style={styles.syncBanner} accessibilityLiveRegion="polite">
-                      <MorphingLoader size={18} color={scheme.primary} />
-                      <Text style={styles.syncBannerText}>{syncLabel}</Text>
+            {listReady ? (
+              <Animated.FlatList
+                data={deferredRows}
+                keyExtractor={keyExtractor}
+                style={[styles.flatList, listAnimatedStyle]}
+                onScroll={handleListScroll}
+                scrollEventThrottle={16}
+                overScrollMode="never"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={listContentStyle}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                initialNumToRender={12}
+                maxToRenderPerBatch={10}
+                windowSize={7}
+                ListHeaderComponent={listHeader}
+                renderItem={renderRow}
+                ListFooterComponent={listFooter}
+                ListEmptyComponent={listEmpty}
+              />
+            ) : (
+              <View style={[styles.flatList, styles.skeletonList]}>
+                <SkeletonPulse style={styles.skeletonPulse}>
+                  {Array.from({ length: 4 }, (_, idx) => (
+                    <View key={idx} style={styles.skeletonRow}>
+                      <SkeletonBone width={44} height={44} radius={shape.full} />
+                      <View style={styles.skeletonTextCol}>
+                        <SkeletonBone width={idx % 2 === 0 ? '62%' : '48%'} height={16} radius={6} />
+                        <SkeletonBone
+                          width={idx % 2 === 0 ? '38%' : '54%'}
+                          height={13}
+                          radius={5}
+                          tone="subtle"
+                        />
+                      </View>
                     </View>
-                  )}
-                  {!trimmed && savedQuick.length > 0 && (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                      overScrollMode="never"
-                      style={styles.quickScroller}
-                      contentContainerStyle={styles.quickRow}
-                    >
-                      {savedQuick.slice(0, QUICK_CHIPS).map((q) => (
-                        <SpringPressable
-                          key={q.id}
-                          onPress={() => handleSelect(q)}
-                          scaleDelta={0.03}
-                          haptic="selection"
-                          style={styles.quick}
-                          accessibilityRole="button"
-                          accessibilityLabel={s.search.savedA11y(q.title)}
-                        >
-                          <MapPin size={14} color={scheme.primary} />
-                          <Text style={styles.quickText} numberOfLines={1}>
-                            {q.title}
-                          </Text>
-                        </SpringPressable>
-                      ))}
-                    </ScrollView>
-                  )}
-                </View>
-              }
-              renderItem={renderRow}
-              ListFooterComponent={
-                showLoading && rows.length > 0 ? (
-                  <View style={styles.status} accessibilityLiveRegion="polite">
-                    <MorphingLoader size={18} color={scheme.primary} />
-                    <Text style={styles.statusText}>{s.search.searching(cityLoc)}</Text>
-                  </View>
-                ) : error && rows.length > 0 ? (
-                  <View style={styles.errorBanner} accessibilityRole="alert">
-                    <Text style={styles.error}>{s.search.errorHint}</Text>
-                  </View>
-                ) : null
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyCard} accessibilityLiveRegion="polite">
-                  <View style={styles.emptyIcon}>
-                    {showLoading || timetableSyncing ? (
-                      <MorphingLoader size={28} color={scheme.onPrimaryContainer} />
-                    ) : (
-                      <Search size={26} color={scheme.onPrimaryContainer} />
-                    )}
-                  </View>
-                  <Text style={styles.emptyTitle}>
-                    {syncLabel
-                      ? syncLabel
-                      : showLoading
-                        ? s.search.searching(cityLoc)
-                        : error
-                          ? s.search.errorTitle
-                          : timetableMissing
-                            ? s.search.timetableMissingTitle
-                            : trimmed
-                              ? s.search.noResultsFor(trimmed)
-                              : s.search.emptyTitle}
-                  </Text>
-                  {!showLoading && (
-                    <Text style={styles.emptySub}>
-                      {timetableSyncing
-                        ? s.search.timetableDownloadingHint
-                        : error
-                          ? s.search.errorHint
-                          : timetableMissing
-                            ? s.search.timetableMissingHint(s.city.gen(cityId))
-                            : trimmed
-                              ? s.search.noResultsHint(cityId)
-                              : s.search.emptyHint}
-                    </Text>
-                  )}
-                  {timetableMissing && !showLoading && !error && (
-                    <SpringPressable
-                      onPress={() => void importGtfsFromNetwork().catch(() => {})}
-                      scaleDelta={0.03}
-                      haptic="light"
-                      style={styles.downloadBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.city.downloadAction}
-                    >
-                      <Text style={styles.downloadBtnText}>{s.city.downloadAction}</Text>
-                    </SpringPressable>
-                  )}
-                </View>
-              }
-            />
+                  ))}
+                </SkeletonPulse>
+              </View>
+            )}
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   overlay: {
@@ -913,7 +1079,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
@@ -921,7 +1087,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 600,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
   },
   container: { flex: 1 },
@@ -954,7 +1120,7 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     minHeight: 44,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   originIconWell: {
@@ -1035,6 +1201,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   flatList: { flex: 1 },
+  skeletonList: { paddingHorizontal: 16, paddingTop: 12 },
+  skeletonPulse: { gap: 10 },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainer,
+  },
+  skeletonTextCol: { flex: 1, gap: 6 },
   list: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 40, gap: 3 },
   listHeader: { gap: 6 },
   syncBanner: {
@@ -1046,7 +1224,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   syncBannerText: {
@@ -1070,7 +1248,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     borderRadius: shape.full,
     paddingHorizontal: 14,
@@ -1093,7 +1271,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: 24,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   liveMapIcon: {
@@ -1186,7 +1364,7 @@ const styles = StyleSheet.create({
     paddingVertical: 28,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     gap: 12,

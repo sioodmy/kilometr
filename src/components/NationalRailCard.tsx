@@ -22,17 +22,17 @@ function formatEndDate(endDate: string | null): string {
  * status i pobieranie / sprawdzanie aktualizacji na żądanie.
  * Wygląd spójny z kartą miejskiego rozkładu jazdy.
  */
-export function NationalRailCard() {
+export function NationalRailCard({ deferLoad = false }: { deferLoad?: boolean } = {}) {
   const s = useStrings();
   const [state, setState] = useState<NationalTimetableState>(getNationalTimetableState());
 
   useEffect(() => {
     const unsub = subscribeNationalTimetable(setState);
-    if (getNationalTimetableState().phase === 'idle') {
+    if (!deferLoad && getNationalTimetableState().phase === 'idle') {
       void ensureNationalTimetable().catch(() => {});
     }
     return unsub;
-  }, []);
+  }, [deferLoad]);
 
   const ready = state.phase === 'ready';
   const downloading = state.phase === 'downloading';

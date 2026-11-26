@@ -1354,6 +1354,7 @@ export const uk: Strings = {
     optionSameTime: 'Той самий приїзд',
     strategyLegSwap: 'Інший рейс із цієї зупинки',
     strategyStayOn: 'Їдьте далі, пересадка пізніше',
+    strategyStayDirect: (line: string) => `Їдьте далі лінією ${line} безпосередньо до мети`,
     strategySameStop: 'Інша лінія з цієї зупинки',
     walkTransfer: (min: number, m: number) => `${min} хв пішки (${m} м)`,
     samePlatform: 'Та сама зупинка',
@@ -1389,7 +1390,7 @@ export const uk: Strings = {
     today: 'Сьогодні',
     tomorrow: 'Завтра',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `за ${n} хв`,
+    departIn: (n: number) => `за ${formatDuration(n)}`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
       isOne(n) ? `${n} хвилину тому` : isFew(n) ? `${n} хвилини тому` : `${n} хвилин тому`,
@@ -1795,100 +1796,13 @@ export const uk: Strings = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Обери місто, і розклад завантажиться у фоні. Планувати поїздки можна й без інтернету.',
+    intro: 'Розклади 132 міст. Працює й офлайн.',
     openSettings: 'Відкрити налаштування',
     permissionDenied:
       'Можна продовжити без цього дозволу та змінити його пізніше в налаштуваннях телефона.',
-    steps: ['Вітаємо', 'Місто', 'Доступи', 'Місця'],
+    steps: ['Вітаємо', 'Місто', 'Доступи'],
     granted: 'Увімкнено',
     denied: 'Вимкнено',
-    slotHome: 'Дім',
-    slotHomeHint: (id: string) =>
-      id === 'krakow'
-        ? 'напр. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'напр. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'напр. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'напр. Długa 12'
-              : id === 'lodz'
-                ? 'напр. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'напр. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'напр. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'напр. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'напр. Lipowa 12'
-                        : id === 'opole'
-                          ? 'напр. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'напр. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'напр. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'напр. Żeromskiego 12'
-                                : 'напр. Swojczycka 41',
-    slotWork: 'Робота',
-    slotWorkHint: (id: string) =>
-      id === 'krakow'
-        ? 'напр. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'напр. Złote Tarasy'
-          : id === 'poznan'
-            ? 'напр. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'напр. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'напр. Manufaktura'
-                : id === 'szczecin'
-                  ? 'напр. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'np. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'напр. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'напр. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'напр. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'напр. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'напр. Felicity'
-                              : id === 'radom'
-                                ? 'напр. Galeria Słoneczna'
-                                : 'напр. Sky Tower',
-    slotUni: 'Універ',
-    slotUniHint: (id: string) =>
-      id === 'krakow'
-        ? 'напр. AGH'
-        : id === 'warszawa'
-          ? 'напр. Університет'
-          : id === 'poznan'
-            ? 'напр. UAM'
-            : id === 'trojmiasto'
-              ? 'напр. UG'
-              : id === 'lodz'
-                ? 'напр. UŁ'
-                : id === 'szczecin'
-                  ? 'напр. US'
-                  : id === 'kielce'
-                    ? 'напр. UJK'
-                    : id === 'olsztyn'
-                      ? 'напр. UWM'
-                      : id === 'bialystok'
-                        ? 'напр. UwB'
-                        : id === 'opole'
-                          ? 'напр. UO'
-                          : id === 'rzeszow'
-                            ? 'напр. PRz'
-                            : id === 'lublin'
-                              ? 'напр. UMCS'
-                              : id === 'radom'
-                                ? 'напр. UTH'
-                                : 'напр. Politechnika',
     backA11y: 'Назад',
     stepOf: (n: number, len: number, name: string) => `Крок ${n} з ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1898,10 +1812,17 @@ export const uk: Strings = {
     noPay: 'Без мікроплатежів',
     detectGpsAction: 'Визначити моє місто за GPS',
     detectGpsHint: 'Автоматично підбере розклад для твоєї околиці',
-    citySearchPlaceholder: 'Шукай місто або агломерацію…',
+    detectGpsShort: 'Знайти',
+    detectGpsLocating: 'Шукаю…',
+    citySearchPlaceholder: 'Пошук міста…',
     cityNoSearchMatch: (q: string) => `Місто „${q}“ не знайдено.`,
     cityClearSearchA11y: 'Очистити пошук',
     citySubtitleAuto: 'Розклад завантажиться автоматично у фоні.',
+    cityPopularSection: 'Найбільші міста',
+    cityAllSection: 'Інші міста',
+    citySelectedLabel: 'Вибране місто',
+    cityPickPrompt: 'Вибери місто',
+    cityNextWith: (name: string) => `Далі · ${name}`,
     bgDlDownloading: (gen: string, pct: number) => `Завантажую розклад ${gen}… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Готую розклад ${gen}… ${pct}%`,
     bgDlReady: (gen: string) => `Розклад ${gen} готовий офлайн`,
@@ -1910,12 +1831,16 @@ export const uk: Strings = {
     bgDlRetry: 'Повторити',
     bgDlStart: 'Завантажити',
     startUsing: 'Почати користуватися',
-    permTitle: 'Доступи',
-    permSub: 'Локація та сповіщення. Обидва необов’язкові.',
-    permSubWeb: 'Додай застосунок на головний екран і дозволь локацію.',
-    pwaTitle: 'Встанови на головний екран',
+    permTitle: 'Останній крок',
+    permSub: 'Увімкни потрібне. Усе необов’язково.',
+    permSubWeb: 'Дозволь локацію або додай ярлик на екран.',
+    permEnable: 'Увімкнути',
+    pwaTitle: 'Головний екран',
     pwaSub:
       'Не користуйся Kilometr у вкладці браузера. З головного екрана він працює на весь екран і зберігає завантажений розклад офлайн.',
+    pwaShortBody: 'Повний екран і швидкий старт офлайн.',
+    pwaHowTo: 'Інструкція',
+    pwaInstallShort: 'Встановити',
     pwaInstalled: 'Застосунок уже запущено з головного екрана.',
     pwaInstallBtn: 'Встановити одним дотиком',
     pwaTabIos: 'iPhone / iPad',
@@ -1929,19 +1854,23 @@ export const uk: Strings = {
     locTitle: 'Локація',
     locBody:
       'Показує зупинки поруч і перебіг активної поїздки. Для визначення адреси координати надсилаються до OpenStreetMap Nominatim. Під час поїздки GPS може працювати з вимкненим екраном.',
+    locShortBody: 'Найближчі зупинки та супровід у дорозі.',
+    locDisclosure:
+      'Адреси перевіряємо через OSM Nominatim. Під час поїздки GPS може працювати з вимкненим екраном.',
     locOn: 'Локацію ввімкнено.',
     locAllow: 'Дозволити локацію',
     notifTitle: 'Сповіщення',
     notifBody: 'Показують закріплену поїздку й нагадують про вибране відправлення або вихід.',
+    notifShortBody: 'Закріплена поїздка та нагадування про вихід.',
     notifOn: 'Сповіщення ввімкнено.',
     notifExpoGo: 'Перегляд в Expo Go: сповіщення (закріплене сполучення) працюють у dev-збірці.',
     notifAllow: 'Увімкнути сповіщення',
-    cityTitle: 'У якому місті їздиш?',
+    cityTitle: 'Вибери місто',
     cityBody:
       'Розклад, мапа й новини підлаштуються під вибір. Місто можна змінити пізніше в налаштуваннях.',
-    cityNoGps: 'Без доступу до GPS вибери місто зі списку.',
+    cityNoGps: 'Немає доступу до GPS. Вибери місто зі списку або ввімкни в налаштуваннях.',
     cityLocating: 'Шукаю твою позицію GPS…',
-    cityNoMatch: 'GPS не вказує на підтримуване місто. Вибери зі списку.',
+    cityNoMatch: 'Поблизу не знайдено підтримуваного міста. Вибери зі списку.',
     cityPickA11y: (name: string) => `Вибрати місто: ${name}`,
     dlTitle: (gen: string) => `Завантажити розклад ${gen}`,
     dlBody: (feeds: string) =>
@@ -1955,25 +1884,13 @@ export const uk: Strings = {
     dlDoneSub: (stops: number, trips: number) => `${stops} зупинок • ${trips} рейсів.`,
     dlFail: 'Щось пішло не так',
     dlFailBody: (msg: string) => `${msg}. Перевір інтернет і спробуй знову.`,
-    saveFail: 'Не вдалося зберегти місце',
-    saveFailBody: 'Спробуйте ще раз.',
-    placesTitle: 'Де буваєш найчастіше?',
-    placesBody: 'Збережені місця прискорюють пошук. Цей крок можна пропустити.',
-    added: 'Додано',
-    removeSlotA11y: (name: string) => `Видалити ${name}`,
-    closeAction: 'Закрити',
-    addAction: '+ Додати',
-    addressFor: (name: string) => `Адреса для: ${name}…`,
-    noResults: (q: string) =>
-      `Немає результатів для „${q}“. Зупинки шукаємо офлайн, адреси потребують інтернету.`,
-    start: 'Налаштувати Kilometr',
+    start: 'Почати',
     next: 'Далі',
     later: 'Пізніше',
     footerRetry: 'Спробувати знову',
     footerDownloading: 'Завантаження…',
     footerDownload: 'Завантажити розклад',
     needTimetable: 'Без розкладу не знайти сполучень.',
-    doneCount: (n: number) => `Готово (${n})`,
     donePlain: 'Готово',
     skip: 'Пропустити',
     skipTimetable: 'Пропустити, розклад завантажу пізніше',
@@ -2527,6 +2444,15 @@ export const uk: Strings = {
     fromStopLabel: (stop: string) => `від: ${stop}`,
     exitStopLabel: (stop: string) => `вихід: ${stop}`,
     finalWalkPill: (min: number) => `${min}' до мети`,
+    variantAlternativeHeading: 'Альтернативно',
+    variantFasterBy: (min: number) => `Швидше на ${min} хв`,
+    variantDirect: 'Прямо',
+    variantSlackShort: (min: number) => (min <= 0 ? 'впритул' : `${min} хв запасу`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Альтернативний варіант ${label}, прибуття ${arrAt}`,
+    variantSwitcherA11y: 'Варіанти пересадок цього рейсу',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, прибуття ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'Немає даних про маршрут',
@@ -3066,7 +2992,7 @@ export const uk: Strings = {
     openTimetableCta: 'Розклад лінії',
     toggleSheetA11y: 'Розгорнути або згорнути деталі',
     filterDelays: 'Затримки',
-    delayZoneSheetTitle: 'Вузол затримок',
+    delayZoneSheetTitle: 'Ділянка із затримками',
     delayAvgNow: (min: number) => `Середньо +${min} хв`,
     delayP90: (min: number) => `Пік (p90): +${min} хв`,
     delayVsTypicalHigher: (min: number) => `+${min} хв вище норми`,

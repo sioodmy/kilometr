@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { buildSync } from 'esbuild';
 import { buildNavMapDocument } from '../src/map/navMapDocument';
-import { bundledMapLibreHead, mapDocumentSource } from '../src/map/bundledMapLibre';
+import { loadBundledMapLibreHead, mapDocumentSource } from '../src/map/bundledMapLibre';
 import { MAPLIBRE_WORKER } from '../src/map/maplibreAssets.generated';
 
 async function checkWorkerCompatibility() {
@@ -10,8 +10,9 @@ async function checkWorkerCompatibility() {
     () => new Function(MAPLIBRE_WORKER),
     'bundled worker is valid classic JavaScript',
   );
+  const head = await loadBundledMapLibreHead();
   const bootstrap = Array.from(
-    bundledMapLibreHead().matchAll(/<script data-maplibre>([\s\S]*?)<\/script>/g),
+    head.matchAll(/<script data-maplibre>([\s\S]*?)<\/script>/g),
   ).at(-1)?.[1];
   assert(bootstrap);
   let workerUrl = '';
@@ -191,7 +192,13 @@ async function boot(failAssets = false, interactive = true) {
     setTimeout: () => 1,
     clearTimeout: () => undefined,
   };
-  const html = buildNavMapDocument({ offlineBase: null, center: [17, 51.1], interactive });
+  const mapLibreHead = await loadBundledMapLibreHead();
+  const html = buildNavMapDocument({
+    offlineBase: null,
+    center: [17, 51.1],
+    interactive,
+    mapLibreHead,
+  });
   assert(html.includes('<script data-maplibre>'), 'silnik mapy jest w dokumencie');
   assert(!html.includes('cdn.jsdelivr.net/npm/maplibre-gl@'), 'mapa nie pobiera kodu z CDN');
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g))

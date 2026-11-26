@@ -15,6 +15,7 @@ import {
   Clock3,
   Footprints,
   LocateFixed,
+  MapPin,
   MapPinned,
   Maximize2,
   Minus,
@@ -73,10 +74,19 @@ export function SharedJourneyMapCard({
   const [mapFailed, setMapFailed] = useState(false);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [mapRequested, setMapRequested] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
+
+  const shouldLoadMap = mapRequested || expanded;
+
+  useEffect(() => {
+    setMapRequested(false);
+    setSelectedStageId(null);
+  }, [connection.id]);
 
   useFocusEffect(
     useCallback(() => {
+      if (!shouldLoadMap || !mapRoute) return;
       let cancelled = false;
       let release = () => {};
       void acquireMapServerForRoute(mapRoute)
@@ -95,11 +105,11 @@ export function SharedJourneyMapCard({
         cancelled = true;
         release();
       };
-    }, [mapRoute]),
+    }, [mapRoute, shouldLoadMap]),
   );
 
   useEffect(() => {
-    if (!mapRoute) return;
+    if (!shouldLoadMap || !mapRoute) return;
     const abort = new AbortController();
     geometryRef.current.clear();
     setMapFailed(false);
@@ -114,7 +124,7 @@ export function SharedJourneyMapCard({
       abort.signal,
     ).catch(() => {});
     return () => abort.abort();
-  }, [mapRoute]);
+  }, [mapRoute, shouldLoadMap]);
 
   const stages = useMemo(() => {
     void geometryVersion;
@@ -146,7 +156,10 @@ export function SharedJourneyMapCard({
     if (!activeStage) mapRef.current?.fit();
   }, [activeStage]);
 
+  const requestMapLoad = useCallback(() => setMapRequested(true), []);
+
   const handleSelectStage = useCallback((stageId: string | null) => {
+    setMapRequested(true);
     setSelectedStageId((curr) => (curr === stageId ? null : stageId));
   }, []);
 
@@ -363,6 +376,27 @@ export function SharedJourneyMapCard({
       );
     }
 
+    if (!isModal && !mapRequested) {
+      return (
+        <View style={[styles.mapWrap, desktopFill && styles.mapWrapDesktopFill]}>
+          <SpringPressable
+            onPress={requestMapLoad}
+            haptic="selection"
+            accessibilityRole="button"
+            accessibilityLabel={s.compass.mapTapToLoad}
+            onFocus={() => setFocused('tap-map')}
+            onBlur={() => setFocused(null)}
+            style={[styles.placeholder, focused === 'tap-map' && styles.focused]}
+          >
+            <View style={styles.placeholderIcon}>
+              <MapPin size={24} color={scheme.onPrimaryContainer} />
+            </View>
+            <Text style={styles.placeholderTitle}>{s.compass.mapTapToLoad}</Text>
+          </SpringPressable>
+        </View>
+      );
+    }
+
     return (
       <View
         style={
@@ -505,7 +539,10 @@ export function SharedJourneyMapCard({
 
         {mapRoute && (
           <SpringPressable
-            onPress={() => setExpanded(true)}
+            onPress={() => {
+              setMapRequested(true);
+              setExpanded(true);
+            }}
             haptic="selection"
             accessibilityRole="button"
             accessibilityLabel={s.share.expandMap}
@@ -595,7 +632,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 14,
     gap: 12,
@@ -652,7 +689,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: shape.full,
     backgroundColor: scheme.secondaryContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   expandPillText: {
@@ -664,7 +701,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   mapFrameDesktopFill: {
@@ -700,7 +737,7 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 11,
     paddingVertical: 5,
@@ -729,7 +766,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 14,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -746,7 +783,7 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 15,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -759,6 +796,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerLow,
+  },
+  placeholder: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 18,
+    backgroundColor: scheme.surfaceContainerLow,
+  },
+  placeholderIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderTitle: {
+    ...type.labelLarge,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    textAlign: 'center',
   },
   mapEmptyFill: {
     flex: 1,
@@ -813,7 +876,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
     backgroundColor: scheme.surfaceContainerLow,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   stepBtn: {
@@ -823,7 +886,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   stageFooterBody: {
@@ -860,7 +923,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     maxWidth: 236,
   },
@@ -919,7 +982,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderBottomWidth: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: scheme.outlineVariant,
   },
   closeBtn: {
@@ -927,14 +990,14 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 14,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalBottomSheet: {
     backgroundColor: scheme.surface,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   modalRailInner: {

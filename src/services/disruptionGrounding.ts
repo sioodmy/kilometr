@@ -11,6 +11,7 @@
 import { normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { gtfsStore, type LocalGtfsStore } from './routing/store';
+import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './routing/yieldFrame';
 import type { DisruptionAlert } from './mpkNews';
 
 /** Przystanek uziemiony: nazwa z komunikatu -> stop_id + kanoniczna nazwa. */
@@ -120,10 +121,14 @@ function buildStopIndex(store: LocalGtfsStore): StopIndex {
   for (const stop of store.stops.values()) {
     const key = normalizePolish(stop.stop_name);
     const existing = byName.get(key);
-    if (existing) existing.push(stop.stop_id);
-    else byName.set(key, [stop.stop_id]);
-    names.push(key);
-    ids.push(stop.stop_id);
+    if (existing) {
+      existing.push(stop.stop_id);
+    } else {
+      byName.set(key, [stop.stop_id]);
+      // Wsadowe fuzzy szuka po unikalnych nazwach przystanków bez duplikatów słupków.
+      names.push(key);
+      ids.push(stop.stop_id);
+    }
   }
   return { byName, names, ids };
 }
@@ -284,7 +289,12 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   }
 
   const stops: GroundedStop[] = [];
+  let sliceStart = performance.now();
   for (const name of rawStops) {
+    if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+      await yieldToUiFrame();
+      sliceStart = performance.now();
+    }
     const grounded = groundStopName(name, index, gtfsStore);
     if (grounded) stops.push(grounded);
   }

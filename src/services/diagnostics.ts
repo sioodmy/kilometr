@@ -7,11 +7,7 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { getCity } from '../cities';
-import { de } from '../i18n/de';
-import { en } from '../i18n/en';
-import { getLocaleSync, type Strings } from '../i18n';
-import { pl } from '../i18n/pl';
-import { uk } from '../i18n/uk';
+import { tr } from '../i18n/locale';
 import { getActiveCityIdSync } from './cityStore';
 import { liveTracker } from './liveTracker';
 import { getOfflineMapInfo, type OfflineMapState } from './offlineMap';
@@ -29,14 +25,12 @@ import {
   poiCount,
 } from './gtfsDatabase';
 
-const DICTS: Record<string, Strings> = { pl, en, de, uk };
-
-function diagTr(): Strings['settings'] {
-  return (DICTS[getLocaleSync()] ?? pl).settings;
+function diagTr() {
+  return tr().settings;
 }
 
 function cityNameOf(cityId: string): string {
-  return (DICTS[getLocaleSync()] ?? pl).city.name(cityId);
+  return tr().city.name(cityId);
 }
 
 export type DiagLevel = 'ok' | 'warn' | 'error';

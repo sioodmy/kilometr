@@ -1,6 +1,7 @@
 import { distanceMeters, normalizePolish } from '../gtfs/geo';
 import { getLocaleSync, tr } from '../i18n/locale';
 import { resolveGroundedStopSync } from './disruptionGrounding';
+import type { TransitLocalMode } from './footRouter';
 import type { DisruptionAlert, DisruptionStopCoord, MpkNewsItem } from './mpkNews';
 import type { DayIndex, LocalGtfsStore } from './routing/store';
 
@@ -23,6 +24,8 @@ export interface LiveMapDisruptionMarker {
   lon: number;
   /** Kolejne współrzędne [lon, lat] zablokowanego lub zmienionego odcinka. */
   corridorCoords: [number, number][];
+  /** Dominujący typ transportu korytarza do rzutowania na tory lub drogi. */
+  mode: TransitLocalMode;
   /** Punkty przystanków objętych utrudnieniem. */
   affectedStops: LiveMapDisruptionStopPoint[];
   corridorLabel: string | null;
@@ -287,6 +290,117 @@ function collectLines(alert: DisruptionAlert, fallbackLines: string[]): string[]
   return out;
 }
 
+function routeTypeToCorridorMode(routeType: number): TransitLocalMode {
+  if (routeType === 0 || (routeType >= 900 && routeType < 1000)) return 'tram';
+  if (routeType === 1 || (routeType >= 400 && routeType < 500)) return 'subway';
+  if (routeType === 2 || (routeType >= 100 && routeType < 200)) return 'rail';
+  return 'bus';
+}
+
+function inferCorridorMode(
+  lines: readonly string[],
+  store: LocalGtfsStore | null | undefined,
+): TransitLocalMode {
+  if (!store || store.routes.size === 0 || lines.length === 0) return 'bus';
+  let tram = 0;
+  let bus = 0;
+  let subway = 0;
+  let rail = 0;
+  for (const line of lines) {
+    for (const rid of store.getRouteIdsByShortName(line)) {
+      const r = store.routes.get(rid);
+      if (!r) continue;
+      const m = routeTypeToCorridorMode(r.route_type);
+      if (m === 'tram') tram += 1;
+      else if (m === 'subway') subway += 1;
+      else if (m === 'rail') rail += 1;
+      else bus += 1;
+    }
+  }
+  if (tram > 0 && bus === 0 && rail === 0 && subway === 0) return 'tram';
+  if (subway > 0 && bus === 0 && tram === 0) return 'subway';
+  if (rail > 0 && bus === 0 && tram === 0) return 'rail';
+  if (tram >= bus && tram > 0) return 'tram';
+  return 'bus';
+}
+
+function buildStopsByNormName(store: LocalGtfsStore): Map<string, ResolvedPoint[]> {
+  const map = new Map<string, ResolvedPoint[]>();
+  for (const st of store.stops.values()) {
+    if (!Number.isFinite(st.stop_lat) || !Number.isFinite(st.stop_lon)) continue;
+    const key = normalizePolish(st.stop_name);
+    if (!key) continue;
+    const list = map.get(key);
+    const pt: ResolvedPoint = { name: st.stop_name, lat: st.stop_lat, lon: st.stop_lon };
+    if (list) list.push(pt);
+    else map.set(key, [pt]);
+  }
+  return map;
+}
+
+/**
+ * Dobiera spójne słupki w zespołach przystankowych wzdłuż korytarza,
+ * aby łamana nie przeskakiwała między przeciwnymi stronami ulicy.
+ */
+function resolveStopChainConsistently(
+  names: readonly string[],
+  store: LocalGtfsStore | null | undefined,
+  stopsByNorm: Map<string, ResolvedPoint[]> | null,
+  coordLookup: Map<string, DisruptionStopCoord>,
+  exactCoords?: Record<string, DisruptionStopCoord>,
+): ResolvedPoint[] {
+  const candidatesPerStep: ResolvedPoint[][] = [];
+  for (const name of names) {
+    if (!name || name === 'both') continue;
+    const norm = normalizePolish(name);
+    const exactGroup = stopsByNorm?.get(norm);
+    if (exactGroup && exactGroup.length > 0) {
+      candidatesPerStep.push(exactGroup);
+      continue;
+    }
+    const single = resolvePoint(name, store, coordLookup, exactCoords);
+    if (single) candidatesPerStep.push([single]);
+  }
+  if (candidatesPerStep.length === 0) return [];
+  if (candidatesPerStep.length === 1) return [candidatesPerStep[0][0]];
+
+  // Programowanie dynamiczne: wybiera słupki o najkrótszej łącznej drodze między kolejnymi punktami.
+  const n = candidatesPerStep.length;
+  const dp: number[][] = candidatesPerStep.map((c) => new Array<number>(c.length).fill(Infinity));
+  const parent: number[][] = candidatesPerStep.map((c) => new Array<number>(c.length).fill(-1));
+  for (let k = 0; k < candidatesPerStep[0].length; k++) dp[0][k] = 0;
+
+  for (let i = 1; i < n; i++) {
+    const prev = candidatesPerStep[i - 1];
+    const curr = candidatesPerStep[i];
+    for (let j = 0; j < curr.length; j++) {
+      let bestCost = Infinity;
+      let bestPrev = 0;
+      for (let p = 0; p < prev.length; p++) {
+        const c = dp[i - 1][p] + distanceMeters(prev[p].lat, prev[p].lon, curr[j].lat, curr[j].lon);
+        if (c < bestCost) {
+          bestCost = c;
+          bestPrev = p;
+        }
+      }
+      dp[i][j] = bestCost;
+      parent[i][j] = bestPrev;
+    }
+  }
+
+  let bestLast = 0;
+  for (let j = 1; j < candidatesPerStep[n - 1].length; j++) {
+    if (dp[n - 1][j] < dp[n - 1][bestLast]) bestLast = j;
+  }
+  const out = new Array<ResolvedPoint>(n);
+  let idx = bestLast;
+  for (let i = n - 1; i >= 0; i--) {
+    out[i] = candidatesPerStep[i][idx];
+    idx = parent[i][idx] >= 0 ? parent[i][idx] : 0;
+  }
+  return out;
+}
+
 export function buildLiveMapDisruptions(
   items: MpkNewsItem[],
   store: LocalGtfsStore | null | undefined,
@@ -294,6 +408,7 @@ export function buildLiveMapDisruptions(
   nowMs: number = Date.now(),
 ): LiveMapDisruptionMarker[] {
   const markers: LiveMapDisruptionMarker[] = [];
+  const stopsByNorm = store && store.stops.size > 0 ? buildStopsByNormName(store) : null;
 
   for (const item of items) {
     const alert = item.disruption;
@@ -301,14 +416,18 @@ export function buildLiveMapDisruptions(
 
     const coordLookup = buildStopCoordLookup(alert.stop_coords);
     const lines = collectLines(alert, item.lines);
+    const mode = inferCorridorMode(lines, store);
     let corridorPoints: ResolvedPoint[] = [];
 
-    // 1. Gotowa sekwencja przystanków z serwera (corridor.stops)
+    // 1. Gotowa sekwencja przystanków z serwera (corridor.stops) ze spójnym doborem słupków
     if (alert.corridor?.stops && alert.corridor.stops.length >= 2) {
-      for (const name of alert.corridor.stops) {
-        const pt = resolvePoint(name, store, coordLookup, alert.stop_coords);
-        if (pt) corridorPoints.push(pt);
-      }
+      corridorPoints = resolveStopChainConsistently(
+        alert.corridor.stops,
+        store,
+        stopsByNorm,
+        coordLookup,
+        alert.stop_coords,
+      );
     }
 
     // 2. Lokalna rekonstrukcja sekwencji GTFS między corridor.from_stop i to_stop
@@ -332,12 +451,17 @@ export function buildLiveMapDisruptions(
 
     // 3. Odcinek bezpośredni from_stop -> to_stop z corridor lub line_changes
     if (corridorPoints.length < 2 && alert.corridor?.from_stop && alert.corridor?.to_stop) {
-      const a = resolvePoint(alert.corridor.from_stop, store, coordLookup, alert.stop_coords);
-      const b = resolvePoint(alert.corridor.to_stop, store, coordLookup, alert.stop_coords);
-      if (a && b) {
-        const dist = distanceMeters(a.lat, a.lon, b.lat, b.lon);
+      const pair = resolveStopChainConsistently(
+        [alert.corridor.from_stop, alert.corridor.to_stop],
+        store,
+        stopsByNorm,
+        coordLookup,
+        alert.stop_coords,
+      );
+      if (pair.length === 2) {
+        const dist = distanceMeters(pair[0].lat, pair[0].lon, pair[1].lat, pair[1].lon);
         if (dist >= MIN_CORRIDOR_SEGMENT_M && dist <= MAX_DIRECT_SEGMENT_M) {
-          corridorPoints = [a, b];
+          corridorPoints = pair;
         }
       }
     }
@@ -349,11 +473,13 @@ export function buildLiveMapDisruptions(
         for (const omitted of lc.omitted_stops ?? []) segNames.push(omitted);
         if (lc.to_stop) segNames.push(lc.to_stop);
         if (segNames.length >= 2) {
-          const pts: ResolvedPoint[] = [];
-          for (const n of segNames) {
-            const p = resolvePoint(n, store, coordLookup, alert.stop_coords);
-            if (p) pts.push(p);
-          }
+          const pts = resolveStopChainConsistently(
+            segNames,
+            store,
+            stopsByNorm,
+            coordLookup,
+            alert.stop_coords,
+          );
           if (pts.length >= 2) {
             const span = distanceMeters(
               pts[0].lat,
@@ -441,6 +567,7 @@ export function buildLiveMapDisruptions(
       lat: anchor.lat,
       lon: anchor.lon,
       corridorCoords,
+      mode,
       affectedStops,
       corridorLabel: alert.corridor?.label || null,
       fromStop: alert.corridor?.from_stop || null,

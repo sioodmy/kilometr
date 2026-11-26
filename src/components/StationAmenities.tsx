@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 import {
   BakeryDining,
   Coffee,
@@ -11,7 +12,8 @@ import {
   ShoppingBag,
   Wc,
 } from './icons';
-import { scheme, type } from '../theme/tokens';
+import { SkeletonBone, SkeletonPulse } from './SkeletonPulse';
+import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { StationAmenity } from '../types/models';
 import { getCachedStationAmenities, loadStationAmenities } from '../services/stationAmenities';
@@ -30,44 +32,71 @@ const ICONS: Record<StationAmenity, ComponentType<{ size?: number; color?: strin
 /** Ile ikon mieści się w rzędzie; resztę chowamy pod „+N”. */
 const MAX_ICONS = 6;
 
+const MOCK_ICON_COUNT = 5;
+
 /**
  * Rząd ikon udogodnień dworca (OSM 50 m) pod nazwą stacji przyjazdu w karcie pociągu.
- * Puste, dopóki dane nie wrócą z bazy albo gdy brak udogodnień w pobliżu.
+ * Podczas ładowania lub odroczenia ikon pokazuje lekki mock rząd w stanie ładowania,
+ * a gdy stacja nie ma udogodnień zwraca null.
  */
-export function StationAmenities({
+export const StationAmenities = memo(function StationAmenities({
   stopId,
   lat,
   lon,
   showLabel = false,
   deferLoad = false,
+  deferGraphics = false,
 }: {
   stopId?: string;
   lat?: number;
   lon?: number;
   showLabel?: boolean;
   deferLoad?: boolean;
+  deferGraphics?: boolean;
 }) {
   const t = useStrings();
-  const [keys, setKeys] = useState<StationAmenity[] | null>(
-    () => getCachedStationAmenities(stopId, lat, lon) ?? null,
-  );
+  const reduceMotion = useReducedMotion();
+  const [state, setState] = useState<{ keys: StationAmenity[] | null; loading: boolean }>(() => {
+    const cached = getCachedStationAmenities(stopId, lat, lon);
+    if (cached !== undefined) return { keys: cached, loading: false };
+    return { keys: null, loading: true };
+  });
 
   useEffect(() => {
     let alive = true;
     const cached = getCachedStationAmenities(stopId, lat, lon);
     if (cached !== undefined) {
-      setKeys(cached);
+      setState({ keys: cached, loading: false });
       return;
     }
+    setState((prev) =>
+      prev.keys === null && prev.loading ? prev : { keys: null, loading: true },
+    );
     if (deferLoad) return;
-    setKeys(null);
     void loadStationAmenities(stopId, lat, lon).then((next) => {
-      if (alive) setKeys(next);
+      if (alive) setState({ keys: next, loading: false });
     });
     return () => {
       alive = false;
     };
   }, [stopId, lat, lon, deferLoad]);
+
+  const { keys, loading } = state;
+  const showSkeleton = loading || (deferGraphics && Boolean(keys && keys.length > 0));
+
+  if (showSkeleton) {
+    const iconCount = keys ? Math.min(MAX_ICONS, keys.length) : MOCK_ICON_COUNT;
+    return (
+      <SkeletonPulse style={styles.row}>
+        {showLabel ? <SkeletonBone width={78} height={11} radius={5} /> : null}
+        <View style={styles.iconsGroup}>
+          {Array.from({ length: iconCount }, (_, idx) => (
+            <SkeletonBone key={idx} width={14} height={14} radius={shape.full} />
+          ))}
+        </View>
+      </SkeletonPulse>
+    );
+  }
 
   if (!keys || keys.length === 0) return null;
 
@@ -76,7 +105,8 @@ export function StationAmenities({
   const label = (key: StationAmenity) => t.stationAmenities[key];
 
   return (
-    <View
+    <Animated.View
+      entering={!reduceMotion ? FadeIn.duration(150).reduceMotion(ReduceMotion.System) : undefined}
       style={styles.row}
       accessible
       accessibilityLabel={t.stationAmenities.a11y(keys.map(label).join(', '))}
@@ -93,9 +123,9 @@ export function StationAmenities({
         })}
         {hidden > 0 ? <Text style={styles.more}>{t.stationAmenities.more(hidden)}</Text> : null}
       </View>
-    </View>
+    </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

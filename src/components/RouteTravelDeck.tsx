@@ -823,7 +823,7 @@ const styles = StyleSheet.create({
   },
   cardNeutral: {
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   cardPrimaryTonal: {
@@ -831,7 +831,7 @@ const styles = StyleSheet.create({
   },
   cardActiveTonal: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.primary + '55',
   },
   cardWarningTonal: {
@@ -947,7 +947,7 @@ const styles = StyleSheet.create({
     backgroundColor: scheme.surfaceContainer,
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -1008,7 +1008,7 @@ const styles = StyleSheet.create({
   },
   pdfTile: {
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   tilePressed: {

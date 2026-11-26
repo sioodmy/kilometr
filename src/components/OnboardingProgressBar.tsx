@@ -1,5 +1,5 @@
 import { memo, useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
@@ -10,10 +10,10 @@ import Animated, {
 import { ChevronLeft } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { motion } from '../theme/motion';
-import { scheme, shape, type } from '../theme/tokens';
+import { scheme, shape } from '../theme/tokens';
 import { useStrings } from '../i18n';
 
-const StepPill = memo(function StepPill({
+const StepSegment = memo(function StepSegment({
   state,
 }: {
   /** 0 = przyszły, 1 = ukończony, 2 = aktywny */
@@ -38,9 +38,7 @@ const StepPill = memo(function StepPill({
     ),
   }));
 
-  // Grubość zależy wprost od propsa, nie od animacji: dzięki temu nigdy nie ma
-  // dwóch pogrubionych segmentów, nawet przy szybkim przechodzeniu krokami.
-  return <Animated.View style={[styles.pill, state === 2 && styles.pillActive, animStyle]} />;
+  return <Animated.View style={[styles.segment, state === 2 && styles.segmentActive, animStyle]} />;
 });
 
 interface OnboardingProgressBarProps {
@@ -48,10 +46,7 @@ interface OnboardingProgressBarProps {
   onBack: () => void;
 }
 
-/**
- * Górny pasek postępu onboardingu: na kroku powitalnym minimalistyczne kapsułki,
- * na kolejnych krokach przycisk powrotu, animowany pasek segmentowy i czytelny licznik.
- */
+/** Minimalistyczny pasek kroków onboardingu: cienkie segmenty i przycisk wstecz. */
 export const OnboardingProgressBar = memo(function OnboardingProgressBar({
   step,
   onBack,
@@ -63,7 +58,7 @@ export const OnboardingProgressBar = memo(function OnboardingProgressBar({
 
   return (
     <View style={styles.bar}>
-      <View style={styles.leftSlot}>
+      <View style={styles.sideSlot}>
         {step > 0 ? (
           <SpringPressable
             onPress={onBack}
@@ -87,18 +82,12 @@ export const OnboardingProgressBar = memo(function OnboardingProgressBar({
           accessibilityValue={{ min: 1, max: total, now: step + 1 }}
         >
           {steps.map((label, i) => (
-            <StepPill key={label} state={i === step ? 2 : i < step ? 1 : 0} />
+            <StepSegment key={label} state={i === step ? 2 : i < step ? 1 : 0} />
           ))}
         </View>
       </View>
 
-      <View style={styles.rightSlot}>
-        {step > 0 ? (
-          <Text style={styles.counter} accessible={false}>
-            {s.onboarding.stepCount(step + 1, total)}
-          </Text>
-        ) : null}
-      </View>
+      <View style={styles.sideSlot} />
     </View>
   );
 });
@@ -107,29 +96,23 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 6,
+    paddingBottom: 4,
     minHeight: 56,
     gap: 12,
   },
-  leftSlot: {
+  sideSlot: {
     width: 44,
     height: 44,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  rightSlot: {
-    width: 44,
-    height: 44,
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   backBtn: {
     width: 44,
     height: 44,
     borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -140,24 +123,17 @@ const styles = StyleSheet.create({
   },
   track: {
     width: '100%',
-    maxWidth: 184,
+    maxWidth: 112,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  pill: {
+  segment: {
     flex: 1,
-    height: 6,
+    height: 4,
     borderRadius: shape.full,
   },
-  pillActive: {
-    flex: 2.6,
-    height: 8,
-  },
-  counter: {
-    ...type.labelMedium,
-    color: scheme.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
+  segmentActive: {
+    flex: 2.2,
   },
 });

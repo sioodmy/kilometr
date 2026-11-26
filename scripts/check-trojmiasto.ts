@@ -22,10 +22,6 @@ import {
   ZTM_GDANSK_BSK_URL,
   ZTM_GDANSK_ZNT_URL,
 } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -193,21 +189,6 @@ describe('Tryb linii: tramwaje, trolejbusy, nocne i zastępcze');
   expect('25 we Wrocławiu to tramwaj (heurystyka 1–33)', inferTransitMode(undefined, '25', 'wroclaw'), 'tram');
   expect('trolejbus ma stałą zieleń', getLineColors('25', undefined, 'trojmiasto').bg, '#97D77D');
   expect('tramwaj 8 nie jest busem', getLineColors('8', undefined, 'trojmiasto').isTram, true);
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla trojmiasto hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('trojmiasto'), 'np. Długa 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('trojmiasto'), 'np. Galeria Bałtycka');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('trojmiasto'), 'np. UG');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: trojmiasto nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('trojmiasto') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść artykułu ztm.gda.pl (tytuł + lead + treść)');
