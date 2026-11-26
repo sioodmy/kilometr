@@ -1390,7 +1390,7 @@ export const uk: Strings = {
     today: 'Сьогодні',
     tomorrow: 'Завтра',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `за ${n} хв`,
+    departIn: (n: number) => `за ${formatDuration(n)}`,
     departNow: 'ось-ось',
     departAgo: (n: number) =>
       isOne(n) ? `${n} хвилину тому` : isFew(n) ? `${n} хвилини тому` : `${n} хвилин тому`,

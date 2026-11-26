@@ -968,7 +968,7 @@ export const en: Strings = {
     today: 'Today',
     tomorrow: 'Tomorrow',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `in ${n} min`,
+    departIn: (n: number) => `in ${formatDuration(n)}`,
     departNow: 'due',
     departAgo: (n: number) => `${n} min ago`,
     departJustAgo: 'just left',

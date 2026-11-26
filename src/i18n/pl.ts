@@ -1388,7 +1388,7 @@ export const pl = {
     today: 'Dziś',
     tomorrow: 'Jutro',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `za ${n} min`,
+    departIn: (n: number) => `za ${formatDuration(n)}`,
     departNow: 'za chwilę',
     departAgo: (n: number) => `${n} min temu`,
     departJustAgo: 'przed chwilą',
