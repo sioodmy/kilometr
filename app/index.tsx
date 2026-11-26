@@ -495,7 +495,7 @@ export default function HomeScreen() {
   // o ogólnopolski rozkład kolejowy w tle.
   useEffect(() => {
     const check = async () => {
-      if (!isFocusedRef.current || hasSeenOnboardingSync() === false) return;
+      if (!isFocusedRef.current) return;
       const st = await ensureActiveCityTimetable({ checkUpdates: true }).catch(
         () => ({ state: 'empty' }) as const,
       );

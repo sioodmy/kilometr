@@ -278,8 +278,19 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(() => {
-      if (!needsOnboarding) {
-        void initRaptorWasmAsync().catch(() => false);
+      void initRaptorWasmAsync().catch(() => false);
+      if (needsOnboarding) {
+        // Rozpocznij pobieranie GTFS aktywnego miasta w tle już podczas onboardingu.
+        void import('../src/services/dataManager')
+          .then((m) => m.ensureActiveCityTimetable({ checkUpdates: true }))
+          .then((st) => {
+            if (st.state === 'ready') {
+              return import('../src/services/nationalTimetable').then((n) =>
+                n.ensureNationalTimetable(),
+              );
+            }
+          })
+          .catch(() => {});
       }
       void refreshTrackedTrip().catch(() => {});
       void cleanupExpiredTickets().catch(() => {});
@@ -293,10 +304,8 @@ export default function RootLayout() {
             await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
             await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
           }
-          if (!needsOnboarding) {
-            const national = await import('../src/services/nationalTimetable');
-            void national.ensureNationalTimetable().catch(() => {});
-          }
+          const national = await import('../src/services/nationalTimetable');
+          void national.ensureNationalTimetable().catch(() => {});
         })
         .catch(() => {});
     }, 2500);
