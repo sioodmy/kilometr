@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Easing, Platform } from 'react-native';
+import { Easing, Platform, type ViewStyle } from 'react-native';
 import { useNavigation } from 'expo-router';
 import JSStack, { type StackNavigationOptions } from 'expo-router/js-stack';
 import { useReducedMotion } from 'react-native-reanimated';
 import { scheme } from '../../src/theme/tokens';
 import { useWebLayout } from '../../src/theme/layout';
 import { RouteCardTransitionProvider } from '../../src/components/RouteCardTransition';
+
+// JSStack na Web nadaje kartom minHeight: 100% bez jawnego height/overflow, co rozpycha FlatList ponad viewport.
+const WEB_CARD_CONSTRAINTS: ViewStyle | undefined =
+  Platform.OS === 'web'
+    ? { flex: 1, height: '100%', maxHeight: '100%', overflow: 'hidden' }
+    : undefined;
 
 /** Stos ekranów wyników i szczegółów trasy z kontenerowym morphem karty i płynnym gestem wstecz. */
 export default function RoutesLayout() {
@@ -17,7 +23,7 @@ export default function RoutesLayout() {
   const screenOptions = useMemo<StackNavigationOptions>(
     () => ({
       headerShown: false,
-      cardStyle: { backgroundColor: scheme.surface },
+      cardStyle: [{ backgroundColor: scheme.surface }, WEB_CARD_CONSTRAINTS],
       cardShadowEnabled: false,
       gestureEnabled: false,
       animation: disableScreenAnim ? 'none' : 'fade_from_bottom',
@@ -64,7 +70,7 @@ export default function RoutesLayout() {
         return {
           presentation: 'transparentModal',
           detachPreviousScreen: false,
-          cardStyle: { backgroundColor: 'transparent' },
+          cardStyle: [{ backgroundColor: 'transparent' }, WEB_CARD_CONSTRAINTS],
           cardOverlayEnabled: false,
           cardShadowEnabled: false,
           animation: 'none',
@@ -74,7 +80,7 @@ export default function RoutesLayout() {
       const hasListBehind = navigation.getState().index > 0;
       return {
         presentation: 'card',
-        cardStyle: { backgroundColor: scheme.surface },
+        cardStyle: [{ backgroundColor: scheme.surface }, WEB_CARD_CONSTRAINTS],
         animation: disableScreenAnim ? 'none' : 'fade_from_bottom',
         ...(disableScreenAnim
           ? {}

@@ -22,6 +22,7 @@ import {
   type MpkNewsItem,
 } from '../services/mpkNews';
 import { groundDisruption, type GroundedDisruption } from '../services/disruptionGrounding';
+import { yieldToUiFrame } from '../services/routing/yieldFrame';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 import {
   alertsForConnection,
@@ -586,7 +587,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
           const g = await groundDisruption(item.disruption!);
           if (cancelled) return;
           map.set(item.id, g);
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          await yieldToUiFrame();
         }
         if (!cancelled) setGrounded(map);
       })();
