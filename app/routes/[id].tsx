@@ -9,7 +9,11 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,6 +51,15 @@ import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
+import {
+  useRouteCardTransition,
+  type CardTransitionSource,
+} from '../../src/components/RouteCardTransition';
+import {
+  RouteDetailsMorphShell,
+  type MorphShellRenderProps,
+} from '../../src/components/RouteDetailsMorphShell';
+import type { TransitionRect } from '../../src/components/routeCardTransitionMath';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
@@ -78,14 +91,86 @@ export default function RouteDetailsScreen() {
   // chwilowo ląduje pod paskiem stanu.
   const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
+  const reduceMotion = useReducedMotion();
+  const cardTransition = useRouteCardTransition();
   const openTransferProtection = useTransferProtection();
-  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/routes'));
-  const { id: routeId, action: routeAction } = useLocalSearchParams<{
+  const goBack = useCallback(
+    () => (router.canGoBack() ? router.back() : router.replace('/routes')),
+    [router],
+  );
+  const {
+    id: routeId,
+    action: routeAction,
+    morph: routeMorph,
+  } = useLocalSearchParams<{
     id: string;
     action?: string;
+    morph?: string;
   }>();
   const id = normalizeConnectionId(routeId ?? '');
   const openTicket = routeAction === 'ticket';
+  const [morphSource] = useState<CardTransitionSource | null>(() => {
+    if (routeMorph !== '1' || !cardTransition || !id) return null;
+    return cardTransition.consumeTransition(id);
+  });
+  const activeMorphSource =
+    morphSource && morphSource.normalizedId === id && !reduceMotion && !webLayout.isMedium
+      ? morphSource
+      : null;
+  const [morphSettled, setMorphSettled] = useState(() => !activeMorphSource);
+  const scrollYRef = useRef(0);
+  const screenLayoutRef = useRef<{ x: number; y: number } | null>(null);
+  const scrollLayoutRef = useRef<{ x: number; y: number } | null>(null);
+  const stripInScrollRef = useRef<TransitionRect | null>(null);
+  const targetStripCbRef = useRef<((rect: TransitionRect) => void) | null>(null);
+
+  const emitTargetStripRect = useCallback(() => {
+    const cb = targetStripCbRef.current;
+    const screenL = screenLayoutRef.current;
+    const scrollL = scrollLayoutRef.current;
+    const stripL = stripInScrollRef.current;
+    if (!cb || !screenL || !scrollL || !stripL) return;
+    cb({
+      x: screenL.x + scrollL.x + stripL.x,
+      y: screenL.y + scrollL.y + stripL.y,
+      width: stripL.width,
+      height: stripL.height,
+    });
+  }, []);
+
+  const handleScreenLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { x, y } = event.nativeEvent.layout;
+      screenLayoutRef.current = { x, y };
+      emitTargetStripRect();
+    },
+    [emitTargetStripRect],
+  );
+
+  const handleScrollViewLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { x, y } = event.nativeEvent.layout;
+      scrollLayoutRef.current = { x, y };
+      emitTargetStripRect();
+    },
+    [emitTargetStripRect],
+  );
+
+  const handleSummaryStripLayout = useCallback(
+    (rect: TransitionRect) => {
+      stripInScrollRef.current = rect;
+      emitTargetStripRect();
+    },
+    [emitTargetStripRect],
+  );
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollYRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
+  const handleMorphSettled = useCallback(() => {
+    setMorphSettled(true);
+  }, []);
+
   const { trip: trackedTrip } = useTrackedTrip();
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
@@ -126,7 +211,7 @@ export default function RouteDetailsScreen() {
       ? cachedItem
       : matchesRouteId(alarmItem?.id)
         ? alarmItem
-        : getPlannedConnection(String(id));
+        : (getPlannedConnection(String(id)) ?? activeMorphSource?.connection);
   const [loadedItem, setItem] = useState<Connection | null>(() => immediateItem ?? null);
   const [offline, setOffline] = useState(false);
   const [liveStale, setLiveStale] = useState(
@@ -140,7 +225,8 @@ export default function RouteDetailsScreen() {
         : (immediateItem ?? null);
   const effectiveRawItem = swappedBase ?? rawItem;
 
-  const transitionSettled = useScreenTransitionSettled();
+  const navTransitionSettled = useScreenTransitionSettled();
+  const transitionSettled = activeMorphSource ? morphSettled : navTransitionSettled;
 
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
   // Startujemy od bieżącego getLastOk(), żeby uniknąć zbędnego drugiego renderu w klatce otwarcia.
@@ -534,10 +620,10 @@ export default function RouteDetailsScreen() {
       ? Math.min(740, webLayout.contentWidth) - 28
       : undefined;
 
-  const headerContent = (
+  const renderHeaderContent = (onBackPress: () => void) => (
     <>
       <SpringPressable
-        onPress={goBack}
+        onPress={onBackPress}
         scaleDelta={0.06}
         style={styles.backBtn}
         accessibilityRole="button"
@@ -644,13 +730,15 @@ export default function RouteDetailsScreen() {
     </>
   );
 
-  const summaryAndMeta = (
+  const renderSummaryAndMeta = (morphProps?: MorphShellRenderProps) => (
     <>
       <ConnectionSummary
         item={item}
         offline={offline}
         availableWidth={summaryAvailableWidth}
         showLegStrip
+        onStripLayoutInParent={morphProps ? handleSummaryStripLayout : undefined}
+        stripAnimatedStyle={morphProps?.targetStripAnimatedStyle}
       />
 
       {currentAlarm && (
@@ -713,94 +801,144 @@ export default function RouteDetailsScreen() {
     </>
   );
 
-  return (
-    <View style={[styles.safe, { paddingTop: insets.top }]}>
+  const renderScreenBody = (morphProps?: MorphShellRenderProps) => {
+    targetStripCbRef.current = morphProps?.onTargetStripRect ?? null;
+    const onBackPress = morphProps ? morphProps.requestClose : goBack;
+    return (
       <View
-        style={[styles.screen, desktopSplit && styles.desktopContainer]}
-        importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
-        accessibilityElementsHidden={sharing || alarmOpen}
+        style={[
+          styles.safe,
+          morphProps && styles.safeTransparent,
+          { paddingTop: insets.top },
+        ]}
       >
-        {desktopSplit ? (
-          <>
-            <View style={styles.desktopHeader}>{headerContent}</View>
-            <View style={styles.desktopSplit}>
+        <View
+          onLayout={morphProps ? handleScreenLayout : undefined}
+          style={[styles.screen, desktopSplit && styles.desktopContainer]}
+          importantForAccessibility={sharing || alarmOpen ? 'no-hide-descendants' : 'auto'}
+          accessibilityElementsHidden={sharing || alarmOpen}
+        >
+          {desktopSplit ? (
+            <>
+              <View style={styles.desktopHeader}>{renderHeaderContent(onBackPress)}</View>
+              <View style={styles.desktopSplit}>
+                <ScrollView
+                  style={{ width: leftColWidth, flexGrow: 0, flexShrink: 0 }}
+                  contentContainerStyle={styles.desktopLeftBody}
+                  showsVerticalScrollIndicator={false}
+                  overScrollMode="never"
+                >
+                  {renderSummaryAndMeta()}
+                  <View style={styles.detailsContent}>
+                    {legSections}
+                    {transitionSettled && (
+                      <>
+                        <RouteReliabilityCard connection={item} />
+                        <ConnectionLineAlerts connection={item} />
+                      </>
+                    )}
+                  </View>
+                  <View style={{ height: 24 }} />
+                </ScrollView>
+                <View style={styles.desktopMapCol}>
+                  <RouteMapCard
+                    desktopFill
+                    deferMapMount={!transitionSettled}
+                    connection={item}
+                    onOpenMap={openRouteMap}
+                  />
+                </View>
+              </View>
+            </>
+          ) : (
+            <>
+              <Animated.View
+                style={[
+                  styles.header,
+                  webLayout.isMedium && styles.mediumConstrained,
+                  morphProps?.headerAnimatedStyle,
+                ]}
+              >
+                {renderHeaderContent(onBackPress)}
+              </Animated.View>
+
               <ScrollView
-                style={{ width: leftColWidth, flexGrow: 0, flexShrink: 0 }}
-                contentContainerStyle={styles.desktopLeftBody}
+                onLayout={morphProps ? handleScrollViewLayout : undefined}
+                onScroll={morphProps ? handleScroll : undefined}
+                scrollEventThrottle={16}
+                contentContainerStyle={[
+                  styles.body,
+                  webLayout.isMedium && styles.mediumConstrained,
+                ]}
                 showsVerticalScrollIndicator={false}
                 overScrollMode="never"
               >
-                {summaryAndMeta}
-                <View style={styles.detailsContent}>
-                  {legSections}
-                  {transitionSettled && (
-                    <>
-                      <RouteReliabilityCard connection={item} />
-                      <ConnectionLineAlerts connection={item} />
-                    </>
-                  )}
-                </View>
+                {renderSummaryAndMeta(morphProps)}
+
+                {noLegs ? (
+                  <Animated.View style={[styles.emptyCard, morphProps?.belowSummaryAnimatedStyle]}>
+                    <View style={styles.emptyIconCircle}>
+                      <RouteOff size={24} color={scheme.onSecondaryContainer} />
+                    </View>
+                    <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
+                    <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
+                    <Pressable
+                      onPress={onBackPress}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
+                    </Pressable>
+                  </Animated.View>
+                ) : (
+                  <Animated.View
+                    style={[styles.detailsContent, morphProps?.belowSummaryAnimatedStyle]}
+                  >
+                    {legSections}
+                    {transitionSettled && (
+                      <>
+                        <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                        <RouteReliabilityCard connection={item} />
+                        <ConnectionLineAlerts connection={item} />
+                      </>
+                    )}
+                  </Animated.View>
+                )}
+
                 <View style={{ height: 24 }} />
               </ScrollView>
-              <View style={styles.desktopMapCol}>
-                <RouteMapCard
-                  desktopFill
-                  deferMapMount={!transitionSettled}
-                  connection={item}
-                  onOpenMap={openRouteMap}
-                />
-              </View>
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={[styles.header, webLayout.isMedium && styles.mediumConstrained]}>
-              {headerContent}
-            </View>
+            </>
+          )}
+        </View>
+      </View>
+    );
+  };
 
-            <ScrollView
-              contentContainerStyle={[
-                styles.body,
-                webLayout.isMedium && styles.mediumConstrained,
-              ]}
-              showsVerticalScrollIndicator={false}
-              overScrollMode="never"
-            >
-              {summaryAndMeta}
-
-              {noLegs ? (
-                <View style={styles.emptyCard}>
-                  <View style={styles.emptyIconCircle}>
-                    <RouteOff size={24} color={scheme.onSecondaryContainer} />
-                  </View>
-                  <Text style={styles.emptyTitle}>{s.routeDetails.noTrip}</Text>
-                  <Text style={styles.emptyText}>{s.routeDetails.noTripBody}</Text>
-                  <Pressable
-                    onPress={goBack}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.retryText}>{s.routeDetails.backToList}</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={styles.detailsContent}>
-                  {legSections}
-                  {transitionSettled && (
-                    <>
-                      <RouteMapCard connection={item} onOpenMap={openRouteMap} />
-                      <RouteReliabilityCard connection={item} />
-                      <ConnectionLineAlerts connection={item} />
-                    </>
-                  )}
-                </View>
-              )}
-
-              <View style={{ height: 24 }} />
-            </ScrollView>
-          </>
+  if (activeMorphSource && !desktopSplit) {
+    return (
+      <View style={styles.morphHost}>
+        <RouteDetailsMorphShell
+          source={activeMorphSource}
+          connection={item}
+          topInset={insets.top}
+          scrollYRef={scrollYRef}
+          canInterceptBack={!sharing && !alarmOpen}
+          onSettled={handleMorphSettled}
+          onDismissComplete={goBack}
+        >
+          {(morphProps) => renderScreenBody(morphProps)}
+        </RouteDetailsMorphShell>
+        {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
+        {alarmOpen && (
+          <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
         )}
       </View>
+    );
+  }
+
+  return (
+    <View style={styles.morphHost}>
+      {renderScreenBody()}
       {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
       {alarmOpen && (
         <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
@@ -810,9 +948,16 @@ export default function RouteDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
+  morphHost: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   safe: {
     flex: 1,
     backgroundColor: scheme.surface,
+  },
+  safeTransparent: {
+    backgroundColor: 'transparent',
   },
   screen: {
     flex: 1,

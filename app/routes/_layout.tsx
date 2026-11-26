@@ -1,33 +1,66 @@
-import { useMemo } from 'react';
-import { Stack } from 'expo-router';
+import { useCallback, useMemo } from 'react';
+import { Platform } from 'react-native';
+import JSStack, { type StackNavigationOptions } from 'expo-router/js-stack';
 import { useReducedMotion } from 'react-native-reanimated';
 import { scheme } from '../../src/theme/tokens';
 import { useWebLayout } from '../../src/theme/layout';
+import { RouteCardTransitionProvider } from '../../src/components/RouteCardTransition';
 
-/** Stos ekranów wyników i szczegółów trasy z przejściem M3 Expressive i pełnym gestem wstecz. */
+/** Stos ekranów wyników i szczegółów trasy z kontenerowym morphem karty i płynnym gestem wstecz. */
 export default function RoutesLayout() {
   const reduceMotion = useReducedMotion();
   const webLayout = useWebLayout();
   const disableScreenAnim = reduceMotion || webLayout.isMedium;
 
-  const screenOptions = useMemo(
+  const screenOptions = useMemo<StackNavigationOptions>(
     () => ({
       headerShown: false,
-      contentStyle: { backgroundColor: scheme.surface },
-      animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
-      animationDuration: 200,
-      animationMatchesGesture: false,
-      gestureEnabled: !webLayout.isMedium,
-      gestureDirection: 'horizontal' as const,
-      fullScreenGestureEnabled: true,
+      cardStyle: { backgroundColor: scheme.surface },
+      cardShadowEnabled: false,
+      gestureEnabled: false,
+      animation: disableScreenAnim ? 'none' : 'fade_from_bottom',
     }),
+    [disableScreenAnim],
+  );
+
+  const detailOptions = useCallback(
+    ({
+      route,
+      navigation,
+    }: {
+      route: { params?: Readonly<Record<string, unknown>> };
+      navigation: { getState: () => { index: number } };
+    }): StackNavigationOptions => {
+      const hasCardMorph = route.params?.morph === '1' && !disableScreenAnim;
+      if (hasCardMorph) {
+        return {
+          presentation: 'transparentModal',
+          detachPreviousScreen: false,
+          cardStyle: { backgroundColor: 'transparent' },
+          cardOverlayEnabled: false,
+          cardShadowEnabled: false,
+          animation: 'none',
+          gestureEnabled: false,
+        };
+      }
+      const hasListBehind = navigation.getState().index > 0;
+      return {
+        presentation: 'card',
+        cardStyle: { backgroundColor: scheme.surface },
+        animation: disableScreenAnim ? 'none' : 'fade_from_bottom',
+        gestureEnabled: Platform.OS === 'ios' && !webLayout.isMedium && hasListBehind,
+        gestureDirection: 'horizontal',
+      };
+    },
     [disableScreenAnim, webLayout.isMedium],
   );
 
   return (
-    <Stack screenOptions={screenOptions}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="[id]" />
-    </Stack>
+    <RouteCardTransitionProvider>
+      <JSStack screenOptions={screenOptions}>
+        <JSStack.Screen name="index" />
+        <JSStack.Screen name="[id]" options={detailOptions} />
+      </JSStack>
+    </RouteCardTransitionProvider>
   );
 }
