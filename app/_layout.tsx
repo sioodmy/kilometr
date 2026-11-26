@@ -133,7 +133,7 @@ function OnboardingGuard({ onCompleted }: { onCompleted: () => void }) {
   const redirectedRef = useRef(false);
 
   useEffect(() => {
-    if (redirectedRef.current) return;
+    if (redirectedRef.current || pathname === '/onboarding') return;
     redirectedRef.current = true;
     router.replace({
       pathname: '/onboarding',
@@ -239,10 +239,7 @@ export default function RootLayout() {
     let isMounted = true;
 
     const initApp = async () => {
-      await Promise.all([
-        migrateFromSqliteKv(),
-        initRaptorWasmAsync().catch(() => false),
-      ]);
+      await migrateFromSqliteKv();
       await initLocale();
       const [seen] = await Promise.all([
         hasSeenOnboarding().catch((err) => {
@@ -281,6 +278,9 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(() => {
+      if (!needsOnboarding) {
+        void initRaptorWasmAsync().catch(() => false);
+      }
       void refreshTrackedTrip().catch(() => {});
       void cleanupExpiredTickets().catch(() => {});
       startTicketCompensationMonitor();
@@ -340,7 +340,11 @@ export default function RootLayout() {
           <TransferProtectionProvider key={themeSetting}>
             <DesktopShell>
               {needsOnboarding && <OnboardingGuard onCompleted={handleOnboardingCompleted} />}
-              <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
+              <Stack
+                initialRouteName={needsOnboarding ? 'onboarding' : 'index'}
+                screenLayout={renderScreenLayout}
+                screenOptions={stackScreenOptions}
+              >
                 <Stack.Screen name="index" options={homeScreenOptions} />
                 <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="routes" options={routesScreenOptions} />

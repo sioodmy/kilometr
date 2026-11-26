@@ -64,16 +64,10 @@ import {
 import { kvGet, kvSet } from './storage';
 import { getCity, type CityId } from '../cities';
 import { getActiveCityIdSync, subscribeActiveCity } from './cityStore';
-import { getLocaleSync, type Strings } from '../i18n';
-import { pl } from '../i18n/pl';
-import { en } from '../i18n/en';
-import { de } from '../i18n/de';
-import { uk } from '../i18n/uk';
-
-const NEWS_SVC_DICTS: Record<string, Strings> = { pl, en, de, uk };
+import { tr } from '../i18n/locale';
 
 function newsTitleFallback(): string {
-  return (NEWS_SVC_DICTS[getLocaleSync()] ?? pl).newsSvc.untitled;
+  return tr().newsSvc.untitled;
 }
 
 export type NewsSource = 'city' | 'mpk' | 'gps';
@@ -431,7 +425,7 @@ function htmlToText(html: string): string {
  */
 export function formatNewsDate(ts: number | null): string {
   if (!ts) return '';
-  const t = NEWS_SVC_DICTS[getLocaleSync()].newsSvc;
+  const t = tr().newsSvc;
   const d = new Date(ts);
   const now = Date.now();
   const diffMin = Math.max(0, Math.round((now - ts) / 60000));
@@ -2789,7 +2783,7 @@ function fetchCityFeed(cityId: string, signal?: AbortSignal): Promise<MpkNewsIte
 
 /** Zamienia wykryty automatycznie zator GPS z backendu na kartę alertu w tym samym formacie co MPK. */
 function anomalyToNewsItem(a: BackendTrafficAnomaly): MpkNewsItem {
-  const dict = (NEWS_SVC_DICTS[getLocaleSync()] ?? pl).news;
+  const dict = tr().news;
   const avgMin = Math.max(1, Math.round(a.avgDelaySec / 60));
   const durMin = Math.max(1, Math.round(a.durationSec / 60));
   const title =

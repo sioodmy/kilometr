@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import { Bell, ChevronDown, Compass, MapPin, MapPinned, Settings2 } from './icons';
-import { CitySelectSheet } from './CitySelectSheet';
+import { SheetLoadingFallback } from './SkeletonPulse';
 import { SpringPressable } from './SpringPressable';
+
+const CitySelectSheet = lazy(() =>
+  import('./CitySelectSheet').then((m) => ({ default: m.CitySelectSheet })),
+);
 import { getCity, type CityId } from '../cities';
 import { useStrings } from '../i18n';
 import { getActiveCityIdSync, useActiveCity } from '../services/cityStore';
@@ -372,13 +376,15 @@ function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; child
       <View style={styles.workspace}>{children}</View>
 
       {citySheetOpen && (
-        <CitySelectSheet
-          selectedCityId={cityId}
-          onSelectCity={(id) => void handleCitySelect(id)}
-          onClose={() => setCitySheetOpen(false)}
-          switchingCity={switchingCity}
-          switchingCityId={switchingCityId}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <CitySelectSheet
+            selectedCityId={cityId}
+            onSelectCity={(id) => void handleCitySelect(id)}
+            onClose={() => setCitySheetOpen(false)}
+            switchingCity={switchingCity}
+            switchingCityId={switchingCityId}
+          />
+        </Suspense>
       )}
     </View>
   );
