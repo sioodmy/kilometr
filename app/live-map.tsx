@@ -144,6 +144,7 @@ const BADGE_ENTERING = FadeIn.duration(motion.state.duration)
   .easing(motion.state.easing)
   .reduceMotion(motion.state.reduceMotion);
 const BADGE_EXITING = FadeOut.duration(140).reduceMotion(motion.state.reduceMotion);
+const MAP_LOADER_EXITING = FadeOut.duration(220).reduceMotion(motion.state.reduceMotion);
 const SMOOTH_LAYOUT = LinearTransition.duration(motion.state.duration)
   .easing(motion.state.easing)
   .reduceMotion(motion.state.reduceMotion);
@@ -236,6 +237,7 @@ export default function LiveVehiclesMapScreen() {
   const [nowSec, setNowSec] = useState(() => warsawNow().sec);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [mapRendered, setMapRendered] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
   const [railShapeVersion, setRailShapeVersion] = useState(0);
   const [asyncRouteData, setAsyncRouteData] = useState<{
@@ -1307,9 +1309,27 @@ export default function LiveVehiclesMapScreen() {
     });
   }, [router, selectedDisruption]);
 
+  useEffect(() => {
+    setMapRendered(false);
+  }, [cityId]);
+
+  const handleMapReady = useCallback(() => {
+    setMapError(null);
+  }, []);
+
+  const handleMapRendered = useCallback(() => {
+    setMapError(null);
+    setMapRendered(true);
+  }, []);
+
+  const handleMapReloading = useCallback(() => {
+    setMapRendered(false);
+  }, []);
+
   const handleRetryMap = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
     setMapError(null);
+    setMapRendered(false);
     mapRef.current?.reload();
   }, []);
 
@@ -1470,8 +1490,21 @@ export default function LiveVehiclesMapScreen() {
           onViewportChange={handleViewportChange}
           onTilesStatus={handleTilesStatus}
           onError={setMapError}
-          onReady={() => setMapError(null)}
+          onReady={handleMapReady}
+          onRendered={handleMapRendered}
+          onReloading={handleMapReloading}
         />
+      )}
+
+      {!mapRendered && !mapError && (
+        <Animated.View
+          exiting={MAP_LOADER_EXITING}
+          style={styles.mapLoaderOverlay}
+          accessibilityLiveRegion="polite"
+        >
+          <MorphingLoader variant="contained" size={44} startIndex={3} />
+          <Text style={styles.mapLoaderText}>{s.compass.mapLoading}</Text>
+        </Animated.View>
       )}
 
       {/* Górna pływająca warstwa: powrót, wyszukiwarka/nagłówek, filtry z licznikami */}
@@ -1755,7 +1788,7 @@ export default function LiveVehiclesMapScreen() {
       </View>
 
       {/* Prawa szyna szybkich akcji mapy (śledzenie, cała trasa, zoom, GPS) */}
-      {!searchOpen && !mapError && (
+      {!searchOpen && !mapError && mapRendered && (
         <View
           style={[
             styles.railWrap,
@@ -1772,7 +1805,7 @@ export default function LiveVehiclesMapScreen() {
         </View>
       )}
 
-      {isInitialLoading && !mapError && (
+      {mapRendered && isInitialLoading && !mapError && (
         <Animated.View
           entering={BADGE_ENTERING}
           exiting={BADGE_EXITING}
@@ -1815,7 +1848,7 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
-      {!isInitialLoading && mapItems.length === 0 && !hasSheet && !mapError && (
+      {mapRendered && !isInitialLoading && mapItems.length === 0 && !hasSheet && !mapError && (
         <Animated.View
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
@@ -2360,46 +2393,41 @@ export default function LiveVehiclesMapScreen() {
                       key={`${stop.stopId}-${idx}`}
                       onPress={() => handleSelectStop(stop.stopId)}
                       accessibilityRole="button"
-                      style={[styles.vehStopRow, idx > 0 && styles.depRowBorder]}
+                      style={styles.vehStopRow}
                       scaleDelta={0.015}
                     >
                       <View style={styles.timelineRail}>
+                        {idx > 0 && <View style={styles.timelineLineTop} />}
+                        {!isLast && <View style={styles.timelineLineBottom} />}
                         <View
-                          style={[
-                            styles.timelineLineTop,
-                            idx === 0 && styles.timelineLineHidden,
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.timelineDot,
-                            stop.isNext && styles.timelineDotNext,
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.timelineLineBottom,
-                            isLast && styles.timelineLineHidden,
-                          ]}
+                          style={
+                            stop.isNext
+                              ? styles.timelineDotNext
+                              : isLast
+                                ? styles.timelineDotEnd
+                                : styles.timelineDot
+                          }
                         />
                       </View>
-                      <Text
-                        style={[styles.vehStopName, stop.isNext && styles.vehStopNameNext]}
-                        numberOfLines={1}
-                      >
-                        {stop.stopName}
-                      </Text>
-                      <Text style={styles.vehStopTime}>
-                        {secondsToTimeString(stop.expectedSec)}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.vehStopCountdown,
-                          stop.isNext && styles.vehStopCountdownNext,
-                        ]}
-                      >
-                        {s.liveMap.departInMin(diffMin)}
-                      </Text>
+                      <View style={[styles.vehStopContent, idx > 0 && styles.depRowBorder]}>
+                        <Text
+                          style={[styles.vehStopName, stop.isNext && styles.vehStopNameNext]}
+                          numberOfLines={1}
+                        >
+                          {stop.stopName}
+                        </Text>
+                        <Text style={styles.vehStopTime}>
+                          {secondsToTimeString(stop.expectedSec)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.vehStopCountdown,
+                            stop.isNext && styles.vehStopCountdownNext,
+                          ]}
+                        >
+                          {s.liveMap.departInMin(diffMin)}
+                        </Text>
+                      </View>
                     </SpringPressable>
                   );
                 })}
@@ -2459,6 +2487,23 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: scheme.surface,
+  },
+  mapLoaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    paddingHorizontal: 24,
+    backgroundColor: scheme.surface,
+  },
+  mapLoaderText: {
+    ...type.bodyMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
   },
   topOverlay: {
     position: 'absolute',
@@ -3080,47 +3125,63 @@ const styles = StyleSheet.create({
   },
   vehStopRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+    minHeight: 44,
+  },
+  vehStopContent: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingVertical: 10,
     minHeight: 44,
-    paddingVertical: 6,
+    minWidth: 0,
   },
   timelineRail: {
-    width: 16,
-    alignSelf: 'stretch',
+    width: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   timelineLineTop: {
     position: 'absolute',
-    top: -6,
+    top: 0,
     bottom: '50%',
-    width: 2,
+    width: 2.5,
     backgroundColor: scheme.outlineVariant,
   },
   timelineLineBottom: {
     position: 'absolute',
     top: '50%',
-    bottom: -6,
-    width: 2,
+    bottom: 0,
+    width: 2.5,
     backgroundColor: scheme.outlineVariant,
   },
-  timelineLineHidden: {
-    opacity: 0,
-  },
   timelineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: shape.full,
+    borderWidth: 2,
+    borderColor: scheme.outline,
+    backgroundColor: scheme.surfaceContainerLow,
+    zIndex: 2,
+  },
+  timelineDotEnd: {
+    width: 10,
+    height: 10,
+    borderRadius: shape.full,
     backgroundColor: scheme.outline,
+    zIndex: 2,
   },
   timelineDotNext: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: shape.full,
     backgroundColor: scheme.primary,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: scheme.primaryContainer,
+    zIndex: 2,
   },
   vehStopName: {
     flex: 1,
