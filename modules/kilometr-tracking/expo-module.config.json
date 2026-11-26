@@ -6,7 +6,8 @@
   "android": {
     "modules": [
       "app.kilometr.tracking.KilometrTrackingModule",
-      "app.kilometr.tracking.DepartureAlarmModule"
+      "app.kilometr.tracking.DepartureAlarmModule",
+      "app.kilometr.tracking.PredictiveBackModule"
     ]
   }
 }

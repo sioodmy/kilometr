@@ -144,6 +144,37 @@ export function computeDragShellFrame(
 }
 
 /**
+ * Wylicza ramkę odklejanego ekranu dla systemowego Android Predictive Back (API 34+)
+ * według specyfikacji Material 3: skala 1 -> 0.84, margines 8dp od przeciwnej krawędzi
+ * (obsługuje zarówno gest z lewej, jak i z prawej krawędzi) oraz miękkie śledzenie pionu.
+ */
+export function computePredictiveBackShellFrame(
+  rawProgress: number,
+  deltaY: number,
+  swipeEdge: number,
+  screenW: number,
+  screenH: number,
+): DragShellFrame {
+  'worklet';
+  const p = Math.max(0, Math.min(1, rawProgress));
+  // Delikatne wygładzenie startu zgodne z krzywą M3 predictive back.
+  const scale = 1 - p * 0.16;
+  const width = screenW * scale;
+  const height = screenH * scale;
+  const maxShiftX = Math.max(0, (screenW - width) / 2 - 8);
+  // Lewa krawędź (0) odsuwa ekran w prawo, prawa krawędź (1) w lewo.
+  const direction = swipeEdge === 1 ? -1 : 1;
+  const shiftX = direction * maxShiftX * p;
+  const maxShiftY = Math.min(68, Math.max(0, (screenH - height) / 2 - 8));
+  const rawShiftY = deltaY * 0.28 * Math.min(1, p * 2.2);
+  const shiftY = Math.max(-maxShiftY, Math.min(maxShiftY, rawShiftY));
+  const x = (screenW - width) / 2 + shiftX;
+  const y = (screenH - height) / 2 + shiftY;
+  const radius = p <= 0.16 ? (p / 0.16) * 22 : 22 + ((p - 0.16) / 0.84) * 6;
+  return { x, y, width, height, radius, scale };
+}
+
+/**
  * Wylicza bieżącą pozycję paska JourneyStrip wewnątrz przeskalowanego ekranu
  * w momencie puszczenia palca, żeby lot powrotny do karty nie miał przeskoku.
  */
