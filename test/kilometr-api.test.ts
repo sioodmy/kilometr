@@ -2,8 +2,8 @@ import '../scripts/stub-expo.cjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildLocalDelayHeatmap,
   fetchBackendAnomalies,
+  fetchBackendDelayHubs,
   fetchBackendRouteInsights,
   fetchBackendVehicles,
   isKilometrApiAvailable,
@@ -12,7 +12,9 @@ import {
 } from '../src/services/kilometrApi';
 import { buildRoutingSnapshot } from '../src/services/routing/reliability';
 import { LocalGtfsStore, type DayIndex } from '../src/services/routing/store';
-import type { TrackedVehicle } from '../src/services/liveTracker';
+
+// Domyślnie backend jest odcięty (baseUrl = ''), więc testy sieci podają host jawnie.
+const TEST_BASE_URL = 'https://api.kilometr.app';
 
 test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz kolej', async () => {
   resetKilometrApiCircuit();
@@ -63,7 +65,7 @@ test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz k
     const batch = await fetchBackendVehicles('wroclaw', {
       bbox: [17.0, 51.08, 17.1, 51.14],
       includeRail: true,
-      baseUrl: 'https://api.kilometr.app',
+      baseUrl: TEST_BASE_URL,
     });
     assert.ok(batch);
     assert.ok(capturedUrl.includes('bbox=17.00000%2C51.08000%2C17.10000%2C51.14000'));
@@ -79,7 +81,7 @@ test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz k
   }
 });
 
-test('circuit breaker otwiera obwod po 3 awariach i chroni przed kolejnymi timeoutami', async () => {
+test('domyslny backend jest odciety, a circuit breaker chroni przed kolejnymi timeoutami', async () => {
   resetKilometrApiCircuit();
   const originalFetch = globalThis.fetch;
   let calls = 0;
@@ -88,14 +90,17 @@ test('circuit breaker otwiera obwod po 3 awariach i chroni przed kolejnymi timeo
       calls += 1;
       throw new Error('ECONNREFUSED');
     };
-    assert.equal(isKilometrApiAvailable(), true);
+    // Bez EXPO_PUBLIC_BACKEND_URL nie wychodzi żadne żądanie.
+    assert.equal(isKilometrApiAvailable(), false);
     assert.equal(await fetchBackendVehicles('wroclaw'), null);
-    assert.equal(await fetchBackendVehicles('wroclaw'), null);
-    assert.equal(await fetchBackendVehicles('wroclaw'), null);
+    assert.equal(calls, 0);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
     assert.equal(calls, 3);
     assert.equal(isKilometrApiAvailable(), false);
     // Kolejne wywolanie nie dotyka sieci dopoki circuit breaker jest otwarty.
-    assert.equal(await fetchBackendVehicles('wroclaw'), null);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
     assert.equal(calls, 3);
   } finally {
     globalThis.fetch = originalFetch;
@@ -103,47 +108,45 @@ test('circuit breaker otwiera obwod po 3 awariach i chroni przed kolejnymi timeo
   }
 });
 
-test('buildLocalDelayHeatmap wylicza strefy i wezly bez backendu', () => {
-  const now = Date.now();
-  const vehicles: TrackedVehicle[] = [
-    {
-      vehicleId: '4-1',
-      line: '4',
-      type: 'tram',
-      lat: 51.111,
-      lon: 17.061,
-      delaySec: 420,
-      updatedAt: now,
-      currentStopName: 'Rondo Reagana',
-    },
-    {
-      vehicleId: '10-2',
-      line: '10',
-      type: 'tram',
-      lat: 51.1111,
-      lon: 17.0612,
-      delaySec: 480,
-      updatedAt: now,
-      currentStopName: 'Rondo Reagana',
-    },
-    {
-      vehicleId: 'D-3',
-      line: 'D',
-      type: 'bus',
-      lat: 51.18,
-      lon: 17.18,
-      delaySec: 20,
-      updatedAt: now,
-      currentStopName: 'Psie Pole',
-    },
-  ];
-  const hm = buildLocalDelayHeatmap(vehicles, 'wroclaw');
-  assert.equal(hm.source, 'local');
-  assert.equal(hm.zones.length, 1);
-  assert.equal(hm.zones[0].severity, 'severe');
-  assert.equal(hm.hubs.length, 1);
-  assert.equal(hm.hubs[0].name, 'Rondo Reagana');
-  assert.equal(hm.summary.delayedVehicles, 2);
+test('fetchBackendDelayHubs pobiera normy wezlow bez stref heatmapy', async () => {
+  resetKilometrApiCircuit();
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          city: 'wroclaw',
+          updated_at: Date.now(),
+          hubs: [
+            {
+              id: 'hub:rondo',
+              name: 'Rondo Reagana',
+              lat: 51.111,
+              lon: 17.061,
+              avg_delay_sec: 420,
+              p90_delay_sec: 540,
+              max_delay_sec: 600,
+              vehicle_count: 3,
+              delayed_count: 2,
+              severity: 'severe',
+              top_lines: ['4', '10'],
+              typical_delay_sec: 120,
+              delta_vs_typical_sec: 300,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const hubs = await fetchBackendDelayHubs('wroclaw', null, undefined, TEST_BASE_URL);
+    assert.ok(hubs);
+    assert.equal(hubs.length, 1);
+    assert.equal(hubs[0].name, 'Rondo Reagana');
+    assert.equal(hubs[0].typicalDelaySec, 120);
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetKilometrApiCircuit();
+  }
 });
 
 test('buildRoutingSnapshot uzywa estymacji Data Science z backendu dla tramwajow bez GPS', () => {
@@ -253,7 +256,7 @@ test('fetchBackendRouteInsights zwraca null przy ready=false oraz pelne dane prz
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
-    assert.equal(await fetchBackendRouteInsights('wroclaw', conn), null);
+    assert.equal(await fetchBackendRouteInsights('wroclaw', conn, undefined, TEST_BASE_URL), null);
 
     globalThis.fetch = async () =>
       new Response(
@@ -291,7 +294,7 @@ test('fetchBackendRouteInsights zwraca null przy ready=false oraz pelne dane prz
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
 
-    const res = await fetchBackendRouteInsights('wroclaw', conn);
+    const res = await fetchBackendRouteInsights('wroclaw', conn, undefined, TEST_BASE_URL);
     assert.ok(res);
     assert.equal(res.ready, true);
     assert.equal(res.focusLine, '4');
@@ -337,7 +340,7 @@ test('fetchBackendAnomalies mapuje automatyczne zatory GPS', async () => {
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
 
-    const list = await fetchBackendAnomalies('wroclaw');
+    const list = await fetchBackendAnomalies('wroclaw', undefined, TEST_BASE_URL);
     assert.ok(list);
     assert.equal(list.length, 1);
     assert.equal(list[0].kind, 'tram_stall');

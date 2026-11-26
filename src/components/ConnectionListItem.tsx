@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
@@ -11,6 +11,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ConnectionCard } from './ConnectionCard';
 import type { ConnectionPeekHandlers } from './ConnectionPeek';
+import { useRouteCardTransition } from './RouteCardTransition';
+import { normalizeConnectionId } from '../services/routing/connectionIdentity';
+import type { ConnectionGroupOption } from '../services/routing/connectionGroups';
 import { motion } from '../theme/motion';
 import type { Connection } from '../types/models';
 
@@ -37,6 +40,9 @@ interface ConnectionListItemProps {
   dimmed: boolean;
   tick: number;
   onPress: (item: Connection) => void;
+  alternatives?: ConnectionGroupOption[];
+  onSelectAlternative?: (connection: Connection) => void;
+  measureKey?: string;
   peek: ConnectionPeekHandlers;
   reduceMotion: boolean;
   enterMode: CardEnterMode;
@@ -54,6 +60,9 @@ export const ConnectionListItem = memo(function ConnectionListItem({
   dimmed,
   tick,
   onPress,
+  alternatives,
+  onSelectAlternative,
+  measureKey,
   peek,
   reduceMotion,
   enterMode,
@@ -102,25 +111,41 @@ export const ConnectionListItem = memo(function ConnectionListItem({
     swapScale.value = withDelay(170, withSpring(1, motion.spring.effectsFast));
   }, [reduceMotion, reorder, reorderOffsetY, swapScale]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: enterOpacity.value,
-    transform: [
-      { translateY: enterOffsetY.value + reorderOffsetY.value },
-      { scale: swapScale.value },
-    ],
-  }));
+  const transition = useRouteCardTransition();
+  const normalizedId = useMemo(() => normalizeConnectionId(item.id), [item.id]);
+  const hiddenCardId = transition?.hiddenCardId;
 
+  const animatedStyle = useAnimatedStyle(() => {
+    const isHiddenForMorph = hiddenCardId ? hiddenCardId.value === normalizedId : false;
+    return {
+      opacity: isHiddenForMorph ? 0 : enterOpacity.value,
+      transform: [
+        { translateY: enterOffsetY.value + reorderOffsetY.value },
+        { scale: swapScale.value },
+      ],
+    };
+  });
+
+  const heightKey = measureKey ?? item.id;
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const h = event.nativeEvent.layout.height;
-      if (h > 0) onMeasureHeight(item.id, h);
+      if (h > 0) onMeasureHeight(heightKey, h);
     },
-    [item.id, onMeasureHeight],
+    [heightKey, onMeasureHeight],
   );
 
   return (
     <Animated.View style={animatedStyle} onLayout={handleLayout}>
-      <ConnectionCard item={item} dimmed={dimmed} onPress={onPress} peek={peek} tick={tick} />
+      <ConnectionCard
+        item={item}
+        dimmed={dimmed}
+        onPress={onPress}
+        alternatives={alternatives}
+        onSelectAlternative={onSelectAlternative}
+        peek={peek}
+        tick={tick}
+      />
     </Animated.View>
   );
 });

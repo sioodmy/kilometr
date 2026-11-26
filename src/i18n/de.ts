@@ -934,6 +934,7 @@ export const de: Strings = {
     optionSameTime: 'Gleiche Ankunft',
     strategyLegSwap: 'Andere Abfahrt ab hier',
     strategyStayOn: 'Weiterfahren, später umsteigen',
+    strategyStayDirect: (line: string) => `Mit ${line} direkt bis zum Ziel weiterfahren`,
     strategySameStop: 'Andere Linie ab hier',
     walkTransfer: (min: number, m: number) => `${min} Min. Fußweg (${m} m)`,
     samePlatform: 'Gleiche Haltestelle',
@@ -969,7 +970,7 @@ export const de: Strings = {
     today: 'Heute',
     tomorrow: 'Morgen',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `in ${n} Min.`,
+    departIn: (n: number) => `in ${formatDuration(n)}`,
     departNow: 'gleich',
     departAgo: (n: number) => `vor ${n} Min.`,
     departJustAgo: 'gerade abgefahren',
@@ -1364,101 +1365,13 @@ export const de: Strings = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro:
-      'Wähle deine Stadt, der Fahrplan lädt im Hintergrund. Verbindungen findest du auch offline.',
+    intro: 'Fahrpläne für 132 Städte. Auch offline.',
     openSettings: 'Einstellungen öffnen',
     permissionDenied:
       'Du kannst ohne diese Berechtigung fortfahren und sie später in den Telefoneinstellungen ändern.',
-    steps: ['Willkommen', 'Stadt', 'Zugriff', 'Orte'],
+    steps: ['Willkommen', 'Stadt', 'Zugriff'],
     granted: 'An',
     denied: 'Aus',
-    slotHome: 'Zuhause',
-    slotHomeHint: (id: string) =>
-      id === 'krakow'
-        ? 'z. B. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'z. B. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'z. B. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'z. B. Długa 12'
-              : id === 'lodz'
-                ? 'z. B. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'z. B. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'z. B. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'z. B. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'z. B. Lipowa 12'
-                        : id === 'opole'
-                          ? 'z. B. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'z. B. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'z. B. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'z. B. Żeromskiego 12'
-                                : 'z. B. Swojczycka 41',
-    slotWork: 'Arbeit',
-    slotWorkHint: (id: string) =>
-      id === 'krakow'
-        ? 'z. B. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'z. B. Złote Tarasy'
-          : id === 'poznan'
-            ? 'z. B. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'z. B. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'z. B. Manufaktura'
-                : id === 'szczecin'
-                  ? 'z. B. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'z. B. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'z. B. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'z. B. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'z. B. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'z. B. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'z. B. Felicity'
-                              : id === 'radom'
-                                ? 'z. B. Galeria Słoneczna'
-                                : 'z. B. Sky Tower',
-    slotUni: 'Uni',
-    slotUniHint: (id: string) =>
-      id === 'krakow'
-        ? 'z. B. AGH'
-        : id === 'warszawa'
-          ? 'z. B. Uniwersytet'
-          : id === 'poznan'
-            ? 'z. B. UAM'
-            : id === 'trojmiasto'
-              ? 'z. B. UG'
-              : id === 'lodz'
-                ? 'z. B. UŁ'
-                : id === 'szczecin'
-                  ? 'z. B. US'
-                  : id === 'kielce'
-                    ? 'z. B. UJK'
-                    : id === 'olsztyn'
-                      ? 'z. B. UWM'
-                      : id === 'bialystok'
-                        ? 'z. B. UwB'
-                        : id === 'opole'
-                          ? 'z. B. UO'
-                          : id === 'rzeszow'
-                            ? 'z. B. PRz'
-                            : id === 'lublin'
-                              ? 'z. B. UMCS'
-                              : id === 'radom'
-                                ? 'z. B. UTH'
-                                : 'z. B. Politechnika',
     backA11y: 'Zurück',
     stepOf: (n: number, len: number, name: string) => `Schritt ${n} von ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1468,10 +1381,17 @@ export const de: Strings = {
     noPay: 'Keine Mikrozahlungen',
     detectGpsAction: 'Meine Stadt per GPS erkennen',
     detectGpsHint: 'Wählt automatisch den passenden Fahrplan',
-    citySearchPlaceholder: 'Stadt oder Region suchen…',
+    detectGpsShort: 'Orten',
+    detectGpsLocating: 'Suche…',
+    citySearchPlaceholder: 'Stadt suchen…',
     cityNoSearchMatch: (q: string) => `Keine Stadt für „${q}“ gefunden.`,
     cityClearSearchA11y: 'Suche leeren',
     citySubtitleAuto: 'Der Fahrplan wird automatisch im Hintergrund geladen.',
+    cityPopularSection: 'Große Städte',
+    cityAllSection: 'Weitere Städte',
+    citySelectedLabel: 'Ausgewählte Stadt',
+    cityPickPrompt: 'Stadt wählen',
+    cityNextWith: (name: string) => `Weiter · ${name}`,
     bgDlDownloading: (gen: string, pct: number) => `Fahrplan für ${gen} lädt… ${pct} %`,
     bgDlImporting: (gen: string, pct: number) => `Fahrplan für ${gen} wird vorbereitet… ${pct} %`,
     bgDlReady: (gen: string) => `Fahrplan für ${gen} offline bereit`,
@@ -1480,12 +1400,16 @@ export const de: Strings = {
     bgDlRetry: 'Erneut',
     bgDlStart: 'Laden',
     startUsing: 'Loslegen',
-    permTitle: 'App-Zugriff',
-    permSub: 'Standort und Mitteilungen. Beides optional.',
-    permSubWeb: 'Füge die App zum Startbildschirm hinzu und erlaube den Standort.',
-    pwaTitle: 'Auf dem Startbildschirm installieren',
+    permTitle: 'Noch ein Schritt',
+    permSub: 'Aktiviere, was du brauchst. Alles optional.',
+    permSubWeb: 'Standort erlauben oder zum Startbildschirm hinzufügen.',
+    permEnable: 'Aktivieren',
+    pwaTitle: 'Startbildschirm',
     pwaSub:
       'Nutze Kilometr nicht im Browser-Tab. Als App auf dem Startbildschirm läuft sie im Vollbild und behält den geladenen Offline-Fahrplan.',
+    pwaShortBody: 'Vollbild und schneller Offline-Start.',
+    pwaHowTo: 'Anleitung',
+    pwaInstallShort: 'Installieren',
     pwaInstalled: 'App läuft bereits vom Startbildschirm.',
     pwaInstallBtn: 'Mit einem Tipp installieren',
     pwaTabIos: 'iPhone / iPad',
@@ -1499,21 +1423,25 @@ export const de: Strings = {
     locTitle: 'Standort',
     locBody:
       'Zeigt nahe Haltestellen und den Verlauf deiner aktiven Fahrt. Zur Adressbestimmung werden Koordinaten an OpenStreetMap Nominatim gesendet. Während einer Fahrt kann GPS bei ausgeschaltetem Bildschirm aktiv bleiben.',
+    locShortBody: 'Nahe Haltestellen und aktive Fahrtverfolgung.',
+    locDisclosure:
+      'Adressen werden über OSM Nominatim abgefragt. Während einer Fahrt kann GPS bei ausgeschaltetem Bildschirm laufen.',
     locOn: 'Standort aktiviert.',
     locAllow: 'Standort erlauben',
     notifTitle: 'Mitteilungen',
     notifBody:
       'Zeigen deine angeheftete Fahrt und erinnern an eine gewählte Abfahrt oder Haltestelle.',
+    notifShortBody: 'Angeheftete Fahrt und Ausstiegserinnerungen.',
     notifOn: 'Mitteilungen aktiviert.',
     notifExpoGo:
       'Expo-Go-Vorschau: Mitteilungen (angeheftete Verbindung) funktionieren im Entwicklungs-Build.',
     notifAllow: 'Mitteilungen aktivieren',
-    cityTitle: 'In welcher Stadt bist du unterwegs?',
+    cityTitle: 'Stadt wählen',
     cityBody:
       'Fahrplan, Karte und Meldungen folgen deiner Wahl. Die Stadt lässt sich später in den Einstellungen ändern.',
-    cityNoGps: 'Ohne GPS-Zugriff wähle die Stadt aus der Liste.',
+    cityNoGps: 'Kein GPS-Zugriff. Wähle eine Stadt aus der Liste oder aktiviere ihn in den Einstellungen.',
     cityLocating: 'GPS-Position wird ermittelt…',
-    cityNoMatch: 'GPS ist in keiner unterstützten Stadt. Wähle eine aus der Liste.',
+    cityNoMatch: 'Keine unterstützte Stadt in der Nähe. Wähle eine aus der Liste.',
     cityPickA11y: (name: string) => `Stadt wählen: ${name}`,
     dlTitle: (gen: string) => `Fahrplan für ${gen} laden`,
     dlBody: (feeds: string) =>
@@ -1527,26 +1455,13 @@ export const de: Strings = {
     dlDoneSub: (stops: number, trips: number) => `${stops} Haltestellen • ${trips} Fahrten.`,
     dlFail: 'Etwas ist schiefgelaufen',
     dlFailBody: (msg: string) => `${msg}. Verbindung prüfen und erneut versuchen.`,
-    saveFail: 'Ort konnte nicht gespeichert werden',
-    saveFailBody: 'Versuche es erneut.',
-    placesTitle: 'Wo bist du am häufigsten?',
-    placesBody:
-      'Gespeicherte Orte beschleunigen die Suche. Dieser Schritt kann übersprungen werden.',
-    added: 'Hinzugefügt',
-    removeSlotA11y: (name: string) => `${name} entfernen`,
-    closeAction: 'Schließen',
-    addAction: '+ Hinzufügen',
-    addressFor: (name: string) => `Adresse für: ${name}…`,
-    noResults: (q: string) =>
-      `Keine Ergebnisse für „${q}“. Haltestellen werden offline gesucht, Adressen brauchen Internet.`,
-    start: 'Kilometr einrichten',
+    start: 'Los geht’s',
     next: 'Weiter',
     later: 'Später',
     footerRetry: 'Erneut versuchen',
     footerDownloading: 'Wird geladen…',
     footerDownload: 'Fahrplan laden',
     needTimetable: 'Ohne Fahrplan keine Verbindungssuche möglich.',
-    doneCount: (n: number) => `Fertig (${n})`,
     donePlain: 'Fertig',
     skip: 'Erstmal überspringen',
     skipTimetable: 'Überspringen, Fahrplan lade ich später',
@@ -2053,6 +1968,15 @@ export const de: Strings = {
     fromStopLabel: (stop: string) => `ab: ${stop}`,
     exitStopLabel: (stop: string) => `Ausstieg: ${stop}`,
     finalWalkPill: (min: number) => `${min}' zum Ziel`,
+    variantAlternativeHeading: 'Alternativ',
+    variantFasterBy: (min: number) => `${min} Min. schneller`,
+    variantDirect: 'Direkt',
+    variantSlackShort: (min: number) => (min <= 0 ? 'knapp' : `${min} Min. Puffer`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Alternative Option ${label}, Ankunft ${arrAt}`,
+    variantSwitcherA11y: 'Umstiegsoptionen dieser Fahrt',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, Ankunft ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'Keine Routendaten',
@@ -2569,7 +2493,7 @@ export const de: Strings = {
     openTimetableCta: 'Linienfahrplan',
     toggleSheetA11y: 'Details erweitern oder einklappen',
     filterDelays: 'Verspätungen',
-    delayZoneSheetTitle: 'Verspätungsknoten',
+    delayZoneSheetTitle: 'Verspäteter Abschnitt',
     delayAvgNow: (min: number) => `Schnitt +${min} Min.`,
     delayP90: (min: number) => `Spitze (p90): +${min} Min.`,
     delayVsTypicalHigher: (min: number) => `+${min} Min. über Normal`,

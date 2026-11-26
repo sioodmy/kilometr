@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     borderRadius: shape.full,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 1,
   },
   badgeWarning: {
     backgroundColor: scheme.warning + "24",

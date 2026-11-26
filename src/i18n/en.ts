@@ -932,6 +932,7 @@ export const en: Strings = {
     optionSameTime: 'Same arrival',
     strategyLegSwap: 'Another departure here',
     strategyStayOn: 'Stay on, transfer later',
+    strategyStayDirect: (line: string) => `Stay on ${line} directly to destination`,
     strategySameStop: 'Different line here',
     walkTransfer: (min: number, m: number) => `${min} min walk (${m} m)`,
     samePlatform: 'Same stop',
@@ -967,7 +968,7 @@ export const en: Strings = {
     today: 'Today',
     tomorrow: 'Tomorrow',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `in ${n} min`,
+    departIn: (n: number) => `in ${formatDuration(n)}`,
     departNow: 'due',
     departAgo: (n: number) => `${n} min ago`,
     departJustAgo: 'just left',
@@ -1356,100 +1357,13 @@ export const en: Strings = {
   },
   onboarding: {
     stepCount: (n: number, total: number) => `${n} / ${total}`,
-    intro: 'Pick your city and the timetable downloads in the background. Plan journeys offline too.',
+    intro: 'Timetables for 132 cities. Works offline too.',
     openSettings: 'Open settings',
     permissionDenied:
       'You can continue without this permission and change it later in your phone settings.',
-    steps: ['Welcome', 'City', 'Access', 'Places'],
+    steps: ['Welcome', 'City', 'Access'],
     granted: 'On',
     denied: 'Off',
-    slotHome: 'Home',
-    slotHomeHint: (id: string) =>
-      id === 'krakow'
-        ? 'e.g. Krowoderska 12'
-        : id === 'warszawa'
-          ? 'e.g. Marszałkowska 12'
-          : id === 'poznan'
-            ? 'e.g. Głogowska 12'
-            : id === 'trojmiasto'
-              ? 'e.g. Długa 12'
-              : id === 'lodz'
-                ? 'e.g. Piotrkowska 12'
-                : id === 'szczecin'
-                  ? 'e.g. Wojska Polskiego 12'
-                  : id === 'kielce'
-                    ? 'e.g. Sienkiewicza 12'
-                    : id === 'olsztyn'
-                      ? 'e.g. Partyzantów 12'
-                      : id === 'bialystok'
-                        ? 'e.g. Lipowa 12'
-                        : id === 'opole'
-                          ? 'e.g. Ozimska 12'
-                          : id === 'rzeszow'
-                            ? 'e.g. 3 Maja 12'
-                            : id === 'lublin'
-                              ? 'e.g. Krakowskie Przedmieście 12'
-                              : id === 'radom'
-                                ? 'e.g. Żeromskiego 12'
-                                : 'e.g. Swojczycka 41',
-    slotWork: 'Work',
-    slotWorkHint: (id: string) =>
-      id === 'krakow'
-        ? 'e.g. Galeria Krakowska'
-        : id === 'warszawa'
-          ? 'e.g. Złote Tarasy'
-          : id === 'poznan'
-            ? 'e.g. Stary Browar'
-            : id === 'trojmiasto'
-              ? 'e.g. Galeria Bałtycka'
-              : id === 'lodz'
-                ? 'e.g. Manufaktura'
-                : id === 'szczecin'
-                  ? 'e.g. Galeria Kaskada'
-                  : id === 'kielce'
-                    ? 'e.g. Galeria Echo'
-                    : id === 'olsztyn'
-                      ? 'e.g. Galeria Warmińska'
-                      : id === 'bialystok'
-                        ? 'e.g. Galeria Jurowiecka'
-                        : id === 'opole'
-                          ? 'e.g. Solaris Center'
-                          : id === 'rzeszow'
-                            ? 'e.g. Galeria Rzeszów'
-                            : id === 'lublin'
-                              ? 'e.g. Felicity'
-                              : id === 'radom'
-                                ? 'e.g. Galeria Słoneczna'
-                                : 'e.g. Sky Tower',
-    slotUni: 'University',
-    slotUniHint: (id: string) =>
-      id === 'krakow'
-        ? 'e.g. AGH'
-        : id === 'warszawa'
-          ? 'e.g. Uniwersytet'
-          : id === 'poznan'
-            ? 'e.g. UAM'
-            : id === 'trojmiasto'
-              ? 'e.g. UG'
-              : id === 'lodz'
-                ? 'e.g. UŁ'
-                : id === 'szczecin'
-                  ? 'e.g. US'
-                  : id === 'kielce'
-                    ? 'e.g. UJK'
-                    : id === 'olsztyn'
-                      ? 'e.g. UWM'
-                      : id === 'bialystok'
-                        ? 'e.g. UwB'
-                        : id === 'opole'
-                          ? 'e.g. UO'
-                          : id === 'rzeszow'
-                            ? 'e.g. PRz'
-                            : id === 'lublin'
-                              ? 'e.g. UMCS'
-                              : id === 'radom'
-                                ? 'e.g. UTH'
-                                : 'e.g. Politechnika',
     backA11y: 'Back',
     stepOf: (n: number, len: number, name: string) => `Step ${n} of ${len} • ${name}`,
     brand: 'Kilometr',
@@ -1459,10 +1373,17 @@ export const en: Strings = {
     noPay: 'No micropayments',
     detectGpsAction: 'Detect my city via GPS',
     detectGpsHint: 'Automatically picks the timetable for your area',
-    citySearchPlaceholder: 'Search city or metro area…',
+    detectGpsShort: 'Locate',
+    detectGpsLocating: 'Locating…',
+    citySearchPlaceholder: 'Search city…',
     cityNoSearchMatch: (q: string) => `No city found for “${q}”.`,
     cityClearSearchA11y: 'Clear search',
     citySubtitleAuto: 'The timetable downloads automatically in the background.',
+    cityPopularSection: 'Major cities',
+    cityAllSection: 'More cities',
+    citySelectedLabel: 'Selected city',
+    cityPickPrompt: 'Choose a city',
+    cityNextWith: (name: string) => `Continue · ${name}`,
     bgDlDownloading: (gen: string, pct: number) => `Downloading ${gen} timetable… ${pct}%`,
     bgDlImporting: (gen: string, pct: number) => `Preparing ${gen} timetable… ${pct}%`,
     bgDlReady: (gen: string) => `${gen} timetable ready offline`,
@@ -1471,12 +1392,16 @@ export const en: Strings = {
     bgDlRetry: 'Retry',
     bgDlStart: 'Download',
     startUsing: 'Start using Kilometr',
-    permTitle: 'App access',
-    permSub: 'Location and notifications. Both optional.',
-    permSubWeb: 'Add the app to your home screen and allow location.',
-    pwaTitle: 'Install on your home screen',
+    permTitle: 'One last thing',
+    permSub: 'Turn on what you need. All optional.',
+    permSubWeb: 'Allow location or add a home screen shortcut.',
+    permEnable: 'Enable',
+    pwaTitle: 'Home screen',
     pwaSub:
       'Do not use Kilometr inside a browser tab. Installed on your home screen, it runs full-screen and keeps your downloaded timetable offline.',
+    pwaShortBody: 'Full screen and faster offline access.',
+    pwaHowTo: 'How to',
+    pwaInstallShort: 'Install',
     pwaInstalled: 'Running from your home screen.',
     pwaInstallBtn: 'Install with one tap',
     pwaTabIos: 'iPhone / iPad',
@@ -1490,20 +1415,24 @@ export const en: Strings = {
     locTitle: 'Location',
     locBody:
       'Finds nearby stops and follows your active journey. Coordinates are sent to OpenStreetMap Nominatim to look up an address. GPS may stay active with the screen off during a journey.',
+    locShortBody: 'Nearby stops and live trip progress.',
+    locDisclosure:
+      'Addresses are looked up via OSM Nominatim. During a trip, GPS may run with the screen off.',
     locOn: 'Location enabled.',
     locAllow: 'Allow location',
     notifTitle: 'Notifications',
     notifBody: 'Show your pinned journey and reminders for a selected departure or stop.',
+    notifShortBody: 'Pinned trips and get-off reminders.',
     notifOn: 'Notifications enabled.',
     notifExpoGo:
       'Expo Go preview: notifications (pinned connection) work in the development build.',
     notifAllow: 'Enable notifications',
-    cityTitle: 'Which city do you ride in?',
+    cityTitle: 'Choose your city',
     cityBody:
       'Timetable, map and news follow your choice. You can change the city later in settings.',
-    cityNoGps: 'Without GPS access, pick a city from the list.',
+    cityNoGps: 'No GPS access. Pick a city from the list or enable it in settings.',
     cityLocating: 'Finding your GPS position…',
-    cityNoMatch: 'GPS did not land in a supported city. Pick one from the list.',
+    cityNoMatch: 'No supported city found nearby. Pick one from the list.',
     cityPickA11y: (name: string) => `Choose city: ${name}`,
     dlTitle: (gen: string) => `Download the ${gen} timetable`,
     dlBody: (feeds: string) =>
@@ -1517,25 +1446,13 @@ export const en: Strings = {
     dlDoneSub: (stops: number, trips: number) => `${stops} stops • ${trips} trips.`,
     dlFail: 'Something went wrong',
     dlFailBody: (msg: string) => `${msg}. Check your connection and try again.`,
-    saveFail: 'Could not save the place',
-    saveFailBody: 'Please try again.',
-    placesTitle: 'Where do you go most often?',
-    placesBody: 'Saved places speed up searching. You can skip this step.',
-    added: 'Added',
-    removeSlotA11y: (name: string) => `Remove ${name}`,
-    closeAction: 'Close',
-    addAction: '+ Add',
-    addressFor: (name: string) => `Address for: ${name}…`,
-    noResults: (q: string) =>
-      `No results for “${q}”. Stops are searched offline, addresses need internet.`,
-    start: 'Set up Kilometr',
+    start: 'Get started',
     next: 'Next',
     later: 'Later',
     footerRetry: 'Try again',
     footerDownloading: 'Downloading…',
     footerDownload: 'Download timetable',
     needTimetable: 'Without a timetable you can’t search connections.',
-    doneCount: (n: number) => `Done (${n})`,
     donePlain: 'Done',
     skip: 'Skip for now',
     skipTimetable: 'Skip, I will download the timetable later',
@@ -2036,6 +1953,15 @@ export const en: Strings = {
     fromStopLabel: (stop: string) => `from: ${stop}`,
     exitStopLabel: (stop: string) => `exit: ${stop}`,
     finalWalkPill: (min: number) => `${min}' to dest.`,
+    variantAlternativeHeading: 'Alternatively',
+    variantFasterBy: (min: number) => `${min} min faster`,
+    variantDirect: 'Direct',
+    variantSlackShort: (min: number) => (min <= 0 ? 'tight' : `${min} min spare`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Alternative option ${label}, arrival ${arrAt}`,
+    variantSwitcherA11y: 'Transfer options for this departure',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, arrival ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'No route data',
@@ -2544,7 +2470,7 @@ export const en: Strings = {
     openTimetableCta: 'Line timetable',
     toggleSheetA11y: 'Expand or collapse details',
     filterDelays: 'Delays',
-    delayZoneSheetTitle: 'Delay hotspot',
+    delayZoneSheetTitle: 'Delayed corridor',
     delayAvgNow: (min: number) => `Avg +${min} min`,
     delayP90: (min: number) => `Peak (p90): +${min} min`,
     delayVsTypicalHigher: (min: number) => `+${min} min above normal`,

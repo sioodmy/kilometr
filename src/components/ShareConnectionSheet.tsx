@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  InteractionManager,
   Platform,
   Pressable,
   Share,
@@ -21,6 +22,7 @@ import * as Clipboard from 'expo-clipboard';
 import { motion } from '../theme/motion';
 import { useSheetBackHandler } from '../hooks/useSheetBackHandler';
 import {
+  DESKTOP_SHEET_TOP_SPACER_HEIGHT,
   DesktopSheetTopSpacer,
   getDesktopSheetProps,
   useEscapeKey,
@@ -29,10 +31,54 @@ import {
 import { scheme, shape, type } from '../theme/tokens';
 import { useStrings, getLocaleSync } from '../i18n';
 import { getActiveCityIdSync } from '../services/cityStore';
-import { buildShareUrl, createSharedConnection, shareMessage } from '../sharing/connection';
+import {
+  buildShareUrl,
+  createSharedConnection,
+  shareMessage,
+  type SharedConnection,
+} from '../sharing/connection';
 import type { Connection } from '../types/models';
 import { JourneyShareCard } from './JourneyShareCard';
+import { SkeletonBone, SkeletonPulse } from './SkeletonPulse';
 import { SpringPressable } from './SpringPressable';
+
+const HANDLE_HEIGHT = 24;
+
+function SheetHandle() {
+  return (
+    <View style={styles.handleContainer}>
+      <View style={styles.handle} />
+    </View>
+  );
+}
+
+/** Lekki szkielet karty udostępniania wyświetlany w pierwszej klatce otwarcia arkusza. */
+const ShareCardSkeleton = memo(function ShareCardSkeleton() {
+  return (
+    <SkeletonPulse style={styles.cardSkeleton}>
+      <View style={styles.skelHeader}>
+        <SkeletonBone width={96} height={22} radius={8} />
+        <SkeletonBone width={118} height={22} radius={shape.full} />
+      </View>
+      <View style={styles.skelHero}>
+        <View style={styles.skelKpiRow}>
+          <SkeletonBone width={76} height={22} radius={shape.full} />
+          <SkeletonBone width={92} height={22} radius={shape.full} />
+        </View>
+        <View style={styles.skelTimesRow}>
+          <SkeletonBone width={104} height={38} radius={10} />
+          <SkeletonBone width={104} height={38} radius={10} />
+        </View>
+        <SkeletonBone width="100%" height={7} radius={shape.full} />
+      </View>
+      <View style={styles.skelBody}>
+        <SkeletonBone width="72%" height={16} radius={6} />
+        <SkeletonBone width="54%" height={14} radius={6} tone="subtle" />
+        <SkeletonBone width="80%" height={16} radius={6} />
+      </View>
+    </SkeletonPulse>
+  );
+});
 
 export function ShareConnectionSheet({
   connection,
@@ -45,14 +91,18 @@ export function ShareConnectionSheet({
   const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
-  const desktopHeight = Math.min(windowHeight - 96, 680);
-  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 560, desktopHeight);
+  const maxAvailable = webLayout.isMedium
+    ? windowHeight - 96
+    : windowHeight - insets.top - insets.bottom - 16;
+  const sheetHeight = webLayout.isMedium
+    ? Math.max(320, Math.min(maxAvailable, 680))
+    : Math.max(320, Math.min(maxAvailable, Math.round(windowHeight * 0.9)));
+  const handleHeight = webLayout.isMedium ? DESKTOP_SHEET_TOP_SPACER_HEIGHT : HANDLE_HEIGHT;
+  const contentHeight = Math.max(240, sheetHeight - handleHeight);
+  const sheetProps = getDesktopSheetProps(webLayout, insets.bottom, 560, sheetHeight);
   const sheet = useRef<BottomSheet>(null);
   useEscapeKey(true, () => sheet.current?.close());
-  const snapPoints = useMemo(
-    () => (webLayout.isMedium ? [desktopHeight] : ['90%']),
-    [desktopHeight, webLayout.isMedium],
-  );
+  const snapPoints = useMemo(() => [sheetHeight], [sheetHeight]);
   const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -70,20 +120,82 @@ export function ShareConnectionSheet({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [journey] = useState(() => {
-    try {
-      return createSharedConnection(connection, getActiveCityIdSync());
-    } catch {
-      return null;
-    }
-  });
-  let url = '';
-  try {
-    if (journey) url = buildShareUrl(journey, getLocaleSync());
-  } catch {
-    /* Zbyt duży link pozostawia widoczną kartę i komunikat błędu. */
-  }
-  const message = journey ? `${shareMessage(journey, s)}\n${url}` : '';
+  // Budowę payloadu, kompresję URL-a i ciężką kartę SVG odraczamy za pierwszą klatkę
+  // otwarcia arkusza, żeby sprężyna BottomSheet nie cięła przy pierwszym kliknięciu.
+  const [shareState, setShareState] = useState<{
+    phase: 'preparing' | 'card' | 'ready' | 'failed';
+    journey: SharedConnection | null;
+    url: string;
+  }>({ phase: 'preparing', journey: null, url: '' });
+
+  useEffect(() => {
+    let cancelled = false;
+    let urlRaf: number | null = null;
+    let startRaf: number | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let started = false;
+
+    const beginBuild = () => {
+      if (cancelled || started) return;
+      started = true;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      let nextJourney: SharedConnection | null = null;
+      try {
+        nextJourney = createSharedConnection(connection, getActiveCityIdSync());
+      } catch {
+        nextJourney = null;
+      }
+      if (cancelled) return;
+      if (!nextJourney) {
+        setShareState({ phase: 'failed', journey: null, url: '' });
+        return;
+      }
+      // Najpierw montujemy kartę, a kompresję linku robimy w kolejnej klatce.
+      setShareState({ phase: 'card', journey: nextJourney, url: '' });
+      urlRaf = requestAnimationFrame(() => {
+        if (cancelled || !nextJourney) return;
+        let nextUrl = '';
+        try {
+          nextUrl = buildShareUrl(nextJourney, getLocaleSync());
+        } catch {
+          /* Zbyt duży link pozostawia widoczną kartę i komunikat błędu. */
+        }
+        if (!cancelled) {
+          setShareState({
+            phase: nextUrl ? 'ready' : 'failed',
+            journey: nextJourney,
+            url: nextUrl,
+          });
+        }
+      });
+    };
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      startRaf = requestAnimationFrame(beginBuild);
+    });
+    // Awaryjny limit: nawet przy długiej animacji karta pojawia się po krótkiej chwili.
+    fallbackTimer = setTimeout(beginBuild, 120);
+
+    return () => {
+      cancelled = true;
+      interaction.cancel();
+      if (startRaf !== null) cancelAnimationFrame(startRaf);
+      if (urlRaf !== null) cancelAnimationFrame(urlRaf);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+  }, [connection]);
+
+  const journey = shareState.journey;
+  const url = shareState.url;
+  const preparingShare = shareState.phase === 'preparing' || shareState.phase === 'card';
+  const shareFailed = shareState.phase === 'failed';
+  const message = useMemo(
+    () => (journey && url ? `${shareMessage(journey, s)}\n${url}` : ''),
+    [journey, url, s],
+  );
   const available = !!journey && !!url;
   const displayUrl = url.replace(/^https:\/\//, '');
 
@@ -173,11 +285,11 @@ export function ShareConnectionSheet({
       onChange={onSheetChange}
       onClose={onClose}
       backgroundStyle={[styles.sheet, sheetProps.backgroundExtraStyle]}
-      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : undefined}
-      handleIndicatorStyle={styles.handle}
+      handleComponent={webLayout.isMedium ? DesktopSheetTopSpacer : SheetHandle}
       backdropComponent={renderBackdrop}
     >
-      <View style={styles.container} accessibilityViewIsModal>
+      {/* Jawna wysokość ogranicza BottomSheetScrollView i przypina akcje na dole arkusza. */}
+      <View style={[styles.container, { height: contentHeight }]} accessibilityViewIsModal>
         <View style={styles.header}>
           <View style={styles.headerTitleCol}>
             <Text style={styles.title} accessibilityRole="header">
@@ -197,9 +309,12 @@ export function ShareConnectionSheet({
           </Pressable>
         </View>
         <BottomSheetScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          nestedScrollEnabled
+          overScrollMode="never"
         >
-          {journey && (
+          {journey ? (
             <View
               ref={card}
               collapsable={false}
@@ -209,108 +324,133 @@ export function ShareConnectionSheet({
             >
               <JourneyShareCard journey={journey} />
             </View>
-          )}
-
-          {available && (
-            <SpringPressable
-              onPress={() =>
-                void run(async () => {
-                  await Clipboard.setStringAsync(url);
-                  setCopied(true);
-                })
-              }
-              disabled={busy}
-              haptic="selection"
-              accessibilityRole="button"
-              accessibilityLabel={copied ? s.copied : s.copy}
-              style={styles.urlBar}
-            >
-              <Link size={16} color={scheme.primary} />
-              <Text style={styles.urlText} numberOfLines={1} ellipsizeMode="middle">
-                {displayUrl}
-              </Text>
-              <View style={[styles.urlCopyChip, copied && styles.urlCopyChipDone]}>
-                {copied ? (
-                  <Check size={14} color={scheme.onPrimaryContainer} />
-                ) : (
-                  <Copy size={14} color={scheme.onSecondaryContainer} />
-                )}
-                <Text style={[styles.urlCopyText, copied && styles.urlCopyTextDone]}>
-                  {copied ? s.copied : s.copy}
-                </Text>
-              </View>
-            </SpringPressable>
-          )}
-
-          {(error || !journey || !url) && (
-            <Text style={styles.error} accessibilityRole="alert">
-              {error || s.error}
-            </Text>
-          )}
-
-          <SpringPressable
-            onPress={() => void run(Platform.OS === 'web' ? shareWebLink : shareCard)}
-            disabled={busy || !available}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityState={{ busy, disabled: busy || !available }}
-            style={[styles.primary, (busy || !available) && styles.disabled]}
-          >
-            {busy ? (
-              <ActivityIndicator color={scheme.onPrimary} />
-            ) : Platform.OS === 'web' ? (
-              <Share2 size={20} color={scheme.onPrimary} />
-            ) : (
-              <ImageUp size={20} color={scheme.onPrimary} />
-            )}
-            <Text style={styles.primaryText}>
-              {busy ? s.preparing : Platform.OS === 'web' ? s.linkOnly : s.imageAndLink}
-            </Text>
-          </SpringPressable>
-
-          {Platform.OS !== 'web' && (
-            <View style={styles.actions}>
-              <SpringPressable
-                onPress={() => void run(downloadCard, true)}
-                disabled={busy || !available}
-                haptic="selection"
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy || !available }}
-                style={[styles.action, (busy || !available) && styles.disabled]}
-              >
-                <Download size={19} color={scheme.onSecondaryContainer} />
-                <Text style={styles.actionText}>{s.download}</Text>
-              </SpringPressable>
-              <SpringPressable
-                onPress={() => void run(() => Share.share({ title: s.title, message }))}
-                disabled={busy || !available}
-                haptic="selection"
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy || !available }}
-                style={[styles.action, (busy || !available) && styles.disabled]}
-              >
-                <Link size={19} color={scheme.onSecondaryContainer} />
-                <Text style={styles.actionText}>{s.linkOnly}</Text>
-              </SpringPressable>
-            </View>
-          )}
+          ) : preparingShare ? (
+            <ShareCardSkeleton />
+          ) : null}
 
           <Text style={styles.note}>{s.nativeHint}</Text>
           <Text style={styles.note}>{s.privacy}</Text>
         </BottomSheetScrollView>
+
+        <View style={styles.footer}>
+          <View style={styles.footerInner}>
+            {(error || shareFailed) && (
+              <Text style={styles.error} accessibilityRole="alert">
+                {error || s.error}
+              </Text>
+            )}
+
+            {preparingShare && !available && (
+              <SkeletonPulse style={styles.urlBar}>
+                <SkeletonBone width={16} height={16} radius={shape.full} />
+                <SkeletonBone width="58%" height={14} radius={6} />
+              </SkeletonPulse>
+            )}
+
+            {available && (
+              <SpringPressable
+                onPress={() =>
+                  void run(async () => {
+                    await Clipboard.setStringAsync(url);
+                    setCopied(true);
+                  })
+                }
+                disabled={busy}
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityLabel={copied ? s.copied : s.copy}
+                style={styles.urlBar}
+              >
+                <Link size={16} color={scheme.primary} />
+                <Text style={styles.urlText} numberOfLines={1} ellipsizeMode="middle">
+                  {displayUrl}
+                </Text>
+                <View style={[styles.urlCopyChip, copied && styles.urlCopyChipDone]}>
+                  {copied ? (
+                    <Check size={14} color={scheme.onPrimaryContainer} />
+                  ) : (
+                    <Copy size={14} color={scheme.onSecondaryContainer} />
+                  )}
+                  <Text style={[styles.urlCopyText, copied && styles.urlCopyTextDone]}>
+                    {copied ? s.copied : s.copy}
+                  </Text>
+                </View>
+              </SpringPressable>
+            )}
+
+            <SpringPressable
+              onPress={() => void run(Platform.OS === 'web' ? shareWebLink : shareCard)}
+              disabled={busy || !available}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityState={{ busy, disabled: busy || !available }}
+              style={[styles.primary, (busy || !available) && styles.disabled]}
+            >
+              {busy ? (
+                <ActivityIndicator color={scheme.onPrimary} />
+              ) : Platform.OS === 'web' ? (
+                <Share2 size={20} color={scheme.onPrimary} />
+              ) : (
+                <ImageUp size={20} color={scheme.onPrimary} />
+              )}
+              <Text style={styles.primaryText}>
+                {busy ? s.preparing : Platform.OS === 'web' ? s.linkOnly : s.imageAndLink}
+              </Text>
+            </SpringPressable>
+
+            {Platform.OS !== 'web' && (
+              <View style={styles.actions}>
+                <SpringPressable
+                  onPress={() => void run(downloadCard, true)}
+                  disabled={busy || !available}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy || !available }}
+                  style={[styles.action, (busy || !available) && styles.disabled]}
+                >
+                  <Download size={19} color={scheme.onSecondaryContainer} />
+                  <Text style={styles.actionText}>{s.download}</Text>
+                </SpringPressable>
+                <SpringPressable
+                  onPress={() => void run(() => Share.share({ title: s.title, message }))}
+                  disabled={busy || !available}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy || !available }}
+                  style={[styles.action, (busy || !available) && styles.disabled]}
+                >
+                  <Link size={19} color={scheme.onSecondaryContainer} />
+                  <Text style={styles.actionText}>{s.linkOnly}</Text>
+                </SpringPressable>
+              </View>
+            )}
+          </View>
+        </View>
       </View>
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    overflow: 'hidden',
+  },
   sheet: {
     backgroundColor: scheme.surfaceContainerLow,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
   },
-  handle: { backgroundColor: scheme.outline, width: 36 },
+  handleContainer: {
+    height: HANDLE_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handle: {
+    backgroundColor: scheme.outline,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -343,27 +483,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 14,
     backgroundColor: scheme.surfaceContainerHigh,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
+  },
+  scroll: {
+    flex: 1,
+    minHeight: 0,
   },
   content: {
     paddingHorizontal: 18,
-    gap: 14,
+    paddingTop: 2,
+    paddingBottom: 16,
+    gap: 12,
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
+  },
+  footer: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+  },
+  footerInner: {
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
+    gap: 10,
   },
   urlBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    minHeight: 50,
+    minHeight: 46,
     paddingLeft: 14,
     paddingRight: 8,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   urlText: {
@@ -399,9 +559,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    minHeight: 54,
+    minHeight: 50,
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: shape.full,
     backgroundColor: scheme.primary,
   },
@@ -420,9 +580,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    minHeight: 50,
+    minHeight: 46,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: scheme.secondaryContainer,
     borderRadius: shape.full,
   },
@@ -433,6 +593,39 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   error: { ...type.bodyMedium, color: scheme.error },
+  cardSkeleton: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 16,
+    gap: 14,
+  },
+  skelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skelHero: {
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: scheme.surfaceContainerLow,
+    gap: 12,
+  },
+  skelKpiRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  skelTimesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skelBody: {
+    gap: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.5 },
 });

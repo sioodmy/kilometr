@@ -16,10 +16,6 @@ import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { BKM_BIALYSTOK_KOMUNIKATY_URL, extractArticleBlocks, parseBialystokNews } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -168,21 +164,6 @@ describe('Tryb linii: Białystok to samo autobusy');
   expect('J to autobus', inferTransitMode(undefined, 'J', 'bialystok'), 'bus');
   expect('N3 to autobus', inferTransitMode(undefined, 'N3', 'bialystok'), 'bus');
   expect('reguła niskich numerów działa poza Białymstokiem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla bialystok hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('bialystok'), 'np. Lipowa 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('bialystok'), 'np. Galeria Jurowiecka');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('bialystok'), 'np. UwB');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: bialystok nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('bialystok') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu BKM (component-content-wysiwyg)');

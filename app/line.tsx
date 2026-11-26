@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   FlatList,
@@ -9,14 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AlertCircle,
   ArrowRight,
@@ -32,6 +25,7 @@ import {
 } from '../src/components/icons';
 import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
 import { MorphingLoader } from '../src/components/MorphingLoader';
+import { SkeletonBone, SkeletonPulse } from '../src/components/SkeletonPulse';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { StopDeparturesSheet } from '../src/components/StopDeparturesSheet';
 import { TimetableDeparturesView } from '../src/components/TimetableDeparturesView';
@@ -54,14 +48,262 @@ import {
   type LineStop,
 } from '../src/services/lineTimetable';
 import { useLineTimetable } from '../src/services/useLineTimetable';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import { resolveRailStrokeColor } from '../src/theme/colorContrast';
 import { useWebLayout } from '../src/theme/layout';
-import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import type { LegMode } from '../src/types/models';
 
 const RAIL_COL_W = 28;
 const SPINE_W = 3;
+
+const stopKeyExtractor = (item: LineStop, index: number) => `${item.id}:${index}`;
+
+interface LineStopRowProps {
+  item: LineStop;
+  index: number;
+  total: number;
+  firstPhysicalIdx: number;
+  lastPhysicalIdx: number;
+  boardingIndex: number;
+  alightingIndex: number;
+  hasFullSegment: boolean;
+  railStroke: string;
+  nowSec: number;
+  isToday: boolean;
+  desktopSelected: boolean;
+  onSelect: (index: number) => void;
+  s: ReturnType<typeof useStrings>;
+}
+
+const LineStopRow = memo(function LineStopRow({
+  item,
+  index,
+  total,
+  firstPhysicalIdx,
+  lastPhysicalIdx,
+  boardingIndex,
+  alightingIndex,
+  hasFullSegment,
+  railStroke,
+  nowSec,
+  isToday,
+  desktopSelected,
+  onSelect,
+  s,
+}: LineStopRowProps) {
+  const t = s.lineTimetable;
+  const isFirstRow = index === 0;
+  const isLastRow = index === total - 1;
+  const boundary = parseFareBoundary(item.name);
+  const isFirst = index === firstPhysicalIdx;
+  const isTerminal = index === lastPhysicalIdx;
+  const isBoarding = index === boardingIndex;
+  const isAlighting = index === alightingIndex;
+  const inSegment = hasFullSegment
+    ? index >= boardingIndex && index <= alightingIndex
+    : true;
+  const topRailActive = hasFullSegment
+    ? index > boardingIndex && index <= alightingIndex
+    : true;
+  const bottomRailActive = hasFullSegment
+    ? index >= boardingIndex && index < alightingIndex
+    : true;
+
+  if (boundary) {
+    const lineColor =
+      topRailActive && bottomRailActive ? railStroke : scheme.outlineVariant;
+    return (
+      <View
+        style={[
+          styles.stopCardSlice,
+          isFirstRow && styles.stopCardFirst,
+          isLastRow && styles.stopCardLast,
+        ]}
+        accessibilityRole="text"
+      >
+        <View style={styles.boundaryRow}>
+          <View style={styles.railCol}>
+            <View style={[styles.railContinuous, { backgroundColor: lineColor }]} />
+          </View>
+          <View
+            style={[styles.boundaryContentCol, !isFirstRow && styles.stopContentDivider]}
+          >
+            <View style={styles.boundaryChip}>
+              <Ticket size={14} color={scheme.onSecondaryContainer} />
+              <View style={styles.boundaryText}>
+                <Text style={styles.boundaryTitle}>{s.leg.fareBoundary}</Text>
+                <Text style={styles.boundaryDetail}>
+                  {s.leg.fareBoundaryDetail(boundary.areas, boundary.point)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  const nodeColor = inSegment || isBoarding || isAlighting ? railStroke : scheme.outline;
+  const stopNextDep = !isTerminal
+    ? findNextDeparture(item.departures, nowSec, isToday)
+    : null;
+  const highlightedRow = isBoarding || isAlighting;
+  const rowBg = desktopSelected
+    ? scheme.primaryContainer
+    : highlightedRow
+      ? scheme.surfaceContainerHigh
+      : scheme.surfaceContainer;
+
+  const rowA11y = [
+    t.selectStop(item.name),
+    item.code ? t.stopCode(item.code) : '',
+    isBoarding ? t.boardingStop : '',
+    isAlighting ? t.alightingStop : '',
+    isTerminal
+      ? t.terminal
+      : stopNextDep
+        ? `${timetableClock(stopNextDep.seconds)} (${
+            stopNextDep.minutesUntil <= 0
+              ? s.common.departNow
+              : s.common.departIn(stopNextDep.minutesUntil)
+          })`
+        : item.departures.length > 0
+          ? t.departuresCount(item.departures.length)
+          : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return (
+    <View
+      style={[
+        styles.stopCardSlice,
+        isFirstRow && styles.stopCardFirst,
+        isLastRow && styles.stopCardLast,
+        highlightedRow && styles.stopCardHighlighted,
+        desktopSelected && styles.stopCardSelectedDesktop,
+      ]}
+    >
+      <SpringPressable
+        onPress={() => onSelect(index)}
+        haptic="selection"
+        scaleDelta={0.012}
+        accessibilityRole="button"
+        accessibilityLabel={rowA11y}
+        style={styles.stopRow}
+      >
+        <View style={styles.railCol}>
+          {!isFirstRow && (
+            <View
+              style={[
+                styles.railTop,
+                { backgroundColor: topRailActive ? railStroke : scheme.outlineVariant },
+              ]}
+            />
+          )}
+          {!isLastRow && (
+            <View
+              style={[
+                styles.railBottom,
+                {
+                  backgroundColor: bottomRailActive
+                    ? railStroke
+                    : scheme.outlineVariant,
+                },
+              ]}
+            />
+          )}
+          {isTerminal || isAlighting ? (
+            <View style={[styles.nodeFilled, { backgroundColor: nodeColor }]} />
+          ) : isFirst || isBoarding ? (
+            <View
+              style={[
+                styles.nodeHollowLarge,
+                { borderColor: nodeColor, backgroundColor: rowBg },
+              ]}
+            />
+          ) : (
+            <View
+              style={[
+                styles.nodeRing,
+                { borderColor: nodeColor, backgroundColor: rowBg },
+              ]}
+            />
+          )}
+        </View>
+
+        <View style={[styles.stopContentCol, !isFirstRow && styles.stopContentDivider]}>
+          <View style={styles.stopMainCol}>
+            <Text
+              style={[
+                styles.stopName,
+                (isFirst || isTerminal || highlightedRow || desktopSelected) &&
+                  styles.stopNameStrong,
+                hasFullSegment && !inSegment && !desktopSelected && styles.stopNameMuted,
+                desktopSelected && styles.stopNameSelectedDesktop,
+              ]}
+              numberOfLines={2}
+            >
+              {item.name}
+            </Text>
+            {(!!item.code || isBoarding || isAlighting || isTerminal) && (
+              <View style={styles.stopBadgesRow}>
+                {isBoarding && (
+                  <View style={styles.tripStopBadge}>
+                    <Text style={styles.tripStopBadgeText}>{t.boardingStop}</Text>
+                  </View>
+                )}
+                {isAlighting && (
+                  <View style={styles.tripStopBadge}>
+                    <Text style={styles.tripStopBadgeText}>{t.alightingStop}</Text>
+                  </View>
+                )}
+                {!!item.code && (
+                  <View style={styles.platformBadge}>
+                    <Text style={styles.platformBadgeText}>
+                      {t.stopCode(item.code)}
+                    </Text>
+                  </View>
+                )}
+                {isTerminal && (
+                  <Text style={styles.terminalCaption}>{t.terminal}</Text>
+                )}
+              </View>
+            )}
+          </View>
+
+          {!isTerminal && (
+            <View style={styles.stopRightCol}>
+              {stopNextDep ? (
+                <View style={styles.stopNextTimeCol}>
+                  <Text
+                    style={[
+                      styles.stopNextClock,
+                      isBoarding && styles.stopNextClockAccent,
+                    ]}
+                  >
+                    {timetableClock(stopNextDep.seconds)}
+                  </Text>
+                  <Text style={styles.stopNextEta}>
+                    {stopNextDep.minutesUntil <= 0
+                      ? s.common.departNow
+                      : s.common.departIn(stopNextDep.minutesUntil)}
+                  </Text>
+                </View>
+              ) : item.departures.length > 0 ? (
+                <Text style={styles.stopTripCount}>
+                  {t.departuresCount(item.departures.length)}
+                </Text>
+              ) : null}
+              <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+            </View>
+          )}
+        </View>
+      </SpringPressable>
+    </View>
+  );
+});
 
 /** Zwraca aktualny czas dnia w sekundach w strefie Europe/Warsaw (zgodny z GTFS). */
 function nowSecondsInWarsaw(): number {
@@ -91,7 +333,6 @@ export default function LineScreen() {
     fromStop,
     toStop,
     dbTarget,
-    fromY: fromYParam,
     departAt,
     arriveAt,
   } = useLocalSearchParams<{
@@ -105,7 +346,6 @@ export default function LineScreen() {
     fromStop?: string;
     toStop?: string;
     dbTarget?: string;
-    fromY?: string;
     departAt?: string;
     arriveAt?: string;
   }>();
@@ -115,7 +355,7 @@ export default function LineScreen() {
   const t = s.lineTimetable;
   const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
-  const reduceMotion = useReducedMotion();
+  const transitionSettled = useScreenTransitionSettled();
   const { width, fontScale } = useWindowDimensions();
   const stackTwoDirections = width / fontScale < 360;
 
@@ -141,6 +381,7 @@ export default function LineScreen() {
     line,
     mode: mode as LegMode | undefined,
     dbTarget,
+    defer: !transitionSettled,
   });
 
   const [patternId, setPatternId] = useState('');
@@ -153,58 +394,6 @@ export default function LineScreen() {
     setSheetStopIndex(null);
     scrolledForKeyRef.current = '';
   }, [routeId, direction, tripId, line]);
-
-  const fromY = useMemo(() => {
-    if (!fromYParam) return undefined;
-    const parsed = Number(fromYParam);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }, [fromYParam]);
-
-  // Płynne przejście M3 Expressive z pozycji karty linii w szczegółach połączenia.
-  const heroProgress = useSharedValue(reduceMotion ? 1 : 0);
-  const heroDeltaY = useSharedValue(fromY != null ? 56 : 16);
-  const heroMeasuredRef = useRef(false);
-  const heroViewRef = useRef<View>(null);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      heroProgress.value = 1;
-      return;
-    }
-    if (fromY == null) {
-      heroDeltaY.value = 16;
-      heroProgress.value = withSpring(1, motion.spring.spatialDefault);
-    }
-  }, [fromY, heroDeltaY, heroProgress, reduceMotion]);
-
-  const handleHeroLayout = useCallback(() => {
-    if (heroMeasuredRef.current || reduceMotion || fromY == null) return;
-    heroMeasuredRef.current = true;
-    heroViewRef.current?.measureInWindow((_x, y) => {
-      const rawDelta = fromY - y;
-      heroDeltaY.value = Math.max(-320, Math.min(420, rawDelta));
-      heroProgress.value = withSpring(1, motion.spring.spatialDefault);
-    });
-  }, [fromY, heroDeltaY, heroProgress, reduceMotion]);
-
-  const heroAnimStyle = useAnimatedStyle(() => {
-    const p = heroProgress.value;
-    return {
-      opacity: interpolate(p, [0, 0.45, 1], [0.45, 0.96, 1]),
-      transform: [
-        { translateY: interpolate(p, [0, 1], [heroDeltaY.value, 0]) },
-        { scale: interpolate(p, [0, 1], [0.965, 1]) },
-      ],
-    };
-  });
-
-  const bodyAnimStyle = useAnimatedStyle(() => {
-    const p = heroProgress.value;
-    return {
-      opacity: interpolate(p, [0, 0.3, 1], [0, 0.72, 1]),
-      transform: [{ translateY: interpolate(p, [0, 1], [14, 0]) }],
-    };
-  });
 
   const matchedPattern = useMemo(
     () =>
@@ -336,219 +525,24 @@ export default function LineScreen() {
       : null;
 
   const renderStopItem = useCallback(
-    ({ item, index }: { item: LineStop; index: number }) => {
-      const total = pattern?.stops.length ?? 0;
-      const isFirstRow = index === 0;
-      const isLastRow = index === total - 1;
-      const boundary = parseFareBoundary(item.name);
-      const isFirst = index === firstPhysicalIdx;
-      const isTerminal = index === lastPhysicalIdx;
-      const isBoarding = index === boardingIndex;
-      const isAlighting = index === alightingIndex;
-      const inSegment = hasFullSegment
-        ? index >= boardingIndex && index <= alightingIndex
-        : true;
-      const topRailActive = hasFullSegment
-        ? index > boardingIndex && index <= alightingIndex
-        : true;
-      const bottomRailActive = hasFullSegment
-        ? index >= boardingIndex && index < alightingIndex
-        : true;
-
-      if (boundary) {
-        const lineColor =
-          topRailActive && bottomRailActive ? railStroke : scheme.outlineVariant;
-        return (
-          <View
-            style={[
-              styles.stopCardSlice,
-              isFirstRow && styles.stopCardFirst,
-              isLastRow && styles.stopCardLast,
-            ]}
-            accessibilityRole="text"
-          >
-            <View style={styles.boundaryRow}>
-              <View style={styles.railCol}>
-                <View style={[styles.railContinuous, { backgroundColor: lineColor }]} />
-              </View>
-              <View
-                style={[styles.boundaryContentCol, !isFirstRow && styles.stopContentDivider]}
-              >
-                <View style={styles.boundaryChip}>
-                  <Ticket size={14} color={scheme.onSecondaryContainer} />
-                  <View style={styles.boundaryText}>
-                    <Text style={styles.boundaryTitle}>{s.leg.fareBoundary}</Text>
-                    <Text style={styles.boundaryDetail}>
-                      {s.leg.fareBoundaryDetail(boundary.areas, boundary.point)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </View>
-        );
-      }
-      const nodeColor = inSegment || isBoarding || isAlighting ? railStroke : scheme.outline;
-      const stopNextDep = !isTerminal
-        ? findNextDeparture(item.departures, nowSec, isToday)
-        : null;
-      const highlightedRow = isBoarding || isAlighting;
-      const selectedOnDesktop = webLayout.isDesktop && index === desktopStopIndex;
-      const rowBg = selectedOnDesktop
-        ? scheme.primaryContainer
-        : highlightedRow
-          ? scheme.surfaceContainerHigh
-          : scheme.surfaceContainer;
-
-      const rowA11y = [
-        t.selectStop(item.name),
-        item.code ? t.stopCode(item.code) : '',
-        isBoarding ? t.boardingStop : '',
-        isAlighting ? t.alightingStop : '',
-        isTerminal
-          ? t.terminal
-          : stopNextDep
-            ? `${timetableClock(stopNextDep.seconds)} (${
-                stopNextDep.minutesUntil <= 0
-                  ? s.common.departNow
-                  : s.common.departIn(stopNextDep.minutesUntil)
-              })`
-            : item.departures.length > 0
-              ? t.departuresCount(item.departures.length)
-              : '',
-      ]
-        .filter(Boolean)
-        .join(', ');
-
-      return (
-        <View
-          style={[
-            styles.stopCardSlice,
-            isFirstRow && styles.stopCardFirst,
-            isLastRow && styles.stopCardLast,
-            highlightedRow && styles.stopCardHighlighted,
-            selectedOnDesktop && styles.stopCardSelectedDesktop,
-          ]}
-        >
-          <SpringPressable
-            onPress={() => setSheetStopIndex(index)}
-            haptic="selection"
-            scaleDelta={0.012}
-            accessibilityRole="button"
-            accessibilityLabel={rowA11y}
-            style={styles.stopRow}
-          >
-            <View style={styles.railCol}>
-              {!isFirstRow && (
-                <View
-                  style={[
-                    styles.railTop,
-                    { backgroundColor: topRailActive ? railStroke : scheme.outlineVariant },
-                  ]}
-                />
-              )}
-              {!isLastRow && (
-                <View
-                  style={[
-                    styles.railBottom,
-                    {
-                      backgroundColor: bottomRailActive
-                        ? railStroke
-                        : scheme.outlineVariant,
-                    },
-                  ]}
-                />
-              )}
-              {isTerminal || isAlighting ? (
-                <View style={[styles.nodeFilled, { backgroundColor: nodeColor }]} />
-              ) : isFirst || isBoarding ? (
-                <View
-                  style={[
-                    styles.nodeHollowLarge,
-                    { borderColor: nodeColor, backgroundColor: rowBg },
-                  ]}
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.nodeRing,
-                    { borderColor: nodeColor, backgroundColor: rowBg },
-                  ]}
-                />
-              )}
-            </View>
-
-            <View style={[styles.stopContentCol, !isFirstRow && styles.stopContentDivider]}>
-              <View style={styles.stopMainCol}>
-                <Text
-                  style={[
-                    styles.stopName,
-                    (isFirst || isTerminal || highlightedRow || selectedOnDesktop) &&
-                      styles.stopNameStrong,
-                    hasFullSegment && !inSegment && !selectedOnDesktop && styles.stopNameMuted,
-                    selectedOnDesktop && styles.stopNameSelectedDesktop,
-                  ]}
-                  numberOfLines={2}
-                >
-                  {item.name}
-                </Text>
-                {(!!item.code || isBoarding || isAlighting || isTerminal) && (
-                  <View style={styles.stopBadgesRow}>
-                    {isBoarding && (
-                      <View style={styles.tripStopBadge}>
-                        <Text style={styles.tripStopBadgeText}>{t.boardingStop}</Text>
-                      </View>
-                    )}
-                    {isAlighting && (
-                      <View style={styles.tripStopBadge}>
-                        <Text style={styles.tripStopBadgeText}>{t.alightingStop}</Text>
-                      </View>
-                    )}
-                    {!!item.code && (
-                      <View style={styles.platformBadge}>
-                        <Text style={styles.platformBadgeText}>
-                          {t.stopCode(item.code)}
-                        </Text>
-                      </View>
-                    )}
-                    {isTerminal && (
-                      <Text style={styles.terminalCaption}>{t.terminal}</Text>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {!isTerminal && (
-                <View style={styles.stopRightCol}>
-                  {stopNextDep ? (
-                    <View style={styles.stopNextTimeCol}>
-                      <Text
-                        style={[
-                          styles.stopNextClock,
-                          isBoarding && styles.stopNextClockAccent,
-                        ]}
-                      >
-                        {timetableClock(stopNextDep.seconds)}
-                      </Text>
-                      <Text style={styles.stopNextEta}>
-                        {stopNextDep.minutesUntil <= 0
-                          ? s.common.departNow
-                          : s.common.departIn(stopNextDep.minutesUntil)}
-                      </Text>
-                    </View>
-                  ) : item.departures.length > 0 ? (
-                    <Text style={styles.stopTripCount}>
-                      {t.departuresCount(item.departures.length)}
-                    </Text>
-                  ) : null}
-                  <ChevronRight size={18} color={scheme.onSurfaceVariant} />
-                </View>
-              )}
-            </View>
-          </SpringPressable>
-        </View>
-      );
-    },
+    ({ item, index }: { item: LineStop; index: number }) => (
+      <LineStopRow
+        item={item}
+        index={index}
+        total={pattern?.stops.length ?? 0}
+        firstPhysicalIdx={firstPhysicalIdx}
+        lastPhysicalIdx={lastPhysicalIdx}
+        boardingIndex={boardingIndex}
+        alightingIndex={alightingIndex}
+        hasFullSegment={hasFullSegment}
+        railStroke={railStroke}
+        nowSec={nowSec}
+        isToday={isToday}
+        desktopSelected={webLayout.isDesktop && index === desktopStopIndex}
+        onSelect={setSheetStopIndex}
+        s={s}
+      />
+    ),
     [
       alightingIndex,
       boardingIndex,
@@ -560,10 +554,7 @@ export default function LineScreen() {
       nowSec,
       pattern?.stops.length,
       railStroke,
-      s.common.departIn,
-      s.common.departNow,
-      s.leg,
-      t,
+      s,
       webLayout.isDesktop,
     ],
   );
@@ -600,195 +591,262 @@ export default function LineScreen() {
     </>
   );
 
-  const lineList = (
-    <FlatList
-      data={stopsData}
-      keyExtractor={(item, index) => `${item.id}:${index}`}
-      contentContainerStyle={[
-        styles.listContent,
-        webLayout.isDesktop && styles.listContentDesktop,
-        { paddingBottom: Math.max(insets.bottom, 16) + 28 },
-      ]}
-      showsVerticalScrollIndicator={false}
-      ListHeaderComponent={
-        <View style={styles.headerStack}>
-          {!!displayLine && (
-            <Animated.View
-              ref={heroViewRef}
-              onLayout={handleHeroLayout}
-              style={[styles.heroCard, heroAnimStyle]}
-            >
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroBadgeGroup}>
-                  <LineBadge line={displayLine} mode={displayMode} size="large" />
-                  <View style={styles.heroLineMeta}>
-                    <Text style={styles.heroLineTitle} numberOfLines={1}>
-                      {t.line(displayLine)}
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.headerStack}>
+        {!!displayLine && (
+          <View style={styles.heroCard}>
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroBadgeGroup}>
+                <LineBadge line={displayLine} mode={displayMode} size="large" />
+                <View style={styles.heroLineMeta}>
+                  <Text style={styles.heroLineTitle} numberOfLines={1}>
+                    {t.line(displayLine)}
+                  </Text>
+                  {!!data?.line?.longName && (
+                    <Text style={styles.heroLineLongName} numberOfLines={1}>
+                      {data.line.longName}
                     </Text>
-                    {!!data?.line?.longName && (
-                      <Text style={styles.heroLineLongName} numberOfLines={1}>
-                        {data.line.longName}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                <View style={styles.heroPillsRow}>
-                  {pattern && (
-                    <View style={styles.secondaryPill}>
-                      <Text style={styles.secondaryPillText}>
-                        {t.stopsCount(physicalStopsCount)}
-                      </Text>
-                    </View>
-                  )}
-                  {heroNextDep && (
-                    <View style={styles.primaryPill}>
-                      <Clock3 size={13} color={scheme.onPrimaryContainer} />
-                      <Text style={styles.primaryPillText}>
-                        {timetableClock(heroNextDep.seconds)} {'\u00b7'}{' '}
-                        {heroNextDep.minutesUntil <= 0
-                          ? s.common.departNow
-                          : s.common.departIn(heroNextDep.minutesUntil)}
-                      </Text>
-                    </View>
                   )}
                 </View>
               </View>
-
-              {!!displayHeadsign && (
-                <View style={styles.corridorBlock}>
-                  <Text style={styles.corridorEyebrow}>{t.direction}</Text>
-                  <Text style={styles.corridorHeadsign} numberOfLines={2}>
-                    {displayHeadsign}
-                  </Text>
-                  <View style={styles.corridorBridgeRow}>
-                    <View style={[styles.bridgeStartDot, { borderColor: railStroke }]} />
-                    <View style={[styles.bridgeLine, { backgroundColor: railStroke }]} />
-                    <View style={[styles.bridgeEndDot, { backgroundColor: railStroke }]} />
-                  </View>
-                  {!!originStop && (
-                    <Text style={styles.corridorOrigin} numberOfLines={1}>
-                      {t.fromOrigin(originStop.name)}
+              <View style={styles.heroPillsRow}>
+                {pattern && (
+                  <View style={styles.secondaryPill}>
+                    <Text style={styles.secondaryPillText}>
+                      {t.stopsCount(physicalStopsCount)}
                     </Text>
-                  )}
-                </View>
-              )}
-
-              {hasTripContext && (
-                <SpringPressable
-                  onPress={() => {
-                    if (boardingIndex >= 0) setSheetStopIndex(boardingIndex);
-                  }}
-                  disabled={boardingIndex < 0}
-                  haptic="selection"
-                  scaleDelta={0.015}
-                  accessibilityRole={boardingIndex >= 0 ? 'button' : undefined}
-                  accessibilityLabel={
-                    boardingIndex >= 0 && fromStop ? t.selectStop(fromStop) : t.yourTrip
-                  }
-                  style={styles.tripContextCard}
-                >
-                  <View style={styles.tripContextHeader}>
-                    <View style={styles.tripContextTag}>
-                      <Text style={styles.tripContextTagText}>{t.yourTrip}</Text>
-                    </View>
-                    {!!departAt && (
-                      <Text style={styles.tripContextTimes}>
-                        {departAt}
-                        {arriveAt ? ` \u2192 ${arriveAt}` : ''}
-                      </Text>
-                    )}
                   </View>
-                  <View style={styles.tripContextRouteRow}>
-                    <Text style={styles.tripContextStops} numberOfLines={1}>
-                      {fromStop ?? ''}
+                )}
+                {heroNextDep && (
+                  <View style={styles.primaryPill}>
+                    <Clock3 size={13} color={scheme.onPrimaryContainer} />
+                    <Text style={styles.primaryPillText}>
+                      {timetableClock(heroNextDep.seconds)} {'\u00b7'}{' '}
+                      {heroNextDep.minutesUntil <= 0
+                        ? s.common.departNow
+                        : s.common.departIn(heroNextDep.minutesUntil)}
                     </Text>
-                    {!!fromStop && !!toStop && (
-                      <ArrowRight size={14} color={scheme.onSurfaceVariant} />
-                    )}
-                    {!!toStop && (
-                      <Text style={styles.tripContextStops} numberOfLines={1}>
-                        {toStop}
-                      </Text>
-                    )}
-                    {boardingIndex >= 0 && (
-                      <ChevronRight size={18} color={scheme.onSurfaceVariant} />
-                    )}
                   </View>
-                </SpringPressable>
-              )}
-            </Animated.View>
-          )}
-
-          <Animated.View style={[styles.controlsStack, bodyAnimStyle]}>
-            <View style={styles.dateBar}>
-              <SpringPressable
-                onPress={() => {
-                  setDate(shiftTimetableDate(date, -1));
-                  setSheetStopIndex(null);
-                }}
-                haptic="selection"
-                scaleDelta={0.06}
-                accessibilityRole="button"
-                accessibilityLabel={t.previousDay}
-                style={styles.dateStepBtn}
-              >
-                <ChevronLeft size={20} color={scheme.onSurface} />
-              </SpringPressable>
-
-              <View style={styles.dateCenter}>
-                <Text style={styles.dateLabel} numberOfLines={1}>
-                  {dateCompact}
-                </Text>
-                {!isToday && (
-                  <SpringPressable
-                    onPress={() => {
-                      setDate(timetableToday());
-                      setSheetStopIndex(null);
-                    }}
-                    haptic="selection"
-                    scaleDelta={0.04}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    style={styles.todayPill}
-                  >
-                    <Text style={styles.todayPillText}>{s.common.today}</Text>
-                  </SpringPressable>
                 )}
               </View>
-
-              <SpringPressable
-                onPress={() => {
-                  setDate(shiftTimetableDate(date, 1));
-                  setSheetStopIndex(null);
-                }}
-                haptic="selection"
-                scaleDelta={0.06}
-                accessibilityRole="button"
-                accessibilityLabel={t.nextDay}
-                style={styles.dateStepBtn}
-              >
-                <ChevronRight size={20} color={scheme.onSurface} />
-              </SpringPressable>
             </View>
 
-            {patterns.length > 1 && (
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionEyebrow} accessibilityRole="header">
-                  {t.direction}
+            {!!displayHeadsign && (
+              <View style={styles.corridorBlock}>
+                <Text style={styles.corridorEyebrow}>{t.direction}</Text>
+                <Text style={styles.corridorHeadsign} numberOfLines={2}>
+                  {displayHeadsign}
                 </Text>
-                {patterns.length === 2 ? (
-                  <View
-                    style={[
-                      styles.twoDirRow,
-                      stackTwoDirections && styles.twoDirColumn,
-                    ]}
-                  >
-                    {patterns.map((item, index) => {
-                      const selected = item.id === pattern?.id;
-                      const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
-                      return (
+                <View style={styles.corridorBridgeRow}>
+                  <View style={[styles.bridgeStartDot, { borderColor: railStroke }]} />
+                  <View style={[styles.bridgeLine, { backgroundColor: railStroke }]} />
+                  <View style={[styles.bridgeEndDot, { backgroundColor: railStroke }]} />
+                </View>
+                {!!originStop && (
+                  <Text style={styles.corridorOrigin} numberOfLines={1}>
+                    {t.fromOrigin(originStop.name)}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {hasTripContext && (
+              <SpringPressable
+                onPress={() => {
+                  if (boardingIndex >= 0) setSheetStopIndex(boardingIndex);
+                }}
+                disabled={boardingIndex < 0}
+                haptic="selection"
+                scaleDelta={0.015}
+                accessibilityRole={boardingIndex >= 0 ? 'button' : undefined}
+                accessibilityLabel={
+                  boardingIndex >= 0 && fromStop ? t.selectStop(fromStop) : t.yourTrip
+                }
+                style={styles.tripContextCard}
+              >
+                <View style={styles.tripContextHeader}>
+                  <View style={styles.tripContextTag}>
+                    <Text style={styles.tripContextTagText}>{t.yourTrip}</Text>
+                  </View>
+                  {!!departAt && (
+                    <Text style={styles.tripContextTimes}>
+                      {departAt}
+                      {arriveAt ? ` \u2192 ${arriveAt}` : ''}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.tripContextRouteRow}>
+                  <Text style={styles.tripContextStops} numberOfLines={1}>
+                    {fromStop ?? ''}
+                  </Text>
+                  {!!fromStop && !!toStop && (
+                    <ArrowRight size={14} color={scheme.onSurfaceVariant} />
+                  )}
+                  {!!toStop && (
+                    <Text style={styles.tripContextStops} numberOfLines={1}>
+                      {toStop}
+                    </Text>
+                  )}
+                  {boardingIndex >= 0 && (
+                    <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+                  )}
+                </View>
+              </SpringPressable>
+            )}
+          </View>
+        )}
+
+        <View style={styles.controlsStack}>
+          <View style={styles.dateBar}>
+            <SpringPressable
+              onPress={() => {
+                setDate(shiftTimetableDate(date, -1));
+                setSheetStopIndex(null);
+              }}
+              haptic="selection"
+              scaleDelta={0.06}
+              accessibilityRole="button"
+              accessibilityLabel={t.previousDay}
+              style={styles.dateStepBtn}
+            >
+              <ChevronLeft size={20} color={scheme.onSurface} />
+            </SpringPressable>
+
+            <View style={styles.dateCenter}>
+              <Text style={styles.dateLabel} numberOfLines={1}>
+                {dateCompact}
+              </Text>
+              {!isToday && (
+                <SpringPressable
+                  onPress={() => {
+                    setDate(timetableToday());
+                    setSheetStopIndex(null);
+                  }}
+                  haptic="selection"
+                  scaleDelta={0.04}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  style={styles.todayPill}
+                >
+                  <Text style={styles.todayPillText}>{s.common.today}</Text>
+                </SpringPressable>
+              )}
+            </View>
+
+            <SpringPressable
+              onPress={() => {
+                setDate(shiftTimetableDate(date, 1));
+                setSheetStopIndex(null);
+              }}
+              haptic="selection"
+              scaleDelta={0.06}
+              accessibilityRole="button"
+              accessibilityLabel={t.nextDay}
+              style={styles.dateStepBtn}
+            >
+              <ChevronRight size={20} color={scheme.onSurface} />
+            </SpringPressable>
+          </View>
+
+          {patterns.length > 1 && (
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionEyebrow} accessibilityRole="header">
+                {t.direction}
+              </Text>
+              {patterns.length === 2 ? (
+                <View
+                  style={[
+                    styles.twoDirRow,
+                    stackTwoDirections && styles.twoDirColumn,
+                  ]}
+                >
+                  {patterns.map((item, index) => {
+                    const selected = item.id === pattern?.id;
+                    const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
+                    return (
+                      <SpringPressable
+                        key={item.id}
+                        onPress={() => {
+                          setPatternId(item.id);
+                          setSheetStopIndex(null);
+                        }}
+                        haptic="selection"
+                        scaleDelta={0.02}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        style={[
+                          styles.dirCard,
+                          !stackTwoDirections && styles.dirCardEqual,
+                          selected && styles.dirCardSelected,
+                        ]}
+                      >
+                        <View style={styles.dirCardHeader}>
+                          <View
+                            style={[
+                              styles.dirDot,
+                              {
+                                backgroundColor: selected
+                                  ? scheme.onPrimaryContainer
+                                  : railStroke,
+                              },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.dirHeadsign,
+                              selected && styles.dirHeadsignSelected,
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {item.headsign}
+                          </Text>
+                          {selected && (
+                            <Check size={16} color={scheme.onPrimaryContainer} />
+                          )}
+                        </View>
+                        <Text
+                          style={[
+                            styles.dirOrigin,
+                            selected && styles.dirOriginSelected,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {(item.stops.find((st) => !isFareBoundary(st.name)) ?? item.stops[0]).name}
+                          {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
+                        </Text>
+                      </SpringPressable>
+                    );
+                  })}
+                </View>
+              ) : (
+                <ScrollView
+                  ref={directionsScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.dirScrollContent}
+                >
+                  {patterns.map((item, index) => {
+                    const selected = item.id === pattern?.id;
+                    const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
+                    return (
+                      <View
+                        key={item.id}
+                        onLayout={(e) => {
+                          if (!selected || patternId) return;
+                          const key = `${resolvedRouteId}:${item.id}`;
+                          if (scrolledForKeyRef.current === key) return;
+                          scrolledForKeyRef.current = key;
+                          const x = e.nativeEvent.layout.x;
+                          if (x > 24) {
+                            directionsScrollRef.current?.scrollTo({
+                              x: Math.max(0, x - 14),
+                              animated: false,
+                            });
+                          }
+                        }}
+                      >
                         <SpringPressable
-                          key={item.id}
                           onPress={() => {
                             setPatternId(item.id);
                             setSheetStopIndex(null);
@@ -799,7 +857,7 @@ export default function LineScreen() {
                           accessibilityState={{ selected }}
                           style={[
                             styles.dirCard,
-                            !stackTwoDirections && styles.dirCardEqual,
+                            styles.dirCardScrollItem,
                             selected && styles.dirCardSelected,
                           ]}
                         >
@@ -838,114 +896,88 @@ export default function LineScreen() {
                             {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
                           </Text>
                         </SpringPressable>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <ScrollView
-                    ref={directionsScrollRef}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dirScrollContent}
-                  >
-                    {patterns.map((item, index) => {
-                      const selected = item.id === pattern?.id;
-                      const duplicate = (headsignCounts.get(item.headsign) ?? 0) > 1;
-                      return (
-                        <View
-                          key={item.id}
-                          onLayout={(e) => {
-                            if (!selected || patternId) return;
-                            const key = `${resolvedRouteId}:${item.id}`;
-                            if (scrolledForKeyRef.current === key) return;
-                            scrolledForKeyRef.current = key;
-                            const x = e.nativeEvent.layout.x;
-                            if (x > 24) {
-                              directionsScrollRef.current?.scrollTo({
-                                x: Math.max(0, x - 14),
-                                animated: false,
-                              });
-                            }
-                          }}
-                        >
-                          <SpringPressable
-                            onPress={() => {
-                              setPatternId(item.id);
-                              setSheetStopIndex(null);
-                            }}
-                            haptic="selection"
-                            scaleDelta={0.02}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected }}
-                            style={[
-                              styles.dirCard,
-                              styles.dirCardScrollItem,
-                              selected && styles.dirCardSelected,
-                            ]}
-                          >
-                            <View style={styles.dirCardHeader}>
-                              <View
-                                style={[
-                                  styles.dirDot,
-                                  {
-                                    backgroundColor: selected
-                                      ? scheme.onPrimaryContainer
-                                      : railStroke,
-                                  },
-                                ]}
-                              />
-                              <Text
-                                style={[
-                                  styles.dirHeadsign,
-                                  selected && styles.dirHeadsignSelected,
-                                ]}
-                                numberOfLines={2}
-                              >
-                                {item.headsign}
-                              </Text>
-                              {selected && (
-                                <Check size={16} color={scheme.onPrimaryContainer} />
-                              )}
-                            </View>
-                            <Text
-                              style={[
-                                styles.dirOrigin,
-                                selected && styles.dirOriginSelected,
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {(item.stops.find((st) => !isFareBoundary(st.name)) ?? item.stops[0]).name}
-                              {duplicate ? ` \u00b7 ${t.variant(index + 1)}` : ''}
-                            </Text>
-                          </SpringPressable>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </View>
-            )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          )}
 
-            {stopsData.length > 0 && (
-              <View style={styles.stopsHeaderRow}>
-                <Text style={styles.sectionEyebrow} accessibilityRole="header">
-                  {t.stops}
-                </Text>
-                <Text style={styles.stopsHint}>{t.stopsHint}</Text>
-              </View>
-            )}
-          </Animated.View>
+          {stopsData.length > 0 && (
+            <View style={styles.stopsHeaderRow}>
+              <Text style={styles.sectionEyebrow} accessibilityRole="header">
+                {t.stops}
+              </Text>
+              <Text style={styles.stopsHint}>{t.stopsHint}</Text>
+            </View>
+          )}
         </View>
-      }
-      renderItem={renderStopItem}
-      ListEmptyComponent={
+      </View>
+    ),
+    [
+      arriveAt,
+      boardingIndex,
+      data?.line?.longName,
+      date,
+      dateCompact,
+      departAt,
+      displayHeadsign,
+      displayLine,
+      displayMode,
+      fromStop,
+      hasTripContext,
+      headsignCounts,
+      heroNextDep,
+      isToday,
+      originStop,
+      pattern,
+      patternId,
+      patterns,
+      physicalStopsCount,
+      railStroke,
+      resolvedRouteId,
+      s.common.departIn,
+      s.common.departNow,
+      s.common.today,
+      stackTwoDirections,
+      stopsData.length,
+      t,
+      toStop,
+    ],
+  );
+
+  const listEmpty = useMemo(
+    () =>
+      loading || !transitionSettled ? (
+        <View style={styles.skeletonCard} accessibilityLiveRegion="polite" accessibilityLabel={t.loading}>
+          <SkeletonPulse>
+            {Array.from({ length: 6 }, (_, idx) => (
+              <View
+                key={idx}
+                style={[styles.stopRow, styles.skeletonStopRow, idx === 0 && styles.skeletonStopRowFirst]}
+              >
+                <View style={styles.railCol}>
+                  {idx > 0 && (
+                    <View style={[styles.railTop, { backgroundColor: scheme.outlineVariant }]} />
+                  )}
+                  {idx < 5 && (
+                    <View style={[styles.railBottom, { backgroundColor: scheme.outlineVariant }]} />
+                  )}
+                  <SkeletonBone width={12} height={12} radius={shape.full} />
+                </View>
+                <View style={styles.skeletonStopMain}>
+                  <SkeletonBone width={idx % 2 === 0 ? '68%' : '52%'} height={15} radius={6} />
+                  <SkeletonBone width={idx % 3 === 0 ? '36%' : '28%'} height={11} radius={5} tone="subtle" />
+                </View>
+                <SkeletonBone width={46} height={24} radius={shape.full} tone="subtle" />
+              </View>
+            ))}
+          </SkeletonPulse>
+        </View>
+      ) : (
         <View style={styles.stateCard} accessibilityLiveRegion="polite">
-          {loading ? (
-            <>
-              <MorphingLoader variant="contained" size={32} />
-              <Text style={styles.stateTitle}>{t.loading}</Text>
-            </>
-          ) : error ? (
+          {error ? (
             <>
               <View style={styles.stateIconCircle}>
                 <AlertCircle size={24} color={scheme.onSecondaryContainer} />
@@ -982,7 +1014,26 @@ export default function LineScreen() {
             </>
           )}
         </View>
-      }
+      ),
+    [data?.line, error, isToday, loading, retry, s.common.retry, s.common.today, t, transitionSettled],
+  );
+
+  const lineList = (
+    <FlatList
+      data={stopsData}
+      keyExtractor={stopKeyExtractor}
+      initialNumToRender={12}
+      maxToRenderPerBatch={10}
+      windowSize={7}
+      contentContainerStyle={[
+        styles.listContent,
+        webLayout.isDesktop && styles.listContentDesktop,
+        { paddingBottom: Math.max(insets.bottom, 16) + 28 },
+      ]}
+      showsVerticalScrollIndicator={false}
+      ListHeaderComponent={listHeader}
+      renderItem={renderStopItem}
+      ListEmptyComponent={listEmpty}
     />
   );
 
@@ -1001,7 +1052,7 @@ export default function LineScreen() {
     desktopStopIndex != null && pattern ? physicalStopOrdinal(pattern.stops, desktopStopIndex) : 0;
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       {webLayout.isDesktop ? (
         <View style={styles.desktopSplit}>
           <View style={[styles.desktopLeftCol, { width: webLayout.isWide ? 460 : 410 }]}>
@@ -1152,7 +1203,7 @@ export default function LineScreen() {
           )}
         </>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1209,7 +1260,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     backgroundColor: scheme.surfaceContainerLow,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
     ...elev.level1,
@@ -1257,7 +1308,7 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   desktopStepBtn: {
@@ -1301,7 +1352,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1321,7 +1372,7 @@ const styles = StyleSheet.create({
     padding: 3,
     borderRadius: shape.full,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   clusterBtn: {
@@ -1345,7 +1396,7 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     padding: 16,
     gap: 14,
@@ -1510,7 +1561,7 @@ const styles = StyleSheet.create({
     padding: 5,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     ...elev.level1,
   },
@@ -1579,7 +1630,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: scheme.surfaceContainer,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     justifyContent: 'center',
     gap: 4,
@@ -1639,20 +1690,20 @@ const styles = StyleSheet.create({
   },
   stopCardSlice: {
     backgroundColor: scheme.surfaceContainer,
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     overflow: 'hidden',
   },
   stopCardFirst: {
     borderTopLeftRadius: shape.extraLarge,
     borderTopRightRadius: shape.extraLarge,
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   stopCardLast: {
     borderBottomLeftRadius: shape.extraLarge,
     borderBottomRightRadius: shape.extraLarge,
-    borderBottomWidth: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   stopCardHighlighted: {
     backgroundColor: scheme.surfaceContainerHigh,
@@ -1754,7 +1805,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   stopContentDivider: {
-    borderTopWidth: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: scheme.outlineVariant,
   },
   stopMainCol: {
@@ -1845,10 +1896,32 @@ const styles = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
   },
+  skeletonCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  skeletonStopRow: {
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+  },
+  skeletonStopRowFirst: {
+    borderTopWidth: 0,
+  },
+  skeletonStopMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+    paddingVertical: 12,
+  },
   stateCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 24,
     paddingVertical: 32,

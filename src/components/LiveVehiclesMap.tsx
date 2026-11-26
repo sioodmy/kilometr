@@ -16,8 +16,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { WebMapFrame, type WebMapFrameHandle } from './WebMapFrame';
 import {
   buildLiveVehiclesMapDocument,
-  type LiveMapDelayHubItem,
-  type LiveMapDelayZoneItem,
+  type LiveMapDelaySegmentItem,
   type LiveMapDisruptionItem,
   type LiveMapInMessage,
   type LiveMapOutMessage,
@@ -25,7 +24,11 @@ import {
   type LiveMapStopItem,
   type LiveMapVehicleItem,
 } from '../map/liveVehiclesMapDocument';
-import { mapDocumentSource } from '../map/bundledMapLibre';
+import {
+  getCachedBundledMapLibreHead,
+  loadBundledMapLibreHead,
+  mapDocumentSource,
+} from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import { scheme } from '../theme/tokens';
 
@@ -44,15 +47,14 @@ interface LiveVehiclesMapProps {
   vehicles: LiveMapVehicleItem[];
   stops?: LiveMapStopItem[];
   disruptions?: LiveMapDisruptionItem[];
-  delayZones?: LiveMapDelayZoneItem[];
-  delayHubs?: LiveMapDelayHubItem[];
+  delaySegments?: LiveMapDelaySegmentItem[];
   selectedId: string | null;
   selectedStopId?: string | null;
   selectedRoute?: LiveMapSelectedRoute | null;
   selectedDisruptionId?: string | null;
-  selectedDelayHubId?: string | null;
+  selectedDelayId?: string | null;
   showDisruptions?: boolean;
-  showDelayHeatmap?: boolean;
+  showDelays?: boolean;
   showStops?: boolean;
   userLat?: number | null;
   userLon?: number | null;
@@ -61,7 +63,7 @@ interface LiveVehiclesMapProps {
   onSelectVehicle?: (vehicleId: string) => void;
   onSelectStop?: (stopId: string) => void;
   onSelectDisruption?: (disruptionId: string) => void;
-  onSelectDelayHub?: (hubId: string) => void;
+  onSelectDelay?: (delayId: string) => void;
   onClearSelection?: () => void;
   onUserDrag?: () => void;
   onZoomModeChange?: (mode: 'dots' | 'pills') => void;
@@ -69,6 +71,8 @@ interface LiveVehiclesMapProps {
   onTilesStatus?: (ok: boolean) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
+  onRendered?: () => void;
+  onReloading?: () => void;
 }
 
 /** Mapa wszystkich aktywnych pojazdów live, przystanków i korytarzy utrudnień. */
@@ -78,15 +82,14 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       vehicles,
       stops = [],
       disruptions = [],
-      delayZones = [],
-      delayHubs = [],
+      delaySegments = [],
       selectedId,
       selectedStopId = null,
       selectedRoute = null,
       selectedDisruptionId = null,
-      selectedDelayHubId = null,
+      selectedDelayId = null,
       showDisruptions = true,
-      showDelayHeatmap = false,
+      showDelays = false,
       showStops = true,
       userLat = null,
       userLon = null,
@@ -95,7 +98,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       onSelectVehicle,
       onSelectStop,
       onSelectDisruption,
-      onSelectDelayHub,
+      onSelectDelay,
       onClearSelection,
       onUserDrag,
       onZoomModeChange,
@@ -103,6 +106,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       onTilesStatus,
       onError,
       onReady,
+      onRendered,
+      onReloading,
     },
     ref,
   ) {
@@ -112,6 +117,23 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     const readyRef = useRef(false);
     const { cityId } = useActiveCity();
     const [attempt, setAttempt] = useState(0);
+    const [mapLibreHead, setMapLibreHead] = useState<string | null>(() =>
+      getCachedBundledMapLibreHead(),
+    );
+    useEffect(() => {
+      if (mapLibreHead !== null) return;
+      let cancelled = false;
+      void loadBundledMapLibreHead()
+        .then((head) => {
+          if (!cancelled) setMapLibreHead(head);
+        })
+        .catch((err) => {
+          if (!cancelled) onError?.(err instanceof Error ? err.message : 'maplibre-load-failed');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [mapLibreHead, onError]);
 
     const vehiclesRef = useRef(vehicles);
     vehiclesRef.current = vehicles;
@@ -119,10 +141,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     stopsRef.current = stops;
     const disruptionsRef = useRef(disruptions);
     disruptionsRef.current = disruptions;
-    const delayZonesRef = useRef(delayZones);
-    delayZonesRef.current = delayZones;
-    const delayHubsRef = useRef(delayHubs);
-    delayHubsRef.current = delayHubs;
+    const delaySegmentsRef = useRef(delaySegments);
+    delaySegmentsRef.current = delaySegments;
     const selectedIdRef = useRef(selectedId);
     selectedIdRef.current = selectedId;
     const selectedStopIdRef = useRef(selectedStopId);
@@ -131,12 +151,12 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     selectedRouteRef.current = selectedRoute;
     const selectedDisruptionIdRef = useRef(selectedDisruptionId);
     selectedDisruptionIdRef.current = selectedDisruptionId;
-    const selectedDelayHubIdRef = useRef(selectedDelayHubId);
-    selectedDelayHubIdRef.current = selectedDelayHubId;
+    const selectedDelayIdRef = useRef(selectedDelayId);
+    selectedDelayIdRef.current = selectedDelayId;
     const showDisruptionsRef = useRef(showDisruptions);
     showDisruptionsRef.current = showDisruptions;
-    const showDelayHeatmapRef = useRef(showDelayHeatmap);
-    showDelayHeatmapRef.current = showDelayHeatmap;
+    const showDelaysRef = useRef(showDelays);
+    showDelaysRef.current = showDelays;
     const showStopsRef = useRef(showStops);
     showStopsRef.current = showStops;
 
@@ -163,6 +183,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     }, [cityId, attempt]);
 
     const html = useMemo(() => {
+      if (mapLibreHead === null) return null;
       readyRef.current = false;
       firstLoad.current = true;
       return buildLiveVehiclesMapDocument({
@@ -171,19 +192,19 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         vehicles: vehiclesRef.current,
         stops: stopsRef.current,
         disruptions: disruptionsRef.current,
-        delayZones: delayZonesRef.current,
-        delayHubs: delayHubsRef.current,
+        delaySegments: delaySegmentsRef.current,
         selectedId: selectedIdRef.current,
         selectedStopId: selectedStopIdRef.current,
         selectedRoute: selectedRouteRef.current ?? null,
         selectedDisruptionId: selectedDisruptionIdRef.current,
-        selectedDelayHubId: selectedDelayHubIdRef.current,
+        selectedDelayId: selectedDelayIdRef.current,
         showDisruptions: showDisruptionsRef.current,
-        showDelayHeatmap: showDelayHeatmapRef.current,
+        showDelays: showDelaysRef.current,
         showStops: showStopsRef.current,
         userPos: userPosRef.current,
+        mapLibreHead,
       });
-    }, [attempt, cityId, initialCenter, offlineBase]);
+    }, [attempt, cityId, initialCenter, mapLibreHead, offlineBase]);
 
     const send = useCallback((msg: LiveMapInMessage) => {
       if (Platform.OS === 'web') {
@@ -198,8 +219,9 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     const restart = useCallback(() => {
       firstLoad.current = true;
       readyRef.current = false;
+      onReloading?.();
       setAttempt((a) => a + 1);
-    }, []);
+    }, [onReloading]);
 
     useImperativeHandle(
       ref,
@@ -255,13 +277,12 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     useEffect(() => {
       if (!readyRef.current) return;
       send({
-        t: 'delayHeatmap',
-        zones: delayZones,
-        hubs: delayHubs,
-        selectedDelayHubId,
-        visible: showDelayHeatmap,
+        t: 'delaySegments',
+        segments: delaySegments,
+        selectedDelayId,
+        visible: showDelays,
       });
-    }, [delayHubs, delayZones, selectedDelayHubId, send, showDelayHeatmap]);
+    }, [delaySegments, selectedDelayId, send, showDelays]);
 
     useEffect(() => {
       if (!readyRef.current) return;
@@ -290,11 +311,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
             visible: showDisruptionsRef.current,
           });
           send({
-            t: 'delayHeatmap',
-            zones: delayZonesRef.current,
-            hubs: delayHubsRef.current,
-            selectedDelayHubId: selectedDelayHubIdRef.current,
-            visible: showDelayHeatmapRef.current,
+            t: 'delaySegments',
+            segments: delaySegmentsRef.current,
+            selectedDelayId: selectedDelayIdRef.current,
+            visible: showDelaysRef.current,
           });
           send({ t: 'selectedRoute', route: selectedRouteRef.current ?? null });
           send({ t: 'stops', stops: stopsRef.current, selectedStopId: selectedStopIdRef.current });
@@ -309,6 +329,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           onReady?.();
           return;
         }
+        if (msg.t === 'rendered') {
+          onRendered?.();
+          return;
+        }
         if (msg.t === 'select') {
           onSelectVehicle?.(msg.vehicleId);
           return;
@@ -321,8 +345,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           onSelectDisruption?.(msg.disruptionId);
           return;
         }
-        if (msg.t === 'selectDelayHub') {
-          onSelectDelayHub?.(msg.hubId);
+        if (msg.t === 'selectDelay') {
+          onSelectDelay?.(msg.delayId);
           return;
         }
         if (msg.t === 'clearSelect') {
@@ -357,7 +381,8 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         onClearSelection,
         onError,
         onReady,
-        onSelectDelayHub,
+        onRendered,
+        onSelectDelay,
         onSelectDisruption,
         onSelectStop,
         onSelectVehicle,
@@ -373,6 +398,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       (event: WebViewMessageEvent) => handleRawMessage(event.nativeEvent.data),
       [handleRawMessage],
     );
+
+    if (html === null) {
+      return <View style={styles.wrap} />;
+    }
 
     if (Platform.OS === 'web') {
       return (

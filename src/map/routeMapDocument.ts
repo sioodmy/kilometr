@@ -8,7 +8,6 @@ import { scheme } from '../theme/tokens';
 import { MAP_ATTRIBUTION } from '../config';
 import { buildMapStyle, MAP_COLORS, POI_ICON_SPECS, POI_LAYER_IDS, ROUTE_SOURCE_ID } from './mapStyle';
 import type { MapRoute, MapVehicle } from './types';
-import { bundledMapLibreHead } from './bundledMapLibre';
 
 export interface RouteMapDocumentOptions {
   route: MapRoute | null;
@@ -36,6 +35,8 @@ export interface RouteMapDocumentOptions {
   maxZoom?: number;
   /** Czy automatycznie dopasowywać widok po dociągnięciu geometrii każdego odcinka trasy. */
   fitOnGeometry?: boolean;
+  /** Wstępnie zbudowany nagłówek HTML z silnikiem MapLibre i workerem. */
+  mapLibreHead?: string;
 }
 
 /**
@@ -763,19 +764,24 @@ const runtime = [
   '}',
   '',
   'function init() {',
-  '  map = new maplibregl.Map({',
-  '    container: "map",',
-  '    style: P.style,',
-  '    center: P.center || [0, 0],',
-  '    zoom: 13,',
-  '    minZoom: 3.5,',
-  '    maxZoom: 19,',
-  '    attributionControl: false,',
-  '    fadeDuration: 120,',
-  '    dragRotate: false,',
-  '    pitchWithRotate: false,',
-  '    touchPitch: false,',
-  '  });',
+  '  try {',
+  '    map = new maplibregl.Map({',
+  '      container: "map",',
+  '      style: P.style,',
+  '      center: P.center || [0, 0],',
+  '      zoom: 13,',
+  '      minZoom: 3.5,',
+  '      maxZoom: 19,',
+  '      attributionControl: false,',
+  '      fadeDuration: 120,',
+  '      dragRotate: false,',
+  '      pitchWithRotate: false,',
+  '      touchPitch: false,',
+  '    });',
+  '  } catch (err) {',
+  '    postError(err && err.message ? err.message : "ERR_MAP_INIT");',
+  '    return;',
+  '  }',
   '  map.dragRotate.disable();',
   '  map.touchZoomRotate.disableRotation();',
   '  map.keyboard.disable();',
@@ -790,6 +796,10 @@ const runtime = [
   '    post({ t: "open", url: a.href });',
   '  });',
   '  map.on("error", function (e) {',
+  '    if (e && e.error && !styleReady && /WebGL|GPU|context/i.test(String(e.error.message || e.error))) {',
+  '      postError(e.error.message || e.error);',
+  '      return;',
+  '    }',
   '    if (e && e.error && /Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE/.test(String(e.error.message || e.error))) {',
   '      loadFailures++;',
   '      if (loadFailures >= 6 && !tilesDown) { tilesDown = true; post({ t: "tiles", ok: false }); }',
@@ -897,7 +907,7 @@ export function buildRouteMapDocument(opts: RouteMapDocumentOptions): string {
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">',
     '<meta name="color-scheme" content="dark">',
-    bundledMapLibreHead(),
+    opts.mapLibreHead ?? '',
     '<title>Mapa trasy</title>',
     '<style>' + css() + '</style>',
     '</head>',

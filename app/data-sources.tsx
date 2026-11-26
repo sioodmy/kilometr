@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronDown, ChevronLeft, ExternalLink } from '../src/components/icons';
 import { useStrings } from '../src/i18n';
 import { CITIES, getCity, type CityId } from '../src/cities';
@@ -87,6 +87,7 @@ export default function DataSourcesScreen() {
   const s = useStrings();
   const d = s.dataSources;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const activeCity = getCity(cityId);
@@ -98,7 +99,7 @@ export default function DataSourcesScreen() {
   const [allCitiesOpen, setAllCitiesOpen] = useState(false);
 
   return (
-    <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
+    <View style={[st.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={[st.header, webLayout.isMedium && st.mediumCentered]}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))}
@@ -211,7 +212,7 @@ export default function DataSourcesScreen() {
             ))}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -618,6 +618,15 @@ export class ForegroundTransferProtection {
       for (const alt of urbanSwaps) addCandidate(alt);
     }
 
+    const groupAlts = this.findGroupAlternatives(
+      ride,
+      estimate,
+      bufferSec,
+      walkSpeedMps,
+      now,
+    );
+    for (const alt of groupAlts) addCandidate(alt);
+
     const raptorAlts = await this.findRaptorAlternatives(
       ride,
       estimate,
@@ -628,12 +637,188 @@ export class ForegroundTransferProtection {
     for (const alt of raptorAlts) addCandidate(alt);
 
     candidates.sort((a, b) => {
-      const scoreA = a.arrivalAtMs + (a.kind === 'sameStop' ? 0 : 180_000);
-      const scoreB = b.arrivalAtMs + (b.kind === 'sameStop' ? 0 : 180_000);
+      const directBonusA = a.source === 'group' && a.connection.transfers === 0 ? -120_000 : 0;
+      const directBonusB = b.source === 'group' && b.connection.transfers === 0 ? -120_000 : 0;
+      const scoreA = a.arrivalAtMs + (a.kind === 'sameStop' ? 0 : 180_000) + directBonusA;
+      const scoreB = b.arrivalAtMs + (b.kind === 'sameStop' ? 0 : 180_000) + directBonusB;
       return scoreA - scoreB;
     });
 
     return candidates.slice(0, MAX_ALTERNATIVES);
+  }
+
+  /** Sprawdza rodzeństwo z tej samej grupy pierwszego kursu (np. wariant bezpośredni). */
+  private findGroupAlternatives(
+    ride: Ride,
+    estimate: RideEstimate,
+    bufferSec: number,
+    walkSpeedMps: number,
+    now: number,
+  ): TransferAlternative[] {
+    const siblings = this.trip.groupAlternatives;
+    if (!siblings?.length || !ride.leg.tripId) return [];
+
+    const out: TransferAlternative[] = [];
+    const currentPos = Math.floor(estimate.position);
+
+    for (const sibling of siblings) {
+      const transitEntries = sibling.legs
+        .map((leg, idx) => ({ leg, idx }))
+        .filter(({ leg }) => leg.mode !== 'walk');
+      if (transitEntries.length === 0) continue;
+
+      const firstEntry = transitEntries[0];
+      if (firstEntry.leg.tripId !== ride.leg.tripId) continue;
+
+      const targetStop = ride.stops.find(
+        (s, idx) =>
+          idx > currentPos &&
+          stopIdMatch(s, firstEntry.leg.toStopId, firstEntry.leg.toStop),
+      );
+      if (!targetStop && transitEntries.length > 1) continue;
+
+      if (transitEntries.length === 1 || sibling.transfers === 0) {
+        const baseStopArrMs =
+          targetStop?.arriveSec != null
+            ? this.baseMs + targetStop.arriveSec * 1000
+            : targetStop?.departSec != null
+              ? this.baseMs + targetStop.departSec * 1000
+              : arrivalMsOf(sibling, this.firstDepartureMs);
+        const rideArriveMs = baseStopArrMs + estimate.delaySec * 1000;
+        const lastWalk =
+          sibling.legs[sibling.legs.length - 1]?.mode === 'walk'
+            ? sibling.legs[sibling.legs.length - 1]
+            : undefined;
+        const tailWalkM = lastWalk?.walkM ?? 0;
+        const tailWalkSec =
+          tailWalkM <= 25 ? 0 : Math.max(45, Math.round((tailWalkM * 1.15) / walkSpeedMps));
+        const finalArrMs = rideArriveMs + tailWalkSec * 1000;
+        if (finalArrMs < now + 30_000) continue;
+
+        const updatedLegs = sibling.legs.map((leg, idx) => {
+          if (idx === firstEntry.idx) {
+            return {
+              ...leg,
+              arriveAt: clockFromMs(rideArriveMs),
+              delaySec: estimate.delaySec,
+              arrivalDelaySec: estimate.delaySec,
+              live: true,
+            };
+          }
+          if (lastWalk && idx === sibling.legs.length - 1) {
+            return {
+              ...leg,
+              departAt: clockFromMs(rideArriveMs),
+              arriveAt: clockFromMs(finalArrMs),
+            };
+          }
+          return leg;
+        });
+
+        const updatedConnection: Connection = {
+          ...sibling,
+          legs: updatedLegs,
+          arriveAt: clockFromMs(finalArrMs),
+          durationMin: Math.max(1, Math.ceil((finalArrMs - this.firstDepartureMs) / 60_000)),
+          delayMin: Math.round(estimate.delaySec / 60),
+          live: true,
+        };
+
+        out.push({
+          id: `group-direct-${sibling.id}`,
+          connection: updatedConnection,
+          activeLegIndex: ride.legIndex,
+          nextLine: ride.leg.line ?? firstEntry.leg.line ?? '',
+          nextMode: ride.leg.mode,
+          transferStop: firstEntry.leg.toStop,
+          departureAtMs: this.rideTimes(ride).departMs + estimate.delaySec * 1000,
+          arrivalAtMs: finalArrMs,
+          validUntil: Math.max(now + 45_000, rideArriveMs - 30_000),
+          kind: 'stayOn',
+          source: 'group',
+          deltaArrivalMin: Math.round((finalArrMs - this.plannedArrivalMs) / 60_000),
+          walkM: 0,
+        });
+        continue;
+      }
+
+      if (!targetStop) continue;
+      const alightIdx = ride.stops.indexOf(targetStop);
+      const stopArriveMs =
+        targetStop.arriveSec != null
+          ? this.baseMs + targetStop.arriveSec * 1000
+          : targetStop.departSec != null
+            ? this.baseMs + targetStop.departSec * 1000
+            : this.rideTimes(ride).arriveMs;
+      const transferArriveMs = stopArriveMs + estimate.delaySec * 1000;
+      if (transferArriveMs < now + 30_000) continue;
+
+      const nextEntry = transitEntries[1];
+      if (isProtectedTrainLeg(nextEntry.leg)) continue;
+
+      const sibTimeline = computeLegTimeline(sibling, new Date(this.firstDepartureMs));
+      const nextScheduledDepMs =
+        sibTimeline[nextEntry.idx]?.departMs ?? this.firstDepartureMs;
+      const nextDelaySec =
+        this.freshLiveDelay(nextEntry.leg.tripId, now) ?? nextEntry.leg.delaySec ?? 0;
+      const nextDepMs = nextScheduledDepMs + nextDelaySec * 1000;
+
+      const { walkSec: sibWalkSec, walkM: sibWalkM } = walkBetweenLegs(
+        sibling.legs,
+        firstEntry.idx,
+        nextEntry.idx,
+        targetStop,
+        {
+          stopId: nextEntry.leg.fromStopId ?? '',
+          name: nextEntry.leg.fromStop,
+          lat: nextEntry.leg.fromLat,
+          lon: nextEntry.leg.fromLon,
+          seq: 0,
+        },
+        walkSpeedMps,
+      );
+
+      const sibSlackSec = Math.round((nextDepMs - transferArriveMs) / 1000) - sibWalkSec;
+      if (sibSlackSec < bufferSec) continue;
+
+      const finalArrMs = arrivalMsOf(sibling, this.firstDepartureMs);
+      const updatedLegs = sibling.legs.map((leg, idx) =>
+        idx === firstEntry.idx
+          ? {
+              ...leg,
+              arriveAt: clockFromMs(transferArriveMs),
+              delaySec: estimate.delaySec,
+              arrivalDelaySec: estimate.delaySec,
+              live: true,
+            }
+          : leg,
+      );
+      const updatedConnection: Connection = {
+        ...sibling,
+        legs: updatedLegs,
+        delayMin: Math.round(estimate.delaySec / 60),
+        live: true,
+      };
+
+      out.push({
+        id: `group-alt-${sibling.id}`,
+        connection: updatedConnection,
+        activeLegIndex: ride.legIndex,
+        nextLine: nextEntry.leg.line ?? '',
+        nextMode: nextEntry.leg.mode,
+        transferStop: firstEntry.leg.toStop,
+        departureAtMs: nextDepMs,
+        arrivalAtMs: finalArrMs,
+        validUntil: Math.max(now + 45_000, transferArriveMs - 30_000),
+        kind: alightIdx === ride.alight ? 'sameStop' : 'stayOn',
+        source: 'group',
+        deltaArrivalMin: Math.round((finalArrMs - this.plannedArrivalMs) / 60_000),
+        slackSec: sibSlackSec,
+        walkM: sibWalkM,
+      });
+    }
+
+    return out;
   }
 
   private async findUrbanLegSwapAlternatives(

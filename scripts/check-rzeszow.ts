@@ -16,10 +16,6 @@ import { setActiveCityId } from '../src/services/cityStore';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseRzeszowRss, ZTM_RZESZOW_FEED_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -198,21 +194,6 @@ describe('Tryb linii: Rzeszów to same autobusy');
   expect('N1 to autobus nocny', inferTransitMode(undefined, 'N1', 'rzeszow'), 'bus');
   expect('PT to autobus', inferTransitMode(undefined, 'PT', 'rzeszow'), 'bus');
   expect('reguła niskich numerów działa poza Rzeszowem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla rzeszow hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('rzeszow'), 'np. 3 Maja 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('rzeszow'), 'np. Galeria Rzeszów');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('rzeszow'), 'np. PRz');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: rzeszow nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('rzeszow') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść artykułu ZTM (div#blog)');

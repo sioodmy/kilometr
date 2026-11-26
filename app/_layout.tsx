@@ -22,6 +22,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
+import { enableFreeze } from 'react-native-screens';
 import { scheme } from '../src/theme/tokens';
 import { useWebLayout } from '../src/theme/layout';
 import { DesktopShell } from '../src/components/DesktopShell';
@@ -96,6 +97,9 @@ function readWebSafeAreaMetrics(): Metrics | undefined {
 }
 
 LogBox.ignoreAllLogs(true);
+if (Platform.OS !== 'web') {
+  enableFreeze(true);
+}
 
 function navigateFromNotification(res: TripResponse) {
   if (res.stop) {
@@ -129,7 +133,7 @@ function OnboardingGuard({ onCompleted }: { onCompleted: () => void }) {
   const redirectedRef = useRef(false);
 
   useEffect(() => {
-    if (redirectedRef.current) return;
+    if (redirectedRef.current || pathname === '/onboarding') return;
     redirectedRef.current = true;
     router.replace({
       pathname: '/onboarding',
@@ -201,13 +205,28 @@ export default function RootLayout() {
     [disableScreenAnim, themeSetting, webLayout.isMedium],
   );
 
+  const homeScreenOptions = useMemo(
+    () => ({
+      // Wyłączamy react-freeze na ekranie głównym, aby powrót gestem wstecz z listy połączeń
+      // nie musiał synchronicznie odmrażać całego drzewa widoków w klatce przejścia.
+      freezeOnBlur: false,
+    }),
+    [],
+  );
+
+  const routesScreenOptions = useMemo(
+    () => ({
+      fullScreenGestureEnabled: false,
+    }),
+    [],
+  );
+
   const mapScreenOptions = useMemo(
     () => ({
       gestureEnabled: !webLayout.isMedium,
       gestureDirection: 'horizontal' as const,
       // Na mapie gest z lewej krawędzi wraca wstecz bez przejmowania przesuwania mapy.
       fullScreenGestureEnabled: false,
-      gestureResponseDistance: { start: 32 },
       animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
       animationDuration: 200,
       animationMatchesGesture: false,
@@ -220,10 +239,7 @@ export default function RootLayout() {
     let isMounted = true;
 
     const initApp = async () => {
-      await Promise.all([
-        migrateFromSqliteKv(),
-        initRaptorWasmAsync().catch(() => false),
-      ]);
+      await migrateFromSqliteKv();
       await initLocale();
       const [seen] = await Promise.all([
         hasSeenOnboarding().catch((err) => {
@@ -262,6 +278,20 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(() => {
+      void initRaptorWasmAsync().catch(() => false);
+      if (needsOnboarding) {
+        // Rozpocznij pobieranie GTFS aktywnego miasta w tle już podczas onboardingu.
+        void import('../src/services/dataManager')
+          .then((m) => m.ensureActiveCityTimetable({ checkUpdates: true }))
+          .then((st) => {
+            if (st.state === 'ready') {
+              return import('../src/services/nationalTimetable').then((n) =>
+                n.ensureNationalTimetable(),
+              );
+            }
+          })
+          .catch(() => {});
+      }
       void refreshTrackedTrip().catch(() => {});
       void cleanupExpiredTickets().catch(() => {});
       startTicketCompensationMonitor();
@@ -274,10 +304,8 @@ export default function RootLayout() {
             await handle.getFirstAsync('SELECT bits FROM station_amenities LIMIT 1');
             await handle.getFirstAsync('SELECT bits FROM trip_amenities LIMIT 1');
           }
-          if (!needsOnboarding) {
-            const national = await import('../src/services/nationalTimetable');
-            void national.ensureNationalTimetable().catch(() => {});
-          }
+          const national = await import('../src/services/nationalTimetable');
+          void national.ensureNationalTimetable().catch(() => {});
         })
         .catch(() => {});
     }, 2500);
@@ -321,10 +349,14 @@ export default function RootLayout() {
           <TransferProtectionProvider key={themeSetting}>
             <DesktopShell>
               {needsOnboarding && <OnboardingGuard onCompleted={handleOnboardingCompleted} />}
-              <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
-                <Stack.Screen name="index" />
+              <Stack
+                initialRouteName={needsOnboarding ? 'onboarding' : 'index'}
+                screenLayout={renderScreenLayout}
+                screenOptions={stackScreenOptions}
+              >
+                <Stack.Screen name="index" options={homeScreenOptions} />
                 <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-                <Stack.Screen name="routes" />
+                <Stack.Screen name="routes" options={routesScreenOptions} />
                 <Stack.Screen name="line" />
                 <Stack.Screen name="line-departures" />
                 {/* Mapa ma własny gest przesuwania: cofanie działa z lewej krawędzi bez zjadania mapy. */}

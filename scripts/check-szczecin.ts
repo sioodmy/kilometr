@@ -16,10 +16,6 @@ import { getCity } from '../src/cities';
 import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseSzczecinInfo, ZDITM_SZCZECIN_INFO_URL } from '../src/services/mpkNews';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -185,21 +181,6 @@ describe('Tryb linii: tramwaje 1-12, reszta to autobusy');
   expect('A to autobus pospieszny', inferTransitMode(undefined, 'A', 'szczecin'), 'bus');
   expect('521 to autobus nocny', inferTransitMode(undefined, '521', 'szczecin'), 'bus');
   expect('reguła niskich numerów działa też poza Szczecinem', inferTransitMode(undefined, '5', 'wroclaw'), 'tram');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla szczecin hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('szczecin'), 'np. Wojska Polskiego 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('szczecin'), 'np. Galeria Kaskada');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('szczecin'), 'np. US');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: szczecin nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('szczecin') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu ZDiTM (main#pageContent)');

@@ -192,3 +192,34 @@ test('używa server stop_coords jako fallback gdy brak lokalnego GTFS', () => {
   assert.equal(markers[0].corridorCoords.length, 2);
   assert.equal(markers[0].shortLabel, 'wypadek');
 });
+
+test('wykrywa tryb tramwajowy korytarza i dobiera najblizsze slupki bez zygzakow', () => {
+  const { store, dayIndex } = makeStore();
+  // Dodajemy daleki słupek o tej samej nazwie przed bliższym, żeby zweryfikować dobór bez zygzaka.
+  const altStore = new LocalGtfsStore();
+  altStore.isLoaded = true;
+  altStore.stops.set('s1_far', {
+    stop_id: 's1_far',
+    stop_name: 'Galeria Dominikańska',
+    stop_lat: 51.113,
+    stop_lon: 17.032,
+    stop_code: '199',
+    normalized_name: 'galeria dominikanska',
+  });
+  for (const [k, v] of store.stops) altStore.stops.set(k, v);
+  for (const [k, v] of store.routes) altStore.routes.set(k, v);
+
+  const now = Date.parse('2026-11-15T12:00:00Z');
+  const item = makeItem({
+    corridor: {
+      label: 'ul. Krakowska',
+      from_stop: 'Galeria Dominikańska',
+      to_stop: 'Plac Zgody',
+      stops: ['Galeria Dominikańska', 'Plac Zgody'],
+    },
+  });
+  const markers = buildLiveMapDisruptions([item], altStore, dayIndex, now);
+  assert.equal(markers.length, 1);
+  assert.equal(markers[0].mode, 'tram');
+  assert.deepEqual(markers[0].corridorCoords[0], [17.0394, 51.1082]);
+});

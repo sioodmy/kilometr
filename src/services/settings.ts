@@ -1,18 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { kvGet, kvSet } from './storage';
 import type { AllowedTransferModes, TransitVehicleMode } from './routing/types';
-import { getLocaleSync, type Strings } from '../i18n';
-import { pl } from '../i18n/pl';
-import { en } from '../i18n/en';
-import { de } from '../i18n/de';
-import { uk } from '../i18n/uk';
-
-const SETTINGS_DICTS: Record<string, Strings> = { pl, en, de, uk };
-
-/** Słownik pod bieżące locale - do synchronicznych helperów formatujących. */
-function tr(): Strings {
-  return SETTINGS_DICTS[getLocaleSync()] ?? pl;
-}
+import { tr } from '../i18n/locale';
 
 /** Wariant tempa chodzenia wybierany w ustawieniach. */
 export type WalkPaceProfile = 'slow' | 'normal' | 'fast';

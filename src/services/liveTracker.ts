@@ -13,8 +13,9 @@ import {
   BinaryWriter,
   CMD_LIVE_LOAD_SCHEDULE,
   CMD_LIVE_MATCH_BATCH,
-  invokeRustSync,
+  invokeRustAsync,
 } from '../../modules/kilometr-raptor';
+import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './routing/yieldFrame';
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getCity } from '../cities';
@@ -293,6 +294,10 @@ class LiveTracker {
     this.tripDelays.clear();
     this.nationalTripDelays.clear();
     this.liveScheduleKey = null;
+    this.liveScheduleOffsets = undefined;
+    this.liveTripIds = [];
+    this.liveTripIndex.clear();
+    this.liveStopNames = [];
     this.latestDayIndex = null;
     this.sampleHistory.clear();
     this.lastOk = 0;
@@ -1481,10 +1486,15 @@ class LiveTracker {
 
   private liveScheduleKey: DayIndex | null = null;
   private liveScheduleOffsets: Map<string, number> | undefined;
+  private liveSchedulePromise: Promise<boolean> | null = null;
   private liveTripIds: string[] = [];
+  private liveTripIndex = new Map<string, number>();
   private liveStopNames: string[] = [];
 
-  private ensureLiveSchedule(dayIndex: DayIndex, offsets?: Map<string, number>): boolean {
+  private async ensureLiveScheduleAsync(
+    dayIndex: DayIndex,
+    offsets?: Map<string, number>,
+  ): Promise<boolean> {
     if (
       this.liveScheduleKey === dayIndex &&
       this.liveScheduleOffsets === offsets &&
@@ -1492,110 +1502,149 @@ class LiveTracker {
     ) {
       return true;
     }
-    const byLine = new Map<
-      string,
-      {
-        routeId: string;
-        stopSequence: string[];
-        trips: { trip_id: string; trip_headsign?: string }[];
-        offset: number;
-      }[]
-    >();
-    for (const [patternId, pattern] of dayIndex.patterns.entries()) {
-      const route = gtfsStore.routes.get(pattern.routeId);
-      const line = String(route?.route_short_name ?? pattern.routeId ?? '')
-        .trim()
-        .toUpperCase();
-      if (!line) continue;
-      let list = byLine.get(line);
-      if (!list) {
-        list = [];
-        byLine.set(line, list);
+    if (this.liveSchedulePromise) {
+      await this.liveSchedulePromise;
+      if (
+        this.liveScheduleKey === dayIndex &&
+        this.liveScheduleOffsets === offsets &&
+        this.liveTripIds.length > 0
+      ) {
+        return true;
       }
-      list.push({ ...pattern, offset: offsets?.get(patternId) ?? 0 });
     }
-    const tripIds: string[] = [];
-    const stopNames: string[] = [];
-    const w = new BinaryWriter(256);
-    w.u32(byLine.size);
-    for (const [line, patterns] of byLine) {
-      w.str(line).u32(patterns.length);
-      for (const { offset, ...pattern } of patterns) {
-        const seq: { nameIdx: number; lat: number; lon: number; pos: number }[] = [];
-        for (const [pos, stopId] of pattern.stopSequence.entries()) {
-          const stop = gtfsStore.stops.get(stopId);
-          if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
-          const nameIdx = stopNames.length;
-          stopNames.push(stop.stop_name || stopId);
-          seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, pos });
+    const task = (async () => {
+      const byLine = new Map<
+        string,
+        {
+          routeId: string;
+          stopSequence: string[];
+          trips: { trip_id: string; trip_headsign?: string }[];
+          offset: number;
+        }[]
+      >();
+      let sliceStart = performance.now();
+      let patCount = 0;
+      for (const [patternId, pattern] of dayIndex.patterns.entries()) {
+        const route = gtfsStore.routes.get(pattern.routeId);
+        const line = String(route?.route_short_name ?? pattern.routeId ?? '')
+          .trim()
+          .toUpperCase();
+        if (!line) continue;
+        let list = byLine.get(line);
+        if (!list) {
+          list = [];
+          byLine.set(line, list);
         }
-        w.u16(seq.length);
-        for (const node of seq)
-          w.u32(node.nameIdx)
-            .f64(node.lat)
-            .f64(node.lon)
-            .str(normalizeName(stopNames[node.nameIdx]));
-        const trips = pattern.trips;
-        w.u32(trips.length);
-        for (const trip of trips) {
-          const times = gtfsStore.stopTimes.get(trip.trip_id);
-          const tripIdx = tripIds.length;
-          tripIds.push(trip.trip_id);
-          w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
-          for (let i = 0; i < seq.length; i++) {
-            const t = times?.[seq[i].pos];
-            w.i32(t ? (t.departure_sec + offset) | 0 : -2147483648).i32(
-              t ? (t.arrival_sec + offset) | 0 : -2147483648,
-            );
+        list.push({ ...pattern, offset: offsets?.get(patternId) ?? 0 });
+        if ((++patCount & 63) === 0 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+          await yieldToUiFrame();
+          sliceStart = performance.now();
+        }
+      }
+      const tripIds: string[] = [];
+      const tripIndex = new Map<string, number>();
+      const stopNames: string[] = [];
+      const w = new BinaryWriter(256);
+      w.u32(byLine.size);
+      let writtenTrips = 0;
+      for (const [line, patterns] of byLine) {
+        w.str(line).u32(patterns.length);
+        for (const { offset, ...pattern } of patterns) {
+          const seq: { nameIdx: number; lat: number; lon: number; pos: number }[] = [];
+          for (const [pos, stopId] of pattern.stopSequence.entries()) {
+            const stop = gtfsStore.stops.get(stopId);
+            if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+            const nameIdx = stopNames.length;
+            stopNames.push(stop.stop_name || stopId);
+            seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, pos });
           }
-          const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
-          if (times) {
-            for (const t of times) {
-              const stop = gtfsStore.stops.get(t.stop_id);
-              if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
-              const dep = t.departure_sec ?? t.arrival_sec;
-              if (dep == null) continue;
-              const nameIdx = stopNames.length;
-              stopNames.push(stop.stop_name || t.stop_id);
-              fallback.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, dep: dep + offset });
+          w.u16(seq.length);
+          for (const node of seq)
+            w.u32(node.nameIdx)
+              .f64(node.lat)
+              .f64(node.lon)
+              .str(normalizeName(stopNames[node.nameIdx]));
+          const trips = pattern.trips;
+          w.u32(trips.length);
+          for (const trip of trips) {
+            const times = gtfsStore.stopTimes.get(trip.trip_id);
+            const tripIdx = tripIds.length;
+            tripIds.push(trip.trip_id);
+            tripIndex.set(trip.trip_id, tripIdx);
+            w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
+            for (let i = 0; i < seq.length; i++) {
+              const t = times?.[seq[i].pos];
+              w.i32(t ? (t.departure_sec + offset) | 0 : -2147483648).i32(
+                t ? (t.arrival_sec + offset) | 0 : -2147483648,
+              );
+            }
+            const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
+            if (times) {
+              for (const t of times) {
+                const stop = gtfsStore.stops.get(t.stop_id);
+                if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+                const dep = t.departure_sec ?? t.arrival_sec;
+                if (dep == null) continue;
+                const nameIdx = stopNames.length;
+                stopNames.push(stop.stop_name || t.stop_id);
+                fallback.push({
+                  nameIdx,
+                  lat: stop.stop_lat,
+                  lon: stop.stop_lon,
+                  dep: dep + offset,
+                });
+              }
+            }
+            w.u16(fallback.length);
+            for (const fb of fallback)
+              w.u32(fb.nameIdx)
+                .f64(fb.lat)
+                .f64(fb.lon)
+                .i32(fb.dep | 0)
+                .str(normalizeName(stopNames[fb.nameIdx]));
+            if ((++writtenTrips & 15) === 0 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+              await yieldToUiFrame();
+              sliceStart = performance.now();
             }
           }
-          w.u16(fallback.length);
-          for (const fb of fallback)
-            w.u32(fb.nameIdx)
-              .f64(fb.lat)
-              .f64(fb.lon)
-              .i32(fb.dep | 0)
-              .str(normalizeName(stopNames[fb.nameIdx]));
         }
       }
+      const res = await invokeRustAsync(CMD_LIVE_LOAD_SCHEDULE, w.finish());
+      if (!res || res.byteLength < 4) return false;
+      this.liveScheduleKey = dayIndex;
+      this.liveScheduleOffsets = offsets;
+      this.liveTripIds = tripIds;
+      this.liveTripIndex = tripIndex;
+      this.liveStopNames = stopNames;
+      return true;
+    })();
+    this.liveSchedulePromise = task;
+    try {
+      return await task;
+    } finally {
+      if (this.liveSchedulePromise === task) this.liveSchedulePromise = null;
     }
-    const res = invokeRustSync(CMD_LIVE_LOAD_SCHEDULE, w.finish());
-    if (!res || res.byteLength < 4) return false;
-    this.liveScheduleKey = dayIndex;
-    this.liveScheduleOffsets = offsets;
-    this.liveTripIds = tripIds;
-    this.liveStopNames = stopNames;
-    return true;
   }
 
-  private matchRowsRust(
+  private async matchRowsRustAsync(
     rows: RawVehicleRow[],
     dayIndex: DayIndex,
     nowSec: number,
     offsets?: Map<string, number>,
-  ): Map<string, { tracked: TrackedVehicle; score: number }> | null {
-    if (!this.ensureLiveSchedule(dayIndex, offsets)) return null;
+  ): Promise<Map<string, { tracked: TrackedVehicle; score: number }> | null> {
+    if (!(await this.ensureLiveScheduleAsync(dayIndex, offsets))) return null;
     const usable = rows.filter((row) => row.x && row.y && row.name);
     if (usable.length === 0) return null;
     const w = new BinaryWriter(16 + usable.length * 48);
     w.i32(nowSec).u32(usable.length);
     const now = Date.now();
-    for (const row of usable) {
+    let sliceStart = performance.now();
+    for (let i = 0; i < usable.length; i++) {
+      const row = usable[i];
       const hints = matchHints(row, this.previousFor(row));
       const previous = hints.previous;
       const prevIdx = previous?.matchedTripId
-        ? this.liveTripIds.indexOf(previous.matchedTripId)
+        ? (this.liveTripIndex.get(previous.matchedTripId) ?? -1)
         : -1;
       w.str(row.name.trim().toUpperCase())
         .f64(row.x)
@@ -1608,13 +1657,18 @@ class LiveTracker {
         .f64(previous?.lon ?? row.y)
         .str(hints.nextStop)
         .i32(hints.nextSec ?? -2147483648);
+      if ((i & 63) === 63 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+      }
     }
-    const res = invokeRustSync(CMD_LIVE_MATCH_BATCH, w.finish());
+    const res = await invokeRustAsync(CMD_LIVE_MATCH_BATCH, w.finish());
     if (!res || res.byteLength < 4) return null;
     const r = new BinaryReader(res);
     const count = r.u32();
     if (count !== usable.length || res.byteLength < 4 + count * 25) return null;
     const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
+    sliceStart = performance.now();
     for (let i = 0; i < count; i++) {
       const row = usable[i];
       const line = row.name.trim().toUpperCase();
@@ -1659,6 +1713,10 @@ class LiveTracker {
         },
         score: tripId && !delayOutOfRange ? score : Number.POSITIVE_INFINITY,
       });
+      if ((i & 63) === 63 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+      }
     }
     return matched;
   }
@@ -1699,11 +1757,13 @@ class LiveTracker {
     });
     for (const id of this.sampleHistory.keys()) if (!seen.has(id)) this.sampleHistory.delete(id);
     const matched =
-      this.matchRowsRust(rows, dayIndex, nowSec, offsets) ??
+      (await this.matchRowsRustAsync(rows, dayIndex, nowSec, offsets)) ??
       new Map<string, { tracked: TrackedVehicle; score: number }>();
 
     if (matched.size === 0) {
-      for (const row of rows) {
+      let fallbackSliceStart = performance.now();
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
         // MPK potrafi w odpowiedzi umieścić wiersz z zerowymi współrzędnymi
         // (zdarza się np. dla linii 153). Taki wiersz nie ma pozycji, więc
         // dopasowanie do kursu byłoby zmyślone.
@@ -1712,6 +1772,10 @@ class LiveTracker {
           row.name.trim().toUpperCase() + '-' + row.k,
           this.matchRow(row, dayIndex, nowSec, patternPolylines, offsets),
         );
+        if ((i & 15) === 15 && performance.now() - fallbackSliceStart >= UI_YIELD_BUDGET_MS) {
+          await yieldToUiFrame();
+          fallbackSliceStart = performance.now();
+        }
       }
     }
 

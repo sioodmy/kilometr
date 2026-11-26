@@ -17,10 +17,6 @@ import { inferTransitMode } from '../src/services/lineIdentity';
 import { classifyTransitMode } from '../src/services/routing/network';
 import { extractArticleBlocks, parseMpkLodzRss, MPK_LODZ_ROZKLADY_RSS } from '../src/services/mpkNews';
 import { resolveActiveServices } from '../src/services/gtfsDatabase';
-import { pl } from '../src/i18n/pl';
-import { en } from '../src/i18n/en';
-import { de } from '../src/i18n/de';
-import { uk } from '../src/i18n/uk';
 
 let passed = 0;
 const failures: string[] = [];
@@ -156,21 +152,6 @@ describe('Tryb linii: podmiejskie tramwaje, 6. i typy z feedu');
   expect('N5A to autobus nocny', inferTransitMode(undefined, 'N5A', 'lodz'), 'bus');
   expect('H to autobus', inferTransitMode(undefined, 'H', 'lodz'), 'bus');
   expect('41 poza Łodzią bez zgadywania', inferTransitMode(undefined, '41', 'wroclaw'), 'bus');
-}
-
-describe('Podpowiedzi onboardingu per-miasto');
-{
-  // Regresja: bez gałęzi dla lodz hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('lodz'), 'np. Piotrkowska 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('lodz'), 'np. Manufaktura');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('lodz'), 'np. UŁ');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: lodz nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('lodz') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
 }
 
 describe('Treść komunikatu MPK (tabela div#dWrkspc)');

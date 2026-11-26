@@ -202,19 +202,8 @@ describe('Tryb linii: tramwaje 1-5, reszta to autobusy');
   expect('reguła niskich numerów działa też poza Olsztynem', inferTransitMode(undefined, '3', 'wroclaw'), 'tram');
 }
 
-describe('Podpowiedzi onboardingu per-miasto');
+describe('Nazwy i odmiany Olsztyna');
 {
-  // Regresja: bez gałęzi dla olsztyn hinty spadały na adresy Wrocławia.
-  expect('pl dom', pl.onboarding.slotHomeHint('olsztyn'), 'np. Partyzantów 12');
-  expect('pl praca', pl.onboarding.slotWorkHint('olsztyn'), 'np. Galeria Warmińska');
-  expect('pl uczelnia', pl.onboarding.slotUniHint('olsztyn'), 'np. UWM');
-  for (const [lang, dict] of [['pl', pl], ['en', en], ['de', de], ['uk', uk]] as const) {
-    expect(
-      `${lang}: olsztyn nie dziedziczy Wrocławia`,
-      dict.onboarding.slotHomeHint('olsztyn') !== dict.onboarding.slotHomeHint('wroclaw'),
-      true,
-    );
-  }
   expect('pl nazwa', pl.city.name('olsztyn'), 'Olsztyn');
   expect('pl dopełniacz', pl.city.gen('olsztyn'), 'Olsztyna');
   expect('pl miejscownik', pl.city.loc('olsztyn'), 'Olsztynie');

@@ -16,6 +16,8 @@ type TransitionCapableNavigation = {
     event: string,
     callback: (event: TransitionEndEvent) => void,
   ) => () => void;
+  getState?: () => { index?: number } | undefined;
+  getParent?: () => TransitionCapableNavigation | undefined;
 };
 
 /**
@@ -34,6 +36,7 @@ export function useScreenTransitionSettled(fallbackMs = DEFAULT_FALLBACK_MS): bo
     let frame: number | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let unsubscribe: (() => void) | undefined;
+    let unsubscribeParent: (() => void) | undefined;
 
     const markSettled = () => {
       if (cancelled) return;
@@ -44,6 +47,8 @@ export function useScreenTransitionSettled(fallbackMs = DEFAULT_FALLBACK_MS): bo
       }
       unsubscribe?.();
       unsubscribe = undefined;
+      unsubscribeParent?.();
+      unsubscribeParent = undefined;
       setSettled(true);
     };
 
@@ -51,6 +56,14 @@ export function useScreenTransitionSettled(fallbackMs = DEFAULT_FALLBACK_MS): bo
       if (cancelled || frame !== null) return;
       frame = requestAnimationFrame(() => {
         frame = null;
+        if (Platform.OS === 'web') {
+          // Dwie klatki dają przeglądarce szansę wyrenderować i namalować skeleton przed ciężką pracą.
+          frame = requestAnimationFrame(() => {
+            frame = null;
+            markSettled();
+          });
+          return;
+        }
         markSettled();
       });
     };
@@ -63,6 +76,12 @@ export function useScreenTransitionSettled(fallbackMs = DEFAULT_FALLBACK_MS): bo
           if (event?.data?.closing) return;
           scheduleAfterFrame();
         });
+        if (navigation.getState?.()?.index === 0) {
+          unsubscribeParent = navigation.getParent?.()?.addListener?.('transitionEnd', (event) => {
+            if (event?.data?.closing) return;
+            scheduleAfterFrame();
+          });
+        }
       } catch {
         // Fallback poniżej domknie stan, gdyby nawigator nie emitował transitionEnd.
       }
@@ -74,6 +93,7 @@ export function useScreenTransitionSettled(fallbackMs = DEFAULT_FALLBACK_MS): bo
       if (frame !== null) cancelAnimationFrame(frame);
       if (timer !== null) clearTimeout(timer);
       unsubscribe?.();
+      unsubscribeParent?.();
     };
   }, [navigation, reduceMotion, fallbackMs]);
 

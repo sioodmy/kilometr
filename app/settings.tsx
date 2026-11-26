@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import * as Haptics from 'expo-haptics';
 import Animated, {
   Easing,
@@ -57,8 +58,12 @@ import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import { type CityId } from '../src/cities';
-import { CitySelectSheet } from '../src/components/CitySelectSheet';
+import { CardSkeletonFallback, SheetLoadingFallback } from '../src/components/SkeletonPulse';
 import { useActiveCity } from '../src/services/cityStore';
+
+const CitySelectSheet = lazy(() =>
+  import('../src/components/CitySelectSheet').then((m) => ({ default: m.CitySelectSheet })),
+);
 import {
   SETTINGS_LIMITS,
   TRANSIT_MODES,
@@ -83,13 +88,20 @@ import { TimetableSyncAbortedError } from '../src/services/timetableSync';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
-import { YourDataDashboard } from '../src/components/YourDataDashboard';
-import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
-import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { NationalRailCard } from '../src/components/NationalRailCard';
 import { PersonalizationCard } from '../src/components/PersonalizationCard';
 import { useThemeSetting } from '../src/theme/personalization';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
+
+const YourDataDashboard = lazy(() =>
+  import('../src/components/YourDataDashboard').then((m) => ({ default: m.YourDataDashboard })),
+);
+const DiagnosticsCard = lazy(() =>
+  import('../src/components/DiagnosticsCard').then((m) => ({ default: m.DiagnosticsCard })),
+);
+const OfflineMapCard = lazy(() =>
+  import('../src/components/OfflineMapCard').then((m) => ({ default: m.OfflineMapCard })),
+);
 
 function dataStatusLabel(status: DataStatus): string {
   const t = tr().settings;
@@ -254,6 +266,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { section } = useLocalSearchParams<{ section?: string }>();
   const insets = useSafeAreaInsets();
+  const transitionSettled = useScreenTransitionSettled();
   const webLayout = useWebLayout();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
@@ -358,13 +371,18 @@ export default function SettingsScreen() {
   const [cooldownHours, setCooldownHours] = useState(1);
 
   useEffect(() => {
-    refreshDataStatus()
-      .then(setDataStatus)
-      .catch(() => {});
-    return subscribeDataStatus(setDataStatus);
-  }, [cityId]);
+    const unsub = subscribeDataStatus(setDataStatus);
+    if (transitionSettled) {
+      refreshDataStatus()
+        .then(setDataStatus)
+        .catch(() => {});
+    }
+    return unsub;
+  }, [cityId, transitionSettled]);
 
+  const currentSection = webLayout.isDesktop ? desktopSection : activeSection;
   useEffect(() => {
+    if (!transitionSettled || currentSection !== 'routing') return;
     let alive = true;
     hasTrainRoutes()
       .then((v) => {
@@ -376,7 +394,7 @@ export default function SettingsScreen() {
     return () => {
       alive = false;
     };
-  }, [dataStatus.state, reloadKey]);
+  }, [currentSection, dataStatus.state, reloadKey, transitionSettled]);
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const hasTimetable = dataStatus.state === 'ready';
@@ -440,14 +458,7 @@ export default function SettingsScreen() {
 
   const cityPanelContent = (
     <View style={styles.cityPanel}>
-      <Animated.View
-        layout={
-          reduceMotion
-            ? undefined
-            : LinearTransition.duration(260).easing(Easing.bezier(0.2, 0, 0, 1))
-        }
-        style={styles.cityCard}
-      >
+      <View style={styles.cityCard}>
         <Pressable
           onPress={() => setCitySheetOpen(true)}
           disabled={switchingCity}
@@ -516,7 +527,7 @@ export default function SettingsScreen() {
             </Pressable>
           </Animated.View>
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 
@@ -665,9 +676,13 @@ export default function SettingsScreen() {
               </Text>
             ) : null}
           </View>
-          <NationalRailCard />
-          <OfflineMapCard />
-          <DiagnosticsCard />
+          <NationalRailCard deferLoad={!transitionSettled} />
+          <Suspense fallback={<CardSkeletonFallback rows={2} />}>
+            <OfflineMapCard deferLoad={!transitionSettled} />
+          </Suspense>
+          <Suspense fallback={<CardSkeletonFallback rows={4} />}>
+            <DiagnosticsCard />
+          </Suspense>
         </>
       )}
 
@@ -933,12 +948,16 @@ export default function SettingsScreen() {
       )}
 
       {targetSection === 'notifications' && <NotificationPrefsCard />}
-      {targetSection === 'backup' && <YourDataDashboard />}
+      {targetSection === 'backup' && (
+        <Suspense fallback={<CardSkeletonFallback rows={5} />}>
+          <YourDataDashboard deferLoad={!transitionSettled} />
+        </Suspense>
+      )}
     </>
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       {webLayout.isDesktop ? (
         <View style={styles.desktopRoot}>
           <View style={styles.desktopPageHeader}>
@@ -1026,17 +1045,19 @@ export default function SettingsScreen() {
       )}
 
       {citySheetOpen && (
-        <CitySelectSheet
-          selectedCityId={cityId}
-          onSelectCity={(id) => {
-            void handleCityChange(id);
-          }}
-          onClose={() => setCitySheetOpen(false)}
-          switchingCity={switchingCity}
-          switchingCityId={switchingCityId}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <CitySelectSheet
+            selectedCityId={cityId}
+            onSelectCity={(id) => {
+              void handleCityChange(id);
+            }}
+            onClose={() => setCitySheetOpen(false)}
+            switchingCity={switchingCity}
+            switchingCityId={switchingCityId}
+          />
+        </Suspense>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

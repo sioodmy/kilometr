@@ -37,16 +37,10 @@ export class TimetableSyncAbortedError extends Error {
   }
 }
 import { GtfsDownloadError, describeDownloadError } from './gtfsDownloader';
-import { getLocaleSync, type Strings } from '../i18n';
-import { pl } from '../i18n/pl';
-import { en } from '../i18n/en';
-import { de } from '../i18n/de';
-import { uk } from '../i18n/uk';
+import { tr } from '../i18n/locale';
 
-const SYNC_DICTS: Record<string, Strings> = { pl, en, de, uk };
-
-function syncDlTr(): Strings['downloader'] {
-  return (SYNC_DICTS[getLocaleSync()] ?? pl).downloader;
+function syncDlTr() {
+  return tr().downloader;
 }
 
 export interface TimetableManifest {

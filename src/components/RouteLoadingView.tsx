@@ -4,23 +4,20 @@ import Animated, {
   Easing,
   FadeIn,
   FadeOut,
-  LinearTransition,
   ReduceMotion,
   cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withDelay,
   withRepeat,
-  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import { useStrings } from '../i18n';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { MorphingLoader } from './MorphingLoader';
+import { SkeletonBone, SkeletonPulse } from './SkeletonPulse';
 
-const SHIMMER_DURATION_MS = 1350;
 const TRACK_CYCLE_MS = 2200;
 const PHASE_TRANSFERS_MS = 1800;
 const PHASE_LONG_MS = 4500;
@@ -96,14 +93,15 @@ const RouteTrackProgress = memo(function RouteTrackProgress() {
     };
   }, [progress, reduceMotion]);
 
+  // Czysta transformacja GPU (translateX + scaleX) zamiast layoutowych left/width co klatkę.
   const activeSegmentStyle = useAnimatedStyle(() => {
     const head = Math.min(1, progress.value * 1.45);
     const tail = Math.max(0, (progress.value - 0.35) * 1.54);
-    const left = tail * trackWidth;
-    const width = Math.max(0, (head - tail) * trackWidth);
+    const span = Math.max(0, head - tail);
+    const centerShift = ((tail + head) * 0.5 - 0.5) * trackWidth;
     return {
-      left,
-      width,
+      opacity: span > 0.005 ? 1 : 0,
+      transform: [{ translateX: centerShift }, { scaleX: Math.max(0.001, span) }],
     };
   });
 
@@ -134,77 +132,27 @@ const RouteTrackProgress = memo(function RouteTrackProgress() {
 
 const SkeletonConnectionCard = memo(function SkeletonConnectionCard({
   dimmed,
-  delay = 0,
 }: {
   dimmed?: boolean;
-  delay?: number;
 }) {
-  const reduceMotion = useReducedMotion();
-  const [cardWidth, setCardWidth] = useState(320);
-  const sweep = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      cancelAnimation(sweep);
-      sweep.value = 0;
-      return;
-    }
-    sweep.value = 0;
-    sweep.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(1, {
-            duration: SHIMMER_DURATION_MS,
-            easing: Easing.inOut(Easing.cubic),
-          }),
-          withDelay(260, withTiming(0, { duration: 0 })),
-        ),
-        -1,
-        false,
-      ),
-    );
-    return () => {
-      cancelAnimation(sweep);
-    };
-  }, [delay, reduceMotion, sweep]);
-
-  const sheenStyle = useAnimatedStyle(() => {
-    const band = Math.max(96, cardWidth * 0.42);
-    const travel = cardWidth + band * 2;
-    return {
-      width: band,
-      transform: [{ translateX: -band + sweep.value * travel }, { skewX: '-16deg' }],
-    };
-  });
-
   return (
-    <View
-      onLayout={(e) => {
-        const w = Math.round(e.nativeEvent.layout.width);
-        if (w > 0 && w !== cardWidth) setCardWidth(w);
-      }}
-      style={[styles.skelCard, dimmed && styles.skelCardDimmed]}
-    >
+    <View style={[styles.skelCard, dimmed && styles.skelCardDimmed]}>
       <View style={styles.skelRow}>
-        <View style={[styles.skel, { width: 112, height: 26, borderRadius: 10 }]} />
-        <View style={[styles.skel, { width: 66, height: 28, borderRadius: shape.full }]} />
+        <SkeletonBone width={112} height={26} radius={10} />
+        <SkeletonBone width={66} height={28} radius={shape.full} />
       </View>
       <View style={styles.skelMetaRow}>
-        <View style={[styles.skel, { width: 132, height: 14, borderRadius: 7 }]} />
-        <View style={[styles.skel, { width: 88, height: 14, borderRadius: 7 }]} />
+        <SkeletonBone width={132} height={14} radius={7} />
+        <SkeletonBone width={88} height={14} radius={7} />
       </View>
       <View style={styles.skelStrip}>
-        <View style={[styles.skel, { width: '100%', height: 5, borderRadius: 3 }]} />
+        <SkeletonBone width="100%" height={5} radius={3} />
         <View style={styles.skelBadges}>
-          <View style={[styles.skel, { width: 44, height: 24, borderRadius: shape.full }]} />
-          <View style={[styles.skel, { width: 58, height: 24, borderRadius: shape.full }]} />
-          <View style={[styles.skel, { width: 38, height: 24, borderRadius: shape.full }]} />
+          <SkeletonBone width={44} height={24} radius={shape.full} />
+          <SkeletonBone width={58} height={24} radius={shape.full} />
+          <SkeletonBone width={38} height={24} radius={shape.full} />
         </View>
       </View>
-      {!reduceMotion && (
-        <Animated.View pointerEvents="none" style={[styles.sheen, sheenStyle]} />
-      )}
     </View>
   );
 });
@@ -255,11 +203,6 @@ export function RouteLoadingView({ intercity = false }: RouteLoadingViewProps) {
           ? undefined
           : FadeOut.duration(140).reduceMotion(ReduceMotion.System)
       }
-      layout={
-        reduceMotion
-          ? undefined
-          : LinearTransition.springify().damping(26).stiffness(320)
-      }
       style={styles.root}
       accessibilityLiveRegion="polite"
     >
@@ -302,9 +245,11 @@ export function RouteLoadingView({ intercity = false }: RouteLoadingViewProps) {
         <RouteTrackProgress />
       </View>
 
-      <SkeletonConnectionCard delay={0} />
-      <SkeletonConnectionCard delay={140} />
-      <SkeletonConnectionCard delay={280} dimmed />
+      <SkeletonPulse style={styles.skelGroup}>
+        <SkeletonConnectionCard />
+        <SkeletonConnectionCard />
+        <SkeletonConnectionCard dimmed />
+      </SkeletonPulse>
     </Animated.View>
   );
 }
@@ -320,7 +265,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: shape.extraLarge,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
   },
   heroTop: {
@@ -358,6 +303,8 @@ const styles = StyleSheet.create({
   },
   trackActive: {
     position: 'absolute',
+    left: 0,
+    right: 0,
     top: 0,
     bottom: 0,
     borderRadius: shape.full,
@@ -387,7 +334,7 @@ const styles = StyleSheet.create({
   skelCard: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     paddingHorizontal: 16,
     paddingVertical: 15,
@@ -414,24 +361,15 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 18,
     backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: 2,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
     gap: 10,
+  },
+  skelGroup: {
+    gap: 12,
   },
   skelBadges: {
     flexDirection: 'row',
     gap: 8,
-  },
-  skel: {
-    backgroundColor: scheme.surfaceContainerHighest,
-    borderRadius: shape.small,
-  },
-  sheen: {
-    position: 'absolute',
-    top: -12,
-    bottom: -12,
-    left: 0,
-    backgroundColor: scheme.onSurface,
-    opacity: 0.05,
   },
 });
