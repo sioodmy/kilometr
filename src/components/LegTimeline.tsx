@@ -961,37 +961,27 @@ const TransitLegCard = memo(function TransitLegCard({
   const specsA11y = formatVehicleSpecsA11y(vehicleSpecs, t, railAmenities);
   const lineCardA11y = specsA11y ? `${lineCardBaseA11y}. ${specsA11y}` : lineCardBaseA11y;
 
-  const lineCardRef = useRef<View>(null);
-
   const openLineTimetable = useCallback(() => {
     if (!canOpenLine) return;
-    const navigate = (fromY?: number) => {
-      router.push({
-        pathname: '/line',
-        params: {
-          ...(leg.routeId ? { routeId: leg.routeId } : {}),
-          ...(leg.line ? { line: leg.line } : {}),
-          ...(leg.mode ? { mode: leg.mode } : {}),
-          ...(leg.tripId ? { tripId: leg.tripId } : {}),
-          ...(leg.direction || directionLabel
-            ? { direction: leg.direction || directionLabel }
-            : {}),
-          ...(leg.fromStopId ? { fromStopId: leg.fromStopId } : {}),
-          ...(leg.toStopId ? { toStopId: leg.toStopId } : {}),
-          ...(leg.fromStop ? { fromStop: leg.fromStop } : {}),
-          ...(leg.toStop ? { toStop: leg.toStop } : {}),
-          ...(leg.departAt ? { departAt: leg.departAt } : {}),
-          ...(leg.arriveAt ? { arriveAt: leg.arriveAt } : {}),
-          ...(fromY != null ? { fromY: String(Math.round(fromY)) } : {}),
-          ...(isNationalRail ? { dbTarget: 'national' } : {}),
-        },
-      });
-    };
-    if (lineCardRef.current) {
-      lineCardRef.current.measureInWindow((_x, y) => navigate(y));
-    } else {
-      navigate();
-    }
+    router.push({
+      pathname: '/line',
+      params: {
+        ...(leg.routeId ? { routeId: leg.routeId } : {}),
+        ...(leg.line ? { line: leg.line } : {}),
+        ...(leg.mode ? { mode: leg.mode } : {}),
+        ...(leg.tripId ? { tripId: leg.tripId } : {}),
+        ...(leg.direction || directionLabel
+          ? { direction: leg.direction || directionLabel }
+          : {}),
+        ...(leg.fromStopId ? { fromStopId: leg.fromStopId } : {}),
+        ...(leg.toStopId ? { toStopId: leg.toStopId } : {}),
+        ...(leg.fromStop ? { fromStop: leg.fromStop } : {}),
+        ...(leg.toStop ? { toStop: leg.toStop } : {}),
+        ...(leg.departAt ? { departAt: leg.departAt } : {}),
+        ...(leg.arriveAt ? { arriveAt: leg.arriveAt } : {}),
+        ...(isNationalRail ? { dbTarget: 'national' } : {}),
+      },
+    });
   }, [
     canOpenLine,
     router,
@@ -1208,40 +1198,38 @@ const TransitLegCard = memo(function TransitLegCard({
         <View style={s.bodyContentCol}>
           {/* Karta linii / pociągu z przejściem do rozkładu i parametrami konkretnego pojazdu */}
           {canOpenLine ? (
-            <View ref={lineCardRef} collapsable={false}>
-              <SpringPressable
-                onPress={openLineTimetable}
-                haptic="selection"
-                scaleDelta={0.02}
-                accessibilityRole="button"
-                accessibilityLabel={lineCardA11y}
-                style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}
-              >
-                <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
-                  <LineBadge leg={leg} />
-                  <View style={s.lineTextCol}>
-                    {directionLabel ? (
-                      <Text style={s.lineDirection} numberOfLines={1}>
-                        {directionLabel}
-                      </Text>
-                    ) : null}
-                    {agencySubtitle ? (
-                      <Text style={s.lineAgencySub} numberOfLines={1}>
-                        {agencySubtitle}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+            <SpringPressable
+              onPress={openLineTimetable}
+              haptic="selection"
+              scaleDelta={0.02}
+              accessibilityRole="button"
+              accessibilityLabel={lineCardA11y}
+              style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}
+            >
+              <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>
+                <LineBadge leg={leg} />
+                <View style={s.lineTextCol}>
+                  {directionLabel ? (
+                    <Text style={s.lineDirection} numberOfLines={1}>
+                      {directionLabel}
+                    </Text>
+                  ) : null}
+                  {agencySubtitle ? (
+                    <Text style={s.lineAgencySub} numberOfLines={1}>
+                      {agencySubtitle}
+                    </Text>
+                  ) : null}
                 </View>
-                {hasSpecsTray ? (
-                  <VehicleSpecsStrip
-                    specs={vehicleSpecs}
-                    railAmenities={railAmenities}
-                    mode={leg.mode}
-                  />
-                ) : null}
-              </SpringPressable>
-            </View>
+                <ChevronRight size={18} color={scheme.onSurfaceVariant} />
+              </View>
+              {hasSpecsTray ? (
+                <VehicleSpecsStrip
+                  specs={vehicleSpecs}
+                  railAmenities={railAmenities}
+                  mode={leg.mode}
+                />
+              ) : null}
+            </SpringPressable>
           ) : (
             <View style={[s.lineCard, hasSpecsTray && s.lineCardWithSpecs]}>
               <View style={[s.lineCardHeader, hasSpecsTray && s.lineCardHeaderWithSpecs]}>

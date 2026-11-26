@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import * as Haptics from 'expo-haptics';
 import Animated, {
   Easing,
@@ -254,6 +255,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { section } = useLocalSearchParams<{ section?: string }>();
   const insets = useSafeAreaInsets();
+  const transitionSettled = useScreenTransitionSettled();
   const webLayout = useWebLayout();
   const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 330;
@@ -358,13 +360,18 @@ export default function SettingsScreen() {
   const [cooldownHours, setCooldownHours] = useState(1);
 
   useEffect(() => {
-    refreshDataStatus()
-      .then(setDataStatus)
-      .catch(() => {});
-    return subscribeDataStatus(setDataStatus);
-  }, [cityId]);
+    const unsub = subscribeDataStatus(setDataStatus);
+    if (transitionSettled) {
+      refreshDataStatus()
+        .then(setDataStatus)
+        .catch(() => {});
+    }
+    return unsub;
+  }, [cityId, transitionSettled]);
 
+  const currentSection = webLayout.isDesktop ? desktopSection : activeSection;
   useEffect(() => {
+    if (!transitionSettled || currentSection !== 'routing') return;
     let alive = true;
     hasTrainRoutes()
       .then((v) => {
@@ -376,7 +383,7 @@ export default function SettingsScreen() {
     return () => {
       alive = false;
     };
-  }, [dataStatus.state, reloadKey]);
+  }, [currentSection, dataStatus.state, reloadKey, transitionSettled]);
 
   const busy = importing || dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const hasTimetable = dataStatus.state === 'ready';
@@ -440,14 +447,7 @@ export default function SettingsScreen() {
 
   const cityPanelContent = (
     <View style={styles.cityPanel}>
-      <Animated.View
-        layout={
-          reduceMotion
-            ? undefined
-            : LinearTransition.duration(260).easing(Easing.bezier(0.2, 0, 0, 1))
-        }
-        style={styles.cityCard}
-      >
+      <View style={styles.cityCard}>
         <Pressable
           onPress={() => setCitySheetOpen(true)}
           disabled={switchingCity}
@@ -516,7 +516,7 @@ export default function SettingsScreen() {
             </Pressable>
           </Animated.View>
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 
@@ -665,8 +665,8 @@ export default function SettingsScreen() {
               </Text>
             ) : null}
           </View>
-          <NationalRailCard />
-          <OfflineMapCard />
+          <NationalRailCard deferLoad={!transitionSettled} />
+          <OfflineMapCard deferLoad={!transitionSettled} />
           <DiagnosticsCard />
         </>
       )}
@@ -933,12 +933,12 @@ export default function SettingsScreen() {
       )}
 
       {targetSection === 'notifications' && <NotificationPrefsCard />}
-      {targetSection === 'backup' && <YourDataDashboard />}
+      {targetSection === 'backup' && <YourDataDashboard deferLoad={!transitionSettled} />}
     </>
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       {webLayout.isDesktop ? (
         <View style={styles.desktopRoot}>
           <View style={styles.desktopPageHeader}>
@@ -1036,7 +1036,7 @@ export default function SettingsScreen() {
           switchingCityId={switchingCityId}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

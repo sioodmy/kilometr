@@ -11,7 +11,8 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import Animated, {
   Easing,
   FadeInDown,
@@ -202,7 +203,9 @@ function SkeletonCard() {
 export default function NewsScreen() {
   const s = useStrings();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
+  const transitionSettled = useScreenTransitionSettled();
   const { cityId } = useActiveCity();
   const operator = s.city.operator(cityId);
   const portal = s.city.portal(cityId);
@@ -308,6 +311,7 @@ export default function NewsScreen() {
   }, [cityId]);
 
   useEffect(() => {
+    if (!transitionSettled) return;
     let live = true;
     void markNewsSeen();
     const unsub = subscribeNewsCache(() => {
@@ -334,7 +338,7 @@ export default function NewsScreen() {
       live = false;
       unsub();
     };
-  }, [cityId, load, refreshMyLines]);
+  }, [cityId, load, refreshMyLines, transitionSettled]);
 
   const openItem = useCallback(
     (item: MpkNewsItem) => {
@@ -407,7 +411,7 @@ export default function NewsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       <View style={[styles.header, webLayout.isMedium && styles.mediumCentered]}>
         {!webLayout.isDesktop && (
           <Pressable
@@ -543,6 +547,9 @@ export default function NewsScreen() {
         <FlatList
           data={rows}
           keyExtractor={keyExtractor}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={7}
           contentContainerStyle={[styles.list, webLayout.isMedium && styles.mediumCentered]}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
@@ -582,7 +589,7 @@ export default function NewsScreen() {
           }
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

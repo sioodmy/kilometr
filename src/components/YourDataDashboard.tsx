@@ -48,7 +48,7 @@ function ModeGlyph({ mode, color, size = 18 }: { mode: LegMode; color: string; s
   return <BusFront size={size} color={color} />;
 }
 
-export function YourDataDashboard() {
+export function YourDataDashboard({ deferLoad = false }: { deferLoad?: boolean } = {}) {
   const s = useStrings();
   const y = s.yourData;
   const [stats, setStats] = useState<UserDataStats | null>(null);
@@ -67,11 +67,12 @@ export function YourDataDashboard() {
   }, []);
 
   useEffect(() => {
+    if (deferLoad) return;
     void refresh();
     return subscribeBackupApplied(() => {
       void refresh();
     });
-  }, [refresh]);
+  }, [deferLoad, refresh]);
 
   if (loading) {
     return (

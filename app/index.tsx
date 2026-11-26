@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -272,6 +272,10 @@ export default function HomeScreen() {
   });
   const currentCoordsRef = useRef(currentCoords);
   currentCoordsRef.current = currentCoords;
+  const insets = useSafeAreaInsets();
+  const isFocusedRef = useRef(true);
+  const recentDirtyRef = useRef(false);
+  const warmupIncompleteRef = useRef(false);
   const { location: motionLocation } = useCurrentLocation(
     !isCustomStart && !boardedOrigin && !gpsUnsupported,
     false,
@@ -281,8 +285,41 @@ export default function HomeScreen() {
   // Odliczanie „za X min" musi tykać: bez tego etykieta zapisana przy fetchu
   // zostaje zamrożona do następnego wyszukiwania.
   const [homeTick, setHomeTick] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const wasBlurred = !isFocusedRef.current;
+      isFocusedRef.current = true;
+      if (wasBlurred) {
+        setHomeTick(Date.now());
+        if (recentDirtyRef.current) {
+          recentDirtyRef.current = false;
+          SearchService.recent()
+            .then((list) => {
+              if (!cancelled) setRecent(list);
+            })
+            .catch(() => {});
+          loadTripHistory()
+            .then((h) => {
+              if (!cancelled && h.length > 0) setLastTrip(h[0]);
+            })
+            .catch(() => {});
+        }
+        if (warmupIncompleteRef.current) {
+          warmupIncompleteRef.current = false;
+          setWarmupNonce((n) => n + 1);
+        }
+      }
+      return () => {
+        cancelled = true;
+        isFocusedRef.current = false;
+      };
+    }, []),
+  );
   useEffect(() => {
-    const t = setInterval(() => setHomeTick(Date.now()), 30000);
+    const t = setInterval(() => {
+      if (isFocusedRef.current) setHomeTick(Date.now());
+    }, 30000);
     return () => clearInterval(t);
   }, []);
   // Minuty do odjazdu liczone na bieżąco z zapisanych sekund (homeTick wymusza
@@ -482,9 +519,11 @@ export default function HomeScreen() {
   // o ogólnopolski rozkład kolejowy w tle.
   useEffect(() => {
     const check = async () => {
+      if (!isFocusedRef.current) return;
       const st = await ensureActiveCityTimetable({ checkUpdates: true }).catch(
         () => ({ state: 'empty' }) as const,
       );
+      if (!isFocusedRef.current) return;
       if (st.state === 'ready') {
         import('../src/services/nationalTimetable')
           .then((m) => m.ensureNationalTimetable())
@@ -987,6 +1026,10 @@ export default function HomeScreen() {
     void (async () => {
       for (const d of warmupTargets) {
         if (cancelled || routeSearchGen.current !== gen) return;
+        if (!isFocusedRef.current) {
+          warmupIncompleteRef.current = true;
+          return;
+        }
         try {
           const conns = await RoutingService.getConnections({
             fromTitle: locTitle,
@@ -1019,6 +1062,10 @@ export default function HomeScreen() {
               : 3600,
           });
           if (cancelled || routeSearchGen.current !== gen) return;
+          if (!isFocusedRef.current) {
+            warmupIncompleteRef.current = true;
+            return;
+          }
           const first = conns.length ? conns[0] : undefined;
           // Sam spacer (cel w zasięgu pieszo): bez badge'a nie ma czego
           // pokazać po prawej, więc wiersz zostaje czysty zamiast pustego slotu.
@@ -1037,6 +1084,7 @@ export default function HomeScreen() {
           // Brak trasy do tego celu: wiersz zostaje bez prawej strony.
         }
       }
+      warmupIncompleteRef.current = false;
     })();
     return () => {
       cancelled = true;
@@ -1049,7 +1097,7 @@ export default function HomeScreen() {
   // im świeżą trasę per cel (bez mielenia spacerów i całej listy naraz).
   const quickRefreshGen = useRef(0);
   useEffect(() => {
-    if (sheetMode !== null || warmupTargets.length === 0) return;
+    if (!isFocusedRef.current || sheetMode !== null || warmupTargets.length === 0) return;
     const now = new Date();
     const expired = warmupTargets.filter((d) => {
       const c = firstConns[d.id];
@@ -1061,7 +1109,7 @@ export default function HomeScreen() {
     const s = getSettingsSync();
     void (async () => {
       for (const d of expired) {
-        if (quickRefreshGen.current !== gen) return;
+        if (!isFocusedRef.current || quickRefreshGen.current !== gen) return;
         try {
           const conns = await RoutingService.getConnections({
             fromTitle: locTitle,
@@ -1091,7 +1139,7 @@ export default function HomeScreen() {
               ? undefined
               : 3600,
           });
-          if (quickRefreshGen.current !== gen) return;
+          if (!isFocusedRef.current || quickRefreshGen.current !== gen) return;
           const first = conns.length ? conns[0] : undefined;
           const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
           if (!first || !transitLeg) {
@@ -1455,18 +1503,7 @@ export default function HomeScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
       routeSearchGen.current++;
-      void recordTripSearch(fromLat, fromLon, fromTitle, to);
-      void SearchService.recordRecent({
-        ...to,
-        address: to.address ?? '',
-        kind: to.kind ?? 'history',
-      })
-        .then(() => {
-          SearchService.recent()
-            .then(setRecent)
-            .catch(() => {});
-        })
-        .catch(() => {});
+      recentDirtyRef.current = true;
       router.push({
         pathname: '/routes',
         params: {
@@ -1483,6 +1520,30 @@ export default function HomeScreen() {
           toLon: String(to.lon),
         },
       });
+      // Zapis do historii odraczamy za animację przejścia, aby nie wywoływać relayoutu na klatce wyjścia.
+      setTimeout(() => {
+        void Promise.all([
+          recordTripSearch(fromLat, fromLon, fromTitle, to).catch(() => {}),
+          SearchService.recordRecent({
+            ...to,
+            address: to.address ?? '',
+            kind: to.kind ?? 'history',
+          }).catch(() => {}),
+        ]).then(() => {
+          if (!isFocusedRef.current) return;
+          recentDirtyRef.current = false;
+          SearchService.recent()
+            .then((list) => {
+              if (isFocusedRef.current) setRecent(list);
+            })
+            .catch(() => {});
+          loadTripHistory()
+            .then((h) => {
+              if (isFocusedRef.current && h.length > 0) setLastTrip(h[0]);
+            })
+            .catch(() => {});
+        });
+      }, 280);
       return true;
     },
     [
@@ -1875,7 +1936,7 @@ export default function HomeScreen() {
   return (
     <GestureDetector gesture={pullGesture}>
       <View style={styles.root}>
-        <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={[styles.safe, { paddingTop: insets.top }]}>
           <ScrollView
             contentContainerStyle={[
               styles.body,
@@ -1940,11 +2001,12 @@ export default function HomeScreen() {
                       style={[styles.iconBtn, styles.iconBtnStart, newsAlert && styles.iconBtnAlert]}
                       hitSlop={8}
                       onPress={() => {
-                        setNewsAlert(false);
-                        void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
-                          markNewsSeen(),
-                        );
                         router.push('/news');
+                        setTimeout(() => {
+                          void import('../src/services/mpkNews').then(({ markNewsSeen }) =>
+                            markNewsSeen(),
+                          );
+                        }, 260);
                       }}
                       accessibilityLabel={newsAlert ? s.home.newsAlertA11y : s.home.newsA11y}
                       accessibilityRole="button"
@@ -2245,7 +2307,7 @@ export default function HomeScreen() {
               </>
             )}
           </ScrollView>
-        </SafeAreaView>
+        </View>
 
         {!webLayout.isMedium && (
           <View

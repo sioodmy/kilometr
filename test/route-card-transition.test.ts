@@ -4,6 +4,7 @@ import {
   clampSourceRect,
   computeCloseDurationMs,
   computeDragShellFrame,
+  computeGpuShellTransform,
   computePredictiveBackShellFrame,
   computeScaledStripRect,
   computeStripRect,
@@ -111,5 +112,26 @@ describe('routeCardTransitionMath', () => {
     assert.equal(full, 215);
     assert.ok(mid < full && mid >= 115);
     assert.ok(tiny >= 115);
+  });
+
+  it('przelicza ramkę Predictive Back na transformację GPU zgodną z pozycją krawędzi', () => {
+    const rest = computePredictiveBackShellFrame(0, 0, 0, 390, 844);
+    assert.deepEqual(computeGpuShellTransform(rest, 390, 844), {
+      translateX: 0,
+      translateY: 0,
+      scale: 1,
+      borderRadius: 0,
+    });
+
+    for (const edge of [0, 1] as const) {
+      const frame = computePredictiveBackShellFrame(1, 40, edge, 390, 844);
+      const gpu = computeGpuShellTransform(frame, 390, 844);
+      // Po nałożeniu translate i scale wokół środka (390/2) lewa krawędź wypada w frame.x.
+      const renderedLeft = (390 * (1 - gpu.scale)) / 2 + gpu.translateX;
+      const renderedTop = (844 * (1 - gpu.scale)) / 2 + gpu.translateY;
+      assert.ok(Math.abs(renderedLeft - frame.x) < 1e-6);
+      assert.ok(Math.abs(renderedTop - frame.y) < 1e-6);
+      assert.ok(Math.abs(gpu.borderRadius * gpu.scale - frame.radius) < 1e-6);
+    }
   });
 });

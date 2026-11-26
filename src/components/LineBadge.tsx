@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BusFront, CableCar, TrainFront, TramFront } from './icons';
 import { DirectionsWalk } from './DirectionsWalk';
@@ -38,7 +39,7 @@ export function resolveLegBadgeColors({
   return { bg, fg };
 }
 
-export function LineBadge({
+export const LineBadge = memo(function LineBadge({
   mode,
   line,
   leg,
@@ -143,7 +144,7 @@ export function LineBadge({
       </Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   badge: {

@@ -7,7 +7,8 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import {
   AlertCircle,
   ChevronLeft,
@@ -88,7 +89,11 @@ export default function LineDeparturesScreen() {
   const webLayout = useWebLayout();
   const s = useStrings();
   const t = s.lineTimetable;
-  const { data, loading, error, retry } = useLineTimetable(routeId, date, { dbTarget });
+  const transitionSettled = useScreenTransitionSettled();
+  const { data, loading, error, retry } = useLineTimetable(routeId, date, {
+    dbTarget,
+    defer: !transitionSettled,
+  });
 
   const pattern = data?.patterns.find((item) => item.id === params.patternId);
   const stopIndex = Number(params.stopIndex ?? -1);
@@ -124,7 +129,7 @@ export default function LineDeparturesScreen() {
         });
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={[styles.topBar, webLayout.isMedium && styles.topBarDesktop]}>
         <SpringPressable
           onPress={goBack}
@@ -267,7 +272,7 @@ export default function LineDeparturesScreen() {
           />
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

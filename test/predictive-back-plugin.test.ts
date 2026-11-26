@@ -48,13 +48,18 @@ class MainActivity : ReactActivity() {
 `;
 
 describe('plugins/with-predictive-back', () => {
-  it('wstrzykuje mostek dla API 33-35 i bezpiecznie wyłącza go w invokeDefaultOnBackPressed', () => {
+  it('wstrzykuje mostek dla API 33+ bez callbacku ReactActivity i bezpiecznie wyłącza go w invokeDefaultOnBackPressed', () => {
     const patched = patchMainActivityForPredictiveBack(EXPO_MAIN_ACTIVITY);
     assert.ok(patched.includes('import androidx.activity.OnBackPressedCallback'));
     assert.ok(
       patched.includes('private val predictiveBackBridge = object : OnBackPressedCallback(true)'),
     );
-    assert.ok(patched.includes('if (Build.VERSION.SDK_INT in 33..35)'));
+    assert.ok(
+      patched.includes(
+        'val usesReactActivityCallback = Build.VERSION.SDK_INT >= 36 && applicationInfo.targetSdkVersion >= 36',
+      ),
+    );
+    assert.ok(patched.includes('if (Build.VERSION.SDK_INT >= 33 && !usesReactActivityCallback)'));
     assert.ok(patched.includes('onBackPressedDispatcher.addCallback(this, predictiveBackBridge)'));
     assert.equal(
       patched.match(/predictiveBackBridge\.isEnabled = false/g)?.length,

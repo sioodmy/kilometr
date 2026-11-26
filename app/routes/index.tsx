@@ -8,12 +8,12 @@ import {
   StyleSheet,
   Text,
   View,
-  InteractionManager,
   type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScreenTransitionSettled } from '../../src/hooks/useScreenTransitionSettled';
 import {
   AlertCircle,
   ChevronDown,
@@ -165,6 +165,7 @@ function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
 export default function RoutesScreen() {
   const s = useStrings();
   const insets = useSafeAreaInsets();
+  const transitionSettled = useScreenTransitionSettled();
   const webLayout = useWebLayout();
   const { cityId } = useActiveCity();
   const cityDef = defaultLocationForCity(cityId);
@@ -529,7 +530,12 @@ export default function RoutesScreen() {
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
-  const liveItems = useRailLiveConnections(items, tripDelays, !offline, isFocusedRef);
+  const liveItems = useRailLiveConnections(
+    items,
+    tripDelays,
+    !offline && transitionSettled,
+    isFocusedRef,
+  );
 
   const displayed = useMemo(() => {
     let list = liveItems;
@@ -661,11 +667,16 @@ export default function RoutesScreen() {
   }, [intercityQuery, items.length]);
 
   useEffect(() => {
+    if (!transitionSettled) return;
+    let cancelled = false;
     SearchService.recent()
-      .then(setRecent)
+      .then((list) => {
+        if (!cancelled) setRecent(list);
+      })
       .catch(() => {});
     Promise.all([FavoritesService.list(), loadSettings()])
       .then(([places, currentSettings]) => {
+        if (cancelled) return;
         setSavedPlaces(places);
         setSavedQuick(
           places.map((p) => ({
@@ -705,14 +716,17 @@ export default function RoutesScreen() {
         }
       })
       .catch(() => {});
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [transitionSettled]);
 
   // Start z GPS bez kotwicy liczy się z fixu, który mógł być słaby (Balanced
   // potrafi trafić o setki metrów i wybrać przystanek po złej stronie osiedla).
   // Po wyszukaniu bierzemy dokładniejszy fix w tle; gdy pozycja faktycznie się
   // przesunęła, podmieniamy origin, a lista odświeża się seamless, bez spinnera.
   useEffect(() => {
-    if (!gpsOrigin || activeAnchor || boardedTrip) return;
+    if (!transitionSettled || !gpsOrigin || activeAnchor || boardedTrip) return;
     let cancelled = false;
     const gen = startSelGen.current;
     const apply = (loc: LocationResult) => {
@@ -738,7 +752,7 @@ export default function RoutesScreen() {
       cancelled = true;
       unsubscribe();
     };
-  }, [gpsOrigin, activeAnchor, boardedTrip]);
+  }, [gpsOrigin, activeAnchor, boardedTrip, transitionSettled]);
 
   const handleSearchQuery = useCallback((next: string) => {
     setQuery(next);
@@ -1195,11 +1209,9 @@ export default function RoutesScreen() {
     // Intercity: nie ruszaj RAPTOR-a, dopóki nie wiemy, czy baza polska jest.
     // Inaczej pierwsze wyszukiwanie idzie w kosz (railDbReady: null → true/false).
     if (intercityQuery && railDbReady === null) return;
-    const task = InteractionManager.runAfterInteractions(() => {
-      fetchRoutes(targetTimeSec, items.length > 0);
-    });
+    if (!transitionSettled) return;
+    fetchRoutes(targetTimeSec, items.length > 0);
     return () => {
-      task.cancel();
       fetchSeq.current++;
     };
     // timetableReady jest tu celowo: ekran otwarty w trakcie pierwszego
@@ -1221,6 +1233,7 @@ export default function RoutesScreen() {
     timeMode,
     intercityQuery,
     railDbReady,
+    transitionSettled,
   ]);
 
   // Przycisk i gest dokładają wcześniejsze odjazdy do tej samej listy.
@@ -1935,6 +1948,214 @@ export default function RoutesScreen() {
 
   const listPaddingHorizontal = webLayout.isDesktop ? 0 : 16;
 
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.listHeader}>
+        {loading && displayed.length > 0 && (
+          <Animated.View
+            entering={
+              reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
+            }
+            exiting={
+              reduceMotion ? undefined : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
+            }
+            style={styles.countRow}
+            accessibilityLiveRegion="polite"
+          >
+            <View style={styles.statusChip}>
+              <MorphingLoader size={17} color={scheme.primary} />
+              <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
+            </View>
+          </Animated.View>
+        )}
+        {(offline || liveStale) && (
+          <View style={styles.countRow}>
+            {offline && (
+              <SpringPressable
+                onPress={() => quietRefresh()}
+                scaleDelta={0.03}
+                haptic="selection"
+                style={styles.statusChip}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.offlineTapA11y}
+              >
+                <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
+              </SpringPressable>
+            )}
+            {liveStale && !offline && (
+              <View style={styles.statusChip}>
+                <CloudOff size={15} color={scheme.onSurfaceVariant} />
+                <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
+              </View>
+            )}
+          </View>
+        )}
+        {!arrivalMode && !offline && (
+          <Animated.View style={Platform.OS !== 'web' ? earlierButtonFadeStyle : undefined}>
+            <SpringPressable
+              onPress={handleButtonEarlier}
+              onFocus={() => setEarlierFocused(true)}
+              onBlur={() => setEarlierFocused(false)}
+              disabled={earlierDisabled}
+              scaleDelta={0.02}
+              haptic="selection"
+              accessibilityRole="button"
+              accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
+              style={[
+                styles.earlierButton,
+                earlierFocused && styles.earlierFocused,
+                noMoreEarlier && styles.earlierButtonDone,
+              ]}
+            >
+              {loadingEarlier && !pullTriggeredRef.current ? (
+                <MorphingLoader size={16} color={scheme.primary} />
+              ) : !noMoreEarlier ? (
+                <ChevronUp size={17} color={scheme.onSurfaceVariant} />
+              ) : null}
+              <Text style={styles.earlierText} accessibilityLiveRegion="polite">
+                {loadingEarlier && !pullTriggeredRef.current
+                  ? s.routes.earlierLoading
+                  : noMoreEarlier
+                    ? s.routes.earlierEmpty
+                    : earlierFailed
+                      ? s.routes.earlierRetry
+                      : s.routes.earlierAction}
+              </Text>
+            </SpringPressable>
+          </Animated.View>
+        )}
+      </View>
+    ),
+    [
+      arrivalMode,
+      displayed.length,
+      earlierButtonFadeStyle,
+      earlierDisabled,
+      earlierFailed,
+      earlierFocused,
+      handleButtonEarlier,
+      liveStale,
+      loading,
+      loadingEarlier,
+      noMoreEarlier,
+      offline,
+      quietRefresh,
+      reduceMotion,
+      s,
+    ],
+  );
+
+  const listFooter = useMemo(
+    () =>
+      loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
+        <View style={styles.footer}>
+          {loadingMore ? (
+            <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
+              <MorphingLoader size={20} color={scheme.primary} />
+              <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
+            </View>
+          ) : loadMoreFailed ? (
+            <>
+              <Text style={styles.footerText}>{s.routes.moreFail}</Text>
+              <SpringPressable
+                onPress={() => void handleLoadMore()}
+                scaleDelta={0.025}
+                haptic="light"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.moreRetryA11y}
+              >
+                <Text style={styles.retryText}>{s.common.retry}</Text>
+              </SpringPressable>
+            </>
+          ) : (
+            <View style={styles.endCapPill}>
+              <Text style={styles.footerText}>
+                {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : null,
+    [arrivalMode, handleLoadMore, items.length, loadMoreFailed, loadingMore, noMoreLater, s],
+  );
+
+  const listEmpty = useMemo(
+    () =>
+      intercityQuery && railDbReady === false ? (
+        <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
+      ) : (
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIconBadge}>
+            <RouteOff size={24} color={scheme.onPrimaryContainer} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {liveOnly
+              ? s.routes.emptyLive
+              : hasActiveFilters
+                ? s.routes.emptyFiltered
+                : intercityQuery
+                  ? s.intercity.noTrainsTitle
+                  : s.routes.emptyNone}
+          </Text>
+          <Text style={styles.emptySub}>
+            {intercityQuery && !hasActiveFilters
+              ? s.intercity.noTrainsHint
+              : transfersFilter !== 'all' && modeFilter !== 'all'
+                ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
+                : transfersFilter !== 'all'
+                  ? s.routes.emptyDirect
+                  : modeFilter !== 'all'
+                    ? s.routes.emptyMode(modeGenitive(modeFilter))
+                    : arrivalMode
+                      ? s.routes.emptyArrival
+                      : s.routes.emptyPlain}
+          </Text>
+          <View style={styles.emptyActions}>
+            {transfersFilter !== 'all' && (
+              <SpringPressable
+                onPress={() => setTransfersFilter('all')}
+                scaleDelta={0.025}
+                haptic="selection"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.showWithChangesA11y}
+              >
+                <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
+              </SpringPressable>
+            )}
+            {modeFilter !== 'all' && (
+              <SpringPressable
+                onPress={() => setModeFilter('all')}
+                scaleDelta={0.025}
+                haptic="selection"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.showAllVehiclesA11y}
+              >
+                <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
+              </SpringPressable>
+            )}
+            {liveOnly && (
+              <SpringPressable
+                onPress={() => setLiveOnly(false)}
+                scaleDelta={0.025}
+                haptic="selection"
+                style={styles.retryBtn}
+                accessibilityRole="button"
+                accessibilityLabel={s.routes.showWithoutLive}
+              >
+                <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
+              </SpringPressable>
+            )}
+          </View>
+        </View>
+      ),
+    [arrivalMode, hasActiveFilters, intercityQuery, liveOnly, modeFilter, railDbReady, s, transfersFilter],
+  );
+
   const flatListStage = (
     <View style={styles.listStage}>
       {Platform.OS !== 'web' && !arrivalMode && !offline && (
@@ -1982,188 +2203,9 @@ export default function RoutesScreen() {
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           renderItem={renderConnection}
-          ListHeaderComponent={
-            <View style={styles.listHeader}>
-              {loading && displayed.length > 0 && (
-                <Animated.View
-                  entering={
-                    reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
-                  }
-                  exiting={
-                    reduceMotion ? undefined : FadeOut.duration(120).reduceMotion(ReduceMotion.System)
-                  }
-                  style={styles.countRow}
-                  accessibilityLiveRegion="polite"
-                >
-                  <View style={styles.statusChip}>
-                    <MorphingLoader size={17} color={scheme.primary} />
-                    <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
-                  </View>
-                </Animated.View>
-              )}
-              {(offline || liveStale) && (
-                <View style={styles.countRow}>
-                  {offline && (
-                    <SpringPressable
-                      onPress={() => quietRefresh()}
-                      scaleDelta={0.03}
-                      haptic="selection"
-                      style={styles.statusChip}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.offlineTapA11y}
-                    >
-                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.statusChipText}>{s.routes.offlineChip}</Text>
-                    </SpringPressable>
-                  )}
-                  {liveStale && !offline && (
-                    <View style={styles.statusChip}>
-                      <CloudOff size={15} color={scheme.onSurfaceVariant} />
-                      <Text style={styles.statusChipText}>{s.routes.noLiveChip}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-              {!arrivalMode && !offline && (
-                <Animated.View style={Platform.OS !== 'web' ? earlierButtonFadeStyle : undefined}>
-                  <SpringPressable
-                    onPress={handleButtonEarlier}
-                    onFocus={() => setEarlierFocused(true)}
-                    onBlur={() => setEarlierFocused(false)}
-                    disabled={earlierDisabled}
-                    scaleDelta={0.02}
-                    haptic="selection"
-                    accessibilityRole="button"
-                    accessibilityState={{ busy: loadingEarlier, disabled: earlierDisabled }}
-                    style={[
-                      styles.earlierButton,
-                      earlierFocused && styles.earlierFocused,
-                      noMoreEarlier && styles.earlierButtonDone,
-                    ]}
-                  >
-                    {loadingEarlier && !pullTriggeredRef.current ? (
-                      <MorphingLoader size={16} color={scheme.primary} />
-                    ) : !noMoreEarlier ? (
-                      <ChevronUp size={17} color={scheme.onSurfaceVariant} />
-                    ) : null}
-                    <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                      {loadingEarlier && !pullTriggeredRef.current
-                        ? s.routes.earlierLoading
-                        : noMoreEarlier
-                          ? s.routes.earlierEmpty
-                          : earlierFailed
-                            ? s.routes.earlierRetry
-                            : s.routes.earlierAction}
-                    </Text>
-                  </SpringPressable>
-                </Animated.View>
-              )}
-            </View>
-          }
-          ListFooterComponent={
-            loadingMore || loadMoreFailed || (noMoreLater && items.length > 0) ? (
-              <View style={styles.footer}>
-                {loadingMore ? (
-                  <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
-                    <MorphingLoader size={20} color={scheme.primary} />
-                    <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
-                  </View>
-                ) : loadMoreFailed ? (
-                  <>
-                    <Text style={styles.footerText}>{s.routes.moreFail}</Text>
-                    <SpringPressable
-                      onPress={() => void handleLoadMore()}
-                      scaleDelta={0.025}
-                      haptic="light"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.moreRetryA11y}
-                    >
-                      <Text style={styles.retryText}>{s.common.retry}</Text>
-                    </SpringPressable>
-                  </>
-                ) : (
-                  <View style={styles.endCapPill}>
-                    <Text style={styles.footerText}>
-                      {arrivalMode ? s.routes.noMoreArrival : s.routes.noMore}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            intercityQuery && railDbReady === false ? (
-              <IntercityDownloadCard onReady={() => setRailDbReady(true)} />
-            ) : (
-              <View style={styles.emptyCard}>
-                <View style={styles.emptyIconBadge}>
-                  <RouteOff size={24} color={scheme.onPrimaryContainer} />
-                </View>
-                <Text style={styles.emptyTitle}>
-                  {liveOnly
-                    ? s.routes.emptyLive
-                    : hasActiveFilters
-                      ? s.routes.emptyFiltered
-                      : intercityQuery
-                        ? s.intercity.noTrainsTitle
-                        : s.routes.emptyNone}
-                </Text>
-                <Text style={styles.emptySub}>
-                  {intercityQuery && !hasActiveFilters
-                    ? s.intercity.noTrainsHint
-                    : transfersFilter !== 'all' && modeFilter !== 'all'
-                      ? s.routes.emptyModeDirect(modeGenitive(modeFilter))
-                      : transfersFilter !== 'all'
-                        ? s.routes.emptyDirect
-                        : modeFilter !== 'all'
-                          ? s.routes.emptyMode(modeGenitive(modeFilter))
-                          : arrivalMode
-                            ? s.routes.emptyArrival
-                            : s.routes.emptyPlain}
-                </Text>
-                <View style={styles.emptyActions}>
-                  {transfersFilter !== 'all' && (
-                    <SpringPressable
-                      onPress={() => setTransfersFilter('all')}
-                      scaleDelta={0.025}
-                      haptic="selection"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.showWithChangesA11y}
-                    >
-                      <Text style={styles.retryText}>{s.routes.showWithChanges}</Text>
-                    </SpringPressable>
-                  )}
-                  {modeFilter !== 'all' && (
-                    <SpringPressable
-                      onPress={() => setModeFilter('all')}
-                      scaleDelta={0.025}
-                      haptic="selection"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.showAllVehiclesA11y}
-                    >
-                      <Text style={styles.retryText}>{s.routes.showAllVehicles}</Text>
-                    </SpringPressable>
-                  )}
-                  {liveOnly && (
-                    <SpringPressable
-                      onPress={() => setLiveOnly(false)}
-                      scaleDelta={0.025}
-                      haptic="selection"
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={s.routes.showWithoutLive}
-                    >
-                      <Text style={styles.retryText}>{s.routes.showWithoutLive}</Text>
-                    </SpringPressable>
-                  )}
-                </View>
-              </View>
-            )
-          }
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          ListEmptyComponent={listEmpty}
         />
       </Animated.View>
     </View>
@@ -2272,7 +2314,7 @@ export default function RoutesScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: insets.top }]}>
       {webLayout.isDesktop ? (
         <View style={styles.desktopSplit}>
           <View style={[styles.desktopLeftCol, { width: webLayout.isWide ? 380 : 340 }]}>
@@ -2387,7 +2429,7 @@ export default function RoutesScreen() {
           onOpen={() => openConnection(preview.item)}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -83,7 +83,7 @@ type BarSegment =
   | { key: string; kind: 'longWalk'; min: number }
   | { key: string; kind: 'riskTight' | 'riskCritical'; min: number };
 
-export function JourneyStrip({
+export const JourneyStrip = memo(function JourneyStrip({
   insights,
   dimmed = false,
   interactive = true,
@@ -174,6 +174,45 @@ export function JourneyStrip({
     });
   }
 
+  const stripItems = steps.map((step) => {
+    if (step.kind === 'leg') {
+      return (
+        <LineBadge
+          key={step.key}
+          leg={step.leg}
+          compact
+          maxWidth={Math.min(width, 640) - 128}
+        />
+      );
+    }
+
+    if (step.kind === 'risk') {
+      const critical = step.risk.level === 'critical';
+      const fg = critical ? scheme.onErrorContainer : scheme.onWarningContainer;
+      const timeLabel = step.risk.slackMin <= 0 ? "<1'" : `${step.risk.slackMin}'`;
+      return (
+        <View
+          key={step.key}
+          style={[
+            styles.riskConnector,
+            critical ? styles.riskConnectorCritical : styles.riskConnectorTight,
+          ]}
+        >
+          <TriangleAlert size={11} color={fg} />
+          {step.walkMin > 0 && <DirectionsWalk size={12} color={fg} />}
+          <Text style={[styles.riskConnectorText, { color: fg }]}>{timeLabel}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View key={step.key} style={styles.walkStep}>
+        <DirectionsWalk size={13} color={scheme.onSurfaceVariant} />
+        <Text style={styles.walkMinutes}>{`${step.walkMin}'`}</Text>
+      </View>
+    );
+  });
+
   return (
     <View
       style={[styles.stripSurface, dimmed && styles.stripSurfaceDimmed]}
@@ -181,62 +220,29 @@ export function JourneyStrip({
       importantForAccessibility="no-hide-descendants"
     >
       <View style={styles.stripTopRow}>
-        <ScrollView
-          horizontal
-          style={styles.stripScroll}
-          contentContainerStyle={styles.stripContent}
-          showsHorizontalScrollIndicator={false}
-          scrollEnabled={interactive && stripOverflows}
-          nestedScrollEnabled={interactive && stripOverflows}
-          onLayout={(event) => {
-            const w = event.nativeEvent.layout.width;
-            boxWRef.current = w;
-            syncStripOverflow(w, contentWRef.current);
-          }}
-          onContentSizeChange={(w) => {
-            contentWRef.current = w;
-            syncStripOverflow(boxWRef.current, w);
-          }}
-        >
-          {steps.map((step) => {
-            if (step.kind === 'leg') {
-              return (
-                <LineBadge
-                  key={step.key}
-                  leg={step.leg}
-                  compact
-                  maxWidth={Math.min(width, 640) - 128}
-                />
-              );
-            }
-
-            if (step.kind === 'risk') {
-              const critical = step.risk.level === 'critical';
-              const fg = critical ? scheme.onErrorContainer : scheme.onWarningContainer;
-              const timeLabel = step.risk.slackMin <= 0 ? "<1'" : `${step.risk.slackMin}'`;
-              return (
-                <View
-                  key={step.key}
-                  style={[
-                    styles.riskConnector,
-                    critical ? styles.riskConnectorCritical : styles.riskConnectorTight,
-                  ]}
-                >
-                  <TriangleAlert size={11} color={fg} />
-                  {step.walkMin > 0 && <DirectionsWalk size={12} color={fg} />}
-                  <Text style={[styles.riskConnectorText, { color: fg }]}>{timeLabel}</Text>
-                </View>
-              );
-            }
-
-            return (
-              <View key={step.key} style={styles.walkStep}>
-                <DirectionsWalk size={13} color={scheme.onSurfaceVariant} />
-                <Text style={styles.walkMinutes}>{`${step.walkMin}'`}</Text>
-              </View>
-            );
-          })}
-        </ScrollView>
+        {interactive ? (
+          <ScrollView
+            horizontal
+            style={styles.stripScroll}
+            contentContainerStyle={styles.stripContent}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={stripOverflows}
+            nestedScrollEnabled={stripOverflows}
+            onLayout={(event) => {
+              const w = event.nativeEvent.layout.width;
+              boxWRef.current = w;
+              syncStripOverflow(w, contentWRef.current);
+            }}
+            onContentSizeChange={(w) => {
+              contentWRef.current = w;
+              syncStripOverflow(boxWRef.current, w);
+            }}
+          >
+            {stripItems}
+          </ScrollView>
+        ) : (
+          <View style={[styles.stripScroll, styles.stripContent]}>{stripItems}</View>
+        )}
 
         {pinFinalWalk && (
           <View style={styles.pinnedFinalWalk}>
@@ -294,7 +300,7 @@ export function JourneyStrip({
       )}
     </View>
   );
-}
+});
 
 function useConnectionCardModel(item: Connection, dimmed: boolean, tick: number) {
   const s = useStrings();
