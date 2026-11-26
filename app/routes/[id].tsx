@@ -45,12 +45,18 @@ import {
   normalizeConnectionId,
   stableConnectionId,
 } from '../../src/services/routing/connectionIdentity';
+import {
+  boardingTripKey,
+  getConnectionGroup,
+  refreshConnectionGroupOptions,
+} from '../../src/services/routing/connectionGroups';
 import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import { liveTracker } from '../../src/services/liveTracker';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
 import { ConnectionSummary } from '../../src/components/ConnectionSummary';
+import { ConnectionVariantSwitcher } from '../../src/components/ConnectionVariantSwitcher';
 import {
   useRouteCardTransition,
   type CardTransitionSource,
@@ -70,6 +76,7 @@ import { useTransferProtection } from '../../src/components/TransferProtectionPr
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
 import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
+import { useTransferThresholds, useWalkSpeedMps } from '../../src/services/settings';
 import { recordJourney } from '../../src/services/userStats';
 import {
   areNotificationsSupported,
@@ -176,20 +183,34 @@ export default function RouteDetailsScreen() {
   const cachedItem = getTrackedTripSync()?.connection;
   const alarmItem = getDepartureAlarmSync()?.connection;
 
+  const [selectedVariantId, setSelectedVariantId] = useState<string>(id);
   const [swappedBase, setSwappedBase] = useState<Connection | null>(null);
+  const pendingTrackedSyncRef = useRef<string | null>(null);
+  const prevTrackedConnIdRef = useRef<string | null>(null);
+  const hadProtectionBeforeDirectRef = useRef(false);
+
   useEffect(() => {
+    setSelectedVariantId(id);
     setSwappedBase(null);
+    pendingTrackedSyncRef.current = null;
+    prevTrackedConnIdRef.current = null;
+    hadProtectionBeforeDirectRef.current = false;
   }, [id]);
-  const matchTrackId = swappedBase ? normalizeConnectionId(swappedBase.id) : id;
+  const matchTrackId = normalizeConnectionId(swappedBase?.id ?? selectedVariantId);
 
   const isTrackedThis = useMemo(() => {
     if (!trackedTrip) return false;
-    const targets = new Set([id, matchTrackId].filter(Boolean));
+    const targets = new Set([id, matchTrackId, normalizeConnectionId(selectedVariantId)].filter(Boolean));
     const trackedId = trackedTrip.id ? normalizeConnectionId(trackedTrip.id) : '';
     const trackedConnId = trackedTrip.connection.id
       ? normalizeConnectionId(trackedTrip.connection.id)
       : '';
     if (targets.has(trackedId) || targets.has(trackedConnId)) return true;
+    if (
+      trackedTrip.groupAlternatives?.some((alt) => targets.has(normalizeConnectionId(alt.id)))
+    ) {
+      return true;
+    }
     try {
       if (targets.has(normalizeConnectionId(stableConnectionId(trackedTrip.connection))))
         return true;
@@ -197,7 +218,7 @@ export default function RouteDetailsScreen() {
       // ignore
     }
     return false;
-  }, [trackedTrip, id, matchTrackId]);
+  }, [trackedTrip, id, matchTrackId, selectedVariantId]);
 
   const matchesRouteId = useCallback(
     (candidateId?: string | null) => {
@@ -218,13 +239,63 @@ export default function RouteDetailsScreen() {
   const [liveStale, setLiveStale] = useState(
     () => liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh',
   );
-  const rawItem =
-    isTrackedThis && trackedTrip
-      ? trackedTrip.connection
-      : matchesRouteId(loadedItem?.id)
-        ? loadedItem
-        : (immediateItem ?? null);
-  const effectiveRawItem = swappedBase ?? rawItem;
+
+  const baseGroupConnections = useMemo(() => {
+    const cachedGroup = getConnectionGroup(id);
+    if (cachedGroup && cachedGroup.options.length > 1) {
+      const list = cachedGroup.options.map((opt) => opt.connection);
+      if (loadedItem) {
+        const key = boardingTripKey(loadedItem);
+        const normLoaded = normalizeConnectionId(loadedItem.id);
+        if (
+          key &&
+          boardingTripKey(list[0]) === key &&
+          !list.some((c) => normalizeConnectionId(c.id) === normLoaded)
+        ) {
+          return [loadedItem, ...list];
+        }
+      }
+      return list;
+    }
+    if (isTrackedThis && trackedTrip?.groupAlternatives && trackedTrip.groupAlternatives.length > 0) {
+      const pool = [trackedTrip.connection, ...trackedTrip.groupAlternatives];
+      const seen = new Set<string>();
+      return pool.filter((c) => {
+        const norm = normalizeConnectionId(c.id);
+        if (seen.has(norm)) return false;
+        seen.add(norm);
+        return true;
+      });
+    }
+    return loadedItem ? [loadedItem] : immediateItem ? [immediateItem] : [];
+  }, [id, immediateItem, isTrackedThis, loadedItem, trackedTrip]);
+
+  const activeRawItem = useMemo(() => {
+    if (swappedBase) return swappedBase;
+    const selectedNorm = normalizeConnectionId(selectedVariantId);
+    if (
+      isTrackedThis &&
+      trackedTrip &&
+      normalizeConnectionId(trackedTrip.connection.id) === selectedNorm
+    ) {
+      return trackedTrip.connection;
+    }
+    const inGroup = baseGroupConnections.find(
+      (c) => normalizeConnectionId(c.id) === selectedNorm,
+    );
+    if (inGroup) return inGroup;
+    if (matchesRouteId(loadedItem?.id)) return loadedItem;
+    return immediateItem ?? null;
+  }, [
+    baseGroupConnections,
+    immediateItem,
+    isTrackedThis,
+    loadedItem,
+    matchesRouteId,
+    selectedVariantId,
+    swappedBase,
+    trackedTrip,
+  ]);
 
   const navTransitionSettled = useScreenTransitionSettled();
   const transitionSettled = activeMorphSource ? morphSettled : navTransitionSettled;
@@ -298,13 +369,62 @@ export default function RouteDetailsScreen() {
     }
   }, [transitionSettled]);
 
-  const rawItems = useMemo(() => (effectiveRawItem ? [effectiveRawItem] : []), [effectiveRawItem]);
+  const rawItems = useMemo(() => {
+    if (baseGroupConnections.length <= 1) {
+      return activeRawItem ? [activeRawItem] : [];
+    }
+    const selectedNorm = normalizeConnectionId(selectedVariantId);
+    let replaced = false;
+    const list = baseGroupConnections.map((c) => {
+      if (activeRawItem && normalizeConnectionId(c.id) === selectedNorm) {
+        replaced = true;
+        return activeRawItem;
+      }
+      return c;
+    });
+    if (!replaced && activeRawItem) {
+      return [activeRawItem, ...list];
+    }
+    return list;
+  }, [activeRawItem, baseGroupConnections, selectedVariantId]);
+
   const tripDelays = useMemo(
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
   const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline && transitionSettled);
-  const item = liveItems[0] ?? null;
+  const item = useMemo(() => {
+    if (liveItems.length === 0) return null;
+    if (swappedBase) {
+      const swappedNorm = normalizeConnectionId(swappedBase.id);
+      const hit = liveItems.find((c) => normalizeConnectionId(c.id) === swappedNorm);
+      if (hit) return hit;
+    }
+    const selectedNorm = normalizeConnectionId(selectedVariantId);
+    return (
+      liveItems.find((c) => normalizeConnectionId(c.id) === selectedNorm) ??
+      liveItems[0] ??
+      null
+    );
+  }, [liveItems, selectedVariantId, swappedBase]);
+
+  const walkMps = useWalkSpeedMps();
+  const thresholds = useTransferThresholds();
+  const groupOptions = useMemo(
+    () =>
+      liveItems.length > 1
+        ? refreshConnectionGroupOptions(liveItems, walkMps, thresholds)
+        : [],
+    [liveItems, walkMps, thresholds],
+  );
+
+  const siblingsFor = useCallback(
+    (chosen: Connection) => {
+      const chosenNorm = normalizeConnectionId(chosen.id);
+      return liveItems.filter((c) => normalizeConnectionId(c.id) !== chosenNorm).slice(0, 3);
+    },
+    [liveItems],
+  );
 
   const loggedJourneyIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -318,21 +438,51 @@ export default function RouteDetailsScreen() {
       rememberPlannedConnection(nextConnection);
       setSwappedBase(nextConnection);
       if (isTrackedThis) {
+        pendingTrackedSyncRef.current = normalizeConnectionId(nextConnection.id);
         void updateTrackedConnection(nextConnection, { reason: 'legSwap' });
       }
     },
     [isTrackedThis],
   );
 
+  const handleSelectVariant = useCallback(
+    (nextConnection: Connection) => {
+      const nextNormId = normalizeConnectionId(nextConnection.id);
+      if (nextNormId === normalizeConnectionId(selectedVariantId) && !swappedBase) return;
+      rememberPlannedConnection(nextConnection);
+      setSelectedVariantId(nextNormId);
+      setSwappedBase(null);
+      if (isTrackedThis) {
+        const currentlyProtected = trackedTrip?.protectionEnabled === true;
+        const nextHasTransfers = hasTransfer(nextConnection);
+        let enableProtection: boolean | undefined;
+        if (currentlyProtected && !nextHasTransfers) {
+          hadProtectionBeforeDirectRef.current = true;
+          enableProtection = false;
+        } else if (nextHasTransfers && hadProtectionBeforeDirectRef.current) {
+          hadProtectionBeforeDirectRef.current = false;
+          enableProtection = true;
+        }
+        pendingTrackedSyncRef.current = nextNormId;
+        void updateTrackedConnection(nextConnection, {
+          reason: 'variantSwitch',
+          enableProtection,
+          groupAlternatives: siblingsFor(nextConnection),
+        });
+      }
+    },
+    [isTrackedThis, selectedVariantId, siblingsFor, swappedBase, trackedTrip?.protectionEnabled],
+  );
+
   const { swapStates, swapLeg, retryLeg } = useLegAlternatives({
     connection: item,
-    routeKey: id,
+    routeKey: selectedVariantId,
     tripDelays,
     onApplySwap: handleApplyLegSwap,
     ready: transitionSettled,
   });
 
-  const activeId = normalizeConnectionId(item?.id ?? id);
+  const activeId = normalizeConnectionId(item?.id ?? selectedVariantId);
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -343,14 +493,25 @@ export default function RouteDetailsScreen() {
     alarm && normalizeConnectionId(alarm.connectionId) === activeId ? alarm : null;
 
   useEffect(() => {
-    if (!isTrackedThis || !trackedTrip?.connection) return;
-    if (loadedItem?.id !== trackedTrip.connection.id) {
-      setItem(trackedTrip.connection);
+    if (!isTrackedThis || !trackedTrip?.connection) {
+      pendingTrackedSyncRef.current = null;
+      prevTrackedConnIdRef.current = null;
+      return;
     }
-    if (swappedBase && swappedBase.id !== trackedTrip.connection.id) {
-      setSwappedBase(trackedTrip.connection);
+    const trackedNormId = normalizeConnectionId(trackedTrip.connection.id);
+    if (pendingTrackedSyncRef.current) {
+      if (trackedNormId === pendingTrackedSyncRef.current) {
+        pendingTrackedSyncRef.current = null;
+        prevTrackedConnIdRef.current = trackedNormId;
+      }
+      return;
     }
-  }, [isTrackedThis, trackedTrip?.connection, loadedItem?.id, swappedBase]);
+    if (prevTrackedConnIdRef.current === trackedNormId) return;
+    prevTrackedConnIdRef.current = trackedNormId;
+    setSelectedVariantId(trackedNormId);
+    setItem(trackedTrip.connection);
+    setSwappedBase(null);
+  }, [isTrackedThis, trackedTrip?.connection]);
 
   const hasTransfers = item != null && hasTransfer(item);
   const [isSavedRoute, setIsSavedRoute] = useState<boolean>(
@@ -482,6 +643,7 @@ export default function RouteDetailsScreen() {
       const firstLeg = item.legs[0];
       const lastLeg = item.legs[item.legs.length - 1];
       const fallback = defaultLocationForCity(getActiveCityIdSync());
+      const groupSiblings = siblingsFor(item);
       await startTracking({
         id: item.id,
         fromTitle: item.fromTitle,
@@ -495,6 +657,7 @@ export default function RouteDetailsScreen() {
         anchorStopLat: firstLeg?.fromLat,
         anchorStopLon: firstLeg?.fromLon,
         connection: item,
+        groupAlternatives: groupSiblings.length > 0 ? groupSiblings : undefined,
         startedAt: Date.now(),
         protectionEnabled,
       });
@@ -800,6 +963,15 @@ export default function RouteDetailsScreen() {
 
   const legSections = (
     <>
+      {groupOptions.length > 1 && (
+        <ConnectionVariantSwitcher
+          options={groupOptions}
+          selectedId={item.id}
+          onSelect={handleSelectVariant}
+          trackedConnectionId={isTrackedThis ? trackedTrip?.connection.id : undefined}
+          transferProtectionActive={transferProtectionActive}
+        />
+      )}
       <RouteTravelDeck
         connection={item}
         hasTransfers={hasTransfers}

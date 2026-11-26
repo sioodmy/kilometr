@@ -199,6 +199,8 @@ export interface TrackedTrip {
   anchorStopLon?: number;
   /** Połączenie, na które użytkownik się zgodził (to samo, które widzi na liście). */
   connection: Connection;
+  /** Pozostałe warianty z tej samej grupy kursu (do przełączania i ochrony przesiadek). */
+  groupAlternatives?: Connection[];
   startedAt: number;
   /**
    * Absolutny plan z chwili startu. Bez tego kurs 24:xx po północy przesuwał

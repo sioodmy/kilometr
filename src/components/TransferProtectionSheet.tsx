@@ -68,6 +68,9 @@ function ModeIcon({
 }
 
 function strategyLabel(alt: TransferAlternative, currentLine: string | undefined, s: Strings): string {
+  if (alt.source === 'group' && alt.connection.transfers === 0) {
+    return s.transferGuard.strategyStayDirect(currentLine || alt.nextLine);
+  }
   if (alt.source === 'legSwap') return s.transferGuard.strategyLegSwap;
   if (alt.kind === 'stayOn') {
     return currentLine

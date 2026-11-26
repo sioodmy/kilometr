@@ -932,6 +932,7 @@ export const en: Strings = {
     optionSameTime: 'Same arrival',
     strategyLegSwap: 'Another departure here',
     strategyStayOn: 'Stay on, transfer later',
+    strategyStayDirect: (line: string) => `Stay on ${line} directly to destination`,
     strategySameStop: 'Different line here',
     walkTransfer: (min: number, m: number) => `${min} min walk (${m} m)`,
     samePlatform: 'Same stop',
@@ -1952,6 +1953,13 @@ export const en: Strings = {
     fromStopLabel: (stop: string) => `from: ${stop}`,
     exitStopLabel: (stop: string) => `exit: ${stop}`,
     finalWalkPill: (min: number) => `${min}' to dest.`,
+    variantDirect: 'Direct',
+    variantSlackShort: (min: number) => (min <= 0 ? 'tight' : `${min} min spare`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Alternative option ${label}, arrival ${arrAt}`,
+    variantSwitcherA11y: 'Transfer options for this departure',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, arrival ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'No route data',

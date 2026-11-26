@@ -24,7 +24,7 @@ export interface TransferRiskInfo {
   level: 'tight' | 'critical';
 }
 
-interface TransitLegItem {
+export interface TransitLegItem {
   key: string;
   leg: Leg;
   durationMin: number;
@@ -44,6 +44,8 @@ export interface ConnectionInsights {
   hasLongDestinationWalk: boolean;
   riskyTransfers: TransferRiskInfo[];
   worstTransferRisk?: TransferRiskInfo;
+  /** Najmniejszy zapas czasu na przesiadce w sekundach (null dla trasy bez przesiadek). */
+  minTransferSlackSec: number | null;
 }
 
 function alignClock(seconds: number, anchor: number): number {
@@ -155,6 +157,7 @@ export function analyzeConnection(
       destinationWalkMin: walkOnlyMin,
       hasLongDestinationWalk: walkOnlyMin > LONG_DESTINATION_WALK_MIN,
       riskyTransfers: [],
+      minTransferSlackSec: null,
     };
   }
 
@@ -184,6 +187,7 @@ export function analyzeConnection(
 
   const transitLegs: TransitLegItem[] = [];
   const riskyTransfers: TransferRiskInfo[] = [];
+  let minTransferSlackSec: number | null = null;
 
   for (let i = 0; i < transitIndices.length; i++) {
     const curIdx = transitIndices[i];
@@ -220,6 +224,8 @@ export function analyzeConnection(
       const nextDepSec = legTimes[nextIdx].depSec;
       const walkSec = legWalkDurationSec(intermediateWalks, walkMps);
       const slackSec = Math.round(nextDepSec - prevArrSec - walkSec);
+      minTransferSlackSec =
+        minTransferSlackSec === null ? slackSec : Math.min(minTransferSlackSec, slackSec);
 
       const requiredBufferSec =
         nextLeg.mode === 'train'
@@ -271,5 +277,6 @@ export function analyzeConnection(
     hasLongDestinationWalk: finalWalkMin > LONG_DESTINATION_WALK_MIN,
     riskyTransfers,
     worstTransferRisk,
+    minTransferSlackSec,
   };
 }

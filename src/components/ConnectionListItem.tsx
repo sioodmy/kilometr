@@ -13,6 +13,7 @@ import { ConnectionCard } from './ConnectionCard';
 import type { ConnectionPeekHandlers } from './ConnectionPeek';
 import { useRouteCardTransition } from './RouteCardTransition';
 import { normalizeConnectionId } from '../services/routing/connectionIdentity';
+import type { ConnectionGroupOption } from '../services/routing/connectionGroups';
 import { motion } from '../theme/motion';
 import type { Connection } from '../types/models';
 
@@ -39,6 +40,9 @@ interface ConnectionListItemProps {
   dimmed: boolean;
   tick: number;
   onPress: (item: Connection) => void;
+  alternatives?: ConnectionGroupOption[];
+  onSelectAlternative?: (connection: Connection) => void;
+  measureKey?: string;
   peek: ConnectionPeekHandlers;
   reduceMotion: boolean;
   enterMode: CardEnterMode;
@@ -56,6 +60,9 @@ export const ConnectionListItem = memo(function ConnectionListItem({
   dimmed,
   tick,
   onPress,
+  alternatives,
+  onSelectAlternative,
+  measureKey,
   peek,
   reduceMotion,
   enterMode,
@@ -119,17 +126,26 @@ export const ConnectionListItem = memo(function ConnectionListItem({
     };
   });
 
+  const heightKey = measureKey ?? item.id;
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const h = event.nativeEvent.layout.height;
-      if (h > 0) onMeasureHeight(item.id, h);
+      if (h > 0) onMeasureHeight(heightKey, h);
     },
-    [item.id, onMeasureHeight],
+    [heightKey, onMeasureHeight],
   );
 
   return (
     <Animated.View style={animatedStyle} onLayout={handleLayout}>
-      <ConnectionCard item={item} dimmed={dimmed} onPress={onPress} peek={peek} tick={tick} />
+      <ConnectionCard
+        item={item}
+        dimmed={dimmed}
+        onPress={onPress}
+        alternatives={alternatives}
+        onSelectAlternative={onSelectAlternative}
+        peek={peek}
+        tick={tick}
+      />
     </Animated.View>
   );
 });
