@@ -2544,7 +2544,7 @@ export const en: Strings = {
     openTimetableCta: 'Line timetable',
     toggleSheetA11y: 'Expand or collapse details',
     filterDelays: 'Delays',
-    delayZoneSheetTitle: 'Delay hotspot',
+    delayZoneSheetTitle: 'Delayed corridor',
     delayAvgNow: (min: number) => `Avg +${min} min`,
     delayP90: (min: number) => `Peak (p90): +${min} min`,
     delayVsTypicalHigher: (min: number) => `+${min} min above normal`,

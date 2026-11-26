@@ -3066,7 +3066,7 @@ export const uk: Strings = {
     openTimetableCta: 'Розклад лінії',
     toggleSheetA11y: 'Розгорнути або згорнути деталі',
     filterDelays: 'Затримки',
-    delayZoneSheetTitle: 'Вузол затримок',
+    delayZoneSheetTitle: 'Ділянка із затримками',
     delayAvgNow: (min: number) => `Середньо +${min} хв`,
     delayP90: (min: number) => `Пік (p90): +${min} хв`,
     delayVsTypicalHigher: (min: number) => `+${min} хв вище норми`,

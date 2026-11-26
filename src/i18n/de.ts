@@ -2569,7 +2569,7 @@ export const de: Strings = {
     openTimetableCta: 'Linienfahrplan',
     toggleSheetA11y: 'Details erweitern oder einklappen',
     filterDelays: 'Verspätungen',
-    delayZoneSheetTitle: 'Verspätungsknoten',
+    delayZoneSheetTitle: 'Verspäteter Abschnitt',
     delayAvgNow: (min: number) => `Schnitt +${min} Min.`,
     delayP90: (min: number) => `Spitze (p90): +${min} Min.`,
     delayVsTypicalHigher: (min: number) => `+${min} Min. über Normal`,
