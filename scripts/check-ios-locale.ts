@@ -42,6 +42,14 @@ loader._load = function (request, parent, ...rest) {
 
 async function main() {
   const locale: typeof import('../src/i18n') = require('../src/i18n');
+  const waitForLocale = async (expected: string, message: string) => {
+    // Zmiana języka na żywo ładuje słownik leniwie, więc résumé aplikacji
+    // kończy się po dynamicznym imporcie, nie w samym callbacku AppState.
+    for (let i = 0; i < 100 && locale.getLocaleSync() !== expected; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(locale.getLocaleSync(), expected, message);
+  };
   assert.equal(await locale.initLocale(), 'en');
   assert.equal(listeners.length, 1, 'Locale initialization installs the AppState listener');
   await locale.initLocale();
@@ -51,7 +59,7 @@ async function main() {
   listeners[0]('background');
   assert.equal(locale.getLocaleSync(), 'en');
   listeners[0]('active');
-  assert.equal(locale.getLocaleSync(), 'de', 'Returning to the app updates the system language');
+  await waitForLocale('de', 'Returning to the app updates the system language');
 
   await locale.setLocaleSetting('uk');
   assert.equal(values.get('kilometr.locale.v1'), 'uk');
