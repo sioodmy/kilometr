@@ -13,6 +13,9 @@ import {
 import { buildRoutingSnapshot } from '../src/services/routing/reliability';
 import { LocalGtfsStore, type DayIndex } from '../src/services/routing/store';
 
+// Domyślnie backend jest odcięty (baseUrl = ''), więc testy sieci podają host jawnie.
+const TEST_BASE_URL = 'https://api.kilometr.app';
+
 test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz kolej', async () => {
   resetKilometrApiCircuit();
   const originalFetch = globalThis.fetch;
@@ -62,7 +65,7 @@ test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz k
     const batch = await fetchBackendVehicles('wroclaw', {
       bbox: [17.0, 51.08, 17.1, 51.14],
       includeRail: true,
-      baseUrl: 'https://api.kilometr.app',
+      baseUrl: TEST_BASE_URL,
     });
     assert.ok(batch);
     assert.ok(capturedUrl.includes('bbox=17.00000%2C51.08000%2C17.10000%2C51.14000'));
@@ -78,7 +81,7 @@ test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz k
   }
 });
 
-test('circuit breaker otwiera obwod po 3 awariach i chroni przed kolejnymi timeoutami', async () => {
+test('domyslny backend jest odciety, a circuit breaker chroni przed kolejnymi timeoutami', async () => {
   resetKilometrApiCircuit();
   const originalFetch = globalThis.fetch;
   let calls = 0;
@@ -87,14 +90,17 @@ test('circuit breaker otwiera obwod po 3 awariach i chroni przed kolejnymi timeo
       calls += 1;
       throw new Error('ECONNREFUSED');
     };
-    assert.equal(isKilometrApiAvailable(), true);
+    // Bez EXPO_PUBLIC_BACKEND_URL nie wychodzi żadne żądanie.
+    assert.equal(isKilometrApiAvailable(), false);
     assert.equal(await fetchBackendVehicles('wroclaw'), null);
-    assert.equal(await fetchBackendVehicles('wroclaw'), null);
-    assert.equal(await fetchBackendVehicles('wroclaw'), null);
+    assert.equal(calls, 0);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
     assert.equal(calls, 3);
     assert.equal(isKilometrApiAvailable(), false);
     // Kolejne wywolanie nie dotyka sieci dopoki circuit breaker jest otwarty.
-    assert.equal(await fetchBackendVehicles('wroclaw'), null);
+    assert.equal(await fetchBackendVehicles('wroclaw', { baseUrl: TEST_BASE_URL }), null);
     assert.equal(calls, 3);
   } finally {
     globalThis.fetch = originalFetch;
@@ -132,7 +138,7 @@ test('fetchBackendDelayHubs pobiera normy wezlow bez stref heatmapy', async () =
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
 
-    const hubs = await fetchBackendDelayHubs('wroclaw', null, undefined, 'https://api.kilometr.app');
+    const hubs = await fetchBackendDelayHubs('wroclaw', null, undefined, TEST_BASE_URL);
     assert.ok(hubs);
     assert.equal(hubs.length, 1);
     assert.equal(hubs[0].name, 'Rondo Reagana');
@@ -250,7 +256,7 @@ test('fetchBackendRouteInsights zwraca null przy ready=false oraz pelne dane prz
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
-    assert.equal(await fetchBackendRouteInsights('wroclaw', conn), null);
+    assert.equal(await fetchBackendRouteInsights('wroclaw', conn, undefined, TEST_BASE_URL), null);
 
     globalThis.fetch = async () =>
       new Response(
@@ -288,7 +294,7 @@ test('fetchBackendRouteInsights zwraca null przy ready=false oraz pelne dane prz
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
 
-    const res = await fetchBackendRouteInsights('wroclaw', conn);
+    const res = await fetchBackendRouteInsights('wroclaw', conn, undefined, TEST_BASE_URL);
     assert.ok(res);
     assert.equal(res.ready, true);
     assert.equal(res.focusLine, '4');
@@ -334,7 +340,7 @@ test('fetchBackendAnomalies mapuje automatyczne zatory GPS', async () => {
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
 
-    const list = await fetchBackendAnomalies('wroclaw');
+    const list = await fetchBackendAnomalies('wroclaw', undefined, TEST_BASE_URL);
     assert.ok(list);
     assert.equal(list.length, 1);
     assert.equal(list[0].kind, 'tram_stall');

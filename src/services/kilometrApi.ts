@@ -218,6 +218,11 @@ export function isKilometrApiAvailable(now = Date.now()): boolean {
   return now >= circuitOpenUntil;
 }
 
+/** Sam stan obwodu, niezależny od tego, czy domyślny host jest włączony. */
+function circuitAllows(now = Date.now()): boolean {
+  return now >= circuitOpenUntil;
+}
+
 function recordSuccess(): void {
   consecutiveFailures = 0;
   circuitOpenUntil = 0;
@@ -322,7 +327,7 @@ async function fetchJson<T>(
   init?: RequestInit,
   baseUrl = KILOMETR_API.baseUrl,
 ): Promise<T | null> {
-  if (!isKilometrApiAvailable()) return null;
+  if (!baseUrl || !circuitAllows()) return null;
   const externalSignal = init?.signal;
   const timeout = withTimeout(timeoutMs, externalSignal);
   try {
