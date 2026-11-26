@@ -2439,6 +2439,8 @@ export const pl = {
     fromStopLabel: (stop: string) => `z: ${stop}`,
     exitStopLabel: (stop: string) => `wysiadka: ${stop}`,
     finalWalkPill: (min: number) => `${min}' do celu`,
+    variantAlternativeHeading: 'Alternatywnie',
+    variantFasterBy: (min: number) => `Szybciej o ${min} min`,
     variantDirect: 'Bezpośrednio',
     variantSlackShort: (min: number) => (min <= 0 ? 'na styk' : `${min} min zapasu`),
     variantCardA11y: (label: string, arrAt: string) =>
