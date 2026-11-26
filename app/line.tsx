@@ -25,6 +25,7 @@ import {
 } from '../src/components/icons';
 import { LineBadge, resolveLegBadgeColors } from '../src/components/LineBadge';
 import { MorphingLoader } from '../src/components/MorphingLoader';
+import { SkeletonBone, SkeletonPulse } from '../src/components/SkeletonPulse';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { StopDeparturesSheet } from '../src/components/StopDeparturesSheet';
 import { TimetableDeparturesView } from '../src/components/TimetableDeparturesView';
@@ -947,52 +948,74 @@ export default function LineScreen() {
   );
 
   const listEmpty = useMemo(
-    () => (
-      <View style={styles.stateCard} accessibilityLiveRegion="polite">
-        {loading ? (
-          <>
-            <MorphingLoader variant="contained" size={32} />
-            <Text style={styles.stateTitle}>{t.loading}</Text>
-          </>
-        ) : error ? (
-          <>
-            <View style={styles.stateIconCircle}>
-              <AlertCircle size={24} color={scheme.onSecondaryContainer} />
-            </View>
-            <Text style={styles.stateBody} accessibilityRole="alert">
-              {t.error}
-            </Text>
-            <SpringPressable
-              onPress={retry}
-              haptic="selection"
-              accessibilityRole="button"
-              style={styles.statePrimaryBtn}
-            >
-              <RefreshCw size={16} color={scheme.onPrimary} />
-              <Text style={styles.statePrimaryBtnText}>{s.common.retry}</Text>
-            </SpringPressable>
-          </>
-        ) : (
-          <>
-            <View style={styles.stateIconCircle}>
-              <RouteOff size={24} color={scheme.onSecondaryContainer} />
-            </View>
-            <Text style={styles.stateBody}>{data?.line ? t.empty : t.missing}</Text>
-            {data?.line && !isToday && (
+    () =>
+      loading || !transitionSettled ? (
+        <View style={styles.skeletonCard} accessibilityLiveRegion="polite" accessibilityLabel={t.loading}>
+          <SkeletonPulse>
+            {Array.from({ length: 6 }, (_, idx) => (
+              <View
+                key={idx}
+                style={[styles.stopRow, styles.skeletonStopRow, idx === 0 && styles.skeletonStopRowFirst]}
+              >
+                <View style={styles.railCol}>
+                  {idx > 0 && (
+                    <View style={[styles.railTop, { backgroundColor: scheme.outlineVariant }]} />
+                  )}
+                  {idx < 5 && (
+                    <View style={[styles.railBottom, { backgroundColor: scheme.outlineVariant }]} />
+                  )}
+                  <SkeletonBone width={12} height={12} radius={shape.full} />
+                </View>
+                <View style={styles.skeletonStopMain}>
+                  <SkeletonBone width={idx % 2 === 0 ? '68%' : '52%'} height={15} radius={6} />
+                  <SkeletonBone width={idx % 3 === 0 ? '36%' : '28%'} height={11} radius={5} tone="subtle" />
+                </View>
+                <SkeletonBone width={46} height={24} radius={shape.full} tone="subtle" />
+              </View>
+            ))}
+          </SkeletonPulse>
+        </View>
+      ) : (
+        <View style={styles.stateCard} accessibilityLiveRegion="polite">
+          {error ? (
+            <>
+              <View style={styles.stateIconCircle}>
+                <AlertCircle size={24} color={scheme.onSecondaryContainer} />
+              </View>
+              <Text style={styles.stateBody} accessibilityRole="alert">
+                {t.error}
+              </Text>
               <SpringPressable
-                onPress={() => setDate(timetableToday())}
+                onPress={retry}
                 haptic="selection"
                 accessibilityRole="button"
                 style={styles.statePrimaryBtn}
               >
-                <Text style={styles.statePrimaryBtnText}>{s.common.today}</Text>
+                <RefreshCw size={16} color={scheme.onPrimary} />
+                <Text style={styles.statePrimaryBtnText}>{s.common.retry}</Text>
               </SpringPressable>
-            )}
-          </>
-        )}
-      </View>
-    ),
-    [data?.line, error, isToday, loading, retry, s.common.retry, s.common.today, t],
+            </>
+          ) : (
+            <>
+              <View style={styles.stateIconCircle}>
+                <RouteOff size={24} color={scheme.onSecondaryContainer} />
+              </View>
+              <Text style={styles.stateBody}>{data?.line ? t.empty : t.missing}</Text>
+              {data?.line && !isToday && (
+                <SpringPressable
+                  onPress={() => setDate(timetableToday())}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  style={styles.statePrimaryBtn}
+                >
+                  <Text style={styles.statePrimaryBtnText}>{s.common.today}</Text>
+                </SpringPressable>
+              )}
+            </>
+          )}
+        </View>
+      ),
+    [data?.line, error, isToday, loading, retry, s.common.retry, s.common.today, t, transitionSettled],
   );
 
   const lineList = (
@@ -1872,6 +1895,28 @@ const styles = StyleSheet.create({
     ...type.labelSmall,
     color: scheme.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
+  },
+  skeletonCard: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  skeletonStopRow: {
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+  },
+  skeletonStopRowFirst: {
+    borderTopWidth: 0,
+  },
+  skeletonStopMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+    paddingVertical: 12,
   },
   stateCard: {
     backgroundColor: scheme.surfaceContainer,

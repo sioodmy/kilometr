@@ -56,6 +56,14 @@ export function useScreenTransitionSettled(fallbackMs = DEFAULT_FALLBACK_MS): bo
       if (cancelled || frame !== null) return;
       frame = requestAnimationFrame(() => {
         frame = null;
+        if (Platform.OS === 'web') {
+          // Dwie klatki dają przeglądarce szansę wyrenderować i namalować skeleton przed ciężką pracą.
+          frame = requestAnimationFrame(() => {
+            frame = null;
+            markSettled();
+          });
+          return;
+        }
         markSettled();
       });
     };

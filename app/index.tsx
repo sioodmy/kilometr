@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -120,15 +120,30 @@ import {
   type LastTripOption,
 } from '../src/components/LastTripPull';
 import { SearchSheet } from '../src/components/SearchSheet';
+import { SheetLoadingFallback } from '../src/components/SkeletonPulse';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { SavedRoutesList } from '../src/components/SavedRoutesList';
-import { TicketInspectionModal } from '../src/components/TicketInspectionModal';
 import type { SavedRoute } from '../src/types/models';
-import { AddPlaceSheet } from '../src/components/AddPlaceSheet';
-import { ManagePlacesSheet } from '../src/components/ManagePlacesSheet';
-import { CitySelectSheet } from '../src/components/CitySelectSheet';
 import { getCity, suggestCityForCoords, type CityId } from '../src/cities';
 import { hasCityDb } from '../src/services/gtfsDatabase';
+import { hasSeenOnboardingSync } from '../src/services/onboarding';
+
+const TicketInspectionModal = lazy(() =>
+  import('../src/components/TicketInspectionModal').then((m) => ({
+    default: m.TicketInspectionModal,
+  })),
+);
+const AddPlaceSheet = lazy(() =>
+  import('../src/components/AddPlaceSheet').then((m) => ({ default: m.AddPlaceSheet })),
+);
+const ManagePlacesSheet = lazy(() =>
+  import('../src/components/ManagePlacesSheet').then((m) => ({
+    default: m.ManagePlacesSheet,
+  })),
+);
+const CitySelectSheet = lazy(() =>
+  import('../src/components/CitySelectSheet').then((m) => ({ default: m.CitySelectSheet })),
+);
 
 /** Okno widoczności chipu biletu w docku: odjazd w ciągu 3 h. */
 const TICKET_CHIP_WINDOW_MS = 3 * 60 * 60 * 1000;
@@ -361,6 +376,7 @@ export default function HomeScreen() {
   // ukończeniu: dociągamy prawdziwy fix po animacji powrotu.
   useFocusEffect(
     useCallback(() => {
+      if (hasSeenOnboardingSync() === false) return undefined;
       const timer = setTimeout(() => {
         void LocationService.refineLocation();
       }, 280);
@@ -379,7 +395,7 @@ export default function HomeScreen() {
   // (sheet startu lub wykryty ruch w pojeździe), bez wymuszania re-renderu przy każdym focus/blur.
   useFocusEffect(
     useCallback(() => {
-      if (!shouldWatchLive) return undefined;
+      if (!shouldWatchLive || hasSeenOnboardingSync() === false) return undefined;
       liveTracker.acquire();
       if (!gtfsStore.isLoaded && getDataStatus().state === 'ready') {
         void gtfsStore.load().then(() => setGtfsLoaded(gtfsStore.isLoaded)).catch(() => {});
@@ -421,7 +437,7 @@ export default function HomeScreen() {
     setNewsAlert(false);
     // Miasto bez źródła komunikatów (features.news) nie odpytuje R2/feedów:
     // nie ma tam czego pokazać, a dzwonek jest ukryty.
-    if (!getCity(cityId).features.news) return;
+    if (!getCity(cityId).features.news || hasSeenOnboardingSync() === false) return;
     const checkNews = async () => {
       activeController?.abort();
       const controller = new AbortController();
@@ -479,7 +495,7 @@ export default function HomeScreen() {
   // o ogólnopolski rozkład kolejowy w tle.
   useEffect(() => {
     const check = async () => {
-      if (!isFocusedRef.current) return;
+      if (!isFocusedRef.current || hasSeenOnboardingSync() === false) return;
       const st = await ensureActiveCityTimetable({ checkUpdates: true }).catch(
         () => ({ state: 'empty' }) as const,
       );
@@ -1632,30 +1648,46 @@ export default function HomeScreen() {
       </>
     ) : null;
 
-  const thumbBarProps = {
-    onOpenSearch: () => {
-      pendingDestinationRef.current = null;
-      setReturnToDestinationAfterStart(false);
-      setQuery('');
-      setSheetMode('destination');
-    },
-    startTitle: locTitle,
-    isCustomStart,
-    onOpenStart: () => {
-      pendingDestinationRef.current = null;
-      setReturnToDestinationAfterStart(false);
-      setQuery('');
-      setSheetMode('start');
-    },
-    onResetStart: resetToGps,
-    gpsUnsupported,
-    chips: dockChips,
-    downloadProgress:
-      dataStatus.state === 'downloading' || dataStatus.state === 'importing'
-        ? dataStatus.progress
-        : null,
-    downloadStep: dataStatus.state === 'importing' ? dataStatus.step : null,
-  };
+  const handleOpenSearch = useCallback(() => {
+    pendingDestinationRef.current = null;
+    setReturnToDestinationAfterStart(false);
+    setQuery('');
+    setSheetMode('destination');
+  }, [setSheetMode]);
+
+  const handleOpenStart = useCallback(() => {
+    pendingDestinationRef.current = null;
+    setReturnToDestinationAfterStart(false);
+    setQuery('');
+    setSheetMode('start');
+  }, [setSheetMode]);
+
+  const thumbBarProps = useMemo(
+    () => ({
+      onOpenSearch: handleOpenSearch,
+      startTitle: locTitle,
+      isCustomStart,
+      onOpenStart: handleOpenStart,
+      onResetStart: resetToGps,
+      gpsUnsupported,
+      chips: dockChips,
+      downloadProgress:
+        dataStatus.state === 'downloading' || dataStatus.state === 'importing'
+          ? dataStatus.progress
+          : null,
+      downloadStep: dataStatus.state === 'importing' ? dataStatus.step : null,
+    }),
+    [
+      dataStatus,
+      dockChips,
+      gpsUnsupported,
+      handleOpenSearch,
+      handleOpenStart,
+      isCustomStart,
+      locTitle,
+      resetToGps,
+    ],
+  );
 
   const recentContent =
     smartOrdered.length === 0 && smartReady ? (
@@ -2150,67 +2182,75 @@ export default function HomeScreen() {
         )}
 
         {manageSheetOpen && (
-          <ManagePlacesSheet
-            places={saved}
-            onClose={() => setManageSheetOpen(false)}
-            onSelectPlace={(p) => {
-              setManageSheetOpen(false);
-              goToRoutes({
-                id: p.placeId,
-                title: p.name,
-                address: p.address,
-                lat: p.lat,
-                lon: p.lon,
-              });
-            }}
-            onEditPlace={(p) => {
-              setManageSheetOpen(false);
-              setEditingPlace(p);
-              setAddPlaceOpen(true);
-            }}
-            onDeletePlace={handleDeletePlace}
-            onReorderPlaces={(ids) => {
-              void handleReorderPlaces(ids);
-            }}
-            onAddNew={() => {
-              setManageSheetOpen(false);
-              setEditingPlace(null);
-              setAddPlaceOpen(true);
-            }}
-          />
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <ManagePlacesSheet
+              places={saved}
+              onClose={() => setManageSheetOpen(false)}
+              onSelectPlace={(p) => {
+                setManageSheetOpen(false);
+                goToRoutes({
+                  id: p.placeId,
+                  title: p.name,
+                  address: p.address,
+                  lat: p.lat,
+                  lon: p.lon,
+                });
+              }}
+              onEditPlace={(p) => {
+                setManageSheetOpen(false);
+                setEditingPlace(p);
+                setAddPlaceOpen(true);
+              }}
+              onDeletePlace={handleDeletePlace}
+              onReorderPlaces={(ids) => {
+                void handleReorderPlaces(ids);
+              }}
+              onAddNew={() => {
+                setManageSheetOpen(false);
+                setEditingPlace(null);
+                setAddPlaceOpen(true);
+              }}
+            />
+          </Suspense>
         )}
 
         {addPlaceOpen && (
-          <AddPlaceSheet
-            initialPlace={editingPlace}
-            onClose={() => {
-              setAddPlaceOpen(false);
-              setEditingPlace(null);
-            }}
-            onSave={handleSavePlace}
-            onDelete={handleDeletePlace}
-          />
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <AddPlaceSheet
+              initialPlace={editingPlace}
+              onClose={() => {
+                setAddPlaceOpen(false);
+                setEditingPlace(null);
+              }}
+              onSave={handleSavePlace}
+              onDelete={handleDeletePlace}
+            />
+          </Suspense>
         )}
 
         {citySheetOpen && (
-          <CitySelectSheet
-            selectedCityId={cityId}
-            onSelectCity={(id) => {
-              void handleCityChange(id, 'manual');
-            }}
-            onClose={() => setCitySheetOpen(false)}
-            switchingCity={switchingCity}
-            switchingCityId={switchingCityId}
-          />
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <CitySelectSheet
+              selectedCityId={cityId}
+              onSelectCity={(id) => {
+                void handleCityChange(id, 'manual');
+              }}
+              onClose={() => setCitySheetOpen(false)}
+              switchingCity={switchingCity}
+              switchingCityId={switchingCityId}
+            />
+          </Suspense>
         )}
 
         {inspection && (
-          <TicketInspectionModal
-            visible
-            ticket={inspection.ticket}
-            connection={inspection.connection}
-            onClose={() => setInspection(null)}
-          />
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <TicketInspectionModal
+              visible
+              ticket={inspection.ticket}
+              connection={inspection.connection}
+              onClose={() => setInspection(null)}
+            />
+          </Suspense>
         )}
       </View>
     </GestureDetector>

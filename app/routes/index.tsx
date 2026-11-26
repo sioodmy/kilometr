@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -109,6 +109,7 @@ import {
 import {
   getDataStatus,
   importGtfsFromNetwork,
+  refreshDataStatus,
   subscribeDataStatus,
   type DataStatus,
 } from '../../src/services/dataManager';
@@ -133,19 +134,28 @@ import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
 import { ensureStopHintsLoaded } from '../../src/services/stopHints';
 import type { BoardedTripOrigin, Connection, LegMode, SavedPlace, Suggestion } from '../../src/types/models';
-import { ConnectionPeek, type ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
+import type { ConnectionPeekHandlers } from '../../src/components/ConnectionPeek';
 import { RouteEndpoints } from '../../src/components/RouteEndpoints';
-import {
-  DepartureTimeSheet,
-  type JourneyTimeSelection,
-} from '../../src/components/DepartureTimeSheet';
-import {
-  RouteFilterSheet,
-  type RouteModeFilter,
-  type RouteTransfersFilter,
+import type { JourneyTimeSelection } from '../../src/components/DepartureTimeSheet';
+import type {
+  RouteModeFilter,
+  RouteTransfersFilter,
 } from '../../src/components/RouteFilterSheet';
 import { SearchSheet } from '../../src/components/SearchSheet';
+import { SheetLoadingFallback } from '../../src/components/SkeletonPulse';
 import { useStrings } from '../../src/i18n';
+
+const ConnectionPeek = lazy(() =>
+  import('../../src/components/ConnectionPeek').then((m) => ({ default: m.ConnectionPeek })),
+);
+const DepartureTimeSheet = lazy(() =>
+  import('../../src/components/DepartureTimeSheet').then((m) => ({
+    default: m.DepartureTimeSheet,
+  })),
+);
+const RouteFilterSheet = lazy(() =>
+  import('../../src/components/RouteFilterSheet').then((m) => ({ default: m.RouteFilterSheet })),
+);
 
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
@@ -418,20 +428,52 @@ export default function RoutesScreen() {
   useFocusEffect(useCallback(() => closePreview, [closePreview]));
   // Śledzimy fokus refem zamiast useIsFocused(), żeby kliknięcie karty nie wywoływało
   // re-renderu całej listy w klatce startu animacji przejścia na szczegóły.
+  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
+  useEffect(() => subscribeDataStatus(setDataStatus), []);
+  const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
+  const timetableReady = dataStatus.state === 'ready';
+
   const isFocusedRef = useRef(true);
   const syncLiveOnFocusRef = useRef<(() => void) | null>(null);
   const restoreListScrollRef = useRef<(() => void) | null>(null);
-  // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna.
+  const timetableReadyRef = useRef(timetableReady);
+  timetableReadyRef.current = timetableReady;
+  const liveAcquiredRef = useRef(false);
+  const liveAcquireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const syncLiveTrackerLease = useCallback(() => {
+    const shouldAcquire = isFocusedRef.current && timetableReadyRef.current;
+    if (!shouldAcquire) {
+      if (liveAcquireTimerRef.current !== null) {
+        clearTimeout(liveAcquireTimerRef.current);
+        liveAcquireTimerRef.current = null;
+      }
+      if (liveAcquiredRef.current) {
+        liveAcquiredRef.current = false;
+        liveTracker.release();
+      }
+      return;
+    }
+    if (liveAcquiredRef.current || liveAcquireTimerRef.current !== null) return;
+    liveAcquireTimerRef.current = setTimeout(() => {
+      liveAcquireTimerRef.current = null;
+      if (!isFocusedRef.current || !timetableReadyRef.current || liveAcquiredRef.current) return;
+      liveAcquiredRef.current = true;
+      liveTracker.acquire();
+    }, 240);
+  }, []);
+
+  useEffect(() => {
+    syncLiveTrackerLease();
+  }, [timetableReady, syncLiveTrackerLease]);
+
+  // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna i ma gotowy rozkład.
   // Start polla odraczamy o 240 ms, żeby na świeżej aplikacji nie ścigał się z animacją wejścia i budową pierwszego wycinka.
   useFocusEffect(
     useCallback(() => {
       const wasBlurred = !isFocusedRef.current;
       isFocusedRef.current = true;
-      let acquired = false;
-      const acquireTimer = setTimeout(() => {
-        acquired = true;
-        liveTracker.acquire();
-      }, 240);
+      syncLiveTrackerLease();
       if (wasBlurred) {
         syncLiveOnFocusRef.current?.();
         setNowTick(Date.now());
@@ -440,18 +482,11 @@ export default function RoutesScreen() {
         restoreListScrollRef.current?.();
       }
       return () => {
-        clearTimeout(acquireTimer);
         isFocusedRef.current = false;
-        if (acquired) liveTracker.release();
+        syncLiveTrackerLease();
       };
-    }, []),
+    }, [syncLiveTrackerLease]),
   );
-  // Rozkład trzymany na telefonie: bez niego RAPTOR nie ma czym liczyć, więc
-  // pusty wynik to nie „brak serwera", tylko brak danych offline.
-  const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
-  useEffect(() => subscribeDataStatus(setDataStatus), []);
-  const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
-  const timetableReady = dataStatus.state === 'ready';
   // Stan live: 'stale' pokazujemy od razu, a 'unknown' dopiero po krótkiej karencji na pierwszy poll,
   // żeby chip „brak danych na żywo” nie pojawiał się na sekundę i nie podbijał listy po starcie apki.
   const [liveGraceElapsed, setLiveGraceElapsed] = useState(
@@ -992,6 +1027,10 @@ export default function RoutesScreen() {
 
   const fetchRoutes = async (targetDepSec?: number, seamless = false) => {
     const seq = ++fetchSeq.current;
+    if (items.length === 0) {
+      hasUserScrolledRef.current = false;
+      scrolledBeyondThreshold.value = false;
+    }
     setLoading(true);
     setLoadError(false);
     setOffline(false);
@@ -1001,6 +1040,12 @@ export default function RoutesScreen() {
     setLoadMoreFailed(false);
     const depSec = targetDepSec !== undefined ? targetDepSec : targetTimeSec;
     try {
+      // Przy bezpośrednim otwarciu /routes (np. F5 w PWA) status w pamięci może być jeszcze 'empty'
+      // mimo istniejącej bazy w OPFS; odświeżamy go przed pokazaniem błędu braku rozkładu.
+      if (getDataStatus().state === 'empty') {
+        await refreshDataStatus();
+        if (seq !== fetchSeq.current) return;
+      }
       // Wcześniej niż dotąd: pusty sklep dawał „zero połączeń", a ekran
       // pokazywał to jako wynik wyszukiwania.
       if (noTimetable()) {
@@ -1272,12 +1317,29 @@ export default function RoutesScreen() {
     [],
   );
 
+  const groupsCountRef = useRef(0);
+  groupsCountRef.current = groups.length;
+  const hasUserScrolledRef = useRef(false);
+  const lastEndReachedAtRef = useRef(0);
+  const scrolledBeyondThreshold = useSharedValue(false);
+  const markUserScrolled = useCallback(() => {
+    hasUserScrolledRef.current = true;
+  }, []);
+
   // Ref na aktualną funkcję: handler gestu i przycisku pozostają stabilne.
   const loadEarlierRef = useRef(handleLoadEarlier);
   loadEarlierRef.current = handleLoadEarlier;
   const loadMoreRef = useRef(handleLoadMore);
   loadMoreRef.current = handleLoadMore;
   const handleLoadMoreStable = useCallback(() => {
+    void loadMoreRef.current();
+  }, []);
+  const handleEndReachedStable = useCallback(() => {
+    if (listViewportHeightRef.current <= 0) return;
+    if (groupsCountRef.current >= 10 && !hasUserScrolledRef.current) return;
+    const now = Date.now();
+    if (now - lastEndReachedAtRef.current < 800) return;
+    lastEndReachedAtRef.current = now;
     void loadMoreRef.current();
   }, []);
   const handleQuietRefresh = useCallback(() => {
@@ -1403,6 +1465,10 @@ export default function RoutesScreen() {
   const handleListScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       listScrollY.value = event.contentOffset.y;
+      if (!scrolledBeyondThreshold.value && event.contentOffset.y >= 60) {
+        scrolledBeyondThreshold.value = true;
+        runOnJS(markUserScrolled)();
+      }
     },
   });
 
@@ -2308,7 +2374,7 @@ export default function RoutesScreen() {
           // nagłówkiem powoduje to miganie pustych miejsc w trakcie
           // przeciągania palcem, więc trzymamy komórki podpięte.
           removeClippedSubviews={false}
-          onEndReached={handleLoadMoreStable}
+          onEndReached={handleEndReachedStable}
           onEndReachedThreshold={0.5}
           renderItem={renderConnection}
           ListHeaderComponent={listHeader}
@@ -2447,31 +2513,35 @@ export default function RoutesScreen() {
       )}
 
       {filtersOpen && (
-        <RouteFilterSheet
-          availableModes={availableModes}
-          selectedMode={modeFilter}
-          transfersFilter={transfersFilter}
-          liveOnly={liveOnly}
-          resultCount={groups.length}
-          onSelectMode={setModeFilter}
-          onSelectTransfers={setTransfersFilter}
-          onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
-          onReset={() => {
-            setModeFilter('all');
-            setTransfersFilter('all');
-            setLiveOnly(false);
-          }}
-          onClose={() => setFiltersOpen(false)}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <RouteFilterSheet
+            availableModes={availableModes}
+            selectedMode={modeFilter}
+            transfersFilter={transfersFilter}
+            liveOnly={liveOnly}
+            resultCount={groups.length}
+            onSelectMode={setModeFilter}
+            onSelectTransfers={setTransfersFilter}
+            onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}
+            onReset={() => {
+              setModeFilter('all');
+              setTransfersFilter('all');
+              setLiveOnly(false);
+            }}
+            onClose={() => setFiltersOpen(false)}
+          />
+        </Suspense>
       )}
 
       {timeSheetOpen && (
-        <DepartureTimeSheet
-          initialTimeSec={targetTimeSec}
-          initialMode={timeMode}
-          onClose={() => setTimeSheetOpen(false)}
-          onSelect={handleTimeSelect}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <DepartureTimeSheet
+            initialTimeSec={targetTimeSec}
+            initialMode={timeMode}
+            onClose={() => setTimeSheetOpen(false)}
+            onSelect={handleTimeSelect}
+          />
+        </Suspense>
       )}
 
       {sheetFor && (
@@ -2527,15 +2597,17 @@ export default function RoutesScreen() {
       )}
 
       {preview && (
-        <ConnectionPeek
-          item={preview.item}
-          sticky={preview.sticky}
-          ready={previewReady}
-          offline={offline || liveStale}
-          dragY={peekDragY}
-          onClose={closePreview}
-          onOpen={() => openConnection(preview.item)}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <ConnectionPeek
+            item={preview.item}
+            sticky={preview.sticky}
+            ready={previewReady}
+            offline={offline || liveStale}
+            dragY={peekDragY}
+            onClose={closePreview}
+            onOpen={() => openConnection(preview.item)}
+          />
+        </Suspense>
       )}
     </View>
   );
