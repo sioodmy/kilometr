@@ -908,12 +908,12 @@ async function main(): Promise<void> {
       now: Date,
       nowSec: number,
     ): Promise<{ dayIndex: DayIndex; offsets?: Map<string, number> }>;
-    matchRowsRust(
+    matchRowsRustAsync(
       rows: RawVehicleRow[],
       dayIndex: DayIndex,
       nowSec: number,
       offsets?: Map<string, number>,
-    ): Map<string, { tracked: TrackedVehicle; score: number }> | null;
+    ): Promise<Map<string, { tracked: TrackedVehicle; score: number }> | null>;
     matchRow(
       row: RawVehicleRow,
       dayIndex: DayIndex,
@@ -934,7 +934,7 @@ async function main(): Promise<void> {
       k: 1,
       timestamp: Date.now(),
     };
-    const rust = nightInternals.matchRowsRust(
+    const rust = await nightInternals.matchRowsRustAsync(
       [nightRow],
       slices.dayIndex,
       600,
