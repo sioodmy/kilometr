@@ -4,9 +4,11 @@
 
 import { memo, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
 import { Clock3, TriangleAlert } from './icons';
 import { LineBadge } from './LineBadge';
+import { SkeletonBone, SkeletonPulse, useDeferredReveal } from './SkeletonPulse';
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import { fetchBackendRouteInsights, type RouteInsightsData } from '../services/kilometrApi';
@@ -22,6 +24,7 @@ const CHART_H = 104;
 const BAR_AREA_TOP = 24;
 const BAR_AREA_H = 54;
 const LABEL_Y = 96;
+const MOCK_BAR_HEIGHTS = [24, 42, 52, 34, 20] as const;
 
 function formatHour(h: number): string {
   return `${String(((h % 24) + 24) % 24).padStart(2, '0')}:00`;
@@ -53,6 +56,7 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
   connection,
 }: RouteReliabilityCardProps) {
   const s = useStrings();
+  const reduceMotion = useReducedMotion();
   const { cityId } = useActiveCity();
   const [insights, setInsights] = useState<RouteInsightsData | null>(null);
   const [chartWidth, setChartWidth] = useState(CHART_W);
@@ -80,6 +84,12 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
     };
   }, [cityId, connection, requestKey]);
 
+  const hasChartData = Boolean(
+    insights?.ready &&
+      insights.hourlyProfile.some((p) => p.sampleCount > 0 && p.avgDelaySec > 0),
+  );
+  const chartReady = useDeferredReveal(hasChartData, 2);
+
   if (!insights || !insights.ready) return null;
 
   const t = s.routeInsights;
@@ -101,7 +111,6 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
         : t.verdictLow;
 
   const profile = insights.hourlyProfile;
-  const hasChartData = profile.some((p) => p.sampleCount > 0 && p.avgDelaySec > 0);
   const maxDelaySec = Math.max(
     240,
     ...profile.map((p) => Math.max(p.avgDelaySec, 0)),
@@ -175,61 +184,83 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
               if (w >= 200 && Math.abs(w - chartWidth) > 2) setChartWidth(w);
             }}
           >
-            <Svg
-              width={chartWidth}
-              height={CHART_H}
-              viewBox={`0 0 ${chartWidth} ${CHART_H}`}
-            >
-            {profile.map((point, idx) => {
-              const cx = idx * slotW + slotW / 2;
-              const x = cx - barW / 2;
-              const minVal = Math.round(point.avgDelaySec / 60);
-              const ratio = point.avgDelaySec > 0 ? Math.min(1, point.avgDelaySec / maxDelaySec) : 0;
-              const h = point.sampleCount > 0 ? Math.max(6, Math.round(ratio * BAR_AREA_H)) : 4;
-              const y = BAR_AREA_TOP + (BAR_AREA_H - h);
-              const fill = point.isDepartureHour
-                ? tone.accent
-                : point.avgDelaySec >= 300
-                  ? scheme.error + '88'
-                  : point.avgDelaySec >= 150
-                    ? scheme.warning + '88'
-                    : scheme.surfaceContainerHighest;
+            {!chartReady ? (
+              <SkeletonPulse style={styles.mockChart}>
+                {Array.from({ length: Math.min(6, Math.max(3, profile.length)) }, (_, idx) => (
+                  <View key={idx} style={styles.mockBarCol}>
+                    <SkeletonBone width={22} height={10} radius={5} tone="subtle" />
+                    <SkeletonBone
+                      width={Math.min(34, barW)}
+                      height={MOCK_BAR_HEIGHTS[idx % MOCK_BAR_HEIGHTS.length]}
+                      radius={8}
+                    />
+                    <SkeletonBone width={30} height={10} radius={5} tone="subtle" />
+                  </View>
+                ))}
+              </SkeletonPulse>
+            ) : (
+              <Animated.View
+                entering={
+                  !reduceMotion ? FadeIn.duration(160).reduceMotion(ReduceMotion.System) : undefined
+                }
+              >
+                <Svg
+                  width={chartWidth}
+                  height={CHART_H}
+                  viewBox={`0 0 ${chartWidth} ${CHART_H}`}
+                >
+                  {profile.map((point, idx) => {
+                    const cx = idx * slotW + slotW / 2;
+                    const x = cx - barW / 2;
+                    const minVal = Math.round(point.avgDelaySec / 60);
+                    const ratio = point.avgDelaySec > 0 ? Math.min(1, point.avgDelaySec / maxDelaySec) : 0;
+                    const h = point.sampleCount > 0 ? Math.max(6, Math.round(ratio * BAR_AREA_H)) : 4;
+                    const y = BAR_AREA_TOP + (BAR_AREA_H - h);
+                    const fill = point.isDepartureHour
+                      ? tone.accent
+                      : point.avgDelaySec >= 300
+                        ? scheme.error + '88'
+                        : point.avgDelaySec >= 150
+                          ? scheme.warning + '88'
+                          : scheme.surfaceContainerHighest;
 
-              return (
-                <G key={point.hour}>
-                  <SvgText
-                    x={cx}
-                    y={y - 6}
-                    fontSize={11}
-                    fontWeight={point.isDepartureHour ? '700' : '600'}
-                    fill={point.isDepartureHour ? scheme.onSurface : scheme.onSurfaceVariant}
-                    textAnchor="middle"
-                  >
-                    {point.sampleCount > 0 ? (minVal > 0 ? `+${minVal}m` : '0m') : '·'}
-                  </SvgText>
-                  <Rect
-                    x={x}
-                    y={y}
-                    width={barW}
-                    height={h}
-                    rx={8}
-                    ry={8}
-                    fill={fill}
-                  />
-                  <SvgText
-                    x={cx}
-                    y={LABEL_Y}
-                    fontSize={11}
-                    fontWeight={point.isDepartureHour ? '700' : '500'}
-                    fill={point.isDepartureHour ? scheme.onSurface : scheme.onSurfaceVariant}
-                    textAnchor="middle"
-                  >
-                    {formatHour(point.hour)}
-                  </SvgText>
-                </G>
-              );
-            })}
-            </Svg>
+                    return (
+                      <G key={point.hour}>
+                        <SvgText
+                          x={cx}
+                          y={y - 6}
+                          fontSize={11}
+                          fontWeight={point.isDepartureHour ? '700' : '600'}
+                          fill={point.isDepartureHour ? scheme.onSurface : scheme.onSurfaceVariant}
+                          textAnchor="middle"
+                        >
+                          {point.sampleCount > 0 ? (minVal > 0 ? `+${minVal}m` : '0m') : '·'}
+                        </SvgText>
+                        <Rect
+                          x={x}
+                          y={y}
+                          width={barW}
+                          height={h}
+                          rx={8}
+                          ry={8}
+                          fill={fill}
+                        />
+                        <SvgText
+                          x={cx}
+                          y={LABEL_Y}
+                          fontSize={11}
+                          fontWeight={point.isDepartureHour ? '700' : '500'}
+                          fill={point.isDepartureHour ? scheme.onSurface : scheme.onSurfaceVariant}
+                          textAnchor="middle"
+                        >
+                          {formatHour(point.hour)}
+                        </SvgText>
+                      </G>
+                    );
+                  })}
+                </Svg>
+              </Animated.View>
+            )}
           </View>
         </View>
       )}
@@ -386,6 +417,18 @@ const styles = StyleSheet.create({
   },
   chartSvgWrap: {
     width: '100%',
+  },
+  mockChart: {
+    height: CHART_H,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-around',
+    paddingBottom: 4,
+  },
+  mockBarCol: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
   },
   chartCaption: {
     ...type.labelMedium,

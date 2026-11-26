@@ -104,8 +104,12 @@ async function enrichConnectionStops(conn: Connection): Promise<Connection> {
 /**
  * Hook zwracający połączenie wzbogacone o przystanki pośrednie (zarówno dla
  * minimapy w szczegółach trasy, jak i pełnoekranowej mapy).
+ * Gdy `enabled` jest false, nie uruchamia zapytań SQLite o przystanki.
  */
-export function useEnrichedConnection(connection: Connection | null): Connection | null {
+export function useEnrichedConnection(
+  connection: Connection | null,
+  enabled = true,
+): Connection | null {
   const [enriched, setEnriched] = useState<Connection | null>(() => {
     if (!connection) return null;
     if (!connectionNeedsStopFetch(connection)) {
@@ -125,7 +129,12 @@ export function useEnrichedConnection(connection: Connection | null): Connection
       setEnriched(connection);
       return;
     }
-    setEnriched(connection);
+    const cached = enrichedCache.get(connection.id);
+    if (!enabled) {
+      setEnriched(cached ?? connection);
+      return;
+    }
+    setEnriched(cached ?? connection);
     let cancelled = false;
     void enrichConnectionStops(connection).then((next) => {
       if (!cancelled) setEnriched(next);
@@ -133,7 +142,7 @@ export function useEnrichedConnection(connection: Connection | null): Connection
     return () => {
       cancelled = true;
     };
-  }, [connection]);
+  }, [connection, enabled]);
 
   return enriched;
 }

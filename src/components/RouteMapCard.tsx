@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import Animated, { FadeOut, ReduceMotion } from 'react-native-reanimated';
 import {
@@ -76,17 +75,19 @@ export const RouteMapCard = memo(function RouteMapCard({
   vehicle = null,
   onOpenMap,
   desktopFill = false,
-  deferMapMount = false,
 }: {
   connection: Connection;
   vehicle?: MapVehicle | null;
   onOpenMap: (stageId?: string) => void;
   desktopFill?: boolean;
-  deferMapMount?: boolean;
 }) {
   const s = useStrings();
-  const enriched = useEnrichedConnection(connection) ?? connection;
-  const shapeKey = useMemo(() => routeShapeKey(enriched), [enriched]);
+  const [readyToMountMap, setReadyToMountMap] = useState(false);
+  const enriched = useEnrichedConnection(connection, readyToMountMap) ?? connection;
+  const shapeKey = useMemo(
+    () => (readyToMountMap ? routeShapeKey(enriched) : connection.id),
+    [readyToMountMap, enriched, connection.id],
+  );
   const builtRoute = useRef<{ key: string; route: MapRoute } | null>(null);
   const route = useMemo(() => {
     if (builtRoute.current?.key === shapeKey) return builtRoute.current.route;
@@ -105,24 +106,6 @@ export const RouteMapCard = memo(function RouteMapCard({
   const [attempt, setAttempt] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
-  const [readyToMountMap, setReadyToMountMap] = useState(desktopFill && !deferMapMount);
-  const cardRef = useRef<View>(null);
-  const mountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (desktopFill && !deferMapMount) setReadyToMountMap(true);
-  }, [desktopFill, deferMapMount]);
-
-  useEffect(() => {
-    return () => {
-      if (mountTimerRef.current) {
-        clearTimeout(mountTimerRef.current);
-        mountTimerRef.current = null;
-      }
-    };
-  }, []);
-  const measuredRef = useRef(false);
-  const { height: windowHeight } = useWindowDimensions();
 
   const stages = useMemo(() => {
     void geometryVersion;
@@ -134,9 +117,12 @@ export const RouteMapCard = memo(function RouteMapCard({
     [stages, selectedStageId],
   );
 
+  // Przy przejściu na inną trasę wracamy do trybu tap to load,
+  // żeby ciężki WebView nie uruchamiał się samoczynnie.
   useEffect(() => {
+    setReadyToMountMap(false);
     setSelectedStageId(null);
-  }, [route.id]);
+  }, [connection.id]);
 
   // Automatycznie przewija poziomy pasek chipów do aktywnie wybranego etapu.
   useEffect(() => {
@@ -148,24 +134,6 @@ export const RouteMapCard = memo(function RouteMapCard({
   }, [activeStage]);
 
   const mountMap = useCallback(() => setReadyToMountMap(true), []);
-
-  // WebView (MapLibre GL) jest ciężki: montujemy go dopiero, gdy karta zbliży się
-  // do viewportu, albo po ręcznym dotknięciu placeholdera.
-  const measureCard = useCallback(() => {
-    if (measuredRef.current) return;
-    const node = cardRef.current;
-    if (!node) return;
-    node.measureInWindow((_x, y, _w, h) => {
-      measuredRef.current = true;
-      if (y < windowHeight + 180 && y + h > -160) {
-        if (mountTimerRef.current) clearTimeout(mountTimerRef.current);
-        mountTimerRef.current = setTimeout(() => {
-          mountTimerRef.current = null;
-          mountMap();
-        }, 60);
-      }
-    });
-  }, [mountMap, windowHeight]);
 
   const lastRouteId = useRef<string | null>(null);
   useEffect(() => {
@@ -284,12 +252,7 @@ export const RouteMapCard = memo(function RouteMapCard({
   );
 
   return (
-    <View
-      ref={cardRef}
-      collapsable={false}
-      onLayout={measureCard}
-      style={[styles.card, desktopFill && styles.cardDesktopFill]}
-    >
+    <View style={[styles.card, desktopFill && styles.cardDesktopFill]}>
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
           <View style={styles.headerIconBadge}>
