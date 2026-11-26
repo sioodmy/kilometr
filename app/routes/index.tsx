@@ -151,9 +151,14 @@ import { useStrings } from '../../src/i18n';
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
 const groupKey = (group: ConnectionGroup) => group.key;
 
-// Szybkie wyszukiwania kończą się przed tym czasem, więc pełnoekranowy
-// wskaźnik nie mruga między wejściem w ekran a pierwszą kartą wyniku.
-const INITIAL_LOADING_DELAY_MS = 700;
+// Krótkie opóźnienie daje szansę na natychmiastowy hit z cache bez mrugnięcia skeletonem,
+// a na świeżej aplikacji pokazuje skeleton od razu zamiast długiej pustki.
+const INITIAL_LOADING_DELAY_MS = 120;
+// Mały chip „Sprawdzam kolejne kursy” pokazujemy dopiero przy dłuższym odświeżaniu na tle cache,
+// żeby nie mrugał na ułamek sekundy i nie podbijał wysokości nagłówka listy.
+const UPDATING_CHIP_DELAY_MS = 400;
+// Pierwszy poll live po starcie apki ma chwilę na odpowiedź, zanim pokażemy chip „brak danych”.
+const INITIAL_LIVE_GRACE_MS = 3500;
 
 function parseBoardedParam(raw?: string): BoardedTripOrigin | null {
   if (!raw) return null;
@@ -309,6 +314,7 @@ export default function RoutesScreen() {
 
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
+  const [initialAnchorReady, setInitialAnchorReady] = useState(() => Boolean(boardedTrip));
   const dismissedAnchorsRef = useRef<Set<string>>(new Set());
   const fetchSeq = useRef(0);
   const initialAnchorCheckedRef = useRef(false);
@@ -381,6 +387,7 @@ export default function RoutesScreen() {
   const arrivalMode = timeMode === 'arrival';
   const [loading, setLoading] = useState(true);
   const [showInitialLoading, setShowInitialLoading] = useState(false);
+  const [showUpdatingChip, setShowUpdatingChip] = useState(false);
   const [loadError, setLoadError] = useState(false);
   useEffect(() => {
     if (!loading || items.length > 0) {
@@ -388,6 +395,14 @@ export default function RoutesScreen() {
       return;
     }
     const timer = setTimeout(() => setShowInitialLoading(true), INITIAL_LOADING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [items.length, loading]);
+  useEffect(() => {
+    if (!loading || items.length === 0) {
+      setShowUpdatingChip(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowUpdatingChip(true), UPDATING_CHIP_DELAY_MS);
     return () => clearTimeout(timer);
   }, [items.length, loading]);
   const [offline, setOffline] = useState(false);
@@ -407,11 +422,16 @@ export default function RoutesScreen() {
   const syncLiveOnFocusRef = useRef<(() => void) | null>(null);
   const restoreListScrollRef = useRef<(() => void) | null>(null);
   // Lista pokazuje opóźnienia live, więc trzyma poll, dopóki jest widoczna.
+  // Start polla odraczamy o 240 ms, żeby na świeżej aplikacji nie ścigał się z animacją wejścia i budową pierwszego wycinka.
   useFocusEffect(
     useCallback(() => {
       const wasBlurred = !isFocusedRef.current;
       isFocusedRef.current = true;
-      liveTracker.acquire();
+      let acquired = false;
+      const acquireTimer = setTimeout(() => {
+        acquired = true;
+        liveTracker.acquire();
+      }, 240);
       if (wasBlurred) {
         syncLiveOnFocusRef.current?.();
         setNowTick(Date.now());
@@ -420,8 +440,9 @@ export default function RoutesScreen() {
         restoreListScrollRef.current?.();
       }
       return () => {
+        clearTimeout(acquireTimer);
         isFocusedRef.current = false;
-        liveTracker.release();
+        if (acquired) liveTracker.release();
       };
     }, []),
   );
@@ -431,24 +452,33 @@ export default function RoutesScreen() {
   useEffect(() => subscribeDataStatus(setDataStatus), []);
   const timetableBusy = dataStatus.state === 'downloading' || dataStatus.state === 'importing';
   const timetableReady = dataStatus.state === 'ready';
-  // Brak sieci = brak opóźnień z MPK. Bez komunikatu użytkownik myśli,
-  // że planer po prostu nie umie opóźnień.
-  // `unknown` też oznacza brak danych: przed pierwszym udanym pollem (albo przy
-  // starcie apki) nie mamy żadnego opóźnienia, więc cisza była kłamstwem.
+  // Stan live: 'stale' pokazujemy od razu, a 'unknown' dopiero po krótkiej karencji na pierwszy poll,
+  // żeby chip „brak danych na żywo” nie pojawiał się na sekundę i nie podbijał listy po starcie apki.
+  const [liveGraceElapsed, setLiveGraceElapsed] = useState(
+    () => !liveTracker.supportsLive() || liveTracker.getLiveState() !== 'unknown',
+  );
+  useEffect(() => {
+    if (liveGraceElapsed) return;
+    const timer = setTimeout(() => setLiveGraceElapsed(true), INITIAL_LIVE_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [liveGraceElapsed]);
   const [liveStale, setLiveStale] = useState(
-    () => liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh',
+    () => liveTracker.supportsLive() && liveTracker.getLiveState() === 'stale',
   );
   // Tick przerysowujący opóźnienia: wyplanowane połączenia mają flagi live
   // z chwili wyszukiwania, bez tickera byłyby zamrożone od wyszukania.
   const initialLiveOk = liveTracker.getLastOk();
   const [liveTick, setLiveTick] = useState(initialLiveOk);
   const lastLiveOk = useRef(initialLiveOk);
+  const liveGraceElapsedRef = useRef(liveGraceElapsed);
+  liveGraceElapsedRef.current = liveGraceElapsed;
   useEffect(() => {
     const check = () => {
       if (!isFocusedRef.current) return;
-      // Miasto bez feedu live nie może pokazywać chipa „brak danych”:
-      // to nie awaria, tylko nieistniejące źródło (features.live).
-      const stale = liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh';
+      const state = liveTracker.getLiveState();
+      const stale =
+        liveTracker.supportsLive() &&
+        (state === 'stale' || (state === 'unknown' && liveGraceElapsedRef.current));
       setLiveStale((prev) => (prev === stale ? prev : stale));
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
@@ -465,7 +495,7 @@ export default function RoutesScreen() {
       unsub();
       clearInterval(t);
     };
-  }, []);
+  }, [liveGraceElapsed]);
   // Odliczanie „za X min” musi tykać, inaczej po kilku minutach lista kłamie
   // (departInMin liczone przy pobraniu). Przerysowujemy wiersze, nie listę.
   const [nowTick, setNowTick] = useState(0);
@@ -744,9 +774,12 @@ export default function RoutesScreen() {
             setFromLat(startLat);
             setFromLon(startLon);
           }
+          setInitialAnchorReady(true);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setInitialAnchorReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -993,16 +1026,20 @@ export default function RoutesScreen() {
             setItems(seeded);
           }
         }
+        if (!hadSeeded) {
+          setShowInitialLoading(true);
+        }
       }
-      // Na zimnym starcie strumieniujemy pierwsze okno RAPTOR-a od razu do listy,
-      // żeby użytkownik widział najbliższe odjazdy zanim policzą się dalsze godziny.
-      const streamPartial = hadSeeded
-        ? undefined
-        : (partial: Connection[]) => {
-            if (seq !== fetchSeq.current || noTimetable()) return;
-            const livePartial = applyLiveList(partial, depSec);
-            if (livePartial.length > 0) setItems(livePartial);
-          };
+      // Dla standardowego 1-godzinnego okna miejskiego czekamy na komplet wyników zamiast
+      // montować pół-pustą listę z migającym spinnerem i przeskakującym nagłówkiem.
+      const streamPartial =
+        hadSeeded || q.searchAheadSec === 3600
+          ? undefined
+          : (partial: Connection[]) => {
+              if (seq !== fetchSeq.current || noTimetable()) return;
+              const livePartial = applyLiveList(partial, depSec);
+              if (livePartial.length > 0) setItems(livePartial);
+            };
       let c = await RoutingService.getConnections(q, streamPartial);
       // Godzinne okno wystarcza na pierwsze odjazdy i mieści się w wycinku
       // live. Gdy naprawdę nic nie ma w godzinę, dociągamy szerszy horyzont,
@@ -1257,7 +1294,7 @@ export default function RoutesScreen() {
     // Intercity: nie ruszaj RAPTOR-a, dopóki nie wiemy, czy baza polska jest.
     // Inaczej pierwsze wyszukiwanie idzie w kosz (railDbReady: null → true/false).
     if (intercityQuery && railDbReady === null) return;
-    if (!transitionSettled) return;
+    if (!transitionSettled || !initialAnchorReady) return;
     fetchRoutes(targetTimeSec, items.length > 0);
     return () => {
       fetchSeq.current++;
@@ -1275,6 +1312,7 @@ export default function RoutesScreen() {
     toId,
     samePlace,
     activeAnchor,
+    initialAnchorReady,
     boardedTrip,
     timetableReady,
     targetTimeSec,
@@ -2019,7 +2057,7 @@ export default function RoutesScreen() {
   const listHeader = useMemo(
     () => (
       <View style={styles.listHeader}>
-        {loading && groups.length > 0 && (
+        {showUpdatingChip && loading && groups.length > 0 && (
           <Animated.View
             entering={
               reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
@@ -2112,6 +2150,7 @@ export default function RoutesScreen() {
       offline,
       reduceMotion,
       s,
+      showUpdatingChip,
     ],
   );
 

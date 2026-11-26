@@ -85,6 +85,7 @@ export function useRailLiveConnections(
   );
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     const trainLegs = connectionsRef.current
       .flatMap((connection) => connection.legs)
@@ -112,9 +113,7 @@ export function useRailLiveConnections(
       railAgency: leg.railAgency,
     }));
 
-    if (enabled) {
-      liveTracker.setNationalWatch(watchLegs);
-    }
+    liveTracker.setNationalWatch(watchLegs);
     const load = () => {
       if (activeRef && !activeRef.current) return;
       void Promise.all([
@@ -138,11 +137,6 @@ export function useRailLiveConnections(
       });
     };
     load();
-    if (!enabled) {
-      return () => {
-        active = false;
-      };
-    }
     const timer = setInterval(load, 30_000);
     return () => {
       active = false;

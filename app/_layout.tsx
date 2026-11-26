@@ -205,6 +205,15 @@ export default function RootLayout() {
     [disableScreenAnim, themeSetting, webLayout.isMedium],
   );
 
+  const homeScreenOptions = useMemo(
+    () => ({
+      // Wyłączamy react-freeze na ekranie głównym, aby powrót gestem wstecz z listy połączeń
+      // nie musiał synchronicznie odmrażać całego drzewa widoków w klatce przejścia.
+      freezeOnBlur: false,
+    }),
+    [],
+  );
+
   const routesScreenOptions = useMemo(
     () => ({
       fullScreenGestureEnabled: false,
@@ -332,7 +341,7 @@ export default function RootLayout() {
             <DesktopShell>
               {needsOnboarding && <OnboardingGuard onCompleted={handleOnboardingCompleted} />}
               <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
-                <Stack.Screen name="index" />
+                <Stack.Screen name="index" options={homeScreenOptions} />
                 <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="routes" options={routesScreenOptions} />
                 <Stack.Screen name="line" />

@@ -295,7 +295,9 @@ export class LocalGtfsStore {
 
     // 1. Load stops (ORDER BY stop_id wykorzystuje klucz główny i od razu daje kolejność stopRefs).
     const stopsRows = await db.getAllAsync<{stop_id: string, code: string, name: string, lat: number, lon: number, norm: string}>('SELECT * FROM stops ORDER BY stop_id');
+    if (generation !== this.generation) return;
     const stopRefs = new Array<string>(stopsRows.length);
+    let stopSliceStart = performance.now();
     for (let i = 0; i < stopsRows.length; i++) {
       const r = stopsRows[i];
       stopRefs[i] = r.stop_id;
@@ -307,6 +309,11 @@ export class LocalGtfsStore {
         stop_lon: r.lon,
         normalized_name: r.norm
       });
+      if ((i & 255) === 255 && performance.now() - stopSliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        stopSliceStart = performance.now();
+        if (generation !== this.generation) return;
+      }
     }
 
     // 2. Load routes
@@ -322,21 +329,24 @@ export class LocalGtfsStore {
 
     if (generation !== this.generation) return;
 
-    // 3. Kolej linowa Polinka: stacje i linia zanim powstaną przesiadki
-    // (tylko miasta z koleją linową, Kraków jej nie ma i nie dostaje atrapy)
+    // 3. Przesiadki piesze z prebuilt bloba czytamy przed dodaniem syntetycznych stacji Polinki,
+    // żeby liczba przystanków zgadzała się z nagłówkiem bloba; linki Polinki dokładamy punktowo.
+    const footpathsFromBlob = await this.loadFootpathsBlob(db, stops, footpaths, stopRefs, generation).catch((err) => {
+      console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
+      return false;
+    });
+    if (generation !== this.generation) return;
+
+    // 4. Kolej linowa Polinka: stacje i linia (tylko miasta z koleją linową).
     if (this.cableEnabled) this.injectPolinkaStopsAndRoute(stops, routes);
 
-    // 4. Przesiadki piesze: blob z buildera (liczony natywnie w buildzie), a gdy
-    // go nie ma, dawny grid w JS. Miasta z koleją linową zostają na JS, bo
-    // stacje Polinki dokładamy dopiero tutaj i nie ma ich w blobie.
-    let footpathsFromBlob = false;
-    if (!this.cableEnabled) {
-      footpathsFromBlob = await this.loadFootpathsBlob(db, stops, footpaths, stopRefs).catch((err) => {
-        console.warn('[LocalGtfsStore] footpaths blob nie wyszedł, liczę w JS:', err);
-        return false;
-      });
+    if (footpathsFromBlob) {
+      if (this.cableEnabled) {
+        this.appendFootpathsForStops(polinkaStops(), stops, footpaths);
+      }
+    } else {
+      await this.buildFootpathsAsync(stops, footpaths, generation);
     }
-    if (!footpathsFromBlob) this.buildFootpaths(stops, footpaths);
 
     if (generation !== this.generation) return;
 
@@ -406,10 +416,79 @@ export class LocalGtfsStore {
     return { tripIds, byRouteId: new Map([[POLINKA_ROUTE_ID, group]]) };
   }
 
+  /** Dolicza dwukierunkowe dojścia piesze tylko dla nowo wstrzykniętych przystanków (np. stacje Polinki). */
+  private appendFootpathsForStops(
+    addedStops: StoreStop[],
+    stops = this.stops,
+    footpaths = this.footpaths,
+  ): void {
+    const MAX_DLAT = 0.0075;
+    const MAX_DLON = 0.014;
+    const invSpeed = WALK_DETOUR_FACTOR / WALK_SPEED_MPS;
+    for (const s1 of addedStops) {
+      if (isFareBoundary(s1.stop_name ?? '')) continue;
+      const out = footpaths.get(s1.stop_id) ?? [];
+      const existingOut = new Set(out.map((fp) => fp.to_stop_id));
+      for (const s2 of stops.values()) {
+        if (s1.stop_id === s2.stop_id) continue;
+        if (isFareBoundary(s2.stop_name ?? '')) continue;
+        if (
+          Math.abs(s1.stop_lat - s2.stop_lat) > MAX_DLAT ||
+          Math.abs(s1.stop_lon - s2.stop_lon) > MAX_DLON
+        ) {
+          continue;
+        }
+        const dist = distanceMeters(s1.stop_lat, s1.stop_lon, s2.stop_lat, s2.stop_lon);
+        if (dist > MAX_TRANSFER_METERS) continue;
+        const distance_m = Math.round(dist);
+        const duration_sec = Math.max(MIN_FOOTPATH_SEC, Math.round(dist * invSpeed));
+        if (!existingOut.has(s2.stop_id)) {
+          out.push({ from_stop_id: s1.stop_id, to_stop_id: s2.stop_id, distance_m, duration_sec });
+          existingOut.add(s2.stop_id);
+        }
+        const back = footpaths.get(s2.stop_id) ?? [];
+        if (!back.some((fp) => fp.to_stop_id === s1.stop_id)) {
+          back.push({ from_stop_id: s2.stop_id, to_stop_id: s1.stop_id, distance_m, duration_sec });
+          footpaths.set(s2.stop_id, back);
+        }
+      }
+      if (out.length > 0) {
+        footpaths.set(s1.stop_id, out);
+      }
+    }
+  }
+
   private buildFootpaths(
     stops = this.stops,
     footpaths = this.footpaths,
   ) {
+    const steps = this.buildFootpathsSteps(stops, footpaths);
+    let next = steps.next();
+    while (!next.done) next = steps.next();
+  }
+
+  private async buildFootpathsAsync(
+    stops = this.stops,
+    footpaths = this.footpaths,
+    genAtStart = this.generation,
+  ): Promise<void> {
+    const steps = this.buildFootpathsSteps(stops, footpaths);
+    let sliceStart = performance.now();
+    let next = steps.next();
+    while (!next.done) {
+      if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+        if (this.generation !== genAtStart) return;
+      }
+      next = steps.next();
+    }
+  }
+
+  private *buildFootpathsSteps(
+    stops = this.stops,
+    footpaths = this.footpaths,
+  ): Generator<void, void, void> {
     const GRID_DEG_LAT = 0.001;
     const GRID_DEG_LON = 0.0015;
     // Liczbowy klucz komórki siatki eliminuje ~700 tys. alokacji stringów na starcie.
@@ -472,6 +551,7 @@ export class LocalGtfsStore {
       if (paths.length > 0) {
         footpaths.set(s1.stop_id, paths);
       }
+      if ((i & 31) === 31) yield;
     }
   }
 
@@ -837,10 +917,12 @@ export class LocalGtfsStore {
     stops: Map<string, StoreStop>,
     footpaths: Map<string, Footpath[]>,
     knownStopRefs?: string[],
+    genAtStart = this.generation,
   ): Promise<boolean> {
     const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
       'SELECT blob FROM footpaths WHERE id = 1',
     );
+    if (this.generation !== genAtStart) return false;
     if (!row?.blob) return false;
     const bytes = row.blob instanceof Uint8Array ? row.blob : new Uint8Array(row.blob);
     if (bytes.byteLength < 8) return false;
@@ -860,6 +942,9 @@ export class LocalGtfsStore {
               'SELECT stop_id FROM stops ORDER BY stop_id',
             )
           ).map((r) => r.stop_id);
+    if (this.generation !== genAtStart) return false;
+    let sliceStart = performance.now();
+    let decodedStops = 0;
     while (w + 8 <= bytes.byteLength) {
       const fromRef = view.getInt32(w, true);
       w += 4;
@@ -880,6 +965,14 @@ export class LocalGtfsStore {
       }
       if (!isFareBoundary(stops.get(fromId)?.stop_name ?? '')) {
         footpaths.set(fromId, list.filter((path) => !isFareBoundary(stops.get(path.to_stop_id)?.stop_name ?? '')));
+      }
+      if ((++decodedStops & 63) === 0 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+        if (this.generation !== genAtStart) {
+          footpaths.clear();
+          return false;
+        }
       }
     }
     console.log(`[LocalGtfsStore] Footpaths z bloba: ${footpaths.size} przystanków.`);

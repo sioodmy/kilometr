@@ -321,11 +321,12 @@ export default function RouteDetailsScreen() {
   }, [transitionSettled]);
 
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
-  // Startujemy od bieżącego getLastOk(), żeby uniknąć zbędnego drugiego renderu w klatce otwarcia.
+  // Podczas animacji morphingu nie wymuszamy re-renderu ekranu; synchronizujemy po domknięciu przejścia.
   const initialLiveOk = liveTracker.getLastOk();
   const [liveTick, setLiveTick] = useState(initialLiveOk);
   const lastLiveOk = useRef(initialLiveOk);
   useEffect(() => {
+    if (!transitionSettled) return;
     const check = () => {
       const stale = liveTracker.supportsLive() && liveTracker.getLiveState() !== 'fresh';
       setLiveStale((prev) => (prev === stale ? prev : stale));
@@ -342,7 +343,7 @@ export default function RouteDetailsScreen() {
       unsub();
       clearInterval(t);
     };
-  }, []);
+  }, [transitionSettled]);
 
   // Poll live utrzymujemy od wejścia, ale wymuszone odświeżenie sieciowe
   // startuje dopiero po zakończeniu animacji przejścia (jeśli snapshot ma >10 s).
@@ -961,7 +962,8 @@ export default function RouteDetailsScreen() {
     </>
   );
 
-  const legSections = (
+  const showFullDetails = desktopSplit || openTicket || transitionSettled;
+  const legSections = showFullDetails ? (
     <>
       {groupOptions.length > 1 && (
         <ConnectionVariantSwitcher
@@ -993,7 +995,7 @@ export default function RouteDetailsScreen() {
         deferSecondaryWork={!transitionSettled}
       />
     </>
-  );
+  ) : null;
 
   const renderScreenBody = (morphProps?: MorphShellRenderProps) => {
     targetStripCbRef.current = morphProps?.onTargetStripRect ?? null;

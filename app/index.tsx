@@ -258,7 +258,11 @@ export default function HomeScreen() {
   currentCoordsRef.current = currentCoords;
   const insets = useSafeAreaInsets();
   const isFocusedRef = useRef(true);
-  const [homeFocused, setHomeFocused] = useState(true);
+  const hasDockCountdownRef = useRef(false);
+  const sheetModeRef = useRef(sheetMode);
+  sheetModeRef.current = sheetMode;
+  const queryRef = useRef(query);
+  queryRef.current = query;
   const recentDirtyRef = useRef(false);
   const { location: motionLocation } = useCurrentLocation(
     !isCustomStart && !boardedOrigin && !gpsUnsupported,
@@ -271,27 +275,28 @@ export default function HomeScreen() {
       let cancelled = false;
       const wasBlurred = !isFocusedRef.current;
       isFocusedRef.current = true;
-      setHomeFocused(true);
+      let timer: ReturnType<typeof setTimeout> | null = null;
       if (wasBlurred) {
-        setHomeTick(Date.now());
-        if (recentDirtyRef.current) {
-          recentDirtyRef.current = false;
-          SearchService.recent()
-            .then((list) => {
-              if (!cancelled) setRecent(list);
-            })
-            .catch(() => {});
-          loadTripHistory()
-            .then((h) => {
-              if (!cancelled && h.length > 0) setLastTrip(h[0]);
-            })
-            .catch(() => {});
-        }
+        // Odraczamy odświeżenia tła za 200 ms animację powrotu, aby gest wstecz z listy tras był natychmiastowy.
+        timer = setTimeout(() => {
+          if (cancelled) return;
+          if (hasDockCountdownRef.current) {
+            setHomeTick(Date.now());
+          }
+          if (recentDirtyRef.current) {
+            recentDirtyRef.current = false;
+            SearchService.recent()
+              .then((list) => {
+                if (!cancelled) setRecent(list);
+              })
+              .catch(() => {});
+          }
+        }, 240);
       }
       return () => {
         cancelled = true;
+        if (timer) clearTimeout(timer);
         isFocusedRef.current = false;
-        setHomeFocused(false);
       };
     }, []),
   );
@@ -353,11 +358,13 @@ export default function HomeScreen() {
   }, [gpsOtherCityId]);
 
   // Ekran montuje się pod onboardingiem i wraca na wierzch po jego
-  // ukończeniu: dociągamy prawdziwy fix. refineLocation nie pyta o zgodę
-  // (tylko get), więc przy odmowie jest cichym no-opem.
+  // ukończeniu: dociągamy prawdziwy fix po animacji powrotu.
   useFocusEffect(
     useCallback(() => {
-      void LocationService.refineLocation();
+      const timer = setTimeout(() => {
+        void LocationService.refineLocation();
+      }, 280);
+      return () => clearTimeout(timer);
     }, []),
   );
 
@@ -369,22 +376,24 @@ export default function HomeScreen() {
       motionLocation.speed >= ONBOARD_MIN_SPEED_MPS);
 
   // Poll live odpalamy na ekranie głównym tylko gdy faktycznie szukamy pojazdu
-  // (sheet startu lub wykryty ruch w pojeździe), bez mielenia GPS-RT w spoczynku.
-  useEffect(() => {
-    if (!shouldWatchLive || !homeFocused) return;
-    liveTracker.acquire();
-    if (!gtfsStore.isLoaded && getDataStatus().state === 'ready') {
-      void gtfsStore.load().then(() => setGtfsLoaded(gtfsStore.isLoaded)).catch(() => {});
-    }
-    setLiveVersion((v) => v + 1);
-    const unsub = liveTracker.subscribe(() => {
+  // (sheet startu lub wykryty ruch w pojeździe), bez wymuszania re-renderu przy każdym focus/blur.
+  useFocusEffect(
+    useCallback(() => {
+      if (!shouldWatchLive) return undefined;
+      liveTracker.acquire();
+      if (!gtfsStore.isLoaded && getDataStatus().state === 'ready') {
+        void gtfsStore.load().then(() => setGtfsLoaded(gtfsStore.isLoaded)).catch(() => {});
+      }
       setLiveVersion((v) => v + 1);
-    });
-    return () => {
-      unsub();
-      liveTracker.release();
-    };
-  }, [shouldWatchLive, homeFocused]);
+      const unsub = liveTracker.subscribe(() => {
+        setLiveVersion((v) => v + 1);
+      });
+      return () => {
+        unsub();
+        liveTracker.release();
+      };
+    }, [shouldWatchLive]),
+  );
 
   const onboardCandidates = useMemo(() => {
     if (isCustomStart || boardedOrigin || gpsUnsupported) return [];
@@ -444,19 +453,23 @@ export default function HomeScreen() {
       let cancelled = false;
       // Dzwonek jest ukryty w miastach bez źródła komunikatów.
       if (!getCity(cityId).features.news) return;
-      const verify = async () => {
-        try {
-          const { getCachedNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
-          const cached = getCachedNews();
-          if (cached) {
-            const alert = await shouldShowNewsAlert(cached);
-            if (!cancelled) setNewsAlert(alert);
-          }
-        } catch {}
-      };
-      void verify();
+      const timer = setTimeout(() => {
+        if (cancelled) return;
+        const verify = async () => {
+          try {
+            const { getCachedNews, shouldShowNewsAlert } = await import('../src/services/mpkNews');
+            const cached = getCachedNews();
+            if (cached) {
+              const alert = await shouldShowNewsAlert(cached);
+              if (!cancelled) setNewsAlert((prev) => (prev === alert ? prev : alert));
+            }
+          } catch {}
+        };
+        void verify();
+      }, 280);
       return () => {
         cancelled = true;
+        clearTimeout(timer);
       };
     }, [cityId]),
   );
@@ -517,6 +530,7 @@ export default function HomeScreen() {
   } | null>(null);
   const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
   const hasDockCountdown = trackedTrip !== null || ticketIds.size > 0;
+  hasDockCountdownRef.current = hasDockCountdown;
   useEffect(() => {
     if (!hasDockCountdown) return;
     const t = setInterval(() => {
@@ -528,14 +542,36 @@ export default function HomeScreen() {
   const refreshSavedRoutes = useCallback(() => {
     RoutingService.getSavedRoutes()
       .then((routes) => {
-        setSavedRoutes(routes);
+        setSavedRoutes((prev) => {
+          if (
+            prev.length === routes.length &&
+            prev.every((r, i) => r.id === routes[i].id && r.savedAt === routes[i].savedAt)
+          ) {
+            return prev;
+          }
+          return routes;
+        });
       })
       .catch(() => {});
   }, []);
 
   const refreshTicketIds = useCallback(() => {
     getTicketConnectionIds()
-      .then(setTicketIds)
+      .then((next) => {
+        setTicketIds((prev) => {
+          if (prev.size === next.size) {
+            let same = true;
+            for (const id of next) {
+              if (!prev.has(id)) {
+                same = false;
+                break;
+              }
+            }
+            if (same) return prev;
+          }
+          return next;
+        });
+      })
       .catch(() => {});
   }, []);
 
@@ -547,8 +583,11 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      refreshSavedRoutes();
-      refreshTicketIds();
+      const timer = setTimeout(() => {
+        refreshSavedRoutes();
+        refreshTicketIds();
+      }, 240);
+      return () => clearTimeout(timer);
     }, [refreshSavedRoutes, refreshTicketIds]),
   );
 
@@ -1512,27 +1551,35 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      loadTripHistory()
-        .then((h) => {
-          if (cancelled) return;
-          if (h.length > 0) setLastTrip(h[0]);
-          const key = h.length > 0 ? `${h.length}|${h[0].id}|${h[0].timestamp}` : '';
-          const prevKey = historyKeyRef.current;
-          historyKeyRef.current = key;
-          if (prevKey !== null && prevKey !== key && smartCoordsRef.current) {
-            requestSmart(originStopRef.current, smartCoordsRef.current);
-          }
-        })
-        .catch(() => {});
-      // Po powrocie na ekran główny upewnij się, że arkusz jest zwinięty
-      setSheetMode(null);
-      setQuery('');
+      // Po powrocie na ekran główny domykamy arkusz tylko gdy naprawdę został otwarty.
+      if (sheetModeRef.current !== null) setSheetMode(null);
+      if (queryRef.current !== '') setQuery('');
       const pendingBoarded = consumePendingBoardedOrigin('home');
       if (pendingBoarded) {
         applyBoardedOrigin(pendingBoarded.origin, pendingBoarded.openDestination);
       }
+      const timer = setTimeout(() => {
+        if (cancelled) return;
+        loadTripHistory()
+          .then((h) => {
+            if (cancelled) return;
+            if (h.length > 0) {
+              setLastTrip((prev) =>
+                prev && prev.id === h[0].id && prev.timestamp === h[0].timestamp ? prev : h[0],
+              );
+            }
+            const key = h.length > 0 ? `${h.length}|${h[0].id}|${h[0].timestamp}` : '';
+            const prevKey = historyKeyRef.current;
+            historyKeyRef.current = key;
+            if (prevKey !== null && prevKey !== key && smartCoordsRef.current) {
+              requestSmart(originStopRef.current, smartCoordsRef.current);
+            }
+          })
+          .catch(() => {});
+      }, 240);
       return () => {
         cancelled = true;
+        clearTimeout(timer);
       };
     }, [applyBoardedOrigin, requestSmart, setSheetMode]),
   );

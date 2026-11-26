@@ -145,6 +145,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: EARLIER_PULL_MAX,
+    opacity: 0,
+    transform: [{ translateY: -EARLIER_PULL_MAX / 2 }],
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

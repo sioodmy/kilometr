@@ -26,7 +26,6 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -88,7 +87,7 @@ const LOADING_DELAY_MS = 320;
 /** Minimalny czas widoczności pustego stanu ładowania, gdy wyniki jeszcze nie nadeszły. */
 const LOADING_MIN_VISIBLE_MS = 280;
 
-/** Arkusz wyszukiwarki M3 Expressive ze sprężystym wejściem, płynnym wyjściem i gestem ściągania. */
+/** Arkusz wyszukiwarki M3 z płynnym wejściem bez odbicia, płynnym wyjściem i gestem ściągania. */
 export function SearchSheet({
   query,
   loading,
@@ -179,8 +178,8 @@ export function SearchSheet({
       backdropProgress.value = 1;
       return;
     }
-    translateY.value = withSpring(0, motion.spring.spatialDefault);
-    backdropProgress.value = withSpring(1, motion.spring.effectsDefault);
+    translateY.value = withTiming(0, motion.enter);
+    backdropProgress.value = withTiming(1, motion.enter);
   }, [backdropProgress, reducedMotion, translateY]);
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -314,10 +313,7 @@ export function SearchSheet({
               },
             );
           } else {
-            translateY.value = withSpring(0, {
-              ...motion.spring.spatialDefault,
-              velocity: e.velocityY,
-            });
+            translateY.value = withTiming(0, motion.state);
           }
         }),
     [backdropProgress, reducedMotion, requestClose, targetSheetHeight, translateY, webLayout.isMedium],

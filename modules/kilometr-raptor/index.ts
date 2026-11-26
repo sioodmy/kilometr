@@ -544,6 +544,18 @@ export function invokeRustSync(
   return invokeWasmSync(cmd, payload);
 }
 
+/** Asynchroniczne wywołanie komendy Rust na wątku roboczym (Android/iOS), z fallbackiem WASM. */
+export async function invokeRustAsync(
+  cmd: number,
+  payload: Uint8Array
+): Promise<Uint8Array | null> {
+  const nativeMod = getNativeModule();
+  if (nativeMod && typeof nativeMod.invoke === "function") {
+    return nativeMod.invoke(cmd, payload);
+  }
+  return invokeWasmSync(cmd, payload);
+}
+
 export async function decompressGzipFile(
   sourcePath: string,
   destPath: string
