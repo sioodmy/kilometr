@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   FlatList,
+  Keyboard,
   Linking,
   Platform,
   Pressable,
@@ -29,7 +30,8 @@ import Animated, {
 import {
   Bell,
   Check,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Download,
   LocateFixed,
   M3SolidArrowRight,
@@ -38,7 +40,7 @@ import {
   X,
 } from '../src/components/icons';
 import { MorphingLoader } from '../src/components/MorphingLoader';
-import { HERO_LOGO_SIZE, OnboardingMorphHero } from '../src/components/OnboardingMorphHero';
+import { OnboardingMorphHero } from '../src/components/OnboardingMorphHero';
 import { OnboardingProgressBar } from '../src/components/OnboardingProgressBar';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { TimetableBackgroundPill } from '../src/components/TimetableBackgroundPill';
@@ -75,6 +77,8 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
+
+const POPULAR_SET = new Set<CityId>(POPULAR_CITY_IDS);
 
 const NOTIF_SUPPORTED =
   Platform.OS === 'web' ? areNotificationsSupported() : Constants.appOwnership !== 'expo';
@@ -129,9 +133,9 @@ function StepStage({
 }) {
   const reduceMotion = useReducedMotion();
   // Bez animacji opacity: po powrocie z tła Fabric potrafi scalić startowe propsy
-  // animacji (bug Reanimated), a treść kroku nie może zależeć od animacji, by być widoczna.
-  const translateX = useSharedValue(reduceMotion ? 0 : direction * 28);
-  const scale = useSharedValue(reduceMotion ? 1 : 0.985);
+  // animacji (bug Reanimated), a treść kroku musi pozostać widoczna.
+  const translateX = useSharedValue(reduceMotion ? 0 : direction * 24);
+  const scale = useSharedValue(reduceMotion ? 1 : 0.99);
 
   useEffect(() => {
     if (reduceMotion) {
@@ -139,8 +143,8 @@ function StepStage({
       scale.value = 1;
       return;
     }
-    translateX.value = direction * 28;
-    scale.value = 0.985;
+    translateX.value = direction * 24;
+    scale.value = 0.99;
     translateX.value = withSpring(0, motion.spring.spatialDefault);
     scale.value = withSpring(1, motion.spring.spatialDefault);
   }, [direction, reduceMotion, scale, step, translateX]);
@@ -150,50 +154,6 @@ function StepStage({
   }));
 
   return <Animated.View style={[st.stepStage, animStyle]}>{children}</Animated.View>;
-}
-
-/** Animowany nagłówek dla kroków 1..2 siedzący po lewej stronie morfującego medalionu. */
-function AnimatedStepHeader({
-  step,
-  direction,
-  title,
-  subtitle,
-  onMeasured,
-}: {
-  step: StepIndex;
-  direction: 1 | -1;
-  title: string;
-  subtitle: string;
-  onMeasured: (height: number) => void;
-}) {
-  const reduceMotion = useReducedMotion();
-  const tx = useSharedValue(reduceMotion ? 0 : direction * 18);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      tx.value = 0;
-      return;
-    }
-    tx.value = direction * 18;
-    tx.value = withSpring(0, motion.spring.spatialDefault);
-  }, [direction, reduceMotion, step, tx]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }],
-  }));
-
-  return (
-    <Animated.View
-      style={[st.compactHeaderBox, animStyle]}
-      onLayout={(e) => {
-        const h = Math.ceil(e.nativeEvent.layout.height);
-        if (h > 0) onMeasured(Math.max(76, h + 6));
-      }}
-    >
-      <Text style={st.stepTitle}>{title}</Text>
-      <Text style={st.stepSubtitle}>{subtitle}</Text>
-    </Animated.View>
-  );
 }
 
 function PrimaryBtn({
@@ -217,17 +177,87 @@ function PrimaryBtn({
       accessibilityRole="button"
       accessibilityState={{ disabled: Boolean(disabled) }}
     >
-      <Text style={[st.primaryText, disabled && st.primaryTextDisabled]}>{label}</Text>
+      <Text style={[st.primaryText, disabled && st.primaryTextDisabled]} numberOfLines={1}>
+        {label}
+      </Text>
       {icon}
     </SpringPressable>
   );
 }
 
-function WebPwaInstallCard({ onInstalled }: { onInstalled: () => void }) {
+/** Kompaktowy, klikalny wiersz uprawnienia (cały wiersz jest strefą dotyku). */
+function PermissionRow({
+  icon,
+  title,
+  subtitle,
+  footnote,
+  granted,
+  busy,
+  disabled,
+  actionLabel,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  footnote?: string;
+  granted: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  actionLabel: string;
+  onPress: () => void;
+}) {
+  const interactive = !granted && !disabled;
+
+  return (
+    <SpringPressable
+      onPress={onPress}
+      disabled={!interactive}
+      haptic="selection"
+      scaleDelta={0.015}
+      style={[st.permRow, granted && st.permRowGranted]}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !interactive, busy: Boolean(busy), selected: granted }}
+      accessibilityLabel={`${title}. ${subtitle}`}
+    >
+      <View style={[st.permIcon, granted && st.permIconGranted]}>
+        {granted ? <Check size={20} color={scheme.onSuccessContainer} /> : icon}
+      </View>
+
+      <View style={st.permBody}>
+        <Text style={st.permTitle} numberOfLines={2}>
+          {title}
+        </Text>
+        <Text style={st.permSub} numberOfLines={2}>
+          {subtitle}
+        </Text>
+        {footnote ? <Text style={st.permFootnote}>{footnote}</Text> : null}
+      </View>
+
+      {granted ? (
+        <View style={st.permDoneBadge} accessible={false}>
+          <Check size={16} color={scheme.onSuccessContainer} />
+        </View>
+      ) : (
+        <View style={[st.permPill, disabled && st.permPillDisabled]} accessible={false}>
+          {busy ? (
+            <ActivityIndicator size="small" color={scheme.onPrimaryContainer} />
+          ) : (
+            <Text style={st.permPillText}>{actionLabel}</Text>
+          )}
+        </View>
+      )}
+    </SpringPressable>
+  );
+}
+
+/** Wiersz instalacji PWA na webie: natywny prompt 1 kliknięciem lub rozwijana instrukcja. */
+function WebPwaInstallRow() {
   const s = useStrings();
   const [tab, setTab] = useState<'ios' | 'android'>(() => detectDefaultPwaPlatform());
   const [standalone, setStandalone] = useState(() => isRunningStandaloneWeb());
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -239,7 +269,7 @@ function WebPwaInstallCard({ onInstalled }: { onInstalled: () => void }) {
     const handleInstalled = () => {
       setStandalone(true);
       setDeferredPrompt(null);
-      onInstalled();
+      setExpanded(false);
     };
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', handleInstalled);
@@ -247,105 +277,129 @@ function WebPwaInstallCard({ onInstalled }: { onInstalled: () => void }) {
       window.removeEventListener('beforeinstallprompt', onPrompt);
       window.removeEventListener('appinstalled', handleInstalled);
     };
-  }, [onInstalled]);
-
-  const stepsList =
-    tab === 'ios'
-      ? [s.onboarding.pwaIos1, s.onboarding.pwaIos2, s.onboarding.pwaIos3]
-      : [s.onboarding.pwaAndroid1, s.onboarding.pwaAndroid2, s.onboarding.pwaAndroid3];
+  }, []);
 
   if (standalone) {
     return (
-      <View style={[st.card, st.cardGranted]}>
-        <View style={st.cardHead}>
-          <View style={[st.cardIcon, st.cardIconSuccess]}>
-            <Check size={20} color={scheme.onSuccessContainer} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={st.cardTitle}>{s.onboarding.pwaTitle}</Text>
-            <Text style={st.doneText}>{s.onboarding.pwaInstalled}</Text>
-          </View>
-        </View>
-      </View>
+      <PermissionRow
+        icon={<Download size={20} color={scheme.onSurfaceVariant} />}
+        title={s.onboarding.pwaTitle}
+        subtitle={s.onboarding.pwaInstalled}
+        granted
+        actionLabel={s.onboarding.pwaInstallShort}
+        onPress={() => {}}
+      />
     );
   }
 
-  return (
-    <View style={st.card}>
-      <View style={st.cardHead}>
-        <View style={st.cardIcon}>
-          <Download size={20} color={scheme.onSecondaryContainer} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={st.cardTitle}>{s.onboarding.pwaTitle}</Text>
-        </View>
-      </View>
-      <Text style={st.cardBody}>{s.onboarding.pwaSub}</Text>
-
-      {deferredPrompt && (
-        <SpringPressable
-          onPress={async () => {
+  if (deferredPrompt) {
+    return (
+      <PermissionRow
+        icon={<Download size={20} color={scheme.primary} />}
+        title={s.onboarding.pwaTitle}
+        subtitle={s.onboarding.pwaShortBody}
+        granted={false}
+        actionLabel={s.onboarding.pwaInstallShort}
+        onPress={() => {
+          void (async () => {
             try {
               await deferredPrompt.prompt();
               const choice = await deferredPrompt.userChoice;
               if (choice.outcome === 'accepted') {
                 setStandalone(true);
                 setDeferredPrompt(null);
-                onInstalled();
               }
             } catch {}
-          }}
-          haptic="light"
-          accessibilityRole="button"
-          style={st.allow}
-        >
-          <Download size={17} color={scheme.onPrimary} />
-          <Text style={st.allowText}>{s.onboarding.pwaInstallBtn}</Text>
-        </SpringPressable>
-      )}
+          })();
+        }}
+      />
+    );
+  }
 
-      <View style={st.pwaTabs} accessibilityRole="tablist">
-        <Pressable
-          onPress={() => setTab('android')}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: tab === 'android' }}
-          style={[st.pwaTab, tab === 'android' && st.pwaTabActive]}
-        >
-          <Text style={[st.pwaTabText, tab === 'android' && st.pwaTabTextActive]}>
-            {s.onboarding.pwaTabAndroid}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTab('ios')}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: tab === 'ios' }}
-          style={[st.pwaTab, tab === 'ios' && st.pwaTabActive]}
-        >
-          <Text style={[st.pwaTabText, tab === 'ios' && st.pwaTabTextActive]}>
-            {s.onboarding.pwaTabIos}
-          </Text>
-        </Pressable>
-      </View>
+  const stepsList =
+    tab === 'ios'
+      ? [s.onboarding.pwaIos1, s.onboarding.pwaIos2, s.onboarding.pwaIos3]
+      : [s.onboarding.pwaAndroid1, s.onboarding.pwaAndroid2, s.onboarding.pwaAndroid3];
 
-      <View style={st.pwaStepList}>
-        {stepsList.map((text, idx) => (
-          <View key={idx} style={st.pwaStepRow}>
-            <View style={st.pwaStepBadge}>
-              <Text style={st.pwaStepNum}>{idx + 1}</Text>
-            </View>
-            <Text style={st.pwaStepText}>{text}</Text>
+  return (
+    <View style={st.pwaCard}>
+      <SpringPressable
+        onPress={() => setExpanded((v) => !v)}
+        haptic="selection"
+        scaleDelta={0.015}
+        style={st.pwaHeaderRow}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+      >
+        <View style={st.permIcon}>
+          <Download size={20} color={scheme.primary} />
+        </View>
+        <View style={st.permBody}>
+          <Text style={st.permTitle} numberOfLines={2}>
+            {s.onboarding.pwaTitle}
+          </Text>
+          <Text style={st.permSub} numberOfLines={2}>
+            {s.onboarding.pwaShortBody}
+          </Text>
+        </View>
+        <View style={st.pwaTogglePill}>
+          <Text style={st.pwaToggleText}>{s.onboarding.pwaHowTo}</Text>
+          {expanded ? (
+            <ChevronUp size={16} color={scheme.onSurfaceVariant} />
+          ) : (
+            <ChevronDown size={16} color={scheme.onSurfaceVariant} />
+          )}
+        </View>
+      </SpringPressable>
+
+      {expanded && (
+        <View style={st.pwaDrawer}>
+          <View style={st.pwaTabs} accessibilityRole="tablist">
+            <Pressable
+              onPress={() => setTab('android')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === 'android' }}
+              style={[st.pwaTab, tab === 'android' && st.pwaTabActive]}
+            >
+              <Text style={[st.pwaTabText, tab === 'android' && st.pwaTabTextActive]}>
+                {s.onboarding.pwaTabAndroid}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setTab('ios')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === 'ios' }}
+              style={[st.pwaTab, tab === 'ios' && st.pwaTabActive]}
+            >
+              <Text style={[st.pwaTabText, tab === 'ios' && st.pwaTabTextActive]}>
+                {s.onboarding.pwaTabIos}
+              </Text>
+            </Pressable>
           </View>
-        ))}
-      </View>
+
+          <View style={st.pwaStepList}>
+            {stepsList.map((text, idx) => (
+              <View key={idx} style={st.pwaStepRow}>
+                <View style={st.pwaStepBadge}>
+                  <Text style={st.pwaStepNum}>{idx + 1}</Text>
+                </View>
+                <Text style={st.pwaStepText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
-function usePermissionStates(onGranted: () => void) {
+function usePermissionStates() {
   const [loc, setLoc] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [notif, setNotif] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [busy, setBusy] = useState<'loc' | 'notif' | null>(null);
   const [locCanAskAgain, setLocCanAskAgain] = useState(true);
+  const [locAttempted, setLocAttempted] = useState(false);
+  const [notifAttempted, setNotifAttempted] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -377,6 +431,7 @@ function usePermissionStates(onGranted: () => void) {
 
   const requestLoc = useCallback(async () => {
     setBusy('loc');
+    setLocAttempted(true);
     try {
       if (!locCanAskAgain) {
         if (Platform.OS !== 'web') await Linking.openSettings();
@@ -386,7 +441,6 @@ function usePermissionStates(onGranted: () => void) {
       const ok = r.granted;
       setLoc(ok ? 'granted' : 'denied');
       setLocCanAskAgain(r.canAskAgain);
-      if (ok) onGranted();
       return ok;
     } catch {
       setLoc('denied');
@@ -394,11 +448,12 @@ function usePermissionStates(onGranted: () => void) {
     } finally {
       setBusy(null);
     }
-  }, [locCanAskAgain, onGranted]);
+  }, [locCanAskAgain]);
 
   const requestNotif = useCallback(async () => {
     if (!NOTIF_SUPPORTED) return false;
     setBusy('notif');
+    setNotifAttempted(true);
     try {
       if (notif === 'denied') {
         if (Platform.OS !== 'web') await Linking.openSettings();
@@ -406,7 +461,6 @@ function usePermissionStates(onGranted: () => void) {
       }
       const ok = await ensureNotificationPermission();
       setNotif(ok ? 'granted' : 'denied');
-      if (ok) onGranted();
       return ok;
     } catch {
       setNotif('denied');
@@ -414,17 +468,17 @@ function usePermissionStates(onGranted: () => void) {
     } finally {
       setBusy(null);
     }
-  }, [notif, onGranted]);
+  }, [notif]);
 
-  return { loc, notif, busy, locCanAskAgain, requestLoc, requestNotif };
+  return { loc, notif, busy, locCanAskAgain, locAttempted, notifAttempted, requestLoc, requestNotif };
 }
 
-function useCitySuggestion(locGranted: boolean) {
+function useCitySuggestion(enabled: boolean, retryToken: number) {
   const [suggested, setSuggested] = useState<CityId | null>(null);
   const [status, setStatus] = useState<'idle' | 'locating' | 'nomatch'>('idle');
 
   useEffect(() => {
-    if (!locGranted) {
+    if (!enabled) {
       setSuggested(null);
       setStatus('idle');
       return;
@@ -451,21 +505,27 @@ function useCitySuggestion(locGranted: boolean) {
     return () => {
       live = false;
     };
-  }, [locGranted]);
+  }, [enabled, retryToken]);
 
   return { suggested, status };
 }
 
-const CityRowItem = memo(function CityRowItem({
+const CityListRow = memo(function CityListRow({
   entry,
   active,
   disabled,
+  showHint,
+  isFirst,
+  isLast,
   pickA11y,
   onSelect,
 }: {
   entry: CityEntry;
   active: boolean;
   disabled: boolean;
+  showHint: boolean;
+  isFirst: boolean;
+  isLast: boolean;
   pickA11y: string;
   onSelect: (id: CityId) => void;
 }) {
@@ -476,25 +536,29 @@ const CityRowItem = memo(function CityRowItem({
       onPress={handlePress}
       disabled={disabled}
       haptic="selection"
-      scaleDelta={0.015}
-      style={[st.cityRow, active && st.cityRowActive]}
+      scaleDelta={0.01}
+      style={[
+        st.listRow,
+        isFirst && st.listRowFirst,
+        isLast && st.listRowLast,
+        !isLast && !active && st.listRowDivider,
+        active && st.listRowActive,
+      ]}
       accessibilityRole="radio"
       accessibilityState={{ checked: active, disabled }}
       accessibilityLabel={pickA11y}
     >
-      <View style={st.cityRowBody}>
-        <View style={st.cityNameLine}>
-          <Text style={[st.cityName, active && st.cityNameActive]} numberOfLines={1}>
-            {entry.name}
-          </Text>
-        </View>
-        <Text style={[st.citySub, active && st.citySubActive]} numberOfLines={1}>
-          {entry.feeds}
+      <View style={st.listRowTextWrap}>
+        <Text style={[st.listRowName, active && st.listRowNameActive]} numberOfLines={1}>
+          {entry.name}
         </Text>
+        {showHint ? (
+          <Text style={[st.listRowHint, active && st.listRowHintActive]} numberOfLines={1}>
+            {entry.feeds}
+          </Text>
+        ) : null}
       </View>
-      <View style={[st.radio, active && st.radioActive]}>
-        {active && <Check size={14} color={scheme.onPrimary} />}
-      </View>
+      {active ? <Check size={18} color={scheme.onPrimaryContainer} /> : null}
     </SpringPressable>
   );
 });
@@ -506,35 +570,34 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const webLayout = useWebLayout();
   const { sharedTrip } = useLocalSearchParams<{ sharedTrip?: string }>();
-  const { width, height, fontScale } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const compact = width / fontScale < 360;
   const reduceMotion = useReducedMotion();
   const webKeyboardInset = useWebKeyboardInset();
 
   const [step, setStep] = useState<StepIndex>(0);
   const [direction, setDirection] = useState<1 | -1>(1);
-  const [pulseKey, setPulseKey] = useState(0);
-  const [workspaceWidth, setWorkspaceWidth] = useState(() => Math.min(width, 560));
-  const [workspaceHeight, setWorkspaceHeight] = useState(() => Math.max(360, height - 200));
-  const [welcomeGroupHeight, setWelcomeGroupHeight] = useState(276);
-  const [compactHeaderHeight, setCompactHeaderHeight] = useState(86);
   const [leaving, setLeaving] = useState(false);
 
-  const bumpPulse = useCallback(() => setPulseKey((k) => k + 1), []);
-
-  const perms = usePermissionStates(bumpPulse);
+  const perms = usePermissionStates();
   const { cityId, setCity } = useActiveCity();
+  // Brak domyślnego zaznaczenia Wrocławia: użytkownik świadomie wybiera miasto lub wykrywa je GPS-em.
+  const [pickedCityId, setPickedCityId] = useState<CityId | null>(null);
   const [switchingCity, setSwitchingCity] = useState(false);
   const [cityQuery, setCityQuery] = useState('');
-  const { suggested, status: citySuggestionStatus } = useCitySuggestion(perms.loc === 'granted');
+  const [gpsNotice, setGpsNotice] = useState<'denied' | null>(null);
+  const [gpsAttempt, setGpsAttempt] = useState(0);
+
+  const shouldLocate = step >= 1 && perms.loc === 'granted';
+  const { suggested, status: citySuggestionStatus } = useCitySuggestion(shouldLocate, gpsAttempt);
 
   const [dataStatus, setDataStatus] = useState<DataStatus>(() => getDataStatus());
-  const [timetableTouched, setTimetableTouched] = useState(false);
   const [checkingTimetable, setCheckingTimetable] = useState(false);
   const manualCityPickedRef = useRef(false);
   const prefetchedCityRef = useRef<CityId | null>(null);
 
-  const cityGen = s.city.gen(cityId);
+  const activeCityId = pickedCityId ?? cityId;
+  const cityGen = s.city.gen(activeCityId);
 
   useEffect(() => {
     return subscribeDataStatus(setDataStatus);
@@ -547,7 +610,6 @@ export default function OnboardingScreen() {
       if (cur.state !== 'empty' && cur.state !== 'error') return;
     }
     prefetchedCityRef.current = targetCityId;
-    setTimetableTouched(true);
     setCheckingTimetable(true);
     try {
       const stNow = await refreshDataStatus(targetCityId);
@@ -558,7 +620,7 @@ export default function OnboardingScreen() {
         .then((m) => m.ensureNationalTimetable())
         .catch(() => {});
     } catch {
-      // Status błędu pokaże TimetableBackgroundPill z przyciskiem ponowienia.
+      // Status błędu pokaże TimetableBackgroundPill na ostatnim kroku.
     } finally {
       setCheckingTimetable(false);
     }
@@ -566,31 +628,49 @@ export default function OnboardingScreen() {
 
   const selectCity = useCallback(
     async (id: CityId, source: 'manual' | 'gps' = 'manual') => {
-      if (source === 'manual') manualCityPickedRef.current = true;
+      if (source === 'manual') {
+        manualCityPickedRef.current = true;
+        Keyboard.dismiss();
+      }
       if (switchingCity) return;
+      setGpsNotice(null);
+      setPickedCityId(id);
       if (id === cityId) {
-        bumpPulse();
         void prefetchTimetable(id);
         return;
       }
       setSwitchingCity(true);
       try {
         await setCity(id);
-        bumpPulse();
         void prefetchTimetable(id, true);
       } finally {
         setSwitchingCity(false);
       }
     },
-    [bumpPulse, cityId, prefetchTimetable, setCity, switchingCity],
+    [cityId, prefetchTimetable, setCity, switchingCity],
   );
 
-  // Gdy GPS wykryje miasto na kroku wyboru i użytkownik sam jeszcze nie wybrał innego,
-  // od razu je ustawiamy i cicho zaczynamy pobierać rozkład w tle.
+  // Gdy GPS wykryje miasto i użytkownik jeszcze nie wybrał innego, ustawiamy je automatycznie.
   useEffect(() => {
     if (!suggested || step < 1 || manualCityPickedRef.current) return;
     void selectCity(suggested, 'gps');
   }, [selectCity, step, suggested]);
+
+  const handleDetectGps = useCallback(async () => {
+    setGpsNotice(null);
+    if (perms.loc === 'granted') {
+      manualCityPickedRef.current = false;
+      setGpsAttempt((n) => n + 1);
+      return;
+    }
+    const ok = await perms.requestLoc();
+    if (ok) {
+      manualCityPickedRef.current = false;
+      setGpsAttempt((n) => n + 1);
+    } else {
+      setGpsNotice('denied');
+    }
+  }, [perms]);
 
   const goTo = useCallback((nextStep: StepIndex) => {
     setStep((prev) => {
@@ -602,11 +682,11 @@ export default function OnboardingScreen() {
 
   const next = useCallback(() => {
     if (step === 1) {
-      // Upewniamy się, że rozkład wybranego miasta pobiera się w tle przy wyjściu z wyboru miasta.
-      void prefetchTimetable(cityId);
+      if (!pickedCityId) return;
+      void prefetchTimetable(pickedCityId);
     }
     if (step < 2) goTo((step + 1) as StepIndex);
-  }, [cityId, goTo, prefetchTimetable, step]);
+  }, [goTo, pickedCityId, prefetchTimetable, step]);
 
   const back = useCallback(() => {
     if (step > 0) goTo((step - 1) as StepIndex);
@@ -615,18 +695,18 @@ export default function OnboardingScreen() {
   const finish = useCallback(async () => {
     if (leaving) return;
     setLeaving(true);
-    void prefetchTimetable(cityId);
+    void prefetchTimetable(activeCityId);
     await setOnboardingSeen();
     router.replace(sharedTrip ? { pathname: '/shared', params: { trip: sharedTrip } } : '/');
-  }, [cityId, leaving, prefetchTimetable, router, sharedTrip]);
+  }, [activeCityId, leaving, prefetchTimetable, router, sharedTrip]);
 
   const handleOpenPrivacy = useCallback(() => {
     router.push('/privacy');
   }, [router]);
 
   const retryPrefetch = useCallback(() => {
-    void prefetchTimetable(cityId, true);
-  }, [cityId, prefetchTimetable]);
+    void prefetchTimetable(activeCityId, true);
+  }, [activeCityId, prefetchTimetable]);
 
   useFocusEffect(
     useCallback(() => {
@@ -640,44 +720,114 @@ export default function OnboardingScreen() {
   );
 
   const cityEntries = useMemo(() => getCityEntries(s), [s]);
-  const filteredCities = useMemo(
-    () => filterCityEntries(cityEntries, cityQuery, [cityId]),
-    [cityEntries, cityId, cityQuery],
-  );
+  const trimmedQuery = cityQuery.trim();
+  const isSearching = trimmedQuery.length > 0;
+
+  const listCities = useMemo(() => {
+    if (isSearching) {
+      return filterCityEntries(cityEntries, trimmedQuery, pickedCityId ? [pickedCityId] : []);
+    }
+    return cityEntries.filter((e) => !POPULAR_SET.has(e.city.id));
+  }, [cityEntries, isSearching, pickedCityId, trimmedQuery]);
+
+  const pickedNonPopular = useMemo(() => {
+    if (!pickedCityId || POPULAR_SET.has(pickedCityId) || isSearching) return null;
+    return cityEntries.find((e) => e.city.id === pickedCityId) ?? null;
+  }, [cityEntries, isSearching, pickedCityId]);
 
   const renderCityItem = useCallback<ListRenderItem<CityEntry>>(
-    ({ item }) => {
-      const active = cityId === item.city.id;
+    ({ item, index }) => {
+      const active = pickedCityId === item.city.id;
+      const showHint = isSearching && !item.nameNorm.startsWith(trimmedQuery.toLowerCase());
       return (
-        <CityRowItem
+        <CityListRow
           entry={item}
           active={active}
           disabled={switchingCity}
+          showHint={showHint}
+          isFirst={index === 0}
+          isLast={index === listCities.length - 1}
           pickA11y={s.onboarding.cityPickA11y(item.name)}
           onSelect={(id) => void selectCity(id, 'manual')}
         />
       );
     },
-    [cityId, s, selectCity, switchingCity],
+    [isSearching, listCities.length, pickedCityId, s, selectCity, switchingCity, trimmedQuery],
   );
 
-  const compactHeaderMeta = useMemo(() => {
-    if (step === 1) {
-      return { title: s.onboarding.cityTitle, subtitle: s.onboarding.citySubtitleAuto };
-    }
-    return {
-      title: s.onboarding.permTitle,
-      subtitle: Platform.OS === 'web' ? s.onboarding.permSubWeb : s.onboarding.permSub,
-    };
-  }, [s, step]);
+  const cityListHeader = useMemo(() => {
+    if (isSearching) return null;
+    return (
+      <View style={st.citySections}>
+        {pickedNonPopular ? (
+          <View style={st.sectionBlock}>
+            <Text style={st.sectionLabel}>{s.onboarding.citySelectedLabel}</Text>
+            <SpringPressable
+              onPress={() => void selectCity(pickedNonPopular.city.id, 'manual')}
+              disabled={switchingCity}
+              haptic="selection"
+              scaleDelta={0.015}
+              style={st.selectedBanner}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: true }}
+            >
+              <Text style={st.selectedBannerName} numberOfLines={1}>
+                {pickedNonPopular.name}
+              </Text>
+              <Check size={18} color={scheme.onPrimaryContainer} />
+            </SpringPressable>
+          </View>
+        ) : null}
 
-  const showBackgroundPill = step >= 2 || (step === 1 && timetableTouched);
+        <View style={st.sectionBlock}>
+          <Text style={st.sectionLabel}>{s.onboarding.cityPopularSection}</Text>
+          <View style={st.popularGrid} accessibilityRole="radiogroup">
+            {POPULAR_CITY_IDS.map((id) => {
+              const active = pickedCityId === id;
+              return (
+                <SpringPressable
+                  key={id}
+                  onPress={() => void selectCity(id, 'manual')}
+                  disabled={switchingCity}
+                  haptic="selection"
+                  scaleDelta={0.03}
+                  style={[st.popularTile, active && st.popularTileActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active, disabled: switchingCity }}
+                  accessibilityLabel={s.onboarding.cityPickA11y(s.city.name(id))}
+                >
+                  <Text
+                    style={[st.popularTileText, active && st.popularTileTextActive]}
+                    numberOfLines={1}
+                  >
+                    {s.city.name(id)}
+                  </Text>
+                  {active ? <Check size={16} color={scheme.onPrimaryContainer} /> : null}
+                </SpringPressable>
+              );
+            })}
+          </View>
+        </View>
 
-  // Środek Y loga na kroku powitalnym: idealnie w centrum całej kolumny (logo + teksty).
-  const welcomeCenterY = Math.max(
-    HERO_LOGO_SIZE / 2 + 12,
-    (workspaceHeight - welcomeGroupHeight) / 2 + HERO_LOGO_SIZE / 2,
-  );
+        <Text style={st.allSectionLabel}>{s.onboarding.cityAllSection}</Text>
+      </View>
+    );
+  }, [isSearching, pickedCityId, pickedNonPopular, s, selectCity, switchingCity]);
+
+  const gpsBusy = perms.busy === 'loc' || citySuggestionStatus === 'locating';
+
+  const gpsFeedbackText =
+    gpsNotice === 'denied'
+      ? s.onboarding.cityNoGps
+      : citySuggestionStatus === 'nomatch'
+        ? s.onboarding.cityNoMatch
+        : null;
+
+  const step1CtaLabel = switchingCity
+    ? s.city.switching
+    : pickedCityId
+      ? s.onboarding.cityNextWith(s.city.name(pickedCityId))
+      : s.onboarding.cityPickPrompt;
 
   return (
     <SafeAreaView
@@ -687,14 +837,7 @@ export default function OnboardingScreen() {
       <View style={[st.shell, webLayout.isMedium && st.shellDesktop]}>
         <OnboardingProgressBar step={step} onBack={back} />
 
-        <View
-          style={st.workspace}
-          onLayout={(e) => {
-            const { width: w, height: h } = e.nativeEvent.layout;
-            if (w > 0 && Math.abs(w - workspaceWidth) > 1) setWorkspaceWidth(Math.round(w));
-            if (h > 0 && Math.abs(h - workspaceHeight) > 1) setWorkspaceHeight(Math.round(h));
-          }}
-        >
+        <View style={st.workspace}>
           {step === 0 && (
             <StepStage step={step} direction={direction}>
               <ScrollView
@@ -702,18 +845,11 @@ export default function OnboardingScreen() {
                 showsVerticalScrollIndicator={false}
                 overScrollMode="never"
               >
-                <View
-                  style={st.welcomeGroup}
-                  onLayout={(e) => {
-                    const h = Math.ceil(e.nativeEvent.layout.height);
-                    if (h > 0 && Math.abs(h - welcomeGroupHeight) > 1) setWelcomeGroupHeight(h);
-                  }}
-                >
-                  {/* Puste gniazdo, w którym spoczywa animowane logo z warstwy OnboardingMorphHero. */}
-                  <View style={st.logoPlaceholder} />
+                <View style={st.welcomeGroup}>
+                  <OnboardingMorphHero />
 
                   <Animated.View
-                    entering={reduceMotion ? undefined : FadeInDown.duration(300).delay(320)}
+                    entering={reduceMotion ? undefined : FadeInDown.duration(280).delay(220)}
                     style={st.welcomeCopy}
                   >
                     <Text style={[st.brandHero, compact && st.brandHeroCompact]}>
@@ -727,71 +863,14 @@ export default function OnboardingScreen() {
             </StepStage>
           )}
 
-          {step > 0 && (
-            <View style={st.stepShell}>
-              <View style={st.compactHeaderRow}>
-                <AnimatedStepHeader
-                  step={step}
-                  direction={direction}
-                  title={compactHeaderMeta.title}
-                  subtitle={compactHeaderMeta.subtitle}
-                  onMeasured={setCompactHeaderHeight}
-                />
-              </View>
-
-              <View style={st.contentArea}>
-
           {step === 1 && (
             <StepStage step={step} direction={direction}>
               <View style={st.cityStep}>
-                {/* Kontekstowa karta GPS: prosi o lokalizację dokładnie tam, gdzie oszczędza czas. */}
-                <View style={st.cityControls}>
-                  {perms.loc !== 'granted' ? (
-                    <SpringPressable
-                      onPress={() => void perms.requestLoc()}
-                      disabled={perms.busy !== null}
-                      haptic="selection"
-                      style={st.gpsCard}
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        disabled: perms.busy !== null,
-                        busy: perms.busy === 'loc',
-                      }}
-                    >
-                      <View style={st.gpsIconCircle}>
-                        {perms.busy === 'loc' ? (
-                          <MorphingLoader size={18} color={scheme.onPrimaryContainer} />
-                        ) : (
-                          <LocateFixed size={19} color={scheme.onPrimaryContainer} />
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={st.gpsCardTitle}>
-                          {perms.locCanAskAgain
-                            ? s.onboarding.detectGpsAction
-                            : s.onboarding.openSettings}
-                        </Text>
-                        <Text style={st.gpsCardSub} numberOfLines={2}>
-                          {!perms.locCanAskAgain
-                            ? s.onboarding.cityNoGps
-                            : s.onboarding.detectGpsHint}
-                        </Text>
-                      </View>
-                      <ChevronRight size={18} color={scheme.primary} />
-                    </SpringPressable>
-                  ) : citySuggestionStatus === 'locating' ? (
-                    <View style={st.gpsStatusRow}>
-                      <MorphingLoader size={16} color={scheme.primary} />
-                      <Text style={st.gpsStatusText}>{s.onboarding.cityLocating}</Text>
-                    </View>
-                  ) : citySuggestionStatus === 'nomatch' ? (
-                    <View style={st.gpsStatusRow}>
-                      <MapPinOff size={15} color={scheme.onSurfaceVariant} />
-                      <Text style={st.gpsStatusMuted}>{s.onboarding.cityNoMatch}</Text>
-                    </View>
-                  ) : null}
+                <View style={st.stepHeader}>
+                  <Text style={st.stepTitle}>{s.onboarding.cityTitle}</Text>
+                </View>
 
-                  {/* Wyszukiwarka 132 miast z obsługą aliasów (np. Gdańsk -> Trójmiasto, Katowice -> GZM). */}
+                <View style={st.searchWrap}>
                   <View style={st.searchBar}>
                     <Search size={18} color={scheme.onSurfaceVariant} />
                     <TextInput
@@ -804,52 +883,46 @@ export default function OnboardingScreen() {
                       returnKeyType="search"
                       autoCorrect={false}
                     />
-                    {cityQuery.length > 0 && (
+                    {cityQuery.length > 0 ? (
                       <Pressable
                         onPress={() => setCityQuery('')}
-                        hitSlop={8}
+                        hitSlop={6}
                         style={st.clearBtn}
                         accessibilityRole="button"
                         accessibilityLabel={s.onboarding.cityClearSearchA11y}
                       >
                         <X size={16} color={scheme.onSurfaceVariant} />
                       </Pressable>
+                    ) : (
+                      <SpringPressable
+                        onPress={() => void handleDetectGps()}
+                        disabled={gpsBusy}
+                        haptic="selection"
+                        scaleDelta={0.04}
+                        style={st.gpsPill}
+                        accessibilityRole="button"
+                        accessibilityState={{ busy: gpsBusy, disabled: gpsBusy }}
+                        accessibilityLabel={s.onboarding.detectGpsAction}
+                      >
+                        {gpsBusy ? (
+                          <MorphingLoader size={15} color={scheme.onPrimaryContainer} />
+                        ) : (
+                          <LocateFixed size={15} color={scheme.onPrimaryContainer} />
+                        )}
+                        <Text style={st.gpsPillText}>
+                          {gpsBusy ? s.onboarding.detectGpsLocating : s.onboarding.detectGpsShort}
+                        </Text>
+                      </SpringPressable>
                     )}
                   </View>
 
-                  {/* Szybkie chipy największych sieci, gdy pole wyszukiwania jest puste. */}
-                  {cityQuery.trim().length === 0 && (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={st.popularRow}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {POPULAR_CITY_IDS.map((id) => {
-                        const active = cityId === id;
-                        return (
-                          <SpringPressable
-                            key={id}
-                            onPress={() => void selectCity(id, 'manual')}
-                            disabled={switchingCity}
-                            haptic="selection"
-                            scaleDelta={0.04}
-                            style={[st.popularChip, active && st.popularChipActive]}
-                            accessibilityRole="radio"
-                            accessibilityState={{ checked: active }}
-                          >
-                            <Text style={[st.popularChipText, active && st.popularChipTextActive]}>
-                              {s.city.name(id)}
-                            </Text>
-                          </SpringPressable>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
+                  {gpsFeedbackText ? (
+                    <Text style={st.gpsFeedback}>{gpsFeedbackText}</Text>
+                  ) : null}
                 </View>
 
                 <FlatList
-                  data={filteredCities}
+                  data={listCities}
                   keyExtractor={cityKeyExtractor}
                   style={st.cityList}
                   contentContainerStyle={st.cityListContent}
@@ -858,12 +931,13 @@ export default function OnboardingScreen() {
                   keyboardShouldPersistTaps="handled"
                   keyboardDismissMode="on-drag"
                   accessibilityRole="radiogroup"
+                  ListHeaderComponent={cityListHeader}
                   renderItem={renderCityItem}
                   ListEmptyComponent={
                     <View style={st.emptyCity}>
                       <MapPinOff size={24} color={scheme.onSurfaceVariant} />
                       <Text style={st.emptyCityText}>
-                        {s.onboarding.cityNoSearchMatch(cityQuery.trim())}
+                        {s.onboarding.cityNoSearchMatch(trimmedQuery)}
                       </Text>
                     </View>
                   }
@@ -875,142 +949,82 @@ export default function OnboardingScreen() {
           {step === 2 && (
             <StepStage step={step} direction={direction}>
               <ScrollView
-                contentContainerStyle={st.stepScroll}
+                contentContainerStyle={st.permScroll}
                 showsVerticalScrollIndicator={false}
                 overScrollMode="never"
               >
-                {Platform.OS === 'web' && <WebPwaInstallCard onInstalled={bumpPulse} />}
+                <View style={st.stepHeaderInline}>
+                  <Text style={st.stepTitle}>{s.onboarding.permTitle}</Text>
+                  <Text style={st.stepSubtitle}>
+                    {Platform.OS === 'web' ? s.onboarding.permSubWeb : s.onboarding.permSub}
+                  </Text>
+                </View>
 
-                <View style={[st.card, perms.loc === 'granted' && st.cardGranted]}>
-                  <View style={st.cardHead}>
-                    <View
-                      style={[st.cardIcon, perms.loc === 'granted' && st.cardIconSuccess]}
-                    >
-                      {perms.loc === 'granted' ? (
-                        <Check size={20} color={scheme.onSuccessContainer} />
-                      ) : (
-                        <LocateFixed size={20} color={scheme.onSecondaryContainer} />
-                      )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={st.cardTitle}>{s.onboarding.locTitle}</Text>
-                      {perms.loc === 'granted' && (
-                        <Text style={st.doneText}>{s.onboarding.locOn}</Text>
-                      )}
-                    </View>
-                  </View>
+                <View style={st.permList}>
+                  <PermissionRow
+                    icon={<LocateFixed size={20} color={scheme.primary} />}
+                    title={s.onboarding.locTitle}
+                    subtitle={
+                      perms.loc === 'granted' ? s.onboarding.locOn : s.onboarding.locShortBody
+                    }
+                    footnote={
+                      perms.loc === 'denied' && (perms.locAttempted || !perms.locCanAskAgain)
+                        ? s.onboarding.permissionDenied
+                        : undefined
+                    }
+                    granted={perms.loc === 'granted'}
+                    busy={perms.busy === 'loc'}
+                    disabled={perms.busy !== null}
+                    actionLabel={
+                      perms.locCanAskAgain ? s.onboarding.permEnable : s.onboarding.openSettings
+                    }
+                    onPress={() => void perms.requestLoc()}
+                  />
 
-                  {perms.loc !== 'granted' && (
-                    <>
-                      <Text style={st.cardBody}>{s.onboarding.locBody}</Text>
-                      {perms.loc === 'denied' && (
-                        <Text style={st.fine}>{s.onboarding.permissionDenied}</Text>
-                      )}
-                      <SpringPressable
-                        onPress={() => void perms.requestLoc()}
-                        disabled={perms.busy !== null}
-                        haptic="selection"
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          disabled: perms.busy !== null,
-                          busy: perms.busy === 'loc',
-                        }}
-                        style={st.allow}
-                      >
-                        {perms.busy === 'loc' ? (
-                          <ActivityIndicator size="small" color={scheme.onPrimary} />
-                        ) : (
-                          <LocateFixed size={17} color={scheme.onPrimary} />
-                        )}
-                        <Text style={st.allowText}>
-                          {perms.locCanAskAgain
-                            ? s.onboarding.locAllow
-                            : s.onboarding.openSettings}
-                        </Text>
-                      </SpringPressable>
-                    </>
+                  {Platform.OS !== 'web' ? (
+                    <PermissionRow
+                      icon={<Bell size={20} color={scheme.primary} />}
+                      title={s.onboarding.notifTitle}
+                      subtitle={
+                        perms.notif === 'granted'
+                          ? s.onboarding.notifOn
+                          : s.onboarding.notifShortBody
+                      }
+                      footnote={
+                        !NOTIF_SUPPORTED
+                          ? s.onboarding.notifExpoGo
+                          : perms.notif === 'denied' && perms.notifAttempted
+                            ? s.onboarding.permissionDenied
+                            : undefined
+                      }
+                      granted={perms.notif === 'granted'}
+                      busy={perms.busy === 'notif'}
+                      disabled={perms.busy !== null || !NOTIF_SUPPORTED}
+                      actionLabel={
+                        perms.notif === 'denied'
+                          ? s.onboarding.openSettings
+                          : s.onboarding.permEnable
+                      }
+                      onPress={() => void perms.requestNotif()}
+                    />
+                  ) : (
+                    <WebPwaInstallRow />
                   )}
                 </View>
 
-                {Platform.OS !== 'web' && (
-                  <View style={[st.card, perms.notif === 'granted' && st.cardGranted]}>
-                    <View style={st.cardHead}>
-                      <View
-                        style={[st.cardIcon, perms.notif === 'granted' && st.cardIconSuccess]}
-                      >
-                        {perms.notif === 'granted' ? (
-                          <Check size={20} color={scheme.onSuccessContainer} />
-                        ) : (
-                          <Bell size={20} color={scheme.onSecondaryContainer} />
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={st.cardTitle}>{s.onboarding.notifTitle}</Text>
-                        {perms.notif === 'granted' && (
-                          <Text style={st.doneText}>{s.onboarding.notifOn}</Text>
-                        )}
-                      </View>
-                    </View>
-
-                    {perms.notif !== 'granted' && (
-                      <>
-                        <Text style={st.cardBody}>{s.onboarding.notifBody}</Text>
-                        {perms.notif === 'denied' && (
-                          <Text style={st.fine}>{s.onboarding.permissionDenied}</Text>
-                        )}
-                        {!NOTIF_SUPPORTED ? (
-                          <Text style={st.fine}>{s.onboarding.notifExpoGo}</Text>
-                        ) : (
-                          <SpringPressable
-                            onPress={() => void perms.requestNotif()}
-                            disabled={perms.busy !== null}
-                            haptic="selection"
-                            accessibilityRole="button"
-                            accessibilityState={{
-                              disabled: perms.busy !== null,
-                              busy: perms.busy === 'notif',
-                            }}
-                            style={st.allow}
-                          >
-                            {perms.busy === 'notif' ? (
-                              <ActivityIndicator size="small" color={scheme.onPrimary} />
-                            ) : (
-                              <Bell size={17} color={scheme.onPrimary} />
-                            )}
-                            <Text style={st.allowText}>
-                              {perms.notif === 'denied'
-                                ? s.onboarding.openSettings
-                                : s.onboarding.notifAllow}
-                            </Text>
-                          </SpringPressable>
-                        )}
-                      </>
-                    )}
-                  </View>
-                )}
-
-                <Pressable
-                  onPress={handleOpenPrivacy}
-                  accessibilityRole="link"
-                  style={({ pressed }) => [st.privacyLink, pressed && { opacity: 0.7 }]}
-                >
-                  <Text style={st.privacyText}>{s.landing.privacy.linkLabel}</Text>
-                </Pressable>
+                <View style={st.disclosureBlock}>
+                  <Text style={st.disclosureText}>{s.onboarding.locDisclosure}</Text>
+                  <Pressable
+                    onPress={handleOpenPrivacy}
+                    accessibilityRole="link"
+                    style={({ pressed }) => [st.privacyLinkLeft, pressed && { opacity: 0.7 }]}
+                  >
+                    <Text style={st.privacyText}>{s.landing.privacy.linkLabel}</Text>
+                  </Pressable>
+                </View>
               </ScrollView>
             </StepStage>
           )}
-              </View>
-            </View>
-          )}
-
-          {/* Wspólna warstwa logo -> morfujący medalion transportowy na krokach 0..2. */}
-          <OnboardingMorphHero
-            step={step}
-            workspaceWidth={workspaceWidth}
-            welcomeCenterY={welcomeCenterY}
-            compactHeaderHeight={compactHeaderHeight}
-            pulseKey={pulseKey}
-          />
         </View>
 
         <View
@@ -1019,7 +1033,7 @@ export default function OnboardingScreen() {
             webKeyboardInset > 0 && { paddingBottom: Math.max(12, webKeyboardInset + 8) },
           ]}
         >
-          {showBackgroundPill && (
+          {step === 2 && (
             <TimetableBackgroundPill
               cityGen={cityGen}
               status={dataStatus}
@@ -1047,15 +1061,15 @@ export default function OnboardingScreen() {
 
           {step === 1 && (
             <PrimaryBtn
-              label={switchingCity ? s.city.switching : s.onboarding.next}
+              label={step1CtaLabel}
               onPress={next}
-              disabled={switchingCity}
+              disabled={!pickedCityId || switchingCity}
               icon={
                 switchingCity ? (
                   <ActivityIndicator size="small" color={scheme.onSurfaceVariant} />
-                ) : (
+                ) : pickedCityId ? (
                   <M3SolidArrowRight size={18} color={scheme.onPrimary} />
-                )
+                ) : undefined
               }
             />
           )}
@@ -1093,8 +1107,8 @@ const st = StyleSheet.create({
     overflow: 'hidden',
   },
   shellDesktop: {
-    maxWidth: 540,
-    maxHeight: 780,
+    maxWidth: 500,
+    maxHeight: 760,
     borderRadius: 32,
     backgroundColor: scheme.surface,
     borderWidth: 1,
@@ -1103,39 +1117,12 @@ const st = StyleSheet.create({
   },
   workspace: {
     flex: 1,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  stepShell: {
-    flex: 1,
-  },
-  compactHeaderRow: {
-    paddingLeft: 24,
-    paddingRight: 96,
-  },
-  compactHeaderBox: {
-    gap: 4,
-    paddingVertical: 4,
-  },
-  stepTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    letterSpacing: -0.6,
-    lineHeight: 32,
-  },
-  stepSubtitle: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-    lineHeight: 20,
-  },
-  contentArea: {
-    flex: 1,
     overflow: 'hidden',
   },
   stepStage: {
     flex: 1,
   },
+  // Krok 0: Witaj
   welcomeBody: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -1146,99 +1133,71 @@ const st = StyleSheet.create({
   welcomeGroup: {
     width: '100%',
     alignItems: 'center',
-  },
-  logoPlaceholder: {
-    width: HERO_LOGO_SIZE,
-    height: HERO_LOGO_SIZE,
-    marginBottom: 28,
+    gap: 28,
   },
   welcomeCopy: {
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   brandHero: {
-    fontSize: 46,
+    fontSize: 42,
     fontWeight: '700',
     color: scheme.onSurface,
-    letterSpacing: -1.8,
+    letterSpacing: -1.4,
     textAlign: 'center',
   },
   brandHeroCompact: {
-    fontSize: 38,
-    letterSpacing: -1.2,
+    fontSize: 36,
+    letterSpacing: -1.1,
   },
   tagline: {
-    fontSize: 21,
-    lineHeight: 28,
+    fontSize: 19,
+    lineHeight: 26,
     fontWeight: '600',
     color: scheme.primary,
     textAlign: 'center',
   },
   welcomeIntro: {
     ...type.bodyLarge,
+    fontSize: 15,
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
-    lineHeight: 23,
-    maxWidth: 300,
+    lineHeight: 22,
+    maxWidth: 320,
     marginTop: 6,
   },
+  // Wspólne nagłówki kroków 1 i 2
+  stepHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 14,
+    gap: 4,
+  },
+  stepHeaderInline: {
+    gap: 6,
+    marginBottom: 20,
+  },
+  stepTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    letterSpacing: -0.7,
+    lineHeight: 34,
+  },
+  stepSubtitle: {
+    ...type.bodyMedium,
+    fontSize: 15,
+    color: scheme.onSurfaceVariant,
+    lineHeight: 21,
+  },
+  // Krok 1: Miasto
   cityStep: {
     flex: 1,
   },
-  cityControls: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    gap: 10,
-  },
-  gpsCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    borderWidth: 1,
-    borderColor: `${scheme.primary}44`,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    minHeight: 56,
-  },
-  gpsIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: shape.full,
-    backgroundColor: scheme.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gpsCardTitle: {
-    ...type.titleSmall,
-    fontWeight: '600',
-    color: scheme.onSurface,
-  },
-  gpsCardSub: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    marginTop: 1,
-  },
-  gpsStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  searchWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
     gap: 8,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: shape.large,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 44,
-  },
-  gpsStatusText: {
-    ...type.labelLarge,
-    color: scheme.primary,
-    flex: 1,
-  },
-  gpsStatusMuted: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
-    flex: 1,
   },
   searchBar: {
     flexDirection: 'row',
@@ -1246,15 +1205,17 @@ const st = StyleSheet.create({
     gap: 10,
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    paddingHorizontal: 16,
-    minHeight: 48,
+    paddingLeft: 16,
+    paddingRight: 5,
+    paddingVertical: 5,
+    minHeight: 54,
   },
   searchBarInput: {
     flex: 1,
     minWidth: 0,
     ...type.bodyLarge,
     color: scheme.onSurface,
-    paddingVertical: 11,
+    paddingVertical: 8,
   },
   clearBtn: {
     width: 44,
@@ -1264,103 +1225,159 @@ const st = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  popularRow: {
-    gap: 8,
-    paddingVertical: 2,
-  },
-  popularChip: {
-    paddingHorizontal: 14,
-    minHeight: 44,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
+  gpsPill: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  popularChipActive: {
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
-    borderColor: scheme.primary,
   },
-  popularChipText: {
-    ...type.labelMedium,
-    color: scheme.onSurface,
-    fontWeight: '500',
-  },
-  popularChipTextActive: {
+  gpsPillText: {
+    ...type.labelLarge,
+    fontSize: 13,
+    fontWeight: '600',
     color: scheme.onPrimaryContainer,
-    fontWeight: '700',
+  },
+  gpsFeedback: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    paddingHorizontal: 6,
   },
   cityList: {
     flex: 1,
-    marginTop: 8,
   },
   cityListContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    gap: 6,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  cityRow: {
+  citySections: {
+    gap: 20,
+    marginBottom: 8,
+  },
+  sectionBlock: {
+    gap: 10,
+  },
+  sectionLabel: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+    paddingHorizontal: 2,
+  },
+  allSectionLabel: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    fontWeight: '600',
+    paddingHorizontal: 2,
+    marginTop: 2,
+  },
+  selectedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
+    justifyContent: 'space-between',
+    gap: 10,
+    minHeight: 52,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    minHeight: 66,
-  },
-  cityRowActive: {
+    borderRadius: 16,
     backgroundColor: scheme.primaryContainer,
+    borderWidth: 1.5,
     borderColor: scheme.primary,
-    borderRadius: 22,
   },
-  cityRowBody: {
+  selectedBannerName: {
+    ...type.titleMedium,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
     flex: 1,
-    gap: 2,
-    minWidth: 0,
   },
-  cityNameLine: {
+  popularGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
-  cityName: {
+  popularTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    width: '48.5%',
+    flexGrow: 1,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  popularTileActive: {
+    backgroundColor: scheme.primaryContainer,
+    borderColor: scheme.primary,
+  },
+  popularTileText: {
     ...type.titleMedium,
+    fontSize: 15,
+    fontWeight: '600',
     color: scheme.onSurface,
     flexShrink: 1,
   },
-  cityNameActive: {
+  popularTileTextActive: {
     color: scheme.onPrimaryContainer,
     fontWeight: '700',
   },
-  citySub: {
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: scheme.surfaceContainerLow,
+  },
+  listRowFirst: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  listRowLast: {
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  listRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: scheme.outlineVariant,
+  },
+  listRowActive: {
+    backgroundColor: scheme.primaryContainer,
+  },
+  listRowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  listRowName: {
+    ...type.bodyLarge,
+    fontSize: 15,
+    fontWeight: '500',
+    color: scheme.onSurface,
+  },
+  listRowNameActive: {
+    color: scheme.onPrimaryContainer,
+    fontWeight: '700',
+  },
+  listRowHint: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
   },
-  citySubActive: {
+  listRowHintActive: {
     color: scheme.onPrimaryContainer,
-    opacity: 0.88,
-  },
-  radio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: scheme.outline,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioActive: {
-    backgroundColor: scheme.primary,
-    borderColor: scheme.primary,
+    opacity: 0.85,
   },
   emptyCity: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 44,
     gap: 10,
   },
   emptyCityText: {
@@ -1368,128 +1385,131 @@ const st = StyleSheet.create({
     color: scheme.onSurfaceVariant,
     textAlign: 'center',
   },
-  stepScroll: {
-    paddingHorizontal: 24,
-    paddingTop: 10,
+  // Krok 2: Uprawnienia
+  permScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
     paddingBottom: 24,
-    gap: 14,
   },
-  card: {
-    backgroundColor: scheme.surfaceContainerLow,
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: scheme.outlineVariant,
-    padding: 18,
-    gap: 14,
+  permList: {
+    gap: 10,
   },
-  cardGranted: {
-    borderColor: `${scheme.success}55`,
-  },
-  cardHead: {
+  permRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    minHeight: 76,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  cardIcon: {
+  permRowGranted: {
+    borderColor: `${scheme.success}44`,
+  },
+  permIcon: {
     width: 44,
     height: 44,
-    borderRadius: shape.large,
-    backgroundColor: scheme.secondaryContainer,
+    borderRadius: 14,
+    backgroundColor: scheme.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardIconSuccess: {
+  permIconGranted: {
     backgroundColor: scheme.successContainer,
   },
-  cardTitle: {
+  permBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  permTitle: {
     ...type.titleMedium,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
     color: scheme.onSurface,
   },
-  cardBody: {
-    ...type.bodyMedium,
-    color: scheme.onSurfaceVariant,
-    lineHeight: 21,
-  },
-  doneText: {
+  permSub: {
     ...type.bodySmall,
-    color: scheme.success,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  fine: {
-    ...type.bodySmall,
-    color: scheme.onSurfaceVariant,
+    fontSize: 13,
     lineHeight: 18,
-  },
-  allow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: scheme.primary,
-    borderRadius: shape.full,
-    minHeight: 48,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-  },
-  allowText: {
-    ...type.labelLarge,
-    fontWeight: '600',
-    color: scheme.onPrimary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  footer: {
-    paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 10,
-    backgroundColor: scheme.surface,
-  },
-  primary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: scheme.primary,
-    borderRadius: shape.full,
-    minHeight: 58,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-  },
-  primaryDisabled: {
-    backgroundColor: scheme.surfaceContainerHighest,
-  },
-  primaryText: {
-    ...type.labelLarge,
-    fontSize: 17,
-    fontWeight: '700',
-    color: scheme.onPrimary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  primaryTextDisabled: {
     color: scheme.onSurfaceVariant,
   },
-  privacyLink: {
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 8,
+  permFootnote: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    opacity: 0.85,
+    marginTop: 4,
+    lineHeight: 16,
   },
-  privacyText: {
+  permPill: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: shape.full,
+    backgroundColor: scheme.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permPillDisabled: {
+    opacity: 0.5,
+  },
+  permPillText: {
     ...type.labelMedium,
+    fontSize: 13,
+    fontWeight: '700',
+    color: scheme.onPrimaryContainer,
+  },
+  permDoneBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: shape.full,
+    backgroundColor: scheme.successContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pwaCard: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  pwaHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    minHeight: 76,
+  },
+  pwaTogglePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  pwaToggleText: {
+    ...type.labelMedium,
+    fontSize: 13,
+    fontWeight: '600',
     color: scheme.onSurfaceVariant,
-    textDecorationLine: 'underline',
-    textAlign: 'center',
+  },
+  pwaDrawer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant,
+    paddingTop: 14,
   },
   pwaTabs: {
     flexDirection: 'row',
     backgroundColor: scheme.surfaceContainerHigh,
     borderRadius: shape.full,
-    padding: 4,
+    padding: 3,
     gap: 4,
   },
   pwaTab: {
@@ -1498,14 +1518,14 @@ const st = StyleSheet.create({
     borderRadius: shape.full,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
   pwaTabActive: {
     backgroundColor: scheme.primaryContainer,
   },
   pwaTabText: {
-    ...type.labelLarge,
+    ...type.labelMedium,
+    fontSize: 13,
     color: scheme.onSurfaceVariant,
     fontWeight: '600',
   },
@@ -1522,8 +1542,8 @@ const st = StyleSheet.create({
     gap: 10,
   },
   pwaStepBadge: {
-    width: 26,
-    height: 26,
+    width: 22,
+    height: 22,
     borderRadius: shape.full,
     backgroundColor: scheme.primaryContainer,
     alignItems: 'center',
@@ -1531,14 +1551,74 @@ const st = StyleSheet.create({
     marginTop: 1,
   },
   pwaStepNum: {
-    ...type.labelMedium,
+    ...type.labelSmall,
     color: scheme.onPrimaryContainer,
     fontWeight: '700',
   },
   pwaStepText: {
-    ...type.bodyMedium,
+    ...type.bodySmall,
+    fontSize: 13,
     color: scheme.onSurface,
-    lineHeight: 20,
+    lineHeight: 19,
     flex: 1,
+  },
+  disclosureBlock: {
+    marginTop: 18,
+    paddingHorizontal: 4,
+    gap: 2,
+  },
+  disclosureText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+    opacity: 0.78,
+    lineHeight: 17,
+  },
+  // Stopka
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 14,
+    gap: 10,
+    backgroundColor: scheme.surface,
+  },
+  primary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: scheme.primary,
+    borderRadius: shape.full,
+    minHeight: 56,
+    paddingHorizontal: 24,
+    paddingVertical: 15,
+  },
+  primaryDisabled: {
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  primaryText: {
+    ...type.labelLarge,
+    fontSize: 16,
+    fontWeight: '700',
+    color: scheme.onPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  primaryTextDisabled: {
+    color: scheme.onSurfaceVariant,
+  },
+  privacyLink: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  privacyLinkLeft: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  privacyText: {
+    ...type.labelMedium,
+    color: scheme.onSurfaceVariant,
+    textAlign: 'center',
   },
 });
