@@ -120,7 +120,7 @@ export interface RaptorNet {
 
 let baseCache = new WeakMap<LocalGtfsStore, RaptorBase>();
 
-function buildBase(store: LocalGtfsStore): RaptorBase {
+function* buildBaseSteps(store: LocalGtfsStore): Generator<void, RaptorBase, void> {
   const stopIds = Array.from(store.stops.keys());
   const stopIndex = new Map<string, number>();
   const n = stopIds.length;
@@ -131,6 +131,7 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
     if (isFareBoundary(store.stops.get(id)?.stop_name ?? '')) {
       fareBoundary[i] = 1;
     }
+    if ((i & 511) === 511) yield;
   }
   const fpStart = new Int32Array(n + 1);
   let total = 0;
@@ -140,6 +141,7 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
     if (list) {
       for (const fp of list) if (stopIndex.has(fp.to_stop_id)) total++;
     }
+    if ((i & 255) === 255) yield;
   }
   fpStart[n] = total;
   const fpTo = new Int32Array(total);
@@ -157,6 +159,7 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
       fpFixedSec[w] = fp.fixed ? Math.max(1, Math.round(fp.duration_sec)) : 0;
       w++;
     }
+    if ((i & 255) === 255) yield;
   }
   return {
     stopIds,
@@ -172,10 +175,39 @@ function buildBase(store: LocalGtfsStore): RaptorBase {
   };
 }
 
+function buildBase(store: LocalGtfsStore): RaptorBase {
+  const steps = buildBaseSteps(store);
+  let next = steps.next();
+  while (!next.done) next = steps.next();
+  return next.value;
+}
+
+async function buildBaseAsync(store: LocalGtfsStore): Promise<RaptorBase> {
+  const steps = buildBaseSteps(store);
+  let sliceStart = performance.now();
+  let next = steps.next();
+  while (!next.done) {
+    if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+      await yieldToUiFrame();
+      sliceStart = performance.now();
+    }
+    next = steps.next();
+  }
+  return next.value;
+}
+
 function getRaptorBase(store: LocalGtfsStore): RaptorBase {
   const hit = baseCache.get(store);
   if (hit && hit.stopsSize === store.stops.size && hit.footpathsSize === store.footpaths.size) return hit;
   const base = buildBase(store);
+  baseCache.set(store, base);
+  return base;
+}
+
+async function getRaptorBaseAsync(store: LocalGtfsStore): Promise<RaptorBase> {
+  const hit = baseCache.get(store);
+  if (hit && hit.stopsSize === store.stops.size && hit.footpathsSize === store.footpaths.size) return hit;
+  const base = await buildBaseAsync(store);
   baseCache.set(store, base);
   return base;
 }
@@ -607,7 +639,7 @@ export async function getRaptorNetAsync(
   offsets?: Map<string, number>,
   defaultOffset = 0,
 ): Promise<RaptorNet> {
-  const base = getRaptorBase(store);
+  const base = await getRaptorBaseAsync(store);
   const key = `${defaultOffset}|${offsets ? offsets.size : -1}`;
   const hit = netCache.get(idx);
   if (hit && hit.base === base && hit.key === key) return hit.net;

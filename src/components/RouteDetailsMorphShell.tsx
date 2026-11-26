@@ -87,12 +87,12 @@ const OPEN_SPRING = {
   stiffness: 420,
   mass: 0.78,
   overshootClamping: true,
-  energyThreshold: 0.0005,
+  energyThreshold: 0.002,
   reduceMotion: ReduceMotion.System,
 };
 
 const CLOSE_EASING = Easing.bezier(0.2, 0, 0, 1);
-const OPEN_SETTLE_FALLBACK_MS = 300;
+const OPEN_SETTLE_FALLBACK_MS = 700;
 const CLOSE_COMPLETE_FALLBACK_MS = 340;
 const STRIP_MEASURE_FALLBACK_MS = 32;
 
@@ -181,6 +181,8 @@ export function RouteDetailsMorphShell({
 
   const openStartedRef = useRef(false);
   const openSettledRef = useRef(false);
+  const openSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openSettleFrameRef = useRef<number | null>(null);
   const closingRef = useRef(false);
   const dismissFinishedRef = useRef(false);
   const closeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -302,16 +304,38 @@ export function RouteDetailsMorphShell({
     };
   }, [hiddenCardId, listCardNormalizedId]);
 
+  const clearOpenSettleTimers = useCallback(() => {
+    if (openSettleTimerRef.current !== null) {
+      clearTimeout(openSettleTimerRef.current);
+      openSettleTimerRef.current = null;
+    }
+    if (openSettleFrameRef.current !== null) {
+      cancelAnimationFrame(openSettleFrameRef.current);
+      openSettleFrameRef.current = null;
+    }
+  }, []);
+
   const markOpenSettled = useCallback(() => {
     if (openSettledRef.current || closingRef.current) return;
     openSettledRef.current = true;
+    clearOpenSettleTimers();
     useSharedStrip.value = 0;
-    onSettledRef.current();
-  }, [useSharedStrip]);
+    // Oddajemy 1 klatkę na domknięcie ostatniego kadru morphingu przed ciężkim montażem sekcji.
+    openSettleFrameRef.current = requestAnimationFrame(() => {
+      openSettleFrameRef.current = null;
+      if (!closingRef.current) {
+        onSettledRef.current();
+      }
+    });
+  }, [clearOpenSettleTimers, useSharedStrip]);
 
   const beginOpenAnimation = useCallback(() => {
     if (openStartedRef.current || closingRef.current) return;
     openStartedRef.current = true;
+    clearOpenSettleTimers();
+    openSettleTimerRef.current = setTimeout(() => {
+      markOpenSettled();
+    }, OPEN_SETTLE_FALLBACK_MS);
     progress.value = withSpring(1, OPEN_SPRING, (finished) => {
       'worklet';
       if (finished) {
@@ -319,7 +343,7 @@ export function RouteDetailsMorphShell({
         runOnJS(markOpenSettled)();
       }
     });
-  }, [markOpenSettled, progress, useSharedStrip]);
+  }, [clearOpenSettleTimers, markOpenSettled, progress, useSharedStrip]);
 
   const handleTargetStripRect = useCallback(
     (rect: TransitionRect) => {
@@ -343,7 +367,7 @@ export function RouteDetailsMorphShell({
     [beginOpenAnimation, dstStripH, dstStripW, dstStripX, dstStripY, hasTransitStrip],
   );
 
-  // Bezpieczny start i finalizacja otwierania, gdyby pasek nie istniał lub callback się opóźnił.
+  // Bezpieczny start otwierania, gdyby pasek nie istniał lub callback layoutu się opóźnił.
   useEffect(() => {
     const startTimer = setTimeout(
       () => {
@@ -352,15 +376,11 @@ export function RouteDetailsMorphShell({
       hasTransitStrip ? STRIP_MEASURE_FALLBACK_MS : 0,
     );
 
-    const settleTimer = setTimeout(() => {
-      markOpenSettled();
-    }, OPEN_SETTLE_FALLBACK_MS);
-
     return () => {
       clearTimeout(startTimer);
-      clearTimeout(settleTimer);
+      clearOpenSettleTimers();
     };
-  }, [beginOpenAnimation, hasTransitStrip, markOpenSettled]);
+  }, [beginOpenAnimation, clearOpenSettleTimers, hasTransitStrip]);
 
   const finalizeClose = useCallback(() => {
     if (dismissFinishedRef.current) return;
@@ -419,6 +439,7 @@ export function RouteDetailsMorphShell({
       return;
     }
     closingRef.current = true;
+    clearOpenSettleTimers();
     isClosingVal.value = 1;
     dismissingFromDrag.value = 0;
     isDragging.value = 0;
@@ -473,6 +494,7 @@ export function RouteDetailsMorphShell({
       duration + CLOSE_COMPLETE_FALLBACK_MS,
     );
   }, [
+    clearOpenSettleTimers,
     dismissingFromDrag,
     dragProgress,
     dragX,
@@ -504,6 +526,7 @@ export function RouteDetailsMorphShell({
     ) => {
       if (closingRef.current) return;
       closingRef.current = true;
+      clearOpenSettleTimers();
       isClosingVal.value = 1;
       refreshSourceCardGeometryInFlight();
 
@@ -565,6 +588,7 @@ export function RouteDetailsMorphShell({
       );
     },
     [
+      clearOpenSettleTimers,
       dismissStartH,
       dismissStartR,
       dismissStartW,
