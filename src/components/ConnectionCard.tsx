@@ -214,6 +214,10 @@ export const JourneyStrip = memo(function JourneyStrip({
     );
   });
 
+  // Większość kart ma 1-2 etapy i nigdy nie przelewa szerokości: zwykły View
+  // omija montaż natywnego HorizontalScrollView i podwójny layout pass w FlatList.
+  const needsHorizontalScroll = interactive && (steps.length > 2 || pinFinalWalk);
+
   return (
     <View
       style={[styles.stripSurface, dimmed && styles.stripSurfaceDimmed]}
@@ -221,7 +225,7 @@ export const JourneyStrip = memo(function JourneyStrip({
       importantForAccessibility="no-hide-descendants"
     >
       <View style={styles.stripTopRow}>
-        {interactive ? (
+        {needsHorizontalScroll ? (
           <ScrollView
             horizontal
             style={styles.stripScroll}
@@ -489,7 +493,7 @@ function ConnectionCardBody({
               <LiveSensors
                 size={13}
                 color={scheme.onSuccessContainer}
-                pulse={interactive && !dimmed}
+                pulse={false}
               />
               <Text style={styles.onTimePillText}>{s.connection.onTimeBadge}</Text>
             </View>

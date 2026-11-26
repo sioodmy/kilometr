@@ -10,6 +10,7 @@ import {
   getRaptorNet,
   getRaptorNetAsync,
   packRaptorNet,
+  packRaptorNetAsync,
   type RaptorNet,
 } from './network';
 
@@ -473,6 +474,7 @@ export async function warmupRaptorNet(
     patternTimeOffsets,
     Math.round(timeOffsetSec),
   );
+  await packRaptorNetAsync(net);
   await warmupRaptorNetworkAsync(net.id, () => packRaptorNet(net));
 }
 
@@ -492,6 +494,7 @@ export async function runRaptorAsync(
     options.patternTimeOffsets,
     Math.round(options.timeOffsetSec ?? 0),
   );
+  await packRaptorNetAsync(net);
   const packedQuery = packRaptorQuery(net, origins, destinations, departureTimeSec, options);
   if (!packedQuery) return [];
   const res = await runRaptorQueryAsync(net.id, () => packRaptorNet(net), packedQuery);

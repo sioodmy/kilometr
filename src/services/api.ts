@@ -393,9 +393,12 @@ export const RoutingService: IRoutingService = {
         remember(connections);
         if (query.departureTimeSec === undefined && query.arriveBySec === undefined && !query.boardedTrip) {
           void saveConnections(query, connections);
-          void import('./geometryWarmup')
-            .then((m) => m.warmConnections(connections))
-            .catch(() => {});
+          // Odraczamy rozgrzewanie geometrii po pierwszym renderze listy połączeń.
+          setTimeout(() => {
+            void import('./geometryWarmup')
+              .then((m) => m.warmConnections(connections))
+              .catch(() => {});
+          }, 1500);
         }
         return connections;
       }
@@ -407,10 +410,12 @@ export const RoutingService: IRoutingService = {
       if (query.departureTimeSec === undefined && query.arriveBySec === undefined && !query.boardedTrip) {
         void saveConnections(query, connections);
         // Zawczasu pobierz i przypnij przebieg ulic kilku najlepszych
-        // połączeń, żeby ostatnie trasy działały offline.
-        void import('./geometryWarmup')
-          .then((m) => m.warmConnections(connections))
-          .catch(() => {});
+        // połączeń po ustabilizowaniu listy wyników, żeby nie zabierać CPU przy wejściu.
+        setTimeout(() => {
+          void import('./geometryWarmup')
+            .then((m) => m.warmConnections(connections))
+            .catch(() => {});
+        }, 1500);
       }
       return connections;
     } catch (err) {

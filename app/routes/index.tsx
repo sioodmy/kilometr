@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
+  InteractionManager,
   Platform,
   ScrollView,
   StyleSheet,
@@ -39,7 +41,6 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { MorphingLoader } from '../../src/components/MorphingLoader';
 import { RouteLoadingView } from '../../src/components/RouteLoadingView';
 import { SpringPressable } from '../../src/components/SpringPressable';
 import { EarlierConnectionsPull } from '../../src/components/EarlierConnectionsPull';
@@ -475,15 +476,23 @@ export default function RoutesScreen() {
     return () => clearInterval(t);
   }, []);
 
-  // Rozgrzewamy lokalny słownik podpowiedzi przystanków w tle po pokazaniu wyników,
-  // żeby wejście w szczegóły połączenia miało wskazówki od razu w pamięci bez parsowania bundla.
+  // Rozgrzewamy lokalny słownik podpowiedzi przystanków dopiero po ustabilizowaniu
+  // pierwszej listy, żeby parsowanie nie zabierało klatek przy wejściu i scrollu.
   const hasResults = items.length > 0;
   useEffect(() => {
     if (!hasResults) return;
-    const timer = setTimeout(() => {
-      if (isFocusedRef.current) void ensureStopHintsLoaded(cityId);
-    }, 350);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        if (!cancelled && isFocusedRef.current) void ensureStopHintsLoaded(cityId);
+      }, 900);
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, [cityId, hasResults]);
 
   const [loadingMore, setLoadingMore] = useState(false);
@@ -605,7 +614,7 @@ export default function RoutesScreen() {
   const listContentHeightRef = useRef(0);
   const listViewportHeightRef = useRef(0);
 
-  const queryAt = (depSec: number | undefined) => {
+  const queryAt = (depSec: number | undefined, searchAheadOverride?: number) => {
     const cfg = getSettingsSync();
     return {
       fromId: fromId || undefined,
@@ -637,7 +646,7 @@ export default function RoutesScreen() {
       // Miasto: godzina w przód wystarcza na pierwsze odjazdy i mieści się
       // w wycinku, który liveTracker i tak buduje na starcie. Kolej
       // międzymiastowa ma własny horyzont w planIntercity.
-      searchAheadSec: intercityQuery ? undefined : 3600,
+      searchAheadSec: intercityQuery ? undefined : (searchAheadOverride ?? 3600),
     };
   };
 
@@ -1175,7 +1184,7 @@ export default function RoutesScreen() {
     try {
       const result = await loadEarlierConnections(
         items,
-        (at) => RoutingService.getConnections(queryAt(at)),
+        (at, aheadSec) => RoutingService.getConnections(queryAt(at, aheadSec)),
         () => seq !== fetchSeq.current,
       );
       if (!result) return;
@@ -1229,6 +1238,14 @@ export default function RoutesScreen() {
   // Ref na aktualną funkcję: handler gestu i przycisku pozostają stabilne.
   const loadEarlierRef = useRef(handleLoadEarlier);
   loadEarlierRef.current = handleLoadEarlier;
+  const loadMoreRef = useRef(handleLoadMore);
+  loadMoreRef.current = handleLoadMore;
+  const handleLoadMoreStable = useCallback(() => {
+    void loadMoreRef.current();
+  }, []);
+  const handleQuietRefresh = useCallback(() => {
+    void quietRefreshRef.current();
+  }, []);
 
   useEffect(() => {
     if (samePlace) {
@@ -1795,7 +1812,7 @@ export default function RoutesScreen() {
         recentEarlierIdsRef.current.has(opt.connection.id),
       )
         ? 'earlier'
-        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(group.key) && index < 6
+        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(group.key) && index < 4
           ? 'initial'
           : 'none';
       return (
@@ -2014,7 +2031,7 @@ export default function RoutesScreen() {
             accessibilityLiveRegion="polite"
           >
             <View style={styles.statusChip}>
-              <MorphingLoader size={17} color={scheme.primary} />
+              <ActivityIndicator size="small" color={scheme.primary} />
               <Text style={styles.statusChipText}>{s.routes.updatingResults}</Text>
             </View>
           </Animated.View>
@@ -2023,7 +2040,7 @@ export default function RoutesScreen() {
           <View style={styles.countRow}>
             {offline && (
               <SpringPressable
-                onPress={() => quietRefresh()}
+                onPress={handleQuietRefresh}
                 scaleDelta={0.03}
                 haptic="selection"
                 style={styles.statusChip}
@@ -2061,7 +2078,7 @@ export default function RoutesScreen() {
               ]}
             >
               {loadingEarlier && !pullTriggeredRef.current ? (
-                <MorphingLoader size={16} color={scheme.primary} />
+                <ActivityIndicator size="small" color={scheme.primary} />
               ) : !noMoreEarlier ? (
                 <ChevronUp size={17} color={scheme.onSurfaceVariant} />
               ) : null}
@@ -2087,12 +2104,12 @@ export default function RoutesScreen() {
       earlierFocused,
       groups.length,
       handleButtonEarlier,
+      handleQuietRefresh,
       liveStale,
       loading,
       loadingEarlier,
       noMoreEarlier,
       offline,
-      quietRefresh,
       reduceMotion,
       s,
     ],
@@ -2104,14 +2121,14 @@ export default function RoutesScreen() {
         <View style={styles.footer}>
           {loadingMore ? (
             <View style={styles.footerLoadingRow} accessibilityLiveRegion="polite">
-              <MorphingLoader size={20} color={scheme.primary} />
+              <ActivityIndicator size="small" color={scheme.primary} />
               <Text style={styles.footerText}>{s.routes.loadingMore}</Text>
             </View>
           ) : loadMoreFailed ? (
             <>
               <Text style={styles.footerText}>{s.routes.moreFail}</Text>
               <SpringPressable
-                onPress={() => void handleLoadMore()}
+                onPress={handleLoadMoreStable}
                 scaleDelta={0.025}
                 haptic="light"
                 style={styles.retryBtn}
@@ -2130,7 +2147,7 @@ export default function RoutesScreen() {
           )}
         </View>
       ) : null,
-    [arrivalMode, handleLoadMore, items.length, loadMoreFailed, loadingMore, noMoreLater, s],
+    [arrivalMode, handleLoadMoreStable, items.length, loadMoreFailed, loadingMore, noMoreLater, s],
   );
 
   const listEmpty = useMemo(
@@ -2231,9 +2248,10 @@ export default function RoutesScreen() {
           data={groups}
           // Bez maintainVisibleContentPosition: natywna korekta offsetu po
           // powrocie z odpiętego ekranu zostawiała pustą listę.
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={9}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          updateCellsBatchingPeriod={40}
+          windowSize={7}
           // wymusza przeliczenie etykiet "za X min" bez refetchu
           extraData={nowTick}
           keyExtractor={groupKey}
@@ -2251,7 +2269,7 @@ export default function RoutesScreen() {
           // nagłówkiem powoduje to miganie pustych miejsc w trakcie
           // przeciągania palcem, więc trzymamy komórki podpięte.
           removeClippedSubviews={false}
-          onEndReached={handleLoadMore}
+          onEndReached={handleLoadMoreStable}
           onEndReachedThreshold={0.5}
           renderItem={renderConnection}
           ListHeaderComponent={listHeader}
