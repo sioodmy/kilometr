@@ -57,8 +57,6 @@ import {
   type IconComponent,
 } from './icons';
 import { SpringPressable } from './SpringPressable';
-import { LineBadge } from './LineBadge';
-import { formatDepartIn, type SmartLineBadge } from './SmartHistoryList';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedPlace, SavedPlaceIcon } from '../types/models';
 import { placeIconTone } from '../services/placeIcons';
@@ -136,13 +134,11 @@ interface SavedPlaceCardProps {
   flexGrid?: boolean;
   desktopGrid?: boolean;
   textLines: number;
-  departInMin?: number;
-  badge?: SmartLineBadge;
   onSelect: (p: SavedPlace) => void;
   onEdit?: (p: SavedPlace) => void;
 }
 
-/** Kafelek miejsca M3 Expressive: liściasty znaczek u góry, nazwa i odjazd na dole. */
+/** Kafelek miejsca M3 Expressive: liściasty znaczek u góry, nazwa i adres na dole. */
 const SavedPlaceCard = memo(function SavedPlaceCard({
   place,
   tileHeight,
@@ -150,8 +146,6 @@ const SavedPlaceCard = memo(function SavedPlaceCard({
   flexGrid,
   desktopGrid,
   textLines,
-  departInMin,
-  badge,
   onSelect,
   onEdit,
 }: SavedPlaceCardProps) {
@@ -159,8 +153,6 @@ const SavedPlaceCard = memo(function SavedPlaceCard({
   const [focused, setFocused] = useState(false);
   const Icon = SAVED_PLACE_ICONS[place.icon] ?? Star;
   const tone = placeIconTone(place.icon);
-  const departLabel = formatDepartIn(departInMin, s);
-  const urgent = departInMin !== undefined && departInMin >= 0 && departInMin <= 5;
   const shortAddress = place.address.split(',')[0].trim();
 
   return (
@@ -200,21 +192,9 @@ const SavedPlaceCard = memo(function SavedPlaceCard({
           {place.name}
         </Text>
         <View style={styles.metaSlot}>
-          {departLabel ? (
-            <View style={[styles.livePill, urgent && styles.livePillUrgent]}>
-              {badge?.line ? <LineBadge mode={badge.mode} line={badge.line} compact /> : null}
-              <Text
-                style={[styles.liveText, urgent && styles.liveTextUrgent]}
-                numberOfLines={1}
-              >
-                {departLabel}
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.addr} numberOfLines={1}>
-              {shortAddress}
-            </Text>
-          )}
+          <Text style={styles.addr} numberOfLines={1}>
+            {shortAddress}
+          </Text>
         </View>
       </View>
     </SpringPressable>
@@ -276,18 +256,12 @@ const AddTile = memo(function AddTile({
 
 export const SavedPlacesRow = memo(function SavedPlacesRow({
   places,
-  departures,
-  lineBadges,
   onSelect,
   onAdd,
   onEdit,
   desktopGrid = false,
 }: {
   places: SavedPlace[];
-  /** Najszybszy odjazd do miejsca w minutach, kluczem placeId. */
-  departures?: Record<string, number | undefined>;
-  /** Pierwsza linia do miejsca, kluczem placeId. */
-  lineBadges?: Record<string, SmartLineBadge | undefined>;
   onSelect: (p: SavedPlace) => void;
   onAdd: () => void;
   onEdit?: (p: SavedPlace) => void;
@@ -341,8 +315,6 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
             desktopGrid
             tileHeight={metrics.height}
             textLines={metrics.textLines}
-            departInMin={departures?.[p.placeId]}
-            badge={lineBadges?.[p.placeId]}
             onSelect={handleSelect}
             onEdit={onEdit}
           />
@@ -363,8 +335,6 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
             flexGrid
             tileHeight={metrics.height}
             textLines={metrics.textLines}
-            departInMin={departures?.[p.placeId]}
-            badge={lineBadges?.[p.placeId]}
             onSelect={handleSelect}
             onEdit={onEdit}
           />
@@ -396,8 +366,6 @@ export const SavedPlacesRow = memo(function SavedPlacesRow({
           tileWidth={tileWidth}
           tileHeight={height}
           textLines={textLines}
-          departInMin={departures?.[p.placeId]}
-          badge={lineBadges?.[p.placeId]}
           onSelect={handleSelect}
           onEdit={onEdit}
         />
@@ -495,29 +463,6 @@ const styles = StyleSheet.create({
   addr: {
     ...type.bodySmall,
     color: scheme.onSurfaceVariant,
-  },
-  livePill: {
-    height: 28,
-    maxWidth: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    borderRadius: shape.full,
-    backgroundColor: scheme.surfaceContainerHigh,
-  },
-  livePillUrgent: {
-    backgroundColor: scheme.primaryContainer,
-  },
-  liveText: {
-    ...type.labelSmall,
-    fontWeight: '700',
-    color: scheme.onSurface,
-    fontVariant: ['tabular-nums'],
-    flexShrink: 1,
-  },
-  liveTextUrgent: {
-    color: scheme.onPrimaryContainer,
   },
   emptyCard: {
     flexDirection: 'row',

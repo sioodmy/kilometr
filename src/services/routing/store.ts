@@ -15,6 +15,7 @@ import {
   invokeRustSync,
 } from '../../../modules/kilometr-raptor';
 import { clearRaptorNetCache } from './network';
+import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './yieldFrame';
 import { getCity } from '../../cities';
 import { getActiveCityIdSync } from '../cityStore';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
@@ -141,13 +142,8 @@ function readInt32HexAt(hex: string, idx: number): number {
   return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
 }
 
-/** Budżet czasu jednej porcji pracy przed oddaniem kolejki JS (utrzymuje ~60 FPS). */
-const YIELD_BUDGET_MS = 12;
-
-/** Oddaje kolejkę JS między porcjami ciężkiej pracy (tap/animacja nie czekają). */
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
+/** Maksymalna liczba kursów z blobami pobierana z SQLite w jednym rzucie przez mostek JSI. */
+const TRIP_BLOB_PAGE_SIZE = 300;
 
 /** Dokłada kursy Polinki do mapy kursów wycinka (własna linia, brak konfliktu id). */
 function mergePolinkaTrips(
@@ -616,92 +612,109 @@ export class LocalGtfsStore {
 
     if (await this.hasTripBlobs(db)) {
       if (this.generation !== genAtStart) return emptyIdx;
-      // hex() omija limit referencji JNI: trzy BLOB-y na kurs przepełniały go przy dużych rozkładach.
-      const rows = await db.getAllAsync<{
-        trip_id: string;
-        route_id: string;
-        service_id: string;
-        headsign: string;
-        direction: number;
-        shape: string;
-        seq_blob: string | null;
-        arr_blob: string | null;
-        dep_blob: string | null;
-      }>(
-        `SELECT trip_id, route_id, service_id, headsign, direction, shape,
-                CASE WHEN seq_blob IS NOT NULL THEN hex(seq_blob) END AS seq_blob,
-                CASE WHEN arr_blob IS NOT NULL THEN hex(arr_blob) END AS arr_blob,
-                CASE WHEN dep_blob IS NOT NULL THEN hex(dep_blob) END AS dep_blob
-         FROM trips
-         WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ?`,
-        ...serviceIds,
-        bTo,
-        bFrom,
-      );
-      if (this.generation !== genAtStart) return emptyIdx;
-      const stopRefs = rows.length > 0 ? await this.getStopRefs(db) : [];
+      const stopRefs = await this.getStopRefs(db);
       if (this.generation !== genAtStart) return emptyIdx;
       const missing: string[] = [];
       // Wiele kursów współdzieli ten sam seq_blob: dekodujemy sekwencję raz na wzorzec.
       const seqCache = new Map<string, { key: string; stopIds: string[] }>();
+      // Czytamy kursy stronami po rowid: jedno zapytanie na 5 tys. wierszy z trzema
+      // hex-blobami zamrażało wątek JS podczas deserializacji mostka i wywoływało GC spike.
+      let lastRowId = 0;
       let sliceStart = performance.now();
-      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-        const r = rows[rowIdx];
-        const t = {
-          trip_id: r.trip_id,
-          route_id: r.route_id,
-          service_id: r.service_id,
-          trip_headsign: r.headsign,
-          direction_id: r.direction,
-          shape_id: r.shape,
-        };
-        this.trips.set(r.trip_id, t);
-        let group = tripsByRouteId.get(r.route_id);
-        if (!group) {
-          group = [];
-          tripsByRouteId.set(r.route_id, group);
-        }
-        group.push(t);
-        tripIds.push(r.trip_id);
-        if (r.seq_blob !== null && r.arr_blob !== null && r.dep_blob !== null) {
-          let seqEntry = seqCache.get(r.seq_blob);
-          if (!seqEntry) {
-            const nSeq = r.seq_blob.length >>> 3;
-            const stopIds = new Array<string>(nSeq);
-            for (let i = 0; i < nSeq; i++) {
-              stopIds[i] = stopRefs[readInt32HexAt(r.seq_blob, i)];
+      while (true) {
+        const rows = await db.getAllAsync<{
+          _rowid?: number;
+          trip_id: string;
+          route_id: string;
+          service_id: string;
+          headsign: string;
+          direction: number;
+          shape: string;
+          seq_blob: string | null;
+          arr_blob: string | null;
+          dep_blob: string | null;
+        }>(
+          `SELECT rowid AS _rowid, trip_id, route_id, service_id, headsign, direction, shape,
+                  CASE WHEN seq_blob IS NOT NULL THEN hex(seq_blob) END AS seq_blob,
+                  CASE WHEN arr_blob IS NOT NULL THEN hex(arr_blob) END AS arr_blob,
+                  CASE WHEN dep_blob IS NOT NULL THEN hex(dep_blob) END AS dep_blob
+           FROM trips
+           WHERE service_id IN (${servicePlaceholders}) AND start_sec <= ? AND end_sec >= ? AND rowid > ?
+           ORDER BY rowid
+           LIMIT ${TRIP_BLOB_PAGE_SIZE}`,
+          ...serviceIds,
+          bTo,
+          bFrom,
+          lastRowId,
+        );
+        if (this.generation !== genAtStart) return emptyIdx;
+        if (rows.length === 0) break;
+        for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+          const r = rows[rowIdx];
+          const t = {
+            trip_id: r.trip_id,
+            route_id: r.route_id,
+            service_id: r.service_id,
+            trip_headsign: r.headsign,
+            direction_id: r.direction,
+            shape_id: r.shape,
+          };
+          this.trips.set(r.trip_id, t);
+          let group = tripsByRouteId.get(r.route_id);
+          if (!group) {
+            group = [];
+            tripsByRouteId.set(r.route_id, group);
+          }
+          group.push(t);
+          tripIds.push(r.trip_id);
+          if (r.seq_blob !== null && r.arr_blob !== null && r.dep_blob !== null) {
+            let seqEntry = seqCache.get(r.seq_blob);
+            if (!seqEntry) {
+              const nSeq = r.seq_blob.length >>> 3;
+              const stopIds = new Array<string>(nSeq);
+              for (let i = 0; i < nSeq; i++) {
+                stopIds[i] = stopRefs[readInt32HexAt(r.seq_blob, i)];
+              }
+              seqEntry = { key: stopIds.join(','), stopIds };
+              seqCache.set(r.seq_blob, seqEntry);
             }
-            seqEntry = { key: stopIds.join(','), stopIds };
-            seqCache.set(r.seq_blob, seqEntry);
+            const stopIds = seqEntry.stopIds;
+            const n = Math.min(stopIds.length, r.arr_blob.length >>> 3, r.dep_blob.length >>> 3);
+            const times = new Array<GtfsStopTime>(n);
+            const arrHex = r.arr_blob;
+            const depHex = r.dep_blob;
+            for (let i = 0; i < n; i++) {
+              times[i] = {
+                trip_id: r.trip_id,
+                stop_id: stopIds[i],
+                arrival_sec: readInt32HexAt(arrHex, i),
+                departure_sec: readInt32HexAt(depHex, i),
+                stop_sequence: i,
+              };
+            }
+            this.stopTimes.set(r.trip_id, times);
+            if (n === stopIds.length) {
+              tripPatternMeta.set(r.trip_id, seqEntry);
+            }
+          } else {
+            // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
+            missing.push(r.trip_id);
           }
-          const stopIds = seqEntry.stopIds;
-          const n = Math.min(stopIds.length, r.arr_blob.length >>> 3, r.dep_blob.length >>> 3);
-          const times = new Array<GtfsStopTime>(n);
-          const arrHex = r.arr_blob;
-          const depHex = r.dep_blob;
-          for (let i = 0; i < n; i++) {
-            times[i] = {
-              trip_id: r.trip_id,
-              stop_id: stopIds[i],
-              arrival_sec: readInt32HexAt(arrHex, i),
-              departure_sec: readInt32HexAt(depHex, i),
-              stop_sequence: i,
-            };
+          if ((rowIdx & 31) === 31 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+            await yieldToUiFrame();
+            sliceStart = performance.now();
+            // Reset/import mógł wyczyścić mapy w trakcie porcji.
+            if (this.generation !== genAtStart) return emptyIdx;
           }
-          this.stopTimes.set(r.trip_id, times);
-          if (n === stopIds.length) {
-            tripPatternMeta.set(r.trip_id, seqEntry);
-          }
-        } else {
-          // Kurs bez bloba (nieznany stop_id w buildzie): stara ścieżka.
-          missing.push(r.trip_id);
         }
-        if ((rowIdx & 127) === 127 && performance.now() - sliceStart >= YIELD_BUDGET_MS) {
-          await yieldToEventLoop();
-          sliceStart = performance.now();
-          // Reset/import mógł wyczyścić mapy w trakcie porcji.
-          if (this.generation !== genAtStart) return emptyIdx;
+        const tailRowId = rows[rows.length - 1]._rowid;
+        if (rows.length < TRIP_BLOB_PAGE_SIZE || tailRowId == null || tailRowId <= lastRowId) {
+          break;
         }
+        lastRowId = tailRowId;
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+        if (this.generation !== genAtStart) return emptyIdx;
       }
       if (missing.length > 0) {
         await this.loadStopTimesChunked(db, missing);
@@ -766,8 +779,15 @@ export class LocalGtfsStore {
     // zapytania bywa różny między bazami/urządzeniami), a od niej zależy numeracja
     // p0/p1... i kolejność wzorców w sieci RAPTOR-a, więc i dobór równorzędnych
     // połączeń w wyniku. Sortowanie daje ten sam wynik wszędzie.
+    let sortSliceStart = performance.now();
+    let sortedGroups = 0;
     for (const group of tripsByRouteId.values()) {
       group.sort((a, b) => (a.trip_id < b.trip_id ? -1 : a.trip_id > b.trip_id ? 1 : 0));
+      if ((++sortedGroups & 31) === 0 && performance.now() - sortSliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
+        sortSliceStart = performance.now();
+        if (this.generation !== genAtStart) return emptyIdx;
+      }
     }
     const sortedByRoute = new Map(
       [...tripsByRouteId.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
@@ -980,8 +1000,8 @@ export class LocalGtfsStore {
     let sliceStart = performance.now();
     let next = steps.next();
     while (!next.done) {
-      if (performance.now() - sliceStart >= YIELD_BUDGET_MS) {
-        await yieldToEventLoop();
+      if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        await yieldToUiFrame();
         sliceStart = performance.now();
       }
       next = steps.next();
@@ -1024,7 +1044,7 @@ export class LocalGtfsStore {
           patternGroups.set(key, group);
         }
         group.trips.push(trip);
-        if ((tripIdx & 511) === 511) yield;
+        if ((tripIdx & 63) === 63) yield;
       }
 
       let patIdx = 0;
@@ -1092,7 +1112,7 @@ export class LocalGtfsStore {
           routesSet.add(patternId);
         }
       }
-      if ((routeIdx++ & 15) === 15) yield;
+      if ((routeIdx++ & 3) === 3) yield;
     }
 
     return { stopRoutes, routeStops, routeTrips, patterns };

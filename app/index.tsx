@@ -51,7 +51,6 @@ import { gtfsStore } from '../src/services/routing/store';
 import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { useStrings, type Strings } from '../src/i18n';
-import { isIntercityRouteQuery } from '../src/services/api';
 import { defaultLocationForCity } from '../src/config';
 import {
   getActiveCityIdSync,
@@ -76,10 +75,7 @@ import {
   getTicketForConnection,
   type AttachedRailTicket,
 } from '../src/services/ticketStorage';
-import {
-  boardingDepartureMs,
-  refreshConnectionTimes,
-} from '../src/services/routing/connectionTimes';
+import { boardingDepartureMs } from '../src/services/routing/connectionTimes';
 import { clockFromMs } from '../src/services/notifications/format';
 import { nextPullOption } from '../src/services/lastTripPull';
 import { isOutsideServiceArea } from '../src/services/serviceArea';
@@ -90,7 +86,6 @@ import {
   importGtfsFromNetwork,
   subscribeDataStatus,
 } from '../src/services/dataManager';
-import { getSettingsSync, profileWalkSpeedMps } from '../src/services/settings';
 import { subscribeBackupApplied } from '../src/services/backup';
 import {
   loadCachedSmartDestinations,
@@ -101,8 +96,6 @@ import {
 
 import {
   buildRoutesLink,
-  departureTs,
-  firstRideBadge,
   mergeWidgetSnapshot,
   type WidgetPlace,
   type WidgetQuickItem,
@@ -110,7 +103,6 @@ import {
 import type {
   BoardedTripOrigin,
   Connection,
-  LegMode,
   SavedPlace,
   SmartDestination,
   Suggestion,
@@ -147,14 +139,6 @@ function countdownLabel(deltaMs: number, s: Strings): string {
   if (min >= 60) return clockFromMs(Date.now() + deltaMs);
   if (min <= 1) return s.common.departNow;
   return s.common.departIn(min);
-}
-
-/** Kopia mapy bez klucza; zwraca tę samą referencję, gdy nic nie znika. */
-function withoutKey<T>(prev: Record<string, T>, key: string): Record<string, T> {
-  if (!(key in prev)) return prev;
-  const next = { ...prev };
-  delete next[key];
-  return next;
 }
 
 /** Cel trasy czekający na ręczny start po blokadzie GPS. */
@@ -274,22 +258,20 @@ export default function HomeScreen() {
   currentCoordsRef.current = currentCoords;
   const insets = useSafeAreaInsets();
   const isFocusedRef = useRef(true);
+  const [homeFocused, setHomeFocused] = useState(true);
   const recentDirtyRef = useRef(false);
-  const warmupIncompleteRef = useRef(false);
   const { location: motionLocation } = useCurrentLocation(
     !isCustomStart && !boardedOrigin && !gpsUnsupported,
     false,
   );
-  const [firstConns, setFirstConns] = useState<Record<string, Connection>>({});
-  const [firstLegs, setFirstLegs] = useState<Record<string, { mode?: LegMode; line?: string }>>({});
-  // Odliczanie „za X min" musi tykać: bez tego etykieta zapisana przy fetchu
-  // zostaje zamrożona do następnego wyszukiwania.
+  // Odliczanie w chipach docka (śledzony kurs / bilet) tyka tylko gdy są aktywne.
   const [homeTick, setHomeTick] = useState(0);
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       const wasBlurred = !isFocusedRef.current;
       isFocusedRef.current = true;
+      setHomeFocused(true);
       if (wasBlurred) {
         setHomeTick(Date.now());
         if (recentDirtyRef.current) {
@@ -305,48 +287,14 @@ export default function HomeScreen() {
             })
             .catch(() => {});
         }
-        if (warmupIncompleteRef.current) {
-          warmupIncompleteRef.current = false;
-          setWarmupNonce((n) => n + 1);
-        }
       }
       return () => {
         cancelled = true;
         isFocusedRef.current = false;
+        setHomeFocused(false);
       };
     }, []),
   );
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (isFocusedRef.current) setHomeTick(Date.now());
-    }, 30000);
-    return () => clearInterval(t);
-  }, []);
-  // Minuty do odjazdu liczone na bieżąco z zapisanych sekund (homeTick wymusza
-  // przeliczenie). Wartości <= 0 (np. trasa piesza) zostają jak z backendu.
-  const liveDepartures = useMemo(() => {
-    const d = new Date();
-    const snapshot = liveTracker.getRoutingSnapshot();
-    const out: Record<string, number> = {};
-    for (const [id, c] of Object.entries(firstConns)) {
-      const current = refreshConnectionTimes(c, snapshot.delays, d, snapshot.confidence);
-      out[id] =
-        c.departureSec > 0
-          ? Math.ceil((boardingDepartureMs(current, d) - d.getTime()) / 60000)
-          : c.departInMin;
-    }
-    return out;
-  }, [firstConns, homeTick]);
-  // Generacja wyszukiwania tras w tle: przerwanie (np. użytkownik zaczął
-  // własną trasę) to po prostu podbicie licznika, pętla sama się zatrzyma.
-  const routeSearchGen = useRef(0);
-  // Ostatni origin dogrzewania: reset prawych stron tylko przy jego zmianie.
-  const lastOriginRef = useRef<string | null>(null);
-  // Po zamknięciu arkusza wznawiamy dogrzewanie odjazdów: przerwanie podbiło
-  // routeSearchGen, ale sam efekt ma inne zależności, więc bez tego licznika
-  // wiersze poniżej nie dostałyby już prawej strony.
-  const [warmupNonce, setWarmupNonce] = useState(0);
-  const sheetWasOpenRef = useRef(false);
   const [dataStatus, setDataStatus] = useState<DataStatus>(getDataStatus());
   const [newsAlert, setNewsAlert] = useState(false);
 
@@ -413,14 +361,6 @@ export default function HomeScreen() {
     }, []),
   );
 
-  // Poll live chodzi tylko wtedy, gdy na wierzchu jest ekran, który go używa.
-  useFocusEffect(
-    useCallback(() => {
-      liveTracker.acquire();
-      return () => liveTracker.release();
-    }, []),
-  );
-
   const shouldWatchLive =
     sheetMode === 'start' ||
     (!isCustomStart &&
@@ -428,16 +368,23 @@ export default function HomeScreen() {
       motionLocation?.speed != null &&
       motionLocation.speed >= ONBOARD_MIN_SPEED_MPS);
 
+  // Poll live odpalamy na ekranie głównym tylko gdy faktycznie szukamy pojazdu
+  // (sheet startu lub wykryty ruch w pojeździe), bez mielenia GPS-RT w spoczynku.
   useEffect(() => {
-    if (!shouldWatchLive) return;
+    if (!shouldWatchLive || !homeFocused) return;
+    liveTracker.acquire();
     if (!gtfsStore.isLoaded && getDataStatus().state === 'ready') {
       void gtfsStore.load().then(() => setGtfsLoaded(gtfsStore.isLoaded)).catch(() => {});
     }
     setLiveVersion((v) => v + 1);
-    return liveTracker.subscribe(() => {
+    const unsub = liveTracker.subscribe(() => {
       setLiveVersion((v) => v + 1);
     });
-  }, [shouldWatchLive]);
+    return () => {
+      unsub();
+      liveTracker.release();
+    };
+  }, [shouldWatchLive, homeFocused]);
 
   const onboardCandidates = useMemo(() => {
     if (isCustomStart || boardedOrigin || gpsUnsupported) return [];
@@ -569,6 +516,14 @@ export default function HomeScreen() {
     connection: Connection;
   } | null>(null);
   const { trip: trackedTrip, progress: trackedProgress } = useTrackedTrip();
+  const hasDockCountdown = trackedTrip !== null || ticketIds.size > 0;
+  useEffect(() => {
+    if (!hasDockCountdown) return;
+    const t = setInterval(() => {
+      if (isFocusedRef.current) setHomeTick(Date.now());
+    }, 30000);
+    return () => clearInterval(t);
+  }, [hasDockCountdown]);
 
   const refreshSavedRoutes = useCallback(() => {
     RoutingService.getSavedRoutes()
@@ -939,8 +894,6 @@ export default function HomeScreen() {
     const d = defaultLocationForCity(cityId);
     setLocTitle(d.title);
     setCurrentCoords({ lat: d.lat, lon: d.lon });
-    setFirstConns({});
-    setFirstLegs({});
     // Pull ostatniego połączenia żyje na shared values, więc przetrwałby
     // zmianę miasta: nowa historia odsłoniłaby od razu pół ekranu. Zwijamy.
     pullOption.value = 0;
@@ -969,214 +922,9 @@ export default function HomeScreen() {
     }
   }, [dataStatus.state, isCustomStart, locTitle, currentCoords, refreshPlaces, requestSmart]);
 
-  // Lista celów do wyliczenia najbliższego odjazdu: smart history + zapisane miejsca,
-  // które nie załapały się do bieżącego smart rankingu.
-  const warmupTargets = useMemo(() => {
-    const list: { id: string; title: string; lat: number; lon: number }[] = smart.map((d) => ({
-      id: d.id,
-      title: d.title,
-      lat: d.lat,
-      lon: d.lon,
-    }));
-    const seen = new Set(list.map((d) => d.id));
-    for (const p of saved) {
-      if (!seen.has(p.placeId)) {
-        list.push({ id: p.placeId, title: p.name, lat: p.lat, lon: p.lon });
-        seen.add(p.placeId);
-      }
-    }
-    return list;
-  }, [smart, saved]);
-
-  // Po jednej trasie do każdego celu (ostatnie miejsca + zapisane miejsca),
-  // sekwencyjnie od góry do dołu. Każdy wynik doklejamy od razu.
-  // Przerwanie własnym szukaniem: podbicie routeSearchGen unieważnia pętlę.
-  useEffect(() => {
-    if (warmupTargets.length === 0) {
-      setFirstConns({});
-      setFirstLegs({});
-      return;
-    }
-    const gen = ++routeSearchGen.current;
-    let cancelled = false;
-    // Prawe strony czyścimy TYLKO przy zmianie originu (inne współrzędne /
-    // tytuł startu), żeby stare odjazdy nie wisiały przy nowej lokalizacji.
-    const originKey = `${locTitle}|${currentCoords.lat},${currentCoords.lon}|${boardedOrigin ? `${boardedOrigin.tripId}:${boardedOrigin.boardStopId ?? ''}` : ''}`;
-    if (lastOriginRef.current !== originKey) {
-      lastOriginRef.current = originKey;
-      setFirstConns({});
-      setFirstLegs({});
-    } else {
-      const ids = new Set(warmupTargets.map((d) => d.id));
-      const prune = <T,>(prev: Record<string, T>): Record<string, T> => {
-        let changed = false;
-        const next = { ...prev };
-        for (const k of Object.keys(next)) {
-          if (!ids.has(k)) {
-            delete next[k];
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      };
-      setFirstConns(prune);
-      setFirstLegs(prune);
-    }
-    const s = getSettingsSync();
-    void (async () => {
-      for (const d of warmupTargets) {
-        if (cancelled || routeSearchGen.current !== gen) return;
-        if (!isFocusedRef.current) {
-          warmupIncompleteRef.current = true;
-          return;
-        }
-        try {
-          const conns = await RoutingService.getConnections({
-            fromTitle: locTitle,
-            fromLat: currentCoords.lat,
-            fromLon: currentCoords.lon,
-            toId: d.id,
-            toTitle: d.title,
-            toLat: d.lat,
-            toLon: d.lon,
-            maxTransfers: s.maxTransfers,
-            minTransferSec: s.minTransferSec,
-            trainsEnabled: s.trainsEnabled,
-            cableEnabled: s.cableEnabled,
-            allowedTransferModes: s.allowedModes,
-            trainMinTransferSec: s.trainMinTransferSec,
-            maxWalkM: s.maxWalkM,
-            walkSpeedMps: profileWalkSpeedMps(s.walkPace),
-            boardedTrip: boardedOrigin ?? undefined,
-            // Podgląd „za X min" potrzebuje tylko najbliższego odjazdu.
-            // Godzina mieści się w wycinku live i nie budzi 3-godzinnej sieci.
-            searchAheadSec: isIntercityRouteQuery({
-              fromLat: currentCoords.lat,
-              fromLon: currentCoords.lon,
-              toLat: d.lat,
-              toLon: d.lon,
-              toId: d.id,
-              trainsEnabled: s.trainsEnabled,
-            })
-              ? undefined
-              : 3600,
-          });
-          if (cancelled || routeSearchGen.current !== gen) return;
-          if (!isFocusedRef.current) {
-            warmupIncompleteRef.current = true;
-            return;
-          }
-          const first = conns.length ? conns[0] : undefined;
-          // Sam spacer (cel w zasięgu pieszo): bez badge'a nie ma czego
-          // pokazać po prawej, więc wiersz zostaje czysty zamiast pustego slotu.
-          const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
-          if (!first || !transitLeg) {
-            setFirstConns((prev) => withoutKey(prev, d.id));
-            setFirstLegs((prev) => withoutKey(prev, d.id));
-            continue;
-          }
-          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
-          setFirstLegs((prev) => ({
-            ...prev,
-            [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
-          }));
-        } catch {
-          // Brak trasy do tego celu: wiersz zostaje bez prawej strony.
-        }
-      }
-      warmupIncompleteRef.current = false;
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [warmupTargets, currentCoords, locTitle, warmupNonce, boardedOrigin]);
-
-  // Prawe strony wierszy liczymy raz: po odjeździe kursu trzeba je przeliczyć,
-  // żeby pokazywały następny pojazd, a nie „X min temu". Ticker (homeTick) co
-  // 30 s wyłapuje cele, którym właśnie uciekł pierwszy kurs z linią, i dociąga
-  // im świeżą trasę per cel (bez mielenia spacerów i całej listy naraz).
-  const quickRefreshGen = useRef(0);
-  useEffect(() => {
-    if (!isFocusedRef.current || sheetMode !== null || warmupTargets.length === 0) return;
-    const now = new Date();
-    const expired = warmupTargets.filter((d) => {
-      const c = firstConns[d.id];
-      if (!c || c.departureSec <= 0 || boardingDepartureMs(c, now) > now.getTime()) return false;
-      return c.legs.some((l) => l.mode !== 'walk' && l.line);
-    });
-    if (expired.length === 0) return;
-    const gen = ++quickRefreshGen.current;
-    const s = getSettingsSync();
-    void (async () => {
-      for (const d of expired) {
-        if (!isFocusedRef.current || quickRefreshGen.current !== gen) return;
-        try {
-          const conns = await RoutingService.getConnections({
-            fromTitle: locTitle,
-            fromLat: currentCoords.lat,
-            fromLon: currentCoords.lon,
-            toId: d.id,
-            toTitle: d.title,
-            toLat: d.lat,
-            toLon: d.lon,
-            maxTransfers: s.maxTransfers,
-            minTransferSec: s.minTransferSec,
-            trainsEnabled: s.trainsEnabled,
-            cableEnabled: s.cableEnabled,
-            allowedTransferModes: s.allowedModes,
-            trainMinTransferSec: s.trainMinTransferSec,
-            maxWalkM: s.maxWalkM,
-            walkSpeedMps: profileWalkSpeedMps(s.walkPace),
-            boardedTrip: boardedOrigin ?? undefined,
-            searchAheadSec: isIntercityRouteQuery({
-              fromLat: currentCoords.lat,
-              fromLon: currentCoords.lon,
-              toLat: d.lat,
-              toLon: d.lon,
-              toId: d.id,
-              trainsEnabled: s.trainsEnabled,
-            })
-              ? undefined
-              : 3600,
-          });
-          if (!isFocusedRef.current || quickRefreshGen.current !== gen) return;
-          const first = conns.length ? conns[0] : undefined;
-          const transitLeg = first?.legs.find((l) => l.mode !== 'walk' && l.line);
-          if (!first || !transitLeg) {
-            setFirstConns((prev) => withoutKey(prev, d.id));
-            setFirstLegs((prev) => withoutKey(prev, d.id));
-            continue;
-          }
-          setFirstConns((prev) => ({ ...prev, [d.id]: first }));
-          setFirstLegs((prev) => ({
-            ...prev,
-            [d.id]: { mode: transitLeg.mode, line: transitLeg.line },
-          }));
-        } catch {
-          // Brak trasy do celu: wiersz zostaje bez prawej strony.
-        }
-      }
-    })();
-    // Świeży `firstConns` łapiemy z bieżącego renderu (homeTick go wymusza).
-  }, [homeTick]);
-
-  // Użytkownik zaczął szukać własnej trasy: tniemy dogrzewanie ostatnich
-  // miejsc i skupiamy silnik tylko na trasie wybranej przez użytkownika.
-  // Po zamknięciu arkusza dogrzewanie rusza od nowa (warmupNonce).
-  useEffect(() => {
-    const open = sheetMode !== null;
-    if (open) {
-      routeSearchGen.current++;
-    } else if (sheetWasOpenRef.current) {
-      setWarmupNonce((n) => n + 1);
-    }
-    sheetWasOpenRef.current = open;
-  }, [sheetMode]);
-
   // Snapshot dla widgetów z ekranu głównego. Sekcję `pinned` pisze monitor
-  // podróży (ma przeliczony plan), home odpowiada za odjazdy do celów i skróty
-  // do zapisanych miejsc. Widgety pokazują trasy z GPS, więc ręcznie wybrany
-  // start ich nie nadpisuje.
+  // podróży (ma przeliczony plan), home dostarcza skróty do celów i zapisanych
+  // miejsc bez przeliczania połączeń w tle.
   useEffect(() => {
     if (isCustomStart) return;
     if (!smartReady && smart.length === 0) return;
@@ -1190,27 +938,12 @@ export default function HomeScreen() {
       buildRoutesLink({ ...from, toId: d.id, toTitle: d.title, toLat: d.lat, toLon: d.lon });
 
     const savedById = new Map(saved.map((p) => [p.placeId, p]));
-    const quick: WidgetQuickItem[] = smart.slice(0, 4).map((d) => {
-      const conn = firstConns[d.id];
-      const badge = conn ? firstRideBadge(conn) : null;
-      return {
-        id: d.id,
-        title: savedById.get(d.id)?.name || d.title,
-        icon: savedById.get(d.id)?.icon ?? 'history',
-        deepLink: linkTo(d),
-        ...(conn
-          ? {
-              departTs: departureTs(conn),
-              departAt: conn.departAt,
-              delayMin: conn.delayMin,
-              live: conn.live,
-            }
-          : {}),
-        ...(badge?.line
-          ? { line: badge.line, mode: badge.mode, lineBg: badge.bg, lineFg: badge.fg }
-          : {}),
-      };
-    });
+    const quick: WidgetQuickItem[] = smart.slice(0, 4).map((d) => ({
+      id: d.id,
+      title: savedById.get(d.id)?.name || d.title,
+      icon: savedById.get(d.id)?.icon ?? 'history',
+      deepLink: linkTo(d),
+    }));
 
     const places: WidgetPlace[] = saved.slice(0, 12).map((p) => ({
       id: p.id,
@@ -1220,8 +953,7 @@ export default function HomeScreen() {
     }));
 
     void mergeWidgetSnapshot({ origin: locTitle, quick, places });
-    // firstConns zmienia referencję razem z nextDepart, więc snapshot idzie po świeżych danych.
-  }, [firstConns, locTitle, s, saved, smart, smartReady, isCustomStart, currentCoords.lat, currentCoords.lon]);
+  }, [locTitle, saved, smart, smartReady, isCustomStart, currentCoords.lat, currentCoords.lon]);
 
   // Ostatnie przejazdy w identycznej kolejności co na ekranie głównym (smart history)
   const recentFromSmart: Suggestion[] = useMemo(() => {
@@ -1501,8 +1233,6 @@ export default function HomeScreen() {
       const fromLat = origin?.lat ?? currentCoords.lat;
       const fromLon = origin?.lon ?? currentCoords.lon;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      // Własna trasa użytkownika ma priorytet: zatrzymujemy dogrzewanie reszty.
-      routeSearchGen.current++;
       recentDirtyRef.current = true;
       router.push({
         pathname: '/routes',
@@ -1574,30 +1304,12 @@ export default function HomeScreen() {
     setAddPlaceOpen(true);
   }, []);
 
-  // Tap w prawą część wiersza: od razu do ekranu tego konkretnego połączenia
-  // (detail czyta je z podręcznego cache RoutingService: ten sam proces).
-  const goToConnection = useCallback(
-    (d: SmartDestination) => {
-      const conn = firstConns[d.id];
-      routeSearchGen.current++;
-      if (conn) {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        void recordTripSearch(currentCoords.lat, currentCoords.lon, locTitle, d);
-        router.push({ pathname: '/routes/[id]', params: { id: conn.id } });
-        return;
-      }
-      goToRoutes(d);
-    },
-    [firstConns, currentCoords.lat, currentCoords.lon, locTitle, router, goToRoutes],
-  );
-
   // Otwarcie ostatniego połączenia z pulla: start bierzemy z zapisanej
   // trasy (nie z bieżącego GPS), żeby skrót odtwarzał dokładnie to połączenie.
   const openLastTrip = useCallback(
     (reversed: boolean) => {
       const t = lastTripRef.current;
       if (!t) return;
-      routeSearchGen.current++;
       const fromTitle = reversed ? t.dest_title : t.origin_title;
       const fromLat = reversed ? t.dest_lat : t.origin_lat;
       const fromLon = reversed ? t.dest_lon : t.origin_lon;
@@ -1912,10 +1624,7 @@ export default function HomeScreen() {
     ) : (
       <SmartHistoryList
         items={smartOrdered}
-        departures={liveDepartures}
-        lineBadges={firstLegs}
         onSelect={goToRoutes}
-        onOpenConnection={goToConnection}
         icons={smartIcons}
         hideHeader={true}
       />
@@ -2178,8 +1887,6 @@ export default function HomeScreen() {
               </View>
               <SavedPlacesRow
                 places={saved}
-                departures={liveDepartures}
-                lineBadges={firstLegs}
                 onSelect={handleSelectSavedPlace}
                 onAdd={handleAddSavedPlace}
                 onEdit={handleEditSavedPlace}

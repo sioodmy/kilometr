@@ -78,31 +78,41 @@ function scheduleMinute(seconds: number | undefined): number | undefined {
     : ((Math.floor(seconds / 60) % 1440) + 1440) % 1440;
 }
 
+let warsawDateFormatter: Intl.DateTimeFormat | null = null;
+function getWarsawDateFormatter(): Intl.DateTimeFormat {
+  if (!warsawDateFormatter) {
+    warsawDateFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Warsaw',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+  }
+  return warsawDateFormatter;
+}
+
 export function createSharedConnection(
   connection: Connection,
   city: CityId,
   now = new Date(),
 ): SharedConnection {
-  const dateParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Warsaw',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const part = (kind: Intl.DateTimeFormatPartTypes) =>
-    Number(dateParts.find((p) => p.type === kind)?.value);
   const date =
     connection.serviceDate && /^\d{4}-\d{2}-\d{2}$/.test(connection.serviceDate)
       ? connection.serviceDate
-      : new Date(
-          Date.UTC(
-            part('year'),
-            part('month') - 1,
-            part('day') + Math.floor(connection.departureSec / 86400),
-          ),
-        )
-          .toISOString()
-          .slice(0, 10);
+      : (() => {
+          const dateParts = getWarsawDateFormatter().formatToParts(now);
+          const part = (kind: Intl.DateTimeFormatPartTypes) =>
+            Number(dateParts.find((p) => p.type === kind)?.value);
+          return new Date(
+            Date.UTC(
+              part('year'),
+              part('month') - 1,
+              part('day') + Math.floor(connection.departureSec / 86400),
+            ),
+          )
+            .toISOString()
+            .slice(0, 10);
+        })();
   const rawConnDep = clockMinutes(connection.departAt);
   const rawFirstLegDep =
     connection.legs.length > 0 ? clockMinutes(connection.legs[0].departAt) : rawConnDep;
@@ -160,7 +170,7 @@ export function createSharedConnection(
     if (leg.fromLon !== undefined) out.fromLon = leg.fromLon;
     if (leg.toLat !== undefined) out.toLat = leg.toLat;
     if (leg.toLon !== undefined) out.toLon = leg.toLon;
-    if (leg.geometry) out.path = encodePath(leg.geometry);
+    if (leg.geometry && leg.geometry.length >= 2) out.path = encodePath(leg.geometry);
     return out;
   });
   const journey: SharedConnection = {
@@ -173,7 +183,8 @@ export function createSharedConnection(
     arrival: advance(connection.arriveAt),
     legs,
   };
-  if (!isSharedConnection(journey)) throw new Error('Invalid journey');
+  // Ścieżki przed chwilą zakodowaliśmy sami z leg.geometry: nie dekodujemy ich od razu z powrotem.
+  if (!isSharedConnection(journey, false)) throw new Error('Invalid journey');
   return journey;
 }
 
@@ -205,7 +216,7 @@ function coordinates(lat: unknown, lon: unknown): boolean {
   );
 }
 
-function isSharedConnection(value: unknown): value is SharedConnection {
+function isSharedConnection(value: unknown, validatePaths = true): value is SharedConnection {
   if (
     !isRecord(value) ||
     value.v !== 1 ||
@@ -250,7 +261,8 @@ function isSharedConnection(value: unknown): value is SharedConnection {
       !integer(leg.stops, 1000) ||
       !coordinates(leg.fromLat, leg.fromLon) ||
       !coordinates(leg.toLat, leg.toLon) ||
-      (leg.path !== undefined && (typeof leg.path !== 'string' || !decodePath(leg.path))) ||
+      (leg.path !== undefined &&
+        (typeof leg.path !== 'string' || (validatePaths && !decodePath(leg.path)))) ||
       (leg.walk !== undefined && !integer(leg.walk, 100000))
     )
       return false;
@@ -860,9 +872,12 @@ export function encodeSharedConnection(
   journey: SharedConnection,
   options?: { locale?: string; includePath?: boolean; compactCoords?: boolean },
 ): string {
-  if (!isSharedConnection(journey)) throw new Error('Invalid journey');
+  if (!isSharedConnection(journey, options?.includePath !== false)) {
+    throw new Error('Invalid journey');
+  }
   const raw = encodeBinaryV2(journey, options);
-  const deflated = deflateSync(raw, { level: 9 });
+  // Poziom 6 daje niemal identyczną długość linku przy wielokrotnie mniejszym czasie CPU na JS.
+  const deflated = deflateSync(raw, { level: 6 });
   const encoded = encodeBase64Url(deflated.length < raw.length ? deflated : raw);
   if (encoded.length > maxEncodedLength) throw new Error('Journey link too long');
   return encoded;

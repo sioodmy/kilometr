@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -10,9 +10,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { ChevronDown } from './icons';
-import { MorphingLoader } from './MorphingLoader';
 import { useStrings } from '../i18n';
-import { EARLIER_PULL_ARM } from '../services/earlierPull';
+import { EARLIER_PULL_ARM, EARLIER_PULL_MAX } from '../services/earlierPull';
 import { motion } from '../theme/motion';
 import { scheme, shape, type } from '../theme/tokens';
 
@@ -44,11 +43,12 @@ export const EarlierConnectionsPull = memo(function EarlierConnectionsPull({
     return reduceMotion ? target : withSpring(target, motion.spring.effectsFast);
   }, [loading, noMore, reduceMotion]);
 
+  // Czysta transformacja GPU bez animacji height, żeby nie wymuszać relayoutu przy ciągnięciu.
   const containerStyle = useAnimatedStyle(() => {
     const h = Math.max(0, pullHeight.value);
     return {
-      height: h,
       opacity: interpolate(h, [4, 24], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: (h - EARLIER_PULL_MAX) / 2 }],
     };
   });
 
@@ -101,7 +101,7 @@ export const EarlierConnectionsPull = memo(function EarlierConnectionsPull({
       <Animated.View style={[styles.pill, pillStyle]}>
         {loading ? (
           <>
-            <MorphingLoader size={17} color={scheme.primary} />
+            <ActivityIndicator size="small" color={scheme.primary} />
             <Text style={styles.label} numberOfLines={1}>
               {s.routes.earlierLoading}
             </Text>
@@ -144,6 +144,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    height: EARLIER_PULL_MAX,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

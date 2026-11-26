@@ -4,6 +4,7 @@ import type { DayIndex, LocalGtfsStore } from './store';
 import { getActiveCityIdSync } from '../cityStore';
 import { isFareBoundary } from '../../gtfs/fareBoundary';
 import { BUS_ONLY_NO_TRAM } from '../lineIdentity';
+import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './yieldFrame';
 
 export type TransitKind = 'tram' | 'bus' | 'train' | 'cable' | 'trolleybus' | 'subway';
 
@@ -226,13 +227,6 @@ function isFifoRef(
   return true;
 }
 
-const YIELD_BUDGET_MS = 12;
-
-/** Oddaje kolejkę JS między porcjami kompilacji sieci. */
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 /**
  * Kompilacja sieci RAPTOR w krokach. Na wycinku 5 tys. kursów sama pętla
  * blokowała JS na kilka sekund; buildSlice i pierwszy plan mają ustąpić
@@ -296,7 +290,7 @@ function* compileSteps(
       if (firstDep < prevFirstDep) alreadySorted = false;
       prevFirstDep = firstDep;
       rows.push({ id: trip.trip_id, times, firstDep });
-      if ((tripIdx & 255) === 255) yield;
+      if ((tripIdx & 63) === 63) yield;
     }
     if (rows.length === 0) continue;
     if (!alreadySorted) rows.sort((a, b) => a.firstDep - b.firstDep);
@@ -316,7 +310,7 @@ function* compileSteps(
         }
       }
       if (!placed) groups.push([row]);
-      if ((rowIdx & 511) === 511) yield;
+      if ((rowIdx & 127) === 127) yield;
     }
 
     for (let gi = 0; gi < groups.length; gi++) {
@@ -362,7 +356,7 @@ function* compileSteps(
       });
       if ((gi & 3) === 3) yield;
     }
-    if ((patternIdx++ & 15) === 15) yield;
+    if ((patternIdx++ & 3) === 3) yield;
   }
 
   const spCount = base.stopIds.length;
@@ -386,7 +380,7 @@ function* compileSteps(
       const tids = p.tripIds;
       for (let j = 0; j < tids.length; j++) tripLoc.set(tids[j], [pi, j]);
     }
-    if ((pi & 63) === 63) yield;
+    if ((pi & 15) === 15) yield;
   }
 
   const id = nextNetId++;
@@ -419,8 +413,8 @@ async function compileAsync(
   let sliceStart = performance.now();
   let next = steps.next();
   while (!next.done) {
-    if (performance.now() - sliceStart >= YIELD_BUDGET_MS) {
-      await yieldToEventLoop();
+    if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+      await yieldToUiFrame();
       sliceStart = performance.now();
     }
     next = steps.next();
@@ -491,6 +485,81 @@ export function packRaptorNet(net: RaptorNet): Uint8Array {
     w += p.dep.length;
     i32.set(p.arr, w);
     w += p.arr.length;
+  }
+
+  const packed = new Uint8Array(buf);
+  net.packed = packed;
+  return packed;
+}
+
+/**
+ * Asynchroniczna serializacja sieci RAPTOR oddająca klatki UI między porcjami
+ * wzorców, żeby ładowanie nowego wycinka (np. wcześniejsze połączenia) nie rwało scrolla.
+ */
+export async function packRaptorNetAsync(net: RaptorNet): Promise<Uint8Array> {
+  if (net.packed) return net.packed;
+
+  const { base, patterns, spCount, spStart, spPat, spPos } = net;
+  const fpCount = base.fpCount;
+  const fpEdges = base.fpTo.length;
+  const spEdges = spPat.length;
+
+  let words =
+    7 +
+    (fpCount + 1) +
+    fpEdges * 3 +
+    (spCount + 1) +
+    spEdges * 2;
+
+  for (let i = 0; i < patterns.length; i++) {
+    const p = patterns[i];
+    words += 3 + p.n + p.dep.length + p.arr.length;
+  }
+
+  const buf = new ArrayBuffer(words * 4);
+  const i32 = new Int32Array(buf);
+  let w = 0;
+
+  i32[w++] = NET_MAGIC;
+  i32[w++] = base.stopIds.length;
+  i32[w++] = fpCount;
+  i32[w++] = fpEdges;
+  i32[w++] = patterns.length;
+  i32[w++] = spCount;
+  i32[w++] = spEdges;
+
+  i32.set(base.fpStart.subarray(0, fpCount + 1), w);
+  w += fpCount + 1;
+  i32.set(base.fpTo, w);
+  w += fpEdges;
+  i32.set(base.fpDistM, w);
+  w += fpEdges;
+  i32.set(base.fpFixedSec, w);
+  w += fpEdges;
+
+  i32.set(spStart.subarray(0, spCount + 1), w);
+  w += spCount + 1;
+  i32.set(spPat, w);
+  w += spEdges;
+  i32.set(spPos, w);
+  w += spEdges;
+
+  let sliceStart = performance.now();
+  for (let i = 0; i < patterns.length; i++) {
+    const p = patterns[i];
+    i32[w++] = kindToCode(p.kind);
+    i32[w++] = p.n;
+    i32[w++] = p.nTrips;
+    i32.set(p.stops, w);
+    w += p.n;
+    i32.set(p.dep, w);
+    w += p.dep.length;
+    i32.set(p.arr, w);
+    w += p.arr.length;
+    if ((i & 63) === 63 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+      await yieldToUiFrame();
+      sliceStart = performance.now();
+    }
   }
 
   const packed = new Uint8Array(buf);

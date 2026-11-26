@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect } from 'react-native-svg';
 import {
@@ -67,17 +68,31 @@ interface TransitStep {
   };
 }
 
-export function JourneyShareCard({ journey }: { journey: SharedConnection }) {
+const shareDateFormatters = new Map<string, Intl.DateTimeFormat>();
+function formatShareCardDate(isoDate: string, locale: string): string {
+  let formatter = shareDateFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    });
+    shareDateFormatters.set(locale, formatter);
+  }
+  return formatter.format(new Date(`${isoDate}T12:00:00Z`));
+}
+
+export const JourneyShareCard = memo(function JourneyShareCard({
+  journey,
+}: {
+  journey: SharedConnection;
+}) {
   const { share: s, city } = useStrings();
   const { width, fontScale } = useWindowDimensions();
   const stacked = width / fontScale < 305;
 
-  const date = new Intl.DateTimeFormat(getLocaleSync(), {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  }).format(new Date(`${journey.date}T12:00:00Z`));
+  const date = formatShareCardDate(journey.date, getLocaleSync());
 
   const arrivalDay = Math.floor(journey.arrival / 1440);
   const totalMin = Math.max(1, journey.arrival - journey.departure);
@@ -517,7 +532,7 @@ export function JourneyShareCard({ journey }: { journey: SharedConnection }) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

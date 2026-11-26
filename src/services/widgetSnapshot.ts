@@ -145,12 +145,6 @@ export function legBadge(leg: Pick<Leg, 'mode' | 'line'>): WidgetLineBadge {
   return { mode, line: line || leg.line, bg, fg };
 }
 
-/** Pierwszy odcinek z pojazdem, czyli to, na co trzeba zdążyć. */
-export function firstRideBadge(conn: Connection): WidgetLineBadge | null {
-  const ride = conn.legs.find((l) => l.mode !== 'walk' && l.line);
-  return ride ? legBadge(ride) : null;
-}
-
 function snapshotPath(): string | null {
   const base = FileSystem.documentDirectory;
   if (!base) return null;
