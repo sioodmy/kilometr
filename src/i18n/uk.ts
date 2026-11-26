@@ -2444,6 +2444,8 @@ export const uk: Strings = {
     fromStopLabel: (stop: string) => `від: ${stop}`,
     exitStopLabel: (stop: string) => `вихід: ${stop}`,
     finalWalkPill: (min: number) => `${min}' до мети`,
+    variantAlternativeHeading: 'Альтернативно',
+    variantFasterBy: (min: number) => `Швидше на ${min} хв`,
     variantDirect: 'Прямо',
     variantSlackShort: (min: number) => (min <= 0 ? 'впритул' : `${min} хв запасу`),
     variantCardA11y: (label: string, arrAt: string) =>

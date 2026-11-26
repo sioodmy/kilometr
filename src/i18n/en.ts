@@ -1953,6 +1953,8 @@ export const en: Strings = {
     fromStopLabel: (stop: string) => `from: ${stop}`,
     exitStopLabel: (stop: string) => `exit: ${stop}`,
     finalWalkPill: (min: number) => `${min}' to dest.`,
+    variantAlternativeHeading: 'Alternatively',
+    variantFasterBy: (min: number) => `${min} min faster`,
     variantDirect: 'Direct',
     variantSlackShort: (min: number) => (min <= 0 ? 'tight' : `${min} min spare`),
     variantCardA11y: (label: string, arrAt: string) =>

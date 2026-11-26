@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   type AnimatedStyle,
 } from 'react-native-reanimated';
-import { ChevronRight, CornerDownRight, Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
+import { AltRoute, ChevronRight, Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
 import { hapticTap } from '../services/haptics';
 import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
@@ -631,83 +631,95 @@ const ConnectionCardVariants = memo(function ConnectionCardVariants({
 
   return (
     <View style={styles.variantsSection}>
-      <View style={styles.variantsTopDivider} />
-      {alternatives.map((opt, idx) => {
-        const isLast = idx === alternatives.length - 1;
-        const contTags = opt.continuationLegs
-          .map((leg) => leg.line || leg.mode)
-          .filter(Boolean);
-        const sameLineAsPrimary =
-          contTags.length > 0 && contTags.every((tag) => primaryLineSet.has(tag));
-        const showStopFallback = sameLineAsPrimary && Boolean(opt.firstTransferStop);
+      <View style={styles.variantsHeader}>
+        <Text style={styles.variantsHeading}>{s.connection.variantAlternativeHeading}</Text>
+        <View style={styles.variantsHeaderLine} />
+      </View>
+      <View style={styles.variantsBox}>
+        {alternatives.map((opt, idx) => {
+          const contTags = opt.continuationLegs
+            .map((leg) => leg.line || leg.mode)
+            .filter(Boolean);
+          const sameLineAsPrimary =
+            contTags.length > 0 && contTags.every((tag) => primaryLineSet.has(tag));
+          const showStopFallback = sameLineAsPrimary && Boolean(opt.firstTransferStop);
 
-        const chainLabel = opt.transitSteps
-          .map((step) => step.leg.line || step.leg.mode)
-          .filter(Boolean)
-          .join(', ');
-        const a11ySummary = showStopFallback
-          ? `${chainLabel}, ${opt.firstTransferStop}`
-          : chainLabel;
-        const a11yLabel = s.connection.variantCardA11y(a11ySummary, opt.connection.arriveAt);
+          const chainLabel = opt.transitSteps
+            .map((step) => step.leg.line || step.leg.mode)
+            .filter(Boolean)
+            .join(', ');
+          const a11ySummary = showStopFallback
+            ? `${chainLabel}, ${opt.firstTransferStop}`
+            : chainLabel;
+          const a11yLabel = s.connection.variantCardA11y(a11ySummary, opt.connection.arriveAt);
 
-        const rowBody = (
-          <>
-            <View style={styles.variantLeft}>
-              <CornerDownRight size={14} color={scheme.onSurfaceVariant} />
-              <VariantLegChain steps={opt.transitSteps} dimmed={dimmed} />
-              {showStopFallback && (
-                <View style={styles.variantStopChip}>
-                  <Text style={styles.variantStopChipText} numberOfLines={1}>
-                    {opt.firstTransferStop}
+          const rowBody = (
+            <>
+              {opt.savedMin > 0 && (
+                <View style={styles.variantTopRow}>
+                  <AltRoute
+                    size={13}
+                    color={dimmed ? scheme.onSurfaceVariant : scheme.primary}
+                  />
+                  <Text style={[styles.variantFasterText, dimmed && styles.textDimmed]}>
+                    {s.connection.variantFasterBy(opt.savedMin)}
                   </Text>
                 </View>
               )}
-            </View>
 
-            <View style={styles.variantRight}>
-              <Text style={[styles.variantArrive, dimmed && styles.textDimmed]}>
-                {opt.connection.arriveAt}
-              </Text>
-              <ChevronRight size={14} color={scheme.onSurfaceVariant} />
-            </View>
-          </>
-        );
+              <View style={styles.variantBottomRow}>
+                <View style={styles.variantLeft}>
+                  <VariantLegChain steps={opt.transitSteps} dimmed={dimmed} dense />
+                  {showStopFallback && (
+                    <View style={styles.variantStopChip}>
+                      <Text style={styles.variantStopChipText} numberOfLines={1}>
+                        {opt.firstTransferStop}
+                      </Text>
+                    </View>
+                  )}
+                </View>
 
-        if (!interactive) {
+                <View style={styles.variantRight}>
+                  <Text style={[styles.variantArrive, dimmed && styles.textDimmed]}>
+                    {opt.connection.arriveAt}
+                  </Text>
+                  <ChevronRight size={12} color={scheme.onSurfaceVariant} />
+                </View>
+              </View>
+            </>
+          );
+
+          if (!interactive) {
+            return (
+              <View
+                key={opt.connection.id}
+                style={[styles.variantRow, idx > 0 && styles.variantRowDivider]}
+              >
+                {rowBody}
+              </View>
+            );
+          }
+
           return (
-            <View
+            <Pressable
               key={opt.connection.id}
-              style={[
+              onPress={() => {
+                hapticTap();
+                onSelect?.(opt.connection);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={a11yLabel}
+              style={({ pressed }) => [
                 styles.variantRow,
                 idx > 0 && styles.variantRowDivider,
-                isLast && styles.variantRowLast,
+                pressed && styles.variantRowPressed,
               ]}
             >
               {rowBody}
-            </View>
+            </Pressable>
           );
-        }
-
-        return (
-          <Pressable
-            key={opt.connection.id}
-            onPress={() => {
-              hapticTap();
-              onSelect?.(opt.connection);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={a11yLabel}
-            style={({ pressed }) => [
-              styles.variantRow,
-              idx > 0 && styles.variantRowDivider,
-              isLast && styles.variantRowLast,
-              pressed && styles.variantRowPressed,
-            ]}
-          >
-            {rowBody}
-          </Pressable>
-        );
-      })}
+        })}
+      </View>
     </View>
   );
 });
@@ -921,67 +933,98 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   primaryAreaWithAlts: {
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
   variantsSection: {
-    overflow: 'hidden',
-    borderBottomLeftRadius: shape.extraLarge - 1,
-    borderBottomRightRadius: shape.extraLarge - 1,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
   },
-  variantsTopDivider: {
+  variantsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  variantsHeading: {
+    ...type.labelSmall,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: scheme.onSurfaceVariant,
+  },
+  variantsHeaderLine: {
+    flex: 1,
     height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
-    backgroundColor: scheme.outlineVariant + '75',
+    backgroundColor: scheme.outlineVariant + '80',
+  },
+  variantsBox: {
+    backgroundColor: scheme.surfaceContainerHigh,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant + '85',
+    overflow: 'hidden',
   },
   variantRow: {
     minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 5,
   },
   variantRowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: scheme.outlineVariant + '45',
-  },
-  variantRowLast: {
-    borderBottomLeftRadius: shape.extraLarge - 1,
-    borderBottomRightRadius: shape.extraLarge - 1,
+    borderTopColor: scheme.outlineVariant + '55',
   },
   variantRowPressed: {
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerHighest,
+  },
+  variantTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  variantFasterText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: scheme.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  variantBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   variantLeft: {
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 4,
+    paddingLeft: 7,
   },
   variantStopChip: {
     maxWidth: 132,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: shape.small,
-    backgroundColor: scheme.surfaceContainerHigh,
+    backgroundColor: scheme.surfaceContainerHighest,
   },
   variantStopChipText: {
-    ...type.labelSmall,
+    fontSize: 10,
+    lineHeight: 13,
     fontWeight: '700',
     color: scheme.onSurface,
   },
   variantRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 3,
     flexShrink: 0,
   },
   variantArrive: {
-    fontSize: 13.5,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: '700',
     color: scheme.onSurface,
     fontVariant: ['tabular-nums'],
