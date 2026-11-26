@@ -1388,15 +1388,26 @@ export default function HomeScreen() {
     };
   }, [query, sheetMode, currentCoords]);
 
+  const handleSearchQuery = useCallback((next: string) => {
+    setQuery(next);
+    if (next.trim()) {
+      setLoading(true);
+    } else {
+      setLoading(false);
+      setResults([]);
+    }
+  }, []);
+
   const quick = useMemo<Suggestion[]>(
     () =>
-      saved.map((s) => ({
-        id: s.placeId,
-        title: s.name,
-        address: s.address,
-        kind: 'history',
-        lat: s.lat,
-        lon: s.lon,
+      saved.map((p) => ({
+        id: p.placeId || `saved:${p.id}`,
+        title: p.name,
+        address: p.address,
+        kind: 'place',
+        savedIcon: p.icon,
+        lat: p.lat,
+        lon: p.lon,
       })),
     [saved],
   );
@@ -2290,7 +2301,7 @@ export default function HomeScreen() {
                   }
                 : undefined
             }
-            onQuery={setQuery}
+            onQuery={handleSearchQuery}
             onSelectLine={(line) => {
               setSheetMode(null);
               setReturnToDestinationAfterStart(false);

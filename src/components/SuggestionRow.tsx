@@ -20,10 +20,12 @@ import {
   type IconComponent,
 } from './icons';
 import { scheme, shape, type, type SchemeKey } from '../theme/tokens';
-import type { Suggestion } from '../types/models';
+import type { SavedPlaceIcon, Suggestion } from '../types/models';
 import { formatDistance } from '../services/settings';
 import { useStrings } from '../i18n';
 import { normalizePolish } from '../gtfs/geo';
+import { placeIconTone } from '../services/placeIcons';
+import { SAVED_PLACE_ICONS } from './SavedPlacesRow';
 
 /**
  * Rodzaje wierszy z motywem aplikacji. Trzymamy tu nazwy ról, a nie same
@@ -63,12 +65,17 @@ export interface SuggestionIconMeta {
   fg: string;
 }
 
-/** Ta sama ikonka co w wierszu wyszukiwarki: po kategorii, inaczej po rodzaju. */
+/** Ta sama ikonka co w wierszu wyszukiwarki: po zapisanym miejscu, kategorii, inaczej po rodzaju. */
 export function getSuggestionIconMeta(
-  item: Pick<Suggestion, 'id' | 'kind'> & { category?: string },
+  item: Pick<Suggestion, 'id' | 'kind'> & { category?: string; savedIcon?: SavedPlaceIcon },
 ): SuggestionIconMeta {
   if (item.id === '__gps') {
     return { Icon: LocateFixed, bg: scheme.primaryContainer, fg: scheme.onPrimaryContainer };
+  }
+  if (item.savedIcon) {
+    const Icon = SAVED_PLACE_ICONS[item.savedIcon] ?? MapPin;
+    const tone = placeIconTone(item.savedIcon);
+    return { Icon, bg: scheme[tone.bg], fg: scheme[tone.fg] };
   }
   const key = item.category || item.kind;
   const toned = KIND_TONES[key];

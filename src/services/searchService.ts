@@ -174,10 +174,11 @@ export const SearchService: ISearchService = {
         });
       };
       const addressIndexWarm = hasOfflineAddressIndex();
+      let localBatchDone = false;
       const addressesTask = addressesPromise.then((hits) => {
         if (completed || ctrl.signal.aborted || cityId !== getActiveCityIdSync()) return;
         addresses = hits;
-        schedulePublish();
+        if (localBatchDone) schedulePublish();
         if (!hits.length && q.length >= 4 && hasOfflineAddressIndex()) {
           fuzzyPromise = searchFuzzyAddresses();
         }
@@ -193,7 +194,6 @@ export const SearchService: ISearchService = {
             lon: hit.lon,
             weight: hit.weight,
           }));
-          schedulePublish();
         }),
         stationsPromise.then((hits) => {
           stations = hits.map((hit) => ({
@@ -206,22 +206,31 @@ export const SearchService: ISearchService = {
             lon: hit.lon,
             weight: hit.weight,
           }));
-          schedulePublish();
         }),
         poisPromise.then((hits) => {
           pois = hits;
-          schedulePublish();
         }),
         addressIndexWarm
           ? addressesTask
           : raceWithBudget(addressesTask, ctrl.signal, ADDRESS_COLD_BUDGET_MS),
       ]);
+      localBatchDone = true;
       assertCurrent();
+      local = buildLocal();
+      const isAddressWithNumber = /\d/.test(q);
+      const allowRemote = !hasOfflineAddressIndex() || !isAddressWithNumber;
+      const willFetchRemote =
+        q.length >= 2 &&
+        !addresses.length &&
+        allowRemote &&
+        (isAddressWithNumber || local.length < 5);
+      // Publikujemy lokalny pakiet raz, tylko gdy czekamy jeszcze na fuzzy albo Nominatim.
+      if ((fuzzyPromise || willFetchRemote) && local.length) {
+        onPartial?.(rank(merge([]), history));
+      }
       if (fuzzyPromise) await fuzzyPromise;
       local = buildLocal();
       let remote: Suggestion[] = [];
-      const isAddressWithNumber = /\d/.test(q);
-      const allowRemote = !hasOfflineAddressIndex() || !isAddressWithNumber;
       if (
         q.length >= 2 &&
         !addresses.length &&

@@ -669,10 +669,11 @@ export default function RoutesScreen() {
         setSavedPlaces(places);
         setSavedQuick(
           places.map((p) => ({
-            id: p.placeId,
+            id: p.placeId || `saved:${p.id}`,
             title: p.name,
             address: p.address,
-            kind: 'history' as const,
+            kind: 'place' as const,
+            savedIcon: p.icon,
             lat: p.lat,
             lon: p.lon,
           })),
@@ -738,6 +739,16 @@ export default function RoutesScreen() {
       unsubscribe();
     };
   }, [gpsOrigin, activeAnchor, boardedTrip]);
+
+  const handleSearchQuery = useCallback((next: string) => {
+    setQuery(next);
+    if (next.trim()) {
+      setSearchLoading(true);
+    } else {
+      setSearchLoading(false);
+      setResults([]);
+    }
+  }, []);
 
   // Lokalny indeks odpowiada od razu, odległości względem aktualnego startu.
   const searchSeq = useRef(0);
@@ -2356,7 +2367,7 @@ export default function RoutesScreen() {
                 }
               : undefined
           }
-          onQuery={setQuery}
+          onQuery={handleSearchQuery}
           onSelect={handleSuggestionSelect}
           onClose={() => {
             setSheetFor(null);
