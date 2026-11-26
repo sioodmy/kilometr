@@ -64,6 +64,7 @@ import { SpringPressable } from '../../src/components/SpringPressable';
 import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
 import { RouteMapCard } from '../../src/components/RouteMapCard';
 import { RouteReliabilityCard } from '../../src/components/RouteReliabilityCard';
+import { MapCardSkeleton, RouteDetailsSkeleton } from '../../src/components/RouteDetailsSkeleton';
 import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
@@ -234,12 +235,17 @@ export default function RouteDetailsScreen() {
       return;
     }
     let cancelled = false;
-    const frame = requestAnimationFrame(() => {
-      if (!cancelled) setSecondaryReady(true);
+    let frame2: number | null = null;
+    const frame1 = requestAnimationFrame(() => {
+      if (cancelled) return;
+      frame2 = requestAnimationFrame(() => {
+        if (!cancelled) setSecondaryReady(true);
+      });
     });
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(frame1);
+      if (frame2 !== null) cancelAnimationFrame(frame2);
     };
   }, [transitionSettled]);
 
@@ -619,6 +625,7 @@ export default function RouteDetailsScreen() {
 
   const noLegs = item.legs.length === 0;
   const hasTransitLeg = item.legs.some((leg) => leg.mode !== 'walk');
+  const hasTrainLeg = item.legs.some((leg) => leg.mode === 'train');
   const hasHeaderActions = !noLegs || hasTransitLeg;
 
   const dataNote = offline
@@ -858,7 +865,6 @@ export default function RouteDetailsScreen() {
                 <View style={styles.desktopMapCol}>
                   <RouteMapCard
                     desktopFill
-                    deferMapMount={!transitionSettled}
                     connection={item}
                     onOpenMap={openRouteMap}
                   />
@@ -909,20 +915,27 @@ export default function RouteDetailsScreen() {
                   <Animated.View
                     style={[styles.detailsContent, morphProps?.belowSummaryAnimatedStyle]}
                   >
-                    {(openTicket || transitionSettled) && (
+                    {openTicket || transitionSettled ? (
                       <Animated.View
                         entering={!openTicket && !reduceMotion ? FadeIn.duration(130) : undefined}
                         style={styles.detailsContent}
                       >
                         {legSections}
-                        {secondaryReady && (
+                        {secondaryReady ? (
                           <>
                             <RouteMapCard connection={item} onOpenMap={openRouteMap} />
                             <RouteReliabilityCard connection={item} />
                             <ConnectionLineAlerts connection={item} />
                           </>
+                        ) : (
+                          <MapCardSkeleton />
                         )}
                       </Animated.View>
+                    ) : (
+                      <RouteDetailsSkeleton
+                        connection={item}
+                        showDeckPlaceholder={hasTransfers || hasTrainLeg}
+                      />
                     )}
                   </Animated.View>
                 )}
