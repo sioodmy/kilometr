@@ -41,6 +41,7 @@ import { useTransferThresholds, useWalkSpeedMps } from '../services/settings';
 import { analyzeConnection } from './connectionInsights';
 import { ConnectionCardMorphPreview, JourneyStrip } from './ConnectionCard';
 import { useRouteCardTransition, type CardTransitionSource } from './RouteCardTransition';
+import { normalizeConnectionId } from '../services/routing/connectionIdentity';
 import { acquirePredictiveBack, isNativePredictiveBackSupported } from '../services/predictiveBack';
 import {
   EDGE_BACK_ZONE_PX,
@@ -159,13 +160,18 @@ export function RouteDetailsMorphShell({
   const screenW = viewport.width > 0 ? viewport.width : windowDims.width;
   const screenH = viewport.height > 0 ? viewport.height : windowDims.height;
 
+  const listCardId = source.cardConnectionId ?? source.connectionId;
+  const listCardNormalizedId = source.cardNormalizedId ?? source.normalizedId;
+  const stripMatchesSource =
+    normalizeConnectionId(connection.id) === normalizeConnectionId(source.connection.id);
   const walkMps = useWalkSpeedMps();
   const thresholds = useTransferThresholds();
   const stripInsights = useMemo(
     () => analyzeConnection(connection, walkMps, thresholds),
     [connection, walkMps, thresholds],
   );
-  const hasTransitStrip = stripInsights.transitLegs.length > 0 && source.stripRect != null;
+  const hasTransitStrip =
+    stripMatchesSource && stripInsights.transitLegs.length > 0 && source.stripRect != null;
 
   const cardColors = resolveCardColors(source.variant);
   const surfaceBg = scheme.surface;
@@ -279,22 +285,22 @@ export function RouteDetailsMorphShell({
   }, []);
 
   const revealSourceCard = useCallback(() => {
-    if (hiddenCardId && hiddenCardId.value === source.normalizedId) {
+    if (hiddenCardId && hiddenCardId.value === listCardNormalizedId) {
       hiddenCardId.value = '';
     }
-  }, [hiddenCardId, source.normalizedId]);
+  }, [hiddenCardId, listCardNormalizedId]);
 
   // Ukrywamy oryginalną kartę na liście w tej samej klatce, w której montuje się morphShell.
   useLayoutEffect(() => {
     if (hiddenCardId) {
-      hiddenCardId.value = source.normalizedId;
+      hiddenCardId.value = listCardNormalizedId;
     }
     return () => {
-      if (hiddenCardId && hiddenCardId.value === source.normalizedId) {
+      if (hiddenCardId && hiddenCardId.value === listCardNormalizedId) {
         hiddenCardId.value = '';
       }
     };
-  }, [hiddenCardId, source.normalizedId]);
+  }, [hiddenCardId, listCardNormalizedId]);
 
   const markOpenSettled = useCallback(() => {
     if (openSettledRef.current || closingRef.current) return;
@@ -379,7 +385,7 @@ export function RouteDetailsMorphShell({
   /** Odświeża docelową pozycję karty na liście w locie (np. po zmianie kolejności live). */
   const refreshSourceCardGeometryInFlight = useCallback(() => {
     if (!transition) return;
-    void transition.measureCard(source.connectionId).then((measured) => {
+    void transition.measureCard(listCardId).then((measured) => {
       if (!measured || dismissFinishedRef.current) return;
       srcX.value = measured.cardRect.x;
       srcY.value = measured.cardRect.y;
@@ -393,7 +399,7 @@ export function RouteDetailsMorphShell({
       }
     });
   }, [
-    source.connectionId,
+    listCardId,
     srcH,
     srcStripH,
     srcStripW,
@@ -454,7 +460,7 @@ export function RouteDetailsMorphShell({
       (finished) => {
         'worklet';
         if (finished) {
-          if (hiddenCardId && hiddenCardId.value === source.normalizedId) {
+          if (hiddenCardId && hiddenCardId.value === listCardNormalizedId) {
             hiddenCardId.value = '';
           }
           runOnJS(finalizeClose)();
@@ -480,10 +486,10 @@ export function RouteDetailsMorphShell({
     hiddenCardId,
     isClosingVal,
     isDragging,
+    listCardNormalizedId,
     progress,
     refreshSourceCardGeometryInFlight,
     scrollYRef,
-    source.normalizedId,
     useSharedStrip,
   ]);
 
@@ -545,7 +551,7 @@ export function RouteDetailsMorphShell({
         (finished) => {
           'worklet';
           if (finished) {
-            if (hiddenCardId && hiddenCardId.value === source.normalizedId) {
+            if (hiddenCardId && hiddenCardId.value === listCardNormalizedId) {
               hiddenCardId.value = '';
             }
             runOnJS(finalizeClose)();
@@ -577,10 +583,10 @@ export function RouteDetailsMorphShell({
       hiddenCardId,
       isClosingVal,
       isDragging,
+      listCardNormalizedId,
       progress,
       refreshSourceCardGeometryInFlight,
       scrollYRef,
-      source.normalizedId,
       useSharedStrip,
     ],
   );
@@ -1158,6 +1164,7 @@ export function RouteDetailsMorphShell({
               item={source.connection}
               dimmed={source.dimmed}
               stripAnimatedStyle={ghostStripStyle}
+              alternatives={source.alternatives}
             />
           </Animated.View>
           <Animated.View

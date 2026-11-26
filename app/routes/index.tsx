@@ -86,9 +86,14 @@ import {
 // Mediana czasu dojazdu jest czysta i idzie do nawyku w „Ostatnich miejscach",
 // więc siedzi przy rankingu, a nie w ekranie (i ma test w check:smart-rank).
 import { typicalDurationMin } from '../../src/services/smartRanking';
-import { getSettingsSync, loadSettings, profileWalkSpeedMps } from '../../src/services/settings';
+import { getSettingsSync, loadSettings, profileWalkSpeedMps, useTransferThresholds, useWalkSpeedMps } from '../../src/services/settings';
 import { stopTracking } from '../../src/services/notifications';
 import { isIntercityRouteQuery, rememberPlannedConnection } from '../../src/services/api';
+import {
+  groupConnections,
+  rememberConnectionGroup,
+  type ConnectionGroup,
+} from '../../src/services/routing/connectionGroups';
 import {
   ensureNationalTimetable,
   nationalTimetableReady,
@@ -143,7 +148,7 @@ import { useStrings } from '../../src/i18n';
 
 // Stabilna referencja: nowa funkcja na każdym renderze zmuszałaby
 // VirtualizedList do przeliczenia komórek od zera przy każdej aktualizacji.
-const connectionKey = (item: Connection) => item.id;
+const groupKey = (group: ConnectionGroup) => group.key;
 
 // Szybkie wyszukiwania kończą się przed tym czasem, więc pełnoekranowy
 // wskaźnik nie mruga między wejściem w ekran a pierwszą kartą wyniku.
@@ -579,7 +584,24 @@ export default function RoutesScreen() {
     );
   }, [liveItems, transfersFilter, liveOnly, modeFilter]);
 
-  const listRef = useRef<FlatList<Connection>>(null);
+  const walkMps = useWalkSpeedMps();
+  const thresholds = useTransferThresholds();
+  const groups = useMemo(
+    () => groupConnections(displayed, walkMps, thresholds),
+    [displayed, walkMps, thresholds],
+  );
+  const groupByConnIdRef = useRef<Map<string, ConnectionGroup>>(new Map());
+  groupByConnIdRef.current = useMemo(() => {
+    const map = new Map<string, ConnectionGroup>();
+    for (const group of groups) {
+      for (const opt of group.options) {
+        map.set(normalizeConnectionId(opt.connection.id), group);
+      }
+    }
+    return map;
+  }, [groups]);
+
+  const listRef = useRef<FlatList<ConnectionGroup>>(null);
   const listContentHeightRef = useRef(0);
   const listViewportHeightRef = useRef(0);
 
@@ -1073,7 +1095,16 @@ export default function RoutesScreen() {
   }, [offline]);
 
   const handleLoadMore = async () => {
-    if (loading || loadingMore || loadingEarlier || items.length === 0 || noMoreLater || offline)
+    // Ekran szczegółów przykrywa listę w stosie; nie dociągamy w tym czasie kolejnych dni w tle.
+    if (
+      !isFocusedRef.current ||
+      loading ||
+      loadingMore ||
+      loadingEarlier ||
+      items.length === 0 ||
+      noMoreLater ||
+      offline
+    )
       return;
 
     setLoadingMore(true);
@@ -1618,7 +1649,13 @@ export default function RoutesScreen() {
         openingUnlockTimerRef.current = null;
       }, 360);
 
-      rememberPlannedConnection(item);
+      const group = groupByConnIdRef.current.get(normalizeConnectionId(item.id));
+      if (group) {
+        for (const opt of group.options) rememberPlannedConnection(opt.connection);
+        rememberConnectionGroup(group);
+      } else {
+        rememberPlannedConnection(item);
+      }
       closePreview();
 
       if (reduceMotion || webLayout.isMedium || !cardTransition) {
@@ -1629,7 +1666,12 @@ export default function RoutesScreen() {
         return;
       }
 
-      void cardTransition.measureCard(item.id).then((measured) => {
+      const cardConnection = group ? group.primary : item;
+      const cardId = cardConnection.id;
+      const isPrimary =
+        !group || normalizeConnectionId(item.id) === normalizeConnectionId(cardId);
+
+      void cardTransition.measureCard(cardId).then((measured) => {
         if (!measured) {
           router.push({
             pathname: '/routes/[id]',
@@ -1640,9 +1682,12 @@ export default function RoutesScreen() {
         cardTransition.prepareTransition({
           connectionId: item.id,
           normalizedId: normalizeConnectionId(item.id),
-          connection: item,
+          cardConnectionId: cardId,
+          cardNormalizedId: normalizeConnectionId(cardId),
+          alternatives: group && group.alternatives.length > 0 ? group.alternatives : undefined,
+          connection: cardConnection,
           cardRect: measured.cardRect,
-          stripRect: measured.stripRect,
+          stripRect: isPrimary ? measured.stripRect : null,
           variant: measured.variant,
           dimmed: measured.dimmed,
           capturedAt: Date.now(),
@@ -1693,7 +1738,7 @@ export default function RoutesScreen() {
   });
   const reorderSeqRef = useRef(0);
   const reorderTokens = useMemo(() => {
-    const ids = displayed.map((c) => c.id);
+    const ids = groups.map((g) => g.key);
     const prev = prevDisplayRef.current;
     if (prev.queryKey !== routeQueryKey || prev.ids.length < 2 || ids.length < 2) {
       return null;
@@ -1706,20 +1751,20 @@ export default function RoutesScreen() {
       map.set(id, { ...shift, seq });
     }
     return map;
-  }, [displayed, routeQueryKey]);
+  }, [groups, routeQueryKey]);
 
   useLayoutEffect(() => {
     prevDisplayRef.current = {
       queryKey: routeQueryKey,
-      ids: displayed.map((c) => c.id),
+      ids: groups.map((g) => g.key),
     };
-  }, [displayed, routeQueryKey]);
+  }, [groups, routeQueryKey]);
 
   useEffect(() => {
-    if (displayed.length === 0) return;
-    for (const conn of displayed) seenCardIdsRef.current.add(conn.id);
+    if (groups.length === 0) return;
+    for (const group of groups) seenCardIdsRef.current.add(group.key);
     initialEnterDoneRef.current = true;
-  }, [displayed]);
+  }, [groups]);
 
   const handleMeasureCardHeight = useCallback((id: string, height: number) => {
     cardHeightsRef.current.set(id, height);
@@ -1729,8 +1774,8 @@ export default function RoutesScreen() {
   nowTickRef.current = nowTick;
 
   const getCellStyle = useCallback(
-    ({ item }: { item: Connection }) => {
-      const token = reorderTokens?.get(item.id);
+    ({ item }: { item: ConnectionGroup }) => {
+      const token = reorderTokens?.get(item.key);
       if (token?.direction === 'up') return styles.reorderedUpCell;
       if (token?.direction === 'down') return styles.reorderedDownCell;
       return undefined;
@@ -1739,15 +1784,18 @@ export default function RoutesScreen() {
   );
 
   const renderConnection = useCallback(
-    ({ item, index }: { item: Connection; index: number }) => {
+    ({ item: group, index }: { item: ConnectionGroup; index: number }) => {
+      const item = group.primary;
       // Granica "przeszłość" liczona przy każdym rysunku: ref zaczepiony przy
       // zamontowaniu ekranu zmroził nam style dłużej niż minutę, bo nowy
       // "tick" dziecka odświeżał napis, a karta zostawała jasna.
       const past =
         !item.boarded && item.departureSec > 0 && boardingDepartureMs(item) < Date.now() - 60000;
-      const enterMode: CardEnterMode = recentEarlierIdsRef.current.has(item.id)
+      const enterMode: CardEnterMode = group.options.some((opt) =>
+        recentEarlierIdsRef.current.has(opt.connection.id),
+      )
         ? 'earlier'
-        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(item.id) && index < 6
+        : !initialEnterDoneRef.current && !seenCardIdsRef.current.has(group.key) && index < 6
           ? 'initial'
           : 'none';
       return (
@@ -1757,10 +1805,13 @@ export default function RoutesScreen() {
           dimmed={past}
           tick={nowTickRef.current}
           onPress={openConnection}
+          alternatives={group.alternatives.length > 0 ? group.alternatives : undefined}
+          onSelectAlternative={openConnection}
+          measureKey={group.key}
           peek={peek}
           reduceMotion={reduceMotion}
           enterMode={enterMode}
-          reorder={reorderTokens?.get(item.id)}
+          reorder={reorderTokens?.get(group.key)}
           onMeasureHeight={handleMeasureCardHeight}
         />
       );
@@ -1904,7 +1955,7 @@ export default function RoutesScreen() {
     ],
   );
 
-  const showResultBadge = !samePlace && !loadError && !loading && displayed.length > 0;
+  const showResultBadge = !samePlace && !loadError && !loading && groups.length > 0;
   const mediumConstrained = webLayout.isMedium && !webLayout.isDesktop;
 
   const topBarContent = (
@@ -1937,7 +1988,7 @@ export default function RoutesScreen() {
           style={styles.resultBadge}
         >
           <Text style={styles.resultBadgeText} numberOfLines={1}>
-            {s.connection.connections(displayed.length)}
+            {s.connection.connections(groups.length)}
           </Text>
         </Animated.View>
       ) : (
@@ -1951,7 +2002,7 @@ export default function RoutesScreen() {
   const listHeader = useMemo(
     () => (
       <View style={styles.listHeader}>
-        {loading && displayed.length > 0 && (
+        {loading && groups.length > 0 && (
           <Animated.View
             entering={
               reduceMotion ? undefined : FadeIn.duration(160).reduceMotion(ReduceMotion.System)
@@ -2030,11 +2081,11 @@ export default function RoutesScreen() {
     ),
     [
       arrivalMode,
-      displayed.length,
       earlierButtonFadeStyle,
       earlierDisabled,
       earlierFailed,
       earlierFocused,
+      groups.length,
       handleButtonEarlier,
       liveStale,
       loading,
@@ -2177,7 +2228,7 @@ export default function RoutesScreen() {
           scrollEventThrottle={16}
           accessibilityState={{ busy: loading }}
           pointerEvents={loading && items.length === 0 ? 'none' : 'auto'}
-          data={displayed}
+          data={groups}
           // Bez maintainVisibleContentPosition: natywna korekta offsetu po
           // powrocie z odpiętego ekranu zostawiała pustą listę.
           initialNumToRender={8}
@@ -2185,7 +2236,7 @@ export default function RoutesScreen() {
           windowSize={9}
           // wymusza przeliczenie etykiet "za X min" bez refetchu
           extraData={nowTick}
-          keyExtractor={connectionKey}
+          keyExtractor={groupKey}
           CellRendererComponentStyle={getCellStyle}
           contentContainerStyle={[
             styles.list,
@@ -2231,7 +2282,7 @@ export default function RoutesScreen() {
         <Text style={styles.emptySub}>{s.routes.samePlaceBody}</Text>
       </View>
     </ScrollView>
-  ) : loading && displayed.length === 0 ? (
+  ) : loading && groups.length === 0 ? (
     <ScrollView
       contentContainerStyle={[
         {
@@ -2344,7 +2395,7 @@ export default function RoutesScreen() {
           selectedMode={modeFilter}
           transfersFilter={transfersFilter}
           liveOnly={liveOnly}
-          resultCount={displayed.length}
+          resultCount={groups.length}
           onSelectMode={setModeFilter}
           onSelectTransfers={setTransfersFilter}
           onToggleLiveOnly={() => setLiveOnly((prev) => !prev)}

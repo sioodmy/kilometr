@@ -1352,6 +1352,7 @@ export const pl = {
     optionSameTime: 'Ten sam przyjazd',
     strategyLegSwap: 'Inny kurs z tego przystanku',
     strategyStayOn: 'Jedź dalej i przesiądź się później',
+    strategyStayDirect: (line: string) => `Jedź dalej linią ${line} bezpośrednio do celu`,
     strategySameStop: 'Inna linia z tego przystanku',
     walkTransfer: (min: number, m: number) => `${min} min pieszo (${m} m)`,
     samePlatform: 'Ten sam przystanek',
@@ -2438,6 +2439,13 @@ export const pl = {
     fromStopLabel: (stop: string) => `z: ${stop}`,
     exitStopLabel: (stop: string) => `wysiadka: ${stop}`,
     finalWalkPill: (min: number) => `${min}' do celu`,
+    variantDirect: 'Bezpośrednio',
+    variantSlackShort: (min: number) => (min <= 0 ? 'na styk' : `${min} min zapasu`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Alternatywny wariant ${label}, przyjazd ${arrAt}`,
+    variantSwitcherA11y: 'Warianty przesiadek tego kursu',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, przyjazd ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'Brak danych o trasie',

@@ -126,6 +126,7 @@ export const CloudOff = icon('cloud-off');
 export const Coffee = icon('local-cafe');
 export const Compass = icon('explore');
 export const Copy = icon('content-copy');
+export const CornerDownRight = icon('subdirectory-arrow-right');
 export const CreditCard = icon('credit-card');
 export const DatabaseBackup = icon('backup');
 export const DirectionsBike = icon('directions-bike');

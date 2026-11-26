@@ -1354,6 +1354,7 @@ export const uk: Strings = {
     optionSameTime: 'Той самий приїзд',
     strategyLegSwap: 'Інший рейс із цієї зупинки',
     strategyStayOn: 'Їдьте далі, пересадка пізніше',
+    strategyStayDirect: (line: string) => `Їдьте далі лінією ${line} безпосередньо до мети`,
     strategySameStop: 'Інша лінія з цієї зупинки',
     walkTransfer: (min: number, m: number) => `${min} хв пішки (${m} м)`,
     samePlatform: 'Та сама зупинка',
@@ -2443,6 +2444,13 @@ export const uk: Strings = {
     fromStopLabel: (stop: string) => `від: ${stop}`,
     exitStopLabel: (stop: string) => `вихід: ${stop}`,
     finalWalkPill: (min: number) => `${min}' до мети`,
+    variantDirect: 'Прямо',
+    variantSlackShort: (min: number) => (min <= 0 ? 'впритул' : `${min} хв запасу`),
+    variantCardA11y: (label: string, arrAt: string) =>
+      `Альтернативний варіант ${label}, прибуття ${arrAt}`,
+    variantSwitcherA11y: 'Варіанти пересадок цього рейсу',
+    variantOptionSelectedA11y: (label: string, arrAt: string, duration: string) =>
+      `${label}, прибуття ${arrAt}, ${duration}`,
   },
   vehiclePos: {
     noRoute: 'Немає даних про маршрут',

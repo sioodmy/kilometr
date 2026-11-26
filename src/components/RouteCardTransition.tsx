@@ -11,6 +11,7 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { Connection } from '../types/models';
 import { normalizeConnectionId } from '../services/routing/connectionIdentity';
+import type { ConnectionGroupOption } from '../services/routing/connectionGroups';
 import {
   clampSourceRect,
   computeStripRect,
@@ -23,6 +24,10 @@ import {
 export interface CardTransitionSource {
   connectionId: string;
   normalizedId: string;
+  /** ID karty na liście, do której wraca animacja (różne od connectionId przy wejściu z subopcji). */
+  cardConnectionId?: string;
+  cardNormalizedId?: string;
+  alternatives?: ConnectionGroupOption[];
   connection: Connection;
   cardRect: TransitionRect;
   stripRect: TransitionRect | null;

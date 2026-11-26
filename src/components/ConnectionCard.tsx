@@ -17,12 +17,14 @@ import Animated, {
   withSpring,
   type AnimatedStyle,
 } from 'react-native-reanimated';
-import { Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
+import { ChevronRight, CornerDownRight, Footprints, M3SolidArrowDown, M3SolidArrowRight, TriangleAlert } from './icons';
 import { hapticTap } from '../services/haptics';
 import { motion } from '../theme/motion';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection, Leg } from '../types/models';
+import type { ConnectionGroupOption } from '../services/routing/connectionGroups';
 import { LineBadge, resolveLegBadgeColors } from './LineBadge';
+import { VariantLegChain } from './VariantLegChain';
 import { DirectionsWalk } from './DirectionsWalk';
 import { LiveSensors } from './LiveDot';
 import { ConnectionPeekTarget, type ConnectionPeekHandlers } from './ConnectionPeek';
@@ -51,7 +53,6 @@ import {
 import { reliabilityNotice } from './reliabilityNotice';
 import { secondsToTimeString } from '../gtfs/geo';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const PRESS_SPRING = motion.spring.press;
 const DASH_COUNT = 20;
 const DASH_INDICES = Array.from({ length: DASH_COUNT }, (_, i) => i);
@@ -610,21 +611,132 @@ function ConnectionCardBody({
   );
 }
 
+/** Zgrupowane warianty przesiadkowe współdzielące pierwszy kurs karty głównej. */
+const ConnectionCardVariants = memo(function ConnectionCardVariants({
+  alternatives,
+  primaryLines,
+  dimmed,
+  interactive = true,
+  onSelect,
+}: {
+  alternatives: ConnectionGroupOption[];
+  primaryLines: string[];
+  dimmed: boolean;
+  interactive?: boolean;
+  onSelect?: (connection: Connection) => void;
+}) {
+  const s = useStrings();
+  const primaryLineSet = useMemo(() => new Set(primaryLines), [primaryLines]);
+  if (alternatives.length === 0) return null;
+
+  return (
+    <View style={styles.variantsSection}>
+      <View style={styles.variantsTopDivider} />
+      {alternatives.map((opt, idx) => {
+        const isLast = idx === alternatives.length - 1;
+        const contTags = opt.continuationLegs
+          .map((leg) => leg.line || leg.mode)
+          .filter(Boolean);
+        const sameLineAsPrimary =
+          contTags.length > 0 && contTags.every((tag) => primaryLineSet.has(tag));
+        const showStopFallback = sameLineAsPrimary && Boolean(opt.firstTransferStop);
+
+        const chainLabel = opt.transitSteps
+          .map((step) => step.leg.line || step.leg.mode)
+          .filter(Boolean)
+          .join(', ');
+        const a11ySummary = showStopFallback
+          ? `${chainLabel}, ${opt.firstTransferStop}`
+          : chainLabel;
+        const a11yLabel = s.connection.variantCardA11y(a11ySummary, opt.connection.arriveAt);
+
+        const rowBody = (
+          <>
+            <View style={styles.variantLeft}>
+              <CornerDownRight size={14} color={scheme.onSurfaceVariant} />
+              <VariantLegChain steps={opt.transitSteps} dimmed={dimmed} />
+              {showStopFallback && (
+                <View style={styles.variantStopChip}>
+                  <Text style={styles.variantStopChipText} numberOfLines={1}>
+                    {opt.firstTransferStop}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.variantRight}>
+              <Text style={[styles.variantArrive, dimmed && styles.textDimmed]}>
+                {opt.connection.arriveAt}
+              </Text>
+              <ChevronRight size={14} color={scheme.onSurfaceVariant} />
+            </View>
+          </>
+        );
+
+        if (!interactive) {
+          return (
+            <View
+              key={opt.connection.id}
+              style={[
+                styles.variantRow,
+                idx > 0 && styles.variantRowDivider,
+                isLast && styles.variantRowLast,
+              ]}
+            >
+              {rowBody}
+            </View>
+          );
+        }
+
+        return (
+          <Pressable
+            key={opt.connection.id}
+            onPress={() => {
+              hapticTap();
+              onSelect?.(opt.connection);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={a11yLabel}
+            style={({ pressed }) => [
+              styles.variantRow,
+              idx > 0 && styles.variantRowDivider,
+              isLast && styles.variantRowLast,
+              pressed && styles.variantRowPressed,
+            ]}
+          >
+            {rowBody}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+});
+
 /** Nieinteraktywna kopia karty używana w kontenerowym przejściu do ekranu szczegółów. */
 export const ConnectionCardMorphPreview = memo(function ConnectionCardMorphPreview({
   item,
   dimmed = false,
   stripAnimatedStyle,
+  alternatives,
 }: {
   item: Connection;
   dimmed?: boolean;
   stripAnimatedStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
+  alternatives?: ConnectionGroupOption[];
 }) {
   const model = useConnectionCardModel(item, dimmed, 0);
+  const hasAlts = (alternatives?.length ?? 0) > 0;
+  const primaryLines = useMemo(
+    () =>
+      item.legs
+        .filter((leg) => leg.mode !== 'walk')
+        .map((leg) => leg.line || leg.mode),
+    [item.legs],
+  );
   return (
     <View
       style={[
-        styles.card,
+        styles.cardShell,
         model.showLongWalkStyle && styles.longWalkCard,
         item.boarded && styles.boardedCard,
         dimmed && styles.pastCard,
@@ -632,13 +744,23 @@ export const ConnectionCardMorphPreview = memo(function ConnectionCardMorphPrevi
         item.boarded && styles.morphGhostBoardedTint,
       ]}
     >
-      <ConnectionCardBody
-        item={item}
-        dimmed={dimmed}
-        model={model}
-        interactive={false}
-        stripAnimatedStyle={stripAnimatedStyle}
-      />
+      <View style={[styles.primaryArea, hasAlts && styles.primaryAreaWithAlts]}>
+        <ConnectionCardBody
+          item={item}
+          dimmed={dimmed}
+          model={model}
+          interactive={false}
+          stripAnimatedStyle={stripAnimatedStyle}
+        />
+      </View>
+      {hasAlts && alternatives && (
+        <ConnectionCardVariants
+          alternatives={alternatives}
+          primaryLines={primaryLines}
+          dimmed={dimmed}
+          interactive={false}
+        />
+      )}
     </View>
   );
 });
@@ -649,6 +771,8 @@ export const ConnectionCard = memo(function ConnectionCard({
   dimmed = false,
   tick = 0,
   peek,
+  alternatives,
+  onSelectAlternative,
 }: {
   item: Connection;
   onPress: (item: Connection) => void;
@@ -657,6 +781,8 @@ export const ConnectionCard = memo(function ConnectionCard({
   /** Zmienia się co interwał, żeby odliczanie „za X min” nie zamarzło pod memo. */
   tick?: number;
   peek?: ConnectionPeekHandlers;
+  alternatives?: ConnectionGroupOption[];
+  onSelectAlternative?: (connection: Connection) => void;
 }) {
   const reduceMotion = useReducedMotion();
   const transition = useRouteCardTransition();
@@ -666,6 +792,14 @@ export const ConnectionCard = memo(function ConnectionCard({
   const stripLocalRectRef = useRef<TransitionRect | null>(null);
 
   const model = useConnectionCardModel(item, dimmed, tick);
+  const hasAlts = (alternatives?.length ?? 0) > 0;
+  const primaryLines = useMemo(
+    () =>
+      item.legs
+        .filter((leg) => leg.mode !== 'walk')
+        .map((leg) => leg.line || leg.mode),
+    [item.legs],
+  );
   const variantRef = useRef<CardSurfaceVariant>(model.surfaceVariant);
   variantRef.current = model.surfaceVariant;
   const dimmedRef = useRef(dimmed);
@@ -717,59 +851,140 @@ export const ConnectionCard = memo(function ConnectionCard({
 
   return (
     <View ref={cardBoundsRef} collapsable={false}>
-      <ConnectionPeekTarget item={item} handlers={peek}>
-        <AnimatedPressable
-          collapsable={false}
-          unstable_pressDelay={55}
-          onPress={handlePress}
-          onPressIn={() => setPress(1)}
-          onPressOut={() => setPress(0)}
-          accessibilityRole="button"
-          accessibilityLabel={model.accessibilityDesc}
-          accessibilityHint={peek ? model.s.connection.previewHint : undefined}
-          accessibilityActions={
-            peek
-              ? [{ name: 'activate' }, { name: 'longpress', label: model.s.connection.previewTitle }]
-              : undefined
-          }
-          onAccessibilityTap={handlePress}
-          onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
-            if (event.nativeEvent.actionName === 'activate') handlePress();
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={[
-            styles.card,
-            model.showLongWalkStyle && styles.longWalkCard,
-            item.boarded && styles.boardedCard,
-            dimmed && styles.pastCard,
-            focused && styles.focused,
-            animatedCardStyle,
-          ]}
-        >
-          <ConnectionCardBody
-            item={item}
+      <Animated.View
+        style={[
+          styles.cardShell,
+          model.showLongWalkStyle && styles.longWalkCard,
+          item.boarded && styles.boardedCard,
+          dimmed && styles.pastCard,
+          focused && styles.focused,
+          animatedCardStyle,
+        ]}
+      >
+        <ConnectionPeekTarget item={item} handlers={peek}>
+          <Pressable
+            collapsable={false}
+            unstable_pressDelay={55}
+            onPress={handlePress}
+            onPressIn={() => setPress(1)}
+            onPressOut={() => setPress(0)}
+            accessibilityRole="button"
+            accessibilityLabel={model.accessibilityDesc}
+            accessibilityHint={peek ? model.s.connection.previewHint : undefined}
+            accessibilityActions={
+              peek
+                ? [{ name: 'activate' }, { name: 'longpress', label: model.s.connection.previewTitle }]
+                : undefined
+            }
+            onAccessibilityTap={handlePress}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'longpress') peek?.show(item, true);
+              if (event.nativeEvent.actionName === 'activate') handlePress();
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={[styles.primaryArea, hasAlts && styles.primaryAreaWithAlts]}
+          >
+            <ConnectionCardBody
+              item={item}
+              dimmed={dimmed}
+              model={model}
+              onStripLayout={handleStripLayout}
+            />
+          </Pressable>
+        </ConnectionPeekTarget>
+
+        {hasAlts && alternatives && (
+          <ConnectionCardVariants
+            alternatives={alternatives}
+            primaryLines={primaryLines}
             dimmed={dimmed}
-            model={model}
-            onStripLayout={handleStripLayout}
+            onSelect={onSelectAlternative ?? onPress}
           />
-        </AnimatedPressable>
-      </ConnectionPeekTarget>
+        )}
+      </Animated.View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  card: {
+  cardShell: {
     backgroundColor: scheme.surfaceContainer,
     borderRadius: shape.extraLarge,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: scheme.outlineVariant,
+    ...elev.level1,
+  },
+  primaryArea: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 10,
-    ...elev.level1,
+  },
+  primaryAreaWithAlts: {
+    paddingBottom: 12,
+  },
+  variantsSection: {
+    overflow: 'hidden',
+    borderBottomLeftRadius: shape.extraLarge - 1,
+    borderBottomRightRadius: shape.extraLarge - 1,
+  },
+  variantsTopDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+    backgroundColor: scheme.outlineVariant + '75',
+  },
+  variantRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  variantRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: scheme.outlineVariant + '45',
+  },
+  variantRowLast: {
+    borderBottomLeftRadius: shape.extraLarge - 1,
+    borderBottomRightRadius: shape.extraLarge - 1,
+  },
+  variantRowPressed: {
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  variantLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  variantStopChip: {
+    maxWidth: 132,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: shape.small,
+    backgroundColor: scheme.surfaceContainerHigh,
+  },
+  variantStopChipText: {
+    ...type.labelSmall,
+    fontWeight: '700',
+    color: scheme.onSurface,
+  },
+  variantRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  variantArrive: {
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: scheme.onSurface,
+    fontVariant: ['tabular-nums'],
   },
   morphGhostCard: {
     backgroundColor: 'transparent',
