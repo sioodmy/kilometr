@@ -4,6 +4,7 @@ import {
   clampSourceRect,
   computeCloseDurationMs,
   computeDragShellFrame,
+  computePredictiveBackShellFrame,
   computeScaledStripRect,
   computeStripRect,
   isValidTransitionRect,
@@ -65,6 +66,25 @@ describe('routeCardTransitionMath', () => {
     const clampedY = computeDragShellFrame(140, 2000, 0.5, 390, 844);
     const clampedYNeg = computeDragShellFrame(140, -2000, 0.5, 390, 844);
     assert.ok(clampedY.y - clampedYNeg.y <= 192.001);
+  });
+
+  it('wylicza ramkę Android Predictive Back dla lewej i prawej krawędzi z marginesem 8dp', () => {
+    const rest = computePredictiveBackShellFrame(0, 0, 0, 390, 844);
+    assert.deepEqual(rest, { x: 0, y: 0, width: 390, height: 844, radius: 0, scale: 1 });
+
+    const fromLeft = computePredictiveBackShellFrame(1, 0, 0, 390, 844);
+    const fromRight = computePredictiveBackShellFrame(1, 0, 1, 390, 844);
+    assert.ok(Math.abs(fromLeft.scale - 0.84) < 1e-6);
+    assert.equal(fromLeft.radius, 28);
+    // Gest z lewej odsuwa okno w prawo (8dp marginesu po prawej), z prawej symetrycznie w lewo.
+    assert.ok(Math.abs(390 - (fromLeft.x + fromLeft.width) - 8) < 1e-6);
+    assert.ok(Math.abs(fromRight.x - 8) < 1e-6);
+    assert.ok(fromLeft.x > fromRight.x);
+
+    const movedDown = computePredictiveBackShellFrame(0.8, 400, 0, 390, 844);
+    const movedUp = computePredictiveBackShellFrame(0.8, -400, 0, 390, 844);
+    assert.ok(movedDown.y > movedUp.y);
+    assert.ok(movedDown.y - movedUp.y <= 136.001);
   });
 
   it('wylicza dokładną przeskalowaną pozycję JourneyStrip przy puszczeniu palca', () => {

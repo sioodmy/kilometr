@@ -41,11 +41,13 @@ import { useTransferThresholds, useWalkSpeedMps } from '../services/settings';
 import { analyzeConnection } from './connectionInsights';
 import { ConnectionCardMorphPreview, JourneyStrip } from './ConnectionCard';
 import { useRouteCardTransition, type CardTransitionSource } from './RouteCardTransition';
+import { acquirePredictiveBack, isNativePredictiveBackSupported } from '../services/predictiveBack';
 import {
   EDGE_BACK_ZONE_PX,
   MAX_SHARED_STRIP_RETURN_SCROLL_Y,
   computeCloseDurationMs,
   computeDragShellFrame,
+  computePredictiveBackShellFrame,
   computeScaledStripRect,
   shouldDismissFromGesture,
   topLeftScaleTranslation,
@@ -224,7 +226,16 @@ export function RouteDetailsMorphShell({
   const useSharedStrip = useSharedValue(hasTransitStrip ? 1 : 0);
   const isClosingVal = useSharedValue(0);
 
-  // Stan interaktywnego gestu wstecz (lewa krawędź).
+  const nativePredictiveSupported = useMemo(() => isNativePredictiveBackSupported(), []);
+  const [isScreenFocused, setIsScreenFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setIsScreenFocused(true);
+      return () => setIsScreenFocused(false);
+    }, []),
+  );
+
+  // Stan interaktywnego gestu wstecz (lewa krawędź na iOS i Androidzie < 14).
   const edgeEligible = useSharedValue(false);
   const isDragging = useSharedValue(0);
   const touchStartX = useSharedValue(0);
@@ -232,6 +243,14 @@ export function RouteDetailsMorphShell({
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const dragProgress = useSharedValue(0);
+
+  // Stan natywnego Android Predictive Back (API 34+, lewa i prawa krawędź).
+  const predictiveActive = useSharedValue(0);
+  const predictiveProgress = useSharedValue(0);
+  const predictiveDeltaY = useSharedValue(0);
+  const predictiveEdge = useSharedValue(0);
+  const predictiveStartYRef = useRef(0);
+  const predictiveGesturingRef = useRef(false);
 
   // Startowa ramka przy domykaniu z pozycji palca (ciągły lot bez przeskoku).
   const dismissingFromDrag = useSharedValue(0);
@@ -398,6 +417,10 @@ export function RouteDetailsMorphShell({
     dragX.value = 0;
     dragY.value = 0;
     dragProgress.value = 0;
+    predictiveGesturingRef.current = false;
+    predictiveActive.value = 0;
+    predictiveProgress.value = 0;
+    predictiveDeltaY.value = 0;
 
     refreshSourceCardGeometryInFlight();
 
@@ -560,25 +583,122 @@ export function RouteDetailsMorphShell({
     ],
   );
 
-  // Android: gest krawędziowy i przycisk wstecz zwijają ekran z powrotem do karty na liście.
+  // Android 14+ (API 34+): natywny Predictive Back z lewej i prawej krawędzi ekranu.
+  // Gdy nad ekranem otwarty jest arkusz lub ekran traci fokus (/map, /line), callback
+  // jest odpinany, by zdarzenia wróciły do standardowego BackHandlera.
+  const shouldUseNativePredictive =
+    nativePredictiveSupported && isScreenFocused && canInterceptBack;
+  useEffect(() => {
+    if (!shouldUseNativePredictive) return undefined;
+    const release = acquirePredictiveBack({
+      onStart: (event) => {
+        if (closingRef.current || progress.value < 0.85) return;
+        cancelAnimation(predictiveProgress);
+        cancelAnimation(predictiveDeltaY);
+        predictiveGesturingRef.current = true;
+        predictiveStartYRef.current = event.touchY;
+        predictiveEdge.value = event.swipeEdge;
+        predictiveDeltaY.value = 0;
+        predictiveProgress.value = event.progress;
+        predictiveActive.value = 1;
+        useSharedStrip.value = 0;
+      },
+      onProgress: (event) => {
+        if (closingRef.current || progress.value < 0.85) return;
+        if (!predictiveGesturingRef.current) {
+          predictiveGesturingRef.current = true;
+          predictiveStartYRef.current = event.touchY;
+          predictiveActive.value = 1;
+          useSharedStrip.value = 0;
+        }
+        predictiveEdge.value = event.swipeEdge;
+        predictiveDeltaY.value = event.touchY - predictiveStartYRef.current;
+        predictiveProgress.value = event.progress;
+      },
+      onInvoke: () => {
+        if (closingRef.current) {
+          cancelAnimation(progress);
+          finalizeClose();
+          return;
+        }
+        const wasGesturing = predictiveGesturingRef.current && predictiveProgress.value > 0.01;
+        predictiveGesturingRef.current = false;
+        if (wasGesturing) {
+          const frame = computePredictiveBackShellFrame(
+            predictiveProgress.value,
+            predictiveDeltaY.value,
+            predictiveEdge.value,
+            screenWVal.value,
+            screenHVal.value,
+          );
+          predictiveActive.value = 0;
+          predictiveProgress.value = 0;
+          predictiveDeltaY.value = 0;
+          startDismissFromDragOnJS(
+            frame.x,
+            frame.y,
+            frame.width,
+            frame.height,
+            frame.radius,
+            frame.scale,
+          );
+        } else {
+          predictiveActive.value = 0;
+          predictiveProgress.value = 0;
+          predictiveDeltaY.value = 0;
+          requestClose();
+        }
+      },
+      onCancel: () => {
+        predictiveGesturingRef.current = false;
+        predictiveActive.value = 0;
+        predictiveProgress.value = withSpring(0, motion.spring.spatialFast);
+        predictiveDeltaY.value = withSpring(0, motion.spring.spatialFast);
+      },
+    });
+    return () => {
+      release();
+      if (!closingRef.current && predictiveGesturingRef.current) {
+        predictiveGesturingRef.current = false;
+        predictiveActive.value = 0;
+        predictiveProgress.value = withSpring(0, motion.spring.spatialFast);
+        predictiveDeltaY.value = withSpring(0, motion.spring.spatialFast);
+      }
+    };
+  }, [
+    finalizeClose,
+    predictiveActive,
+    predictiveDeltaY,
+    predictiveEdge,
+    predictiveProgress,
+    progress,
+    requestClose,
+    screenHVal,
+    screenWVal,
+    shouldUseNativePredictive,
+    startDismissFromDragOnJS,
+    useSharedStrip,
+  ]);
+
+  // Fallback dla Androida < 14 i Expo Go bez natywnego modułu Predictive Back.
   useFocusEffect(
     useCallback(() => {
-      if (Platform.OS === 'web') return undefined;
+      if (Platform.OS === 'web' || nativePredictiveSupported) return undefined;
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         if (!canInterceptBackRef.current) return false;
         requestClose();
         return true;
       });
       return () => sub.remove();
-    }, [requestClose]),
+    }, [nativePredictiveSupported, requestClose]),
   );
 
-  // Interaktywny gest wstecz z lewej krawędzi (iOS i Android): ręczna aktywacja na wątku UI
+  // Interaktywny gest wstecz z lewej krawędzi (iOS i Android < 14): ręczna aktywacja na wątku UI
   // nie blokuje pionowego scrollowania ani gestów SwipeableLegCard w głębi ekranu.
   const backPanGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(Platform.OS !== 'web')
+        .enabled(Platform.OS !== 'web' && !nativePredictiveSupported)
         .manualActivation(true)
         .onTouchesDown((e, stateManager) => {
           'worklet';
@@ -695,6 +815,7 @@ export function RouteDetailsMorphShell({
       edgeEligible,
       isClosingVal,
       isDragging,
+      nativePredictiveSupported,
       progress,
       screenHVal,
       screenWVal,
@@ -706,6 +827,12 @@ export function RouteDetailsMorphShell({
   );
 
   const scrimStyle = useAnimatedStyle(() => {
+    const pp = predictiveProgress.value;
+    if (predictiveActive.value === 1 || pp > 0.001) {
+      return {
+        opacity: interpolate(pp, [0, 1], [0.56, 0.14], Extrapolation.CLAMP),
+      };
+    }
     const dp = dragProgress.value;
     if (isDragging.value === 1 || dp > 0.001) {
       return {
@@ -720,6 +847,26 @@ export function RouteDetailsMorphShell({
   const shellStyle = useAnimatedStyle(() => {
     const w = screenWVal.value;
     const h = screenHVal.value;
+    const pp = predictiveProgress.value;
+    if (predictiveActive.value === 1 || pp > 0.001) {
+      const frame = computePredictiveBackShellFrame(
+        pp,
+        predictiveDeltaY.value,
+        predictiveEdge.value,
+        w,
+        h,
+      );
+      return {
+        left: frame.x,
+        top: frame.y,
+        width: frame.width,
+        height: frame.height,
+        borderRadius: frame.radius,
+        backgroundColor: surfaceBg,
+        borderWidth: pp > 0.02 ? StyleSheet.hairlineWidth : 0,
+        borderColor: cardBorder,
+      };
+    }
     const dp = dragProgress.value;
     if (isDragging.value === 1 || dp > 0.001) {
       const frame = computeDragShellFrame(dragX.value, dragY.value, dp, w, h);
@@ -771,6 +918,21 @@ export function RouteDetailsMorphShell({
   const detailLayerStyle = useAnimatedStyle(() => {
     const w = screenWVal.value;
     const h = screenHVal.value;
+    const pp = predictiveProgress.value;
+    if (predictiveActive.value === 1 || pp > 0.001) {
+      const frame = computePredictiveBackShellFrame(
+        pp,
+        predictiveDeltaY.value,
+        predictiveEdge.value,
+        w,
+        h,
+      );
+      const offset = topLeftScaleTranslation(w, h, frame.scale);
+      return {
+        opacity: 1,
+        transform: [{ translateX: offset.x }, { translateY: offset.y }, { scale: frame.scale }],
+      };
+    }
     const dp = dragProgress.value;
     if (isDragging.value === 1 || dp > 0.001) {
       const frame = computeDragShellFrame(dragX.value, dragY.value, dp, w, h);
@@ -804,7 +966,12 @@ export function RouteDetailsMorphShell({
 
   // Podgląd klikniętej karty płynnie krzyżuje się z ekranem szczegółów przy p bliskim 0.
   const cardGhostStyle = useAnimatedStyle(() => {
-    if (isDragging.value === 1 || dragProgress.value > 0.001) {
+    if (
+      predictiveActive.value === 1 ||
+      predictiveProgress.value > 0.001 ||
+      isDragging.value === 1 ||
+      dragProgress.value > 0.001
+    ) {
       return { opacity: 0 };
     }
     const p = progress.value;
@@ -831,7 +998,12 @@ export function RouteDetailsMorphShell({
   }));
 
   const headerAnimatedStyle = useAnimatedStyle(() => {
-    if (isDragging.value === 1 || dragProgress.value > 0.001) {
+    if (
+      predictiveActive.value === 1 ||
+      predictiveProgress.value > 0.001 ||
+      isDragging.value === 1 ||
+      dragProgress.value > 0.001
+    ) {
       return { opacity: 1, transform: [{ translateY: 0 }] };
     }
     const p = progress.value;
@@ -842,7 +1014,12 @@ export function RouteDetailsMorphShell({
   });
 
   const belowSummaryAnimatedStyle = useAnimatedStyle(() => {
-    if (isDragging.value === 1 || dragProgress.value > 0.001) {
+    if (
+      predictiveActive.value === 1 ||
+      predictiveProgress.value > 0.001 ||
+      isDragging.value === 1 ||
+      dragProgress.value > 0.001
+    ) {
       return { opacity: 1, transform: [{ translateY: 0 }] };
     }
     const p = progress.value;
