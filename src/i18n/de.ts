@@ -970,7 +970,7 @@ export const de: Strings = {
     today: 'Heute',
     tomorrow: 'Morgen',
     durMin: (n: number) => formatDuration(n),
-    departIn: (n: number) => `in ${n} Min.`,
+    departIn: (n: number) => `in ${formatDuration(n)}`,
     departNow: 'gleich',
     departAgo: (n: number) => `vor ${n} Min.`,
     departJustAgo: 'gerade abgefahren',
