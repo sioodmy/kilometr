@@ -3059,7 +3059,7 @@ export const pl = {
     openTimetableCta: 'Rozkład linii',
     toggleSheetA11y: 'Rozwiń lub zwiń szczegóły',
     filterDelays: 'Opóźnienia',
-    delayZoneSheetTitle: 'Węzeł opóźnień',
+    delayZoneSheetTitle: 'Opóźnienia na odcinku',
     delayAvgNow: (min: number) => `Średnio +${min} min`,
     delayP90: (min: number) => `Szczyt (p90): +${min} min`,
     delayVsTypicalHigher: (min: number) => `+${min} min powyżej normy`,

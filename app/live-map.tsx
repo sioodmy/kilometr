@@ -57,8 +57,7 @@ import { MapActionRail, type MapActionItem } from '../src/components/MapActionRa
 import { SpringPressable } from '../src/components/SpringPressable';
 import { useEscapeKey, useWebLayout } from '../src/theme/layout';
 import type {
-  LiveMapDelayHubItem,
-  LiveMapDelayZoneItem,
+  LiveMapDelaySegmentItem,
   LiveMapDisruptionItem,
   LiveMapSelectedRoute,
   LiveMapStopItem,
@@ -91,9 +90,16 @@ import {
   type LiveMapDisruptionMarker,
 } from '../src/services/liveMapDisruptions';
 import {
-  buildLocalDelayHeatmap,
-  fetchBackendHeatmap,
-  type DelayHeatmapData,
+  buildLiveMapDelayCorridors,
+  corridorGeometryCacheKey,
+  getCachedRoadCorridorGeometry,
+  polylineMidpointLonLat,
+  resolveRoadCorridorGeometry,
+  type LiveMapDelayCorridor,
+} from '../src/services/liveMapDelays';
+import {
+  fetchBackendDelayHubs,
+  type DelayHubSummary,
   type ViewportBbox,
 } from '../src/services/kilometrApi';
 import { liveTracker, type TrackedVehicle } from '../src/services/liveTracker';
@@ -207,7 +213,7 @@ export default function LiveVehiclesMapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showStops, setShowStops] = useState(true);
   const [showDisruptions, setShowDisruptions] = useState(true);
-  const [showDelayHeatmap, setShowDelayHeatmap] = useState(true);
+  const [showDelays, setShowDelays] = useState(true);
   const [followVehicle, setFollowVehicle] = useState(false);
   const [zoomMode, setZoomMode] = useState<'dots' | 'pills'>('pills');
   const [sheetExpanded, setSheetExpanded] = useState(false);
@@ -215,8 +221,13 @@ export default function LiveVehiclesMapScreen() {
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [routeStopFallback, setRouteStopFallback] = useState<LiveMapStopItem | null>(null);
   const [selectedDisruptionId, setSelectedDisruptionId] = useState<string | null>(null);
-  const [selectedDelayHubId, setSelectedDelayHubId] = useState<string | null>(null);
-  const [backendHeatmap, setBackendHeatmap] = useState<DelayHeatmapData | null>(null);
+  const [selectedDelayId, setSelectedDelayId] = useState<string | null>(null);
+  const [backendDelayHubs, setBackendDelayHubs] = useState<{
+    city: string;
+    hubs: DelayHubSummary[];
+    updatedAt: number;
+  } | null>(null);
+  const [roadGeomVersion, setRoadGeomVersion] = useState(0);
   const viewportRef = useRef<ViewportBbox | null>(null);
   const [newsItems, setNewsItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
@@ -318,21 +329,23 @@ export default function LiveVehiclesMapScreen() {
     const clock = setInterval(() => {
       setNowSec(warsawNow().sec);
     }, 15000);
-    const refreshHeatmap = () => {
+    const refreshDelayHubs = () => {
       if (cancelled) return;
-      void fetchBackendHeatmap(cityId, viewportRef.current)
-        .then((data) => {
-          if (!cancelled && data) setBackendHeatmap(data);
+      void fetchBackendDelayHubs(cityId, viewportRef.current)
+        .then((hubs) => {
+          if (!cancelled && hubs) {
+            setBackendDelayHubs({ city: cityId, hubs, updatedAt: Date.now() });
+          }
         })
         .catch(() => {});
     };
-    refreshHeatmap();
-    const heatmapTimer = setInterval(refreshHeatmap, 20000);
+    refreshDelayHubs();
+    const delayHubsTimer = setInterval(refreshDelayHubs, 30000);
     return () => {
       cancelled = true;
       newsController.abort();
       clearInterval(clock);
-      clearInterval(heatmapTimer);
+      clearInterval(delayHubsTimer);
       clearTimeout(liveWaitTimer);
       unsubNews();
       unsub();
@@ -676,22 +689,46 @@ export default function LiveVehiclesMapScreen() {
     );
   }, [city.features.news, gtfsLoaded, newsItems, scheduleCtx?.dayIndex]);
 
-  const mapDisruptionItems = useMemo<LiveMapDisruptionItem[]>(
-    () =>
-      disruptionMarkers.map((d) => ({
+  const mapDisruptionItems = useMemo<LiveMapDisruptionItem[]>(() => {
+    void roadGeomVersion;
+    return disruptionMarkers.map((d) => {
+      let corridorCoords: [number, number][] | undefined;
+      let anchorLat = d.lat;
+      let anchorLon = d.lon;
+      if (d.corridorCoords.length >= 2) {
+        const waypointsLatLon: [number, number][] = d.corridorCoords.map(([lon, lat]) => [lat, lon]);
+        const routed = getCachedRoadCorridorGeometry(waypointsLatLon, d.mode);
+        if (routed && routed.length >= 2) {
+          corridorCoords = routed;
+          const mid = polylineMidpointLonLat(routed);
+          anchorLat = mid.lat;
+          anchorLon = mid.lon;
+        } else if (
+          d.corridorCoords.length === 2 &&
+          distanceMeters(
+            d.corridorCoords[0][1],
+            d.corridorCoords[0][0],
+            d.corridorCoords[1][1],
+            d.corridorCoords[1][0],
+          ) <= 220
+        ) {
+          corridorCoords = d.corridorCoords;
+        }
+      }
+      return {
         id: d.id,
         label: d.shortLabel,
         severity: d.severity,
-        lat: d.lat,
-        lon: d.lon,
-        corridorCoords: d.corridorCoords.length >= 2 ? d.corridorCoords : undefined,
+        lat: anchorLat,
+        lon: anchorLon,
+        corridorCoords,
         stopPoints:
           d.affectedStops.length > 0
             ? d.affectedStops.map((st) => [st.lon, st.lat] as [number, number])
             : undefined,
-      })),
-    [disruptionMarkers],
-  );
+      };
+    });
+  }, [disruptionMarkers, roadGeomVersion]);
 
   const stopsById = useMemo(() => {
     const map = new Map<string, LiveMapStopItem>();
@@ -915,50 +952,115 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers, selectedDisruptionId],
   );
 
-  // Aktywna warstwa opóźnień: świeże dane Data Science z backendu lub bezpieczny lokalny fallback.
-  const activeHeatmap = useMemo<DelayHeatmapData>(() => {
-    if (
-      backendHeatmap &&
-      backendHeatmap.city === cityId &&
-      Date.now() - backendHeatmap.updatedAt < 90_000
-    ) {
-      return backendHeatmap;
+  // Korytarze opóźnień wyznaczone z aktywnych pojazdów i lokalnego GTFS, wzbogacone o normy z backendu.
+  const delayCorridors = useMemo<LiveMapDelayCorridor[]>(() => {
+    if (!gtfsLoaded) return [];
+    const hubs =
+      backendDelayHubs &&
+      backendDelayHubs.city === cityId &&
+      Date.now() - backendDelayHubs.updatedAt < 120_000
+        ? backendDelayHubs.hubs
+        : null;
+    return buildLiveMapDelayCorridors(
+      vehicles,
+      gtfsStore,
+      scheduleCtx?.dayIndex ?? null,
+      cityId,
+      hubs,
+    );
+  }, [backendDelayHubs, cityId, gtfsLoaded, scheduleCtx?.dayIndex, vehicles]);
+
+  // Lista zadań geometrii drogowej/torowej dla opóźnień oraz korytarzy utrudnień.
+  const corridorRoutingTasks = useMemo(() => {
+    const map = new Map<string, { waypoints: [number, number][]; mode: LiveMapDelayCorridor['mode'] }>();
+    if (showDelays) {
+      for (const c of delayCorridors) {
+        if (c.waypoints.length < 2) continue;
+        const key = corridorGeometryCacheKey(c.waypoints, c.mode);
+        if (!map.has(key)) map.set(key, { waypoints: c.waypoints, mode: c.mode });
+      }
     }
-    return buildLocalDelayHeatmap(vehicles, cityId);
-  }, [backendHeatmap, cityId, vehicles]);
+    if (showDisruptions) {
+      for (const d of disruptionMarkers) {
+        if (d.corridorCoords.length < 2) continue;
+        const waypoints: [number, number][] = d.corridorCoords.map(([lon, lat]) => [lat, lon]);
+        const key = corridorGeometryCacheKey(waypoints, d.mode);
+        if (!map.has(key)) map.set(key, { waypoints, mode: d.mode });
+      }
+    }
+    return Array.from(map.entries());
+  }, [delayCorridors, disruptionMarkers, showDelays, showDisruptions]);
 
-  const mapDelayZones = useMemo<LiveMapDelayZoneItem[]>(
-    () =>
-      activeHeatmap.zones.map((z) => ({
-        id: z.id,
-        lat: z.lat,
-        lon: z.lon,
-        intensity: z.intensity,
-        severity: z.severity,
-      })),
-    [activeHeatmap.zones],
+  const corridorRoutingKey = useMemo(
+    () => corridorRoutingTasks.map(([k]) => k).join('|'),
+    [corridorRoutingTasks],
   );
+  const corridorRoutingTasksRef = useRef(corridorRoutingTasks);
+  corridorRoutingTasksRef.current = corridorRoutingTasks;
 
-  const mapDelayHubs = useMemo<LiveMapDelayHubItem[]>(
-    () =>
-      activeHeatmap.hubs
-        .filter((h) => h.severity !== 'normal')
-        .map((h) => ({
-          id: h.id,
-          label: `+${Math.max(1, Math.round(h.avgDelaySec / 60))}m`,
-          severity: h.severity === 'normal' ? 'moderate' : h.severity,
-          lat: h.lat,
-          lon: h.lon,
-        })),
-    [activeHeatmap.hubs],
-  );
+  useEffect(() => {
+    const tasks = corridorRoutingTasksRef.current.filter(
+      ([, t]) => getCachedRoadCorridorGeometry(t.waypoints, t.mode) === undefined,
+    );
+    if (tasks.length === 0) return;
 
-  const selectedDelayHub = useMemo(
+    const ctrl = new AbortController();
+    let idx = 0;
+    let resolvedAny = false;
+    const CONCURRENCY = 4;
+
+    const worker = async () => {
+      while (idx < tasks.length && !ctrl.signal.aborted) {
+        const current = tasks[idx++];
+        if (!current) break;
+        const res = await resolveRoadCorridorGeometry(
+          current[1].waypoints,
+          current[1].mode,
+          ctrl.signal,
+        );
+        if (res && !ctrl.signal.aborted) {
+          resolvedAny = true;
+        }
+      }
+    };
+
+    void Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, () => worker()),
+    ).then(() => {
+      if (resolvedAny && !ctrl.signal.aborted) {
+        setRoadGeomVersion((v) => v + 1);
+      }
+    });
+
+    return () => ctrl.abort();
+  }, [corridorRoutingKey]);
+
+  const mapDelaySegments = useMemo<LiveMapDelaySegmentItem[]>(() => {
+    void roadGeomVersion;
+    const out: LiveMapDelaySegmentItem[] = [];
+    for (const c of delayCorridors) {
+      const routed = getCachedRoadCorridorGeometry(c.waypoints, c.mode);
+      if (!routed || routed.length < 2) continue;
+      const anchor = polylineMidpointLonLat(routed);
+      out.push({
+        id: c.id,
+        label: `+${Math.max(1, Math.round(c.avgDelaySec / 60))}m`,
+        severity: c.severity,
+        coords: routed,
+        anchorLat: anchor.lat,
+        anchorLon: anchor.lon,
+        showBadge: c.severity !== 'moderate' || c.avgDelaySec >= 180,
+      });
+    }
+    return out;
+  }, [delayCorridors, roadGeomVersion]);
+
+  const selectedDelaySegment = useMemo(
     () =>
-      selectedDelayHubId
-        ? (activeHeatmap.hubs.find((h) => h.id === selectedDelayHubId) ?? null)
+      selectedDelayId
+        ? (delayCorridors.find((c) => c.id === selectedDelayId) ?? null)
         : null,
-    [activeHeatmap.hubs, selectedDelayHubId],
+    [delayCorridors, selectedDelayId],
   );
 
   const closeSearch = useCallback(() => {
@@ -982,7 +1084,7 @@ export default function LiveVehiclesMapScreen() {
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
-      setSelectedDelayHubId(null);
+      setSelectedDelayId(null);
       setSelectedId(vehicleId);
       setFollowVehicle(false);
       setSheetExpanded(false);
@@ -1020,7 +1122,7 @@ export default function LiveVehiclesMapScreen() {
       setSelectedId(null);
       setFollowVehicle(false);
       setSelectedDisruptionId(null);
-      setSelectedDelayHubId(null);
+      setSelectedDelayId(null);
       setSelectedStopId(stopId);
       setSheetExpanded(false);
       const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId) ?? routeStop;
@@ -1042,7 +1144,7 @@ export default function LiveVehiclesMapScreen() {
       setFollowVehicle(false);
       setSelectedStopId(null);
       setRouteStopFallback(null);
-      setSelectedDelayHubId(null);
+      setSelectedDelayId(null);
       setSelectedDisruptionId(disruptionId);
       setSheetExpanded(false);
       const found = disruptionMarkers.find((d) => d.id === disruptionId);
@@ -1053,22 +1155,22 @@ export default function LiveVehiclesMapScreen() {
     [disruptionMarkers],
   );
 
-  const handleSelectDelayHub = useCallback(
-    (hubId: string) => {
+  const handleSelectDelay = useCallback(
+    (delayId: string) => {
       void Haptics.selectionAsync().catch(() => {});
       setSelectedId(null);
       setFollowVehicle(false);
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
-      setSelectedDelayHubId(hubId);
+      setSelectedDelayId(delayId);
       setSheetExpanded(false);
-      const found = activeHeatmap.hubs.find((h) => h.id === hubId);
+      const found = mapDelaySegments.find((seg) => seg.id === delayId);
       if (found) {
-        mapRef.current?.centerOn(found.lat, found.lon, 14.6);
+        mapRef.current?.centerOn(found.anchorLat, found.anchorLon, 14.6);
       }
     },
-    [activeHeatmap.hubs],
+    [mapDelaySegments],
   );
 
   const handleViewportChange = useCallback(
@@ -1085,7 +1187,7 @@ export default function LiveVehiclesMapScreen() {
     setSelectedStopId(null);
     setRouteStopFallback(null);
     setSelectedDisruptionId(null);
-    setSelectedDelayHubId(null);
+    setSelectedDelayId(null);
     setSheetExpanded(false);
     setSheetHeight(0);
   }, []);
@@ -1126,11 +1228,11 @@ export default function LiveVehiclesMapScreen() {
     });
   }, []);
 
-  const handleToggleDelayHeatmap = useCallback(() => {
+  const handleToggleDelays = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
-    setShowDelayHeatmap((prev) => {
+    setShowDelays((prev) => {
       const next = !prev;
-      if (!next) setSelectedDelayHubId(null);
+      if (!next) setSelectedDelayId(null);
       return next;
     });
   }, []);
@@ -1218,7 +1320,7 @@ export default function LiveVehiclesMapScreen() {
   const liveState = liveTracker.getLiveState();
   const isInitialLoading = vehicles.length === 0 && liveState === 'unknown' && !liveWaitExpired;
   const hasSheet = Boolean(
-    (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelayHub,
+    (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelaySegment,
   );
   useEscapeKey(hasSheet && !searchOpen, handleClearSelection);
   const hasSheetRef = useRef(hasSheet);
@@ -1343,15 +1445,14 @@ export default function LiveVehiclesMapScreen() {
           vehicles={mapItems}
           stops={mapStops}
           disruptions={mapDisruptionItems}
-          delayZones={mapDelayZones}
-          delayHubs={mapDelayHubs}
+          delaySegments={mapDelaySegments}
           selectedId={selectedId}
           selectedStopId={selectedStopId}
           selectedRoute={selectedRoute}
           selectedDisruptionId={selectedDisruptionId}
-          selectedDelayHubId={selectedDelayHubId}
+          selectedDelayId={selectedDelayId}
           showDisruptions={showDisruptions}
-          showDelayHeatmap={showDelayHeatmap}
+          showDelays={showDelays}
           showStops={showStops}
           userLat={userLoc?.lat ?? null}
           userLon={userLoc?.lon ?? null}
@@ -1362,7 +1463,7 @@ export default function LiveVehiclesMapScreen() {
           onSelectVehicle={handleSelectVehicle}
           onSelectStop={handleSelectStop}
           onSelectDisruption={handleSelectDisruption}
-          onSelectDelayHub={handleSelectDelayHub}
+          onSelectDelay={handleSelectDelay}
           onClearSelection={handleClearSelection}
           onUserDrag={handleUserDrag}
           onZoomModeChange={setZoomMode}
@@ -1583,24 +1684,20 @@ export default function LiveVehiclesMapScreen() {
               </SpringPressable>
             )}
 
-            {mapDelayZones.length > 0 && (
+            {mapDelaySegments.length > 0 && (
               <SpringPressable
-                onPress={handleToggleDelayHeatmap}
+                onPress={handleToggleDelays}
                 accessibilityRole="button"
-                accessibilityState={{ selected: showDelayHeatmap }}
-                style={[styles.filterChip, showDelayHeatmap && styles.delayChipActive]}
+                accessibilityState={{ selected: showDelays }}
+                style={[styles.filterChip, showDelays && styles.delayChipActive]}
                 scaleDelta={0.03}
               >
                 <Clock3
                   size={15}
-                  color={showDelayHeatmap ? scheme.onWarningContainer : scheme.onSurfaceVariant}
+                  color={showDelays ? scheme.onWarningContainer : scheme.onSurfaceVariant}
                 />
-                <Text
-                  style={[styles.filterText, showDelayHeatmap && styles.delayChipTextActive]}
-                >
-                  {mapDelayHubs.length > 0
-                    ? `${s.liveMap.filterDelays} (${mapDelayHubs.length})`
-                    : s.liveMap.filterDelays}
+                <Text style={[styles.filterText, showDelays && styles.delayChipTextActive]}>
+                  {`${s.liveMap.filterDelays} (${mapDelaySegments.length})`}
                 </Text>
               </SpringPressable>
             )}
@@ -1870,10 +1967,10 @@ export default function LiveVehiclesMapScreen() {
         </Animated.View>
       )}
 
-      {/* Dolna karta wybranego węzła opóźnień (heatmapa M3 Expressive) */}
-      {selectedDelayHub && (
+      {/* Dolna karta wybranego odcinka opóźnień naniesionego na drogę/torowisko */}
+      {selectedDelaySegment && (
         <Animated.View
-          key={`delay-hub-${selectedDelayHub.id}`}
+          key={`delay-seg-${selectedDelaySegment.id}`}
           entering={SHEET_ENTERING}
           exiting={SHEET_EXITING}
           layout={SMOOTH_LAYOUT}
@@ -1885,20 +1982,20 @@ export default function LiveVehiclesMapScreen() {
           ]}
         >
           {(() => {
-            const avgMin = Math.max(1, Math.round(selectedDelayHub.avgDelaySec / 60));
-            const p90Min = Math.max(avgMin, Math.round(selectedDelayHub.p90DelaySec / 60));
+            const avgMin = Math.max(1, Math.round(selectedDelaySegment.avgDelaySec / 60));
+            const p90Min = Math.max(avgMin, Math.round(selectedDelaySegment.p90DelaySec / 60));
             const deltaMin =
-              selectedDelayHub.deltaVsTypicalSec != null
-                ? Math.round(selectedDelayHub.deltaVsTypicalSec / 60)
+              selectedDelaySegment.deltaVsTypicalSec != null
+                ? Math.round(selectedDelaySegment.deltaVsTypicalSec / 60)
                 : null;
-            const isSevere = selectedDelayHub.severity === 'severe';
+            const isSevere = selectedDelaySegment.severity === 'severe';
             const tone = isSevere
               ? { bg: scheme.errorContainer, fg: scheme.onErrorContainer }
               : { bg: scheme.warningContainer, fg: scheme.onWarningContainer };
             const sevLabel =
-              selectedDelayHub.severity === 'severe'
+              selectedDelaySegment.severity === 'severe'
                 ? s.liveMap.delaySeveritySevere
-                : selectedDelayHub.severity === 'heavy'
+                : selectedDelaySegment.severity === 'heavy'
                   ? s.liveMap.delaySeverityHeavy
                   : s.liveMap.delaySeverityModerate;
             return (
@@ -1918,7 +2015,7 @@ export default function LiveVehiclesMapScreen() {
                       <Text style={styles.metaMuted}>{s.liveMap.delayZoneSheetTitle}</Text>
                     </View>
                     <Text style={styles.sheetTitle} numberOfLines={2}>
-                      {selectedDelayHub.name}
+                      {selectedDelaySegment.title}
                     </Text>
                   </View>
                   <SpringPressable
@@ -1944,8 +2041,8 @@ export default function LiveVehiclesMapScreen() {
                   <View style={styles.delayMetricCardNeutral}>
                     <Text style={styles.delayMetricNeutralTitle} numberOfLines={1}>
                       {s.liveMap.delayVehiclesAffected(
-                        selectedDelayHub.delayedCount,
-                        selectedDelayHub.vehicleCount,
+                        selectedDelaySegment.delayedCount,
+                        selectedDelaySegment.vehicleCount,
                       )}
                     </Text>
                     {deltaMin != null && Math.abs(deltaMin) >= 1 ? (
@@ -1964,7 +2061,7 @@ export default function LiveVehiclesMapScreen() {
                   </View>
                 </View>
 
-                {selectedDelayHub.topLines.length > 0 && (
+                {selectedDelaySegment.topLines.length > 0 && (
                   <View style={styles.delayLinesSection}>
                     <Text style={styles.metaMuted}>{s.liveMap.delayAffectedLines}</Text>
                     <ScrollView
@@ -1973,14 +2070,14 @@ export default function LiveVehiclesMapScreen() {
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.disruptionLinesRow}
                     >
-                      {selectedDelayHub.topLines.map((line) => (
+                      {selectedDelaySegment.topLines.map((line) => (
                         <SpringPressable
                           key={line}
                           onPress={() => {
                             void Haptics.selectionAsync().catch(() => {});
                             setFilter('all');
                             setLineFilter(line);
-                            setSelectedDelayHubId(null);
+                            setSelectedDelayId(null);
                           }}
                           accessibilityRole="button"
                           accessibilityLabel={line}

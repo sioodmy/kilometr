@@ -2,8 +2,8 @@ import '../scripts/stub-expo.cjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildLocalDelayHeatmap,
   fetchBackendAnomalies,
+  fetchBackendDelayHubs,
   fetchBackendRouteInsights,
   fetchBackendVehicles,
   isKilometrApiAvailable,
@@ -12,7 +12,6 @@ import {
 } from '../src/services/kilometrApi';
 import { buildRoutingSnapshot } from '../src/services/routing/reliability';
 import { LocalGtfsStore, type DayIndex } from '../src/services/routing/store';
-import type { TrackedVehicle } from '../src/services/liveTracker';
 
 test('fetchBackendVehicles filtruje po bbox i konwertuje pojazdy miejskie oraz kolej', async () => {
   resetKilometrApiCircuit();
@@ -103,47 +102,45 @@ test('circuit breaker otwiera obwod po 3 awariach i chroni przed kolejnymi timeo
   }
 });
 
-test('buildLocalDelayHeatmap wylicza strefy i wezly bez backendu', () => {
-  const now = Date.now();
-  const vehicles: TrackedVehicle[] = [
-    {
-      vehicleId: '4-1',
-      line: '4',
-      type: 'tram',
-      lat: 51.111,
-      lon: 17.061,
-      delaySec: 420,
-      updatedAt: now,
-      currentStopName: 'Rondo Reagana',
-    },
-    {
-      vehicleId: '10-2',
-      line: '10',
-      type: 'tram',
-      lat: 51.1111,
-      lon: 17.0612,
-      delaySec: 480,
-      updatedAt: now,
-      currentStopName: 'Rondo Reagana',
-    },
-    {
-      vehicleId: 'D-3',
-      line: 'D',
-      type: 'bus',
-      lat: 51.18,
-      lon: 17.18,
-      delaySec: 20,
-      updatedAt: now,
-      currentStopName: 'Psie Pole',
-    },
-  ];
-  const hm = buildLocalDelayHeatmap(vehicles, 'wroclaw');
-  assert.equal(hm.source, 'local');
-  assert.equal(hm.zones.length, 1);
-  assert.equal(hm.zones[0].severity, 'severe');
-  assert.equal(hm.hubs.length, 1);
-  assert.equal(hm.hubs[0].name, 'Rondo Reagana');
-  assert.equal(hm.summary.delayedVehicles, 2);
+test('fetchBackendDelayHubs pobiera normy wezlow bez stref heatmapy', async () => {
+  resetKilometrApiCircuit();
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          city: 'wroclaw',
+          updated_at: Date.now(),
+          hubs: [
+            {
+              id: 'hub:rondo',
+              name: 'Rondo Reagana',
+              lat: 51.111,
+              lon: 17.061,
+              avg_delay_sec: 420,
+              p90_delay_sec: 540,
+              max_delay_sec: 600,
+              vehicle_count: 3,
+              delayed_count: 2,
+              severity: 'severe',
+              top_lines: ['4', '10'],
+              typical_delay_sec: 120,
+              delta_vs_typical_sec: 300,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const hubs = await fetchBackendDelayHubs('wroclaw', null, undefined, 'https://api.kilometr.app');
+    assert.ok(hubs);
+    assert.equal(hubs.length, 1);
+    assert.equal(hubs[0].name, 'Rondo Reagana');
+    assert.equal(hubs[0].typicalDelaySec, 120);
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetKilometrApiCircuit();
+  }
 });
 
 test('buildRoutingSnapshot uzywa estymacji Data Science z backendu dla tramwajow bez GPS', () => {
