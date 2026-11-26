@@ -48,6 +48,8 @@ import {
   type CardEnterMode,
   type ReorderAnimationToken,
 } from '../../src/components/ConnectionListItem';
+import { useRouteCardTransition } from '../../src/components/RouteCardTransition';
+import { normalizeConnectionId } from '../../src/services/routing/connectionIdentity';
 import {
   EARLIER_PULL_EDGE_MAX,
   EARLIER_PULL_LOADING,
@@ -1563,16 +1565,71 @@ export default function RoutesScreen() {
   };
   const earlierDisabled = loading || loadingMore || loadingEarlier || noMoreEarlier;
 
+  const cardTransition = useRouteCardTransition();
+  const openingRouteRef = useRef(false);
+  const openingUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (openingUnlockTimerRef.current !== null) {
+        clearTimeout(openingUnlockTimerRef.current);
+      }
+    },
+    [],
+  );
+  useFocusEffect(
+    useCallback(() => {
+      openingRouteRef.current = false;
+    }, []),
+  );
+
   const openConnection = useCallback(
     (item: Connection) => {
+      if (openingRouteRef.current) return;
+      openingRouteRef.current = true;
+      if (openingUnlockTimerRef.current !== null) {
+        clearTimeout(openingUnlockTimerRef.current);
+      }
+      openingUnlockTimerRef.current = setTimeout(() => {
+        openingRouteRef.current = false;
+        openingUnlockTimerRef.current = null;
+      }, 360);
+
       rememberPlannedConnection(item);
       closePreview();
-      router.push({
-        pathname: '/routes/[id]',
-        params: { id: item.id },
+
+      if (reduceMotion || webLayout.isMedium || !cardTransition) {
+        router.push({
+          pathname: '/routes/[id]',
+          params: { id: item.id },
+        });
+        return;
+      }
+
+      void cardTransition.measureCard(item.id).then((measured) => {
+        if (!measured) {
+          router.push({
+            pathname: '/routes/[id]',
+            params: { id: item.id },
+          });
+          return;
+        }
+        cardTransition.prepareTransition({
+          connectionId: item.id,
+          normalizedId: normalizeConnectionId(item.id),
+          connection: item,
+          cardRect: measured.cardRect,
+          stripRect: measured.stripRect,
+          variant: measured.variant,
+          dimmed: measured.dimmed,
+          capturedAt: Date.now(),
+        });
+        router.push({
+          pathname: '/routes/[id]',
+          params: { id: item.id, morph: '1' },
+        });
       });
     },
-    [closePreview, router],
+    [cardTransition, closePreview, reduceMotion, router, webLayout.isMedium],
   );
 
   const peek = useMemo<ConnectionPeekHandlers>(

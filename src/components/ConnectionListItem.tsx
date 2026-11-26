@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
@@ -11,6 +11,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ConnectionCard } from './ConnectionCard';
 import type { ConnectionPeekHandlers } from './ConnectionPeek';
+import { useRouteCardTransition } from './RouteCardTransition';
+import { normalizeConnectionId } from '../services/routing/connectionIdentity';
 import { motion } from '../theme/motion';
 import type { Connection } from '../types/models';
 
@@ -102,13 +104,20 @@ export const ConnectionListItem = memo(function ConnectionListItem({
     swapScale.value = withDelay(170, withSpring(1, motion.spring.effectsFast));
   }, [reduceMotion, reorder, reorderOffsetY, swapScale]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: enterOpacity.value,
-    transform: [
-      { translateY: enterOffsetY.value + reorderOffsetY.value },
-      { scale: swapScale.value },
-    ],
-  }));
+  const transition = useRouteCardTransition();
+  const normalizedId = useMemo(() => normalizeConnectionId(item.id), [item.id]);
+  const hiddenCardId = transition?.hiddenCardId;
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const isHiddenForMorph = hiddenCardId ? hiddenCardId.value === normalizedId : false;
+    return {
+      opacity: isHiddenForMorph ? 0 : enterOpacity.value,
+      transform: [
+        { translateY: enterOffsetY.value + reorderOffsetY.value },
+        { scale: swapScale.value },
+      ],
+    };
+  });
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
