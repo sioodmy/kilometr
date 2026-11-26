@@ -102,6 +102,7 @@ export function RouteCardTransitionProvider({ children }: { children: ReactNode 
   const containerRef = useRef<View>(null);
   const containerOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const containerMeasuredRef = useRef(false);
   const cardsRef = useRef<Map<string, RegisteredCardHandle>>(new Map());
   const pendingRef = useRef<CardTransitionSource | null>(null);
   const hiddenCardId = useSharedValue('');
@@ -115,6 +116,7 @@ export function RouteCardTransitionProvider({ children }: { children: ReactNode 
     if (measured) {
       containerOriginRef.current = { x: measured.x, y: measured.y };
       containerSizeRef.current = { width: measured.width, height: measured.height };
+      containerMeasuredRef.current = measured.width > 0 && measured.height > 0;
       return {
         origin: containerOriginRef.current,
         width: measured.width,
@@ -137,6 +139,7 @@ export function RouteCardTransitionProvider({ children }: { children: ReactNode 
       if (measured) {
         containerOriginRef.current = { x: measured.x, y: measured.y };
         containerSizeRef.current = { width: measured.width, height: measured.height };
+        containerMeasuredRef.current = measured.width > 0 && measured.height > 0;
       }
     });
   }, []);
@@ -156,8 +159,18 @@ export function RouteCardTransitionProvider({ children }: { children: ReactNode 
       const key = normalizeConnectionId(connectionId);
       const handle = cardsRef.current.get(key);
       if (!handle) return null;
+      const cachedContainer =
+        containerMeasuredRef.current &&
+        containerSizeRef.current.width > 0 &&
+        containerSizeRef.current.height > 0
+          ? {
+              origin: containerOriginRef.current,
+              width: containerSizeRef.current.width,
+              height: containerSizeRef.current.height,
+            }
+          : null;
       const [container, rawCardRect] = await Promise.all([
-        syncContainerOrigin(),
+        cachedContainer ? Promise.resolve(cachedContainer) : syncContainerOrigin(),
         measureWindowAsync(handle.viewRef.current),
       ]);
       if (!rawCardRect) return null;

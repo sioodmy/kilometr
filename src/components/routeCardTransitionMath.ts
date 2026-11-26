@@ -209,3 +209,24 @@ export function computeCloseDurationMs(currentProgress: number, baseDurationMs =
   const clamped = Math.max(0.15, Math.min(1, currentProgress));
   return Math.round(Math.max(115, baseDurationMs * (0.45 + 0.55 * clamped)));
 }
+
+/**
+ * Zamienia docelową ramkę powłoki (lewy górny róg i przeskalowane wymiary)
+ * na czyste transformacje GPU (`translateX`, `translateY`, `scale`) względem pełnego ekranu,
+ * aby gest wstecz i Predictive Back nie wywoływały przeliczania layoutu Yoga w każdej klatce.
+ */
+export function computeGpuShellTransform(
+  frame: Pick<DragShellFrame, 'x' | 'y' | 'radius' | 'scale'>,
+  screenW: number,
+  screenH: number,
+): { translateX: number; translateY: number; scale: number; borderRadius: number } {
+  'worklet';
+  const scale = frame.scale;
+  const anchorOffset = topLeftScaleTranslation(screenW, screenH, scale);
+  return {
+    translateX: frame.x + anchorOffset.x,
+    translateY: frame.y + anchorOffset.y,
+    scale,
+    borderRadius: scale > 0.01 ? frame.radius / scale : frame.radius,
+  };
+}

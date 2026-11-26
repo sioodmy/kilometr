@@ -20,12 +20,12 @@ import {
   type OfflineMapState,
 } from '../services/offlineMap';
 
-export function OfflineMapCard() {
+export function OfflineMapCard({ deferLoad = false }: { deferLoad?: boolean } = {}) {
   if (Platform.OS === 'web') return null;
-  return <OfflineMapCardNative />;
+  return <OfflineMapCardNative deferLoad={deferLoad} />;
 }
 
-function OfflineMapCardNative() {
+function OfflineMapCardNative({ deferLoad }: { deferLoad: boolean }) {
   const s = useStrings();
   const { cityId, city } = useActiveCity();
   const cityName = s.city.name(cityId);
@@ -50,11 +50,12 @@ function OfflineMapCardNative() {
   }, [cityId]);
 
   useEffect(() => {
+    if (deferLoad) return;
     setState(null);
     setBusy(false);
     setProgress(0);
     void refresh();
-  }, [refresh]);
+  }, [deferLoad, refresh]);
 
   const handleDownload = useCallback(async () => {
     if (busy) return;

@@ -27,6 +27,7 @@ import {
   type ArticleBlock,
   type DisruptionAlert,
 } from '../src/services/mpkNews';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 
 export default function ArticleScreen() {
   const s = useStrings();
@@ -81,8 +82,10 @@ export default function ArticleScreen() {
   const [empty, setEmpty] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const reduceMotion = useReducedMotion();
+  const transitionSettled = useScreenTransitionSettled();
 
   useEffect(() => {
+    if (!transitionSettled) return;
     let live = true;
     void findNewsItemForDetail(itemId, safeUrl || url).then((found) => {
       if (live && found?.disruption) {
@@ -92,7 +95,7 @@ export default function ArticleScreen() {
     return () => {
       live = false;
     };
-  }, [itemId, safeUrl, url]);
+  }, [itemId, safeUrl, transitionSettled, url]);
 
   const shouldFetchArticle = Boolean(safeUrl && (!disruption || showOriginal));
 
@@ -106,6 +109,7 @@ export default function ArticleScreen() {
       setLoading(false);
       return;
     }
+    if (!transitionSettled) return;
     if (blocks.length > 0 && retryCount === 0) {
       setLoading(false);
       return;
@@ -129,7 +133,7 @@ export default function ArticleScreen() {
     return () => {
       live = false;
     };
-  }, [safeUrl, shouldFetchArticle, retryCount]);
+  }, [safeUrl, shouldFetchArticle, retryCount, transitionSettled]);
 
   const openBrowser = useCallback(() => {
     if (!safeUrl) return;

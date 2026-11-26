@@ -1,6 +1,6 @@
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ExternalLink } from '../src/components/icons';
 import { useStrings } from '../src/i18n';
 import { PRIVACY_CONTACT_URL, PRIVACY_SECTIONS } from '../src/privacy';
@@ -10,6 +10,7 @@ import { scheme, shape, type } from '../src/theme/tokens';
 export default function PrivacyScreen() {
   const s = useStrings();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
   const privacy = s.landing.privacy;
 
@@ -22,7 +23,7 @@ export default function PrivacyScreen() {
   };
 
   return (
-    <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
+    <View style={[st.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={[st.header, webLayout.isMedium && st.mediumCentered]}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))}
@@ -58,7 +59,7 @@ export default function PrivacyScreen() {
           <ExternalLink size={20} color={scheme.onSecondaryContainer} />
         </Pressable>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

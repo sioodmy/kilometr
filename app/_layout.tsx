@@ -22,6 +22,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
+import { enableFreeze } from 'react-native-screens';
 import { scheme } from '../src/theme/tokens';
 import { useWebLayout } from '../src/theme/layout';
 import { DesktopShell } from '../src/components/DesktopShell';
@@ -96,6 +97,9 @@ function readWebSafeAreaMetrics(): Metrics | undefined {
 }
 
 LogBox.ignoreAllLogs(true);
+if (Platform.OS !== 'web') {
+  enableFreeze(true);
+}
 
 function navigateFromNotification(res: TripResponse) {
   if (res.stop) {
@@ -201,13 +205,19 @@ export default function RootLayout() {
     [disableScreenAnim, themeSetting, webLayout.isMedium],
   );
 
+  const routesScreenOptions = useMemo(
+    () => ({
+      fullScreenGestureEnabled: false,
+    }),
+    [],
+  );
+
   const mapScreenOptions = useMemo(
     () => ({
       gestureEnabled: !webLayout.isMedium,
       gestureDirection: 'horizontal' as const,
       // Na mapie gest z lewej krawędzi wraca wstecz bez przejmowania przesuwania mapy.
       fullScreenGestureEnabled: false,
-      gestureResponseDistance: { start: 32 },
       animation: (disableScreenAnim ? 'none' : 'fade_from_bottom') as 'none' | 'fade_from_bottom',
       animationDuration: 200,
       animationMatchesGesture: false,
@@ -324,7 +334,7 @@ export default function RootLayout() {
               <Stack screenLayout={renderScreenLayout} screenOptions={stackScreenOptions}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-                <Stack.Screen name="routes" />
+                <Stack.Screen name="routes" options={routesScreenOptions} />
                 <Stack.Screen name="line" />
                 <Stack.Screen name="line-departures" />
                 {/* Mapa ma własny gest przesuwania: cofanie działa z lewej krawędzi bez zjadania mapy. */}

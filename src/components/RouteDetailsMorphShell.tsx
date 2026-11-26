@@ -47,6 +47,7 @@ import {
   MAX_SHARED_STRIP_RETURN_SCROLL_Y,
   computeCloseDurationMs,
   computeDragShellFrame,
+  computeGpuShellTransform,
   computePredictiveBackShellFrame,
   computeScaledStripRect,
   shouldDismissFromGesture,
@@ -81,15 +82,16 @@ interface RouteDetailsMorphShellProps {
 }
 
 const OPEN_SPRING = {
-  damping: 29,
-  stiffness: 360,
-  mass: 0.82,
+  damping: 30,
+  stiffness: 420,
+  mass: 0.78,
   overshootClamping: true,
+  energyThreshold: 0.0005,
   reduceMotion: ReduceMotion.System,
 };
 
 const CLOSE_EASING = Easing.bezier(0.2, 0, 0, 1);
-const OPEN_SETTLE_FALLBACK_MS = 420;
+const OPEN_SETTLE_FALLBACK_MS = 300;
 const CLOSE_COMPLETE_FALLBACK_MS = 340;
 const STRIP_MEASURE_FALLBACK_MS = 32;
 
@@ -592,7 +594,7 @@ export function RouteDetailsMorphShell({
     if (!shouldUseNativePredictive) return undefined;
     const release = acquirePredictiveBack({
       onStart: (event) => {
-        if (closingRef.current || progress.value < 0.85) return;
+        if (closingRef.current || progress.value < 0.7) return;
         cancelAnimation(predictiveProgress);
         cancelAnimation(predictiveDeltaY);
         predictiveGesturingRef.current = true;
@@ -604,7 +606,7 @@ export function RouteDetailsMorphShell({
         useSharedStrip.value = 0;
       },
       onProgress: (event) => {
-        if (closingRef.current || progress.value < 0.85) return;
+        if (closingRef.current || progress.value < 0.7) return;
         if (!predictiveGesturingRef.current) {
           predictiveGesturingRef.current = true;
           predictiveStartYRef.current = event.touchY;
@@ -856,29 +858,37 @@ export function RouteDetailsMorphShell({
         w,
         h,
       );
+      const gpu = computeGpuShellTransform(frame, w, h);
       return {
-        left: frame.x,
-        top: frame.y,
-        width: frame.width,
-        height: frame.height,
-        borderRadius: frame.radius,
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        borderRadius: gpu.borderRadius,
         backgroundColor: surfaceBg,
-        borderWidth: pp > 0.02 ? StyleSheet.hairlineWidth : 0,
-        borderColor: cardBorder,
+        transform: [
+          { translateX: gpu.translateX },
+          { translateY: gpu.translateY },
+          { scale: gpu.scale },
+        ],
       };
     }
     const dp = dragProgress.value;
     if (isDragging.value === 1 || dp > 0.001) {
       const frame = computeDragShellFrame(dragX.value, dragY.value, dp, w, h);
+      const gpu = computeGpuShellTransform(frame, w, h);
       return {
-        left: frame.x,
-        top: frame.y,
-        width: frame.width,
-        height: frame.height,
-        borderRadius: frame.radius,
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        borderRadius: gpu.borderRadius,
         backgroundColor: surfaceBg,
-        borderWidth: dp > 0.02 ? StyleSheet.hairlineWidth : 0,
-        borderColor: cardBorder,
+        transform: [
+          { translateX: gpu.translateX },
+          { translateY: gpu.translateY },
+          { scale: gpu.scale },
+        ],
       };
     }
 
@@ -899,23 +909,18 @@ export function RouteDetailsMorphShell({
       : interpolate(p, [0, 0.84, 1], [shape.extraLarge, 10, 0], Extrapolation.CLAMP);
 
     return {
-      left,
-      top,
+      left: 0,
+      top: 0,
       width,
       height,
       borderRadius,
       backgroundColor: interpolateColor(p, [0, 0.52, 1], [cardBg, surfaceBg, surfaceBg]),
-      borderWidth: p < 0.995 || fromDrag ? cardBorderWidth : 0,
-      borderColor: interpolateColor(
-        p,
-        [0, 0.55, 1],
-        [cardBorder, 'rgba(0,0,0,0)', 'rgba(0,0,0,0)'],
-      ),
+      transform: [{ translateX: left }, { translateY: top }],
     };
   });
 
-  // Stały rozmiar ekranu szczegółów w środku: zero przeliczania Yoga layoutu w trakcie animacji.
-  const detailLayerStyle = useAnimatedStyle(() => {
+  // Obramowanie karty mieszka na osobnej nakładce z animowanym opacity, aby Yoga nie przeliczała borderWidth.
+  const shellBorderOverlayStyle = useAnimatedStyle(() => {
     const w = screenWVal.value;
     const h = screenHVal.value;
     const pp = predictiveProgress.value;
@@ -927,19 +932,56 @@ export function RouteDetailsMorphShell({
         w,
         h,
       );
-      const offset = topLeftScaleTranslation(w, h, frame.scale);
+      const gpu = computeGpuShellTransform(frame, w, h);
       return {
-        opacity: 1,
-        transform: [{ translateX: offset.x }, { translateY: offset.y }, { scale: frame.scale }],
+        opacity: pp > 0.02 ? 1 : 0,
+        borderRadius: gpu.borderRadius,
+        borderColor: cardBorder,
       };
     }
     const dp = dragProgress.value;
     if (isDragging.value === 1 || dp > 0.001) {
       const frame = computeDragShellFrame(dragX.value, dragY.value, dp, w, h);
-      const offset = topLeftScaleTranslation(w, h, frame.scale);
+      const gpu = computeGpuShellTransform(frame, w, h);
+      return {
+        opacity: dp > 0.02 ? 1 : 0,
+        borderRadius: gpu.borderRadius,
+        borderColor: cardBorder,
+      };
+    }
+    const p = progress.value;
+    const fromDrag = dismissingFromDrag.value === 1;
+    const endR = fromDrag ? dismissStartR.value : 0;
+    const borderRadius = fromDrag
+      ? interpolate(p, [0, 1], [shape.extraLarge, endR], Extrapolation.CLAMP)
+      : interpolate(p, [0, 0.84, 1], [shape.extraLarge, 10, 0], Extrapolation.CLAMP);
+    return {
+      opacity: fromDrag
+        ? 1
+        : p < 0.995
+          ? interpolate(p, [0, 0.55, 1], [1, 0, 0], Extrapolation.CLAMP)
+          : 0,
+      borderRadius,
+      borderColor: cardBorder,
+    };
+  });
+
+  // Stały rozmiar ekranu szczegółów w środku: zero przeliczania Yoga layoutu w trakcie animacji.
+  const detailLayerStyle = useAnimatedStyle(() => {
+    const w = screenWVal.value;
+    const h = screenHVal.value;
+    const pp = predictiveProgress.value;
+    if (predictiveActive.value === 1 || pp > 0.001) {
       return {
         opacity: 1,
-        transform: [{ translateX: offset.x }, { translateY: offset.y }, { scale: frame.scale }],
+        transform: [],
+      };
+    }
+    const dp = dragProgress.value;
+    if (isDragging.value === 1 || dp > 0.001) {
+      return {
+        opacity: 1,
+        transform: [],
       };
     }
 
@@ -1023,6 +1065,12 @@ export function RouteDetailsMorphShell({
       return { opacity: 1, transform: [{ translateY: 0 }] };
     }
     const p = progress.value;
+    if (isClosingVal.value === 1) {
+      return {
+        opacity: interpolate(p, [0.55, 0.95], [0, 1], Extrapolation.CLAMP),
+        transform: [{ translateY: interpolate(p, [0.55, 1], [12, 0], Extrapolation.CLAMP) }],
+      };
+    }
     return {
       opacity: interpolate(p, [0.28, 0.86], [0, 1], Extrapolation.CLAMP),
       transform: [{ translateY: interpolate(p, [0.28, 1], [16, 0], Extrapolation.CLAMP) }],
@@ -1112,6 +1160,15 @@ export function RouteDetailsMorphShell({
               stripAnimatedStyle={ghostStripStyle}
             />
           </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              { borderWidth: cardBorderWidth },
+              shellBorderOverlayStyle,
+            ]}
+            collapsable={false}
+          />
         </Animated.View>
 
         {hasTransitStrip && (

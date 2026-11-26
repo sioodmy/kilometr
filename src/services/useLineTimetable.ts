@@ -5,7 +5,7 @@ import { loadLineTimetable, type LineTimetableLookupOptions } from './lineTimeta
 export function useLineTimetable(
   routeId: string,
   date: string,
-  options?: LineTimetableLookupOptions,
+  options?: LineTimetableLookupOptions & { defer?: boolean },
 ) {
   const { cityId } = useActiveCity();
   const [data, setData] = useState<Awaited<ReturnType<typeof loadLineTimetable>> | null>(null);
@@ -17,8 +17,10 @@ export function useLineTimetable(
   const line = options?.line;
   const mode = options?.mode;
   const dbTarget = options?.dbTarget;
+  const defer = Boolean(options?.defer);
 
   useEffect(() => {
+    if (defer) return;
     let cancelled = false;
     setLoading(true);
     setError(false);
@@ -36,7 +38,7 @@ export function useLineTimetable(
     return () => {
       cancelled = true;
     };
-  }, [routeId, date, cityId, attempt, tripId, line, mode, dbTarget]);
+  }, [routeId, date, cityId, attempt, tripId, line, mode, dbTarget, defer]);
 
   return { data, loading, error, retry };
 }

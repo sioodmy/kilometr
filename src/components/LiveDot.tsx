@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -16,7 +16,7 @@ import { Sensors } from './icons';
 // M3 Expressive live indicator: ikona sensors z dwoma opóźnionymi pierścieniami
 // i skokiem ikony przy każdym odświeżeniu danych. Animacja reaguje na realny
 // polling pojazdu, a nie na nieskończoną pętlę.
-export function LiveSensors({
+export const LiveSensors = memo(function LiveSensors({
   color,
   size = 16,
   pulse = true,
@@ -114,7 +114,7 @@ export function LiveSensors({
       </Animated.View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

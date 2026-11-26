@@ -13,7 +13,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import Animated, { useReducedMotion } from 'react-native-reanimated';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -227,6 +227,21 @@ export default function RouteDetailsScreen() {
 
   const navTransitionSettled = useScreenTransitionSettled();
   const transitionSettled = activeMorphSource ? morphSettled : navTransitionSettled;
+  const [secondaryReady, setSecondaryReady] = useState(false);
+  useEffect(() => {
+    if (!transitionSettled) {
+      setSecondaryReady(false);
+      return;
+    }
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      if (!cancelled) setSecondaryReady(true);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [transitionSettled]);
 
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
   // Startujemy od bieżącego getLastOk(), żeby uniknąć zbędnego drugiego renderu w klatce otwarcia.
@@ -287,10 +302,10 @@ export default function RouteDetailsScreen() {
 
   const loggedJourneyIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!item || !item.id || loggedJourneyIdRef.current === item.id) return;
+    if (!transitionSettled || !item || !item.id || loggedJourneyIdRef.current === item.id) return;
     loggedJourneyIdRef.current = item.id;
     void recordJourney(item, 'viewed');
-  }, [item]);
+  }, [item, transitionSettled]);
 
   const handleApplyLegSwap = useCallback(
     (nextConnection: Connection) => {
@@ -894,13 +909,20 @@ export default function RouteDetailsScreen() {
                   <Animated.View
                     style={[styles.detailsContent, morphProps?.belowSummaryAnimatedStyle]}
                   >
-                    {legSections}
-                    {transitionSettled && (
-                      <>
-                        <RouteMapCard connection={item} onOpenMap={openRouteMap} />
-                        <RouteReliabilityCard connection={item} />
-                        <ConnectionLineAlerts connection={item} />
-                      </>
+                    {(openTicket || transitionSettled) && (
+                      <Animated.View
+                        entering={!openTicket && !reduceMotion ? FadeIn.duration(130) : undefined}
+                        style={styles.detailsContent}
+                      >
+                        {legSections}
+                        {secondaryReady && (
+                          <>
+                            <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                            <RouteReliabilityCard connection={item} />
+                            <ConnectionLineAlerts connection={item} />
+                          </>
+                        )}
+                      </Animated.View>
                     )}
                   </Animated.View>
                 )}

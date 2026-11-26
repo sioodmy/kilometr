@@ -119,6 +119,7 @@ import {
   resolveLiveVehicleRouteGeometry,
 } from '../src/services/routeGeometry';
 import { gtfsStore } from '../src/services/routing/store';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import type { LegMode } from '../src/types/models';
@@ -190,6 +191,8 @@ export default function LiveVehiclesMapScreen() {
   const webLayout = useWebLayout();
   const { height: windowHeight } = useWindowDimensions();
   const { cityId, city } = useActiveCity();
+  const transitionSettled = useScreenTransitionSettled();
+  const [screenFocused, setScreenFocused] = useState(false);
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const returnTarget: 'home' | 'routes' = returnTo === 'routes' ? 'routes' : 'home';
 
@@ -250,87 +253,96 @@ export default function LiveVehiclesMapScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      liveTracker.acquire(true);
-      let cancelled = false;
-      const newsController = new AbortController();
-      setLiveWaitExpired(false);
-      const liveWaitTimer = setTimeout(() => setLiveWaitExpired(true), 12000);
-
-      void loadLiveMapSchedule()
-        .then((ctx) => {
-          if (cancelled) return;
-          setGtfsLoaded(gtfsStore.isLoaded);
-          if (ctx) {
-            setScheduleCtx(ctx);
-            setNowSec(ctx.nowSec);
-          }
-        })
-        .catch(() => {});
-
-      const unsubNews = subscribeNewsCache(() => {
-        if (cancelled) return;
-        const cached = getCachedNews();
-        if (cached) setNewsItems(cached);
-      });
-
-      if (city.features.news) {
-        void (async () => {
-          const cached = getCachedNews();
-          if (cached && cached.length > 0) {
-            if (!cancelled) setNewsItems(cached);
-          } else {
-            const stored = await loadNewsCache(cityId);
-            if (!cancelled && stored && stored.length > 0) {
-              setNewsItems(stored);
-            }
-          }
-          try {
-            const fresh = await fetchCityNews(newsController.signal);
-            if (!cancelled && !newsController.signal.aborted) {
-              setNewsItems(fresh);
-            }
-          } catch {
-            // Ciche zachowanie istniejącego cache komunikatów przy braku sieci.
-          }
-        })();
-      } else {
-        setNewsItems([]);
-      }
-
-      void liveTracker.ensureFresh();
-      setVehicles(liveTracker.snapshot());
-      const unsub = liveTracker.subscribe(() => {
-        setVehicles(liveTracker.snapshot());
-        setNowSec(warsawNow().sec);
-      });
-      const clock = setInterval(() => {
-        setNowSec(warsawNow().sec);
-      }, 15000);
-      const refreshHeatmap = () => {
-        if (cancelled) return;
-        void fetchBackendHeatmap(cityId, viewportRef.current)
-          .then((data) => {
-            if (!cancelled && data) setBackendHeatmap(data);
-          })
-          .catch(() => {});
-      };
-      refreshHeatmap();
-      const heatmapTimer = setInterval(refreshHeatmap, 20000);
+      setScreenFocused(true);
       return () => {
-        cancelled = true;
-        newsController.abort();
-        clearInterval(clock);
-        clearInterval(heatmapTimer);
-        clearTimeout(liveWaitTimer);
-        unsubNews();
-        unsub();
-        liveTracker.setMapViewport(null);
-        liveTracker.release(true);
+        setScreenFocused(false);
       };
-    }, [city.features.news, cityId]),
+    }, []),
   );
 
   useEffect(() => {
+    if (!transitionSettled || !screenFocused) return;
+    liveTracker.acquire(true);
+    let cancelled = false;
+    const newsController = new AbortController();
+    setLiveWaitExpired(false);
+    const liveWaitTimer = setTimeout(() => setLiveWaitExpired(true), 12000);
+
+    void loadLiveMapSchedule()
+      .then((ctx) => {
+        if (cancelled) return;
+        setGtfsLoaded(gtfsStore.isLoaded);
+        if (ctx) {
+          setScheduleCtx(ctx);
+          setNowSec(ctx.nowSec);
+        }
+      })
+      .catch(() => {});
+
+    const unsubNews = subscribeNewsCache(() => {
+      if (cancelled) return;
+      const cached = getCachedNews();
+      if (cached) setNewsItems(cached);
+    });
+
+    if (city.features.news) {
+      void (async () => {
+        const cached = getCachedNews();
+        if (cached && cached.length > 0) {
+          if (!cancelled) setNewsItems(cached);
+        } else {
+          const stored = await loadNewsCache(cityId);
+          if (!cancelled && stored && stored.length > 0) {
+            setNewsItems(stored);
+          }
+        }
+        try {
+          const fresh = await fetchCityNews(newsController.signal);
+          if (!cancelled && !newsController.signal.aborted) {
+            setNewsItems(fresh);
+          }
+        } catch {
+          // Ciche zachowanie istniejącego cache komunikatów przy braku sieci.
+        }
+      })();
+    } else {
+      setNewsItems([]);
+    }
+
+    void liveTracker.ensureFresh();
+    setVehicles(liveTracker.snapshot());
+    const unsub = liveTracker.subscribe(() => {
+      setVehicles(liveTracker.snapshot());
+      setNowSec(warsawNow().sec);
+    });
+    const clock = setInterval(() => {
+      setNowSec(warsawNow().sec);
+    }, 15000);
+    const refreshHeatmap = () => {
+      if (cancelled) return;
+      void fetchBackendHeatmap(cityId, viewportRef.current)
+        .then((data) => {
+          if (!cancelled && data) setBackendHeatmap(data);
+        })
+        .catch(() => {});
+    };
+    refreshHeatmap();
+    const heatmapTimer = setInterval(refreshHeatmap, 20000);
+    return () => {
+      cancelled = true;
+      newsController.abort();
+      clearInterval(clock);
+      clearInterval(heatmapTimer);
+      clearTimeout(liveWaitTimer);
+      unsubNews();
+      unsub();
+      liveTracker.setMapViewport(null);
+      liveTracker.release(true);
+    };
+  }, [city.features.news, cityId, screenFocused, transitionSettled]);
+
+  useEffect(() => {
+    if (!transitionSettled) return;
     let cancelled = false;
     let release: (() => void) | null = null;
     (async () => {
@@ -346,7 +358,7 @@ export default function LiveVehiclesMapScreen() {
       cancelled = true;
       release?.();
     };
-  }, [cityId]);
+  }, [cityId, transitionSettled]);
 
   const clearOfflineTimer = useCallback(() => {
     if (offlinePillTimer.current) {
@@ -374,6 +386,7 @@ export default function LiveVehiclesMapScreen() {
   useEffect(() => () => clearOfflineTimer(), [clearOfflineTimer]);
 
   useEffect(() => {
+    if (!transitionSettled) return;
     const railCandidates: Array<{
       vehicleId: string;
       line: string;
@@ -405,10 +418,11 @@ export default function LiveVehiclesMapScreen() {
       }
     });
     return () => ctrl.abort();
-  }, [cityId, vehicles]);
+  }, [cityId, transitionSettled, vehicles]);
 
   // Pełna lista pojazdów przed filtrami (do liczników i wyszukiwarki linii).
   const allVehicleItems = useMemo<LiveMapVehicleItem[]>(() => {
+    if (!transitionSettled) return [];
     void railShapeVersion;
     const out: LiveMapVehicleItem[] = [];
     const seen = new Set<string>();
@@ -547,7 +561,7 @@ export default function LiveVehiclesMapScreen() {
       if (!seen.has(key)) motionRef.current.delete(key);
     }
     return out;
-  }, [asyncRouteData, cityId, gtfsLoaded, railShapeVersion, selectedId, vehicles]);
+  }, [asyncRouteData, cityId, gtfsLoaded, railShapeVersion, selectedId, transitionSettled, vehicles]);
 
   const modeCounts = useMemo(() => {
     let tram = 0;
@@ -1323,7 +1337,7 @@ export default function LiveVehiclesMapScreen() {
 
   return (
     <View style={styles.root}>
-      {offlineBase !== undefined && (
+      {transitionSettled && offlineBase !== undefined && (
         <LiveVehiclesMap
           ref={mapRef}
           vehicles={mapItems}

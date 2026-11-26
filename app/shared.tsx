@@ -33,6 +33,7 @@ import { SharedJourneyHero } from '../src/components/SharedJourneyHero';
 import { SharedJourneyMapCard } from '../src/components/SharedJourneyMapCard';
 import { SpringPressable } from '../src/components/SpringPressable';
 import { getCity } from '../src/cities';
+import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import { getLocaleSync, useStrings } from '../src/i18n';
 import type { MapVehicle } from '../src/map/types';
 import { useActiveCity } from '../src/services/cityStore';
@@ -80,6 +81,7 @@ export default function SharedJourneyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const webLayout = useWebLayout();
+  const transitionSettled = useScreenTransitionSettled();
   const { trip: param } = useLocalSearchParams<{ trip?: string }>();
   const encoded = typeof param === 'string' ? param : '';
   const { base, journey, connection, match, sameCity, now, loading, failed, retry } =
@@ -520,15 +522,26 @@ export default function SharedJourneyScreen() {
               </ScrollView>
 
               <View style={styles.desktopRightCol}>
-                <SharedJourneyMapCard
-                  desktopFill
-                  connection={connection}
-                  mapRoute={mapRoute}
-                  vehicle={vehicle}
-                  ended={ended}
-                  loading={loading}
-                  onRetryData={retry}
-                />
+                {transitionSettled ? (
+                  <SharedJourneyMapCard
+                    desktopFill
+                    connection={connection}
+                    mapRoute={mapRoute}
+                    vehicle={vehicle}
+                    ended={ended}
+                    loading={loading}
+                    onRetryData={retry}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      flex: 1,
+                      minHeight: 380,
+                      borderRadius: 22,
+                      backgroundColor: scheme.surfaceContainerLow,
+                    }}
+                  />
+                )}
               </View>
             </View>
           </>
@@ -588,14 +601,24 @@ export default function SharedJourneyScreen() {
               ) : (
                 <>
                   {followCard}
-                  <SharedJourneyMapCard
-                    connection={connection}
-                    mapRoute={mapRoute}
-                    vehicle={vehicle}
-                    ended={ended}
-                    loading={loading}
-                    onRetryData={retry}
-                  />
+                  {transitionSettled ? (
+                    <SharedJourneyMapCard
+                      connection={connection}
+                      mapRoute={mapRoute}
+                      vehicle={vehicle}
+                      ended={ended}
+                      loading={loading}
+                      onRetryData={retry}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        height: 276,
+                        borderRadius: 22,
+                        backgroundColor: scheme.surfaceContainerLow,
+                      }}
+                    />
+                  )}
                   {itineraryBlock}
                 </>
               )}

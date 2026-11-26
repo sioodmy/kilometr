@@ -101,7 +101,9 @@ function patchMainActivityForPredictiveBack(rawSrc) {
     offset: 1,
     anchor: onCreateAnchor,
     newSrc: [
-      '    if (Build.VERSION.SDK_INT in 33..35) {',
+      '    // Na Androidzie 16+ ReactActivity rejestruje własny callback tylko przy targetSdkVersion >= 36.',
+      '    val usesReactActivityCallback = Build.VERSION.SDK_INT >= 36 && applicationInfo.targetSdkVersion >= 36',
+      '    if (Build.VERSION.SDK_INT >= 33 && !usesReactActivityCallback) {',
       '      onBackPressedDispatcher.addCallback(this, predictiveBackBridge)',
       '    }',
     ].join('\n'),
