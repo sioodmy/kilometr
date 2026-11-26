@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   InteractionManager,
@@ -54,6 +54,7 @@ import {
 import { searchTransitLines, type TransitLine } from '../services/lineTimetable';
 import { LineBadge } from './LineBadge';
 import { SpringPressable } from './SpringPressable';
+import { SkeletonBone, SkeletonPulse, useDeferredReveal } from './SkeletonPulse';
 import type { NearbyLiveVehicle } from '../services/onboardDetector';
 
 type Row =
@@ -88,7 +89,7 @@ const LOADING_DELAY_MS = 320;
 const LOADING_MIN_VISIBLE_MS = 280;
 
 /** Arkusz wyszukiwarki M3 z płynnym wejściem bez odbicia, płynnym wyjściem i gestem ściągania. */
-export function SearchSheet({
+export const SearchSheet = memo(function SearchSheet({
   query,
   loading,
   error = false,
@@ -253,10 +254,30 @@ export function SearchSheet({
   }, []);
 
   // Pojedynczy fallback fokusu po zakończeniu przejść nawigacji (bez podwójnego żądania IME).
-  // Na webie pomijamy opóźniony focus: asynchroniczny focus po animacji powoduje na iOS Safari
-  // wypchnięcie całego dokumentu do góry po wysunięciu klawiatury.
+  // Na webie odraczamy focus o 2 klatki z preventScroll, żeby kliknięcie przycisku nie wymuszało synchronicznego layoutu.
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') {
+      let cancelled = false;
+      let frame1: number | null = null;
+      let frame2: number | null = null;
+      frame1 = requestAnimationFrame(() => {
+        frame1 = null;
+        if (cancelled) return;
+        frame2 = requestAnimationFrame(() => {
+          frame2 = null;
+          if (cancelled || closingRef.current || focusedRef.current) return;
+          const el = inputRef.current as unknown as {
+            focus?: (opts?: { preventScroll?: boolean }) => void;
+          } | null;
+          el?.focus?.({ preventScroll: true });
+        });
+      });
+      return () => {
+        cancelled = true;
+        if (frame1 !== null) cancelAnimationFrame(frame1);
+        if (frame2 !== null) cancelAnimationFrame(frame2);
+      };
+    }
     const task = InteractionManager.runAfterInteractions(() => {
       if (!closingRef.current && !focusedRef.current) {
         inputRef.current?.focus();
@@ -515,6 +536,8 @@ export function SearchSheet({
     return () => clearTimeout(timer);
   }, [loading, trimmed, hasRows]);
 
+  const listReady = useDeferredReveal(true, 2);
+  const deferredRows = useDeferredValue(rows);
   const listOpacity = useSharedValue(1);
   const listTranslateY = useSharedValue(0);
   const hasQuery = Boolean(trimmed);
@@ -937,7 +960,7 @@ export function SearchSheet({
                 </SpringPressable>
                 <TextInput
                   ref={inputRef}
-                  autoFocus
+                  autoFocus={Platform.OS !== 'web'}
                   value={query}
                   onChangeText={onQuery}
                   placeholder={placeholder}
@@ -986,31 +1009,52 @@ export function SearchSheet({
             </View>
             <Animated.View style={[styles.headDivider, headDividerStyle]} pointerEvents="none" />
 
-            <Animated.FlatList
-              data={rows}
-              keyExtractor={keyExtractor}
-              style={[styles.flatList, listAnimatedStyle]}
-              onScroll={handleListScroll}
-              scrollEventThrottle={16}
-              overScrollMode="never"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={listContentStyle}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              initialNumToRender={12}
-              maxToRenderPerBatch={10}
-              windowSize={7}
-              ListHeaderComponent={listHeader}
-              renderItem={renderRow}
-              ListFooterComponent={listFooter}
-              ListEmptyComponent={listEmpty}
-            />
+            {listReady ? (
+              <Animated.FlatList
+                data={deferredRows}
+                keyExtractor={keyExtractor}
+                style={[styles.flatList, listAnimatedStyle]}
+                onScroll={handleListScroll}
+                scrollEventThrottle={16}
+                overScrollMode="never"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={listContentStyle}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                initialNumToRender={12}
+                maxToRenderPerBatch={10}
+                windowSize={7}
+                ListHeaderComponent={listHeader}
+                renderItem={renderRow}
+                ListFooterComponent={listFooter}
+                ListEmptyComponent={listEmpty}
+              />
+            ) : (
+              <View style={[styles.flatList, styles.skeletonList]}>
+                <SkeletonPulse style={styles.skeletonPulse}>
+                  {Array.from({ length: 4 }, (_, idx) => (
+                    <View key={idx} style={styles.skeletonRow}>
+                      <SkeletonBone width={44} height={44} radius={shape.full} />
+                      <View style={styles.skeletonTextCol}>
+                        <SkeletonBone width={idx % 2 === 0 ? '62%' : '48%'} height={16} radius={6} />
+                        <SkeletonBone
+                          width={idx % 2 === 0 ? '38%' : '54%'}
+                          height={13}
+                          radius={5}
+                          tone="subtle"
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </SkeletonPulse>
+              </View>
+            )}
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   overlay: {
@@ -1157,6 +1201,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   flatList: { flex: 1 },
+  skeletonList: { paddingHorizontal: 16, paddingTop: 12 },
+  skeletonPulse: { gap: 10 },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: shape.large,
+    backgroundColor: scheme.surfaceContainer,
+  },
+  skeletonTextCol: { flex: 1, gap: 6 },
   list: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 40, gap: 3 },
   listHeader: { gap: 6 },
   syncBanner: {

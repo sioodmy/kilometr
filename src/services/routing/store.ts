@@ -551,7 +551,7 @@ export class LocalGtfsStore {
       if (paths.length > 0) {
         footpaths.set(s1.stop_id, paths);
       }
-      if ((i & 31) === 31) yield;
+      if ((i & 15) === 15) yield;
     }
   }
 
@@ -919,6 +919,10 @@ export class LocalGtfsStore {
     knownStopRefs?: string[],
     genAtStart = this.generation,
   ): Promise<boolean> {
+    const hasTable = await db.getFirstAsync<{ ok: number }>(
+      "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'footpaths' LIMIT 1",
+    );
+    if (this.generation !== genAtStart || !hasTable?.ok) return false;
     const row = await db.getFirstAsync<{ blob: Uint8Array | ArrayBuffer }>(
       'SELECT blob FROM footpaths WHERE id = 1',
     );

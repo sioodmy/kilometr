@@ -3,16 +3,25 @@
 import { kvGet, kvSet } from './storage';
 
 const KEY = 'kilometr.onboardingSeen.v1';
+let seenCache: boolean | null = null;
+
+/** Synchroniczny stan ukończenia onboardingu (null przed pierwszym odczytem z KV). */
+export function hasSeenOnboardingSync(): boolean | null {
+  return seenCache;
+}
 
 export async function hasSeenOnboarding(): Promise<boolean> {
   try {
-    return (await kvGet(KEY)) === '1';
+    const seen = (await kvGet(KEY)) === '1';
+    seenCache = seen;
+    return seen;
   } catch {
     return false;
   }
 }
 
 export async function setOnboardingSeen(): Promise<void> {
+  seenCache = true;
   try {
     await kvSet(KEY, '1');
   } catch {

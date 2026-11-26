@@ -6,7 +6,6 @@ import { scheme } from '../theme/tokens';
 import { MAP_ATTRIBUTION } from '../config';
 import { RAIL_ICON_SPECS } from '../services/railIconPaths';
 import { buildMapStyle, MAP_COLORS } from './mapStyle';
-import { bundledMapLibreHead } from './bundledMapLibre';
 import { LIVE_VEHICLE_MOTION_SCRIPT } from './liveVehicleMotion';
 import type { LegMode } from '../types/models';
 
@@ -166,6 +165,7 @@ export interface LiveVehiclesMapDocumentOptions {
   showDelays?: boolean;
   showStops?: boolean;
   userPos: [number, number] | null;
+  mapLibreHead?: string;
 }
 
 /** Poniżej tego zoomu pigułki pojazdów znikają, bo miasto ma ich wtedy zbyt dużo na płynny WebView. Wybrany pojazd zostaje. */
@@ -1616,6 +1616,10 @@ const runtime = [
   '    post({ t: "rendered" });',
   '  }',
   '  map.on("error", function (e) {',
+  '    if (e && e.error && !styleReady && /WebGL|GPU|context/i.test(String(e.error.message || e.error))) {',
+  '      postError(e.error.message || e.error);',
+  '      return;',
+  '    }',
   '    if (e && e.error && /Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE/.test(String(e.error.message || e.error))) {',
   '      loadFailures++;',
   '      if (loadFailures >= 6 && !tilesDown) { tilesDown = true; post({ t: "tiles", ok: false }); notifyFirstPaint(); }',
@@ -1778,7 +1782,7 @@ export function buildLiveVehiclesMapDocument(opts: LiveVehiclesMapDocumentOption
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">',
     '<meta name="color-scheme" content="dark">',
-    bundledMapLibreHead(),
+    opts.mapLibreHead ?? '',
     '<title>Mapa na żywo</title>',
     '<style>' + css() + '</style>',
     '</head>',

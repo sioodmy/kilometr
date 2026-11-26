@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -67,14 +67,26 @@ import {
 } from '../../src/components/RouteDetailsMorphShell';
 import type { TransitionRect } from '../../src/components/routeCardTransitionMath';
 import { SpringPressable } from '../../src/components/SpringPressable';
-import { ShareConnectionSheet } from '../../src/components/ShareConnectionSheet';
-import { RouteMapCard } from '../../src/components/RouteMapCard';
 import { RouteReliabilityCard } from '../../src/components/RouteReliabilityCard';
 import { MapCardSkeleton, RouteDetailsSkeleton } from '../../src/components/RouteDetailsSkeleton';
 import { RouteTravelDeck } from '../../src/components/RouteTravelDeck';
+import { SheetLoadingFallback } from '../../src/components/SkeletonPulse';
 import { useTransferProtection } from '../../src/components/TransferProtectionProvider';
 import { hasTransfer } from '../../src/services/notifications/transferTypes';
-import { DepartureAlarmSheet } from '../../src/components/DepartureAlarmSheet';
+
+const ShareConnectionSheet = lazy(() =>
+  import('../../src/components/ShareConnectionSheet').then((m) => ({
+    default: m.ShareConnectionSheet,
+  })),
+);
+const RouteMapCard = lazy(() =>
+  import('../../src/components/RouteMapCard').then((m) => ({ default: m.RouteMapCard })),
+);
+const DepartureAlarmSheet = lazy(() =>
+  import('../../src/components/DepartureAlarmSheet').then((m) => ({
+    default: m.DepartureAlarmSheet,
+  })),
+);
 import { getDepartureAlarmSync, useDepartureAlarm } from '../../src/services/departureAlarm';
 import { useTransferThresholds, useWalkSpeedMps } from '../../src/services/settings';
 import { recordJourney } from '../../src/services/userStats';
@@ -1037,11 +1049,13 @@ export default function RouteDetailsScreen() {
                   <View style={{ height: 24 }} />
                 </ScrollView>
                 <View style={styles.desktopMapCol}>
-                  <RouteMapCard
-                    desktopFill
-                    connection={item}
-                    onOpenMap={openRouteMap}
-                  />
+                  <Suspense fallback={<MapCardSkeleton />}>
+                    <RouteMapCard
+                      desktopFill
+                      connection={item}
+                      onOpenMap={openRouteMap}
+                    />
+                  </Suspense>
                 </View>
               </View>
             </>
@@ -1097,7 +1111,9 @@ export default function RouteDetailsScreen() {
                         {legSections}
                         {secondaryReady ? (
                           <>
-                            <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                            <Suspense fallback={<MapCardSkeleton />}>
+                              <RouteMapCard connection={item} onOpenMap={openRouteMap} />
+                            </Suspense>
                             <RouteReliabilityCard connection={item} />
                             <ConnectionLineAlerts connection={item} />
                           </>
@@ -1137,9 +1153,15 @@ export default function RouteDetailsScreen() {
         >
           {(morphProps) => renderScreenBody(morphProps)}
         </RouteDetailsMorphShell>
-        {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
+        {sharing && (
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />
+          </Suspense>
+        )}
         {alarmOpen && (
-          <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
+          </Suspense>
         )}
       </View>
     );
@@ -1148,9 +1170,15 @@ export default function RouteDetailsScreen() {
   return (
     <View style={styles.morphHost}>
       {renderScreenBody()}
-      {sharing && <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />}
+      {sharing && (
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <ShareConnectionSheet connection={item} onClose={() => setSharing(false)} />
+        </Suspense>
+      )}
       {alarmOpen && (
-        <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <DepartureAlarmSheet connection={item} alarm={alarm} onClose={() => setAlarmOpen(false)} />
+        </Suspense>
       )}
     </View>
   );

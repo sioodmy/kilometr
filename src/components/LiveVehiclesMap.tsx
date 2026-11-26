@@ -24,7 +24,11 @@ import {
   type LiveMapStopItem,
   type LiveMapVehicleItem,
 } from '../map/liveVehiclesMapDocument';
-import { mapDocumentSource } from '../map/bundledMapLibre';
+import {
+  getCachedBundledMapLibreHead,
+  loadBundledMapLibreHead,
+  mapDocumentSource,
+} from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import { scheme } from '../theme/tokens';
 
@@ -113,6 +117,23 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     const readyRef = useRef(false);
     const { cityId } = useActiveCity();
     const [attempt, setAttempt] = useState(0);
+    const [mapLibreHead, setMapLibreHead] = useState<string | null>(() =>
+      getCachedBundledMapLibreHead(),
+    );
+    useEffect(() => {
+      if (mapLibreHead !== null) return;
+      let cancelled = false;
+      void loadBundledMapLibreHead()
+        .then((head) => {
+          if (!cancelled) setMapLibreHead(head);
+        })
+        .catch((err) => {
+          if (!cancelled) onError?.(err instanceof Error ? err.message : 'maplibre-load-failed');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [mapLibreHead, onError]);
 
     const vehiclesRef = useRef(vehicles);
     vehiclesRef.current = vehicles;
@@ -162,6 +183,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     }, [cityId, attempt]);
 
     const html = useMemo(() => {
+      if (mapLibreHead === null) return null;
       readyRef.current = false;
       firstLoad.current = true;
       return buildLiveVehiclesMapDocument({
@@ -180,8 +202,9 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         showDelays: showDelaysRef.current,
         showStops: showStopsRef.current,
         userPos: userPosRef.current,
+        mapLibreHead,
       });
-    }, [attempt, cityId, initialCenter, offlineBase]);
+    }, [attempt, cityId, initialCenter, mapLibreHead, offlineBase]);
 
     const send = useCallback((msg: LiveMapInMessage) => {
       if (Platform.OS === 'web') {
@@ -375,6 +398,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       (event: WebViewMessageEvent) => handleRawMessage(event.nativeEvent.data),
       [handleRawMessage],
     );
+
+    if (html === null) {
+      return <View style={styles.wrap} />;
+    }
 
     if (Platform.OS === 'web') {
       return (

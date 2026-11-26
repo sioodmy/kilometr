@@ -1,5 +1,6 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import {
+  ActivityIndicator,
   StyleSheet,
   View,
   type DimensionValue,
@@ -158,6 +159,41 @@ export function useDeferredReveal(active: boolean, frames = 1): boolean {
   return ready;
 }
 
+/** Lekki fallback dla leniwie ładowanych arkuszy i modali podczas dociągania chunku JS. */
+export const SheetLoadingFallback = memo(function SheetLoadingFallback() {
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.sheetFallback]} pointerEvents="auto">
+      <View style={styles.sheetFallbackPill}>
+        <ActivityIndicator size="small" color={scheme.primary} />
+      </View>
+    </View>
+  );
+});
+
+/** Lekki szkielet dla leniwie ładowanych kart sekcji (np. statystyki i diagnostyka). */
+export const CardSkeletonFallback = memo(function CardSkeletonFallback({
+  rows = 3,
+}: {
+  rows?: number;
+}) {
+  return (
+    <View style={styles.cardFallback}>
+      <SkeletonPulse style={styles.cardFallbackPulse}>
+        <SkeletonBone width="44%" height={18} radius={8} />
+        {Array.from({ length: rows }, (_, idx) => (
+          <SkeletonBone
+            key={idx}
+            width={idx % 2 === 0 ? '100%' : '76%'}
+            height={14}
+            radius={6}
+            tone="subtle"
+          />
+        ))}
+      </SkeletonPulse>
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
   staticPulse: {
     opacity: 0.72,
@@ -167,5 +203,29 @@ const styles = StyleSheet.create({
   },
   boneSubtle: {
     backgroundColor: scheme.surfaceContainerHigh,
+  },
+  sheetFallback: {
+    zIndex: 120,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetFallbackPill: {
+    width: 56,
+    height: 56,
+    borderRadius: shape.full,
+    backgroundColor: scheme.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardFallback: {
+    backgroundColor: scheme.surfaceContainer,
+    borderRadius: shape.extraLarge,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    padding: 16,
+  },
+  cardFallbackPulse: {
+    gap: 10,
   },
 });

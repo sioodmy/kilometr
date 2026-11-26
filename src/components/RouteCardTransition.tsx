@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Platform, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { Connection } from '../types/models';
 import { normalizeConnectionId } from '../services/routing/connectionIdentity';
@@ -263,5 +263,6 @@ export function useRouteCardTransition(): RouteCardTransitionContextValue | null
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    ...(Platform.OS === 'web' ? { height: '100%', maxHeight: '100%', overflow: 'hidden' as const } : null),
   },
 });

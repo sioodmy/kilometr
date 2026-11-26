@@ -18,7 +18,11 @@ import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { WebMapFrame, type WebMapFrameHandle } from './WebMapFrame';
 import { buildRouteMapDocument } from '../map/routeMapDocument';
-import { mapDocumentSource } from '../map/bundledMapLibre';
+import {
+  getCachedBundledMapLibreHead,
+  loadBundledMapLibreHead,
+  mapDocumentSource,
+} from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
 import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
 import { scheme } from '../theme/tokens';
@@ -187,6 +191,24 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
 
   const { cityId } = useActiveCity();
   const [attempt, setAttempt] = useState(0);
+  const [mapLibreHead, setMapLibreHead] = useState<string | null>(() =>
+    getCachedBundledMapLibreHead(),
+  );
+  useEffect(() => {
+    if (mapLibreHead !== null) return;
+    let cancelled = false;
+    void loadBundledMapLibreHead()
+      .then((head) => {
+        if (!cancelled) setMapLibreHead(head);
+      })
+      .catch((err) => {
+        if (!cancelled) onError?.(err instanceof Error ? err.message : 'maplibre-load-failed');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mapLibreHead, onError]);
+
   const routeKey = useMemo(() => (route ? routeBridgeKey(route) : null), [route]);
   const hasRoute = Boolean(route);
   const latestRouteRef = useRef<MapRoute | null>(route);
@@ -204,6 +226,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
   poiVisibleRef.current = poiVisible;
 
   const html = useMemo(() => {
+    if (mapLibreHead === null) return null;
     const bootRoute = latestRouteRef.current;
     sentRouteKey.current = bootRoute ? routeBridgeKey(bootRoute) : null;
     sentRouteId.current = bootRoute?.id ?? null;
@@ -228,8 +251,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       padding: resolvedPadding,
       maxZoom,
       fitOnGeometry,
+      mapLibreHead,
     });
-  }, [hasRoute, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
+  }, [mapLibreHead, hasRoute, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
 
   const send = useCallback((msg: MapInMessage) => {
     if (Platform.OS === 'web') {
@@ -379,6 +403,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     (event: WebViewMessageEvent) => handleRawMessage(event.nativeEvent.data),
     [handleRawMessage],
   );
+
+  if (html === null) {
+    return <View style={styles.wrap} />;
+  }
 
   if (Platform.OS === 'web') {
     return (

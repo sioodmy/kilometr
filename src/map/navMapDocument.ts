@@ -1,11 +1,11 @@
 import { buildMapStyle, ROUTE_SOURCE_ID } from './mapStyle';
-import { bundledMapLibreHead } from './bundledMapLibre';
 import { scheme } from '../theme/tokens';
 
 export interface NavMapDocumentOptions {
   offlineBase: string | null;
   center?: [number, number] | null;
   interactive?: boolean;
+  mapLibreHead?: string;
 }
 
 const runtime = (routeSourceId: string) => `
@@ -205,6 +205,7 @@ export function buildNavMapDocument({
   offlineBase,
   center,
   interactive = true,
+  mapLibreHead = '',
 }: NavMapDocumentOptions): string {
   const payload = JSON.stringify({
     style: buildMapStyle(offlineBase),
@@ -214,7 +215,7 @@ export function buildNavMapDocument({
   return [
     '<!doctype html><html><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">',
-    bundledMapLibreHead(),
+    mapLibreHead,
     `<style>
       html,body,#map{position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:hidden;background:#101413}
       *{box-sizing:border-box}.maplibregl-ctrl-attrib{display:none!important}

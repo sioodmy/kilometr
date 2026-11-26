@@ -1,5 +1,3 @@
-import { RAPTOR_WASM_BASE64 } from "./wasmBase64";
-
 const STATUS_NET_MISSING = -1;
 const FOOT_QUERY_MAGIC = 0x464f4f54; // "FOOT"
 const RAIL_QUERY_MAGIC = 0x5241494c; // "RAIL"
@@ -93,6 +91,14 @@ function getNativeModule(): NativeKilometrRaptorModule | null {
 }
 
 function decodeBase64(b64: string): Uint8Array {
+  if (typeof atob === "function") {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      out[i] = bin.charCodeAt(i);
+    }
+    return out;
+  }
   const alphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const lookup = new Uint8Array(256);
@@ -130,11 +136,13 @@ export async function initRaptorWasmAsync(): Promise<boolean> {
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
       try {
+        const { RAPTOR_WASM_BASE64 } = await import("./wasmBase64");
         const wasmBytes = decodeBase64(RAPTOR_WASM_BASE64);
         const instantiated = await WebAssembly.instantiate(wasmBytes as BufferSource, {});
         cachedWasm = instantiated.instance.exports as unknown as WasmExports;
         return cachedWasm;
       } catch {
+        wasmInitPromise = null;
         return null;
       }
     })();
@@ -146,17 +154,21 @@ export async function initRaptorWasmAsync(): Promise<boolean> {
 function getWasmExports(): WasmExports | null {
   if (cachedWasm) return cachedWasm;
   if (typeof WebAssembly === 'undefined') return null;
-  try {
-    const wasmBytes = decodeBase64(RAPTOR_WASM_BASE64);
-    const module = new WebAssembly.Module(wasmBytes as BufferSource);
-    const instance = new WebAssembly.Instance(module, {});
-    cachedWasm = instance.exports as unknown as WasmExports;
-    return cachedWasm;
-  } catch {
-    // Przeglądarka blokuje synchroniczne Module > 4 KB; odpalamy async w tle.
-    void initRaptorWasmAsync();
-    return null;
+  if (typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined') {
+    try {
+      const req: any = typeof globalThis !== 'undefined' && (globalThis as any).__non_webpack_require__ ? (globalThis as any).__non_webpack_require__ : eval('require');
+      const { RAPTOR_WASM_BASE64 } = req('./wasmBase64');
+      const wasmBytes = decodeBase64(RAPTOR_WASM_BASE64);
+      const inst = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes as BufferSource), {});
+      cachedWasm = inst.exports as unknown as WasmExports;
+      return cachedWasm;
+    } catch {
+      return null;
+    }
   }
+  // Wasm ładuje się dynamicznie w osobnym chunku; inicjujemy w tle dla kolejnych zapytań.
+  void initRaptorWasmAsync();
+  return null;
 }
 
 function readStatus(bytes: Uint8Array | null): number {
@@ -298,6 +310,7 @@ export async function warmupRaptorNetworkAsync(
   if (nativeMod) {
     return ensureNativeNetworkAsync(nativeMod, netId, getPackedNet, false);
   }
+  if (!cachedWasm) await initRaptorWasmAsync();
   const wasm = getWasmExports();
   if (!wasm) return false;
   return ensureWasmNetworkSync(wasm, netId, getPackedNet, false);
@@ -331,6 +344,7 @@ export async function runRaptorQueryAsync(
     }
     return res;
   }
+  if (!cachedWasm) await initRaptorWasmAsync();
   return runWasmQuerySync(netId, getPackedNet, packedQuery);
 }
 
@@ -410,6 +424,7 @@ export async function loadFootTileAsync(
   if (nativeMod) {
     return nativeMod.loadFootTile(tx, ty, mvtBytes);
   }
+  if (!cachedWasm) await initRaptorWasmAsync();
   return loadFootTileSync(tx, ty, mvtBytes);
 }
 
@@ -506,6 +521,7 @@ export async function routeFootWaypointsAsync(
     const res = await nativeMod.routeFoot(packed);
     return unpackFootRoute(res);
   }
+  if (!cachedWasm) await initRaptorWasmAsync();
   return routeFootWaypointsSync(waypoints, mode);
 }
 
@@ -553,6 +569,7 @@ export async function invokeRustAsync(
   if (nativeMod && typeof nativeMod.invoke === "function") {
     return nativeMod.invoke(cmd, payload);
   }
+  if (!cachedWasm) await initRaptorWasmAsync();
   return invokeWasmSync(cmd, payload);
 }
 

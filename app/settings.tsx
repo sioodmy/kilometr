@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -58,8 +58,12 @@ import { useWebLayout } from '../src/theme/layout';
 import { scheme, shape, type } from '../src/theme/tokens';
 import { tr, useLocaleSetting, useStrings, type LocaleSetting } from '../src/i18n';
 import { type CityId } from '../src/cities';
-import { CitySelectSheet } from '../src/components/CitySelectSheet';
+import { CardSkeletonFallback, SheetLoadingFallback } from '../src/components/SkeletonPulse';
 import { useActiveCity } from '../src/services/cityStore';
+
+const CitySelectSheet = lazy(() =>
+  import('../src/components/CitySelectSheet').then((m) => ({ default: m.CitySelectSheet })),
+);
 import {
   SETTINGS_LIMITS,
   TRANSIT_MODES,
@@ -84,13 +88,20 @@ import { TimetableSyncAbortedError } from '../src/services/timetableSync';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
-import { YourDataDashboard } from '../src/components/YourDataDashboard';
-import { DiagnosticsCard } from '../src/components/DiagnosticsCard';
-import { OfflineMapCard } from '../src/components/OfflineMapCard';
 import { NationalRailCard } from '../src/components/NationalRailCard';
 import { PersonalizationCard } from '../src/components/PersonalizationCard';
 import { useThemeSetting } from '../src/theme/personalization';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
+
+const YourDataDashboard = lazy(() =>
+  import('../src/components/YourDataDashboard').then((m) => ({ default: m.YourDataDashboard })),
+);
+const DiagnosticsCard = lazy(() =>
+  import('../src/components/DiagnosticsCard').then((m) => ({ default: m.DiagnosticsCard })),
+);
+const OfflineMapCard = lazy(() =>
+  import('../src/components/OfflineMapCard').then((m) => ({ default: m.OfflineMapCard })),
+);
 
 function dataStatusLabel(status: DataStatus): string {
   const t = tr().settings;
@@ -666,8 +677,12 @@ export default function SettingsScreen() {
             ) : null}
           </View>
           <NationalRailCard deferLoad={!transitionSettled} />
-          <OfflineMapCard deferLoad={!transitionSettled} />
-          <DiagnosticsCard />
+          <Suspense fallback={<CardSkeletonFallback rows={2} />}>
+            <OfflineMapCard deferLoad={!transitionSettled} />
+          </Suspense>
+          <Suspense fallback={<CardSkeletonFallback rows={4} />}>
+            <DiagnosticsCard />
+          </Suspense>
         </>
       )}
 
@@ -933,7 +948,11 @@ export default function SettingsScreen() {
       )}
 
       {targetSection === 'notifications' && <NotificationPrefsCard />}
-      {targetSection === 'backup' && <YourDataDashboard deferLoad={!transitionSettled} />}
+      {targetSection === 'backup' && (
+        <Suspense fallback={<CardSkeletonFallback rows={5} />}>
+          <YourDataDashboard deferLoad={!transitionSettled} />
+        </Suspense>
+      )}
     </>
   );
 
@@ -1026,15 +1045,17 @@ export default function SettingsScreen() {
       )}
 
       {citySheetOpen && (
-        <CitySelectSheet
-          selectedCityId={cityId}
-          onSelectCity={(id) => {
-            void handleCityChange(id);
-          }}
-          onClose={() => setCitySheetOpen(false)}
-          switchingCity={switchingCity}
-          switchingCityId={switchingCityId}
-        />
+        <Suspense fallback={<SheetLoadingFallback />}>
+          <CitySelectSheet
+            selectedCityId={cityId}
+            onSelectCity={(id) => {
+              void handleCityChange(id);
+            }}
+            onClose={() => setCitySheetOpen(false)}
+            switchingCity={switchingCity}
+            switchingCityId={switchingCityId}
+          />
+        </Suspense>
       )}
     </View>
   );

@@ -39,6 +39,23 @@ export interface FuzzyResult {
   score: number;
 }
 
+function fuzzyMatchJs(q: string, qNoSpace: string, target: string): FuzzyResult {
+  const t = normalizePolish(target).toLowerCase().trim();
+  if (!q || !t) return { matches: false, score: 0 };
+  if (t === q) return { matches: true, score: 100 };
+  if (t.startsWith(q)) return { matches: true, score: 90 };
+  if (t.includes(q)) return { matches: true, score: 75 };
+  if (qNoSpace) {
+    const tNoSpace = t.replace(/[\s\-./()]/g, '');
+    if (tNoSpace) {
+      if (tNoSpace === qNoSpace) return { matches: true, score: 98 };
+      if (tNoSpace.startsWith(qNoSpace)) return { matches: true, score: 90 };
+      if (qNoSpace.length >= 4 && tNoSpace.includes(qNoSpace)) return { matches: true, score: 75 };
+    }
+  }
+  return { matches: false, score: 0 };
+}
+
 /** Ocenia dopasowanie `query` do `target` w Rust/JS. Zwraca score 0..100. */
 export function fuzzyMatch(query: string, target: string): FuzzyResult {
   if (!query || !target) return { matches: false, score: 0 };
@@ -47,24 +64,11 @@ export function fuzzyMatch(query: string, target: string): FuzzyResult {
   const res = invokeRustSync(CMD_FUZZY, w.finish());
   if (res && res.byteLength >= 5) {
     const r = new BinaryReader(res);
-    const matches = r.u8Val() !== 0;
-    const score = r.i32();
-    if (matches) return { matches, score };
+    return { matches: r.u8Val() !== 0, score: r.i32() };
   }
   const q = normalizePolish(query).toLowerCase().trim();
-  const t = normalizePolish(target).toLowerCase().trim();
-  if (!q || !t) return { matches: false, score: 0 };
-  if (t === q) return { matches: true, score: 100 };
-  if (t.startsWith(q)) return { matches: true, score: 90 };
-  if (t.includes(q)) return { matches: true, score: 75 };
   const qNoSpace = q.replace(/[\s\-./()]/g, '');
-  const tNoSpace = t.replace(/[\s\-./()]/g, '');
-  if (qNoSpace && tNoSpace) {
-    if (tNoSpace === qNoSpace) return { matches: true, score: 98 };
-    if (tNoSpace.startsWith(qNoSpace)) return { matches: true, score: 90 };
-    if (qNoSpace.length >= 4 && tNoSpace.includes(qNoSpace)) return { matches: true, score: 75 };
-  }
-  return { matches: false, score: 0 };
+  return fuzzyMatchJs(q, qNoSpace, target);
 }
 
 /** Wsadowe dopasowanie `query` do listy `targets` w jednym wywołaniu Rust/JS. */
@@ -83,15 +87,11 @@ export function fuzzyMatchBatch(query: string, targets: readonly string[]): Fuzz
     const count = r.u32();
     const out: FuzzyResult[] = new Array(count);
     for (let i = 0; i < count; i++) {
-      const matches = r.u8Val() !== 0;
-      const score = r.i32();
-      if (matches) {
-        out[i] = { matches, score };
-      } else {
-        out[i] = fuzzyMatch(query, targets[i]);
-      }
+      out[i] = { matches: r.u8Val() !== 0, score: r.i32() };
     }
     return out;
   }
-  return targets.map((t) => fuzzyMatch(query, t));
+  const q = normalizePolish(query).toLowerCase().trim();
+  const qNoSpace = q.replace(/[\s\-./()]/g, '');
+  return targets.map((t) => fuzzyMatchJs(q, qNoSpace, t));
 }

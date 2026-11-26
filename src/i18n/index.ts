@@ -17,9 +17,10 @@ import { AppState } from 'react-native';
 import { getLocales } from 'expo-localization';
 import { kvGet, kvSet } from '../services/storage';
 import {
-  DICTS,
+  getLocaleDict,
   getLocaleSettingSync,
   getLocaleSync,
+  loadLocaleDict,
   setLocaleInternal,
   subscribeLocale,
   type Locale,
@@ -54,7 +55,11 @@ function syncSystemLocale(): void {
   if (setting === 'system') {
     const resolved = resolve('system');
     if (resolved !== getLocaleSync()) {
-      setLocaleInternal('system', resolved);
+      void loadLocaleDict(resolved).then(() => {
+        if (getLocaleSettingSync() === 'system') {
+          setLocaleInternal('system', resolved);
+        }
+      });
     }
   }
 }
@@ -79,13 +84,17 @@ export async function initLocale(): Promise<Locale> {
       setting = raw;
     }
   } catch {}
-  setLocaleInternal(setting, resolve(setting));
+  const resolved = resolve(setting);
+  await loadLocaleDict(resolved);
+  setLocaleInternal(setting, resolved);
   ensureAppStateListener();
   return getLocaleSync();
 }
 
 export async function setLocaleSetting(setting: LocaleSetting): Promise<void> {
-  setLocaleInternal(setting, resolve(setting));
+  const resolved = resolve(setting);
+  await loadLocaleDict(resolved);
+  setLocaleInternal(setting, resolved);
   try {
     await kvSet(STORE_KEY, setting);
   } catch {}
@@ -93,9 +102,9 @@ export async function setLocaleSetting(setting: LocaleSetting): Promise<void> {
 
 /** Pełny słownik pod aktualne locale; prze-renderowuje przy zmianie języka. */
 export function useStrings(): Strings {
-  const [locale, setLocale] = useState(getLocaleSync());
-  useEffect(() => subscribeLocale(() => setLocale(getLocaleSync())), []);
-  return DICTS[locale];
+  const [, setRevision] = useState(0);
+  useEffect(() => subscribeLocale(() => setRevision((v) => v + 1)), []);
+  return getLocaleDict(getLocaleSync());
 }
 
 /** Wybór języka do ekranu Ustawień. */
