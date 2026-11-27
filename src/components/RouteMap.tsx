@@ -24,7 +24,14 @@ import {
   mapDocumentSource,
 } from '../map/bundledMapLibre';
 import { getActiveCitySync, useActiveCity } from '../services/cityStore';
-import type { MapInMessage, MapOutMessage, MapRoute, MapStopRole, MapVehicle } from '../map/types';
+import type {
+  MapInMessage,
+  MapOutMessage,
+  MapPoiFeature,
+  MapRoute,
+  MapStopRole,
+  MapVehicle,
+} from '../map/types';
 import { scheme } from '../theme/tokens';
 
 export interface MapStopTap {
@@ -74,6 +81,12 @@ interface RouteMapProps {
   paddingRight?: number;
   /** Czy załadować warstwy POI do stylu (fullscreen szczegółów połączenia). */
   showPoi?: boolean;
+  /** Czy warstwa POI ma używać lokalnej bazy SQLite zamiast kafelków OpenMapTiles. */
+  useCustomPoi?: boolean;
+  /** Punkty POI widoczne w aktualnym kadrze (gdy useCustomPoi=true). */
+  pois?: MapPoiFeature[];
+  /** Wybrane POI do podświetlenia na mapie. */
+  selectedPoiId?: number | null;
   /** Dynamiczna widoczność warstw POI (działa gdy showPoi=true). */
   poiVisible?: boolean;
   /** Automatyczny re-fit po dociągnięciu geometrii każdego odcinka trasy. */
@@ -83,6 +96,8 @@ interface RouteMapProps {
   onReady?: () => void;
   onStopTap?: (stop: MapStopTap) => void;
   onLegTap?: (legId: string) => void;
+  onPoiTap?: (poiId: number) => void;
+  onViewportChange?: (bbox: [number, number, number, number], zoom: number) => void;
   onUserDrag?: () => void;
   /** false = kafelki się nie ładują, true = mapa wróciła do normy. */
   onTilesStatus?: (ok: boolean) => void;
@@ -165,12 +180,17 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     paddingLeft = 42,
     paddingRight = 42,
     showPoi = false,
+    useCustomPoi = false,
+    pois = [],
+    selectedPoiId = null,
     poiVisible = true,
     fitOnGeometry = false,
     maxZoom,
     onReady,
     onStopTap,
     onLegTap,
+    onPoiTap,
+    onViewportChange,
     onUserDrag,
     onTilesStatus,
     onError,
@@ -224,6 +244,10 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     typeof userLat === 'number' && typeof userLon === 'number' ? [userLon, userLat] : null;
   const poiVisibleRef = useRef(poiVisible);
   poiVisibleRef.current = poiVisible;
+  const poisRef = useRef<MapPoiFeature[]>(pois);
+  poisRef.current = pois;
+  const selectedPoiIdRef = useRef<number | null>(selectedPoiId);
+  selectedPoiIdRef.current = selectedPoiId;
 
   const html = useMemo(() => {
     if (mapLibreHead === null) return null;
@@ -246,6 +270,9 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       offlineBase,
       center,
       showPoi,
+      useCustomPoi,
+      pois: poisRef.current,
+      selectedPoiId: selectedPoiIdRef.current,
       poiVisible: poiVisibleRef.current,
       userPos: userPosRef.current,
       padding: resolvedPadding,
@@ -253,7 +280,7 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
       fitOnGeometry,
       mapLibreHead,
     });
-  }, [mapLibreHead, hasRoute, attempt, offlineBase, cityId, showPoi, maxZoom, fitOnGeometry]);
+  }, [mapLibreHead, hasRoute, attempt, offlineBase, cityId, showPoi, useCustomPoi, maxZoom, fitOnGeometry]);
 
   const send = useCallback((msg: MapInMessage) => {
     if (Platform.OS === 'web') {
@@ -313,6 +340,11 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     send({ t: 'poi', visible: poiVisible });
   }, [poiVisible, send, showPoi]);
 
+  useEffect(() => {
+    if (!showPoi || !useCustomPoi) return;
+    send({ t: 'pois', pois, selectedPoiId });
+  }, [pois, selectedPoiId, send, showPoi, useCustomPoi]);
+
   const lastSelectKey = useRef('');
   const sendSelect = useCallback(() => {
     const key = `${selectedLegId ?? ''}:${focusCoords?.length ?? 0}:${focusCoords?.[0]?.[0] ?? ''}:${focusCoords?.[0]?.[1] ?? ''}:${stopRange?.join('-') ?? ''}:${focusMaxZoom ?? ''}:${resolvedPadding}`;
@@ -354,6 +386,13 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         }
         if (showPoi) {
           send({ t: 'poi', visible: poiVisibleRef.current });
+          if (useCustomPoi) {
+            send({
+              t: 'pois',
+              pois: poisRef.current,
+              selectedPoiId: selectedPoiIdRef.current,
+            });
+          }
         }
         if (selectedLegId) {
           sendSelect();
@@ -373,6 +412,14 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
         onLegTap?.(msg.legId);
         return;
       }
+      if (msg.t === 'poiTap') {
+        onPoiTap?.(msg.poiId);
+        return;
+      }
+      if (msg.t === 'viewport') {
+        onViewportChange?.(msg.bbox, msg.zoom);
+        return;
+      }
       if (msg.t === 'userDrag') {
         onUserDrag?.();
         return;
@@ -388,14 +435,17 @@ export const RouteMap = forwardRef<RouteMapHandle, RouteMapProps>(function Route
     [
       onError,
       onLegTap,
+      onPoiTap,
       onReady,
       onStopTap,
       onTilesStatus,
       onUserDrag,
+      onViewportChange,
       selectedLegId,
       send,
       sendSelect,
       showPoi,
+      useCustomPoi,
     ],
   );
 

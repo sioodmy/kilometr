@@ -6,7 +6,9 @@ import { hasOfflineAddressIndex, searchAddresses } from './addressIndex';
 import { hasNationalDb, searchNationalStations, searchStops } from './gtfsDatabase';
 import { searchNominatimDirect } from './nominatimDirect';
 import { addRecentSuggestion, loadRecent, loadSuggestions, saveSuggestions } from './offlineCache';
+import { hasPoiDbSync } from './poiDatabase';
 import { ensurePoiIndex, searchPois } from './poiIndex';
+import { subscribePoiDbChanged } from './poiSync';
 import { searchPolinkaStops } from './polinkaSearch';
 import { searchPwrBuildings } from './pwrBuildings';
 import { matchSuggestions, rankWithFrecency } from './searchFrecency';
@@ -16,6 +18,9 @@ import type { ISearchService } from './types';
 
 const requests = new Map<string, AbortController>();
 const cache = new Map<string, { data: Suggestion[]; expires: number }>();
+subscribePoiDbChanged(() => {
+  cache.clear();
+});
 const CACHE_TTL_MS = 120_000;
 const CACHE_MAX = 60;
 const NETWORK_DELAY_MS = 280;
@@ -226,7 +231,10 @@ export const SearchService: ISearchService = {
       assertCurrent();
       local = buildLocal();
       const isAddressWithNumber = /\d/.test(q);
-      const allowRemote = !hasOfflineAddressIndex() || !isAddressWithNumber;
+      const richPoiReady = hasPoiDbSync(cityId);
+      const allowRemote =
+        (!hasOfflineAddressIndex() || !isAddressWithNumber) &&
+        !(richPoiReady && !isAddressWithNumber && pois.length >= 3);
       const willFetchRemote =
         q.length >= 2 &&
         !addresses.length &&

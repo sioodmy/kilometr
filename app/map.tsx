@@ -36,6 +36,7 @@ import { DirectionsWalk } from '../src/components/DirectionsWalk';
 import { MorphingLoader } from '../src/components/MorphingLoader';
 import { MapActionRail, type MapActionItem } from '../src/components/MapActionRail';
 import { SpringPressable } from '../src/components/SpringPressable';
+import { getSuggestionIconMeta } from '../src/components/SuggestionRow';
 import { useWebLayout } from '../src/theme/layout';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
 import { RoutingService } from '../src/services';
@@ -58,7 +59,16 @@ import {
 } from '../src/components/LineBadge';
 import { buildMapStages, resolveStageSelection, useEnrichedConnection } from '../src/map/stages';
 import { acquireMapServerForRoute } from '../src/services/mapServerLease';
+import { useActiveCity } from '../src/services/cityStore';
 import { useCurrentLocation } from '../src/services/currentLocation';
+import {
+  getPoiById,
+  hasPoiDb,
+  queryPoisInViewport,
+  type MapPoiItem,
+  type RichPoiRow,
+} from '../src/services/poiDatabase';
+import { subscribePoiDbChanged } from '../src/services/poiSync';
 import { formatWalkDistance } from '../src/services/settings';
 import type { Connection } from '../src/types/models';
 import type { MapLeg, MapRoute, MapVehicle } from '../src/map/types';
@@ -98,6 +108,7 @@ export default function RouteMapScreen() {
     stageId?: string;
   }>();
   const id = normalizeConnectionId(routeId ?? '');
+  const { cityId } = useActiveCity();
 
   const { location: userLoc } = useCurrentLocation(true, false);
   const transitionSettled = useScreenTransitionSettled();
@@ -117,12 +128,21 @@ export default function RouteMapScreen() {
   const [vehicle, setVehicle] = useState<MapVehicle | null>(null);
   const [followVehicle, setFollowVehicle] = useState(false);
   const [poiVisible, setPoiVisible] = useState(true);
+  const [poiDbAvailable, setPoiDbAvailable] = useState(false);
+  const [mapPois, setMapPois] = useState<MapPoiItem[]>([]);
   const [deckCollapsed, setDeckCollapsed] = useState(false);
   const [inspectedStop, setInspectedStop] = useState<MapStopTap | null>(null);
+  const [inspectedPoi, setInspectedPoi] = useState<RichPoiRow | null>(null);
   const [tilesDown, setTilesDown] = useState(false);
   const [showOfflinePill, setShowOfflinePill] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const offlinePillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastViewportRef = useRef<{ bbox: [number, number, number, number]; zoom: number } | null>(
+    null,
+  );
+  const poiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const poiQuerySeqRef = useRef(0);
+  const poiDetailSeqRef = useRef(0);
 
   const mapRef = useRef<RouteMapHandle>(null);
   const legScrollRef = useRef<ScrollView>(null);
@@ -138,17 +158,95 @@ export default function RouteMapScreen() {
     }, []),
   );
 
-  // Gest wstecz zamyka kartę klikniętego przystanku przed wyjściem z mapy.
+  // Gest wstecz zamyka kartę klikniętego przystanku lub miejsca przed wyjściem z mapy.
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (!inspectedStop) return false;
-        setInspectedStop(null);
-        return true;
+        if (inspectedStop) {
+          setInspectedStop(null);
+          return true;
+        }
+        if (inspectedPoi) {
+          poiDetailSeqRef.current++;
+          setInspectedPoi(null);
+          return true;
+        }
+        return false;
       });
       return () => sub.remove();
-    }, [inspectedStop]),
+    }, [inspectedPoi, inspectedStop]),
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setMapPois([]);
+    poiDetailSeqRef.current++;
+    setInspectedPoi(null);
+    const check = () => {
+      void hasPoiDb(cityId)
+        .then((ok) => {
+          if (!cancelled) setPoiDbAvailable(ok);
+        })
+        .catch(() => {
+          if (!cancelled) setPoiDbAvailable(false);
+        });
+    };
+    check();
+    const unsub = subscribePoiDbChanged((changedCity) => {
+      if (changedCity === cityId) check();
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [cityId]);
+
+  const refreshViewportPois = useCallback(
+    (bbox: [number, number, number, number], zoom: number, immediate = false) => {
+      if (poiDebounceRef.current) {
+        clearTimeout(poiDebounceRef.current);
+        poiDebounceRef.current = null;
+      }
+      if (!poiDbAvailable || !poiVisible || zoom < 12) {
+        poiQuerySeqRef.current++;
+        setMapPois([]);
+        return;
+      }
+      const run = () => {
+        const seq = ++poiQuerySeqRef.current;
+        void queryPoisInViewport(bbox, zoom, cityId, 160)
+          .then((rows) => {
+            if (poiQuerySeqRef.current !== seq) return;
+            setMapPois(rows);
+          })
+          .catch(() => {});
+      };
+      if (immediate) run();
+      else poiDebounceRef.current = setTimeout(run, 120);
+    },
+    [cityId, poiDbAvailable, poiVisible],
+  );
+
+  useEffect(() => {
+    if (!poiVisible) {
+      poiDetailSeqRef.current++;
+      setInspectedPoi(null);
+    }
+    if (!poiDbAvailable || !poiVisible) {
+      poiQuerySeqRef.current++;
+      setMapPois([]);
+      return;
+    }
+    if (lastViewportRef.current) {
+      refreshViewportPois(lastViewportRef.current.bbox, lastViewportRef.current.zoom, true);
+    }
+    return () => {
+      if (poiDebounceRef.current) {
+        clearTimeout(poiDebounceRef.current);
+        poiDebounceRef.current = null;
+      }
+    };
+  }, [poiDbAvailable, poiVisible, refreshViewportPois]);
   const shownVehicleRef = useRef<string | null>(null);
 
   const clearOfflinePillTimer = useCallback(() => {
@@ -456,6 +554,8 @@ export default function RouteMapScreen() {
     (legId: string) => {
       setFollowVehicle(false);
       setInspectedStop(null);
+      poiDetailSeqRef.current++;
+      setInspectedPoi(null);
       const next = resolveStageSelection(stages, legId, activeStage?.id ?? null);
       if (next) {
         setSelectedStageId(next.id);
@@ -466,8 +566,33 @@ export default function RouteMapScreen() {
 
   const handleStopTap = useCallback((stop: MapStopTap) => {
     setFollowVehicle(false);
+    poiDetailSeqRef.current++;
+    setInspectedPoi(null);
     setInspectedStop(stop);
   }, []);
+
+  const handleViewportChange = useCallback(
+    (bbox: [number, number, number, number], zoom: number) => {
+      lastViewportRef.current = { bbox, zoom };
+      refreshViewportPois(bbox, zoom);
+    },
+    [refreshViewportPois],
+  );
+
+  const handlePoiTap = useCallback(
+    (poiId: number) => {
+      setFollowVehicle(false);
+      setInspectedStop(null);
+      const seq = ++poiDetailSeqRef.current;
+      void getPoiById(poiId, cityId)
+        .then((row) => {
+          if (poiDetailSeqRef.current !== seq) return;
+          setInspectedPoi(row);
+        })
+        .catch(() => {});
+    },
+    [cityId],
+  );
 
   const handleUserDrag = useCallback(() => {
     setFollowVehicle(false);
@@ -478,6 +603,8 @@ export default function RouteMapScreen() {
       if (stages.length === 0) return;
       setFollowVehicle(false);
       setInspectedStop(null);
+      poiDetailSeqRef.current++;
+      setInspectedPoi(null);
       if (!activeStage) {
         setSelectedStageId(delta > 0 ? stages[0].id : stages[stages.length - 1].id);
         return;
@@ -495,6 +622,8 @@ export default function RouteMapScreen() {
   const handleShowRoute = useCallback(() => {
     setFollowVehicle(false);
     setInspectedStop(null);
+    poiDetailSeqRef.current++;
+    setInspectedPoi(null);
     if (activeStage === null) mapRef.current?.fit();
     else setSelectedStageId(null);
   }, [activeStage]);
@@ -693,6 +822,9 @@ export default function RouteMapScreen() {
           focusMaxZoom={activeStage?.focusMaxZoom ?? null}
           offlineBase={offlineBase}
           showPoi
+          useCustomPoi={poiDbAvailable}
+          pois={mapPois}
+          selectedPoiId={inspectedPoi?.id ?? null}
           poiVisible={poiVisible}
           fitOnGeometry
           paddingTop={insets.top + 12 + headerHeight + 14}
@@ -702,6 +834,8 @@ export default function RouteMapScreen() {
           onReady={handleMapReady}
           onLegTap={handleLegTap}
           onStopTap={handleStopTap}
+          onPoiTap={handlePoiTap}
+          onViewportChange={handleViewportChange}
           onUserDrag={handleUserDrag}
           onTilesStatus={handleTilesStatus}
           onError={handleMapError}
@@ -791,7 +925,7 @@ export default function RouteMapScreen() {
           styles.railWrap,
           webLayout.isMedium
             ? styles.railWrapDesktop
-            : { bottom: panelHeight + (inspectedStop ? 96 : 16) },
+            : { bottom: panelHeight + (inspectedStop || inspectedPoi ? 96 : 16) },
         ]}
         pointerEvents="box-none"
       >
@@ -850,6 +984,77 @@ export default function RouteMapScreen() {
           </View>
         </View>
       )}
+
+      {/* Pływająca karta klikniętego miejsca POI */}
+      {inspectedPoi &&
+        (() => {
+          const iconMeta = getSuggestionIconMeta({
+            id: 'poi',
+            kind: 'place',
+            category: inspectedPoi.category,
+          });
+          const IconComp = iconMeta.Icon;
+          const metaParts: string[] = [];
+          if (typeof inspectedPoi.rating === 'number' && Number.isFinite(inspectedPoi.rating)) {
+            metaParts.push(s.liveMap.poiRatingLabel(inspectedPoi.rating));
+          }
+          if (inspectedPoi.hours) {
+            metaParts.push(inspectedPoi.hours);
+          }
+          const subText = inspectedPoi.address || inspectedPoi.subtype;
+          return (
+            <View
+              style={[
+                styles.stopInspectorWrap,
+                webLayout.isMedium
+                  ? [styles.stopInspectorWrapDesktop, { bottom: panelHeight + 28 }]
+                  : { bottom: panelHeight + 12 },
+              ]}
+              pointerEvents="box-none"
+            >
+              <View style={styles.stopInspectorCard}>
+                <View style={styles.stopInspectorBody}>
+                  <View style={[styles.poiIconBox, { backgroundColor: iconMeta.bg }]}>
+                    <IconComp size={20} color={iconMeta.fg} />
+                  </View>
+                  <View style={styles.stopInspectorText}>
+                    {metaParts.length > 0 && (
+                      <View style={styles.stopRoleRow}>
+                        <View style={styles.stopRoleBadge}>
+                          <Text style={styles.stopRoleText} numberOfLines={1}>
+                            {metaParts.join(' \u00b7 ')}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                    <Text style={styles.stopNameText} numberOfLines={1}>
+                      {inspectedPoi.name}
+                    </Text>
+                    {subText ? (
+                      <Text style={styles.stopSubText} numberOfLines={1}>
+                        {subText}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                <SpringPressable
+                  onPress={() => {
+                    poiDetailSeqRef.current++;
+                    setInspectedPoi(null);
+                  }}
+                  hitSlop={6}
+                  haptic="selection"
+                  style={styles.stopCloseBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.map.closePoiA11y}
+                >
+                  <X size={18} color={scheme.onSurfaceVariant} />
+                </SpringPressable>
+              </View>
+            </View>
+          );
+        })()}
 
       {/* Zwijany dolny panel etapów w stylu M3 Expressive */}
       <View
@@ -1266,6 +1471,17 @@ const styles = StyleSheet.create({
     ...type.titleSmall,
     fontWeight: '700',
     color: scheme.onSurface,
+  },
+  stopSubText: {
+    ...type.bodySmall,
+    color: scheme.onSurfaceVariant,
+  },
+  poiIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stopCloseBtn: {
     width: 40,

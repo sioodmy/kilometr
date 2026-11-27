@@ -89,6 +89,7 @@ import { getTimetableDownloadGate, remainingHours } from '../src/services/downlo
 import { transfersLabel } from '../src/components/ConnectionCard';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { NationalRailCard } from '../src/components/NationalRailCard';
+import { PoiDatabaseCard } from '../src/components/PoiDatabaseCard';
 import { PersonalizationCard } from '../src/components/PersonalizationCard';
 import { useThemeSetting } from '../src/theme/personalization';
 import { hasTrainRoutes } from '../src/services/gtfsDatabase';
@@ -677,6 +678,7 @@ export default function SettingsScreen() {
             ) : null}
           </View>
           <NationalRailCard deferLoad={!transitionSettled} />
+          <PoiDatabaseCard deferLoad={!transitionSettled} />
           <Suspense fallback={<CardSkeletonFallback rows={2} />}>
             <OfflineMapCard deferLoad={!transitionSettled} />
           </Suspense>

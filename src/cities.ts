@@ -87,6 +87,8 @@ export interface CityDef {
     news: boolean;
     /** Bezpośredni POST bus_position jako fallback live (tylko MPK Wrocław). */
     directBusPosition: boolean;
+    /** Dedykowana, wieloźródłowa baza POI w R2 (`{miasto}/db/kilometr-pois.db.gz`). */
+    poiDb?: boolean;
   };
 }
 
@@ -106,7 +108,7 @@ const WROCLAW: CityDef = {
   tileMaxZoom: 14,
   tilePackMB: 19,
   railGateways: ['Wrocław Główny'],
-  features: { cable: true, campusPois: true, regionalRail: true, live: true, news: true, directBusPosition: true },
+  features: { cable: true, campusPois: true, regionalRail: true, live: true, news: true, directBusPosition: true, poiDb: true },
 };
 
 const KRAKOW: CityDef = {
@@ -125,7 +127,7 @@ const KRAKOW: CityDef = {
   tileMaxZoom: 14,
   tilePackMB: 21,
   railGateways: ['Kraków Główny'],
-  features: { cable: false, campusPois: false, regionalRail: true, live: true, news: true, directBusPosition: false },
+  features: { cable: false, campusPois: false, regionalRail: true, live: true, news: true, directBusPosition: false, poiDb: true },
 };
 
 const GZM: CityDef = {
@@ -150,7 +152,7 @@ const GZM: CityDef = {
   tileMaxZoom: 14,
   tilePackMB: 104,
   railGateways: ['Katowice'],
-  features: { cable: false, campusPois: false, regionalRail: true, live: true, news: true, directBusPosition: false },
+  features: { cable: false, campusPois: false, regionalRail: true, live: true, news: true, directBusPosition: false, poiDb: true },
 };
 
 const WARSZAWA: CityDef = {
@@ -172,7 +174,7 @@ const WARSZAWA: CityDef = {
   tilePackMB: 39,
   // SKM siedzi w GTFS WTP, KM i WKD dociąga build z PDP (jak KD we Wrocławiu).
   railGateways: ['Warszawa Centralna', 'Warszawa Zachodnia', 'Warszawa Wschodnia', 'Warszawa Gdańska', 'Warszawa Śródmieście'],
-  features: { cable: false, campusPois: false, regionalRail: true, live: true, news: true, directBusPosition: false },
+  features: { cable: false, campusPois: false, regionalRail: true, live: true, news: true, directBusPosition: false, poiDb: true },
 };
 
 const POZNAN: CityDef = {
@@ -2942,6 +2944,10 @@ export function isCityId(id: string | null | undefined): id is CityId {
  */
 export function isMultiCityArea(id: CityId): boolean {
   return id === 'gzm' || id === 'trojmiasto';
+}
+
+export function hasPoiDatabase(id?: string | null): boolean {
+  return Boolean(getCity(id).features.poiDb);
 }
 
 /**
