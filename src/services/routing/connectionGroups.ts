@@ -6,7 +6,7 @@ import {
 import type { Connection, Leg } from '../../types/models';
 import { subscribeActiveCity } from '../cityStore';
 import { normalizeConnectionId, scheduledLegDepart } from './connectionIdentity';
-import { boardingDepartureSec } from './connectionTimes';
+import { scheduledBoardingDepartureSec } from './connectionTimes';
 
 type TransferSafetyLevel = 'direct' | 'safe' | 'tight' | 'critical';
 
@@ -244,8 +244,8 @@ export function groupConnections(
 
   groups.sort(
     (a, b) =>
-      boardingDepartureSec(a.primary) - boardingDepartureSec(b.primary) ||
-      effectiveArrivalSec(a.primary) - effectiveArrivalSec(b.primary),
+      scheduledBoardingDepartureSec(a.primary) - scheduledBoardingDepartureSec(b.primary) ||
+      (a.primary.id < b.primary.id ? -1 : a.primary.id > b.primary.id ? 1 : 0),
   );
 
   return groups;

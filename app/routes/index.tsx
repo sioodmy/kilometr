@@ -116,10 +116,6 @@ import {
 import { liveTracker } from '../../src/services/liveTracker';
 import { beginUiScroll, endUiScroll } from '../../src/services/routing/yieldFrame';
 import { consumePendingBoardedOrigin } from '../../src/services/boardedOriginSelection';
-import {
-  buildBoardedOriginFromVehicle,
-  findNearbyLiveVehicles,
-} from '../../src/services/onboardDetector';
 import { gtfsStore } from '../../src/services/routing/store';
 import {
   deduplicateConnections,
@@ -129,7 +125,7 @@ import { loadEarlierConnections } from '../../src/services/routing/earlierConnec
 import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import {
   boardingDepartureMs,
-  boardingDepartureSec,
+  scheduledBoardingDepartureSec,
 } from '../../src/services/routing/connectionTimes';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
@@ -726,13 +722,18 @@ export default function RoutesScreen() {
         list = list.filter((c) => c.legs.some((l) => l.mode === modeFilter));
       }
     }
-    // Kolejność zawsze po realnym odjeździe: opóźnienie przesuwa kartę na
-    // jej nowe miejsce w czasie, zamiast zostawiać ją tam, gdzie stała.
-    return [...list].sort(
+    // Kolejność po planowym odjeździe: live zmienia godziny w kartach, ale nie
+    // przestawia listy, więc opóźnienia nie wywołują masowego reorderu.
+    const keyed = list.map((connection) => ({
+      connection,
+      key: scheduledBoardingDepartureSec(connection),
+    }));
+    keyed.sort(
       (a, b) =>
-        boardingDepartureSec(a) - boardingDepartureSec(b) ||
-        (a.arrivalSec ?? a.departureSec) - (b.arrivalSec ?? b.departureSec),
+        a.key - b.key ||
+        (a.connection.id < b.connection.id ? -1 : a.connection.id > b.connection.id ? 1 : 0),
     );
+    return keyed.map((entry) => entry.connection);
   }, [liveItems, transfersFilter, liveOnly, modeFilter]);
 
   const walkMps = useWalkSpeedMps();
@@ -1000,14 +1001,6 @@ export default function RoutesScreen() {
     [sheetFor, recent, gpsItem, gpsOutside],
   );
 
-  const nearbyVehicles = useMemo(
-    () =>
-      sheetFor === 'from' && gtfsStore.isLoaded
-        ? findNearbyLiveVehicles(fromLat, fromLon, liveTracker.snapshot(), gtfsStore)
-        : [],
-    [fromLat, fromLon, liveTick, sheetFor],
-  );
-
   const handleSuggestionSelect = async (sug: Suggestion) => {
     hapticTap();
     // Wybór startu unieważnia GPS w locie: spóźniony fix nie nadpisze
@@ -1109,7 +1102,11 @@ export default function RoutesScreen() {
     // Default: tylko aktualne i przyszłe, bez historycznych.
     // Wcześniejsze odjazdy użytkownik wczytuje gestem lub przyciskiem.
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
-    let list = deduplicateConnections(c).sort((a, b) => a.departureSec - b.departureSec);
+    let list = deduplicateConnections(c).sort(
+      (a, b) =>
+        scheduledBoardingDepartureSec(a) - scheduledBoardingDepartureSec(b) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
     if (depSec === undefined) {
       const d = new Date();
       const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
@@ -1325,7 +1322,7 @@ export default function RoutesScreen() {
   };
 
   // Starsze (historyczne, już odjechane), dokładane Z GÓRY
-  const pullTriggeredRef = useRef(false);
+  const [pullTriggered, setPullTriggered] = useState(false);
   const recentEarlierIdsRef = useRef<Set<string>>(new Set());
   const earlierClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1341,7 +1338,7 @@ export default function RoutesScreen() {
     ) {
       if (fromPull) {
         pullBusy.value = false;
-        pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+        pullHeight.value = withSpring(0, motion.spring.effectsDefault);
       }
       return;
     }
@@ -1349,13 +1346,13 @@ export default function RoutesScreen() {
     if (!firstDeparture || firstDeparture <= 0) {
       if (fromPull) {
         pullBusy.value = false;
-        pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+        pullHeight.value = withSpring(0, motion.spring.effectsDefault);
       }
       return;
     }
 
     earlierRequest.current = true;
-    pullTriggeredRef.current = fromPull;
+    setPullTriggered(fromPull);
     setLoadingEarlier(true);
     setEarlierFailed(false);
     const startedAt = Date.now();
@@ -1402,10 +1399,10 @@ export default function RoutesScreen() {
       // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
       // unieważnione przez nowszy fetchSeq.
       earlierRequest.current = false;
-      pullTriggeredRef.current = false;
+      setPullTriggered(false);
       setLoadingEarlier(false);
       pullBusy.value = false;
-      pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+      pullHeight.value = withSpring(0, motion.spring.effectsDefault);
     }
   };
 
@@ -1558,8 +1555,9 @@ export default function RoutesScreen() {
   }, [noMoreEarlier, pullNoMore]);
 
   useEffect(() => {
-    pullDisabled.value = loading || loadingMore || offline || arrivalMode || items.length === 0;
-  }, [arrivalMode, items.length, loading, loadingMore, offline, pullDisabled]);
+    pullDisabled.value =
+      loading || loadingMore || loadingEarlier || offline || arrivalMode || items.length === 0;
+  }, [arrivalMode, items.length, loading, loadingEarlier, loadingMore, offline, pullDisabled]);
 
   const handleListScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -1727,7 +1725,7 @@ export default function RoutesScreen() {
             pullHeight.value = withSpring(EARLIER_PULL_LOADING, motion.spring.spatialDefault);
             runOnJS(triggerPullEarlier)();
           } else if (!pullBusy.value) {
-            pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+            pullHeight.value = withSpring(0, motion.spring.effectsDefault);
           }
         })
         .onFinalize(() => {
@@ -1737,7 +1735,7 @@ export default function RoutesScreen() {
           pullEligible.value = false;
           pullEdgeHapticSent.value = false;
           if (!pullBusy.value) {
-            pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+            pullHeight.value = withSpring(0, motion.spring.effectsDefault);
           }
         }),
     [
@@ -1764,11 +1762,11 @@ export default function RoutesScreen() {
   );
 
   const listTranslateStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: pullHeight.value }],
+    transform: [{ translateY: Math.max(0, pullHeight.value) }],
   }));
 
   const earlierButtonFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(pullHeight.value, [0, 22], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(pullHeight.value, [0, 14], [1, 0], Extrapolation.CLAMP),
   }));
 
   const stickyDividerStyle = useAnimatedStyle(() => ({
@@ -2280,13 +2278,13 @@ export default function RoutesScreen() {
                 noMoreEarlier && styles.earlierButtonDone,
               ]}
             >
-              {loadingEarlier && !pullTriggeredRef.current ? (
+              {loadingEarlier && !pullTriggered ? (
                 <ActivityIndicator size="small" color={scheme.primary} />
               ) : !noMoreEarlier ? (
                 <ChevronUp size={17} color={scheme.onSurfaceVariant} />
               ) : null}
               <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                {loadingEarlier && !pullTriggeredRef.current
+                {loadingEarlier && !pullTriggered
                   ? s.routes.earlierLoading
                   : noMoreEarlier
                     ? s.routes.earlierEmpty
@@ -2313,6 +2311,7 @@ export default function RoutesScreen() {
       loadingEarlier,
       noMoreEarlier,
       offline,
+      pullTriggered,
       reduceMotion,
       s,
       showUpdatingChip,
@@ -2435,12 +2434,18 @@ export default function RoutesScreen() {
           pullHeight={pullHeight}
           armed={pullArmed}
           armPulse={pullArmPulse}
-          loading={loadingEarlier}
+          loading={loadingEarlier && pullTriggered}
           noMore={noMoreEarlier}
           reduceMotion={reduceMotion}
         />
       )}
-      <Animated.View style={[styles.listStage, Platform.OS !== 'web' && listTranslateStyle]}>
+      <Animated.View
+        style={[
+          styles.listStage,
+          styles.listSurface,
+          Platform.OS !== 'web' && listTranslateStyle,
+        ]}
+      >
         <Animated.FlatList
           ref={listRef}
           onScroll={handleListScroll}
@@ -2658,29 +2663,6 @@ export default function RoutesScreen() {
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
-          nearbyVehicles={sheetFor === 'from' ? nearbyVehicles : undefined}
-          onSelectVehicle={
-            sheetFor === 'from'
-              ? (v) => {
-                  const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
-                  if (!origin) return;
-                  startSelGen.current++;
-                  setGpsOrigin(false);
-                  setActiveAnchor(null);
-                  setBoardedTrip(origin);
-                  setFromId(origin.boardStopId ?? '');
-                  setFromTitle(s.home.boardedOriginTitle(origin.line, origin.direction || ''));
-                  if (origin.currentLat != null && origin.currentLon != null) {
-                    setFromLat(origin.currentLat);
-                    setFromLon(origin.currentLon);
-                  }
-                  setItems([]);
-                  setLoading(true);
-                  setQuery('');
-                  setSheetFor(null);
-                }
-              : undefined
-          }
           onOpenLiveMap={
             sheetFor === 'from'
               ? () => {
@@ -2869,6 +2851,11 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'hidden',
+  },
+  // Tło zasłania EarlierConnectionsPull poniżej krawędzi listy przy powrocie lub scrollu.
+  listSurface: {
+    backgroundColor: scheme.surface,
+    zIndex: 1,
   },
   reorderedUpCell: {
     zIndex: 2,

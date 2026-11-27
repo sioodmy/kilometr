@@ -43,9 +43,7 @@ import { consumePendingBoardedOrigin } from '../src/services/boardedOriginSelect
 import { useCurrentLocation } from '../src/services/currentLocation';
 import {
   ONBOARD_MIN_SPEED_MPS,
-  buildBoardedOriginFromVehicle,
   detectBoardedVehicles,
-  findNearbyLiveVehicles,
 } from '../src/services/onboardDetector';
 import { gtfsStore } from '../src/services/routing/store';
 import { useWebLayout } from '../src/theme/layout';
@@ -426,13 +424,6 @@ export default function HomeScreen() {
     if (dismissedOnboardKey && key === dismissedOnboardKey) return [];
     return list;
   }, [boardedOrigin, dismissedOnboardKey, gpsUnsupported, gtfsLoaded, isCustomStart, liveVersion, motionLocation]);
-
-  const nearbyVehicles = useMemo(() => {
-    if (sheetMode !== 'start' || !gtfsLoaded) return [];
-    const refLat = gpsLocation?.lat ?? currentCoords.lat;
-    const refLon = gpsLocation?.lon ?? currentCoords.lon;
-    return findNearbyLiveVehicles(refLat, refLon, liveTracker.snapshot(), gtfsStore);
-  }, [currentCoords.lat, currentCoords.lon, gpsLocation?.lat, gpsLocation?.lon, gtfsLoaded, liveVersion, sheetMode]);
 
   // Badge na dzwonku: dzisiejsze pilne utrudnienie (feed miasta).
   // Sprawdzamy przy starcie i powrocie na foreground, bez interwału, żeby nie spamować feedu.
@@ -2176,18 +2167,6 @@ export default function HomeScreen() {
                 sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo
               }
               originTitle={sheetMode === 'destination' ? locTitle : undefined}
-              nearbyVehicles={sheetMode === 'start' ? nearbyVehicles : undefined}
-              onSelectVehicle={
-                sheetMode === 'start'
-                  ? (v) => {
-                      const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
-                      if (!origin) return;
-                      const openDest = returnToDestinationAfterStart;
-                      setReturnToDestinationAfterStart(false);
-                      applyBoardedOrigin(origin, openDest);
-                    }
-                  : undefined
-              }
               onOpenLiveMap={
                 sheetMode === 'start'
                   ? () => {

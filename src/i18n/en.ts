@@ -1753,7 +1753,6 @@ export const en: Strings = {
     lineAlertsError: 'Could not check for disruptions.',
   },
   search: {
-    nearbyVehiclesSection: 'Vehicles nearby (board as start)',
     vehicleDirectionTo: (dir: string) => `towards ${dir}`,
     pickOnLiveMap: 'Pick a vehicle on the live map',
     pickOnLiveMapSub: 'See nearby vehicles and select yours manually',

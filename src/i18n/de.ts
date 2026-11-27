@@ -1765,7 +1765,6 @@ export const de: Strings = {
     lineAlertsError: 'Störungen konnten nicht geprüft werden.',
   },
   search: {
-    nearbyVehiclesSection: 'Fahrzeuge in der Nähe (als Start wählen)',
     vehicleDirectionTo: (dir: string) => `Richtung ${dir}`,
     pickOnLiveMap: 'Fahrzeug auf Live-Karte wählen',
     pickOnLiveMapSub: 'Aktive Fahrzeuge ansehen und manuell wählen',
