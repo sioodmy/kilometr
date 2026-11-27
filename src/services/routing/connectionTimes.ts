@@ -28,6 +28,26 @@ export function boardingDepartureSec(connection: Connection): number {
   return connection.departureSec;
 }
 
+/**
+ * Planowy odjazd pierwszego pojazdu, bez prognozy live. Klucz kolejności listy:
+ * opóźnienie zmienia godziny w karcie, ale nie przesuwa jej w rankingu.
+ */
+export function scheduledBoardingDepartureSec(connection: Connection): number {
+  if (connection.boarded) return connection.departureSec;
+  let cursor = connection.departureSec;
+  for (const leg of connection.legs) {
+    const departure = alignClock(timeStringToSeconds(leg.departAt), cursor);
+    if (leg.mode !== 'walk') {
+      if (leg.scheduledDepartureSec != null) return leg.scheduledDepartureSec;
+      return departure - (leg.delaySec ?? 0);
+    }
+    let arrival = alignClock(timeStringToSeconds(leg.arriveAt), departure);
+    if (arrival < departure) arrival += DAY;
+    cursor = arrival;
+  }
+  return connection.departureSec;
+}
+
 export function boardingDepartureMs(connection: Connection, now = new Date()): number {
   const seconds = boardingDepartureSec(connection);
   const firstVehicle = connection.legs.find((leg) => leg.mode !== 'walk');

@@ -125,7 +125,7 @@ import { loadEarlierConnections } from '../../src/services/routing/earlierConnec
 import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
 import {
   boardingDepartureMs,
-  boardingDepartureSec,
+  scheduledBoardingDepartureSec,
 } from '../../src/services/routing/connectionTimes';
 import type { JourneyTimeMode } from '../../src/services/routing/types';
 import { isOutsideServiceArea } from '../../src/services/serviceArea';
@@ -722,13 +722,18 @@ export default function RoutesScreen() {
         list = list.filter((c) => c.legs.some((l) => l.mode === modeFilter));
       }
     }
-    // Kolejność zawsze po realnym odjeździe: opóźnienie przesuwa kartę na
-    // jej nowe miejsce w czasie, zamiast zostawiać ją tam, gdzie stała.
-    return [...list].sort(
+    // Kolejność po planowym odjeździe: live zmienia godziny w kartach, ale nie
+    // przestawia listy, więc opóźnienia nie wywołują masowego reorderu.
+    const keyed = list.map((connection) => ({
+      connection,
+      key: scheduledBoardingDepartureSec(connection),
+    }));
+    keyed.sort(
       (a, b) =>
-        boardingDepartureSec(a) - boardingDepartureSec(b) ||
-        (a.arrivalSec ?? a.departureSec) - (b.arrivalSec ?? b.departureSec),
+        a.key - b.key ||
+        (a.connection.id < b.connection.id ? -1 : a.connection.id > b.connection.id ? 1 : 0),
     );
+    return keyed.map((entry) => entry.connection);
   }, [liveItems, transfersFilter, liveOnly, modeFilter]);
 
   const walkMps = useWalkSpeedMps();
@@ -1097,7 +1102,11 @@ export default function RoutesScreen() {
     // Default: tylko aktualne i przyszłe, bez historycznych.
     // Wcześniejsze odjazdy użytkownik wczytuje gestem lub przyciskiem.
     // Przy jawnie wybranej godzinie (np. z przeszłości) pokazuj wszystko jak jest.
-    let list = deduplicateConnections(c).sort((a, b) => a.departureSec - b.departureSec);
+    let list = deduplicateConnections(c).sort(
+      (a, b) =>
+        scheduledBoardingDepartureSec(a) - scheduledBoardingDepartureSec(b) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
     if (depSec === undefined) {
       const d = new Date();
       const nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
