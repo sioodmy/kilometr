@@ -47,7 +47,7 @@ export const EarlierConnectionsPull = memo(function EarlierConnectionsPull({
   const containerStyle = useAnimatedStyle(() => {
     const h = Math.max(0, pullHeight.value);
     return {
-      opacity: interpolate(h, [4, 24], [0, 1], Extrapolation.CLAMP),
+      opacity: interpolate(h, [14, 34], [0, 1], Extrapolation.CLAMP),
       transform: [{ translateY: (h - EARLIER_PULL_MAX) / 2 }],
     };
   });
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    zIndex: 1,
+    zIndex: 0,
   },
   pill: {
     flexDirection: 'row',
