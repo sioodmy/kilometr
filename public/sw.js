@@ -44,18 +44,35 @@ self.addEventListener('fetch', (event) => {
   // Zewnętrzne API (OpenFreeMap, zbiorkom, data.kilometr.app, Nominatim, OSRM) idą prosto do sieci.
   if (url.origin !== self.location.origin) return;
 
-  // Nawigacje SPA: najpierw sieć (świeża wersja), przy braku sieci cache index.html.
+  // Nawigacje SPA: wyścig sieci z limitem 800 ms, gdy w cache jest już index.html.
   if (request.mode === 'navigate') {
+    const networkFetch = fetch(request).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        void caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+      }
+      return res;
+    });
+
     event.respondWith(
-      fetch(request)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            void caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match('/index.html').then((cached) => cached || Response.error())),
+      caches.match('/index.html').then((cached) => {
+        if (!cached) {
+          return networkFetch.catch(() => Response.error());
+        }
+        return new Promise((resolve) => {
+          let settled = false;
+          const finish = (response) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(response);
+          };
+          const timer = setTimeout(() => finish(cached), 800);
+          networkFetch
+            .then((res) => finish(res.ok ? res : cached))
+            .catch(() => finish(cached));
+        });
+      }),
     );
     return;
   }

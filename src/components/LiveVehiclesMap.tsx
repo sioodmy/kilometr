@@ -20,6 +20,7 @@ import {
   type LiveMapDisruptionItem,
   type LiveMapInMessage,
   type LiveMapOutMessage,
+  type LiveMapPoiItem,
   type LiveMapSelectedRoute,
   type LiveMapStopItem,
   type LiveMapVehicleItem,
@@ -56,12 +57,16 @@ interface LiveVehiclesMapProps {
   showDisruptions?: boolean;
   showDelays?: boolean;
   showStops?: boolean;
+  pois?: LiveMapPoiItem[];
+  selectedPoiId?: number | null;
+  showPois?: boolean;
   userLat?: number | null;
   userLon?: number | null;
   offlineBase?: string | null;
   bottomOffset?: number;
   onSelectVehicle?: (vehicleId: string) => void;
   onSelectStop?: (stopId: string) => void;
+  onSelectPoi?: (poiId: number) => void;
   onSelectDisruption?: (disruptionId: string) => void;
   onSelectDelay?: (delayId: string) => void;
   onClearSelection?: () => void;
@@ -91,12 +96,16 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
       showDisruptions = true,
       showDelays = false,
       showStops = true,
+      pois = [],
+      selectedPoiId = null,
+      showPois = true,
       userLat = null,
       userLon = null,
       offlineBase = null,
       bottomOffset = 0,
       onSelectVehicle,
       onSelectStop,
+      onSelectPoi,
       onSelectDisruption,
       onSelectDelay,
       onClearSelection,
@@ -159,6 +168,12 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     showDelaysRef.current = showDelays;
     const showStopsRef = useRef(showStops);
     showStopsRef.current = showStops;
+    const poisRef = useRef(pois);
+    poisRef.current = pois;
+    const selectedPoiIdRef = useRef(selectedPoiId);
+    selectedPoiIdRef.current = selectedPoiId;
+    const showPoisRef = useRef(showPois);
+    showPoisRef.current = showPois;
 
     const userPos = useMemo<[number, number] | null>(
       () =>
@@ -201,6 +216,9 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         showDisruptions: showDisruptionsRef.current,
         showDelays: showDelaysRef.current,
         showStops: showStopsRef.current,
+        pois: poisRef.current,
+        selectedPoiId: selectedPoiIdRef.current,
+        showPois: showPoisRef.current,
         userPos: userPosRef.current,
         mapLibreHead,
       });
@@ -267,6 +285,21 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
     useEffect(() => {
       if (!readyRef.current) return;
       send({
+        t: 'pois',
+        pois,
+        selectedPoiId: selectedPoiIdRef.current,
+        visible: showPois,
+      });
+    }, [pois, send, showPois]);
+
+    useEffect(() => {
+      if (!readyRef.current) return;
+      send({ t: 'selectedPoi', poiId: selectedPoiId });
+    }, [selectedPoiId, send]);
+
+    useEffect(() => {
+      if (!readyRef.current) return;
+      send({
         t: 'disruptions',
         disruptions,
         selectedDisruptionId,
@@ -319,6 +352,12 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
           send({ t: 'selectedRoute', route: selectedRouteRef.current ?? null });
           send({ t: 'stops', stops: stopsRef.current, selectedStopId: selectedStopIdRef.current });
           send({ t: 'stopsVisible', visible: showStopsRef.current });
+          send({
+            t: 'pois',
+            pois: poisRef.current,
+            selectedPoiId: selectedPoiIdRef.current,
+            visible: showPoisRef.current,
+          });
           send({ t: 'vehicles', vehicles: vehiclesRef.current, selectedId: selectedIdRef.current });
           if (userPosRef.current) {
             send({ t: 'user', lat: userPosRef.current[1], lon: userPosRef.current[0] });
@@ -339,6 +378,10 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         }
         if (msg.t === 'selectStop') {
           onSelectStop?.(msg.stopId);
+          return;
+        }
+        if (msg.t === 'selectPoi') {
+          onSelectPoi?.(msg.poiId);
           return;
         }
         if (msg.t === 'selectDisruption') {
@@ -384,6 +427,7 @@ export const LiveVehiclesMap = forwardRef<LiveVehiclesMapHandle, LiveVehiclesMap
         onRendered,
         onSelectDelay,
         onSelectDisruption,
+        onSelectPoi,
         onSelectStop,
         onSelectVehicle,
         onTilesStatus,

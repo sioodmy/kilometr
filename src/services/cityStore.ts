@@ -49,7 +49,7 @@ function notify(): void {
   }
 }
 
-export async function loadActiveCity(): Promise<CityId> {
+export async function loadActiveCity(options?: { skipStoreSwap?: boolean }): Promise<CityId> {
   if (loaded) return cachedId;
   let id: CityId = DEFAULT_CITY_ID;
   try {
@@ -59,13 +59,15 @@ export async function loadActiveCity(): Promise<CityId> {
     // storage niedostępny, zostaje default
   }
   loaded = true;
-  // Zapisane miasto różni się od domyślnego: pełna zmiana (baza + store),
-  // inaczej apk startuje z rozkładem Wrocławia pod hasłem "Kraków".
-  // Swap PRZED podmianą `cachedId`: w oknie między jednym a drugim
-  // synchroniczni czytelnicy (`getActiveCityIdSync`) nie mogą zobaczyć nowego
-  // miasta przy jeszcze starej bazie.
+  // Zapisane miasto różni się od domyślnego: na żywo trzeba zresetować otwarte bazy,
+  // ale przy zimnym starcie przed zamontowaniem ekranów bazy jeszcze nie istnieją.
   if (id !== cachedId) {
     pendingId = id;
+    if (options?.skipStoreSwap) {
+      cachedId = id;
+      notify();
+      return cachedId;
+    }
     await enqueueSwitch(async () => {
       if (id === cachedId) return;
       await swapStores();
@@ -108,33 +110,43 @@ async function swapStores(): Promise<void> {
   } catch (err) {
     console.warn('[CityStore] data status reset failed:', err);
   }
-  try {
-    const { closeGtfsDb, waitForGtfsSwap } = await import('./gtfsDatabase');
-    // Import mógł w tej chwili podmieniać plik (close->move). Zamknięcie bazy
-    // w trakcie `move` zostawiało otwarty uchwyt do nieistniejącego pliku.
-    await waitForGtfsSwap();
-    await closeGtfsDb();
-  } catch (err) {
-    console.warn('[CityStore] db switch failed:', err);
-  }
-  try {
-    const { gtfsStore } = await import('./routing/store');
-    gtfsStore.reset();
-  } catch (err) {
-    console.warn('[CityStore] routing store reset failed:', err);
-  }
-  try {
-    const { liveTracker } = await import('./liveTracker');
-    liveTracker.reset();
-  } catch (err) {
-    console.warn('[CityStore] live tracker reset failed:', err);
-  }
-  try {
-    const { invalidateLocalTimetableCache } = await import('./offlineCache');
-    invalidateLocalTimetableCache();
-  } catch (err) {
-    console.warn('[CityStore] offline cache reset failed:', err);
-  }
+  await Promise.all([
+    (async () => {
+      try {
+        const { closeGtfsDb, waitForGtfsSwap } = await import('./gtfsDatabase');
+        // Import mógł w tej chwili podmieniać plik (close->move). Zamknięcie bazy
+        // w trakcie `move` zostawiało otwarty uchwyt do nieistniejącego pliku.
+        await waitForGtfsSwap();
+        await closeGtfsDb();
+      } catch (err) {
+        console.warn('[CityStore] db switch failed:', err);
+      }
+    })(),
+    (async () => {
+      try {
+        const { gtfsStore } = await import('./routing/store');
+        gtfsStore.reset();
+      } catch (err) {
+        console.warn('[CityStore] routing store reset failed:', err);
+      }
+    })(),
+    (async () => {
+      try {
+        const { liveTracker } = await import('./liveTracker');
+        liveTracker.reset();
+      } catch (err) {
+        console.warn('[CityStore] live tracker reset failed:', err);
+      }
+    })(),
+    (async () => {
+      try {
+        const { invalidateLocalTimetableCache } = await import('./offlineCache');
+        invalidateLocalTimetableCache();
+      } catch (err) {
+        console.warn('[CityStore] offline cache reset failed:', err);
+      }
+    })(),
+  ]);
 }
 
 /**

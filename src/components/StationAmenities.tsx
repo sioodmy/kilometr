@@ -1,7 +1,6 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, startTransition, useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 import {
   BakeryDining,
   Coffee,
@@ -17,6 +16,7 @@ import { scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import type { StationAmenity } from '../types/models';
 import { getCachedStationAmenities, loadStationAmenities } from '../services/stationAmenities';
+import { waitForUiScrollIdle } from '../services/routing/yieldFrame';
 
 const ICONS: Record<StationAmenity, ComponentType<{ size?: number; color?: string }>> = {
   toilets: Wc,
@@ -36,7 +36,7 @@ const MOCK_ICON_COUNT = 5;
 
 /**
  * Rząd ikon udogodnień dworca (OSM 50 m) pod nazwą stacji przyjazdu w karcie pociągu.
- * Podczas ładowania lub odroczenia ikon pokazuje lekki mock rząd w stanie ładowania,
+ * Podczas ładowania pokazuje lekki mock rząd w stanie ładowania,
  * a gdy stacja nie ma udogodnień zwraca null.
  */
 export const StationAmenities = memo(function StationAmenities({
@@ -55,7 +55,6 @@ export const StationAmenities = memo(function StationAmenities({
   deferGraphics?: boolean;
 }) {
   const t = useStrings();
-  const reduceMotion = useReducedMotion();
   const [state, setState] = useState<{ keys: StationAmenity[] | null; loading: boolean }>(() => {
     const cached = getCachedStationAmenities(stopId, lat, lon);
     if (cached !== undefined) return { keys: cached, loading: false };
@@ -66,15 +65,21 @@ export const StationAmenities = memo(function StationAmenities({
     let alive = true;
     const cached = getCachedStationAmenities(stopId, lat, lon);
     if (cached !== undefined) {
-      setState({ keys: cached, loading: false });
+      setState((prev) =>
+        prev.keys === cached && !prev.loading ? prev : { keys: cached, loading: false },
+      );
       return;
     }
     setState((prev) =>
       prev.keys === null && prev.loading ? prev : { keys: null, loading: true },
     );
     if (deferLoad) return;
-    void loadStationAmenities(stopId, lat, lon).then((next) => {
-      if (alive) setState({ keys: next, loading: false });
+    void loadStationAmenities(stopId, lat, lon).then(async (next) => {
+      await waitForUiScrollIdle(450);
+      if (!alive) return;
+      startTransition(() => {
+        setState({ keys: next, loading: false });
+      });
     });
     return () => {
       alive = false;
@@ -82,7 +87,7 @@ export const StationAmenities = memo(function StationAmenities({
   }, [stopId, lat, lon, deferLoad]);
 
   const { keys, loading } = state;
-  const showSkeleton = loading || (deferGraphics && Boolean(keys && keys.length > 0));
+  const showSkeleton = loading || (deferGraphics && deferLoad && Boolean(keys && keys.length > 0));
 
   if (showSkeleton) {
     const iconCount = keys ? Math.min(MAX_ICONS, keys.length) : MOCK_ICON_COUNT;
@@ -105,8 +110,7 @@ export const StationAmenities = memo(function StationAmenities({
   const label = (key: StationAmenity) => t.stationAmenities[key];
 
   return (
-    <Animated.View
-      entering={!reduceMotion ? FadeIn.duration(150).reduceMotion(ReduceMotion.System) : undefined}
+    <View
       style={styles.row}
       accessible
       accessibilityLabel={t.stationAmenities.a11y(keys.map(label).join(', '))}
@@ -123,7 +127,7 @@ export const StationAmenities = memo(function StationAmenities({
         })}
         {hidden > 0 ? <Text style={styles.more}>{t.stationAmenities.more(hidden)}</Text> : null}
       </View>
-    </Animated.View>
+    </View>
   );
 });
 

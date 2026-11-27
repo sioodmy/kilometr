@@ -1,8 +1,11 @@
 import { memo, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  Beer,
+  Briefcase,
   Church,
   Clock3,
+  Coffee,
   Dumbbell,
   Film,
   Fuel,
@@ -11,6 +14,7 @@ import {
   Landmark,
   LocateFixed,
   MapPin,
+  Mountain,
   Pill,
   ShoppingBag,
   BusFront,
@@ -40,18 +44,28 @@ const KIND_TONES: Record<string, { Icon: IconComponent; bg: SchemeKey; fg: Schem
   place: { Icon: ShoppingBag, bg: 'primaryContainer', fg: 'onPrimaryContainer' },
 };
 
-/** Kategorie Nominatim, kolory stałe poza skalą motywu. */
+/** Kategorie miejsc z kolorami o czytelnym kontraście na ciemnej powierzchni. */
 const KIND_LITERALS: Record<string, { Icon: IconComponent; bg: string; fg: string }> = {
   restaurant: { Icon: Utensils, bg: '#4E2600', fg: '#FFB68F' },
+  cafe: { Icon: Coffee, bg: '#462A14', fg: '#F4C197' },
+  bar: { Icon: Beer, bg: '#471E3E', fg: '#F5B5E6' },
+  hotel: { Icon: Hotel, bg: '#3E1C14', fg: '#FFAD91' },
   medical: { Icon: Pill, bg: '#0F381E', fg: '#81C784' },
   school: { Icon: GraduationCap, bg: '#0D3559', fg: '#90CAF9' },
+  education: { Icon: GraduationCap, bg: '#0D3559', fg: '#90CAF9' },
   entertainment: { Icon: Film, bg: '#381A4C', fg: '#CE93D8' },
+  culture: { Icon: Landmark, bg: '#381A4C', fg: '#DFB6F2' },
+  nature: { Icon: Mountain, bg: '#133A27', fg: '#8EE0B0' },
   fuel: { Icon: Fuel, bg: '#422C00', fg: '#FFD54F' },
   train: { Icon: Train, bg: '#00363A', fg: '#80DEEA' },
   tourism: { Icon: Hotel, bg: '#3E1C14', fg: '#FF8A65' },
   sport: { Icon: Dumbbell, bg: '#1A237E', fg: '#9FA8DA' },
+  business: { Icon: Briefcase, bg: '#22333D', fg: '#B8D4E3' },
+  finance: { Icon: Landmark, bg: '#263238', fg: '#C2D0D6' },
+  civic: { Icon: Landmark, bg: '#1E3142', fg: '#A8CEF0' },
   bank: { Icon: Landmark, bg: '#263238', fg: '#B0BEC5' },
   church: { Icon: Church, bg: '#333816', fg: '#DCE775' },
+  worship: { Icon: Church, bg: '#333816', fg: '#DCE775' },
 };
 
 /** Tytuł do wyświetlenia: przystanki w ALL CAPS odróżniają je od adresów i POI. */

@@ -28,14 +28,25 @@ export function setupNotificationHandler(): void {
   }
 }
 
-export async function setupNotifications(): Promise<void> {
-  const N = getNotifications();
-  if (!N) {
-    warnUnsupportedOnce('Powiadomienia');
-    return;
-  }
-  setupNotificationHandler();
-  await setupNotificationCategories();
-  await setupNotificationChannels();
-  await cancelLegacyDepartureAlerts();
+let setupPromise: Promise<void> | null = null;
+
+export function setupNotifications(): Promise<void> {
+  if (setupPromise) return setupPromise;
+  setupPromise = (async () => {
+    const N = getNotifications();
+    if (!N) {
+      warnUnsupportedOnce('Powiadomienia');
+      return;
+    }
+    setupNotificationHandler();
+    await Promise.all([
+      setupNotificationCategories(),
+      setupNotificationChannels(),
+      cancelLegacyDepartureAlerts(),
+    ]);
+  })().catch((err) => {
+    setupPromise = null;
+    throw err;
+  });
+  return setupPromise;
 }

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { tr } from '../../i18n';
 import { getNotifications, getTrackingNative } from './module';
+import { setupNotifications } from './setup';
 
 // Uprawnienia. Prompt prosimy tylko wtedy, gdy użytkownik naprawdę włącza
 // funkcję (przypina trasę albo zmienia ustawienie), bo prośba „na starcie
@@ -39,6 +40,9 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   const N = getNotifications();
   if (!N) return false;
   try {
+    if (Platform.OS === 'android') {
+      await setupNotifications().catch(() => {});
+    }
     const current = await N.getPermissionsAsync();
     if (current.granted) return true;
     if (current.ios?.status === N.IosAuthorizationStatus.PROVISIONAL) return true;

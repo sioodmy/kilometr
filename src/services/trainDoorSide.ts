@@ -145,17 +145,20 @@ export function computeApproachBearing(
     const endM = track.anchorsM[segment.end];
     const startM = Math.max(0, track.anchorsM[segment.start]);
     if (endM >= 0 && endM - startM >= MIN_APPROACH_SPAN_M) {
-      const cum = [0];
-      for (let i = 0; i < track.shape.length - 1; i++) {
-        cum.push(
-          cum[i] +
-            distanceMeters(
-              track.shape[i].lat,
-              track.shape[i].lon,
-              track.shape[i + 1].lat,
-              track.shape[i + 1].lon,
-            ),
-        );
+      let cum = track.cumM;
+      if (!cum || cum.length !== track.shape.length) {
+        cum = [0];
+        for (let i = 0; i < track.shape.length - 1; i++) {
+          cum.push(
+            cum[i] +
+              distanceMeters(
+                track.shape[i].lat,
+                track.shape[i].lon,
+                track.shape[i + 1].lat,
+                track.shape[i + 1].lon,
+              ),
+          );
+        }
       }
       const fromM = Math.max(startM, endM - APPROACH_WINDOW_M);
       if (endM - fromM >= MIN_APPROACH_SPAN_M) {

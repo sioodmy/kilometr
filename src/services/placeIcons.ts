@@ -626,15 +626,25 @@ const CATALOG_BY_KEY = new Map<SavedPlaceIcon, PlaceIconMeta>(
 const CATEGORY_DEFAULT_ICON: Record<string, SavedPlaceIcon> = {
   train: 'train',
   school: 'school',
+  education: 'school',
   medical: 'doctor',
   shop: 'shopping',
   restaurant: 'restaurant',
+  cafe: 'coffee',
+  bar: 'beer',
+  hotel: 'hotel',
   entertainment: 'cinema',
+  culture: 'culture',
+  nature: 'park',
   fuel: 'fuel',
   tourism: 'culture',
   sport: 'gym',
+  business: 'work',
+  finance: 'bank',
+  civic: 'culture',
   bank: 'bank',
   church: 'church',
+  worship: 'church',
 };
 
 function matchTextToIcon(text: string): SavedPlaceIcon | null {

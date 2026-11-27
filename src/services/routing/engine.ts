@@ -716,25 +716,37 @@ export function applyLiveDelays(
 ): Connection[] {
   if (connections.length === 0) return connections;
   const neededTripIds = new Set<string>();
-  for (const connection of connections) {
-    for (const leg of connection.legs) {
-      if (leg.mode !== 'walk' && leg.tripId) neededTripIds.add(leg.tripId);
-    }
-  }
-  const snapshot =
-    neededTripIds.size > 0 && tripDelays.size > 0
-      ? liveTracker.getRoutingSnapshot()
-      : emptyRoutingSnapshot();
-  // Kopiujemy wyłącznie wpisy dla kursów z przekazanej listy połączeń,
-  // bez klonowania tysięcy wpisów całego miasta przy wejściu w szczegóły.
+  const missingRouteIds = new Set<string>();
+  let hasMissingTrips = false;
   const delays = new Map<string, number>();
   const confidence = new Map<string, DelayConfidence>();
-  for (const tripId of neededTripIds) {
-    const direct = tripDelays.get(tripId);
-    if (direct !== undefined) {
-      delays.set(tripId, direct);
-      confidence.set(tripId, 'live');
-    } else {
+
+  for (const connection of connections) {
+    for (const leg of connection.legs) {
+      if (leg.mode === 'walk' || !leg.tripId) continue;
+      if (neededTripIds.has(leg.tripId)) continue;
+      neededTripIds.add(leg.tripId);
+      const direct = tripDelays.get(leg.tripId);
+      if (direct !== undefined) {
+        delays.set(leg.tripId, direct);
+        confidence.set(leg.tripId, 'live');
+      } else {
+        hasMissingTrips = true;
+        if (leg.routeId) missingRouteIds.add(leg.routeId);
+      }
+    }
+  }
+
+  // Gdy wszystkie kursy z listy mają już bezpośrednie opóźnienie live (lub brak
+  // feedu), omijamy budowanie snapshotu estymacji dla całego miasta.
+  if (hasMissingTrips && tripDelays.size > 0) {
+    const snapshot = liveTracker.getRoutingSnapshot(
+      undefined,
+      undefined,
+      missingRouteIds.size > 0 ? missingRouteIds : undefined,
+    );
+    for (const tripId of neededTripIds) {
+      if (delays.has(tripId)) continue;
       const snapDelay = snapshot.delays.get(tripId);
       if (snapDelay !== undefined) delays.set(tripId, snapDelay);
       const snapConfidence = snapshot.confidence.get(tripId);

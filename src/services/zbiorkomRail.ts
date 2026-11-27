@@ -3,6 +3,7 @@ import { timeStringToSeconds } from '../gtfs/geo';
 import { ZBIORKOM } from './gtfsConfig';
 import { trainNumberVariants } from './nationalRailLive';
 import { withTimeout } from './net';
+import { getUiYieldBudgetMs, waitForUiScrollIdle, yieldToUiFrame } from './routing/yieldFrame';
 import { kvGet, kvSet } from './storage';
 
 interface ZbStation {
@@ -72,7 +73,12 @@ async function loadStations(): Promise<StationIndex> {
     let raw: unknown;
     try {
       raw = await fetchJson(`${ZBIORKOM.baseUrl}/api6-open/pkp/stops`);
-      void kvSet(KEY_ZB_RAIL_STOPS, JSON.stringify(raw));
+      const snapshotToSave = raw;
+      setTimeout(() => {
+        void waitForUiScrollIdle(800).then(() => {
+          void kvSet(KEY_ZB_RAIL_STOPS, JSON.stringify(snapshotToSave));
+        });
+      }, 700);
     } catch (netErr) {
       try {
         const cached = await kvGet(KEY_ZB_RAIL_STOPS);
@@ -91,7 +97,9 @@ async function loadStations(): Promise<StationIndex> {
       stationsPromise = null;
       throw new Error('Nieprawidłowy katalog stacji');
     }
-    for (const entry of raw.stops) {
+    let sliceStart = performance.now();
+    for (let i = 0; i < raw.stops.length; i++) {
+      const entry = raw.stops[i];
       if (!Array.isArray(entry)) continue;
       const stopId = typeof entry[0] === 'string' ? entry[0] : '';
       const name = typeof entry[2] === 'string' ? entry[2].trim() : '';
@@ -111,6 +119,10 @@ async function loadStations(): Promise<StationIndex> {
       const group = byName.get(key) ?? [];
       group.push(station);
       byName.set(key, group);
+      if ((i & 127) === 127 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+      }
     }
     return { byStopId, byName };
   })();
