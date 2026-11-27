@@ -13,9 +13,11 @@ import {
   BinaryWriter,
   CMD_LIVE_LOAD_SCHEDULE,
   CMD_LIVE_MATCH_BATCH,
+  encodeUtf8,
   invokeRustAsync,
+  isNativeRustAsyncAvailable,
 } from '../../modules/kilometr-raptor';
-import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './routing/yieldFrame';
+import { getUiYieldBudgetMs, waitForUiScrollIdle, yieldToUiFrame } from './routing/yieldFrame';
 import { MPK, WROCLAW_BUS_LINES, WROCLAW_TRAM_LINES } from './gtfsConfig';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getCity } from '../cities';
@@ -49,7 +51,7 @@ import {
   fetchZbWarsawRows,
   fetchZbWroclawRows,
   isNewLiveCity,
-  matchZbKd,
+  matchZbKdAsync,
   type ZbKdVehicle,
 } from './zbiorkom';
 import type { VehiclePosition } from '../types/models';
@@ -306,6 +308,10 @@ class LiveTracker {
     this.lastFullCitySyncAt = 0;
     // Nowe miasto: pierwszy udany poll ma od razu pójść na dysk pod nowy klucz.
     this.lastPersistAt = 0;
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
     this.notify();
   }
 
@@ -644,7 +650,11 @@ class LiveTracker {
     return { dayIndex: merged.index, offsets: merged.offsets };
   }
 
-  getRoutingSnapshot(index = this.latestDayIndex, offsets?: Map<string, number>): RoutingSnapshot {
+  getRoutingSnapshot(
+    index = this.latestDayIndex,
+    offsets?: Map<string, number>,
+    filterRouteIds?: ReadonlySet<string>,
+  ): RoutingSnapshot {
     const cityId = safeCityId();
     const feedFresh = this.getLiveState() === 'fresh';
     const backendIntel = getCachedBackendDelayIntel(cityId);
@@ -671,8 +681,9 @@ class LiveTracker {
       now,
       offsets,
       backendIntel,
+      filterRouteIds,
     );
-    if (!hasCustomOffsets) {
+    if (!hasCustomOffsets && !filterRouteIds) {
       this.routingSnapshotCache = {
         index,
         cityId,
@@ -1109,20 +1120,29 @@ class LiveTracker {
 
   /** Ostatni zapis snapshotu: przy polli co 5 s zapis na dysk co raz to tarcie. */
   private lastPersistAt = 0;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** Minimalna przerwa między zapisami snapshotu na dysk. */
   private static PERSIST_MIN_MS = 30000;
 
   private persistSnapshot(rows: RawVehicleRow[], rails?: RailFeed[], cityId?: string): void {
     // Snapshot służy tylko odtworzeniu po restarcie (okno 15 min), więc wolno
-    // mu gubić intermediate polle. Bez throttlingu pisalibyśmy ~600 KB na dysk
-    // co 5 s.
+    // mu gubić intermediate polle i czekać na bezczynność scrolla. Bez tego
+    // JSON.stringify (~600 KB) wchodził w środek pierwszego scrolla listy tras.
     const now = Date.now();
     if (now - this.lastPersistAt < LiveTracker.PERSIST_MIN_MS) return;
     this.lastPersistAt = now;
-    void kvSet(
-      snapshotKey(cityId),
-      JSON.stringify({ at: now, rows, rails: rails ?? [] } satisfies StoredSnapshot),
-    );
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer);
+    }
+    const payload: StoredSnapshot = { at: now, rows, rails: rails ?? [] };
+    const key = snapshotKey(cityId);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void waitForUiScrollIdle(800).then(() => {
+        if (cityId && safeCityId() !== cityId) return;
+        void kvSet(key, JSON.stringify(payload));
+      });
+    }, 700);
   }
 
   /**
@@ -1190,10 +1210,29 @@ class LiveTracker {
       throw new Error(`day index failed: ${String(err)}`);
     }
 
-    for (const veh of vehicles) {
+    // Indeksujemy wzorce po routeId raz zamiast skanować całe miasto per pociąg.
+    type DayPatternEntry = [string, DayIndex['patterns'] extends Map<string, infer P> ? P : never];
+    const patternsByRouteId = new Map<string, DayPatternEntry[]>();
+    for (const entry of dayIndex.patterns.entries()) {
+      const rid = entry[1].routeId;
+      let list = patternsByRouteId.get(rid);
+      if (!list) {
+        list = [];
+        patternsByRouteId.set(rid, list);
+      }
+      list.push(entry);
+    }
+
+    let sliceStart = performance.now();
+    for (let vIdx = 0; vIdx < vehicles.length; vIdx++) {
+      const veh = vehicles[vIdx];
       if (!veh.lat || !veh.lon || !veh.trainNumber) continue;
+      if (performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+      }
       const vehicleId = `${prefix}${veh.trainNumber}:${veh.id}`;
-      const match = matchZbKd(veh, dayIndex, offsets);
+      const match = await matchZbKdAsync(veh, dayIndex, offsets, patternsByRouteId);
       const outOfRange = match != null && Math.abs(veh.delaySec) > DELAY_CAP_SEC;
       if (outOfRange) {
         console.warn(
@@ -1524,6 +1563,7 @@ class LiveTracker {
       >();
       let sliceStart = performance.now();
       let patCount = 0;
+      let totalTrips = 0;
       for (const [patternId, pattern] of dayIndex.patterns.entries()) {
         const route = gtfsStore.routes.get(pattern.routeId);
         const line = String(route?.route_short_name ?? pattern.routeId ?? '')
@@ -1536,7 +1576,8 @@ class LiveTracker {
           byLine.set(line, list);
         }
         list.push({ ...pattern, offset: offsets?.get(patternId) ?? 0 });
-        if ((++patCount & 63) === 0 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+        totalTrips += pattern.trips.length;
+        if ((++patCount & 31) === 0 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
           await yieldToUiFrame();
           sliceStart = performance.now();
         }
@@ -1544,26 +1585,75 @@ class LiveTracker {
       const tripIds: string[] = [];
       const tripIndex = new Map<string, number>();
       const stopNames: string[] = [];
-      const w = new BinaryWriter(256);
+      // Deduplikujemy nazwy przystanków i znormalizowane bajty UTF-8 po stop_id
+      // oraz kierunki po headsign (zamiast normalizować 120 tys. razy w pętli).
+      const stopMetaById = new Map<
+        string,
+        { nameIdx: number; normBytes: Uint8Array; lat: number; lon: number }
+      >();
+      const headsignBytesCache = new Map<string, Uint8Array>();
+      const emptyBytes = new Uint8Array(0);
+      const getStopMeta = (stopId: string) => {
+        const cached = stopMetaById.get(stopId);
+        if (cached !== undefined) return cached;
+        const stop = gtfsStore.stops.get(stopId);
+        if (!stop || stop.stop_lat == null || stop.stop_lon == null) return null;
+        const rawName = stop.stop_name || stopId;
+        const nameIdx = stopNames.length;
+        stopNames.push(rawName);
+        const meta = {
+          nameIdx,
+          normBytes: encodeUtf8(normalizeName(rawName)),
+          lat: stop.stop_lat,
+          lon: stop.stop_lon,
+        };
+        stopMetaById.set(stopId, meta);
+        return meta;
+      };
+      const getHeadsignBytes = (raw?: string): Uint8Array => {
+        if (!raw) return emptyBytes;
+        let cached = headsignBytesCache.get(raw);
+        if (!cached) {
+          cached = encodeUtf8(normalizeName(raw));
+          headsignBytesCache.set(raw, cached);
+        }
+        return cached;
+      };
+
+      const initialCap = Math.min(2 * 1024 * 1024, Math.max(65536, totalTrips * 256));
+      const w = new BinaryWriter(initialCap);
       w.u32(byLine.size);
       let writtenTrips = 0;
       for (const [line, patterns] of byLine) {
         w.str(line).u32(patterns.length);
         for (const { offset, ...pattern } of patterns) {
-          const seq: { nameIdx: number; lat: number; lon: number; pos: number }[] = [];
+          const seq: {
+            stopId: string;
+            nameIdx: number;
+            normBytes: Uint8Array;
+            lat: number;
+            lon: number;
+            pos: number;
+          }[] = [];
+          const seqStopIds = new Set<string>();
           for (const [pos, stopId] of pattern.stopSequence.entries()) {
-            const stop = gtfsStore.stops.get(stopId);
-            if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
-            const nameIdx = stopNames.length;
-            stopNames.push(stop.stop_name || stopId);
-            seq.push({ nameIdx, lat: stop.stop_lat, lon: stop.stop_lon, pos });
+            const meta = getStopMeta(stopId);
+            if (!meta) continue;
+            seqStopIds.add(stopId);
+            seq.push({
+              stopId,
+              nameIdx: meta.nameIdx,
+              normBytes: meta.normBytes,
+              lat: meta.lat,
+              lon: meta.lon,
+              pos,
+            });
           }
           w.u16(seq.length);
-          for (const node of seq)
-            w.u32(node.nameIdx)
-              .f64(node.lat)
-              .f64(node.lon)
-              .str(normalizeName(stopNames[node.nameIdx]));
+          for (const node of seq) {
+            w.u32(node.nameIdx).f64(node.lat).f64(node.lon).strBytes(node.normBytes);
+          }
+          const hasPolyline = seq.length >= 2;
           const trips = pattern.trips;
           w.u32(trips.length);
           for (const trip of trips) {
@@ -1571,38 +1661,49 @@ class LiveTracker {
             const tripIdx = tripIds.length;
             tripIds.push(trip.trip_id);
             tripIndex.set(trip.trip_id, tripIdx);
-            w.u32(tripIdx).str(normalizeName(trip.trip_headsign ?? ''));
+            w.u32(tripIdx).strBytes(getHeadsignBytes(trip.trip_headsign));
             for (let i = 0; i < seq.length; i++) {
               const t = times?.[seq[i].pos];
               w.i32(t ? (t.departure_sec + offset) | 0 : -2147483648).i32(
                 t ? (t.arrival_sec + offset) | 0 : -2147483648,
               );
             }
-            const fallback: { nameIdx: number; lat: number; lon: number; dep: number }[] = [];
-            if (times) {
-              for (const t of times) {
-                const stop = gtfsStore.stops.get(t.stop_id);
-                if (!stop || stop.stop_lat == null || stop.stop_lon == null) continue;
+            // Gdy wzorzec ma polilinię (>= 2 przystanki), Krok 1 w Rust pokrywa już
+            // każdy wierzchołek w promieniu 350 m (> 200 m fallbacku). Do fallbacku
+            // dokładamy więc tylko krańce (pętle) oraz ewentualne przystanki spoza seq,
+            // redukując payload i czas ładowania rozkładu w Rust/WASM o rząd wielkości.
+            const fallback: {
+              nameIdx: number;
+              normBytes: Uint8Array;
+              lat: number;
+              lon: number;
+              dep: number;
+            }[] = [];
+            if (times && times.length > 0) {
+              const lastIdx = times.length - 1;
+              for (let ti = 0; ti < times.length; ti++) {
+                const t = times[ti];
+                if (hasPolyline && ti !== 0 && ti !== lastIdx && seqStopIds.has(t.stop_id)) {
+                  continue;
+                }
+                const meta = getStopMeta(t.stop_id);
+                if (!meta) continue;
                 const dep = t.departure_sec ?? t.arrival_sec;
                 if (dep == null) continue;
-                const nameIdx = stopNames.length;
-                stopNames.push(stop.stop_name || t.stop_id);
                 fallback.push({
-                  nameIdx,
-                  lat: stop.stop_lat,
-                  lon: stop.stop_lon,
+                  nameIdx: meta.nameIdx,
+                  normBytes: meta.normBytes,
+                  lat: meta.lat,
+                  lon: meta.lon,
                   dep: dep + offset,
                 });
               }
             }
             w.u16(fallback.length);
-            for (const fb of fallback)
-              w.u32(fb.nameIdx)
-                .f64(fb.lat)
-                .f64(fb.lon)
-                .i32(fb.dep | 0)
-                .str(normalizeName(stopNames[fb.nameIdx]));
-            if ((++writtenTrips & 15) === 0 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+            for (const fb of fallback) {
+              w.u32(fb.nameIdx).f64(fb.lat).f64(fb.lon).i32(fb.dep | 0).strBytes(fb.normBytes);
+            }
+            if ((++writtenTrips & 7) === 0 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
               await yieldToUiFrame();
               sliceStart = performance.now();
             }
@@ -1635,87 +1736,99 @@ class LiveTracker {
     if (!(await this.ensureLiveScheduleAsync(dayIndex, offsets))) return null;
     const usable = rows.filter((row) => row.x && row.y && row.name);
     if (usable.length === 0) return null;
-    const w = new BinaryWriter(16 + usable.length * 48);
-    w.i32(nowSec).u32(usable.length);
-    const now = Date.now();
-    let sliceStart = performance.now();
-    for (let i = 0; i < usable.length; i++) {
-      const row = usable[i];
-      const hints = matchHints(row, this.previousFor(row));
-      const previous = hints.previous;
-      const prevIdx = previous?.matchedTripId
-        ? (this.liveTripIndex.get(previous.matchedTripId) ?? -1)
-        : -1;
-      w.str(row.name.trim().toUpperCase())
-        .f64(row.x)
-        .f64(row.y)
-        .i32(nowSec - Math.round((now - (sampleTime(row, now) ?? now)) / 1000))
-        .i32(hints.api ?? -2147483648)
-        .str(hints.headsign)
-        .i32(prevIdx)
-        .f64(previous?.lat ?? row.x)
-        .f64(previous?.lon ?? row.y)
-        .str(hints.nextStop)
-        .i32(hints.nextSec ?? -2147483648);
-      if ((i & 63) === 63 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
-        await yieldToUiFrame();
-        sliceStart = performance.now();
-      }
-    }
-    const res = await invokeRustAsync(CMD_LIVE_MATCH_BATCH, w.finish());
-    if (!res || res.byteLength < 4) return null;
-    const r = new BinaryReader(res);
-    const count = r.u32();
-    if (count !== usable.length || res.byteLength < 4 + count * 25) return null;
     const matched = new Map<string, { tracked: TrackedVehicle; score: number }>();
-    sliceStart = performance.now();
-    for (let i = 0; i < count; i++) {
-      const row = usable[i];
-      const line = row.name.trim().toUpperCase();
-      const ok = r.u8Val() !== 0;
-      const tripIdx = r.u32();
-      const delay = r.i32();
-      const curIdx = r.u32();
-      const nextIdx = r.u32();
-      const score = r.f64();
-      const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
-      const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
-      const previous = this.previousFor(row);
-      // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
-      // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
-      // dostaje route_type 1 i kropkę metra).
-      let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
-      if (tripId) {
-        const trip = gtfsStore.trips.get(tripId);
-        const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
-        if (routeType === 0) vtype = 'tram';
-        else if (routeType === 1) vtype = 'subway';
-        else if (routeType === 2) vtype = 'train';
-        else if (routeType === 11) vtype = 'trolleybus';
+    const now = Date.now();
+    // Na natywnym Androidzie/iOS invokeRustAsync działa na wątku roboczym, więc
+    // wysyłamy pełny wsad. W przeglądarce (WASM na wątku głównym) tniemy wsad na
+    // małe porcje z przerwą między nimi, żeby scroll pozostał płynny.
+    const batchSize = isNativeRustAsyncAvailable() ? usable.length : 64;
+
+    for (let start = 0; start < usable.length; start += batchSize) {
+      const end = Math.min(usable.length, start + batchSize);
+      const batchLen = end - start;
+      const w = new BinaryWriter(16 + batchLen * 48);
+      w.i32(nowSec).u32(batchLen);
+      let sliceStart = performance.now();
+      for (let i = start; i < end; i++) {
+        const row = usable[i];
+        const hints = matchHints(row, this.previousFor(row));
+        const previous = hints.previous;
+        const prevIdx = previous?.matchedTripId
+          ? (this.liveTripIndex.get(previous.matchedTripId) ?? -1)
+          : -1;
+        w.str(row.name.trim().toUpperCase())
+          .f64(row.x)
+          .f64(row.y)
+          .i32(nowSec - Math.round((now - (sampleTime(row, now) ?? now)) / 1000))
+          .i32(hints.api ?? -2147483648)
+          .str(hints.headsign)
+          .i32(prevIdx)
+          .f64(previous?.lat ?? row.x)
+          .f64(previous?.lon ?? row.y)
+          .str(hints.nextStop)
+          .i32(hints.nextSec ?? -2147483648);
+        if ((i & 31) === 31 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+          await yieldToUiFrame();
+          sliceStart = performance.now();
+        }
       }
-      matched.set(line + '-' + row.k, {
-        tracked: {
-          vehicleId: `${line}-${row.k}`,
-          line,
-          lat: row.x,
-          lon: row.y,
-          bearing: row.bearing,
-          type: vtype,
-          delaySec:
-            tripId && !delayOutOfRange
-              ? fusedDelay(row, delay, previous?.matchedTripId === tripId ? previous : undefined)
-              : null,
-          matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
-          currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
-          nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
-          updatedAt: sampleTime(row, now) ?? now,
-          model: row.model ?? previous?.model,
-        },
-        score: tripId && !delayOutOfRange ? score : Number.POSITIVE_INFINITY,
-      });
-      if ((i & 63) === 63 && performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+      const res = await invokeRustAsync(CMD_LIVE_MATCH_BATCH, w.finish());
+      if (!res || res.byteLength < 4) return null;
+      const r = new BinaryReader(res);
+      const count = r.u32();
+      if (count !== batchLen || res.byteLength < 4 + count * 25) return null;
+      sliceStart = performance.now();
+      for (let j = 0; j < count; j++) {
+        const row = usable[start + j];
+        const line = row.name.trim().toUpperCase();
+        const ok = r.u8Val() !== 0;
+        const tripIdx = r.u32();
+        const delay = r.i32();
+        const curIdx = r.u32();
+        const nextIdx = r.u32();
+        const score = r.f64();
+        const tripId = ok ? this.liveTripIds[tripIdx] : undefined;
+        const delayOutOfRange = !!tripId && delay !== 0 && Math.abs(delay) > DELAY_CAP_SEC;
+        const previous = this.previousFor(row);
+        // Ścieżka Rusta nie zna route_type, więc typ bierzemy z bazy po meczu
+        // (metro M1/M2 z feedu miasta przychodzi jako „bus", a po meczu
+        // dostaje route_type 1 i kropkę metra).
+        let vtype: TrackedVehicle['type'] = row.type === 'tram' ? 'tram' : 'bus';
+        if (tripId) {
+          const trip = gtfsStore.trips.get(tripId);
+          const routeType = gtfsStore.routes.get(trip?.route_id ?? '')?.route_type;
+          if (routeType === 0) vtype = 'tram';
+          else if (routeType === 1) vtype = 'subway';
+          else if (routeType === 2) vtype = 'train';
+          else if (routeType === 11) vtype = 'trolleybus';
+        }
+        matched.set(line + '-' + row.k, {
+          tracked: {
+            vehicleId: `${line}-${row.k}`,
+            line,
+            lat: row.x,
+            lon: row.y,
+            bearing: row.bearing,
+            type: vtype,
+            delaySec:
+              tripId && !delayOutOfRange
+                ? fusedDelay(row, delay, previous?.matchedTripId === tripId ? previous : undefined)
+                : null,
+            matchedTripId: tripId && !delayOutOfRange ? tripId : undefined,
+            currentStopName: tripId ? this.liveStopNames[curIdx] : undefined,
+            nextStopName: tripId ? this.liveStopNames[nextIdx] : undefined,
+            updatedAt: sampleTime(row, now) ?? now,
+            model: row.model ?? previous?.model,
+          },
+          score: tripId && !delayOutOfRange ? score : Number.POSITIVE_INFINITY,
+        });
+        if ((j & 31) === 31 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+          await yieldToUiFrame();
+          sliceStart = performance.now();
+        }
+      }
+      if (end < usable.length) {
         await yieldToUiFrame();
-        sliceStart = performance.now();
       }
     }
     return matched;
@@ -1772,7 +1885,7 @@ class LiveTracker {
           row.name.trim().toUpperCase() + '-' + row.k,
           this.matchRow(row, dayIndex, nowSec, patternPolylines, offsets),
         );
-        if ((i & 15) === 15 && performance.now() - fallbackSliceStart >= UI_YIELD_BUDGET_MS) {
+        if ((i & 7) === 7 && performance.now() - fallbackSliceStart >= getUiYieldBudgetMs()) {
           await yieldToUiFrame();
           fallbackSliceStart = performance.now();
         }

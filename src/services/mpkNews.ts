@@ -2689,12 +2689,20 @@ export async function loadNewsCache(cityId?: CityId | string): Promise<MpkNewsIt
   }
 }
 
+let pendingNewsPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
 async function rememberNews(items: MpkNewsItem[], cityId: string): Promise<MpkNewsItem[]> {
   // 200 OK bez ani jednego sparsowanego komunikatu to zwykle zmiana layoutu
   // źródła, nie "brak newsów": pusta lista nie może nadpisać dobrego cache
   // (loadNewsCache i tak odrzuca pusty wpis, tu pojawia się zwrot starych).
   if (items.length === 0) return (await loadNewsCache(cityId)) ?? [];
-  void kvSet(cityKey(KEY_NEWS_CACHE, cityId), JSON.stringify(items));
+  if (pendingNewsPersistTimer !== null) clearTimeout(pendingNewsPersistTimer);
+  const key = cityKey(KEY_NEWS_CACHE, cityId);
+  const snapshot = items;
+  pendingNewsPersistTimer = setTimeout(() => {
+    pendingNewsPersistTimer = null;
+    void kvSet(key, JSON.stringify(snapshot));
+  }, 600);
   if (activeCityId() === cityId) {
     cachedNewsItems = items;
     cachedNewsCity = cityId;

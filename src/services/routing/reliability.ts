@@ -33,6 +33,7 @@ export function buildRoutingSnapshot(
   now: number,
   offsets = new Map<string, number>(),
   backendIntel?: BackendDelayIntel | null,
+  filterRouteIds?: ReadonlySet<string>,
 ): RoutingSnapshot {
   const result = emptyRoutingSnapshot();
   if (!index) return result;
@@ -43,26 +44,28 @@ export function buildRoutingSnapshot(
   const sec = clock.getHours() * 3600 + clock.getMinutes() * 60 + clock.getSeconds();
   const samples = new Map<string, { delay: number; start: number; edge?: string }[]>();
   const edgeSamples = new Map<string, { delay: number; start: number }[]>();
-  const fresh = feedFresh
-    ? new Map(
-        vehicles
-          .filter(
-            (v) =>
-              now - v.updatedAt <= MAX_SAMPLE_AGE_MS &&
-              v.updatedAt <= now &&
-              v.matchedTripId &&
-              v.delaySec != null,
-          )
-          .map((v) => [v.matchedTripId!, v]),
-      )
-    : new Map<string, TrackedVehicle>();
-
-  for (const [id, v] of fresh) {
-    result.delays.set(id, v.delaySec!);
-    result.confidence.set(id, 'live');
+  const fresh = new Map<string, TrackedVehicle>();
+  let hasUrbanLive = false;
+  if (feedFresh) {
+    for (let i = 0; i < vehicles.length; i++) {
+      const v = vehicles[i];
+      if (
+        now - v.updatedAt <= MAX_SAMPLE_AGE_MS &&
+        v.updatedAt <= now &&
+        v.matchedTripId &&
+        v.delaySec != null
+      ) {
+        fresh.set(v.matchedTripId, v);
+        result.delays.set(v.matchedTripId, v.delaySec);
+        result.confidence.set(v.matchedTripId, 'live');
+        if (!hasUrbanLive && !v.vehicleId.includes(':')) hasUrbanLive = true;
+      }
+    }
   }
 
-  const hasUrbanLive = [...fresh.values()].some((v) => !v.vehicleId.includes(':'));
+  // Gdy caller pyta tylko o konkretne linie (np. widoczne na liście połączeń),
+  // możemy pominąć zbieranie próbek, jeśli żadna z tych linii nie ma ani live, ani backendu.
+  if (filterRouteIds && filterRouteIds.size === 0) return result;
 
   if (hasUrbanLive) {
     for (const [pid, raw] of index.patterns) {
@@ -101,6 +104,7 @@ export function buildRoutingSnapshot(
   for (const [pid, raw] of index.patterns) {
     if (offsets.get(pid)) continue;
     const pattern: { routeId: string; stopSequence: string[]; trips: { trip_id: string }[] } = raw;
+    if (filterRouteIds && !filterRouteIds.has(pattern.routeId)) continue;
     const route = store.routes.get(pattern.routeId);
     const lineKey = route?.route_short_name?.trim().toUpperCase();
     const backendLine = lineKey && backendIntel ? backendIntel.byLine.get(lineKey) : undefined;

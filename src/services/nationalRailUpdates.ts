@@ -84,6 +84,7 @@ let cachedApi: {
   fetchRef: typeof fetch;
   data: ApiResponse;
 } | null = null;
+const inflightApi = new Map<string, Promise<ApiResponse | null>>();
 
 const RAIL_UPDATES_STORAGE_KEY = 'kilometr.cache.national_rail_updates.v1';
 const PERSISTENT_CACHE_TTL_MS = 12 * 3600 * 1000;
@@ -99,6 +100,7 @@ let storageLoadPromise: Promise<PersistedRailCache | null> | null = null;
 
 export function resetNationalRailUpdatesCache(): void {
   cachedApi = null;
+  inflightApi.clear();
   memoryRailCache = null;
   storageLoadPromise = null;
 }
@@ -438,54 +440,69 @@ export async function fetchNationalRailUpdates(
   ) {
     data = cachedApi.data;
   } else {
-    const timeout = withTimeout(5000);
-    try {
-      const res = await fetch(requestUrl, {
-        signal: timeout.signal,
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        data = (await res.json()) as ApiResponse;
-        cachedApi = {
-          at: Date.now(),
-          url: requestUrl,
-          fetchRef: globalThis.fetch,
-          data,
-        };
-      }
-    } catch {
-      // Błąd sieci (np. brak zasięgu w pociągu)
-    } finally {
-      timeout.dispose();
-    }
-
-    // Bezpieczny fallback na VPS backend (/v1/rail/delays), gdy Worker jest niedostępny.
-    if (!data && baseUrl === TIMETABLE.baseUrl && isKilometrApiAvailable()) {
-      const backupUrl = `${KILOMETR_API.baseUrl}/v1/rail/delays?${params.toString()}`;
-      const backupTimeout = withTimeout(3500);
-      try {
-        const res = await fetch(backupUrl, {
-          signal: backupTimeout.signal,
-          headers: { Accept: 'application/json' },
-        });
-        if (res.ok) {
-          const candidate = (await res.json()) as ApiResponse;
-          if (candidate.trips && Object.keys(candidate.trips).length > 0) {
-            data = candidate;
+    const fetchRef = globalThis.fetch;
+    const inflightKey = requestUrl;
+    let pending = inflightApi.get(inflightKey);
+    if (!pending) {
+      pending = (async (): Promise<ApiResponse | null> => {
+        let fetched: ApiResponse | null = null;
+        const timeout = withTimeout(5000);
+        try {
+          const res = await fetch(requestUrl, {
+            signal: timeout.signal,
+            headers: { Accept: 'application/json' },
+          });
+          if (res.ok) {
+            fetched = (await res.json()) as ApiResponse;
             cachedApi = {
               at: Date.now(),
               url: requestUrl,
-              fetchRef: globalThis.fetch,
-              data,
+              fetchRef,
+              data: fetched,
             };
           }
+        } catch {
+          // Błąd sieci (np. brak zasięgu w pociągu)
+        } finally {
+          timeout.dispose();
         }
-      } catch {
-        // Cichy fallback do lokalnego cache
-      } finally {
-        backupTimeout.dispose();
-      }
+
+        // Bezpieczny fallback na VPS backend (/v1/rail/delays), gdy Worker jest niedostępny.
+        if (!fetched && baseUrl === TIMETABLE.baseUrl && isKilometrApiAvailable()) {
+          const backupUrl = `${KILOMETR_API.baseUrl}/v1/rail/delays?${params.toString()}`;
+          const backupTimeout = withTimeout(3500);
+          try {
+            const res = await fetch(backupUrl, {
+              signal: backupTimeout.signal,
+              headers: { Accept: 'application/json' },
+            });
+            if (res.ok) {
+              const candidate = (await res.json()) as ApiResponse;
+              if (candidate.trips && Object.keys(candidate.trips).length > 0) {
+                fetched = candidate;
+                cachedApi = {
+                  at: Date.now(),
+                  url: requestUrl,
+                  fetchRef,
+                  data: fetched,
+                };
+              }
+            }
+          } catch {
+            // Cichy fallback do lokalnego cache
+          } finally {
+            backupTimeout.dispose();
+          }
+        }
+        return fetched;
+      })().finally(() => {
+        if (inflightApi.get(inflightKey) === pending) {
+          inflightApi.delete(inflightKey);
+        }
+      });
+      inflightApi.set(inflightKey, pending);
     }
+    data = await pending;
   }
 
   if (!data) {
