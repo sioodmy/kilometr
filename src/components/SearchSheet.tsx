@@ -55,17 +55,10 @@ import { searchTransitLines, type TransitLine } from '../services/lineTimetable'
 import { LineBadge } from './LineBadge';
 import { SpringPressable } from './SpringPressable';
 import { SkeletonBone, SkeletonPulse, useDeferredReveal } from './SkeletonPulse';
-import type { NearbyLiveVehicle } from '../services/onboardDetector';
 
 type Row =
   | { type: 'header'; label: string }
   | { type: 'liveMap' }
-  | {
-      type: 'vehicle';
-      vehicle: NearbyLiveVehicle;
-      first: boolean;
-      last: boolean;
-    }
   | { type: 'line'; line: TransitLine }
   | {
       type: 'item';
@@ -103,8 +96,6 @@ export const SearchSheet = memo(function SearchSheet({
   placeholder: placeholderProp,
   originTitle,
   onChangeOrigin,
-  nearbyVehicles,
-  onSelectVehicle,
   onOpenLiveMap,
   closeOnSelect = true,
 }: {
@@ -122,8 +113,6 @@ export const SearchSheet = memo(function SearchSheet({
   placeholder?: string;
   originTitle?: string;
   onChangeOrigin?: () => void;
-  nearbyVehicles?: NearbyLiveVehicle[];
-  onSelectVehicle?: (vehicle: NearbyLiveVehicle) => void;
   onOpenLiveMap?: () => void;
   closeOnSelect?: boolean;
 }) {
@@ -464,18 +453,6 @@ export const SearchSheet = memo(function SearchSheet({
       if (onOpenLiveMap) {
         out.push({ type: 'liveMap' });
       }
-      if (nearbyVehicles && nearbyVehicles.length > 0 && onSelectVehicle) {
-        const list = nearbyVehicles.slice(0, 4);
-        out.push({ type: 'header', label: s.search.nearbyVehiclesSection });
-        list.forEach((vehicle, index) => {
-          out.push({
-            type: 'vehicle',
-            vehicle,
-            first: index === 0,
-            last: index === list.length - 1,
-          });
-        });
-      }
       const now = Date.now();
       const seen = new Set<string>();
       const ordered = [...recent]
@@ -504,7 +481,7 @@ export const SearchSheet = memo(function SearchSheet({
     }
     append(s.search.resultsFor(trimmed, ranked.length), ranked);
     return out;
-  }, [trimmed, recent, ranked, s, lines, nearbyVehicles, onSelectVehicle, onOpenLiveMap]);
+  }, [trimmed, recent, ranked, s, lines, onOpenLiveMap]);
 
   // Opóźnienie wskaźnika ładowania o 320 ms (powyżej opóźnień sieci/fuzzy) eliminuje
   // miganie przy szybkich wynikach offline i podczas pisania kolejnych liter.
@@ -576,18 +553,6 @@ export const SearchSheet = memo(function SearchSheet({
     [closeOnSelect, requestClose, onSelect],
   );
 
-  const handleVehicleSelect = useCallback(
-    (vehicle: NearbyLiveVehicle) => {
-      onSelectVehicle?.(vehicle);
-      if (closeOnSelect) {
-        requestClose();
-      } else {
-        Keyboard.dismiss();
-      }
-    },
-    [closeOnSelect, requestClose, onSelectVehicle],
-  );
-
   const handleOpenLiveMap = useCallback(() => {
     requestClose(true);
     onOpenLiveMap?.();
@@ -598,19 +563,15 @@ export const SearchSheet = memo(function SearchSheet({
       r.type === 'header'
         ? r.label === s.lineTimetable.title
           ? 'h-lines'
-          : r.label === s.search.nearbyVehiclesSection
-            ? 'h-vehicles'
-            : r.label === s.search.suggestedPlaces
-              ? 'h-suggested'
-              : 'h-results'
+          : r.label === s.search.suggestedPlaces
+            ? 'h-suggested'
+            : 'h-results'
         : r.type === 'liveMap'
           ? 'live-map-picker'
-          : r.type === 'vehicle'
-            ? `veh-${r.vehicle.vehicle.vehicleId}`
-            : r.type === 'line'
-              ? `line-${r.line.routeId}`
-              : r.item.id,
-    [s.lineTimetable.title, s.search.nearbyVehiclesSection, s.search.suggestedPlaces],
+          : r.type === 'line'
+            ? `line-${r.line.routeId}`
+            : r.item.id,
+    [s.lineTimetable.title, s.search.suggestedPlaces],
   );
 
   const renderRow = useCallback(
@@ -643,41 +604,6 @@ export const SearchSheet = memo(function SearchSheet({
             <ChevronRight size={18} color={scheme.onSurfaceVariant} />
           </View>
         </SpringPressable>
-      ) : row.type === 'vehicle' ? (
-        <SpringPressable
-          onPress={() => handleVehicleSelect(row.vehicle)}
-          accessibilityRole="button"
-          accessibilityLabel={
-            row.vehicle.direction
-              ? `${row.vehicle.line} ${s.search.vehicleDirectionTo(row.vehicle.direction)}`
-              : row.vehicle.line
-          }
-          style={[
-            styles.vehicleRow,
-            row.first && styles.vehicleFirst,
-            row.last && styles.vehicleLast,
-          ]}
-          scaleDelta={0.02}
-          haptic="selection"
-        >
-          <LineBadge line={row.vehicle.line} mode={row.vehicle.mode} />
-          <View style={styles.vehicleText}>
-            <Text style={styles.vehicleTitle} numberOfLines={1}>
-              {row.vehicle.direction
-                ? s.search.vehicleDirectionTo(row.vehicle.direction)
-                : row.vehicle.line}
-            </Text>
-            <Text style={styles.vehicleSub} numberOfLines={1}>
-              {[
-                row.vehicle.nextStopName ? s.liveMap.nextStop(row.vehicle.nextStopName) : null,
-                s.liveMap.distanceAway(row.vehicle.distanceM),
-              ]
-                .filter(Boolean)
-                .join(' \u00b7 ')}
-            </Text>
-          </View>
-          <ChevronRight size={18} color={scheme.onSurfaceVariant} />
-        </SpringPressable>
       ) : row.type === 'line' ? (
         <SpringPressable
           onPress={() => handleLineSelect(row.line)}
@@ -707,7 +633,7 @@ export const SearchSheet = memo(function SearchSheet({
           prominent={row.prominent}
         />
       ),
-    [handleLineSelect, handleOpenLiveMap, handleSelect, handleVehicleSelect, s, trimmed],
+    [handleLineSelect, handleOpenLiveMap, handleSelect, s, trimmed],
   );
 
   const listContentStyle = useMemo(
@@ -1299,27 +1225,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  vehicleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 64,
-    backgroundColor: scheme.surfaceContainer,
-    borderRadius: 6,
-  },
-  vehicleFirst: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  vehicleLast: {
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  vehicleText: { flex: 1, gap: 2, minWidth: 0 },
-  vehicleTitle: { ...type.titleSmall, fontWeight: '700', color: scheme.onSurface },
-  vehicleSub: { ...type.bodySmall, color: scheme.onSurfaceVariant },
   lineResult: {
     flexDirection: 'row',
     alignItems: 'center',

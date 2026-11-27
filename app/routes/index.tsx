@@ -116,10 +116,6 @@ import {
 import { liveTracker } from '../../src/services/liveTracker';
 import { beginUiScroll, endUiScroll } from '../../src/services/routing/yieldFrame';
 import { consumePendingBoardedOrigin } from '../../src/services/boardedOriginSelection';
-import {
-  buildBoardedOriginFromVehicle,
-  findNearbyLiveVehicles,
-} from '../../src/services/onboardDetector';
 import { gtfsStore } from '../../src/services/routing/store';
 import {
   deduplicateConnections,
@@ -998,14 +994,6 @@ export default function RoutesScreen() {
   const recentWithGps = useMemo(
     () => (sheetFor === 'from' ? (gpsOutside ? recent : [gpsItem, ...recent]) : recent),
     [sheetFor, recent, gpsItem, gpsOutside],
-  );
-
-  const nearbyVehicles = useMemo(
-    () =>
-      sheetFor === 'from' && gtfsStore.isLoaded
-        ? findNearbyLiveVehicles(fromLat, fromLon, liveTracker.snapshot(), gtfsStore)
-        : [],
-    [fromLat, fromLon, liveTick, sheetFor],
   );
 
   const handleSuggestionSelect = async (sug: Suggestion) => {
@@ -2666,29 +2654,6 @@ export default function RoutesScreen() {
           results={results}
           recent={sheetFor === 'from' ? recentWithGps : recent}
           savedQuick={savedQuick}
-          nearbyVehicles={sheetFor === 'from' ? nearbyVehicles : undefined}
-          onSelectVehicle={
-            sheetFor === 'from'
-              ? (v) => {
-                  const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
-                  if (!origin) return;
-                  startSelGen.current++;
-                  setGpsOrigin(false);
-                  setActiveAnchor(null);
-                  setBoardedTrip(origin);
-                  setFromId(origin.boardStopId ?? '');
-                  setFromTitle(s.home.boardedOriginTitle(origin.line, origin.direction || ''));
-                  if (origin.currentLat != null && origin.currentLon != null) {
-                    setFromLat(origin.currentLat);
-                    setFromLon(origin.currentLon);
-                  }
-                  setItems([]);
-                  setLoading(true);
-                  setQuery('');
-                  setSheetFor(null);
-                }
-              : undefined
-          }
           onOpenLiveMap={
             sheetFor === 'from'
               ? () => {

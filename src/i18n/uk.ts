@@ -2241,7 +2241,6 @@ export const uk: Strings = {
     lineAlertsError: 'Не вдалося перевірити порушення руху.',
   },
   search: {
-    nearbyVehiclesSection: 'Транспорт поруч (сісти як старт)',
     vehicleDirectionTo: (dir: string) => `напрямок ${dir}`,
     pickOnLiveMap: 'Обрати транспорт на мапі наживо',
     pickOnLiveMapSub: 'Переглянь транспорт поруч і вибери вручну',

@@ -2231,7 +2231,6 @@ export const pl = {
     lineAlertsError: 'Nie udało się sprawdzić utrudnień.',
   },
   search: {
-    nearbyVehiclesSection: 'Pojazdy w pobliżu (wsiądź jako start)',
     vehicleDirectionTo: (dir: string) => `kierunek ${dir}`,
     pickOnLiveMap: 'Wybierz pojazd na mapie na żywo',
     pickOnLiveMapSub: 'Zobacz pojazdy w okolicy i wybierz swój ręcznie',
