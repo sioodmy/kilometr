@@ -1,8 +1,6 @@
 // Magazyn plików binarnych (bilety PDF i kody Aztec) w IndexedDB na webie.
 // Pozwala przechowywać pliki do 10 MB offline bez limitu 5 MB localStorage.
 
-import { uint8ArrayToBase64 } from './ticketParser';
-
 const DB_NAME = 'kilometr-web-files';
 const STORE_NAME = 'files';
 const WEB_URI_PREFIX = 'idb://';
@@ -111,6 +109,7 @@ export async function webFileDelete(idOrUri: string): Promise<void> {
 export async function webFileToDataUrl(idOrUri: string): Promise<string | null> {
   const entry = await webFileGet(idOrUri);
   if (!entry) return null;
+  const { uint8ArrayToBase64 } = await import('./ticketParser');
   const b64 = uint8ArrayToBase64(entry.bytes);
   return `data:${entry.mimeType};base64,${b64}`;
 }

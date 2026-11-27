@@ -23,6 +23,7 @@ import {
 import type { SavedPlace, SavedRoute } from '../types/models';
 import type { TripHistoryItem } from './smartRanking';
 import { CITIES, cityKey, type CityId } from '../cities';
+import { notifyBackupApplied } from './backupEvents';
 import { mergeJourneyLogs, readJourneyLog, saveJourneyLog } from './userStats';
 import {
   BACKUP_EXTENSION,
@@ -195,23 +196,8 @@ export async function previewBackupCounts(): Promise<BackupCounts> {
 
 // ─── Powiadamienie konsumentów ─────────────────────────────────────────────
 //
-// Sam zapis do KV nie wystarczy: ekran główny trzyma miejsca i ranking
-// „ostatnich miejsc" w `useState`, więc po imporcie pokazałby dane sprzed
-// wczytania aż do restartu aplikacji. Ten kanał pozwala ekranowi odświeżyć
-// stan od razu - bez niego import działałby „na pół".
-const appliedListeners = new Set<() => void>();
-
-/** Subskrypcja na zapis wczytanej kopii. Zwraca funkcję odsubskrybującą. */
-export function subscribeBackupApplied(fn: () => void): () => void {
-  appliedListeners.add(fn);
-  return () => {
-    appliedListeners.delete(fn);
-  };
-}
-
-function notifyApplied(): void {
-  for (const l of appliedListeners) l();
-}
+// Implementacja siedzi w `backupEvents.ts`, żeby ekran główny nie wciągał
+// całego modułu backupu przy starcie.
 
 // ─── Import ────────────────────────────────────────────────────────────────
 
@@ -374,7 +360,7 @@ export async function applyBackup(data: BackupData): Promise<BackupCounts> {
   }
   if (data.locale) await setLocaleSetting(data.locale);
 
-  notifyApplied();
+  notifyBackupApplied();
 
   // Licznik pokazuje stan telefonu po scaleniu (wszystkie kubełki), nie tylko
   // to, co było w kopercie. Kopia z samego Krakowa nie zeruje wrocławskich

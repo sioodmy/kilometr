@@ -68,7 +68,7 @@ import {
   type LocationResult,
 } from '../src/services';
 import { liveTracker } from '../src/services/liveTracker';
-import { useTrackedTrip, stopTracking } from '../src/services/notifications';
+import { useTrackedTrip } from '../src/services/notifications/useTrackedTrip';
 import {
   deleteTicketForConnection,
   getTicketConnectionIds,
@@ -86,7 +86,7 @@ import {
   importGtfsFromNetwork,
   subscribeDataStatus,
 } from '../src/services/dataManager';
-import { subscribeBackupApplied } from '../src/services/backup';
+import { subscribeBackupApplied } from '../src/services/backupEvents';
 import {
   loadCachedSmartDestinations,
   loadTripHistory,
@@ -119,7 +119,6 @@ import {
   LastTripPull,
   type LastTripOption,
 } from '../src/components/LastTripPull';
-import { SearchSheet } from '../src/components/SearchSheet';
 import { SheetLoadingFallback } from '../src/components/SkeletonPulse';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
 import { SavedRoutesList } from '../src/components/SavedRoutesList';
@@ -128,6 +127,9 @@ import { getCity, suggestCityForCoords, type CityId } from '../src/cities';
 import { hasCityDb } from '../src/services/gtfsDatabase';
 import { hasSeenOnboardingSync } from '../src/services/onboarding';
 
+const SearchSheet = lazy(() =>
+  import('../src/components/SearchSheet').then((m) => ({ default: m.SearchSheet })),
+);
 const TicketInspectionModal = lazy(() =>
   import('../src/components/TicketInspectionModal').then((m) => ({
     default: m.TicketInspectionModal,
@@ -374,8 +376,13 @@ export default function HomeScreen() {
 
   // Ekran montuje się pod onboardingiem i wraca na wierzch po jego
   // ukończeniu: dociągamy prawdziwy fix po animacji powrotu.
+  const refineFocusMountedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
+      if (!refineFocusMountedRef.current) {
+        refineFocusMountedRef.current = true;
+        return undefined;
+      }
       if (hasSeenOnboardingSync() === false) return undefined;
       const timer = setTimeout(() => {
         void LocationService.refineLocation();
@@ -452,20 +459,28 @@ export default function HomeScreen() {
         // brak internetu / błąd RSS: badge po prostu znika, bez krzykliwego błędu
       }
     };
-    void checkNews();
+    const timer = setTimeout(() => {
+      if (!cancelled) void checkNews();
+    }, 600);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void checkNews();
     });
     return () => {
       cancelled = true;
+      clearTimeout(timer);
       activeController?.abort();
       sub.remove();
     };
   }, [cityId]);
 
   // Weryfikacja badge'a przy powrocie na ekran główny (np. po wyjściu z sekcji newsów)
+  const newsFocusMountedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
+      if (!newsFocusMountedRef.current) {
+        newsFocusMountedRef.current = true;
+        return;
+      }
       let cancelled = false;
       // Dzwonek jest ukryty w miastach bez źródła komunikatów.
       if (!getCity(cityId).features.news) return;
@@ -493,14 +508,21 @@ export default function HomeScreen() {
   // Status danych: przy starcie, powrocie na foreground i co 30 s.
   // Sprawdza lokalny GTFS miasta (pusty -> auto-download) i domyślnie dba
   // o ogólnopolski rozkład kolejowy w tle.
+  const firstTimetableMountRef = useRef(true);
   useEffect(() => {
+    const isInitialMount = firstTimetableMountRef.current;
+    firstTimetableMountRef.current = false;
+    let initialSyncPending = isInitialMount;
+
     const check = async () => {
       if (!isFocusedRef.current) return;
       const st = await ensureActiveCityTimetable({ checkUpdates: true }).catch(
         () => ({ state: 'empty' }) as const,
       );
       if (!isFocusedRef.current) return;
-      if (st.state === 'ready') {
+      const deferNationalAndPoi = initialSyncPending;
+      initialSyncPending = false;
+      if (st.state === 'ready' && !deferNationalAndPoi) {
         import('../src/services/nationalTimetable')
           .then((m) => m.ensureNationalTimetable())
           .catch(() => {});
@@ -509,16 +531,26 @@ export default function HomeScreen() {
           .catch(() => {});
       }
     };
-    void check();
+    const initialTimer = setTimeout(() => {
+      void check();
+    }, isInitialMount ? 150 : 0);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void check();
     });
     const timer = setInterval(check, 30000);
     return () => {
+      clearTimeout(initialTimer);
       sub.remove();
       clearInterval(timer);
     };
   }, [cityId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void import('../src/components/SearchSheet').catch(() => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   const reduceMotion = useReducedMotion();
   const [homeTab, setHomeTab] = useState<'recent' | 'saved'>('recent');
@@ -600,8 +632,13 @@ export default function HomeScreen() {
     return subscribeSavedRoutes(refreshSavedRoutes);
   }, [refreshSavedRoutes, refreshTicketIds, cityId]);
 
+  const routesFocusMountedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
+      if (!routesFocusMountedRef.current) {
+        routesFocusMountedRef.current = true;
+        return;
+      }
       const timer = setTimeout(() => {
         refreshSavedRoutes();
         refreshTicketIds();
@@ -651,6 +688,7 @@ export default function HomeScreen() {
         // Usuwanie aktywnie śledzonej karty zatrzymuje też monitor: bez tego
         // wpis wracał na górę listy jako syntetyczna „aktywna podróż”.
         if (route.id === trackedConnId) {
+          const { stopTracking } = await import('../src/services/notifications/tripMonitor');
           await stopTracking();
         }
       } catch (err) {
@@ -670,7 +708,9 @@ export default function HomeScreen() {
       } catch (err) {
         console.warn('Failed to ensure route saved before unpin:', err);
       }
-      void stopTracking().catch((err) => console.warn('Failed to stop tracking:', err));
+      void import('../src/services/notifications/tripMonitor')
+        .then((m) => m.stopTracking())
+        .catch((err) => console.warn('Failed to stop tracking:', err));
     },
     [trackedConnId],
   );
@@ -865,7 +905,11 @@ export default function HomeScreen() {
       .catch(() => {});
     loadTripHistory()
       .then((h) => {
-        if (!cancelled && h.length > 0) setLastTrip(h[0]);
+        if (cancelled) return;
+        if (historyKeyRef.current === null) {
+          historyKeyRef.current = h.length > 0 ? `${h.length}|${h[0].id}|${h[0].timestamp}` : '';
+        }
+        if (h.length > 0) setLastTrip(h[0]);
       })
       .catch(() => {});
     // Spóźniony cache nie może nadpisać rankingu wyliczonego z nowej pozycji.
@@ -960,8 +1004,11 @@ export default function HomeScreen() {
   }, [cityId, refreshSavedRoutes, pullHeight, pullOption]);
 
   // Po zakończeniu importu GTFS aktualizujemy odjazdy i uruchamiamy domyślny sync kolei
+  const prevDataStateRef = useRef<DataStatus['state']>(dataStatus.state);
   useEffect(() => {
-    if (dataStatus.state === 'ready') {
+    const prev = prevDataStateRef.current;
+    prevDataStateRef.current = dataStatus.state;
+    if (dataStatus.state === 'ready' && (prev === 'downloading' || prev === 'importing')) {
       refreshPlaces();
       import('../src/services/nationalTimetable')
         .then((m) => m.ensureNationalTimetable())
@@ -1570,6 +1617,7 @@ export default function HomeScreen() {
   // przeliczamy też „Ostatnie miejsca", inaczej nowy cel pojawiłby się
   // dopiero po restarcie aplikacji.
   const historyKeyRef = useRef<string | null>(null);
+  const historyFocusMountedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -1579,6 +1627,10 @@ export default function HomeScreen() {
       const pendingBoarded = consumePendingBoardedOrigin('home');
       if (pendingBoarded) {
         applyBoardedOrigin(pendingBoarded.origin, pendingBoarded.openDestination);
+      }
+      if (!historyFocusMountedRef.current) {
+        historyFocusMountedRef.current = true;
+        return;
       }
       const timer = setTimeout(() => {
         if (cancelled) return;
@@ -2112,79 +2164,81 @@ export default function HomeScreen() {
         )}
 
         {sheetMode && (
-          <SearchSheet
-            query={query}
-            loading={loading}
-            error={searchError}
-            results={results}
-            recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
-            savedQuick={quick}
-            placeholder={
-              sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo
-            }
-            originTitle={sheetMode === 'destination' ? locTitle : undefined}
-            nearbyVehicles={sheetMode === 'start' ? nearbyVehicles : undefined}
-            onSelectVehicle={
-              sheetMode === 'start'
-                ? (v) => {
-                    const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
-                    if (!origin) return;
-                    const openDest = returnToDestinationAfterStart;
-                    setReturnToDestinationAfterStart(false);
-                    applyBoardedOrigin(origin, openDest);
-                  }
-                : undefined
-            }
-            onOpenLiveMap={
-              sheetMode === 'start'
-                ? () => {
-                    setReturnToDestinationAfterStart(false);
-                    setSheetMode(null);
-                    setQuery('');
-                    router.push({ pathname: '/live-map', params: { returnTo: 'home' } });
-                  }
-                : undefined
-            }
-            closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
-            onChangeOrigin={
-              sheetMode === 'destination'
-                ? () => {
-                    setReturnToDestinationAfterStart(true);
-                    setQuery('');
-                    setSheetMode('start');
-                  }
-                : undefined
-            }
-            onQuery={handleSearchQuery}
-            onSelectLine={(line) => {
-              setSheetMode(null);
-              setReturnToDestinationAfterStart(false);
-              setQuery('');
-              router.push({ pathname: '/line', params: { routeId: line.routeId } });
-            }}
-            onSelect={(s) => {
-              if (sheetMode === 'start') {
-                handleStartSelect(s);
-              } else {
-                // Zablokowany start (GPS poza strefą) zostawia arkusz i wpisany cel pod alertem.
-                if (!goToRoutes(s)) return;
-                // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
-                // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
-                clearSheetCloseTimer();
-                sheetCloseTimerRef.current = setTimeout(() => {
-                  sheetCloseTimerRef.current = null;
-                  setSheetModeRaw(null);
-                  setQuery('');
-                }, 240);
+          <Suspense fallback={<SheetLoadingFallback />}>
+            <SearchSheet
+              query={query}
+              loading={loading}
+              error={searchError}
+              results={results}
+              recent={sheetMode === 'start' ? recentWithGps : recentFromSmart}
+              savedQuick={quick}
+              placeholder={
+                sheetMode === 'start' ? s.home.searchPlaceholderFrom : s.home.searchPlaceholderTo
               }
-            }}
-            onClose={() => {
-              pendingDestinationRef.current = null;
-              setSheetMode(null);
-              setReturnToDestinationAfterStart(false);
-              setQuery('');
-            }}
-          />
+              originTitle={sheetMode === 'destination' ? locTitle : undefined}
+              nearbyVehicles={sheetMode === 'start' ? nearbyVehicles : undefined}
+              onSelectVehicle={
+                sheetMode === 'start'
+                  ? (v) => {
+                      const origin = buildBoardedOriginFromVehicle(v.vehicle, gtfsStore);
+                      if (!origin) return;
+                      const openDest = returnToDestinationAfterStart;
+                      setReturnToDestinationAfterStart(false);
+                      applyBoardedOrigin(origin, openDest);
+                    }
+                  : undefined
+              }
+              onOpenLiveMap={
+                sheetMode === 'start'
+                  ? () => {
+                      setReturnToDestinationAfterStart(false);
+                      setSheetMode(null);
+                      setQuery('');
+                      router.push({ pathname: '/live-map', params: { returnTo: 'home' } });
+                    }
+                  : undefined
+              }
+              closeOnSelect={sheetMode === 'start' && !returnToDestinationAfterStart}
+              onChangeOrigin={
+                sheetMode === 'destination'
+                  ? () => {
+                      setReturnToDestinationAfterStart(true);
+                      setQuery('');
+                      setSheetMode('start');
+                    }
+                  : undefined
+              }
+              onQuery={handleSearchQuery}
+              onSelectLine={(line) => {
+                setSheetMode(null);
+                setReturnToDestinationAfterStart(false);
+                setQuery('');
+                router.push({ pathname: '/line', params: { routeId: line.routeId } });
+              }}
+              onSelect={(s) => {
+                if (sheetMode === 'start') {
+                  handleStartSelect(s);
+                } else {
+                  // Zablokowany start (GPS poza strefą) zostawia arkusz i wpisany cel pod alertem.
+                  if (!goToRoutes(s)) return;
+                  // Nie odmontowujemy arkusza natychmiast w tej samej milisekundzie,
+                  // by uniknąć mignięcia ekranu domowego w trakcie tranzycji do ekranu tras.
+                  clearSheetCloseTimer();
+                  sheetCloseTimerRef.current = setTimeout(() => {
+                    sheetCloseTimerRef.current = null;
+                    setSheetModeRaw(null);
+                    setQuery('');
+                  }, 240);
+                }
+              }}
+              onClose={() => {
+                pendingDestinationRef.current = null;
+                setSheetMode(null);
+                setReturnToDestinationAfterStart(false);
+                setQuery('');
+              }}
+            />
+          </Suspense>
         )}
 
         {manageSheetOpen && (

@@ -336,19 +336,27 @@ if (fs.existsSync(assetsNodeModules)) {
     return [rel, newRel];
   };
 
-  const renames = [];
-  // Najpierw pliki poboczne (np. worker-*.js), potem entry-*.js, żeby entry dostał nową nazwę workera.
-  const jsFiles = walk(DIST)
-    .filter((rel) => rel.endsWith('.js') && rel !== 'sw.js')
-    .sort((a, b) => (a.includes('/entry-') ? 1 : 0) - (b.includes('/entry-') ? 1 : 0));
-
-  for (const rel of jsFiles) {
-    const replacements = [
-      ['/assets/node_modules/', '/assets/vendor/'],
-      ...renames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
-    ];
-    const renamed = rewriteJsWithNewHash(rel, replacements);
-    if (renamed) renames.push(renamed);
+  const allRenames = [];
+  let pendingRenames = [];
+  // Przepisywanie w iteracjach aż do stabilizacji: __common i chunki tras mogą
+  // wskazywać na inne przemianowane pliki (np. worker-*.js po zamianie ścieżek vendor).
+  for (let pass = 0; pass < 5; pass++) {
+    const replacements =
+      pass === 0
+        ? [['/assets/node_modules/', '/assets/vendor/']]
+        : pendingRenames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]);
+    const nextRenames = [];
+    const jsFiles = walk(DIST).filter((rel) => rel.endsWith('.js') && rel !== 'sw.js');
+    for (const rel of jsFiles) {
+      const renamed = rewriteJsWithNewHash(rel, replacements);
+      if (renamed) nextRenames.push(renamed);
+    }
+    if (nextRenames.length === 0) break;
+    allRenames.push(...nextRenames);
+    pendingRenames = nextRenames;
+    if (pass === 4) {
+      throw new Error('Zbyt wiele iteracji przepisywania hashy chunków w dist/.');
+    }
   }
 
   for (const rel of walk(DIST)) {
@@ -358,7 +366,7 @@ if (fs.existsSync(assetsNodeModules)) {
     let changed = false;
     for (const [from, to] of [
       ['/assets/node_modules/', '/assets/vendor/'],
-      ...renames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
+      ...allRenames.map(([oldRel, newRel]) => [`/${oldRel}`, `/${newRel}`]),
     ]) {
       if (content.includes(from)) {
         content = content.replaceAll(from, to);
@@ -438,6 +446,18 @@ for (const marker of [
 ]) {
   if (!indexHtml.includes(marker)) {
     throw new Error(`dist/index.html nie zawiera wymaganego elementu PWA: ${marker}`);
+  }
+}
+
+const webJsDir = path.join(DIST, '_expo', 'static', 'js', 'web');
+const webJsSet = new Set(fs.existsSync(webJsDir) ? fs.readdirSync(webJsDir) : []);
+for (const rel of allFiles) {
+  if (rel === 'sw.js' || (!rel.endsWith('.js') && !rel.endsWith('.html'))) continue;
+  const content = fs.readFileSync(path.join(DIST, rel), 'utf8');
+  for (const match of content.matchAll(/\/_expo\/static\/js\/web\/([A-Za-z0-9._[\]-]+\.js)/g)) {
+    if (!webJsSet.has(match[1])) {
+      throw new Error(`dist/${rel} odwołuje się do brakującego pliku /_expo/static/js/web/${match[1]}`);
+    }
   }
 }
 
