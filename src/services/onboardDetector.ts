@@ -1,5 +1,5 @@
 // Wykrywanie pojazdu, którym jedzie użytkownik (na podstawie ruchu GPS i pozycji
-// live pojazdów) oraz lista pobliskich pojazdów do ręcznego wyboru jako start.
+// live pojazdów) oraz budowanie startu podróży dla pojazdu wskazanego ręcznie.
 
 import { bearingDegrees, distanceMeters } from '../gtfs/geo';
 import type { GtfsStopTime } from '../gtfs/types';
@@ -32,19 +32,6 @@ export interface OnboardCandidate {
   headingDiffDeg?: number;
   score: number;
   origin: BoardedTripOrigin;
-}
-
-export interface NearbyLiveVehicle {
-  vehicle: TrackedVehicle;
-  tripId?: string;
-  routeId?: string;
-  line: string;
-  mode: Exclude<LegMode, 'walk'>;
-  direction: string;
-  boardStopId?: string;
-  nextStopName?: string;
-  distanceM: number;
-  origin?: BoardedTripOrigin;
 }
 
 function angularDiffDeg(a: number, b: number): number {
@@ -311,63 +298,6 @@ export function detectBoardedVehicles(
     if (out.length >= maxCandidates) break;
   }
   return out;
-}
-
-/**
- * Zwraca najbliższe aktywne pojazdy w okolicy podanej pozycji do ręcznego wyboru
- * jako punkt startowy podróży (np. z wyszukiwarki lub mapy live).
- */
-export function findNearbyLiveVehicles(
-  lat: number,
-  lon: number,
-  vehicles: readonly TrackedVehicle[],
-  store: LocalGtfsStore = gtfsStore,
-  maxDistM = 1200,
-  limit = 12,
-): NearbyLiveVehicle[] {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
-  const list: NearbyLiveVehicle[] = [];
-
-  for (const v of vehicles) {
-    const tripId = v.matchedTripId;
-    if (!tripId) continue;
-    if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) continue;
-    const d = Math.round(distanceMeters(lat, lon, v.lat, v.lon));
-    if (d > maxDistM) continue;
-    const poly = buildTripPolyline(tripId, store);
-    if (!poly) continue;
-    const proj = projectRoutePoint(poly.coords, v.lat, v.lon);
-    const trip = store.trips.get(tripId);
-    const mode = resolveMode(v, tripId, store);
-    const direction = trip?.trip_headsign || v.nextStopName || '';
-    const stopCtx = resolveStopContext(poly, proj ? proj.alongM : null, v.nextStopName);
-
-    list.push({
-      vehicle: v,
-      tripId,
-      routeId: trip?.route_id,
-      line: v.line,
-      mode,
-      direction,
-      boardStopId: stopCtx.boardStopId,
-      nextStopName: stopCtx.nextStopName,
-      distanceM: d,
-      origin: {
-        tripId,
-        routeId: trip?.route_id,
-        line: v.line,
-        mode,
-        direction: direction || undefined,
-        boardStopId: stopCtx.boardStopId,
-        currentLat: v.lat,
-        currentLon: v.lon,
-        delaySec: v.delaySec ?? undefined,
-      },
-    });
-  }
-
-  list.sort((a, b) => a.distanceM - b.distanceM);
-  return list.slice(0, limit);
 }
 
 /**
