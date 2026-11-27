@@ -74,6 +74,17 @@ export interface MapVehicle extends LatLon {
   updatedAt: number;
 }
 
+export interface MapPoiFeature {
+  id: number;
+  name: string;
+  category: string;
+  subtype: string;
+  lat: number;
+  lon: number;
+  rank: number;
+  minZoom: number;
+}
+
 /** Komunikat mapa -> aplikacja (RouteMap -> rodzic). */
 export type MapOutMessage =
   | { t: 'ready' }
@@ -87,6 +98,8 @@ export type MapOutMessage =
       arriveSec?: number;
     }
   | { t: 'legTap'; legId: string }
+  | { t: 'poiTap'; poiId: number }
+  | { t: 'viewport'; bbox: [number, number, number, number]; zoom: number }
   | { t: 'tiles'; ok: boolean }
   | { t: 'open'; url: string }
   | { t: 'userDrag' };
@@ -115,4 +128,5 @@ export type MapInMessage =
   | { t: 'user'; lat: number | null; lon: number | null }
   | { t: 'center'; lat: number; lon: number; zoom?: number }
   | { t: 'zoom'; delta: number }
-  | { t: 'poi'; visible: boolean };
+  | { t: 'poi'; visible: boolean }
+  | { t: 'pois'; pois: MapPoiFeature[]; selectedPoiId?: number | null };

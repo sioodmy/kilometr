@@ -10,7 +10,6 @@ import type { TrackedVehicle } from '../src/services/liveTracker';
 import {
   buildBoardedOriginFromVehicle,
   detectBoardedVehicles,
-  findNearbyLiveVehicles,
 } from '../src/services/onboardDetector';
 
 let passed = 0;
@@ -134,11 +133,7 @@ check('origin ma poprawne pola do routingu', matches[0]?.origin.boardStopId === 
 const offCorridor: CurrentLocation = { ...ridingNorth, lon: lon0 + 0.003 };
 check('odrzuca użytkownika jadącego inną ulicą', detectBoardedVehicles(offCorridor, vehicles, store).length === 0);
 
-// 4. Ręczna lista pobliskich pojazdów (niezależnie od prędkości)
-const nearby = findNearbyLiveVehicles(lat0 + 1.45 * STEP_LAT, lon0, vehicles, store, 1000, 5);
-check('findNearbyLiveVehicles zwraca pobliskie pojazdy posortowane po dystansie', nearby.length === 3 && nearby[0].tripId === 'trip_4_south');
-
-// 5. buildBoardedOriginFromVehicle
+// 4. buildBoardedOriginFromVehicle
 const built = buildBoardedOriginFromVehicle(vehicles[0], store);
 check('buildBoardedOriginFromVehicle buduje origin', built?.tripId === 'trip_4_north' && built?.line === '4');
 

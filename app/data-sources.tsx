@@ -183,6 +183,20 @@ export default function DataSourcesScreen() {
             hint={d.ofmHint}
             a11y={d.openA11y(d.ofmName)}
           />
+          <View style={st.divider} />
+          <SourceRow
+            name={d.overtureName}
+            host="overturemaps.org"
+            hint={d.overtureHint}
+            a11y={d.openA11y(d.overtureName)}
+          />
+          <View style={st.divider} />
+          <SourceRow
+            name={d.cwohName}
+            host="turystyka.gov.pl"
+            hint={d.cwohHint}
+            a11y={d.openA11y(d.cwohName)}
+          />
         </View>
 
         <SectionLabel>{d.allCitiesSection}</SectionLabel>

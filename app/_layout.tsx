@@ -34,21 +34,20 @@ import { initLocale } from '../src/i18n';
 import { loadActiveCity } from '../src/services/cityStore';
 import { loadSettings } from '../src/services/settings';
 import { hasSeenOnboarding } from '../src/services/onboarding';
-import { loadNotificationPreferences } from '../src/services/notifications/preferences';
 import { migrateFromSqliteKv } from '../src/services/kvMigration';
-import { refreshDepartureAlarm } from '../src/services/departureAlarm';
-import { cleanupExpiredTickets } from '../src/services/ticketStorage';
-import {
-  addTripResponseListener,
-  getLastTripResponse,
-  refreshTrackedTrip,
-  restoreTrackedTrip,
-  setupNotifications,
-  startTicketCompensationMonitor,
-  startTrackedTripListener,
-  stopTracking,
-  type TripResponse,
-} from '../src/services/notifications';
+import { kvPreload } from '../src/services/storage';
+import type { TripResponse } from '../src/services/notifications/response';
+
+const STARTUP_KV_KEYS = [
+  '__kv_migrated_from_sqlite',
+  'kilometr.locale.v1',
+  'kilometr.onboardingSeen.v1',
+  'kilometr.theme.v1',
+  'kilometr.activeCity.v1',
+  'kilometr.routingSettings.v1',
+  'kilometr.trackedTrip.v2',
+  'kilometr.notificationPrefs.v1',
+] as const;
 
 let BootSplash: { hide: (options?: { fade?: boolean }) => Promise<boolean> } = {
   hide: async (options) => {
@@ -103,7 +102,9 @@ if (Platform.OS !== 'web') {
 
 function navigateFromNotification(res: TripResponse) {
   if (res.stop) {
-    void stopTracking();
+    void import('../src/services/notifications/tripMonitor')
+      .then((m) => m.stopTracking())
+      .catch(() => {});
     return;
   }
   if (!res.link) return;
@@ -234,31 +235,24 @@ export default function RootLayout() {
     [disableScreenAnim, webLayout.isMedium],
   );
 
-  // Ustawienia trasy i język z kv-store dostępne globalnie od startu.
+  // Ustawienia trasy, motyw, miasto i język z kv-store dostępne globalnie od startu.
   useEffect(() => {
     let isMounted = true;
 
     const initApp = async () => {
+      await kvPreload(STARTUP_KV_KEYS);
       await migrateFromSqliteKv();
-      await initLocale();
-      const [seen] = await Promise.all([
+      const [, seen] = await Promise.all([
+        initLocale(),
         hasSeenOnboarding().catch((err) => {
           console.warn('[RootLayout] onboarding flag unreadable:', err);
           return true;
         }),
         initTheme(),
-        loadActiveCity(),
+        loadActiveCity({ skipStoreSwap: true }),
         loadSettings(),
-        loadNotificationPreferences(),
-        refreshDepartureAlarm(),
-        setupNotifications().catch((err) => {
-          console.warn('[RootLayout] notifications:', err);
-        }),
       ]);
       if (isMounted) setNeedsOnboarding(!seen);
-      await restoreTrackedTrip({ refresh: false }).catch((err) => {
-        console.warn('[RootLayout] restore tracked trip:', err);
-      });
     };
 
     void initApp()
@@ -266,8 +260,6 @@ export default function RootLayout() {
       .finally(() => {
         if (isMounted) setReady(true);
       });
-
-    startTrackedTripListener();
 
     return () => {
       isMounted = false;
@@ -279,6 +271,34 @@ export default function RootLayout() {
     if (!ready) return;
     const timer = setTimeout(() => {
       void initRaptorWasmAsync().catch(() => false);
+      void Promise.all([
+        import('../src/services/notifications/preferences')
+          .then((m) => m.loadNotificationPreferences())
+          .catch(() => {}),
+        import('../src/services/notifications/setup')
+          .then((m) => m.setupNotifications())
+          .catch((err) => {
+            console.warn('[RootLayout] notifications:', err);
+          }),
+      ])
+        .then(() => import('../src/services/notifications/ticketCompensation'))
+        .then((m) => m.startTicketCompensationMonitor())
+        .catch(() => {});
+      void import('../src/services/departureAlarm')
+        .then((m) => m.refreshDepartureAlarm())
+        .catch(() => {});
+      void import('../src/services/notifications/tripMonitor')
+        .then(async (m) => {
+          m.startTrackedTripListener();
+          const restored = await m.restoreTrackedTrip({ refresh: false }).catch((err) => {
+            console.warn('[RootLayout] restore tracked trip:', err);
+            return null;
+          });
+          if (restored) {
+            await m.refreshTrackedTrip().catch(() => {});
+          }
+        })
+        .catch(() => {});
       if (needsOnboarding) {
         // Rozpocznij pobieranie GTFS aktywnego miasta w tle już podczas onboardingu.
         void import('../src/services/dataManager')
@@ -292,9 +312,9 @@ export default function RootLayout() {
           })
           .catch(() => {});
       }
-      void refreshTrackedTrip().catch(() => {});
-      void cleanupExpiredTickets().catch(() => {});
-      startTicketCompensationMonitor();
+      void import('../src/services/ticketStorage')
+        .then((m) => m.cleanupExpiredTickets())
+        .catch(() => {});
     }, 0);
     const nationalTimer = setTimeout(() => {
       void import('../src/services/gtfsDatabase')
@@ -309,9 +329,15 @@ export default function RootLayout() {
         })
         .catch(() => {});
     }, 2500);
+    const poiTimer = setTimeout(() => {
+      void import('../src/services/poiSync')
+        .then((m) => m.ensureCityPoiDb())
+        .catch(() => {});
+    }, 3500);
     return () => {
       clearTimeout(timer);
       clearTimeout(nationalTimer);
+      clearTimeout(poiTimer);
     };
   }, [ready, needsOnboarding]);
 
@@ -329,12 +355,24 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || needsOnboarding) return;
-    void getLastTripResponse()
-      .then(navigateFromNotification)
+    let cancelled = false;
+    let removeListener: (() => void) | undefined;
+    void import('../src/services/notifications/response')
+      .then((m) => {
+        if (cancelled) return;
+        removeListener = m.addTripResponseListener(navigateFromNotification);
+        return m.getLastTripResponse();
+      })
+      .then((res) => {
+        if (!cancelled && res) navigateFromNotification(res);
+      })
       .catch((err) => {
         console.warn('[RootLayout] notification response:', err);
       });
-    return addTripResponseListener(navigateFromNotification);
+    return () => {
+      cancelled = true;
+      removeListener?.();
+    };
   }, [ready, needsOnboarding]);
 
   const initialMetrics = useMemo(() => readWebSafeAreaMetrics(), []);

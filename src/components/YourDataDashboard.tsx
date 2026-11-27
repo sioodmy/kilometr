@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useStrings } from '../i18n';
-import { subscribeBackupApplied } from '../services/backup';
+import { subscribeBackupApplied } from '../services/backupEvents';
 import { loadUserDataStats, type UserDataStats } from '../services/userStats';
 import type { LegMode } from '../types/models';
 import { scheme, shape, type } from '../theme/tokens';

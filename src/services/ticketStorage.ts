@@ -1,5 +1,4 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as DocumentPicker from 'expo-document-picker';
 import { Platform } from 'react-native';
 import { kvGet, kvRemove, kvSet } from './storage';
 import {
@@ -10,15 +9,7 @@ import {
   webFilePut,
   webFileToDataUrl,
 } from './webFiles';
-import {
-  base64ToUint8Array,
-  extractBarcodesFromPdf,
-  extractTextFromPdf,
-  isLikelyRailTicket,
-  parseRailTicketText,
-  uint8ArrayToBase64,
-  type ParsedTicketMetadata,
-} from './ticketParser';
+import type { ParsedTicketMetadata } from './ticketParser';
 import type { Connection, Leg } from '../types/models';
 import { getTrainLegSummary, isStationMatch } from './ticketing';
 import { isTrainLeg } from './railIdentity';
@@ -521,6 +512,9 @@ export async function importTicketPdf(
   connectionId: string,
   connection?: Connection,
 ): Promise<TicketImportResult> {
+  // require zamiast import(), żeby w testach Node działał stub z Module._load, a na starcie nie ładować modułu.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const DocumentPicker = require('expo-document-picker') as typeof import('expo-document-picker');
   const picked = await DocumentPicker.getDocumentAsync({
     type: ['application/pdf', 'application/octet-stream'],
     copyToCacheDirectory: true,
@@ -559,6 +553,14 @@ export async function importTicketPdf(
   const liveDelayPromise: Promise<number | null> = connection
     ? fetchDelayAtAttachSec(connection).catch(() => null)
     : Promise.resolve(null);
+  const {
+    base64ToUint8Array,
+    extractBarcodesFromPdf,
+    extractTextFromPdf,
+    isLikelyRailTicket,
+    parseRailTicketText,
+    uint8ArrayToBase64,
+  } = await import('./ticketParser');
 
   const ticketId = `ticket_${Date.now()}`;
   let targetUri: string;

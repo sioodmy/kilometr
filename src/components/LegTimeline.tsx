@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -37,11 +37,12 @@ import { StationAmenities } from './StationAmenities';
 import { shouldShowStationAmenities } from './stationAmenitiesGate';
 import { VehicleSpecsStrip, formatVehicleSpecsA11y } from './VehicleSpecsStrip';
 import { LiveSensors } from './LiveDot';
-import { SkeletonPulse, useDeferredReveal } from './SkeletonPulse';
+import { SkeletonBone, SkeletonPulse } from './SkeletonPulse';
 import { ConnectorSkeleton, LegCardSkeleton } from './RouteDetailsSkeleton';
 import { RoutingService } from '../services';
 import { formatWalkTime, useWalkSpeedMps, walkMinutesFor } from '../services/settings';
 import { liveTracker, type TrackedVehicle } from '../services/liveTracker';
+import { waitForUiScrollIdle } from '../services/routing/yieldFrame';
 import { useCurrentLocation, type CurrentLocation } from '../services/currentLocation';
 import {
   buildFallbackStops,
@@ -725,7 +726,6 @@ function lookupTrackedVehicle(leg: Leg, allowLive: boolean): TrackedVehicle | nu
 
 const TransitLegCard = memo(function TransitLegCard({
   leg,
-  legIndex = 0,
   expanded,
   onToggle,
   userLocation,
@@ -735,10 +735,10 @@ const TransitLegCard = memo(function TransitLegCard({
   showFromEntrance,
   showToEntrance,
   deferSecondaryWork = false,
+  railLiveLoading = false,
   footer,
 }: {
   leg: Leg;
-  legIndex?: number;
   expanded: boolean;
   onToggle: (id: string) => void;
   userLocation: CurrentLocation | null;
@@ -748,8 +748,11 @@ const TransitLegCard = memo(function TransitLegCard({
   showFromEntrance?: boolean;
   showToEntrance?: boolean;
   deferSecondaryWork?: boolean;
+  railLiveLoading?: boolean;
   footer?: ReactNode;
 }) {
+  const legRef = useRef(leg);
+  legRef.current = leg;
   const t = useStrings();
   const router = useRouter();
   const [hasExpanded, setHasExpanded] = useState(expanded);
@@ -823,17 +826,18 @@ const TransitLegCard = memo(function TransitLegCard({
   );
   const [lastOk, setLastOk] = useState(() => liveTracker.getLastOk());
 
+  const hasInlineStops = Boolean(leg.intermediateStops && leg.intermediateStops.length >= 2);
   useEffect(() => {
     let mounted = true;
+    const currentLeg = legRef.current;
     const cached = stopsCache.get(cacheKey);
     if (cached) {
       setStops(cached);
       setLoading(false);
       return;
     }
-    const hasInlineStops = Boolean(leg.intermediateStops && leg.intermediateStops.length >= 2);
-    if (!leg.tripId || (!expanded && hasInlineStops)) {
-      setStops(buildFallbackStops(leg));
+    if (!currentLeg.tripId || (!expanded && hasInlineStops)) {
+      setStops(buildFallbackStops(currentLeg));
       setLoading(false);
       return;
     }
@@ -841,37 +845,42 @@ const TransitLegCard = memo(function TransitLegCard({
       return;
     }
     setLoading(!hasInlineStops);
-    let promise = stopsPromise.get(leg.tripId);
+    let promise = stopsPromise.get(currentLeg.tripId);
     if (!promise) {
-      promise = RoutingService.getTripStops(leg.tripId)
+      const tid = currentLeg.tripId;
+      promise = RoutingService.getTripStops(tid)
         .then((fetched) => {
-          stopsPromise.delete(leg.tripId!);
+          stopsPromise.delete(tid);
           return fetched;
         })
         .catch((err) => {
-          stopsPromise.delete(leg.tripId!);
+          stopsPromise.delete(tid);
           throw err;
         });
-      stopsPromise.set(leg.tripId, promise);
+      stopsPromise.set(tid, promise);
     }
     promise.then(
-      (fetched) => {
+      async (fetched) => {
         if (!mounted) return;
         if (fetched.length >= 2) cacheStops(cacheKey, fetched);
-        setStops(fetched.length >= 2 ? fetched : buildFallbackStops(leg));
-        setLoading(false);
+        if (!expanded) await waitForUiScrollIdle(450);
+        if (!mounted) return;
+        startTransition(() => {
+          setStops(fetched.length >= 2 ? fetched : buildFallbackStops(legRef.current));
+          setLoading(false);
+        });
       },
       (err) => {
         console.warn('[TransitLegCard] trip stops failed:', err);
         if (!mounted) return;
-        setStops(buildFallbackStops(leg));
+        setStops(buildFallbackStops(legRef.current));
         setLoading(false);
       },
     );
     return () => {
       mounted = false;
     };
-  }, [cacheKey, deferSecondaryWork, expanded, leg]);
+  }, [cacheKey, deferSecondaryWork, expanded, hasInlineStops, leg.tripId]);
 
   const segment = useMemo(() => findUserSegment(stops, leg), [stops, leg]);
 
@@ -924,16 +933,20 @@ const TransitLegCard = memo(function TransitLegCard({
   useEffect(() => {
     if (!isTrain || deferSecondaryWork) return;
     let mounted = true;
-    void ensureTrainTrack(leg, stops, segment).then(
-      (nextTrack) => {
-        if (mounted) setTrack((prev) => (prev === nextTrack ? prev : nextTrack));
+    void ensureTrainTrack(legRef.current, stops, segment).then(
+      async (nextTrack) => {
+        await waitForUiScrollIdle(450);
+        if (!mounted) return;
+        startTransition(() => {
+          setTrack((prev) => (prev === nextTrack ? prev : nextTrack));
+        });
       },
       () => {},
     );
     return () => {
       mounted = false;
     };
-  }, [isTrain, deferSecondaryWork, leg, stops, segment]);
+  }, [isTrain, deferSecondaryWork, leg.tripId, leg.line, leg.fromStopId, leg.toStopId, stops, segment]);
 
   const [doorSide, setDoorSide] = useState<DoorSide | null>(null);
   useEffect(() => {
@@ -953,8 +966,12 @@ const TransitLegCard = memo(function TransitLegCard({
       trainTrack: track,
       stops,
       segment,
-    }).then((side) => {
-      if (mounted) setDoorSide((prev) => (prev === side ? prev : side));
+    }).then(async (side) => {
+      await waitForUiScrollIdle(450);
+      if (!mounted) return;
+      startTransition(() => {
+        setDoorSide((prev) => (prev === side ? prev : side));
+      });
     });
     return () => {
       mounted = false;
@@ -967,10 +984,10 @@ const TransitLegCard = memo(function TransitLegCard({
       setVehicle((prev) => (prev === null ? prev : null));
       return;
     }
+    let alive = true;
     const updateVehicle = () => {
       const nowMs = Date.now();
       const nextOk = liveTracker.getLastOk();
-      setLastOk((prev) => (prev === nextOk ? prev : nextOk));
       if (
         !allowLive ||
         !leg.tripId ||
@@ -980,16 +997,25 @@ const TransitLegCard = memo(function TransitLegCard({
           leg.mode !== 'trolleybus' &&
           leg.mode !== 'train')
       ) {
-        setVehicle((prev) => (prev === null ? prev : null));
+        startTransition(() => {
+          setLastOk((prev) => (prev === nextOk ? prev : nextOk));
+          setVehicle((prev) => (prev === null ? prev : null));
+        });
         return;
       }
       const match = liveTracker.findVehicleByTripId(leg.tripId, leg.line, 120_000);
-      setVehicle((prev) => {
-        if (match) return prev === match ? prev : match;
-        if (prev && nowMs - prev.updatedAt >= 0 && nowMs - prev.updatedAt <= 120_000) {
-          return prev;
-        }
-        return prev === null ? prev : null;
+      void waitForUiScrollIdle(450).then(() => {
+        if (!alive) return;
+        startTransition(() => {
+          setLastOk((prev) => (prev === nextOk ? prev : nextOk));
+          setVehicle((prev) => {
+            if (match) return prev === match ? prev : match;
+            if (prev && nowMs - prev.updatedAt >= 0 && nowMs - prev.updatedAt <= 120_000) {
+              return prev;
+            }
+            return prev === null ? prev : null;
+          });
+        });
       });
     };
 
@@ -997,6 +1023,7 @@ const TransitLegCard = memo(function TransitLegCard({
     const unsub = liveTracker.subscribe(updateVehicle);
     const timer = setInterval(updateVehicle, 5000);
     return () => {
+      alive = false;
       unsub();
       clearInterval(timer);
     };
@@ -1094,8 +1121,6 @@ const TransitLegCard = memo(function TransitLegCard({
     line: leg.line,
     trainName: leg.trainName,
   });
-  // Odkładamy montaż gęstych ikon (udogodnienia składu, dworca) o 1-4 klatki per noga.
-  const graphicsReady = useDeferredReveal(!deferSecondaryWork, 1 + Math.min(legIndex, 3));
   const hasSpecsTray = Boolean(
     vehicleSpecs ||
       (railAmenities && railAmenities.keys.length > 0) ||
@@ -1339,7 +1364,7 @@ const TransitLegCard = memo(function TransitLegCard({
                   specs={vehicleSpecs}
                   railAmenities={railAmenities}
                   loading={isTrain && railAmenitiesLoading}
-                  deferGraphics={!graphicsReady}
+                  deferGraphics={deferSecondaryWork}
                   mode={leg.mode}
                 />
               ) : null}
@@ -1366,14 +1391,14 @@ const TransitLegCard = memo(function TransitLegCard({
                   specs={vehicleSpecs}
                   railAmenities={railAmenities}
                   loading={isTrain && railAmenitiesLoading}
-                  deferGraphics={!graphicsReady}
+                  deferGraphics={deferSecondaryWork}
                   mode={leg.mode}
                 />
               ) : null}
             </View>
           )}
 
-          {/* Baner statusu na żywo / opóźnienia / wiarygodności */}
+          {/* Baner statusu na żywo / opóźnienia / wiarygodności lub jego lekki skeleton podczas ładowania live kolei */}
           {showLiveBanner ? (
             <View style={s.liveBanner}>
               <View style={s.liveIconWrap}>
@@ -1399,6 +1424,13 @@ const TransitLegCard = memo(function TransitLegCard({
                 ) : null}
                 {leg.live && liveTimestamp ? <LiveDataAgeInline timestamp={liveTimestamp} /> : null}
               </Text>
+            </View>
+          ) : isTrain && allowLive && railLiveLoading && !deferSecondaryWork ? (
+            <View style={s.liveBanner}>
+              <SkeletonPulse style={s.liveBannerSkeleton}>
+                <SkeletonBone width={16} height={16} radius={shape.full} />
+                <SkeletonBone width="62%" height={12} radius={6} />
+              </SkeletonPulse>
             </View>
           ) : null}
 
@@ -1533,7 +1565,7 @@ const TransitLegCard = memo(function TransitLegCard({
               lon={leg.toLon}
               showLabel
               deferLoad={deferSecondaryWork}
-              deferGraphics={!graphicsReady}
+              deferGraphics={deferSecondaryWork}
             />
           ) : null}
         </View>
@@ -1626,6 +1658,7 @@ export const LegTimeline = memo(function LegTimeline({
   transferState,
   onOpenTransferProtection,
   deferSecondaryWork = false,
+  railLiveLoading = false,
 }: {
   legs: Leg[];
   observeOnly?: boolean;
@@ -1636,6 +1669,7 @@ export const LegTimeline = memo(function LegTimeline({
   transferState?: TransferProtectionState;
   onOpenTransferProtection?: () => void;
   deferSecondaryWork?: boolean;
+  railLiveLoading?: boolean;
 }) {
   const t = useStrings();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1901,7 +1935,6 @@ export const LegTimeline = memo(function LegTimeline({
               renderCard={(footer) => (
                 <TransitLegCard
                   leg={leg}
-                  legIndex={i}
                   expanded={expandedId === leg.id}
                   userLocation={observeOnly || expandedId !== leg.id ? null : location}
                   allowLive={!observeOnly || leg.live}
@@ -1910,6 +1943,7 @@ export const LegTimeline = memo(function LegTimeline({
                   showFromEntrance={showFromEntrance}
                   showToEntrance={showToEntrance}
                   deferSecondaryWork={deferSecondaryWork}
+                  railLiveLoading={railLiveLoading}
                   onToggle={toggleLeg}
                   footer={footer}
                 />
@@ -2229,6 +2263,13 @@ const s = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 9,
+  },
+  liveBannerSkeleton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 18,
   },
   liveIconWrap: {
     width: 18,

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import {
   getCachedRailAmenities,
   loadRailAmenities,
   type RailAmenities as Amenities,
 } from '../services/railAmenities';
+import { waitForUiScrollIdle } from '../services/routing/yieldFrame';
 
 interface RailAmenitiesQuery {
   enabled?: boolean;
@@ -82,8 +83,12 @@ export function useRailAmenities({
       trainNumber,
       line,
       trainName,
-    }).then((next) => {
-      if (alive) setState({ amenities: next, loading: false });
+    }).then(async (next) => {
+      await waitForUiScrollIdle(450);
+      if (!alive) return;
+      startTransition(() => {
+        setState({ amenities: next, loading: false });
+      });
     });
     return () => {
       alive = false;

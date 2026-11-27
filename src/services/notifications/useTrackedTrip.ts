@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { subscribeTracked, getTrackedTripSync, getTripProgressSync } from './tripMonitor';
+import { subscribeTracked, getTrackedTripSync, getTripProgressSync } from './trackedState';
 import type { TripProgress, TrackedTrip } from './types';
 
 // Hook do ekranów: aktywna podróż + jej stan. Jeden stan dla całego drzewa

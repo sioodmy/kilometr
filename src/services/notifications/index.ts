@@ -1,5 +1,4 @@
 export type { TrackedTrip } from './types';
-export { setupNotifications } from './setup';
 export {
   areNotificationsSupported,
   isNativeTrackingSupported,
@@ -14,19 +13,10 @@ export {
   permissionDeniedMessage,
 } from './permissions';
 export { useNotificationPreferences } from './preferences';
-export { addTripResponseListener, getLastTripResponse, type TripResponse } from './response';
+export { checkTicketCompensation } from './ticketCompensation';
 export {
-  checkTicketCompensation,
-  startTicketCompensationMonitor,
-} from './ticketCompensation';
-export {
-  acceptTransferAlternative,
   getTrackedTripSync,
-  refreshTrackedTrip,
-  refreshTransferAlternatives,
-  restoreTrackedTrip,
   setTransferProtectionEnabled,
-  startTrackedTripListener,
   startTracking,
   stopTracking,
   updateTrackedConnection,

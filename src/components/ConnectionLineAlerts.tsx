@@ -1,28 +1,25 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  ReduceMotion,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BusFront, ChevronRight, CircleCheck, Clock3, RouteOff, TriangleAlert } from './icons';
+import { SkeletonBone, SkeletonPulse } from './SkeletonPulse';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import { useStrings } from '../i18n';
 import { LineBadge } from './LineBadge';
 import type { Connection, Leg } from '../types/models';
 import { useActiveCity } from '../services/cityStore';
+import { normalizePolish } from '../gtfs/geo';
 import {
   fetchCityNews,
   getCachedNews,
   isCachedNewsFresh,
   loadNewsCache,
   rememberNewsItemForDetail,
+  type DisruptionAlert,
   type MpkNewsItem,
 } from '../services/mpkNews';
 import { groundDisruption, type GroundedDisruption } from '../services/disruptionGrounding';
-import { yieldToUiFrame } from '../services/routing/yieldFrame';
+import { waitForUiScrollIdle, yieldToUiFrame } from '../services/routing/yieldFrame';
 import { linesFromConnections, newsTouchesLines } from '../services/recentRouteLines';
 import {
   alertsForConnection,
@@ -41,7 +38,92 @@ const OPEN_DEFER_MS = 600;
 
 type Status = 'loading' | 'error' | 'ready';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+/** Zbiera surowe nazwy przystanków wspomniane w alercie do szybkiego pre-filtra przed fuzzy groundingiem. */
+function collectRawDisruptionStops(d: DisruptionAlert): string[] {
+  const out: string[] = [];
+  if (d.corridor) {
+    if (d.corridor.from_stop) out.push(d.corridor.from_stop);
+    if (d.corridor.to_stop) out.push(d.corridor.to_stop);
+    for (const n of d.corridor.stops ?? []) if (n) out.push(n);
+  }
+  for (const st of d.stops ?? []) {
+    if (st.name) out.push(st.name);
+    if (st.replaced_by) out.push(st.replaced_by);
+  }
+  for (const lc of d.line_changes ?? []) {
+    if (lc.from_stop) out.push(lc.from_stop);
+    if (lc.to_stop) out.push(lc.to_stop);
+    for (const n of lc.via ?? []) if (n) out.push(n);
+    for (const n of lc.omitted_stops ?? []) if (n) out.push(n);
+    for (const n of lc.temporary_stops ?? []) if (n) out.push(n);
+    for (const n of lc.transfer_stops ?? []) if (n) out.push(n);
+  }
+  for (const imp of d.impacted_lines ?? []) {
+    for (const n of imp.omitted_stops ?? []) if (n) out.push(n);
+    for (const n of imp.temporary_stops ?? []) if (n) out.push(n);
+  }
+  for (const tl of d.temporary_lines ?? []) {
+    for (const n of tl.via ?? []) if (n) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Szybki filtr (bez fuzzy po całym mieście): czy alert wspomina przystanek
+ * z naszego połączenia. Pozwala uziemiać tylko 0-4 trafione alerty zamiast 50.
+ */
+function alertCouldTouchRouteStops(
+  item: MpkNewsItem,
+  routeStopNorms: readonly string[],
+): boolean {
+  if (!item.disruption || routeStopNorms.length === 0) return false;
+  const rawStops = collectRawDisruptionStops(item.disruption);
+  if (rawStops.length === 0) return false;
+  for (let i = 0; i < rawStops.length; i++) {
+    const norm = normalizePolish(rawStops[i]);
+    if (!norm || norm.length < 3) continue;
+    for (let j = 0; j < routeStopNorms.length; j++) {
+      const routeStop = routeStopNorms[j];
+      if (norm === routeStop || norm.includes(routeStop) || routeStop.includes(norm)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Makieta karty utrudnień wyświetlana podczas wczytywania komunikatów MPK. */
+const AlertsCardSkeleton = memo(function AlertsCardSkeleton({
+  accessibilityLabel,
+}: {
+  accessibilityLabel: string;
+}) {
+  return (
+    <View style={styles.container}>
+      <SkeletonPulse style={styles.skeletonInner} accessibilityLabel={accessibilityLabel}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.headerTitleGroup}>
+            <SkeletonBone width={36} height={36} radius={12} />
+            <SkeletonBone width="52%" height={16} radius={6} />
+          </View>
+          <SkeletonBone width={56} height={22} radius={shape.full} tone="subtle" />
+        </View>
+        <View style={styles.skeletonSubCard}>
+          <View style={styles.alertHeaderRow}>
+            <SkeletonBone width={78} height={20} radius={shape.full} />
+            <SkeletonBone width={84} height={12} radius={5} tone="subtle" />
+          </View>
+          <View style={styles.linesRow}>
+            <SkeletonBone width={34} height={22} radius={7} />
+            <SkeletonBone width={38} height={22} radius={7} />
+          </View>
+          <SkeletonBone width="86%" height={15} radius={6} />
+          <SkeletonBone width="64%" height={13} radius={5} tone="subtle" />
+        </View>
+      </SkeletonPulse>
+    </View>
+  );
+});
 
 function getTransitActionLabel(solutionText: string, s: ReturnType<typeof useStrings>): string {
   const lower = solutionText.toLowerCase();
@@ -247,37 +329,22 @@ const AlertSubCard = memo(function AlertSubCard({
     return rows;
   }, [item.disruption, lineSet, grounded, s]);
 
-  const press = useSharedValue(0);
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 - press.value * 0.015 }],
-  }));
-
-  const setPress = (val: number) => {
-    press.value = withSpring(val, {
-      damping: 22,
-      stiffness: 400,
-      reduceMotion: ReduceMotion.System,
-    });
-  };
-
   const canOpen = Boolean(item.link || item.disruption);
 
   return (
-    <AnimatedPressable
+    <Pressable
       onPress={canOpen ? onPress : undefined}
-      onPressIn={() => canOpen && setPress(1)}
-      onPressOut={() => canOpen && setPress(0)}
       accessibilityRole={canOpen ? 'button' : 'alert'}
       accessibilityLabel={`${headline}. ${solution ?? ''}`}
       android_ripple={canOpen ? { color: scheme.outlineVariant } : undefined}
-      style={[
+      style={({ pressed }) => [
         styles.alertCard,
         isUrgent
           ? styles.alertCardUrgent
           : isResolved
             ? styles.alertCardResolved
             : styles.alertCardNormal,
-        animatedCardStyle,
+        canOpen && pressed && styles.alertCardPressed,
       ]}
     >
       <View style={styles.alertHeaderRow}>
@@ -368,7 +435,7 @@ const AlertSubCard = memo(function AlertSubCard({
           <Text style={styles.changeText}>{row.text}</Text>
         </View>
       ))}
-    </AnimatedPressable>
+    </Pressable>
   );
 });
 
@@ -392,19 +459,6 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
   const solution = alert.solution;
   const timeframe = alert.timeframe;
 
-  const press = useSharedValue(0);
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 - press.value * 0.015 }],
-  }));
-
-  const setPress = (val: number) => {
-    press.value = withSpring(val, {
-      damping: 22,
-      stiffness: 400,
-      reduceMotion: ReduceMotion.System,
-    });
-  };
-
   const trainDetail = useMemo(() => {
     const parts: string[] = [];
     if (leg.trainName) {
@@ -420,21 +474,19 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
   const canOpen = Boolean(alert.link && onPress);
 
   return (
-    <AnimatedPressable
+    <Pressable
       onPress={canOpen ? onPress : undefined}
-      onPressIn={() => canOpen && setPress(1)}
-      onPressOut={() => canOpen && setPress(0)}
       accessibilityRole={canOpen ? 'button' : 'alert'}
       accessibilityLabel={`${s.railAlerts.cardA11y(leg.line ?? leg.trainNumber ?? s.railAlerts.fallbackLine)}. ${headline}. ${problem ?? ''}`}
       android_ripple={canOpen ? { color: scheme.outlineVariant } : undefined}
-      style={[
+      style={({ pressed }) => [
         styles.alertCard,
         isUrgent
           ? styles.alertCardUrgent
           : isResolved
             ? styles.alertCardResolved
             : styles.alertCardNormal,
-        animatedCardStyle,
+        canOpen && pressed && styles.alertCardPressed,
       ]}
     >
       <View style={styles.alertHeaderRow}>
@@ -499,7 +551,7 @@ const TrainAlertSubCard = memo(function TrainAlertSubCard({
           <Text style={styles.solutionText}>{solution}</Text>
         </View>
       ) : null}
-    </AnimatedPressable>
+    </Pressable>
   );
 });
 
@@ -549,6 +601,22 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     return set;
   }, [connection]);
 
+  const routeStopNorms = useMemo(() => {
+    const set = new Set<string>();
+    if (!connection) return [] as string[];
+    const addName = (raw?: string) => {
+      if (!raw) return;
+      const norm = normalizePolish(raw);
+      if (norm.length >= 3) set.add(norm);
+    };
+    for (const leg of connection.legs ?? []) {
+      addName(leg.fromStop);
+      addName(leg.toStop);
+      for (const st of leg.intermediateStops ?? []) addName(st.name);
+    }
+    return Array.from(set);
+  }, [connection]);
+
   const routeIdSet = useMemo(() => {
     const set = new Set<string>();
     if (!connection) return set;
@@ -557,6 +625,9 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     }
     return set;
   }, [connection]);
+
+  const connectionRef = useRef(connection);
+  connectionRef.current = connection;
 
   const runAfterOpen = useCallback((fn: () => void) => {
     let done = false;
@@ -573,30 +644,46 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
     };
   }, []);
 
+  // Uziemiamy wyłącznie kandydatów mogących dotyczyć tej trasy (0-4 alerty
+  // zamiast 50 alertów całego miasta), żeby fuzzy grounding nie dusił scrolla.
+  const groundingCandidates = useMemo(() => {
+    if (lineSet.size === 0 && routeStopNorms.length === 0) return [];
+    return news.filter((item) => {
+      if (!item.disruption) return false;
+      if (lineSet.size > 0 && alertTouchesRoute(item, lineSet)) return true;
+      return alertCouldTouchRouteStops(item, routeStopNorms);
+    });
+  }, [news, lineSet, routeStopNorms]);
+
   useEffect(() => {
-    const items = news.filter((n) => n.disruption);
-    if (items.length === 0) {
-      setGrounded(new Map());
+    if (groundingCandidates.length === 0) {
+      setGrounded((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
     let cancelled = false;
     const cancelScheduled = runAfterOpen(() => {
       void (async () => {
+        await waitForUiScrollIdle(500);
+        if (cancelled) return;
         const map = new Map<string, GroundedDisruption>();
-        for (const item of items) {
+        for (const item of groundingCandidates) {
           const g = await groundDisruption(item.disruption!);
           if (cancelled) return;
           map.set(item.id, g);
           await yieldToUiFrame();
         }
-        if (!cancelled) setGrounded(map);
+        await waitForUiScrollIdle(450);
+        if (cancelled) return;
+        startTransition(() => {
+          setGrounded(map);
+        });
       })();
     });
     return () => {
       cancelled = true;
       cancelScheduled();
     };
-  }, [news, runAfterOpen]);
+  }, [groundingCandidates, runAfterOpen]);
 
   useEffect(() => {
     if (lineKey === '') {
@@ -620,8 +707,12 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
       const disk = await loadNewsCache(cityId);
       if (cancelled) return;
       if (disk && disk.length > 0) {
-        setNews(disk);
-        setStatus('ready');
+        await waitForUiScrollIdle(450);
+        if (cancelled) return;
+        startTransition(() => {
+          setNews(disk);
+          setStatus('ready');
+        });
       }
 
       if (attempt === 0 && isCachedNewsFresh(NEWS_FRESH_MS)) return;
@@ -632,8 +723,12 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
           try {
             const fresh = await fetchCityNews(controller.signal);
             if (cancelled) return;
-            setNews(fresh);
-            setStatus('ready');
+            await waitForUiScrollIdle(450);
+            if (cancelled) return;
+            startTransition(() => {
+              setNews(fresh);
+              setStatus('ready');
+            });
           } catch {
             if (cancelled) return;
             if (!disk && !mem) setStatus('error');
@@ -660,12 +755,13 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
   );
 
   useEffect(() => {
-    if (!connection || !trainAlertKey) {
-      setTrainAlerts([]);
+    const currentConnection = connectionRef.current;
+    if (!currentConnection || !trainAlertKey) {
+      setTrainAlerts((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
-    const cached = getCachedAlertsForConnection(connection);
+    const cached = getCachedAlertsForConnection(currentConnection);
     if (cached) {
       setTrainAlerts(cached);
       return;
@@ -673,10 +769,12 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
     let alive = true;
     const cancelScheduled = runAfterOpen(() => {
-      void alertsForConnection(connection).then((res) => {
-        if (alive) {
+      void alertsForConnection(currentConnection).then(async (res) => {
+        await waitForUiScrollIdle(450);
+        if (!alive) return;
+        startTransition(() => {
           setTrainAlerts(res);
-        }
+        });
       });
     });
 
@@ -707,12 +805,7 @@ export const ConnectionLineAlerts = memo(function ConnectionLineAlerts({
 
   if (totalCount === 0) {
     if (status === 'loading' && lineSet.size > 0) {
-      return (
-        <View style={styles.stateContainer}>
-          <ActivityIndicator size="small" color={scheme.primary} />
-          <Text style={styles.stateText}>{s.routeDetails.lineAlertsLoading}</Text>
-        </View>
-      );
+      return <AlertsCardSkeleton accessibilityLabel={s.routeDetails.lineAlertsLoading} />;
     }
     if (status === 'error' && lineSet.size > 0) {
       return (
@@ -841,6 +934,17 @@ const styles = StyleSheet.create({
     gap: 14,
     ...elev.level1,
   },
+  skeletonInner: {
+    gap: 14,
+  },
+  skeletonSubCard: {
+    backgroundColor: scheme.surfaceContainerLow,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: scheme.outlineVariant,
+    borderRadius: 20,
+    padding: 14,
+    gap: 10,
+  },
   stateContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -926,6 +1030,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 14,
     gap: 10,
+  },
+  alertCardPressed: {
+    opacity: 0.88,
   },
   alertCardUrgent: {
     backgroundColor: scheme.surfaceContainerLow,
