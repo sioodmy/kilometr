@@ -1,5 +1,6 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
@@ -34,6 +35,9 @@ import { RailCarrierMark } from './kilometrUi';
 
 const OPENFREEMAP_SOURCE = 'https://tiles.openfreemap.org/planet';
 const OPENFREEMAP_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+
+// MapLibre 6 szuka workera obok swojego modułu, a Vite nie kopiuje go do builda, więc podajemy URL z bundlera.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const MAP_COLORS = {
   land: '#101413',
