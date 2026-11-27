@@ -12,14 +12,6 @@ const CitySelectSheet = lazy(() =>
 import { getCity, type CityId } from '../cities';
 import { useStrings } from '../i18n';
 import { getActiveCityIdSync, useActiveCity } from '../services/cityStore';
-import { ensureActiveCityTimetable } from '../services/dataManager';
-import {
-  fetchCityNews,
-  getCachedNews,
-  markNewsSeen,
-  shouldShowNewsAlert,
-  subscribeNewsCache,
-} from '../services/mpkNews';
 import { useWebLayout, type WebLayoutInfo } from '../theme/layout';
 import { elev, scheme, shape, type } from '../theme/tokens';
 
@@ -91,25 +83,38 @@ function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; child
     }
     let cancelled = false;
     const ctrl = new AbortController();
-
-    const syncCachedAlert = async () => {
-      try {
-        const cached = getCachedNews();
-        if (cached) {
-          const alert = await shouldShowNewsAlert(cached);
-          if (!cancelled && getActiveCityIdSync() === cityId) setNewsAlert(alert);
-          return true;
-        }
-      } catch {
-        // brak odczytu stanu powiadomień
-      }
-      return false;
-    };
+    let unsub: (() => void) | undefined;
 
     const initCheck = async () => {
-      const hadCache = await syncCachedAlert();
-      if (hadCache || cancelled) return;
       try {
+        const {
+          fetchCityNews,
+          getCachedNews,
+          shouldShowNewsAlert,
+          subscribeNewsCache,
+        } = await import('../services/mpkNews');
+        if (cancelled) return;
+
+        const syncCachedAlert = async () => {
+          try {
+            const cached = getCachedNews();
+            if (cached) {
+              const alert = await shouldShowNewsAlert(cached);
+              if (!cancelled && getActiveCityIdSync() === cityId) setNewsAlert(alert);
+              return true;
+            }
+          } catch {
+            // brak odczytu stanu powiadomień
+          }
+          return false;
+        };
+
+        unsub = subscribeNewsCache(() => {
+          void syncCachedAlert();
+        });
+
+        const hadCache = await syncCachedAlert();
+        if (hadCache || cancelled) return;
         const news = await fetchCityNews(ctrl.signal);
         if (cancelled || ctrl.signal.aborted || getActiveCityIdSync() !== cityId) return;
         const alert = await shouldShowNewsAlert(news);
@@ -120,14 +125,11 @@ function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; child
     };
 
     void initCheck();
-    const unsub = subscribeNewsCache(() => {
-      void syncCachedAlert();
-    });
 
     return () => {
       cancelled = true;
       ctrl.abort();
-      unsub();
+      unsub?.();
     };
   }, [cityHasNews, cityId, layout.isMedium]);
 
@@ -141,6 +143,7 @@ function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; child
       setSwitchingCityId(id);
       try {
         await setCity(id, { source: 'manual' });
+        const { ensureActiveCityTimetable } = await import('../services/dataManager');
         await ensureActiveCityTimetable().catch(() => {});
         setCitySheetOpen(false);
       } finally {
@@ -218,7 +221,7 @@ function DesktopShellActive({ layout, children }: { layout: WebLayoutInfo; child
   const handleNavPress = (item: (typeof navItems)[number]) => {
     if (item.key === 'news' && newsAlert) {
       setNewsAlert(false);
-      void markNewsSeen();
+      void import('../services/mpkNews').then((m) => m.markNewsSeen()).catch(() => {});
     }
     if (pathname === item.path) return;
     router.navigate(item.path);

@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { getTrackingNative } from '../services/notifications/module';
-import { applyScheme, type SchemeKey } from './tokens';
+import type { SchemeKey } from './tokens';
 
 // Kolory Material You z tapety.
 //
@@ -161,25 +161,21 @@ function paletteFromSystem(raw: SystemPalette): Partial<Record<SchemeKey, string
 }
 
 /**
- * Wczytuje kolory tapety i podmienia paletę. Wołane przed pierwszym renderem
- * z `app/_layout`, więc ekran od razu startuje w kolorach systemu.
- *
- * Zwraca `true`, gdy motyw faktycznie poszedł z tapety - do logów i testów.
+ * Wczytuje kolory tapety bez natychmiastowej mutacji stylów. Wołane przed
+ * pierwszym renderem z `personalization.ts`, więc `applyScheme` biegnie raz.
  */
-export async function initDynamicColors(): Promise<boolean> {
-  if (Platform.OS !== 'android') return false;
-  if (typeof Platform.Version === 'number' && Platform.Version < 31) return false;
-  // Kolory czytamy tym samym lokalnym modułem co powiadomienia - to jedyny
+export async function readDynamicColors(): Promise<Partial<Record<SchemeKey, string>> | null> {
+  if (Platform.OS !== 'android') return null;
+  if (typeof Platform.Version === 'number' && Platform.Version < 31) return null;
+  // Kolory czytamy tym samym lokalnym modułem co powiadomienia: to jedyny
   // most do natywy w tej aplikacji, a szukanie drugiego nic nie wnosi.
   const native = getTrackingNative();
-  if (typeof native?.getSystemPalette !== 'function') return false;
+  if (typeof native?.getSystemPalette !== 'function') return null;
   try {
     const patch = paletteFromSystem((await native.getSystemPalette()) ?? {});
-    if (Object.keys(patch).length === 0) return false;
-    applyScheme(patch);
-    return true;
+    return Object.keys(patch).length > 0 ? patch : null;
   } catch {
-    // Brak modułu (Expo Go) albo brak zasobów - zostaje własna paleta.
-    return false;
+    // Brak modułu (Expo Go) albo brak zasobów: zostaje własna paleta.
+    return null;
   }
 }

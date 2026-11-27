@@ -22,6 +22,7 @@ const WEB_KV_STORE = 'kv';
 const memCache = new Map<string, string>();
 const pending = new Map<string, Promise<void>>();
 let dirReady = false;
+let dirPromise: Promise<string | null> | null = null;
 let webKvDbPromise: Promise<IDBDatabase> | null = null;
 
 function openWebKvDb(): Promise<IDBDatabase> {
@@ -103,22 +104,28 @@ async function ensureDir(): Promise<string | null> {
   const dir = getKvDir();
   if (!dir) return null;
   if (dirReady) return dir;
-  try {
-    const info = await FileSystem.getInfoAsync(dir);
-    if (!info.exists) {
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    }
-    dirReady = true;
-    return dir;
-  } catch {
+  if (dirPromise) return dirPromise;
+  dirPromise = (async () => {
     try {
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      const info = await FileSystem.getInfoAsync(dir);
+      if (!info.exists) {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      }
       dirReady = true;
       return dir;
     } catch {
-      return dir;
+      try {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        dirReady = true;
+        return dir;
+      } catch {
+        return dir;
+      }
+    } finally {
+      dirPromise = null;
     }
-  }
+  })();
+  return dirPromise;
 }
 
 /** Bezpieczna nazwa pliku z klucza (zastąp nielegalne znaki i zapobiegaj ENAMETOOLONG). */
@@ -139,6 +146,72 @@ function keyToFile(dir: string, key: string): string {
   }
   const hash = `${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`;
   return `${dir}${prefix}_h_${hash}`;
+}
+
+/**
+ * Wsadowo dogrywa istniejące klucze do memCache (jedna transakcja IndexedDB na Web
+ * lub pojedyncze readDirectoryAsync + równoległe odczyty na Native). Brakujących
+ * kluczy celowo nie zapisuje jako null, żeby kolejne odczyty widziały nowe pliki.
+ */
+export async function kvPreload(keys: readonly string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const targets: string[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (seen.has(key) || memCache.has(key) || pending.has(key)) continue;
+    seen.add(key);
+    targets.push(key);
+  }
+  if (targets.length === 0) return;
+
+  if (IS_WEB) {
+    if (typeof indexedDB === 'undefined') return;
+    try {
+      const db = await openWebKvDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(WEB_KV_STORE, 'readonly');
+        const store = tx.objectStore(WEB_KV_STORE);
+        for (const key of targets) {
+          const req = store.get(key);
+          req.onsuccess = () => {
+            if (typeof req.result === 'string' && !memCache.has(key) && !pending.has(key)) {
+              memCache.set(key, req.result);
+            }
+          };
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error ?? new Error('IndexedDB preload failed'));
+      });
+    } catch {
+      // Preload jest opcjonalny; zwykły kvGet sam doczyta klucz.
+    }
+    return;
+  }
+
+  try {
+    const dir = await ensureDir();
+    if (!dir || typeof FileSystem.readDirectoryAsync !== 'function') return;
+    const entries = await FileSystem.readDirectoryAsync(dir);
+    const existing = new Set(entries);
+    await Promise.all(
+      targets.map(async (key) => {
+        if (memCache.has(key) || pending.has(key)) return;
+        const filePath = keyToFile(dir, key);
+        const fileName = filePath.slice(dir.length);
+        if (!existing.has(fileName)) return;
+        try {
+          const val = await FileSystem.readAsStringAsync(filePath);
+          if (!memCache.has(key) && !pending.has(key)) {
+            memCache.set(key, val);
+          }
+        } catch {
+          // Pojedynczy błąd odczytu nie przerywa preloadu reszty kluczy.
+        }
+      }),
+    );
+  } catch {
+    // Katalog może nie mieć jeszcze plików albo readDirectoryAsync jest niedostępne.
+  }
 }
 
 export async function kvGet(key: string): Promise<string | null> {

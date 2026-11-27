@@ -26,8 +26,8 @@ export async function setupNotificationChannels(): Promise<void> {
   const N = getNotifications();
   if (!N || Platform.OS !== 'android') return;
   const s = tr().notification;
-  try {
-    await N.setNotificationChannelAsync(TRACKING_CHANNEL_ID, {
+  await Promise.all([
+    N.setNotificationChannelAsync(TRACKING_CHANNEL_ID, {
       name: s.channelTracking,
       description: s.channelTrackingDesc,
       importance: N.AndroidImportance.LOW,
@@ -35,12 +35,10 @@ export async function setupNotificationChannels(): Promise<void> {
       showBadge: false,
       enableVibrate: false,
       lightColor: '#5CDBBE',
-    });
-  } catch {
-    // kanał opcjonalny - powiadomienie pokaże się i tak na domyślnym
-  }
-  try {
-    await N.setNotificationChannelAsync(ALERTS_CHANNEL_ID, {
+    }).catch(() => {
+      // kanał opcjonalny: powiadomienie pokaże się i tak na domyślnym
+    }),
+    N.setNotificationChannelAsync(ALERTS_CHANNEL_ID, {
       name: s.channelAlerts,
       description: s.channelAlertsDesc,
       importance: N.AndroidImportance.HIGH,
@@ -49,8 +47,8 @@ export async function setupNotificationChannels(): Promise<void> {
       enableVibrate: true,
       vibrationPattern: [0, 220, 160, 220],
       lightColor: '#FFB957',
-    });
-  } catch {
-    // jw.
-  }
+    }).catch(() => {
+      // jw.
+    }),
+  ]);
 }
