@@ -42,6 +42,7 @@ import {
   getGtfsPresence,
   getGtfsStats,
   getMeta,
+  getMetaBatch,
   getTimetableEndDate,
   importCalendar,
   importCalendarDates,
@@ -135,16 +136,6 @@ export function resetDataStatusForCity(): void {
   emit({ state: 'empty' });
 }
 
-/** Skąd pochodzą dane w SQLite: pełny rozkład z sieci. */
-async function getGtfsSource(cityId?: string): Promise<GtfsSource | null> {
-  try {
-    const v = await getMeta('gtfs_source', cityId);
-    return v === 'network' ? v : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Czy lokalna baza wskazanego miasta ma pełny i kompletny zestaw tabel GTFS. */
 async function hasCompleteLocalDb(cityId: string): Promise<boolean> {
   try {
@@ -196,6 +187,17 @@ async function cleanupAbortedImport(activeCityId: string): Promise<boolean> {
 }
 
 /** Szybki start: pełny rozkład w SQLite uznajemy za gotowy. */
+let deferredWarmupTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleEnsureSearchReady(cityId: string): void {
+  if (deferredWarmupTimer) clearTimeout(deferredWarmupTimer);
+  deferredWarmupTimer = setTimeout(() => {
+    deferredWarmupTimer = null;
+    if (getActiveCityIdSync() !== cityId) return;
+    void ensureSearchReady(cityId);
+  }, 400);
+}
+
 export async function refreshDataStatus(expectedCityId?: string): Promise<DataStatus> {
   const refreshCityId = expectedCityId ?? getActiveCityIdSync();
   if (getActiveCityIdSync() !== refreshCityId) return status;
@@ -206,10 +208,15 @@ export async function refreshDataStatus(expectedCityId?: string): Promise<DataSt
     getActiveCityIdSync() !== refreshCityId ||
     (activeImport !== null && activeImport.cityId === refreshCityId);
   try {
-    const stats = await getGtfsPresence(refreshCityId);
+    const [stats, meta] = await Promise.all([
+      getGtfsPresence(refreshCityId),
+      getMetaBatch(
+        [GTFS_IMPORT_COMPLETE_META, 'gtfs_imported_at', 'gtfs_source'],
+        refreshCityId,
+      ),
+    ]);
     if (isStale()) return status;
-    const marker = await getMeta(GTFS_IMPORT_COMPLETE_META, refreshCityId);
-    if (isStale()) return status;
+    const marker = meta[GTFS_IMPORT_COMPLETE_META];
     const hasData = stats.stops > 0 && stats.trips > 0 && stats.hasStopTimes;
     // Bazy sprzed znacznika (aktualizacja z wersji bez `gtfs_import_complete`):
     // kompletny import zawsze zostawiał `gtfs_imported_at`, a nowy clear kasuje
@@ -217,19 +224,18 @@ export async function refreshDataStatus(expectedCityId?: string): Promise<DataSt
     // rozkład i wymuszała ponowne pobieranie.
     let complete = marker === '1';
     if (hasData && !complete) {
-      const legacyImportedAt = await getMeta('gtfs_imported_at', refreshCityId);
-      if (isStale()) return status;
+      const legacyImportedAt = meta.gtfs_imported_at;
       if (legacyImportedAt) {
         await setMeta(GTFS_IMPORT_COMPLETE_META, '1', refreshCityId);
+        if (isStale()) return status;
         complete = true;
       }
     }
     if (hasData && complete) {
       await cleanupAbortedImport(refreshCityId);
       if (isStale()) return status;
-      const updatedAt = await getMeta('gtfs_imported_at', refreshCityId);
-      const source = await getGtfsSource(refreshCityId);
-      if (isStale()) return status;
+      const updatedAt = meta.gtfs_imported_at;
+      const source: GtfsSource | null = meta.gtfs_source === 'network' ? 'network' : null;
       emitForCity(refreshCityId, {
         state: 'ready',
         stops: stats.stops,
@@ -237,8 +243,8 @@ export async function refreshDataStatus(expectedCityId?: string): Promise<DataSt
         updatedAt,
         source,
       });
-      // Dokończenie przerwanego importu: wagi + warmup w tle.
-      void ensureSearchReady(refreshCityId);
+      // Rozgrzewka wag i RAPTOR-a po pierwszej klatce ekranu głównego.
+      scheduleEnsureSearchReady(refreshCityId);
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
       // To nie jest działający rozkład: czyścimy, żeby UI wymusił pobieranie.

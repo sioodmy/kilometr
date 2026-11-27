@@ -268,6 +268,14 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
         PRAGMA cache_size = -16000;
         PRAGMA temp_store = MEMORY;
         PRAGMA busy_timeout = 15000;
+      `);
+      const ver = await db
+        .getFirstAsync<{ user_version: number }>('PRAGMA user_version')
+        .catch(() => null);
+      if ((ver?.user_version ?? 0) >= 1) {
+        return db;
+      }
+      await db.execAsync(`
         CREATE TABLE IF NOT EXISTS stops (
           stop_id TEXT PRIMARY KEY NOT NULL,
           code TEXT NOT NULL DEFAULT '',
@@ -373,6 +381,11 @@ async function initDb(name: string): Promise<SQLite.SQLiteDatabase> {
           CREATE INDEX IF NOT EXISTS idx_stops_norm ON stops (norm);
           CREATE INDEX IF NOT EXISTS idx_stops_weight ON stops (weight DESC);
         `);
+      }
+      try {
+        await db.execAsync('PRAGMA user_version = 1');
+      } catch {
+        // Baza tymczasowa lub tylko do odczytu nie blokuje startu.
       }
       return db;
 }
@@ -757,6 +770,25 @@ export async function getMeta(key: string, cityId?: string): Promise<string | nu
   const db = await openGtfsDbHandle(cityId);
   const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM meta WHERE key = ?', key);
   return row?.value ?? null;
+}
+
+export async function getMetaBatch(
+  keys: readonly string[],
+  cityId?: string,
+): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
+  for (const key of keys) out[key] = null;
+  if (keys.length === 0) return out;
+  const db = await openGtfsDbHandle(cityId);
+  const placeholders = keys.map(() => '?').join(', ');
+  const rows = await db.getAllAsync<{ key: string; value: string }>(
+    `SELECT key, value FROM meta WHERE key IN (${placeholders})`,
+    ...keys,
+  );
+  for (const row of rows) {
+    out[row.key] = row.value ?? null;
+  }
+  return out;
 }
 
 export async function prepareForBulkImport(cityId?: string): Promise<void> {
@@ -1257,10 +1289,17 @@ export async function getGtfsPresence(
   cityId?: string,
 ): Promise<{ stops: number; trips: number; hasStopTimes: boolean }> {
   const db = await openGtfsDbHandle(cityId);
-  const s = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM stops');
-  const t = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM trips');
-  const st = await db.getFirstAsync<{ n: number }>('SELECT EXISTS(SELECT 1 FROM stop_times) AS n');
-  return { stops: s?.n ?? 0, trips: t?.n ?? 0, hasStopTimes: (st?.n ?? 0) > 0 };
+  const row = await db.getFirstAsync<{ stops: number; trips: number; hasStopTimes: number }>(
+    `SELECT
+       (SELECT COUNT(*) FROM stops) AS stops,
+       (SELECT COUNT(*) FROM trips) AS trips,
+       EXISTS(SELECT 1 FROM stop_times) AS hasStopTimes`,
+  );
+  return {
+    stops: row?.stops ?? 0,
+    trips: row?.trips ?? 0,
+    hasStopTimes: (row?.hasStopTimes ?? 0) > 0,
+  };
 }
 
 export async function getGtfsStats(
