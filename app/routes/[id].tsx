@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -50,8 +50,9 @@ import {
   getConnectionGroup,
   refreshConnectionGroupOptions,
 } from '../../src/services/routing/connectionGroups';
-import { useRailLiveConnections } from '../../src/services/useRailLiveConnections';
+import { useRailLiveConnectionsWithStatus } from '../../src/services/useRailLiveConnections';
 import { liveTracker } from '../../src/services/liveTracker';
+import { beginUiScroll, endUiScroll } from '../../src/services/routing/yieldFrame';
 import type { Connection } from '../../src/types/models';
 import { ConnectionLineAlerts } from '../../src/components/ConnectionLineAlerts';
 import { LegTimeline } from '../../src/components/LegTimeline';
@@ -332,8 +333,66 @@ export default function RouteDetailsScreen() {
     };
   }, [transitionSettled]);
 
+  // Stan aktywnego scrollowania szczegółów: sygnalizuje yieldFrame i buforuje
+  // przeliczanie liveTick do zakończenia gestu użytkownika.
+  const scrollActiveRef = useRef(false);
+  const pendingLiveOkRef = useRef<number | null>(null);
+  const scrollFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingScrollLive = useCallback(() => {
+    if (scrollFlushTimerRef.current !== null) {
+      clearTimeout(scrollFlushTimerRef.current);
+      scrollFlushTimerRef.current = null;
+    }
+    const nextLive = pendingLiveOkRef.current;
+    pendingLiveOkRef.current = null;
+    if (nextLive === null) return;
+    startTransition(() => {
+      setLiveTick(nextLive);
+    });
+  }, []);
+
+  const markDetailsScrollStart = useCallback(() => {
+    if (!scrollActiveRef.current) {
+      scrollActiveRef.current = true;
+      beginUiScroll();
+    }
+    if (scrollFlushTimerRef.current !== null) {
+      clearTimeout(scrollFlushTimerRef.current);
+    }
+    scrollFlushTimerRef.current = setTimeout(() => {
+      scrollFlushTimerRef.current = null;
+      if (scrollActiveRef.current) {
+        scrollActiveRef.current = false;
+        endUiScroll();
+      }
+      flushPendingScrollLive();
+    }, 650);
+  }, [flushPendingScrollLive]);
+
+  const markDetailsScrollEnd = useCallback(() => {
+    if (scrollActiveRef.current) {
+      scrollActiveRef.current = false;
+      endUiScroll();
+    }
+    flushPendingScrollLive();
+  }, [flushPendingScrollLive]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollFlushTimerRef.current !== null) {
+        clearTimeout(scrollFlushTimerRef.current);
+        scrollFlushTimerRef.current = null;
+      }
+      if (scrollActiveRef.current) {
+        scrollActiveRef.current = false;
+        endUiScroll();
+      }
+    };
+  }, []);
+
   // Opóźnienia z feedu żyją niezależnie od zamrożonego połączenia.
-  // Podczas animacji morphingu nie wymuszamy re-renderu ekranu; synchronizujemy po domknięciu przejścia.
+  // Podczas animacji morphingu i scrollu nie wymuszamy re-renderu ekranu; synchronizujemy po domknięciu.
   const initialLiveOk = liveTracker.getLastOk();
   const [liveTick, setLiveTick] = useState(initialLiveOk);
   const lastLiveOk = useRef(initialLiveOk);
@@ -345,7 +404,13 @@ export default function RouteDetailsScreen() {
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
-        setLiveTick(ok);
+        if (scrollActiveRef.current) {
+          pendingLiveOkRef.current = ok;
+        } else {
+          startTransition(() => {
+            setLiveTick(ok);
+          });
+        }
       }
     };
     check();
@@ -405,7 +470,11 @@ export default function RouteDetailsScreen() {
     () => (offline || liveStale ? new Map<string, number>() : liveTracker.getTripDelays()),
     [offline, liveStale, liveTick],
   );
-  const liveItems = useRailLiveConnections(rawItems, tripDelays, !offline && transitionSettled);
+  const { items: liveItems, loading: railLiveLoading } = useRailLiveConnectionsWithStatus(
+    rawItems,
+    tripDelays,
+    !offline && transitionSettled,
+  );
   const item = useMemo(() => {
     if (liveItems.length === 0) return null;
     if (swappedBase) {
@@ -1005,6 +1074,7 @@ export default function RouteDetailsScreen() {
         transferState={transferProtectionActive ? trackedTrip?.transfer : undefined}
         onOpenTransferProtection={openTransferProtection}
         deferSecondaryWork={!transitionSettled}
+        railLiveLoading={railLiveLoading && !offline}
       />
     </>
   ) : null;
@@ -1035,6 +1105,10 @@ export default function RouteDetailsScreen() {
                   contentContainerStyle={styles.desktopLeftBody}
                   showsVerticalScrollIndicator={false}
                   overScrollMode="never"
+                  onScrollBeginDrag={markDetailsScrollStart}
+                  onMomentumScrollBegin={markDetailsScrollStart}
+                  onScrollEndDrag={markDetailsScrollEnd}
+                  onMomentumScrollEnd={markDetailsScrollEnd}
                 >
                   {renderSummaryAndMeta()}
                   <View style={styles.detailsContent}>
@@ -1074,6 +1148,10 @@ export default function RouteDetailsScreen() {
               <ScrollView
                 onLayout={morphProps ? handleScrollViewLayout : undefined}
                 onScroll={morphProps ? handleScroll : undefined}
+                onScrollBeginDrag={markDetailsScrollStart}
+                onMomentumScrollBegin={markDetailsScrollStart}
+                onScrollEndDrag={markDetailsScrollEnd}
+                onMomentumScrollEnd={markDetailsScrollEnd}
                 scrollEventThrottle={16}
                 contentContainerStyle={[
                   styles.body,

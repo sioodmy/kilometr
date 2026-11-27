@@ -1,4 +1,5 @@
 import { distanceMeters, projectPointToPolyline } from '../gtfs/geo';
+import { getUiYieldBudgetMs, yieldToUiFrame } from './routing/yieldFrame';
 import type { Leg, LegStop } from '../types/models';
 
 // Dopasowanie GPS pasażera do osi toru między stacjami.
@@ -22,6 +23,8 @@ export interface TrainTrack {
   anchorsM: number[];
   /** Długość całej osi [m]. */
   totalM: number;
+  /** Skumulowane odległości punktów osi [m] (cache dla strony drzwi). */
+  cumM?: number[];
 }
 
 export interface TrainTrackMatch {
@@ -75,7 +78,49 @@ export function buildTrainTrack(
   for (let i = window.start + 1; i <= window.end; i++) {
     if (anchorsM[i] < anchorsM[i - 1]) return null;
   }
-  return { shape, anchorsM, totalM };
+  return { shape, anchorsM, totalM, cumM: cum };
+}
+
+async function buildTrainTrackAsync(
+  shape: { lat: number; lon: number }[],
+  stops: LegStop[],
+  window: { start: number; end: number },
+): Promise<TrainTrack | null> {
+  if (shape.length < 2 || window.end <= window.start || window.end >= stops.length) return null;
+
+  const cum = new Array<number>(shape.length);
+  cum[0] = 0;
+  let sliceStart = performance.now();
+  for (let i = 0; i < shape.length - 1; i++) {
+    cum[i + 1] =
+      cum[i] + distanceMeters(shape[i].lat, shape[i].lon, shape[i + 1].lat, shape[i + 1].lon);
+    if ((i & 511) === 511 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+      await yieldToUiFrame();
+      sliceStart = performance.now();
+    }
+  }
+  const totalM = cum[cum.length - 1];
+  if (totalM <= 0) return null;
+
+  const anchorsM = new Array<number>(stops.length).fill(-1);
+  let segStart = 0;
+  for (let i = window.start; i <= window.end; i++) {
+    if (performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+      await yieldToUiFrame();
+      sliceStart = performance.now();
+    }
+    const stop = stops[i];
+    if (!stop || stop.lat == null || stop.lon == null) return null;
+    const slice = segStart === 0 ? shape : shape.slice(segStart);
+    const p = projectPointToPolyline(stop.lat, stop.lon, slice);
+    if (p.distanceMeters > STATION_ANCHOR_MAX_M) return null;
+    anchorsM[i] = cum[segStart] + p.fractionAlongShape * (totalM - cum[segStart]);
+    segStart += p.segmentIndex;
+  }
+  for (let i = window.start + 1; i <= window.end; i++) {
+    if (anchorsM[i] < anchorsM[i - 1]) return null;
+  }
+  return { shape, anchorsM, totalM, cumM: cum };
 }
 
 /**
@@ -169,7 +214,7 @@ export async function ensureTrainTrack(
   } catch {
     return null;
   }
-  const track = shape ? buildTrainTrack(shape, stops, window) : null;
+  const track = shape ? await buildTrainTrackAsync(shape, stops, window) : null;
   trackCache.set(key, track);
   if (trackCache.size > CACHE_MAX) {
     const oldest = trackCache.keys().next().value;

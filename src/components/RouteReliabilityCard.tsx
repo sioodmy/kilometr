@@ -2,9 +2,8 @@
 // Renderuje się wyłącznie wtedy, gdy backend odpowiada i posiada wystarczającą
 // próbę danych historycznych lub live; w trybie offline zwraca null.
 
-import { memo, useEffect, useState } from 'react';
+import { memo, startTransition, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 import Svg, { G, Rect, Text as SvgText } from 'react-native-svg';
 import { Clock3, TriangleAlert } from './icons';
 import { LineBadge } from './LineBadge';
@@ -12,6 +11,7 @@ import { SkeletonBone, SkeletonPulse, useDeferredReveal } from './SkeletonPulse'
 import { useStrings } from '../i18n';
 import { useActiveCity } from '../services/cityStore';
 import { fetchBackendRouteInsights, type RouteInsightsData } from '../services/kilometrApi';
+import { waitForUiScrollIdle } from '../services/routing/yieldFrame';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { Connection } from '../types/models';
 
@@ -56,24 +56,30 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
   connection,
 }: RouteReliabilityCardProps) {
   const s = useStrings();
-  const reduceMotion = useReducedMotion();
   const { cityId } = useActiveCity();
   const [insights, setInsights] = useState<RouteInsightsData | null>(null);
   const [chartWidth, setChartWidth] = useState(CHART_W);
+  const connectionRef = useRef(connection);
+  connectionRef.current = connection;
 
   const requestKey = `${cityId}|${connection.id}|${connection.serviceDate ?? ''}|${connection.departureSec}`;
 
   useEffect(() => {
-    const hasTransit = connection.legs.some((l) => l.mode !== 'walk');
+    const currentConnection = connectionRef.current;
+    const hasTransit = currentConnection.legs.some((l) => l.mode !== 'walk');
     if (!hasTransit) {
       setInsights(null);
       return;
     }
     let active = true;
     const ctrl = new AbortController();
-    void fetchBackendRouteInsights(cityId, connection, ctrl.signal)
-      .then((data) => {
-        if (active) setInsights(data && data.ready ? data : null);
+    void fetchBackendRouteInsights(cityId, currentConnection, ctrl.signal)
+      .then(async (data) => {
+        await waitForUiScrollIdle(450);
+        if (!active) return;
+        startTransition(() => {
+          setInsights(data && data.ready ? data : null);
+        });
       })
       .catch(() => {
         if (active) setInsights(null);
@@ -82,7 +88,7 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
       active = false;
       ctrl.abort();
     };
-  }, [cityId, connection, requestKey]);
+  }, [cityId, requestKey]);
 
   const hasChartData = Boolean(
     insights?.ready &&
@@ -199,11 +205,7 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
                 ))}
               </SkeletonPulse>
             ) : (
-              <Animated.View
-                entering={
-                  !reduceMotion ? FadeIn.duration(160).reduceMotion(ReduceMotion.System) : undefined
-                }
-              >
+              <View>
                 <Svg
                   width={chartWidth}
                   height={CHART_H}
@@ -259,7 +261,7 @@ export const RouteReliabilityCard = memo(function RouteReliabilityCard({
                     );
                   })}
                 </Svg>
-              </Animated.View>
+              </View>
             )}
           </View>
         </View>

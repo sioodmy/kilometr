@@ -1,6 +1,7 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   View,
   type DimensionValue,
@@ -15,12 +16,26 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withRepeat,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { scheme, shape } from '../theme/tokens';
 
 const PULSE_HALF_MS = 780;
+const WEB_PULSE_STYLE_ID = 'kilometr-skeleton-pulse-css';
+const WEB_PULSE_ANIMATION = `kilometrSkeletonPulse ${PULSE_HALF_MS * 2}ms ease-in-out infinite`;
+
+let webPulseInjected = false;
+
+function ensureWebPulseKeyframes(): void {
+  if (webPulseInjected || Platform.OS !== 'web' || typeof document === 'undefined') return;
+  webPulseInjected = true;
+  if (document.getElementById(WEB_PULSE_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = WEB_PULSE_STYLE_ID;
+  style.textContent =
+    '@keyframes kilometrSkeletonPulse { 0%, 100% { opacity: 0.86; } 50% { opacity: 0.42; } }';
+  document.head?.appendChild(style);
+}
 
 const SkeletonPulseAnimated = memo(function SkeletonPulseAnimated({
   children,
@@ -33,20 +48,13 @@ const SkeletonPulseAnimated = memo(function SkeletonPulseAnimated({
 
   useEffect(() => {
     opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.42, {
-          duration: PULSE_HALF_MS,
-          easing: Easing.inOut(Easing.ease),
-          reduceMotion: ReduceMotion.System,
-        }),
-        withTiming(0.86, {
-          duration: PULSE_HALF_MS,
-          easing: Easing.inOut(Easing.ease),
-          reduceMotion: ReduceMotion.System,
-        }),
-      ),
+      withTiming(0.42, {
+        duration: PULSE_HALF_MS,
+        easing: Easing.inOut(Easing.ease),
+        reduceMotion: ReduceMotion.System,
+      }),
       -1,
-      false,
+      true,
     );
     return () => {
       cancelAnimation(opacity);
@@ -62,8 +70,9 @@ const SkeletonPulseAnimated = memo(function SkeletonPulseAnimated({
 
 /**
  * Wspólny kontener loading state dla mock elementów graficznych.
- * Tworzy tylko jeden lekki worklet opacity dla całej grupy kości, a przy
- * włączonym ograniczeniu ruchu renderuje statyczny kontener bez Reanimated.
+ * Na webie korzysta z czystej animacji CSS na compositorze GPU (zero workletów),
+ * na native z pojedynczego lekkiego workleta opacity, a przy ograniczeniu ruchu
+ * renderuje statyczny kontener bez animacji.
  */
 export const SkeletonPulse = memo(function SkeletonPulse({
   children,
@@ -85,6 +94,21 @@ export const SkeletonPulse = memo(function SkeletonPulse({
   if (reduceMotion) {
     return (
       <View {...a11yProps} style={[styles.staticPulse, style]}>
+        {children}
+      </View>
+    );
+  }
+
+  if (Platform.OS === 'web') {
+    ensureWebPulseKeyframes();
+    return (
+      <View
+        {...a11yProps}
+        style={[
+          style,
+          { animation: WEB_PULSE_ANIMATION, willChange: 'opacity' } as unknown as ViewStyle,
+        ]}
+      >
         {children}
       </View>
     );

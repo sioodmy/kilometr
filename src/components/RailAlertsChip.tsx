@@ -1,22 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
-import { StyleSheet } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { memo, startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { TriangleAlert } from "./icons";
 import { useStrings } from "../i18n";
 import { scheme, shape } from "../theme/tokens";
 import type { Connection } from "../types/models";
-import { alertsForConnection, type TrainAlerts } from "../services/railTripAlerts";
+import {
+  alertsForConnection,
+  getCachedAlertsForConnection,
+  type TrainAlerts,
+} from "../services/railTripAlerts";
 import { linesFromConnections } from "../services/recentRouteLines";
 import { useActiveCity } from "../services/cityStore";
 import { getCachedNews, subscribeNewsCache } from "../services/mpkNews";
 import { alertTouchesRoute } from "./ConnectionLineAlerts";
+import { waitForUiScrollIdle } from "../services/routing/yieldFrame";
 
 /**
  * Kompaktowy wskaźnik utrudnień w stylu Material 3 Expressive na karcie połączenia.
  * Wyświetla subtelną ikonę ostrzeżenia w nagłówku, gdy na trasie (kolej lub zbiorkom)
  * występują utrudnienia. Szczegóły pasażer sprawdza na ekranie trasy.
  */
-export function RailAlertsChip({
+export const RailAlertsChip = memo(function RailAlertsChip({
   connection,
   dimmed,
 }: {
@@ -25,28 +29,45 @@ export function RailAlertsChip({
 }) {
   const s = useStrings();
   const { cityId } = useActiveCity();
-  const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>([]);
-  const [newsTick, setNewsTick] = useState(0);
+  const connectionRef = useRef(connection);
+  connectionRef.current = connection;
 
-  const hasTrain = useMemo(
+  const trainAlertKey = useMemo(
     () =>
-      connection.legs?.some(
-        (l) => l.mode === "train" || l.tripId?.startsWith("pl:") || l.trainNumber,
-      ),
+      connection.legs
+        ?.filter((l) => l.mode === "train" || l.tripId?.startsWith("pl:") || l.trainNumber)
+        .map((l) => `${l.tripId ?? ""}:${l.trainNumber ?? ""}:${l.line ?? ""}`)
+        .join(";") ?? "",
     [connection.legs],
   );
 
+  const [trainAlerts, setTrainAlerts] = useState<TrainAlerts[]>(
+    () => getCachedAlertsForConnection(connection) ?? [],
+  );
+  const [newsTick, setNewsTick] = useState(0);
+
   useEffect(() => {
-    setTrainAlerts([]);
-    if (!hasTrain) return;
+    if (!trainAlertKey) {
+      setTrainAlerts((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const cached = getCachedAlertsForConnection(connectionRef.current);
+    if (cached) {
+      setTrainAlerts(cached);
+      return;
+    }
     let alive = true;
-    void alertsForConnection(connection).then((alerts) => {
-      if (alive) setTrainAlerts(alerts);
+    void alertsForConnection(connectionRef.current).then(async (alerts) => {
+      await waitForUiScrollIdle(450);
+      if (!alive) return;
+      startTransition(() => {
+        setTrainAlerts(alerts);
+      });
     });
     return () => {
       alive = false;
     };
-  }, [connection, hasTrain]);
+  }, [trainAlertKey]);
 
   useEffect(() => subscribeNewsCache(() => setNewsTick((n) => n + 1)), []);
 
@@ -83,9 +104,7 @@ export function RailAlertsChip({
   }
 
   return (
-    <Animated.View
-      entering={FadeIn.duration(180)}
-      exiting={FadeOut.duration(150)}
+    <View
       style={[
         styles.badge,
         isUrgent ? styles.badgeUrgent : styles.badgeWarning,
@@ -99,9 +118,9 @@ export function RailAlertsChip({
         size={15}
         color={isUrgent ? scheme.error : scheme.warning}
       />
-    </Animated.View>
+    </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   badge: {

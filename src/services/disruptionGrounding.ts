@@ -11,7 +11,7 @@
 import { normalizePolish } from '../gtfs/geo';
 import { fuzzyMatchBatch } from '../gtfs/fuzzy';
 import { gtfsStore, type LocalGtfsStore } from './routing/store';
-import { UI_YIELD_BUDGET_MS, yieldToUiFrame } from './routing/yieldFrame';
+import { getUiYieldBudgetMs, yieldToUiFrame } from './routing/yieldFrame';
 import type { DisruptionAlert } from './mpkNews';
 
 /** Przystanek uziemiony: nazwa z komunikatu -> stop_id + kanoniczna nazwa. */
@@ -133,6 +133,61 @@ function buildStopIndex(store: LocalGtfsStore): StopIndex {
   return { byName, names, ids };
 }
 
+const indexPromises = new WeakMap<
+  LocalGtfsStore,
+  { generation: number; stopCount: number; promise: Promise<StopIndex> }
+>();
+
+async function ensureStopIndexAsync(store: LocalGtfsStore): Promise<StopIndex> {
+  const cached = indexCache.get(store);
+  if (
+    cached &&
+    cached.generation === store.currentGeneration &&
+    cached.stopCount === store.stops.size
+  ) {
+    return cached.index;
+  }
+  const pending = indexPromises.get(store);
+  if (
+    pending &&
+    pending.generation === store.currentGeneration &&
+    pending.stopCount === store.stops.size
+  ) {
+    return pending.promise;
+  }
+  const generation = store.currentGeneration;
+  const stopCount = store.stops.size;
+  const promise = (async () => {
+    const byName = new Map<string, string[]>();
+    const names: string[] = [];
+    const ids: string[] = [];
+    let sliceStart = performance.now();
+    let count = 0;
+    for (const stop of store.stops.values()) {
+      const key = normalizePolish(stop.stop_name);
+      const existing = byName.get(key);
+      if (existing) {
+        existing.push(stop.stop_id);
+      } else {
+        byName.set(key, [stop.stop_id]);
+        names.push(key);
+        ids.push(stop.stop_id);
+      }
+      if ((++count & 127) === 0 && performance.now() - sliceStart >= getUiYieldBudgetMs()) {
+        await yieldToUiFrame();
+        sliceStart = performance.now();
+      }
+    }
+    const index = { byName, names, ids };
+    if (store.currentGeneration === generation && store.stops.size === stopCount) {
+      indexCache.set(store, { generation, stopCount, index });
+    }
+    return index;
+  })();
+  indexPromises.set(store, { generation, stopCount, promise });
+  return promise;
+}
+
 function ensureStopIndex(store: LocalGtfsStore): StopIndex {
   const cached = indexCache.get(store);
   if (
@@ -248,7 +303,7 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   } catch {
     return { routeIds: [], stopIds: [], lines: [], stops: [] };
   }
-  const index = ensureStopIndex(gtfsStore);
+  const index = await ensureStopIndexAsync(gtfsStore);
 
   const rawLines = new Set<string>();
   for (const l of alert.all_lines ?? []) if (l) rawLines.add(l);
@@ -291,7 +346,7 @@ export async function groundDisruption(alert: DisruptionAlert): Promise<Grounded
   const stops: GroundedStop[] = [];
   let sliceStart = performance.now();
   for (const name of rawStops) {
-    if (performance.now() - sliceStart >= UI_YIELD_BUDGET_MS) {
+    if (performance.now() - sliceStart >= getUiYieldBudgetMs()) {
       await yieldToUiFrame();
       sliceStart = performance.now();
     }

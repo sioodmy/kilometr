@@ -249,7 +249,7 @@ interface CandidateTrip {
   tripId: string;
   trainNumber: string;
   headsign: string;
-  stops: { name: string; seq: number; arrSec: number; depSec: number }[];
+  stops: { name: string; normName: string; seq: number; arrSec: number; depSec: number }[];
 }
 
 /**
@@ -305,13 +305,19 @@ async function findCandidateTrips(
     `SELECT trip_id, stop_id, seq, arr_sec, dep_sec FROM stop_times WHERE trip_id IN (${placeholders}) ORDER BY trip_id, seq`,
     ...ids,
   );
-  const nameRows = await db.getAllAsync<{ stop_id: string; name: string }>(
-    'SELECT stop_id, name FROM stops',
-  );
-  const nameById = new Map(nameRows.map((s) => [s.stop_id, s.name]));
+  const uniqueStopIds = Array.from(new Set(seqRows.map((r) => r.stop_id)));
+  const nameById = new Map<string, string>();
+  if (uniqueStopIds.length > 0) {
+    const stopPlaceholders = uniqueStopIds.map(() => '?').join(',');
+    const nameRows = await db.getAllAsync<{ stop_id: string; name: string }>(
+      `SELECT stop_id, name FROM stops WHERE stop_id IN (${stopPlaceholders})`,
+      ...uniqueStopIds,
+    );
+    for (const s of nameRows) nameById.set(s.stop_id, s.name);
+  }
   const seqByTrip = new Map<
     string,
-    { name: string; seq: number; arrSec: number; depSec: number }[]
+    { name: string; normName: string; seq: number; arrSec: number; depSec: number }[]
   >();
   for (const r of seqRows) {
     let list = seqByTrip.get(r.trip_id);
@@ -319,8 +325,10 @@ async function findCandidateTrips(
       list = [];
       seqByTrip.set(r.trip_id, list);
     }
+    const stopName = nameById.get(r.stop_id) ?? r.stop_id;
     list.push({
-      name: nameById.get(r.stop_id) ?? r.stop_id,
+      name: stopName,
+      normName: normalized(stopName),
       seq: r.seq,
       arrSec: r.arr_sec,
       depSec: r.dep_sec,
@@ -370,7 +378,7 @@ function matchPositions(
     let best: { trip: CandidateTrip; diff: number } | null = null;
     for (const trip of list) {
       for (const stop of trip.stops) {
-        if (normalized(stop.name) !== nextKey) continue;
+        if (stop.normName !== nextKey) continue;
         const stopSec = (((stop.arrSec || stop.depSec) % 86400) + 86400) % 86400;
         const directDiff = Math.abs(stopSec - nextSec);
         const diff = Math.min(directDiff, 86400 - directDiff);
