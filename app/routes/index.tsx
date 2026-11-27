@@ -1325,7 +1325,7 @@ export default function RoutesScreen() {
   };
 
   // Starsze (historyczne, już odjechane), dokładane Z GÓRY
-  const pullTriggeredRef = useRef(false);
+  const [pullTriggered, setPullTriggered] = useState(false);
   const recentEarlierIdsRef = useRef<Set<string>>(new Set());
   const earlierClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1341,7 +1341,7 @@ export default function RoutesScreen() {
     ) {
       if (fromPull) {
         pullBusy.value = false;
-        pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+        pullHeight.value = withSpring(0, motion.spring.effectsDefault);
       }
       return;
     }
@@ -1349,13 +1349,13 @@ export default function RoutesScreen() {
     if (!firstDeparture || firstDeparture <= 0) {
       if (fromPull) {
         pullBusy.value = false;
-        pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+        pullHeight.value = withSpring(0, motion.spring.effectsDefault);
       }
       return;
     }
 
     earlierRequest.current = true;
-    pullTriggeredRef.current = fromPull;
+    setPullTriggered(fromPull);
     setLoadingEarlier(true);
     setEarlierFailed(false);
     const startedAt = Date.now();
@@ -1402,10 +1402,10 @@ export default function RoutesScreen() {
       // Jak w handleLoadMore: spinner gaśnie nawet gdy zapytanie zostało
       // unieważnione przez nowszy fetchSeq.
       earlierRequest.current = false;
-      pullTriggeredRef.current = false;
+      setPullTriggered(false);
       setLoadingEarlier(false);
       pullBusy.value = false;
-      pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+      pullHeight.value = withSpring(0, motion.spring.effectsDefault);
     }
   };
 
@@ -1558,8 +1558,9 @@ export default function RoutesScreen() {
   }, [noMoreEarlier, pullNoMore]);
 
   useEffect(() => {
-    pullDisabled.value = loading || loadingMore || offline || arrivalMode || items.length === 0;
-  }, [arrivalMode, items.length, loading, loadingMore, offline, pullDisabled]);
+    pullDisabled.value =
+      loading || loadingMore || loadingEarlier || offline || arrivalMode || items.length === 0;
+  }, [arrivalMode, items.length, loading, loadingEarlier, loadingMore, offline, pullDisabled]);
 
   const handleListScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -1727,7 +1728,7 @@ export default function RoutesScreen() {
             pullHeight.value = withSpring(EARLIER_PULL_LOADING, motion.spring.spatialDefault);
             runOnJS(triggerPullEarlier)();
           } else if (!pullBusy.value) {
-            pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+            pullHeight.value = withSpring(0, motion.spring.effectsDefault);
           }
         })
         .onFinalize(() => {
@@ -1737,7 +1738,7 @@ export default function RoutesScreen() {
           pullEligible.value = false;
           pullEdgeHapticSent.value = false;
           if (!pullBusy.value) {
-            pullHeight.value = withSpring(0, motion.spring.spatialDefault);
+            pullHeight.value = withSpring(0, motion.spring.effectsDefault);
           }
         }),
     [
@@ -1764,11 +1765,11 @@ export default function RoutesScreen() {
   );
 
   const listTranslateStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: pullHeight.value }],
+    transform: [{ translateY: Math.max(0, pullHeight.value) }],
   }));
 
   const earlierButtonFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(pullHeight.value, [0, 22], [1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(pullHeight.value, [0, 14], [1, 0], Extrapolation.CLAMP),
   }));
 
   const stickyDividerStyle = useAnimatedStyle(() => ({
@@ -2280,13 +2281,13 @@ export default function RoutesScreen() {
                 noMoreEarlier && styles.earlierButtonDone,
               ]}
             >
-              {loadingEarlier && !pullTriggeredRef.current ? (
+              {loadingEarlier && !pullTriggered ? (
                 <ActivityIndicator size="small" color={scheme.primary} />
               ) : !noMoreEarlier ? (
                 <ChevronUp size={17} color={scheme.onSurfaceVariant} />
               ) : null}
               <Text style={styles.earlierText} accessibilityLiveRegion="polite">
-                {loadingEarlier && !pullTriggeredRef.current
+                {loadingEarlier && !pullTriggered
                   ? s.routes.earlierLoading
                   : noMoreEarlier
                     ? s.routes.earlierEmpty
@@ -2313,6 +2314,7 @@ export default function RoutesScreen() {
       loadingEarlier,
       noMoreEarlier,
       offline,
+      pullTriggered,
       reduceMotion,
       s,
       showUpdatingChip,
@@ -2435,12 +2437,18 @@ export default function RoutesScreen() {
           pullHeight={pullHeight}
           armed={pullArmed}
           armPulse={pullArmPulse}
-          loading={loadingEarlier}
+          loading={loadingEarlier && pullTriggered}
           noMore={noMoreEarlier}
           reduceMotion={reduceMotion}
         />
       )}
-      <Animated.View style={[styles.listStage, Platform.OS !== 'web' && listTranslateStyle]}>
+      <Animated.View
+        style={[
+          styles.listStage,
+          styles.listSurface,
+          Platform.OS !== 'web' && listTranslateStyle,
+        ]}
+      >
         <Animated.FlatList
           ref={listRef}
           onScroll={handleListScroll}
@@ -2869,6 +2877,11 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'hidden',
+  },
+  // Tło zasłania EarlierConnectionsPull poniżej krawędzi listy przy powrocie lub scrollu.
+  listSurface: {
+    backgroundColor: scheme.surface,
+    zIndex: 1,
   },
   reorderedUpCell: {
     zIndex: 2,
