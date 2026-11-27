@@ -309,9 +309,15 @@ export default function RootLayout() {
         })
         .catch(() => {});
     }, 2500);
+    const poiTimer = setTimeout(() => {
+      void import('../src/services/poiSync')
+        .then((m) => m.ensureCityPoiDb())
+        .catch(() => {});
+    }, 3500);
     return () => {
       clearTimeout(timer);
       clearTimeout(nationalTimer);
+      clearTimeout(poiTimer);
     };
   }, [ready, needsOnboarding]);
 

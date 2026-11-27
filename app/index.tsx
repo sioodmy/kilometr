@@ -504,6 +504,9 @@ export default function HomeScreen() {
         import('../src/services/nationalTimetable')
           .then((m) => m.ensureNationalTimetable())
           .catch(() => {});
+        import('../src/services/poiSync')
+          .then((m) => m.ensureCityPoiDb(cityId))
+          .catch(() => {});
       }
     };
     void check();
@@ -962,6 +965,9 @@ export default function HomeScreen() {
       refreshPlaces();
       import('../src/services/nationalTimetable')
         .then((m) => m.ensureNationalTimetable())
+        .catch(() => {});
+      import('../src/services/poiSync')
+        .then((m) => m.ensureCityPoiDb())
         .catch(() => {});
       if (!isCustomStart) {
         LocationService.getCurrentLocation()

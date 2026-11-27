@@ -337,6 +337,21 @@ export const POI_ICON_SPECS = [
     glyph: 'M7 4v5M5 4v3.5a2 2 0 0 0 4 0V4M7 9v11M16.5 4c-1.8 2.3-1.8 5.4 0 7.6V20',
   },
   {
+    name: 'poi-cafe',
+    color: '#A87042',
+    glyph: 'M5 8h11v6a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5V8zM16 9h2a2 2 0 0 1 0 4h-2M6 20h10',
+  },
+  {
+    name: 'poi-bar',
+    color: '#9C5B96',
+    glyph: 'M5 5h14l-6 7v6M9 18h6',
+  },
+  {
+    name: 'poi-business',
+    color: '#5B7C91',
+    glyph: 'M4 8h16v11H4zM9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2',
+  },
+  {
     name: 'poi-shop',
     color: '#4C8FD6',
     glyph: 'M5 8h14l1 12H4L5 8zM9 8V6a3 3 0 0 1 6 0v2',
@@ -407,6 +422,29 @@ export const POI_ICON_SPECS = [
 ] as const;
 
 export const POI_LAYER_IDS = ['poi-istotne', 'poi-drobiazgi'] as const;
+
+export const POI_CATEGORY_TO_ICON: Record<string, string> = {
+  restaurant: 'poi-food',
+  cafe: 'poi-cafe',
+  bar: 'poi-bar',
+  hotel: 'poi-hotel',
+  shop: 'poi-shop',
+  medical: 'poi-medical',
+  education: 'poi-education',
+  school: 'poi-education',
+  culture: 'poi-culture',
+  entertainment: 'poi-culture',
+  tourism: 'poi-culture',
+  nature: 'poi-nature',
+  sport: 'poi-sport',
+  business: 'poi-business',
+  finance: 'poi-civic',
+  civic: 'poi-civic',
+  fuel: 'poi-fuel',
+  worship: 'poi-worship',
+  train: 'poi-transit',
+  place: 'poi-default',
+};
 
 /** Kategoria OSM -> nazwa obrazka ikony. */
 const poiIconImage = [

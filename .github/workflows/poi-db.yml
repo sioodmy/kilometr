@@ -1,0 +1,113 @@
+# Manualny (oraz opcjonalny okresowy) build osobnych skompresowanych baz POI do R2.
+#
+# Dla każdego miasta powstają dwa pliki w R2:
+# - {miasto}/pois-manifest.json
+# - {miasto}/db/kilometr-pois.db.gz
+
+name: POI DB build -> R2
+
+on:
+  workflow_dispatch:
+    inputs:
+      cities:
+        description: 'Lista miast rozdzielona przecinkami'
+        required: false
+        default: 'gzm,wroclaw,krakow,warszawa'
+        type: string
+      refresh:
+        description: 'Wymuś odświeżenie cache źródeł'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: poi-db-build
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Lista miast POI
+    runs-on: ubuntu-latest
+    outputs:
+      cities: ${{ steps.list.outputs.cities }}
+    steps:
+      - name: Parsuj miasta
+        id: list
+        run: |
+          raw="${{ github.event.inputs.cities }}"
+          if [ -z "$raw" ]; then raw="gzm,wroclaw,krakow,warszawa"; fi
+          json=$(node -e 'console.log(JSON.stringify(process.argv[1].split(",").map(s => s.trim()).filter(Boolean)))' "$raw")
+          echo "cities=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: POI DB (${{ matrix.city }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        city: ${{ fromJSON(needs.prepare.outputs.cities) }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Instalacja DuckDB CLI
+        run: |
+          curl -fsSL -o /tmp/duckdb.zip "https://github.com/duckdb/duckdb/releases/latest/download/duckdb_cli-linux-amd64.zip"
+          unzip -o /tmp/duckdb.zip -d /usr/local/bin
+          chmod +x /usr/local/bin/duckdb
+          duckdb -version
+
+      - name: Budowa bazy POI (${{ matrix.city }})
+        run: |
+          extra=""
+          if [ "${{ github.event.inputs.refresh }}" = "true" ]; then extra="--refresh"; fi
+          node cloudflare/scripts/build-poi-db.mjs --city=${{ matrix.city }} $extra
+
+      - name: Weryfikacja bazy SQLite i manifestu
+        run: |
+          DB="cloudflare/dist/poi-db/${{ matrix.city }}/db/kilometr-pois.db"
+          GZ="cloudflare/dist/poi-db/${{ matrix.city }}/db/kilometr-pois.db.gz"
+          MAN="cloudflare/dist/poi-db/${{ matrix.city }}/pois-manifest.json"
+          test -s "$DB"
+          test -s "$GZ"
+          test -s "$MAN"
+          node -e '
+            const fs = require("node:fs");
+            const { DatabaseSync } = require("node:sqlite");
+            const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (!(m.stats?.total > 0)) process.exit(1);
+            const db = new DatabaseSync(process.argv[2]);
+            const chk = db.prepare("PRAGMA integrity_check").get();
+            if (chk.integrity_check !== "ok") process.exit(1);
+            const cnt = db.prepare("SELECT COUNT(*) AS n FROM pois").get();
+            if (cnt.n !== m.stats.total) process.exit(1);
+            db.close();
+          ' "$MAN" "$DB"
+
+      - name: Upload bazy POI do R2
+        if: github.ref_name == 'main'
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Brak sekretu CLOUDFLARE_API_TOKEN, pomijam upload do R2."
+            exit 0
+          fi
+          GZ="cloudflare/dist/poi-db/${{ matrix.city }}/db/kilometr-pois.db.gz"
+          MAN="cloudflare/dist/poi-db/${{ matrix.city }}/pois-manifest.json"
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/db/kilometr-pois.db.gz" \
+            --file="$GZ" --content-type application/octet-stream
+          npx -y wrangler@3.114.0 r2 object put "kilometr-timetable/${{ matrix.city }}/pois-manifest.json" \
+            --file="$MAN" --content-type application/json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
