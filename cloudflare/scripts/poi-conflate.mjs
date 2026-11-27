@@ -205,7 +205,7 @@ function normalizeWebsite(raw) {
 function cleanStreet(raw) {
   if (typeof raw !== 'string') return null;
   const s = raw
-    .replace(/[\u0000-\u001F\u007F]+/g, ' ')
+    .replace(/[\p{Cc}\p{Cf}]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (!s || VIRTUAL_KITCHEN_RE.test(s)) return null;
