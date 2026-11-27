@@ -5,7 +5,7 @@
 import { scheme } from '../theme/tokens';
 import { MAP_ATTRIBUTION } from '../config';
 import { RAIL_ICON_SPECS } from '../services/railIconPaths';
-import { buildMapStyle, MAP_COLORS } from './mapStyle';
+import { buildMapStyle, MAP_COLORS, POI_CATEGORY_TO_ICON, POI_ICON_SPECS } from './mapStyle';
 import { LIVE_VEHICLE_MOTION_SCRIPT } from './liveVehicleMotion';
 import type { LegMode } from '../types/models';
 
@@ -72,6 +72,17 @@ export interface LiveMapSelectedRoute {
   stops: LiveMapSelectedRouteStop[];
 }
 
+export interface LiveMapPoiItem {
+  id: number;
+  name: string;
+  category: string;
+  subtype: string;
+  lat: number;
+  lon: number;
+  rank: number;
+  minZoom: number;
+}
+
 export type LiveMapInMessage =
   | {
       t: 'vehicles';
@@ -123,6 +134,16 @@ export type LiveMapInMessage =
       visible: boolean;
     }
   | {
+      t: 'pois';
+      pois: LiveMapPoiItem[];
+      selectedPoiId: number | null;
+      visible?: boolean;
+    }
+  | {
+      t: 'selectedPoi';
+      poiId: number | null;
+    }
+  | {
       t: 'fitRoute';
     }
   | {
@@ -139,6 +160,7 @@ export type LiveMapOutMessage =
   | { t: 'rendered' }
   | { t: 'select'; vehicleId: string }
   | { t: 'selectStop'; stopId: string }
+  | { t: 'selectPoi'; poiId: number }
   | { t: 'selectDisruption'; disruptionId: string }
   | { t: 'selectDelay'; delayId: string }
   | { t: 'clearSelect' }
@@ -164,6 +186,9 @@ export interface LiveVehiclesMapDocumentOptions {
   selectedDelayId?: string | null;
   showDelays?: boolean;
   showStops?: boolean;
+  pois?: LiveMapPoiItem[];
+  selectedPoiId?: number | null;
+  showPois?: boolean;
   userPos: [number, number] | null;
   mapLibreHead?: string;
 }
@@ -199,6 +224,8 @@ const runtime = [
   "'use strict';",
   'var P = window.__KM_LIVE__ || {};',
   'var RAIL_SPECS = ' + JSON.stringify(RAIL_ICON_SPECS) + ';',
+  'var POI_ICONS = ' + JSON.stringify(POI_ICON_SPECS) + ';',
+  'var POI_ICON_MAP = ' + JSON.stringify(POI_CATEGORY_TO_ICON) + ';',
   'var railPathCache = Object.create(null);',
   'var bridge = window.ReactNativeWebView;',
   'function post(msg) {',
@@ -230,6 +257,9 @@ const runtime = [
   'var selectedDelayId = P.selectedDelayId || null;',
   'var showDelays = P.showDelays === true;',
   'var showStops = P.showStops !== false;',
+  'var pois = Array.isArray(P.pois) ? P.pois : [];',
+  'var selectedPoiId = typeof P.selectedPoiId === "number" ? P.selectedPoiId : null;',
+  'var showPois = P.showPois !== false;',
   'var viewportTimer = null;',
   'var lastZoomMode = null;',
   'var bottomPadPx = 0;',
@@ -1032,6 +1062,83 @@ const runtime = [
   '  });',
   '}',
   '',
+  'function poiIconCanvas(spec) {',
+  '  var cEl = document.createElement("canvas");',
+  '  var size = 56;',
+  '  cEl.width = size;',
+  '  cEl.height = size;',
+  '  var pCtx = cEl.getContext("2d");',
+  '  if (!pCtx || typeof Path2D === "undefined") return null;',
+  '  pCtx.scale(2, 2);',
+  '  pCtx.beginPath();',
+  '  pCtx.arc(14, 14.7, 12.3, 0, Math.PI * 2);',
+  '  pCtx.fillStyle = "rgba(0,0,0,.4)";',
+  '  pCtx.fill();',
+  '  pCtx.beginPath();',
+  '  pCtx.arc(14, 14, 11.9, 0, Math.PI * 2);',
+  '  pCtx.fillStyle = spec.color;',
+  '  pCtx.fill();',
+  '  pCtx.translate(2, 2);',
+  '  var path = new Path2D(spec.glyph);',
+  '  if (spec.fill) {',
+  '    pCtx.fillStyle = "#FFFFFF";',
+  '    pCtx.fill(path);',
+  '  } else {',
+  '    pCtx.strokeStyle = "#FFFFFF";',
+  '    pCtx.lineWidth = 1.8;',
+  '    pCtx.lineCap = "round";',
+  '    pCtx.lineJoin = "round";',
+  '    pCtx.stroke(path);',
+  '  }',
+  '  return pCtx.getImageData(0, 0, size, size);',
+  '}',
+  '',
+  'function addPoiIcons() {',
+  '  if (!map) return;',
+  '  for (var i = 0; i < POI_ICONS.length; i++) {',
+  '    var spec = POI_ICONS[i];',
+  '    if (map.hasImage(spec.name)) continue;',
+  '    try {',
+  '      var image = poiIconCanvas(spec);',
+  '      if (image) map.addImage(spec.name, image, { pixelRatio: 2 });',
+  '    } catch (e) {}',
+  '  }',
+  '}',
+  '',
+  'function drawPois() {',
+  '  if (!map || !styleReady) return;',
+  '  var src = map.getSource("live-pois");',
+  '  if (!src) return;',
+  '  var features = [];',
+  '  for (var i = 0; i < pois.length; i++) {',
+  '    var p = pois[i];',
+  '    if (!p || !isFinite(p.lat) || !isFinite(p.lon)) continue;',
+  '    features.push({',
+  '      type: "Feature",',
+  '      geometry: { type: "Point", coordinates: [p.lon, p.lat] },',
+  '      properties: {',
+  '        id: p.id,',
+  '        name: p.name,',
+  '        icon: POI_ICON_MAP[p.category] || "poi-default",',
+  '        rank: p.rank || 0,',
+  '        minZoom: p.minZoom || 16,',
+  '        selected: selectedPoiId === p.id,',
+  '      },',
+  '    });',
+  '  }',
+  '  src.setData({ type: "FeatureCollection", features: features });',
+  '}',
+  '',
+  'function applyPoisVisibility() {',
+  '  if (!map || !styleReady) return;',
+  '  var val = showPois ? "visible" : "none";',
+  '  ["live-pois-selected", "live-pois-symbols"].forEach(function (id) {',
+  '    if (map.getLayer(id)) {',
+  '      try { map.setLayoutProperty(id, "visibility", val); } catch (e) {}',
+  '    }',
+  '  });',
+  '}',
+  '',
   'function syncZoomMode() {',
   '  if (!map || !map.getZoom) return;',
   '  var mode = map.getZoom() < MIN_VEHICLE_ZOOM ? "dots" : "pills";',
@@ -1101,7 +1208,55 @@ const runtime = [
   '',
   'function setupLayers() {',
   '  addStopArrowSprite();',
+  '  addPoiIcons();',
   '  var roadBeforeId = findRoadOverlayBeforeId();',
+  '  if (!map.getSource("live-pois")) {',
+  '    map.addSource("live-pois", { type: "geojson", data: { type: "FeatureCollection", features: [] } });',
+  '  }',
+  '  if (!map.getLayer("live-pois-selected")) {',
+  '    map.addLayer({',
+  '      id: "live-pois-selected",',
+  '      type: "circle",',
+  '      source: "live-pois",',
+  '      filter: ["==", ["get", "selected"], true],',
+  '      paint: {',
+  '        "circle-radius": 17,',
+  '        "circle-color": P.userAccent || "#96CCFF",',
+  '        "circle-opacity": 0.28,',
+  '        "circle-stroke-width": 2,',
+  '        "circle-stroke-color": "#FFFFFF",',
+  '      },',
+  '    });',
+  '  }',
+  '  if (!map.getLayer("live-pois-symbols")) {',
+  '    map.addLayer({',
+  '      id: "live-pois-symbols",',
+  '      type: "symbol",',
+  '      source: "live-pois",',
+  '      minzoom: 12,',
+  '      layout: {',
+  '        "icon-image": ["get", "icon"],',
+  '        "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.56, 15, 0.72, 18, 0.88],',
+  '        "icon-padding": 3,',
+  '        "icon-allow-overlap": false,',
+  '        "text-field": ["step", ["zoom"], ["case", ["<=", ["get", "minZoom"], 12], ["get", "name"], ""], 14.2, ["get", "name"]],',
+  '        "text-font": ["Noto Sans Regular"],',
+  '        "text-size": ["interpolate", ["linear"], ["zoom"], 14, 10, 18, 11.8],',
+  '        "text-max-width": 8,',
+  '        "text-padding": 2,',
+  '        "text-variable-anchor": ["right", "left", "top", "bottom"],',
+  '        "text-radial-offset": 1.2,',
+  '        "text-justify": "auto",',
+  '        "text-optional": true,',
+  '        "symbol-sort-key": ["-", ["get", "rank"]],',
+  '      },',
+  '      paint: {',
+  '        "text-color": "#AEB8B5",',
+  '        "text-halo-color": "#101413",',
+  '        "text-halo-width": 1.3,',
+  '      },',
+  '    });',
+  '  }',
   '  if (!map.getSource("live-delay-roads-geo")) {',
   '    map.addSource("live-delay-roads-geo", { type: "geojson", data: { type: "FeatureCollection", features: [] } });',
   '  }',
@@ -1565,6 +1720,19 @@ const runtime = [
   '    applyStopsVisibility();',
   '    return;',
   '  }',
+  '  if (msg.t === "pois") {',
+  '    pois = Array.isArray(msg.pois) ? msg.pois : [];',
+  '    selectedPoiId = typeof msg.selectedPoiId === "number" ? msg.selectedPoiId : null;',
+  '    if (typeof msg.visible === "boolean") showPois = msg.visible;',
+  '    drawPois();',
+  '    applyPoisVisibility();',
+  '    return;',
+  '  }',
+  '  if (msg.t === "selectedPoi") {',
+  '    selectedPoiId = typeof msg.poiId === "number" ? msg.poiId : null;',
+  '    drawPois();',
+  '    return;',
+  '  }',
   '  if (msg.t === "fitRoute") {',
   '    fitSelectedRoute();',
   '    return;',
@@ -1704,6 +1872,11 @@ const runtime = [
   '      var daid = disrAreaHits[0].properties && disrAreaHits[0].properties.id;',
   '      if (daid) { post({ t: "selectDisruption", disruptionId: String(daid) }); return; }',
   '    }',
+  '    var poiHits = map.queryRenderedFeatures(e.point, { layers: ["live-pois-symbols"] });',
+  '    if (poiHits && poiHits.length > 0) {',
+  '      var pid = poiHits[0].properties && poiHits[0].properties.id;',
+  '      if (pid) { post({ t: "selectPoi", poiId: Number(pid) }); return; }',
+  '    }',
   '    post({ t: "clearSelect" });',
   '  });',
   '  if (typeof ResizeObserver !== "undefined") {',
@@ -1718,6 +1891,8 @@ const runtime = [
   '    drawSelectedRoute();',
   '    drawStops();',
   '    applyStopsVisibility();',
+  '    drawPois();',
+  '    applyPoisVisibility();',
   '    drawUser();',
   '    drawVehicles();',
   '    syncZoomMode();',
@@ -1768,7 +1943,11 @@ function bootstrapPayload(opts: LiveVehiclesMapDocumentOptions): string {
     selectedDelayId: opts.selectedDelayId ?? null,
     showDelays: opts.showDelays ?? false,
     showStops: opts.showStops ?? true,
+    pois: opts.pois ?? [],
+    selectedPoiId: opts.selectedPoiId ?? null,
+    showPois: opts.showPois ?? true,
     userPos: opts.userPos,
+    userAccent: scheme.primary,
   };
   return JSON.stringify(payload).replace(/</g, '\\u003c');
 }

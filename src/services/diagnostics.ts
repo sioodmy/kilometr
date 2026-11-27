@@ -11,6 +11,7 @@ import { tr } from '../i18n/locale';
 import { getActiveCityIdSync } from './cityStore';
 import { liveTracker } from './liveTracker';
 import { getOfflineMapInfo, type OfflineMapState } from './offlineMap';
+import { poiDbCount } from './poiDatabase';
 import {
   getActiveServices,
   getGtfsStats,
@@ -302,7 +303,8 @@ export async function runDiagnostics(): Promise<DiagResult> {
         weightedStops = row?.n ?? 0;
       }
     }
-    pois = await poiCount();
+    const richPois = await poiDbCount();
+    pois = richPois > 0 ? richPois : await poiCount();
     if (!empty) {
       const db = await openGtfsDbHandle();
       const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM addresses');

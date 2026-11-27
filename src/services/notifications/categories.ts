@@ -32,8 +32,8 @@ export async function setupNotificationCategories(): Promise<void> {
   const s = tr();
   // Android też umie akcje w powiadomieniu (trzyma je w SharedPreferences
   // i dokłada jako app actions), więc rejestrujemy na obu platformach.
-  try {
-    await N.setNotificationCategoryAsync(TRIP_CATEGORY, [
+  await Promise.all([
+    N.setNotificationCategoryAsync(TRIP_CATEGORY, [
       {
         identifier: ACTION_TICKET,
         buttonTitle: s.notification.actionTicket,
@@ -49,18 +49,16 @@ export async function setupNotificationCategories(): Promise<void> {
         buttonTitle: s.notification.actionStop,
         options: { isDestructive: true },
       },
-    ]);
-  } catch {
-    // kategorie są best-effort - bez nich powiadomienie nadal działa
-  }
-  try {
-    await N.setNotificationCategoryAsync(ALERT_CATEGORY, [
+    ]).catch(() => {
+      // kategorie są best-effort: bez nich powiadomienie nadal działa
+    }),
+    N.setNotificationCategoryAsync(ALERT_CATEGORY, [
       {
         identifier: ACTION_OPEN_ROUTES,
         buttonTitle: s.notification.showRoutes,
       },
-    ]);
-  } catch {
-    // jw.
-  }
+    ]).catch(() => {
+      // jw.
+    }),
+  ]);
 }

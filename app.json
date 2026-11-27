@@ -89,7 +89,14 @@
     },
     "plugins": [
       "./plugins/with-ios",
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "asyncRoutes": {
+            "web": "production"
+          }
+        }
+      ],
       "expo-status-bar",
       [
         "react-native-bootsplash",

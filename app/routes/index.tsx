@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -114,6 +114,7 @@ import {
   type DataStatus,
 } from '../../src/services/dataManager';
 import { liveTracker } from '../../src/services/liveTracker';
+import { beginUiScroll, endUiScroll } from '../../src/services/routing/yieldFrame';
 import { consumePendingBoardedOrigin } from '../../src/services/boardedOriginSelection';
 import {
   buildBoardedOriginFromVehicle,
@@ -500,6 +501,68 @@ export default function RoutesScreen() {
   const [liveStale, setLiveStale] = useState(
     () => liveTracker.supportsLive() && liveTracker.getLiveState() === 'stale',
   );
+  // Stan aktywnego scrollowania listy: wstrzymuje przeliczanie liveTick/nowTick
+  // w trakcie gestu oraz przekazuje informację do yieldFrame, żeby nie zabierać klatek.
+  const scrollActiveRef = useRef(false);
+  const pendingLiveOkRef = useRef<number | null>(null);
+  const pendingNowTickRef = useRef<number | null>(null);
+  const scrollFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingScrollTicks = useCallback(() => {
+    if (scrollFlushTimerRef.current !== null) {
+      clearTimeout(scrollFlushTimerRef.current);
+      scrollFlushTimerRef.current = null;
+    }
+    const nextLive = pendingLiveOkRef.current;
+    const nextNow = pendingNowTickRef.current;
+    pendingLiveOkRef.current = null;
+    pendingNowTickRef.current = null;
+    if (nextLive === null && nextNow === null) return;
+    startTransition(() => {
+      if (nextLive !== null) setLiveTick(nextLive);
+      if (nextNow !== null) setNowTick(nextNow);
+    });
+  }, []);
+
+  const markListScrollStart = useCallback(() => {
+    if (!scrollActiveRef.current) {
+      scrollActiveRef.current = true;
+      beginUiScroll();
+    }
+    if (scrollFlushTimerRef.current !== null) {
+      clearTimeout(scrollFlushTimerRef.current);
+    }
+    scrollFlushTimerRef.current = setTimeout(() => {
+      scrollFlushTimerRef.current = null;
+      if (scrollActiveRef.current) {
+        scrollActiveRef.current = false;
+        endUiScroll();
+      }
+      flushPendingScrollTicks();
+    }, 650);
+  }, [flushPendingScrollTicks]);
+
+  const markListScrollEnd = useCallback(() => {
+    if (scrollActiveRef.current) {
+      scrollActiveRef.current = false;
+      endUiScroll();
+    }
+    flushPendingScrollTicks();
+  }, [flushPendingScrollTicks]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollFlushTimerRef.current !== null) {
+        clearTimeout(scrollFlushTimerRef.current);
+        scrollFlushTimerRef.current = null;
+      }
+      if (scrollActiveRef.current) {
+        scrollActiveRef.current = false;
+        endUiScroll();
+      }
+    };
+  }, []);
+
   // Tick przerysowujący opóźnienia: wyplanowane połączenia mają flagi live
   // z chwili wyszukiwania, bez tickera byłyby zamrożone od wyszukania.
   const initialLiveOk = liveTracker.getLastOk();
@@ -518,7 +581,13 @@ export default function RoutesScreen() {
       const ok = liveTracker.getLastOk();
       if (ok !== lastLiveOk.current) {
         lastLiveOk.current = ok;
-        setLiveTick(ok);
+        if (scrollActiveRef.current) {
+          pendingLiveOkRef.current = ok;
+        } else {
+          startTransition(() => {
+            setLiveTick(ok);
+          });
+        }
       }
     };
     syncLiveOnFocusRef.current = check;
@@ -536,7 +605,15 @@ export default function RoutesScreen() {
   const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => {
-      if (isFocusedRef.current) setNowTick(Date.now());
+      if (!isFocusedRef.current) return;
+      const now = Date.now();
+      if (scrollActiveRef.current) {
+        pendingNowTickRef.current = now;
+      } else {
+        startTransition(() => {
+          setNowTick(now);
+        });
+      }
     }, 30000);
     return () => clearInterval(t);
   }, []);
@@ -660,10 +737,32 @@ export default function RoutesScreen() {
 
   const walkMps = useWalkSpeedMps();
   const thresholds = useTransferThresholds();
-  const groups = useMemo(
-    () => groupConnections(displayed, walkMps, thresholds),
-    [displayed, walkMps, thresholds],
-  );
+  const prevGroupsByKeyRef = useRef<Map<string, ConnectionGroup>>(new Map());
+  const groups = useMemo(() => {
+    const raw = groupConnections(displayed, walkMps, thresholds);
+    const prevMap = prevGroupsByKeyRef.current;
+    const nextMap = new Map<string, ConnectionGroup>();
+    const stabilized = raw.map((group) => {
+      const prev = prevMap.get(group.key);
+      if (
+        prev &&
+        prev.primary === group.primary &&
+        prev.alternatives.length === group.alternatives.length &&
+        prev.alternatives.every(
+          (opt, idx) =>
+            opt.connection === group.alternatives[idx].connection &&
+            opt.savedMin === group.alternatives[idx].savedMin,
+        )
+      ) {
+        nextMap.set(group.key, prev);
+        return prev;
+      }
+      nextMap.set(group.key, group);
+      return group;
+    });
+    prevGroupsByKeyRef.current = nextMap;
+    return stabilized;
+  }, [displayed, walkMps, thresholds]);
   const groupByConnIdRef = useRef<Map<string, ConnectionGroup>>(new Map());
   groupByConnIdRef.current = useMemo(() => {
     const map = new Map<string, ConnectionGroup>();
@@ -2345,6 +2444,10 @@ export default function RoutesScreen() {
         <Animated.FlatList
           ref={listRef}
           onScroll={handleListScroll}
+          onScrollBeginDrag={markListScrollStart}
+          onMomentumScrollBegin={markListScrollStart}
+          onScrollEndDrag={markListScrollEnd}
+          onMomentumScrollEnd={markListScrollEnd}
           onLayout={handleListLayout}
           onContentSizeChange={handleListContentSize}
           scrollEventThrottle={16}

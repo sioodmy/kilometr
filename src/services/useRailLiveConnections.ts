@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection } from '../types/models';
 import { applyLiveDelays } from './routing/engine';
+import { waitForUiScrollIdle } from './routing/yieldFrame';
 import {
   fetchNationalRailLive,
   type NationalLiveLeg,
@@ -15,6 +16,12 @@ import { fetchZbRailDepartures, railLegKey, type ZbRailDeparture } from './zbior
 import { liveTracker } from './liveTracker';
 
 const RAIL_LIVE_MAX_AGE_MS = 120_000;
+
+interface RailLiveBundle {
+  railData: Map<string, ZbRailDeparture>;
+  national: NationalRailLive | null;
+  nationalUpdates: Map<string, NationalRailLegUpdate>;
+}
 
 let sharedRailData = new Map<string, ZbRailDeparture>();
 let sharedNational: NationalRailLive | null = null;
@@ -39,58 +46,71 @@ function mergeNationalRailLive(
   incoming: NationalRailLive,
 ): NationalRailLive {
   if (!prev) return incoming;
+  const delays = mergeMap(prev.delays, incoming.delays);
+  const positions = mergeMap(prev.positions, incoming.positions);
+  const zbTripIds = mergeMap(prev.zbTripIds, incoming.zbTripIds);
+  if (delays === prev.delays && positions === prev.positions && zbTripIds === prev.zbTripIds) {
+    return prev;
+  }
   return {
-    delays: mergeMap(prev.delays, incoming.delays),
-    positions: mergeMap(prev.positions, incoming.positions),
-    zbTripIds: mergeMap(prev.zbTripIds, incoming.zbTripIds),
+    delays,
+    positions,
+    zbTripIds,
     fetchedAt: Math.max(prev.fetchedAt, incoming.fetchedAt),
   };
 }
 
-/**
- * Dokłada live do nóg kolejowych:
- * - oficjalny feed PKP PLK via mkuran.pl (główne źródło opóźnień, peronów i torów w całym kraju),
- * - tablica odjazdów zbiorkomu (nazwa handlowa i fallback peronu),
- * - pozycje pociągów ogólnopolskich (punkt na mapie, model składu i fallback opóźnienia).
- * Źródłem prawdy czasów zostaje rozkład; live koryguje go z pierwszeństwem PKP PLK.
- */
-export function useRailLiveConnections(
+function useRailLiveInternal(
   connections: Connection[],
   tripDelays: Map<string, number>,
   enabled = true,
   activeRef?: { current: boolean },
-): Connection[] {
-  const [railData, setRailData] = useState<Map<string, ZbRailDeparture>>(() => sharedRailData);
-  const [national, setNational] = useState<NationalRailLive | null>(() => sharedNational);
-  const [nationalUpdates, setNationalUpdates] = useState<Map<string, NationalRailLegUpdate>>(
-    () => sharedNationalUpdates,
-  );
+): { items: Connection[]; loading: boolean } {
+  const [bundle, setBundle] = useState<RailLiveBundle>(() => ({
+    railData: sharedRailData,
+    national: sharedNational,
+    nationalUpdates: sharedNationalUpdates,
+  }));
+  const [loading, setLoading] = useState(false);
   const connectionsRef = useRef(connections);
   connectionsRef.current = connections;
-  const signature = useMemo(
-    () =>
-      JSON.stringify(
-        connections.map((connection) =>
-          connection.legs
-            .filter((leg) => leg.mode === 'train')
-            .map((leg) => [
-              leg.tripId,
-              leg.line,
-              leg.fromStopId,
-              leg.scheduledDepartureSec ?? leg.departAt,
-            ]),
-        ),
-      ),
-    [connections],
-  );
+
+  const signature = useMemo(() => {
+    const parts: string[] = [];
+    for (const connection of connections) {
+      for (const leg of connection.legs) {
+        if (leg.mode !== 'train') continue;
+        parts.push(
+          `${leg.tripId ?? ''}|${leg.line ?? ''}|${leg.fromStopId ?? ''}|${leg.scheduledDepartureSec ?? leg.departAt}`,
+        );
+      }
+    }
+    return parts.join(';');
+  }, [connections]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !signature) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     const trainLegs = connectionsRef.current
       .flatMap((connection) => connection.legs)
       .filter((leg) => leg.mode === 'train');
-    if (trainLegs.length === 0) return;
+    if (trainLegs.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    const hasCachedForAll = trainLegs.every((leg) => {
+      const hasRail = sharedRailData.has(railLegKey(leg));
+      const hasUpd = Boolean(leg.tripId && sharedNationalUpdates.has(leg.tripId));
+      const hasPos = Boolean(leg.tripId && sharedNational?.positions.has(leg.tripId));
+      return hasRail || hasUpd || hasPos;
+    });
+    if (!hasCachedForAll) {
+      setLoading(true);
+    }
 
     const watchLegs: NationalLiveLeg[] = trainLegs.map((leg) => ({
       tripId: leg.tripId ?? '',
@@ -113,27 +133,61 @@ export function useRailLiveConnections(
       railAgency: leg.railAgency,
     }));
 
-    liveTracker.setNationalWatch(watchLegs);
     const load = () => {
       if (activeRef && !activeRef.current) return;
       void Promise.all([
         fetchZbRailDepartures(trainLegs).catch(() => null),
         fetchNationalRailUpdates(watchLegs).catch(() => null),
         fetchNationalRailLive(watchLegs).catch(() => null),
-      ]).then(([zbData, updData, liveData]) => {
+      ]).then(async ([zbData, updData, liveData]) => {
         if (!active || (activeRef && !activeRef.current)) return;
+        let nextRail = sharedRailData;
+        let nextUpd = sharedNationalUpdates;
+        let nextNat = sharedNational;
+        let changed = false;
+
         if (zbData && zbData.size > 0) {
-          sharedRailData = mergeMap(sharedRailData, zbData);
-          setRailData(sharedRailData);
+          const merged = mergeMap(sharedRailData, zbData);
+          if (merged !== sharedRailData) {
+            sharedRailData = merged;
+            nextRail = merged;
+            changed = true;
+          }
         }
         if (updData && updData.size > 0) {
-          sharedNationalUpdates = mergeMap(sharedNationalUpdates, updData);
-          setNationalUpdates(sharedNationalUpdates);
+          const merged = mergeMap(sharedNationalUpdates, updData);
+          if (merged !== sharedNationalUpdates) {
+            sharedNationalUpdates = merged;
+            nextUpd = merged;
+            changed = true;
+          }
         }
         if (liveData && (liveData.delays.size > 0 || liveData.positions.size > 0)) {
-          sharedNational = mergeNationalRailLive(sharedNational, liveData);
-          setNational(sharedNational);
+          const merged = mergeNationalRailLive(sharedNational, liveData);
+          if (merged !== sharedNational) {
+            sharedNational = merged;
+            nextNat = merged;
+            changed = true;
+          }
         }
+        // Rejestrujemy watch dopiero po pierwszym załadowaniu (wspólny cache w
+        // nationalRailLive/Updates eliminuje podwójny request na starcie).
+        liveTracker.setNationalWatch(watchLegs);
+
+        // Jeśli trwa aktywny scroll, odkładamy pojedynczy zbatchowany update UI do końca gestu.
+        await waitForUiScrollIdle(450);
+        if (!active || (activeRef && !activeRef.current)) return;
+
+        startTransition(() => {
+          setLoading(false);
+          if (changed) {
+            setBundle({
+              railData: nextRail,
+              national: nextNat,
+              nationalUpdates: nextUpd,
+            });
+          }
+        });
       });
     };
     load();
@@ -143,7 +197,9 @@ export function useRailLiveConnections(
       clearInterval(timer);
       liveTracker.setNationalWatch([]);
     };
-  }, [enabled, signature]);
+  }, [enabled, signature, activeRef]);
+
+  const { railData, national, nationalUpdates } = bundle;
 
   // Poza kolejami nie ruszamy obiektów: tick live nie może tworzyć nowej listy.
   const enriched = useMemo(() => {
@@ -193,7 +249,7 @@ export function useRailLiveConnections(
     return touched ? next : connections;
   }, [connections, railData, national, nationalUpdates]);
 
-  return useMemo(() => {
+  const items = useMemo(() => {
     if (railData.size === 0 && !national && nationalUpdates.size === 0)
       return applyLiveDelays(enriched, tripDelays);
     let delays: Map<string, number> | null = null;
@@ -228,4 +284,32 @@ export function useRailLiveConnections(
     }
     return applyLiveDelays(enriched, delays ?? tripDelays, arrivalDelays);
   }, [enriched, railData, national, nationalUpdates, tripDelays]);
+
+  return { items, loading };
+}
+
+/**
+ * Dokłada live do nóg kolejowych:
+ * - oficjalny feed PKP PLK via mkuran.pl (główne źródło opóźnień, peronów i torów w całym kraju),
+ * - tablica odjazdów zbiorkomu (nazwa handlowa i fallback peronu),
+ * - pozycje pociągów ogólnopolskich (punkt na mapie, model składu i fallback opóźnienia).
+ * Źródłem prawdy czasów zostaje rozkład; live koryguje go z pierwszeństwem PKP PLK.
+ */
+export function useRailLiveConnections(
+  connections: Connection[],
+  tripDelays: Map<string, number>,
+  enabled = true,
+  activeRef?: { current: boolean },
+): Connection[] {
+  return useRailLiveInternal(connections, tripDelays, enabled, activeRef).items;
+}
+
+/** Wariant z flagą pierwszego ładowania live kolei (do pokazania skeletonu w szczegółach). */
+export function useRailLiveConnectionsWithStatus(
+  connections: Connection[],
+  tripDelays: Map<string, number>,
+  enabled = true,
+  activeRef?: { current: boolean },
+): { items: Connection[]; loading: boolean } {
+  return useRailLiveInternal(connections, tripDelays, enabled, activeRef);
 }

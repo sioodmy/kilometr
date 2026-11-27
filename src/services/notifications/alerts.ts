@@ -93,14 +93,19 @@ export function cancelLegacyDepartureAlerts(): Promise<void> {
   return enqueue(async () => {
     const N = getNotifications();
     const ids = await readAlertIds();
+    if (ids.length === 0) return;
     const remaining: string[] = [];
+    let removed = false;
     for (const id of ids) {
       if (id.startsWith('kilometr.alert.lead.') || id.startsWith('kilometr.alert.imminent.')) {
         await N?.cancelScheduledNotificationAsync(id).catch(() => {});
         await N?.dismissNotificationAsync(id).catch(() => {});
+        removed = true;
       } else remaining.push(id);
     }
-    await kvSet(ALERT_IDS_KEY, JSON.stringify(remaining));
+    if (removed) {
+      await kvSet(ALERT_IDS_KEY, JSON.stringify(remaining));
+    }
   });
 }
 

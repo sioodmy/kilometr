@@ -17,6 +17,7 @@ import {
   BinaryReader,
   BinaryWriter,
   CMD_MATCH_ZB_KD,
+  invokeRustAsync,
   invokeRustSync,
 } from '../../modules/kilometr-raptor';
 import { ZBIORKOM } from './gtfsConfig';
@@ -615,24 +616,39 @@ function findRouteShortNameForTrip(tripId: string, dayIndex: DayIndex): string |
   return undefined;
 }
 
-/**
- * Dopasowanie pociągu KD do lokalnego kursu. Identyfikatory tripów zbiorkom
- * i naszych (PDP) są różne, więc spinamy po numerze pociągu (brygada =
- * nasz route_short_name) + weryfikacja nazwami i czasami najbliższych
- * postojów. Bez weryfikacji czasowej sam numer to za mało: ten sam skład
- * potrafi jechać rano i wieczorem.
- */
-function matchZbKdRust(
-  veh: ZbKdVehicle,
+type DayPatternEntry = [string, DayIndex['patterns'] extends Map<string, infer P> ? P : never];
+
+function collectRoutePatterns(
   dayIndex: DayIndex,
   routeIds: string[],
+  patternsByRouteId?: ReadonlyMap<string, DayPatternEntry[]>,
+): DayPatternEntry[] {
+  if (patternsByRouteId) {
+    const out: DayPatternEntry[] = [];
+    for (const routeId of routeIds) {
+      const list = patternsByRouteId.get(routeId);
+      if (list) {
+        for (let i = 0; i < list.length; i++) out.push(list[i]);
+      }
+    }
+    return out;
+  }
+  const out: DayPatternEntry[] = [];
+  for (const entry of dayIndex.patterns.entries()) {
+    if (routeIds.includes(entry[1].routeId)) out.push(entry);
+  }
+  return out;
+}
+
+function buildMatchZbKdPayload(
+  veh: ZbKdVehicle,
+  patterns: DayPatternEntry[],
   offsets?: Map<string, number>,
-): ZbKdMatch | null | undefined {
+): { payload: Uint8Array; tripIds: string[] } {
   const tripIds: string[] = [];
   let candCount = 0;
   const body = new BinaryWriter(256);
-  for (const [patternId, pattern] of dayIndex.patterns.entries()) {
-    if (!routeIds.includes(pattern.routeId)) continue;
+  for (const [patternId, pattern] of patterns) {
     const offset = offsets?.get(patternId) ?? 0;
     const trips = pattern.trips;
     if (!trips) continue;
@@ -662,7 +678,10 @@ function matchZbKdRust(
   const payload = new Uint8Array(headBytes.byteLength + bodyBytes.byteLength);
   payload.set(headBytes, 0);
   payload.set(bodyBytes, headBytes.byteLength);
-  const res = invokeRustSync(CMD_MATCH_ZB_KD, payload);
+  return { payload, tripIds };
+}
+
+function parseMatchZbKdResult(res: Uint8Array | null, tripIds: string[]): ZbKdMatch | null | undefined {
   if (!res || res.byteLength < 5) return undefined;
   const r = new BinaryReader(res);
   if (r.u8Val() === 0) return null;
@@ -671,42 +690,16 @@ function matchZbKdRust(
   return tripId ? { tripId } : null;
 }
 
-export function matchZbKd(
+function matchZbKdJs(
   veh: ZbKdVehicle,
   dayIndex: DayIndex,
+  patterns: DayPatternEntry[],
   offsets?: Map<string, number>,
 ): ZbKdMatch | null {
-  if (veh.stops.length === 0) return null;
-  const candidateNums = getCandidateTrainNumbers(veh.trainNumber);
-  const routeIds: string[] = [];
-  try {
-    const seen = new Set<string>();
-    for (const c of candidateNums) {
-      for (const id of gtfsStore.getRouteIdsByShortName(c)) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          routeIds.push(id);
-        }
-      }
-    }
-  } catch {
-    return null;
-  }
-  if (routeIds.length === 0) return null;
-
-  const rust = matchZbKdRust(veh, dayIndex, routeIds, offsets);
-  if (rust !== undefined) {
-    if (rust) {
-      rust.routeShortName = findRouteShortNameForTrip(rust.tripId, dayIndex);
-    }
-    return rust;
-  }
-
   let bestTripId: string | null = null;
   let bestScore = -Infinity;
 
-  for (const [patternId, pattern] of dayIndex.patterns.entries()) {
-    if (!routeIds.includes(pattern.routeId)) continue;
+  for (const [patternId, pattern] of patterns) {
     const offset = offsets?.get(patternId) ?? 0;
     const trips = pattern.trips;
     if (!trips || trips.length === 0) continue;
@@ -745,4 +738,80 @@ export function matchZbKd(
         routeShortName: findRouteShortNameForTrip(bestTripId, dayIndex),
       }
     : null;
+}
+
+function resolveCandidateRouteIds(veh: ZbKdVehicle): string[] {
+  const candidateNums = getCandidateTrainNumbers(veh.trainNumber);
+  const routeIds: string[] = [];
+  try {
+    const seen = new Set<string>();
+    for (const c of candidateNums) {
+      for (const id of gtfsStore.getRouteIdsByShortName(c)) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          routeIds.push(id);
+        }
+      }
+    }
+  } catch {
+    return [];
+  }
+  return routeIds;
+}
+
+/**
+ * Dopasowanie pociągu KD do lokalnego kursu. Identyfikatory tripów zbiorkom
+ * i naszych (PDP) są różne, więc spinamy po numerze pociągu (brygada =
+ * nasz route_short_name) + weryfikacja nazwami i czasami najbliższych
+ * postojów. Bez weryfikacji czasowej sam numer to za mało: ten sam skład
+ * potrafi jechać rano i wieczorem.
+ */
+export function matchZbKd(
+  veh: ZbKdVehicle,
+  dayIndex: DayIndex,
+  offsets?: Map<string, number>,
+): ZbKdMatch | null {
+  if (veh.stops.length === 0) return null;
+  const routeIds = resolveCandidateRouteIds(veh);
+  if (routeIds.length === 0) return null;
+
+  const patterns = collectRoutePatterns(dayIndex, routeIds);
+  if (patterns.length === 0) return null;
+
+  const { payload, tripIds } = buildMatchZbKdPayload(veh, patterns, offsets);
+  const rust = parseMatchZbKdResult(invokeRustSync(CMD_MATCH_ZB_KD, payload), tripIds);
+  if (rust !== undefined) {
+    if (rust) {
+      rust.routeShortName = findRouteShortNameForTrip(rust.tripId, dayIndex);
+    }
+    return rust;
+  }
+
+  return matchZbKdJs(veh, dayIndex, patterns, offsets);
+}
+
+/** Asynchroniczny wariant `matchZbKd` z użyciem pre-indeksowanych wzorców i wątku roboczego Rust. */
+export async function matchZbKdAsync(
+  veh: ZbKdVehicle,
+  dayIndex: DayIndex,
+  offsets?: Map<string, number>,
+  patternsByRouteId?: ReadonlyMap<string, DayPatternEntry[]>,
+): Promise<ZbKdMatch | null> {
+  if (veh.stops.length === 0) return null;
+  const routeIds = resolveCandidateRouteIds(veh);
+  if (routeIds.length === 0) return null;
+
+  const patterns = collectRoutePatterns(dayIndex, routeIds, patternsByRouteId);
+  if (patterns.length === 0) return null;
+
+  const { payload, tripIds } = buildMatchZbKdPayload(veh, patterns, offsets);
+  const rust = parseMatchZbKdResult(await invokeRustAsync(CMD_MATCH_ZB_KD, payload), tripIds);
+  if (rust !== undefined) {
+    if (rust) {
+      rust.routeShortName = findRouteShortNameForTrip(rust.tripId, dayIndex);
+    }
+    return rust;
+  }
+
+  return matchZbKdJs(veh, dayIndex, patterns, offsets);
 }

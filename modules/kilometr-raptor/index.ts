@@ -560,6 +560,12 @@ export function invokeRustSync(
   return invokeWasmSync(cmd, payload);
 }
 
+/** Czy `invokeRustAsync` wykonuje pracę na natywnym wątku roboczym (poza wątkiem JS). */
+export function isNativeRustAsyncAvailable(): boolean {
+  const nativeMod = getNativeModule();
+  return Boolean(nativeMod && typeof nativeMod.invoke === "function");
+}
+
 /** Asynchroniczne wywołanie komendy Rust na wątku roboczym (Android/iOS), z fallbackiem WASM. */
 export async function invokeRustAsync(
   cmd: number,
@@ -612,7 +618,7 @@ const sharedEncoder =
 const sharedDecoder =
   typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
 
-function encodeUtf8(str: string): Uint8Array {
+export function encodeUtf8(str: string): Uint8Array {
   if (sharedEncoder) return sharedEncoder.encode(str);
   const out: number[] = [];
   for (let i = 0; i < str.length; i++) {
@@ -732,8 +738,16 @@ export class BinaryWriter {
       this.u16(0);
       return this;
     }
-    const bytes = encodeUtf8(s);
+    return this.strBytes(encodeUtf8(s));
+  }
+
+  /** Zapisuje wcześniej zakodowany string UTF-8 bez powtórnej alokacji. */
+  strBytes(bytes: Uint8Array): this {
     const len = Math.min(bytes.byteLength, 0xffff);
+    if (len === 0) {
+      this.u16(0);
+      return this;
+    }
     this.ensure(2 + len);
     this.view.setUint16(this.pos, len, true);
     this.pos += 2;

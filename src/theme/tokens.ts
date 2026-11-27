@@ -112,6 +112,7 @@ export const defaultScheme: Readonly<Record<SchemeKey, string>> = { ...scheme };
 
 // Kopia zachowuje kolory źródłowe także po wielokrotnej zmianie palety.
 type StyleSheetLike = Record<string, Record<string, unknown> | undefined>;
+let currentPaletteSnapshot: Record<SchemeKey, string> = { ...scheme };
 const createdSheets: {
   sheet: StyleSheetLike;
   source: StyleSheetLike;
@@ -133,7 +134,7 @@ function installStyleSheetHook(): void {
     }
     const source: StyleSheetLike = {};
     for (const key in obj) source[key] = { ...obj[key] };
-    createdSheets.push({ sheet: obj, source, palette: { ...scheme } });
+    createdSheets.push({ sheet: obj, source, palette: currentPaletteSnapshot });
     return obj;
   };
 }
@@ -141,12 +142,17 @@ installStyleSheetHook();
 
 /** Przemalowuje wcześniej utworzone arkusze stylów na nową paletę. */
 function repaintStyles(next: Record<SchemeKey, string>): void {
+  const fromCache = new Map<Record<SchemeKey, string>, Map<string, string>>();
   for (const { sheet, source, palette } of createdSheets) {
-    const from = new Map<string, string>();
-    for (const key of Object.keys(palette) as SchemeKey[]) {
-      const before = palette[key];
-      const after = next[key];
-      if (!from.has(before.toLowerCase())) from.set(before.toLowerCase(), after);
+    let from = fromCache.get(palette);
+    if (!from) {
+      from = new Map<string, string>();
+      for (const key of Object.keys(palette) as SchemeKey[]) {
+        const before = palette[key];
+        const after = next[key];
+        if (!from.has(before.toLowerCase())) from.set(before.toLowerCase(), after);
+      }
+      fromCache.set(palette, from);
     }
     const swap = (value: unknown): unknown => {
       if (typeof value === 'string') {
@@ -226,10 +232,15 @@ export const colors: Record<ColorKey, string> = {
 
 /** Podmienia role i arkusze stylów; odświeżeniem ekranów zajmuje się layout. */
 export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
+  let changed = false;
   for (const key of Object.keys(next) as SchemeKey[]) {
     const value = next[key];
-    if (typeof value === 'string' && value) scheme[key] = value;
+    if (typeof value === 'string' && value && scheme[key] !== value) {
+      scheme[key] = value;
+      changed = true;
+    }
   }
+  if (!changed) return;
   colors.bg = scheme.surface;
   colors.card = scheme.surfaceContainer;
   colors.ink = scheme.onSurface;
@@ -249,6 +260,7 @@ export function applyScheme(next: Partial<Record<SchemeKey, string>>): void {
   colors.warningSoft = scheme.warningContainer;
   colors.walk = scheme.onSurfaceVariant;
   repaintStyles(scheme);
+  currentPaletteSnapshot = { ...scheme };
   if (typeof document !== 'undefined') {
     document.documentElement.style.backgroundColor = scheme.surface;
     if (document.body) document.body.style.backgroundColor = scheme.surface;

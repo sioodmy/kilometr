@@ -1,4 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  Suspense,
+  createContext,
+  lazy,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -6,13 +17,7 @@ import { ArrowRight, ShieldAlert, X } from './icons';
 import { useStrings } from '../i18n';
 import { scheme } from '../theme/tokens';
 import { useCurrentLocation } from '../services/currentLocation';
-import {
-  acceptTransferAlternative,
-  refreshTransferAlternatives,
-  setTransferProtectionEnabled,
-  stopTracking,
-  useTrackedTrip,
-} from '../services/notifications';
+import { useTrackedTrip } from '../services/notifications/useTrackedTrip';
 import { usesNativeTransferProtection } from '../services/notifications/module';
 import {
   hasTransfer,
@@ -24,7 +29,10 @@ import {
   transferTitle,
   transferTone,
 } from './TransferProtectionCard';
-import { TransferProtectionSheet } from './TransferProtectionSheet';
+
+const TransferProtectionSheet = lazy(() =>
+  import('./TransferProtectionSheet').then((m) => ({ default: m.TransferProtectionSheet })),
+);
 
 const OpenTransfer = createContext<() => void>(() => {});
 export const useTransferProtection = () => useContext(OpenTransfer);
@@ -206,21 +214,33 @@ export function TransferProtectionProvider({ children }: { children: ReactNode }
       )}
 
       {open && state && trip && (
-        <TransferProtectionSheet
-          connection={trip.connection}
-          state={state}
-          onClose={() => setOpen(false)}
-          onAccept={acceptTransferAlternative}
-          onRefresh={refreshTransferAlternatives}
-          onPauseProtection={() => {
-            setOpen(false);
-            void setTransferProtectionEnabled(false);
-          }}
-          onStop={() => {
-            setOpen(false);
-            void stopTracking();
-          }}
-        />
+        <Suspense fallback={null}>
+          <TransferProtectionSheet
+            connection={trip.connection}
+            state={state}
+            onClose={() => setOpen(false)}
+            onAccept={(alternativeId) =>
+              import('../services/notifications/tripMonitor').then((m) =>
+                m.acceptTransferAlternative(alternativeId),
+              )
+            }
+            onRefresh={() =>
+              import('../services/notifications/tripMonitor').then((m) =>
+                m.refreshTransferAlternatives(),
+              )
+            }
+            onPauseProtection={() => {
+              setOpen(false);
+              void import('../services/notifications/tripMonitor').then((m) =>
+                m.setTransferProtectionEnabled(false),
+              );
+            }}
+            onStop={() => {
+              setOpen(false);
+              void import('../services/notifications/tripMonitor').then((m) => m.stopTracking());
+            }}
+          />
+        </Suspense>
       )}
     </OpenTransfer.Provider>
   );

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Keyboard,
+  Linking,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -42,6 +43,7 @@ import {
   RefreshCw,
   ScanLine,
   Search,
+  Store,
   TrainFront,
   TramFront,
   TriangleAlert,
@@ -49,6 +51,7 @@ import {
   X,
 } from '../src/components/icons';
 import { LineBadge } from '../src/components/LineBadge';
+import { getSuggestionIconMeta } from '../src/components/SuggestionRow';
 import {
   LiveVehiclesMap,
   type LiveVehiclesMapHandle,
@@ -125,6 +128,16 @@ import {
   resolveLiveVehicleRouteGeometry,
 } from '../src/services/routeGeometry';
 import { gtfsStore } from '../src/services/routing/store';
+import {
+  getPoiById,
+  hasPoiDb,
+  queryPoisInViewport,
+  type MapPoiItem,
+  type RichPoiRow,
+} from '../src/services/poiDatabase';
+import { subscribePoiDbChanged } from '../src/services/poiSync';
+import { defaultLocationForCity } from '../src/config';
+import { formatWalkDistance } from '../src/services/settings';
 import { useScreenTransitionSettled } from '../src/hooks/useScreenTransitionSettled';
 import { motion } from '../src/theme/motion';
 import { elev, scheme, shape, type } from '../src/theme/tokens';
@@ -213,6 +226,11 @@ export default function LiveVehiclesMapScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showStops, setShowStops] = useState(true);
+  const [showPois, setShowPois] = useState(true);
+  const [poiDbAvailable, setPoiDbAvailable] = useState(false);
+  const [mapPois, setMapPois] = useState<MapPoiItem[]>([]);
+  const [selectedPoiId, setSelectedPoiId] = useState<number | null>(null);
+  const [selectedPoiDetail, setSelectedPoiDetail] = useState<RichPoiRow | null>(null);
   const [showDisruptions, setShowDisruptions] = useState(true);
   const [showDelays, setShowDelays] = useState(true);
   const [followVehicle, setFollowVehicle] = useState(false);
@@ -230,6 +248,10 @@ export default function LiveVehiclesMapScreen() {
   } | null>(null);
   const [roadGeomVersion, setRoadGeomVersion] = useState(0);
   const viewportRef = useRef<ViewportBbox | null>(null);
+  const viewportZoomRef = useRef(13.4);
+  const poiQuerySeqRef = useRef(0);
+  const poiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const poiDetailSeqRef = useRef(0);
   const [newsItems, setNewsItems] = useState<MpkNewsItem[]>(() => getCachedNews() ?? []);
   const [offlineBase, setOfflineBase] = useState<string | null | undefined>(undefined);
   const [gtfsLoaded, setGtfsLoaded] = useState(() => gtfsStore.isLoaded);
@@ -1087,6 +1109,9 @@ export default function LiveVehiclesMapScreen() {
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
       setSelectedDelayId(null);
+      poiDetailSeqRef.current++;
+      setSelectedPoiId(null);
+      setSelectedPoiDetail(null);
       setSelectedId(vehicleId);
       setFollowVehicle(false);
       setSheetExpanded(false);
@@ -1125,6 +1150,9 @@ export default function LiveVehiclesMapScreen() {
       setFollowVehicle(false);
       setSelectedDisruptionId(null);
       setSelectedDelayId(null);
+      poiDetailSeqRef.current++;
+      setSelectedPoiId(null);
+      setSelectedPoiDetail(null);
       setSelectedStopId(stopId);
       setSheetExpanded(false);
       const st = stopsById.get(stopId) ?? gtfsStore.stops.get(stopId) ?? routeStop;
@@ -1147,6 +1175,9 @@ export default function LiveVehiclesMapScreen() {
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDelayId(null);
+      poiDetailSeqRef.current++;
+      setSelectedPoiId(null);
+      setSelectedPoiDetail(null);
       setSelectedDisruptionId(disruptionId);
       setSheetExpanded(false);
       const found = disruptionMarkers.find((d) => d.id === disruptionId);
@@ -1165,6 +1196,9 @@ export default function LiveVehiclesMapScreen() {
       setSelectedStopId(null);
       setRouteStopFallback(null);
       setSelectedDisruptionId(null);
+      poiDetailSeqRef.current++;
+      setSelectedPoiId(null);
+      setSelectedPoiDetail(null);
       setSelectedDelayId(delayId);
       setSheetExpanded(false);
       const found = mapDelaySegments.find((seg) => seg.id === delayId);
@@ -1175,12 +1209,113 @@ export default function LiveVehiclesMapScreen() {
     [mapDelaySegments],
   );
 
-  const handleViewportChange = useCallback(
-    (bbox: ViewportBbox) => {
-      viewportRef.current = bbox;
-      liveTracker.setMapViewport(bbox);
+  const handleSelectPoi = useCallback(
+    (poiId: number) => {
+      void Haptics.selectionAsync().catch(() => {});
+      setSelectedId(null);
+      setFollowVehicle(false);
+      setSelectedStopId(null);
+      setRouteStopFallback(null);
+      setSelectedDisruptionId(null);
+      setSelectedDelayId(null);
+      setSelectedPoiId(poiId);
+      setSelectedPoiDetail(null);
+      setSheetExpanded(false);
+      const seq = ++poiDetailSeqRef.current;
+      void getPoiById(poiId, cityId)
+        .then((row) => {
+          if (poiDetailSeqRef.current !== seq) return;
+          setSelectedPoiDetail(row);
+          if (row) {
+            mapRef.current?.centerOn(row.lat, row.lon, Math.max(viewportZoomRef.current, 15.2));
+          }
+        })
+        .catch(() => {});
     },
-    [],
+    [cityId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setMapPois([]);
+    poiDetailSeqRef.current++;
+    setSelectedPoiId(null);
+    setSelectedPoiDetail(null);
+    const check = () => {
+      void hasPoiDb(cityId)
+        .then((ok) => {
+          if (!cancelled) setPoiDbAvailable(ok);
+        })
+        .catch(() => {
+          if (!cancelled) setPoiDbAvailable(false);
+        });
+    };
+    check();
+    const unsub = subscribePoiDbChanged((changedCity) => {
+      if (changedCity === cityId) check();
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [cityId]);
+
+  const refreshViewportPois = useCallback(
+    (bbox: ViewportBbox, zoom: number, immediate = false) => {
+      if (poiDebounceRef.current) {
+        clearTimeout(poiDebounceRef.current);
+        poiDebounceRef.current = null;
+      }
+      if (!poiDbAvailable || !showPois || zoom < 12) {
+        poiQuerySeqRef.current++;
+        setMapPois([]);
+        return;
+      }
+      const run = () => {
+        const seq = ++poiQuerySeqRef.current;
+        void queryPoisInViewport(bbox, zoom, cityId, 160)
+          .then((rows) => {
+            if (poiQuerySeqRef.current !== seq) return;
+            setMapPois(rows);
+          })
+          .catch(() => {});
+      };
+      if (immediate) run();
+      else poiDebounceRef.current = setTimeout(run, 120);
+    },
+    [cityId, poiDbAvailable, showPois],
+  );
+
+  useEffect(() => {
+    if (!poiDbAvailable || !showPois) {
+      poiQuerySeqRef.current++;
+      setMapPois([]);
+      if (!showPois) {
+        poiDetailSeqRef.current++;
+        setSelectedPoiId(null);
+        setSelectedPoiDetail(null);
+      }
+      return;
+    }
+    if (viewportRef.current) {
+      refreshViewportPois(viewportRef.current, viewportZoomRef.current, true);
+    }
+    return () => {
+      if (poiDebounceRef.current) {
+        clearTimeout(poiDebounceRef.current);
+        poiDebounceRef.current = null;
+      }
+    };
+  }, [poiDbAvailable, refreshViewportPois, showPois]);
+
+  const handleViewportChange = useCallback(
+    (bbox: ViewportBbox, zoom: number) => {
+      viewportRef.current = bbox;
+      viewportZoomRef.current = zoom;
+      liveTracker.setMapViewport(bbox);
+      refreshViewportPois(bbox, zoom);
+    },
+    [refreshViewportPois],
   );
 
   const handleClearSelection = useCallback(() => {
@@ -1190,6 +1325,9 @@ export default function LiveVehiclesMapScreen() {
     setRouteStopFallback(null);
     setSelectedDisruptionId(null);
     setSelectedDelayId(null);
+    poiDetailSeqRef.current++;
+    setSelectedPoiId(null);
+    setSelectedPoiDetail(null);
     setSheetExpanded(false);
     setSheetHeight(0);
   }, []);
@@ -1247,6 +1385,41 @@ export default function LiveVehiclesMapScreen() {
       return next;
     });
   }, []);
+
+  const handleTogglePois = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {});
+    setShowPois((prev) => {
+      const next = !prev;
+      if (!next) {
+        poiDetailSeqRef.current++;
+        setSelectedPoiId(null);
+        setSelectedPoiDetail(null);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleRouteToPoi = useCallback(() => {
+    if (!selectedPoiDetail) return;
+    void Haptics.selectionAsync().catch(() => {});
+    const fallback = defaultLocationForCity(cityId);
+    const fromTitle = userLoc ? s.home.locationFallback : fallback.title;
+    const fromLat = userLoc ? userLoc.lat : fallback.lat;
+    const fromLon = userLoc ? userLoc.lon : fallback.lon;
+    router.push({
+      pathname: '/routes',
+      params: {
+        fromTitle,
+        fromLat: String(fromLat),
+        fromLon: String(fromLon),
+        fromGps: userLoc ? '1' : '0',
+        toId: `poi:${selectedPoiDetail.ext_id}`,
+        toTitle: selectedPoiDetail.name,
+        toLat: String(selectedPoiDetail.lat),
+        toLon: String(selectedPoiDetail.lon),
+      },
+    });
+  }, [cityId, router, s.home.locationFallback, selectedPoiDetail, userLoc]);
 
   const handleResetFilters = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {});
@@ -1340,7 +1513,11 @@ export default function LiveVehiclesMapScreen() {
   const liveState = liveTracker.getLiveState();
   const isInitialLoading = vehicles.length === 0 && liveState === 'unknown' && !liveWaitExpired;
   const hasSheet = Boolean(
-    (selectedVehicle && selectedMeta) || selectedStop || selectedDisruption || selectedDelaySegment,
+    (selectedVehicle && selectedMeta) ||
+      selectedStop ||
+      selectedDisruption ||
+      selectedDelaySegment ||
+      selectedPoiDetail,
   );
   useEscapeKey(hasSheet && !searchOpen, handleClearSelection);
   const hasSheetRef = useRef(hasSheet);
@@ -1474,6 +1651,9 @@ export default function LiveVehiclesMapScreen() {
           showDisruptions={showDisruptions}
           showDelays={showDelays}
           showStops={showStops}
+          pois={mapPois}
+          selectedPoiId={selectedPoiId}
+          showPois={poiDbAvailable && showPois}
           userLat={userLoc?.lat ?? null}
           userLon={userLoc?.lon ?? null}
           offlineBase={offlineBase}
@@ -1482,6 +1662,7 @@ export default function LiveVehiclesMapScreen() {
           }
           onSelectVehicle={handleSelectVehicle}
           onSelectStop={handleSelectStop}
+          onSelectPoi={handleSelectPoi}
           onSelectDisruption={handleSelectDisruption}
           onSelectDelay={handleSelectDelay}
           onClearSelection={handleClearSelection}
@@ -1713,6 +1894,24 @@ export default function LiveVehiclesMapScreen() {
                 />
                 <Text style={[styles.filterText, showStops && styles.secondaryChipTextActive]}>
                   {s.liveMap.filterStops}
+                </Text>
+              </SpringPressable>
+            )}
+
+            {poiDbAvailable && (
+              <SpringPressable
+                onPress={handleTogglePois}
+                accessibilityRole="button"
+                accessibilityState={{ selected: showPois }}
+                style={[styles.filterChip, showPois && styles.secondaryChipActive]}
+                scaleDelta={0.03}
+              >
+                <Store
+                  size={15}
+                  color={showPois ? scheme.onSecondaryContainer : scheme.onSurfaceVariant}
+                />
+                <Text style={[styles.filterText, showPois && styles.secondaryChipTextActive]}>
+                  {s.liveMap.filterPois}
                 </Text>
               </SpringPressable>
             )}
@@ -2479,6 +2678,112 @@ export default function LiveVehiclesMapScreen() {
           </View>
         </Animated.View>
       )}
+
+      {/* Dolna karta wybranego miejsca (POI) */}
+      {selectedPoiDetail &&
+        (() => {
+          const iconMeta = getSuggestionIconMeta({
+            id: 'poi',
+            kind: 'place',
+            category: selectedPoiDetail.category,
+          });
+          const IconComp = iconMeta.Icon;
+          const distM = userLoc
+            ? Math.round(
+                distanceMeters(userLoc.lat, userLoc.lon, selectedPoiDetail.lat, selectedPoiDetail.lon),
+              )
+            : null;
+          const rawUrl = selectedPoiDetail.website?.trim() ?? '';
+          const websiteUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : null;
+          const subtitleParts: string[] = [];
+          if (selectedPoiDetail.address) subtitleParts.push(selectedPoiDetail.address);
+          else if (selectedPoiDetail.subtype) subtitleParts.push(selectedPoiDetail.subtype);
+          if (
+            typeof selectedPoiDetail.rating === 'number' &&
+            Number.isFinite(selectedPoiDetail.rating)
+          ) {
+            subtitleParts.push(s.liveMap.poiRatingLabel(selectedPoiDetail.rating));
+          }
+          if (distM !== null) {
+            subtitleParts.push(formatWalkDistance(distM));
+          }
+
+          return (
+            <Animated.View
+              key={`poi-${selectedPoiDetail.id}`}
+              entering={SHEET_ENTERING}
+              exiting={SHEET_EXITING}
+              layout={SMOOTH_LAYOUT}
+              onLayout={handleSheetLayout}
+              style={[
+                styles.sheet,
+                { paddingBottom: webLayout.isMedium ? 16 : Math.max(insets.bottom, 16) + 4 },
+                desktopSheetStyle,
+              ]}
+            >
+              <View style={styles.sheetHeader}>
+                <View style={[styles.stopIconBox, { backgroundColor: iconMeta.bg }]}>
+                  <IconComp size={20} color={iconMeta.fg} />
+                </View>
+                <View style={styles.sheetTitleWrap}>
+                  <Text style={styles.sheetTitle} numberOfLines={2}>
+                    {selectedPoiDetail.name}
+                  </Text>
+                  {subtitleParts.length > 0 && (
+                    <Text style={styles.metaMuted} numberOfLines={2}>
+                      {subtitleParts.join(' \u00b7 ')}
+                    </Text>
+                  )}
+                  {selectedPoiDetail.hours ? (
+                    <Text style={styles.metaMuted} numberOfLines={1}>
+                      {selectedPoiDetail.hours}
+                    </Text>
+                  ) : null}
+                </View>
+                <SpringPressable
+                  onPress={handleClearSelection}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={s.liveMap.poiCloseA11y}
+                  style={styles.closeBtn}
+                  scaleDelta={0.05}
+                >
+                  <X size={20} color={scheme.onSurfaceVariant} />
+                </SpringPressable>
+              </View>
+
+              <View style={styles.vehicleActionsRow}>
+                <SpringPressable
+                  onPress={handleRouteToPoi}
+                  haptic="selection"
+                  accessibilityRole="button"
+                  accessibilityLabel={s.liveMap.poiRouteCta}
+                  style={[styles.boardBtn, styles.boardBtnFlex]}
+                >
+                  <Navigation size={18} color={scheme.onPrimary} />
+                  <Text style={styles.boardBtnText} numberOfLines={1}>
+                    {s.liveMap.poiRouteCta}
+                  </Text>
+                </SpringPressable>
+
+                {websiteUrl && (
+                  <SpringPressable
+                    onPress={() => void Linking.openURL(websiteUrl).catch(() => {})}
+                    haptic="selection"
+                    accessibilityRole="button"
+                    accessibilityLabel={s.liveMap.poiWebsiteCta}
+                    style={styles.timetableBtn}
+                  >
+                    <ExternalLink size={18} color={scheme.onSecondaryContainer} />
+                    <Text style={styles.timetableBtnText} numberOfLines={1}>
+                      {s.liveMap.poiWebsiteCta}
+                    </Text>
+                  </SpringPressable>
+                )}
+              </View>
+            </Animated.View>
+          );
+        })()}
     </View>
   );
 }
