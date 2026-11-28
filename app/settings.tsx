@@ -86,7 +86,7 @@ import {
 } from '../src/services/dataManager';
 import { TimetableSyncAbortedError } from '../src/services/timetableSync';
 import { getTimetableDownloadGate, remainingHours } from '../src/services/downloadLimits';
-import { transfersLabel } from '../src/components/ConnectionCard';
+import { transfersLabel } from '../src/components/connectionLabels';
 import { NotificationPrefsCard } from '../src/components/NotificationPrefsCard';
 import { NationalRailCard } from '../src/components/NationalRailCard';
 import { PoiDatabaseCard } from '../src/components/PoiDatabaseCard';
