@@ -20,8 +20,7 @@ import {
   findCachedConnection,
 } from './offlineCache';
 import { hasSeenOnboarding } from './onboarding';
-import { planConnections, buildTripStops, type PlanOptions } from './routing/engine';
-import { planIntercity } from './routing/intercity';
+import type { PlanOptions } from './routing/engine';
 import { isOutsideServiceArea } from './serviceArea';
 import { getCurrentLocationSnapshot, seedCurrentLocation } from './currentLocation';
 import { normalizeConnectionId } from './routing/connectionIdentity';
@@ -388,6 +387,7 @@ export const RoutingService: IRoutingService = {
 
       // Podróże między miastami: noga miejska + pociąg z bazy `polska`.
       if (needsIntercity(query)) {
+        const { planIntercity } = await import('./routing/intercity');
         const { connections } = await planIntercity(toPlanOptions(query));
         remember(connections);
         if (query.departureTimeSec === undefined && query.arriveBySec === undefined && !query.boardedTrip) {
@@ -402,6 +402,7 @@ export const RoutingService: IRoutingService = {
         return connections;
       }
 
+      const { planConnections } = await import('./routing/engine');
       const connections = await planConnections(toPlanOptions(query, progress));
 
       remember(connections);
@@ -511,6 +512,7 @@ export const RoutingService: IRoutingService = {
 
   async getTripStops(tripId: string): Promise<LegStop[]> {
     try {
+      const { buildTripStops } = await import('./routing/engine');
       return buildTripStops(tripId);
     } catch {
       return [];
