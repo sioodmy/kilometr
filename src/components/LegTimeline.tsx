@@ -680,30 +680,32 @@ function formatMetroEntranceLabel(
   return base;
 }
 
+function MetroEntranceHint({ hint }: { hint: string }) {
+  return (
+    <View style={s.stopHintBox}>
+      <MapPin size={14} color={scheme.primary} style={s.stopHintIcon} />
+      <Text style={s.stopHintText}>{hint}</Text>
+    </View>
+  );
+}
+
 function MetroEntranceBlock({
   t,
   kind,
   entrance,
-  compactMargin,
 }: {
   t: Strings;
   kind: 'entrance' | 'exit';
   entrance: MetroEntranceRef;
-  compactMargin?: boolean;
 }) {
   return (
-    <View style={compactMargin ? s.entranceConnectorWrap : s.entranceLegWrap}>
+    <View style={s.entranceConnectorWrap}>
       <View style={s.platformBadge}>
         <Text style={s.platformBadgeText}>
           {formatMetroEntranceLabel(t, kind, entrance)}
         </Text>
       </View>
-      {entrance.hint ? (
-        <View style={s.stopHintBox}>
-          <MapPin size={14} color={scheme.primary} style={s.stopHintIcon} />
-          <Text style={s.stopHintText}>{entrance.hint}</Text>
-        </View>
-      ) : null}
+      {entrance.hint ? <MetroEntranceHint hint={entrance.hint} /> : null}
     </View>
   );
 }
@@ -1274,14 +1276,26 @@ const TransitLegCard = memo(function TransitLegCard({
             {isBoardedLeg ? t.home.boardedInVehicle : leg.fromStop}
           </Text>
 
-          {!isBoardedLeg && departurePlatform ? (
-            <View style={s.platformBadge}>
-              <Text style={s.platformBadgeText}>{departurePlatform}</Text>
+          {!isBoardedLeg &&
+          (departurePlatform || (showFromEntrance && leg.fromEntrance)) ? (
+            <View style={s.departureMetaRow}>
+              {departurePlatform ? (
+                <View style={s.platformBadge}>
+                  <Text style={s.platformBadgeText}>{departurePlatform}</Text>
+                </View>
+              ) : null}
+              {showFromEntrance && leg.fromEntrance ? (
+                <View style={s.platformBadge}>
+                  <Text style={s.platformBadgeText}>
+                    {formatMetroEntranceLabel(t, 'entrance', leg.fromEntrance)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
-          {!isBoardedLeg && showFromEntrance && leg.fromEntrance ? (
-            <MetroEntranceBlock t={t} kind="entrance" entrance={leg.fromEntrance} />
+          {!isBoardedLeg && showFromEntrance && leg.fromEntrance?.hint ? (
+            <MetroEntranceHint hint={leg.fromEntrance.hint} />
           ) : null}
 
           {stopHint ? (
@@ -1527,11 +1541,18 @@ const TransitLegCard = memo(function TransitLegCard({
 
         <View style={s.arrivalContentCol}>
           <Text style={s.endpointTitle}>{leg.toStop}</Text>
-          {arrivalPlatform || doorSide ? (
+          {arrivalPlatform || doorSide || (showToEntrance && leg.toEntrance) ? (
             <View style={s.arrivalMetaRow}>
               {arrivalPlatform ? (
                 <View style={s.platformBadge}>
                   <Text style={s.platformBadgeText}>{arrivalPlatform}</Text>
+                </View>
+              ) : null}
+              {showToEntrance && leg.toEntrance ? (
+                <View style={s.platformBadge}>
+                  <Text style={s.platformBadgeText}>
+                    {formatMetroEntranceLabel(t, 'exit', leg.toEntrance)}
+                  </Text>
                 </View>
               ) : null}
               {doorSide ? (
@@ -1555,8 +1576,8 @@ const TransitLegCard = memo(function TransitLegCard({
               ) : null}
             </View>
           ) : null}
-          {showToEntrance && leg.toEntrance ? (
-            <MetroEntranceBlock t={t} kind="exit" entrance={leg.toEntrance} />
+          {showToEntrance && leg.toEntrance?.hint ? (
+            <MetroEntranceHint hint={leg.toEntrance.hint} />
           ) : null}
           {showStationAmenities ? (
             <StationAmenities
@@ -1880,10 +1901,10 @@ export const LegTimeline = memo(function LegTimeline({
                   </View>
                 ) : null}
                 {leg.fromEntrance ? (
-                  <MetroEntranceBlock t={t} kind="exit" entrance={leg.fromEntrance} compactMargin />
+                  <MetroEntranceBlock t={t} kind="exit" entrance={leg.fromEntrance} />
                 ) : null}
                 {leg.toEntrance ? (
-                  <MetroEntranceBlock t={t} kind="entrance" entrance={leg.toEntrance} compactMargin />
+                  <MetroEntranceBlock t={t} kind="entrance" entrance={leg.toEntrance} />
                 ) : null}
                 {isTransferWalk && transferState && isProtectedBridge(prevLeg, nextLeg) ? (
                   <TransferGuardPill state={transferState} onPress={onOpenTransferProtection} />
@@ -2169,6 +2190,13 @@ const s = StyleSheet.create({
     color: scheme.onSecondaryContainer,
   },
   arrivalMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
+  },
+  departureMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -2553,9 +2581,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 2,
-  },
-  entranceLegWrap: {
-    gap: 6,
   },
   entranceConnectorWrap: {
     gap: 6,
