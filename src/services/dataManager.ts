@@ -124,6 +124,10 @@ export function cancelActiveImport(): void {
   importInProgress = false;
   lastCheckAttempt = 0;
   if (prev) prev.controller.abort();
+  if (deferredWarmupTimer) {
+    clearTimeout(deferredWarmupTimer);
+    deferredWarmupTimer = null;
+  }
 }
 
 /**
@@ -191,16 +195,19 @@ let deferredWarmupTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleEnsureSearchReady(cityId: string): void {
   if (deferredWarmupTimer) clearTimeout(deferredWarmupTimer);
+  // Start po bieżącym zadaniu, ale bez sztucznego opóźnienia: rozgrzanie ma
+  // być gotowe, zanim użytkownik otworzy wyszukiwanie połączeń.
   deferredWarmupTimer = setTimeout(() => {
     deferredWarmupTimer = null;
     if (getActiveCityIdSync() !== cityId) return;
     void ensureSearchReady(cityId);
-  }, 400);
+  }, 0);
 }
 
 export async function refreshDataStatus(expectedCityId?: string): Promise<DataStatus> {
   const refreshCityId = expectedCityId ?? getActiveCityIdSync();
   if (getActiveCityIdSync() !== refreshCityId) return status;
+  const wasReady = status.state === 'ready';
   // Trwający import tego samego miasta sam emituje postęp: nie nadpisuj go
   // fałszywym statusem. Import innego miasta nie może blokować nowego.
   if (activeImport && activeImport.cityId === refreshCityId) return status;
@@ -243,8 +250,8 @@ export async function refreshDataStatus(expectedCityId?: string): Promise<DataSt
         updatedAt,
         source,
       });
-      // Rozgrzewka wag i RAPTOR-a po pierwszej klatce ekranu głównego.
-      scheduleEnsureSearchReady(refreshCityId);
+      // Rozgrzewka raz na przejście w stan gotowy, nie przy każdym heartbeatcie.
+      if (!wasReady) scheduleEnsureSearchReady(refreshCityId);
     } else {
       // Przerwany import zostawia częściowe dane (np. przystanki bez kursów).
       // To nie jest działający rozkład: czyścimy, żeby UI wymusił pobieranie.

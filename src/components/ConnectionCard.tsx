@@ -51,16 +51,12 @@ import {
   scheduledLegTimes,
 } from '../services/routing/connectionTimes';
 import { reliabilityNotice } from './reliabilityNotice';
+import { transfersLabel } from './connectionLabels';
 import { secondsToTimeString } from '../gtfs/geo';
 
 const PRESS_SPRING = motion.spring.press;
 const DASH_COUNT = 20;
 const DASH_INDICES = Array.from({ length: DASH_COUNT }, (_, i) => i);
-
-/** Poprawna odmiana liczby przesiadek (słownik i18n: 1 / 2-4 / 5+). */
-export function transfersLabel(n: number): string {
-  return tr().connection.transfers(n);
-}
 
 /** Nazwy przystanków przesiadkowych z pola interchange silnika. */
 function interchangeStops(raw?: string): string[] {

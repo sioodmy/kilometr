@@ -62,9 +62,9 @@ import {
   RoutingService,
   SearchService,
   subscribeSavedRoutes,
-  recordTripSearch,
-  type LocationResult,
-} from '../src/services';
+} from '../src/services/api';
+import { recordTripSearch } from '../src/services/smartRanker';
+import type { LocationResult } from '../src/services/types';
 import { liveTracker } from '../src/services/liveTracker';
 import { useTrackedTrip } from '../src/services/notifications/useTrackedTrip';
 import {
@@ -117,9 +117,8 @@ import {
   LastTripPull,
   type LastTripOption,
 } from '../src/components/LastTripPull';
-import { SheetLoadingFallback } from '../src/components/SkeletonPulse';
+import { CardSkeletonFallback, SheetLoadingFallback } from '../src/components/SkeletonPulse';
 import { SmartHistoryList } from '../src/components/SmartHistoryList';
-import { SavedRoutesList } from '../src/components/SavedRoutesList';
 import type { SavedRoute } from '../src/types/models';
 import { getCity, suggestCityForCoords, type CityId } from '../src/cities';
 import { hasCityDb } from '../src/services/gtfsDatabase';
@@ -143,6 +142,9 @@ const ManagePlacesSheet = lazy(() =>
 );
 const CitySelectSheet = lazy(() =>
   import('../src/components/CitySelectSheet').then((m) => ({ default: m.CitySelectSheet })),
+);
+const SavedRoutesList = lazy(() =>
+  import('../src/components/SavedRoutesList').then((m) => ({ default: m.SavedRoutesList })),
 );
 
 /** Okno widoczności chipu biletu w docku: odjazd w ciągu 3 h. */
@@ -223,7 +225,7 @@ export default function HomeScreen() {
   const [boardedOrigin, setBoardedOrigin] = useState<BoardedTripOrigin | null>(null);
   const [dismissedOnboardKey, setDismissedOnboardKey] = useState<string | null>(null);
   const [liveVersion, setLiveVersion] = useState(0);
-  const [gtfsLoaded, setGtfsLoaded] = useState(() => gtfsStore.isLoaded);
+  const [gtfsLoaded, setGtfsLoaded] = useState(false);
   // Ref dla asynchronicznych fixów GPS: nie mogą nadpisać ręcznie wybranego startu.
   const isCustomStartRef = useRef(isCustomStart);
   isCustomStartRef.current = isCustomStart;
@@ -402,7 +404,9 @@ export default function HomeScreen() {
     useCallback(() => {
       if (!shouldWatchLive || hasSeenOnboardingSync() === false) return undefined;
       liveTracker.acquire();
-      if (!gtfsStore.isLoaded && getDataStatus().state === 'ready') {
+      if (gtfsStore.isLoaded) {
+        setGtfsLoaded(true);
+      } else if (getDataStatus().state === 'ready') {
         void gtfsStore.load().then(() => setGtfsLoaded(gtfsStore.isLoaded)).catch(() => {});
       }
       setLiveVersion((v) => v + 1);
@@ -1759,15 +1763,17 @@ export default function HomeScreen() {
     );
 
   const savedRoutesContent = (
-    <SavedRoutesList
-      routes={orderedSavedRoutes}
-      activeId={trackedConnId}
-      ticketIds={ticketIds}
-      onSelect={handleSelectSavedRoute}
-      onRemove={handleRemoveSavedRoute}
-      onOpenTicket={handleOpenSavedTicket}
-      onUnpin={handleUnpinSavedRoute}
-    />
+    <Suspense fallback={<CardSkeletonFallback rows={3} />}>
+      <SavedRoutesList
+        routes={orderedSavedRoutes}
+        activeId={trackedConnId}
+        ticketIds={ticketIds}
+        onSelect={handleSelectSavedRoute}
+        onRemove={handleRemoveSavedRoute}
+        onOpenTicket={handleOpenSavedTicket}
+        onUnpin={handleUnpinSavedRoute}
+      />
+    </Suspense>
   );
 
   return (

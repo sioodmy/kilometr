@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, Clock3, Footprints, MapPinned, Pin, Ticket, X } from './icons';
 import { SpringPressable } from './SpringPressable';
 import { LineBadge } from './LineBadge';
-import { transfersLabel } from './ConnectionCard';
+import { transfersLabel } from './connectionLabels';
 import { elev, scheme, shape, type } from '../theme/tokens';
 import type { SavedRoute } from '../types/models';
 import { getLocaleSync, useStrings } from '../i18n';

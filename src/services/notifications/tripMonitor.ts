@@ -556,7 +556,7 @@ async function startTrackingNow(trip: TrackedTrip): Promise<void> {
   notify();
   rescheduleTicker();
   await persist(true);
-  void recordJourney(connection, 'tracked', getActiveCitySync().id);
+  void recordJourney(connection, getActiveCitySync().id);
   // Live Tracker musi odpytywać także w tle, bo powiadomienia o przesunięciach
   // (Live Update) potrzebują świeżych pozycji pojazdów.
   liveTracker.pin(true);
