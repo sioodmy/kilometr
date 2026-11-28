@@ -2582,7 +2582,7 @@ export const en: Strings = {
     railEmpty: 'No recorded rail journeys yet',
     topLinesTitle: 'Most frequent lines',
     topLinesSubtitle: 'Tap a slice or line to inspect its share',
-    topLinesEmpty: 'Open or save routes to see a breakdown of your top lines.',
+    topLinesEmpty: 'Save a route in “Your routes” or start tracking a journey to see your line breakdown.',
     topLinesTotal: 'Legs',
     topLinesOther: 'Other',
     lineTrips: (n: number) => (n === 1 ? '1 ride' : `${n} rides`),
@@ -2596,7 +2596,7 @@ export const en: Strings = {
     historyShort: 'History',
     emptyTitle: 'Your travel stats are just getting started',
     emptyBody:
-      'Search and track routes to see your kilometres, favourite lines chart and a shareable recap card. Everything stays locally on this device.',
+      'Save routes in “Your routes” and track journeys to see your travelled kilometres, line breakdown and a shareable recap card. Everything stays locally on this device.',
     localOnlyNote: 'All statistics are computed locally on your device.',
     shareCardCta: 'Kilometr Wrapped',
     shareCardSub: 'Share a recap of your journeys',

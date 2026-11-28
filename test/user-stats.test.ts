@@ -198,7 +198,9 @@ test('aggregates lines, destinations, rail and keeps wrapped privacy-safe', () =
   );
 
   assert.equal(stats.hasAnyData, true);
-  assert.equal(stats.totalTrips, 12);
+  // 3 sledzone przejazdy; zapisana trasa i bilet dupuja juz policzone kursy.
+  // Historia wyszukiwan (uses: 9 + 3) nie podbija juz licznikow.
+  assert.equal(stats.totalTrips, 3);
   assert.ok(stats.totalDistanceKm > 90);
   assert.equal(stats.rail.trips, 1);
   assert.equal(stats.rail.ticketsCount, 1);
@@ -217,6 +219,93 @@ test('aggregates lines, destinations, rail and keeps wrapped privacy-safe', () =
   assert.ok(!wrappedJson.includes('IC 61100'));
   assert.ok(!wrappedJson.includes('"4"'));
   assert.equal(stats.wrapped.year, 2026);
+});
+
+test('search views and trip-history uses do not count as traveled trips', () => {
+  const now = 1_780_000_000_000;
+  const viewed = connectionToJourneyLogEntry(SAMPLE_CONN, 'wroclaw', 'viewed', now)!;
+  const history: TripHistoryItem[] = [
+    {
+      id: 'h1',
+      origin_title: 'Dom',
+      origin_lat: 51.1115,
+      origin_lon: 17.0603,
+      dest_id: 'd-uczelnia',
+      dest_title: 'Uczelnia',
+      dest_address: 'Wybrzeże Wyspiańskiego 27',
+      dest_lat: 51.1073,
+      dest_lon: 17.062,
+      duration_min: 18,
+      timestamp: now,
+      uses: 42,
+    },
+  ];
+
+  const stats = computeUserDataStats({
+    journeyLog: [viewed],
+    savedRoutes: [],
+    tripHistory: [{ city: 'wroclaw', items: history }],
+    places: [],
+  });
+
+  assert.equal(stats.hasAnyData, false);
+  assert.equal(stats.totalTrips, 0);
+  assert.equal(stats.totalDistanceKm, 0);
+  assert.equal(stats.totalDurationMin, 0);
+  assert.equal(stats.rail.trips, 0);
+  assert.equal(stats.topLines.length, 0);
+  // Cele nadal pochodza z historii wyszukiwan, ale nie udaja przejechanych tras.
+  assert.equal(stats.topDestinations[0]?.count, 42);
+});
+
+test('same tracked route on separate days counts each journey once', () => {
+  const now = 1_780_000_000_000;
+  const day = 24 * 3600 * 1000;
+  const first = connectionToJourneyLogEntry(SAMPLE_CONN, 'wroclaw', 'tracked', now - day)!;
+  const second = connectionToJourneyLogEntry(SAMPLE_CONN, 'wroclaw', 'tracked', now - 2 * day)!;
+
+  const stats = computeUserDataStats({
+    journeyLog: [first, second],
+    savedRoutes: [],
+    tripHistory: [],
+    places: [],
+  });
+
+  assert.equal(stats.totalTrips, 2);
+});
+
+test('rail ticket alone counts as a journey', () => {
+  const now = 1_780_000_000_000;
+  const stats = computeUserDataStats({
+    journeyLog: [],
+    savedRoutes: [],
+    tripHistory: [],
+    places: [],
+    railTickets: [{ id: 't-alone', addedAt: now, trainNumber: '61100' }],
+  });
+
+  assert.equal(stats.hasAnyData, true);
+  assert.equal(stats.totalTrips, 1);
+  assert.equal(stats.rail.trips, 1);
+  assert.equal(stats.rail.ticketsCount, 1);
+  assert.ok(stats.modes.some((m) => m.mode === 'train' && m.trips === 1));
+});
+
+test('pinned route counts once and legacy saved log entry is ignored', () => {
+  const now = 1_780_000_000_000;
+  const savedLog = connectionToJourneyLogEntry(SAMPLE_CONN, 'wroclaw', 'saved', now)!;
+  const savedRoute: SavedRoute = { id: 'conn-1', savedAt: now, connection: SAMPLE_CONN };
+
+  const stats = computeUserDataStats({
+    journeyLog: [savedLog],
+    savedRoutes: [{ city: 'wroclaw', items: [savedRoute] }],
+    tripHistory: [],
+    places: [],
+  });
+
+  assert.equal(stats.totalTrips, 1);
+  assert.ok(stats.totalDistanceKm > 0);
+  assert.ok(stats.topLines.some((l) => l.line === '4' && l.count === 1));
 });
 
 test('backupFormat round-trips optional journeyLog without breaking schema 2', () => {
