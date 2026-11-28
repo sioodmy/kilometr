@@ -1,6 +1,6 @@
 // Czysty model statystyk uzytkownika (bez natywnych modulow, testowany przez tsx).
-// Agreguje dziennik przejazdow, zapisane trasy, historie celow, zapisane miejsca,
-// bilety kolejowe oraz opcjonalnie ostatnie linie z cache polaczen.
+// Agreguje sledzone przejazdy, aktualne zapisane trasy, historie celow,
+// zapisane miejsca oraz bilety kolejowe.
 
 import { distanceMeters, normalizePolish, timeStringToSeconds } from '../gtfs/geo';
 import type { CityId } from '../cities';
@@ -9,6 +9,8 @@ import { tripUses, type TripHistoryItem } from './smartRanking';
 import { normalizeLineName } from './lineIdentity';
 import { inferRailAgency, railBadgeLine } from './railIdentity';
 
+// 'saved' i 'viewed' zostaja tylko dla starych kopii zapasowych. Statystyki
+// licza sledzone przejazdy oraz aktualna liste "Twoich tras".
 export type JourneyLogSource = 'tracked' | 'saved' | 'viewed';
 
 export interface JourneyLogLeg {
@@ -42,19 +44,11 @@ export interface RailTicketSummaryInput {
   toStation?: string;
 }
 
-export interface CachedConnectionsInput {
-  cityId: CityId;
-  savedAt: number;
-  connections: Connection[];
-}
-
 export interface UserStatsInput {
   journeyLog: JourneyLogEntry[];
   savedRoutes: { city: CityId; items: SavedRoute[] }[];
   tripHistory: { city: CityId; items: TripHistoryItem[] }[];
   places: { city: CityId; items: SavedPlace[] }[];
-  recentLines?: { city: CityId; lines: string[] }[];
-  cachedConnections?: CachedConnectionsInput[];
   railTickets?: RailTicketSummaryInput[];
   fallbackCityId?: CityId;
 }
@@ -364,14 +358,18 @@ export function computeUserDataStats(
     if (activeSinceTs === null || ts < activeSinceTs) activeSinceTs = ts;
   };
 
-  // 1. Zbieramy wszystkie pelne przejazdy z dziennika i zapisanych tras bez dublowania.
+  // 1. Przejazdy liczymy z aktualnych zapisanych tras ("Twoje trasy") i
+  // sledzonych podrozy. Podglad trasy ani stary wpis 'saved' nie sa dowodem
+  // przejazdu, wiec dziennik przyjmuje tylko wpisy 'tracked'.
   const detailedTrips: JourneyLogEntry[] = [];
   const seenTripKeys = new Set<string>();
   const seenConnectionIds = new Set<string>();
 
   const sortedLog = [...input.journeyLog].sort((a, b) => b.ts - a.ts);
   for (const entry of sortedLog) {
-    if (!entry || !Array.isArray(entry.legs) || entry.legs.length === 0) continue;
+    markTs(entry?.ts);
+    if (!entry || entry.source !== 'tracked') continue;
+    if (!Array.isArray(entry.legs) || entry.legs.length === 0) continue;
     const normId = normalizeTripKey(entry.id);
     const key = `${normId}@${Math.floor(entry.ts / (6 * 3600 * 1000))}`;
     if (seenTripKeys.has(key)) continue;
@@ -379,7 +377,6 @@ export function computeUserDataStats(
     seenConnectionIds.add(normId);
     detailedTrips.push(entry);
     citiesUsed.add(entry.cityId);
-    markTs(entry.ts);
   }
 
   let savedRoutesCount = 0;
@@ -407,7 +404,6 @@ export function computeUserDataStats(
   let savedPlacesCount = 0;
   for (const section of input.places) {
     savedPlacesCount += section.items.length;
-    if (section.items.length > 0) citiesUsed.add(section.city);
   }
 
   // 2. Agregacja linii i srodkow transportu ze szczegolowych przejazdow.
@@ -492,13 +488,16 @@ export function computeUserDataStats(
     if (hasRail) railTrips += 1;
   }
 
-  // 3. Bilety kolejowe (dodaja przejazdy kolejowe, jesli nie sa juz w szczegolowych trasach).
+  // 3. Bilety kolejowe (dodaja przejazdy kolejowe, jesli nie sa juz w sledzonych
+  // albo zapisanych trasach). Bilet to realna podroz, a nie samo wyszukiwanie.
   const tickets = input.railTickets ?? [];
   const ticketsCount = tickets.length;
+  let ticketTrips = 0;
   for (const ticket of tickets) {
     markTs(ticket.addedAt);
     const connKey = ticket.connectionId ? normalizeTripKey(ticket.connectionId) : '';
     if (connKey && seenConnectionIds.has(connKey)) continue;
+    ticketTrips += 1;
     railTrips += 1;
     const curr = modeMap.get('train') ?? { trips: 0, legs: 0, distanceM: 0, durationMin: 0 };
     curr.trips += 1;
@@ -506,70 +505,10 @@ export function computeUserDataStats(
     modeMap.set('train', curr);
   }
 
-  // 4. Jesli brak jeszcze wpisow linii w dzienniku i zapisanych trasach, siegamy po cache polaczen.
-  if (lineMap.size === 0 && input.cachedConnections && input.cachedConnections.length > 0) {
-    const seenCacheTrips = new Set<string>();
-    for (const bucket of input.cachedConnections) {
-      markTs(bucket.savedAt);
-      // Bierzemy najwyzej pierwsza najlepsza propozycje z danego zapytania, zeby nie nabijac linii.
-      const first = bucket.connections[0];
-      if (!first) continue;
-      const key = normalizeTripKey(first.id);
-      if (seenCacheTrips.has(key)) continue;
-      seenCacheTrips.add(key);
-      const entry = connectionToJourneyLogEntry(first, bucket.cityId, 'viewed', bucket.savedAt);
-      if (!entry) continue;
-      for (const leg of entry.legs) {
-        if (leg.mode !== 'walk' && leg.line) {
-          const lineKey = `${leg.mode}:${leg.line.toUpperCase()}`;
-          const existing = lineMap.get(lineKey);
-          if (existing) {
-            existing.count += 1;
-            existing.distanceM += leg.distanceM;
-          } else {
-            lineMap.set(lineKey, {
-              line: leg.line,
-              mode: leg.mode,
-              count: 1,
-              distanceM: leg.distanceM,
-              cityId: bucket.cityId,
-              railAgency: leg.railAgency,
-            });
-          }
-        }
-        if (modeMap.size === 0 || !detailedTrips.length) {
-          addModeLeg(leg.mode, leg.distanceM, leg.durationMin);
-        }
-      }
-    }
-  }
-
-  // Ostateczny fallback dla samych numerow linii z recentRouteLines (gdy brak cache i zapisanych tras).
-  if (lineMap.size === 0 && input.recentLines) {
-    for (const bucket of input.recentLines) {
-      for (const rawLine of bucket.lines.slice(0, 8)) {
-        const line = rawLine.trim().toUpperCase();
-        if (!line) continue;
-        const mode: LegMode = /^\d{1,2}$/.test(line) ? 'tram' : 'bus';
-        const lineKey = `${mode}:${line}`;
-        if (!lineMap.has(lineKey)) {
-          lineMap.set(lineKey, {
-            line,
-            mode,
-            count: 1,
-            distanceM: 0,
-            cityId: bucket.city,
-          });
-        }
-      }
-    }
-  }
-
-  // 5. Historia przejazdow (tripHistory): najczestsze cele podrozy oraz pelny bilans kursow i km.
+  // 4. Historia wyszukiwan (tripHistory) sluzy juz tylko do rankingu celow.
+  // Liczba sprawdzen i prostoliniowy dystans nie sa dowodem przejazdu, wiec
+  // nie trafiaja do kursow, kilometrow ani czasu w trasie.
   let tripHistoryCount = 0;
-  let historyTripsTotal = 0;
-  let historyDistanceM = 0;
-  let historyDurationMin = 0;
 
   const destMap = new Map<
     string,
@@ -585,32 +524,10 @@ export function computeUserDataStats(
 
   for (const section of input.tripHistory) {
     tripHistoryCount += section.items.length;
-    if (section.items.length > 0) citiesUsed.add(section.city);
     for (const item of section.items) {
       markTs(item.timestamp);
       const uses = tripUses(item);
-      historyTripsTotal += uses;
-
-      if (
-        isFiniteNumber(item.origin_lat) &&
-        isFiniteNumber(item.origin_lon) &&
-        isFiniteNumber(item.dest_lat) &&
-        isFiniteNumber(item.dest_lon) &&
-        (item.origin_lat !== 0 || item.origin_lon !== 0)
-      ) {
-        const directM = distanceMeters(
-          item.origin_lat,
-          item.origin_lon,
-          item.dest_lat,
-          item.dest_lon,
-        );
-        if (directM >= MIN_REASONABLE_TRIP_M && directM < MAX_REASONABLE_TRIP_M) {
-          historyDistanceM += Math.round(directM * ROAD_DETOUR_FACTOR) * uses;
-        }
-      }
-
       const dur = isFiniteNumber(item.duration_min) && item.duration_min > 0 ? item.duration_min : 0;
-      historyDurationMin += dur * uses;
 
       const title = item.dest_title?.trim();
       if (title) {
@@ -658,12 +575,11 @@ export function computeUserDataStats(
     }
   }
 
-  // 6. Laczenie bilansu globalnego bez podwojnego liczenia tej samej aktywnosci:
-  // bierzemy wieksza z wartosci miedzy historia celow a dziennikiem kursow.
-  const detailedCount = detailedTrips.length;
-  const totalTrips = Math.max(historyTripsTotal, detailedCount, railTrips);
-  const totalDistanceM = Math.max(historyDistanceM, detailedDistanceM);
-  const totalDurationMin = Math.max(historyDurationMin, detailedDurationMin);
+  // 6. Bilans globalny to wylacznie realne przejazdy: sledzone podroze,
+  // zapisane trasy i kupione bilety. Wyszukiwania nie podbijaja licznikow.
+  const totalTrips = detailedTrips.length + ticketTrips;
+  const totalDistanceM = detailedDistanceM;
+  const totalDurationMin = detailedDurationMin;
   const totalWalkM = detailedWalkM;
   const totalTransitM = Math.max(0, totalDistanceM - totalWalkM);
 

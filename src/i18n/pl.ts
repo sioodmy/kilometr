@@ -3099,7 +3099,7 @@ export const pl = {
     railEmpty: 'Brak zapisanych przejazdów kolejowych',
     topLinesTitle: 'Najczęstsze linie',
     topLinesSubtitle: 'Dotknij segmentu lub linii, żeby sprawdzić udział',
-    topLinesEmpty: 'Po wybraniu lub zapisaniu tras pojawi się wykres Twoich najczęstszych linii.',
+    topLinesEmpty: 'Po zapisaniu trasy w „Twoich trasach” lub uruchomieniu śledzenia pojawi się wykres Twoich linii.',
     topLinesTotal: 'Odcinki',
     topLinesOther: 'Pozostałe',
     lineTrips: (n: number) =>
@@ -3114,7 +3114,7 @@ export const pl = {
     historyShort: 'Historia',
     emptyTitle: 'Twoje statystyki dopiero się zbierają',
     emptyBody:
-      'Wyszukuj i śledź połączenia, a zobaczysz tu przejechane kilometry, wykres ulubionych linii i podsumowanie gotowe do udostępnienia. Wszystkie dane zostają wyłącznie na tym urządzeniu.',
+      'Zapisuj trasy w „Twoich trasach” i śledź przejazdy, a zobaczysz tu przejechane kilometry, wykres linii i podsumowanie gotowe do udostępnienia. Wszystkie dane zostają wyłącznie na tym urządzeniu.',
     localOnlyNote: 'Wszystkie statystyki liczone są lokalnie na Twoim urządzeniu.',
     shareCardCta: 'Kilometr Wrapped',
     shareCardSub: 'Udostępnij podsumowanie twoich tras',

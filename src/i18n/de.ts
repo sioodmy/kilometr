@@ -2611,7 +2611,7 @@ export const de: Strings = {
     railEmpty: 'Noch keine gespeicherten Bahnfahrten',
     topLinesTitle: 'Häufigste Linien',
     topLinesSubtitle: 'Tippe auf ein Segment oder eine Linie für Details',
-    topLinesEmpty: 'Öffne oder speichere Routen, um deine häufigsten Linien zu sehen.',
+    topLinesEmpty: 'Speichere eine Route unter „Deine Routen“ oder starte die Verfolgung, um deine Linien zu sehen.',
     topLinesTotal: 'Abschnitte',
     topLinesOther: 'Weitere',
     lineTrips: (n: number) => (n === 1 ? '1 Fahrt' : `${n} Fahrten`),
@@ -2625,7 +2625,7 @@ export const de: Strings = {
     historyShort: 'Verlauf',
     emptyTitle: 'Deine Fahrstatistiken entstehen gerade',
     emptyBody:
-      'Suche und verfolge Verbindungen, um Kilometer, Lieblingslinien und eine teilbare Rückblick-Grafik zu sehen. Alle Daten bleiben lokal auf diesem Gerät.',
+      'Speichere Routen unter „Deine Routen“ und verfolge Fahrten, um gefahrene Kilometer, deine Linien und eine teilbare Rückblick-Grafik zu sehen. Alle Daten bleiben lokal auf diesem Gerät.',
     localOnlyNote: 'Alle Statistiken werden lokal auf deinem Gerät berechnet.',
     shareCardCta: 'Kilometr Wrapped',
     shareCardSub: 'Teile deine Fahrten-Zusammenfassung',
